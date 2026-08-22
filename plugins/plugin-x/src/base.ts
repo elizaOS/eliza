@@ -148,13 +148,23 @@ export function resolveMaxAuthRetries(raw: string | undefined): number {
  * Class representing a request queue for handling asynchronous requests in a controlled manner.
  */
 
-type QueuedRequest = () => Promise<unknown>;
+type QueuedItem = {
+  run: () => Promise<void>;
+  reject: (error: unknown) => void;
+};
 
-class RequestQueue {
-  private queue: QueuedRequest[] = [];
+export class RequestQueue {
+  private queue: QueuedItem[] = [];
   private processing = false;
   private maxRetries = 3;
-  private retryAttempts = new Map<QueuedRequest, number>();
+  private retryAttempts = new Map<QueuedItem, number>();
+
+  constructor(
+    private readonly waits: {
+      backoff?: (retryCount: number) => Promise<void>;
+      jitter?: () => Promise<void>;
+    } = {},
+  ) {}
 
   /**
    * Asynchronously adds a request to the queue, then processes the queue.
@@ -165,15 +175,14 @@ class RequestQueue {
    */
   async add<T>(request: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
+      this.queue.push({
+        run: async () => {
           const result = await request();
           resolve(result);
-        } catch (error) {
-          reject(error);
-        }
+        },
+        reject,
       });
-      this.processQueue();
+      void this.processQueue();
     });
   }
 
@@ -189,38 +198,35 @@ class RequestQueue {
     this.processing = true;
 
     while (this.queue.length > 0) {
-      const request = this.queue.shift();
-      if (!request) break;
+      const item = this.queue.shift();
+      if (!item) break;
       try {
-        await request();
-        // Clear retry count on success
-        this.retryAttempts.delete(request);
+        await item.run();
+        this.retryAttempts.delete(item);
       } catch (error) {
         logger.error("Error processing request:", errorDetail(error));
 
-        const retryCount = (this.retryAttempts.get(request) || 0) + 1;
+        const retryCount = (this.retryAttempts.get(item) || 0) + 1;
 
         if (retryCount < this.maxRetries) {
-          this.retryAttempts.set(request, retryCount);
-          this.queue.unshift(request);
+          this.retryAttempts.set(item, retryCount);
+          this.queue.unshift(item);
           await this.exponentialBackoff(retryCount);
-          // Break the loop to allow exponential backoff to take effect
-          break;
-        } else {
-          logger.error(
-            `Max retries (${this.maxRetries}) exceeded for request, skipping`,
-          );
-          this.retryAttempts.delete(request);
+          continue;
         }
+        logger.error(
+          `Max retries (${this.maxRetries}) exceeded for request, skipping`,
+        );
+        this.retryAttempts.delete(item);
+        item.reject(error);
       }
       await this.randomDelay();
     }
 
     this.processing = false;
 
-    // If there are still items in the queue, restart processing
     if (this.queue.length > 0) {
-      this.processQueue();
+      void this.processQueue();
     }
   }
 
@@ -230,6 +236,10 @@ class RequestQueue {
    * @returns {Promise<void>} - A promise that resolves after a delay based on the retry count.
    */
   private async exponentialBackoff(retryCount: number): Promise<void> {
+    if (this.waits.backoff) {
+      await this.waits.backoff(retryCount);
+      return;
+    }
     const delay = 2 ** retryCount * 1000;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
@@ -240,6 +250,10 @@ class RequestQueue {
    * @returns A Promise that resolves after the random delay has passed.
    */
   private async randomDelay(): Promise<void> {
+    if (this.waits.jitter) {
+      await this.waits.jitter();
+      return;
+    }
     const delay = Math.floor(Math.random() * 2000) + 1500;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
