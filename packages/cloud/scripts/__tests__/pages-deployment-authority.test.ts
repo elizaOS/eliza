@@ -32,7 +32,9 @@ function wranglerRecord(
       "pages",
       "deploy",
       "--project-name=eliza-app",
+      "--branch=develop",
       `--commit-hash=${sourceSha}`,
+      "--commit-dirty=false",
     ],
     log_file_path: "/tmp/wrangler.log",
     timestamp: "2026-08-21T19:59:59.999Z",
@@ -262,6 +264,52 @@ describe("Pages deployment authority", () => {
           },
         ),
       ).toThrow();
+    }
+  });
+
+  test("binds the Wrangler command exactly to the attested release", () => {
+    const validArgs = [
+      "pages",
+      "deploy",
+      "--project-name=eliza-app",
+      "--branch=develop",
+      `--commit-hash=${sourceSha}`,
+      "--commit-dirty=false",
+    ];
+    const mutations = [
+      validArgs.map((argument) =>
+        argument.startsWith("--commit-hash=")
+          ? `--commit-hash=${"c".repeat(40)}`
+          : argument,
+      ),
+      validArgs.map((argument) =>
+        argument === "--project-name=eliza-app"
+          ? "--project-name=other-app"
+          : argument,
+      ),
+      validArgs.map((argument) =>
+        argument === "--branch=develop" ? "--branch=main" : argument,
+      ),
+      validArgs.slice(0, -1),
+      [...validArgs, "--skip-caching"],
+    ];
+
+    for (const commandLineArgs of mutations) {
+      expect(() =>
+        parseWranglerPagesDeploymentOutput(
+          wranglerRecord({}, { command_line_args: commandLineArgs }),
+          {
+            expectedProject: "eliza-app",
+            expectedCommit: sourceSha,
+            expectedBranch: "develop",
+            expectedAlias: aliasUrl,
+            expectedEnvironment: "preview",
+            expectedProductionBranch: "main",
+            runId: "1",
+            runAttempt: "1",
+          },
+        ),
+      ).toThrow("command_line_args do not match the release");
     }
   });
 

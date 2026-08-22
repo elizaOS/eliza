@@ -233,7 +233,10 @@ function parseNdjson(raw) {
   );
 }
 
-function parseWranglerSession(value) {
+function parseWranglerSession(
+  value,
+  { expectedProject, expectedBranch, expectedCommit },
+) {
   const session = requireExactKeys(
     value,
     WRANGLER_SESSION_KEYS,
@@ -251,8 +254,21 @@ function parseWranglerSession(value) {
     session.command_line_args,
     "wrangler-session command_line_args",
   );
-  if (commandLineArgs[0] !== "pages" || commandLineArgs[1] !== "deploy") {
-    fail("wrangler-session must describe a Pages deploy command");
+  const expectedCommandLineArgs = [
+    "pages",
+    "deploy",
+    `--project-name=${requireString(expectedProject, "expected project", PROJECT)}`,
+    `--branch=${requireString(expectedBranch, "expected branch", PROJECT)}`,
+    `--commit-hash=${requireString(expectedCommit, "expected commit", SHA40)}`,
+    "--commit-dirty=false",
+  ];
+  if (
+    commandLineArgs.length !== expectedCommandLineArgs.length ||
+    commandLineArgs.some(
+      (argument, index) => argument !== expectedCommandLineArgs[index],
+    )
+  ) {
+    fail("wrangler-session command_line_args do not match the release");
   }
 }
 
@@ -286,7 +302,11 @@ export function parseWranglerPagesDeploymentOutput(
   },
 ) {
   const [sessionValue, summaryValue, detailedValue] = parseNdjson(raw);
-  parseWranglerSession(sessionValue);
+  parseWranglerSession(sessionValue, {
+    expectedProject,
+    expectedBranch,
+    expectedCommit,
+  });
   const summary = requireExactKeys(
     summaryValue,
     ["deployment_id", "pages_project", "timestamp", "type", "url", "version"],
