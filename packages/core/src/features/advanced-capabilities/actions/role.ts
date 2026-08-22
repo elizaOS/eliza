@@ -442,7 +442,15 @@ async function applyAssignments(args: {
 	const { runtime, message, assignments, op, authorization, callback } = args;
 
 	const successes: Array<{ entityId: UUID; newRole: RoleName }> = [];
-	const failures: Array<{ entityId: UUID; reason: string }> = [];
+	const failures: Array<{
+		entityId: UUID;
+		reason: string;
+		error?: string;
+		requesterRole?: RoleName;
+	}> = [];
+	let authorizationStop:
+		| { entityId: UUID; error: string; requesterRole?: RoleName }
+		| undefined;
 
 	for (const [index, { entityId, newRole }] of assignments.entries()) {
 		// The first assignment uses the handler's final authorization snapshot.
@@ -453,7 +461,34 @@ async function applyAssignments(args: {
 			index === 0
 				? authorization
 				: await authorizeRoleManager({ runtime, message, op });
-		if (!("resolved" in currentAuthorization)) return currentAuthorization;
+		if (!("resolved" in currentAuthorization)) {
+			const denialData = asRecord(currentAuthorization.data);
+			const error =
+				typeof currentAuthorization.error === "string"
+					? currentAuthorization.error
+					: currentAuthorization.error instanceof Error
+						? currentAuthorization.error.message
+						: "ROLE_REAUTHORIZATION_FAILED";
+			const requesterRole = normalizeRole(
+				typeof denialData?.requesterRole === "string"
+					? denialData.requesterRole
+					: undefined,
+			);
+			authorizationStop = {
+				entityId,
+				error,
+				...(requesterRole === "GUEST" && denialData?.requesterRole == null
+					? {}
+					: { requesterRole }),
+			};
+			failures.push({
+				...authorizationStop,
+				reason:
+					currentAuthorization.text ??
+					"Role management authority changed before this assignment.",
+			});
+			break;
+		}
 		const { world, metadata } = currentAuthorization.resolved;
 		const { requesterRole } = currentAuthorization;
 
@@ -545,6 +580,8 @@ async function applyAssignments(args: {
 			op,
 			successCount: successes.length,
 			failureCount: failures.length,
+			failures,
+			...(authorizationStop ? { authorizationStop } : {}),
 			worldId: authorization.resolved.world.id,
 		},
 	};

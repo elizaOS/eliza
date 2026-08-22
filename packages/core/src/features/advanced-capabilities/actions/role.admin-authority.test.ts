@@ -258,6 +258,7 @@ describe("ROLE bounded ADMIN authority", () => {
 
 	it("reauthorizes between batch writes and stops after a concurrent demotion", async () => {
 		const test = harness();
+		const callback = vi.fn(async () => undefined);
 		const authorizedWorld = structuredClone(test.world) as World;
 		const revokedWorld = {
 			...structuredClone(test.world),
@@ -287,15 +288,45 @@ describe("ROLE bounded ADMIN authority", () => {
 					],
 				},
 			},
+			callback,
 		);
 
 		expect(result).toMatchObject({
-			success: false,
-			error: "INSUFFICIENT_PERMISSIONS",
-			data: { requesterRole: "USER" },
+			success: true,
+			text: "Updated 1 role; 1 failed.",
+			userFacingText: "Updated 1 role; 1 failed.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { successCount: 1, failureCount: 1 },
+			data: {
+				successCount: 1,
+				failureCount: 1,
+				authorizationStop: {
+					entityId: IDS.user,
+					error: "INSUFFICIENT_PERMISSIONS",
+					requesterRole: "USER",
+				},
+				failures: [
+					{
+						entityId: IDS.user,
+						error: "INSUFFICIENT_PERMISSIONS",
+						requesterRole: "USER",
+					},
+				],
+			},
 		});
 		expect(test.getWorld).toHaveBeenCalledTimes(3);
 		expect(test.updateWorld).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledOnce();
+		expect(callback).toHaveBeenCalledWith({
+			text: "Updated 1 role; 1 failed.",
+			actions: ["ROLE"],
+		});
+		expect(
+			(authorizedWorld.metadata as { roles: Record<string, string> }).roles[
+				IDS.guest
+			],
+		).toBe("USER");
 		expect(
 			(authorizedWorld.metadata as { roles: Record<string, string> }).roles[
 				IDS.user
