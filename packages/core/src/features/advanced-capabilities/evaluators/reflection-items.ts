@@ -48,7 +48,6 @@ import type {
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
-import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
@@ -72,9 +71,6 @@ import {
 	type TaskCompletionAssessment,
 } from "./task-completion.ts";
 
-const MAX_KNOWN_PER_KIND = 15;
-const FACT_LOOKBACK_LIMIT = 60;
-const RECENT_MESSAGES_LIMIT = 10;
 // Exported fact-store tuning shared with the preference evaluator
 // (preference-items.ts), which writes durable `preference` facts through the
 // same dedupe/strengthen discipline — one source of truth for the thresholds.
@@ -429,62 +425,12 @@ export function formatRecentMessages(memories: Memory[]): string {
 	return lines.length > 0 ? lines.join("\n") : "(none)";
 }
 
-// A room's entity table grows without bound — the sub-agent orchestration path
-// registers one permanent entity per spawned coding session, and busy rooms
-// accumulate hundreds (850 of 861 observed live, #15087). The relationships and
-// identities sections each render this list into the ONE merged post-turn
-// TEXT_SMALL call, so an unbounded list eventually exceeds the small model's
-// context and every evaluation in the room 400s (~220KB of a 310KB failing
-// prompt was the entity list, twice). Extraction only needs entities that can
-// be evidenced in the recent-message window, so conversation participants are
-// kept first and the remainder (name-only reference candidates) is capped. The
-// main-context entities provider (entities.ts) applies the same display-cap
-// discipline.
-export const REFLECTION_ENTITY_LIMIT = 50;
-// An entity name is name-scale; a sub-agent session entity carries its whole
-// task description as its name. Bound each rendered line so one entity cannot
-// dominate the prompt.
-const ENTITY_NAMES_RENDER_MAX_CHARS = 240;
-
-function boundRender(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	const suffix = "…[truncated]";
-	if (maxChars <= suffix.length) return suffix.slice(0, maxChars);
-	return `${truncateWellFormed(text, maxChars - suffix.length)}${suffix}`;
-}
-
-function boundReflectionEntities(params: {
-	entities: Entity[];
-	agentId: UUID;
-	message: Memory;
-	recentMessages: Memory[];
-}): Entity[] {
-	const { entities, agentId, message, recentMessages } = params;
-	if (entities.length <= REFLECTION_ENTITY_LIMIT) return entities;
-	const participantIds = new Set<string>([agentId]);
-	if (message.entityId) participantIds.add(message.entityId);
-	for (const recent of recentMessages) {
-		if (recent.entityId) participantIds.add(recent.entityId);
-	}
-	const participants: Entity[] = [];
-	const others: Entity[] = [];
-	for (const entity of entities) {
-		if (entity.id && participantIds.has(entity.id)) {
-			participants.push(entity);
-		} else {
-			others.push(entity);
-		}
-	}
-	return [...participants, ...others].slice(0, REFLECTION_ENTITY_LIMIT);
-}
-
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
 	return entities
 		.map((entity) => {
 			const names = Array.isArray(entity.names) ? entity.names.join(", ") : "";
-			const bounded = boundRender(names, ENTITY_NAMES_RENDER_MAX_CHARS);
-			return `- ${bounded || "unknown"} (ID: ${entity.id ?? "unknown"})`;
+			return `- ${names || "unknown"} (ID: ${entity.id ?? "unknown"})`;
 		})
 		.join("\n");
 }
@@ -559,7 +505,6 @@ async function prepareReflectionContext(
 				runtime.getMemories({
 					tableName: "messages",
 					roomId: message.roomId,
-					limit: RECENT_MESSAGES_LIMIT,
 					unique: false,
 				}),
 				runtime.getRelationships({
@@ -577,12 +522,7 @@ async function prepareReflectionContext(
 		return {
 			recentMessages,
 			existingRelationships,
-			entities: boundReflectionEntities({
-				entities,
-				agentId,
-				message,
-				recentMessages,
-			}),
+			entities,
 		};
 	})();
 	reflectionContextByMessage.set(message, prepared);
@@ -607,7 +547,6 @@ async function prepareFacts(
 			tableName: "facts",
 			roomId: message.roomId,
 			worldId: message.worldId,
-			limit: FACT_LOOKBACK_LIMIT,
 			unique: false,
 		}),
 		message.entityId
@@ -615,7 +554,6 @@ async function prepareFacts(
 					tableName: "facts",
 					roomId: message.roomId,
 					entityId: message.entityId,
-					limit: FACT_LOOKBACK_LIMIT,
 					unique: false,
 				})
 			: Promise.resolve([]),
@@ -1096,10 +1034,10 @@ Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
 
 Known durable facts:
-${formatKnownLines(durable.slice(0, MAX_KNOWN_PER_KIND), "durable")}
+${formatKnownLines(durable, "durable")}
 
 Known current facts:
-${formatKnownLines(current.slice(0, MAX_KNOWN_PER_KIND), "current")}`;
+${formatKnownLines(current, "current")}`;
 	},
 	parse(output) {
 		// Tolerant, op-by-op: a single malformed op must not discard the whole

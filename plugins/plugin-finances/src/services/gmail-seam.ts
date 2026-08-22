@@ -251,7 +251,7 @@ function gmailMessageFromGoogle(args: {
     replyTo: message.replyTo?.email ?? null,
     to: (message.to ?? []).map((item) => item.email),
     cc: (message.cc ?? []).map((item) => item.email),
-    snippet: message.snippet ?? message.bodyText?.slice(0, 240) ?? "",
+    snippet: message.snippet ?? message.bodyText ?? "",
     receivedAt,
     isUnread: labels.includes("UNREAD"),
     isImportant: labels.includes("IMPORTANT"),

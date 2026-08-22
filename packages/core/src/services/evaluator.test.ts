@@ -14,7 +14,9 @@ import {
 	type Memory,
 	ModelType,
 } from "../types";
-import { EVALUATOR_PROMPT_MAX_CHARS, EvaluatorService } from "./evaluator";
+import { EvaluatorService } from "./evaluator";
+
+const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
 function makeRuntime(): AgentRuntime {
 	const runtime = new AgentRuntime({
@@ -619,7 +621,7 @@ describe("EvaluatorService", () => {
 		expect(state.data.actionResults[0]?.data).toEqual(actionResult.data);
 	});
 
-	it("bounds oversized data-only action JSON without hiding control fields", async () => {
+	it("keeps oversized action JSON complete", async () => {
 		const runtime = makeRuntime();
 		runtime.registerEvaluator({
 			name: "bounded-data",
@@ -638,9 +640,8 @@ describe("EvaluatorService", () => {
 			expect(prompt).toContain('"actionName":"UNINSTALL_SKILL"');
 			expect(prompt).toContain('"awaitingUserInput":true');
 			expect(prompt).toContain('"slug":"demo-skill"');
-			expect(prompt).toContain('"__truncated":true');
-			expect(prompt).not.toContain(oversizedMarker);
-			expect(prompt.length).toBeLessThan(EVALUATOR_PROMPT_MAX_CHARS);
+			expect(prompt).not.toContain('"__truncated":true');
+			expect(prompt).toContain(oversizedMarker);
 			return { "bounded-data": { ok: true } };
 		});
 		runtime.useModel = useModel as AgentRuntime["useModel"];
@@ -666,7 +667,7 @@ describe("EvaluatorService", () => {
 		expect(useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("trims oversized shared provider context and still calls the model", async () => {
+	it("keeps oversized shared provider context complete", async () => {
 		const runtime = makeRuntime();
 		const processed: string[] = [];
 
@@ -707,14 +708,13 @@ describe("EvaluatorService", () => {
 
 		const providerTail = "SHARED_PROVIDER_TAIL";
 		const oversizedProviderContext = `SHARED_PROVIDER_PREFIX${"x".repeat(
-			EVALUATOR_PROMPT_MAX_CHARS,
+			LARGE_PROMPT_SECTION_CHARS,
 		)}${providerTail}`;
 		const useModel = vi.fn(async (_modelType, params) => {
 			const prompt = String(params.messages?.[0]?.content ?? "");
-			expect(prompt.length).toBeLessThanOrEqual(EVALUATOR_PROMPT_MAX_CHARS);
-			expect(prompt).toContain("[... truncated; kept latest tail ...]");
+			expect(prompt.length).toBeGreaterThan(LARGE_PROMPT_SECTION_CHARS);
 			expect(prompt).toContain(providerTail);
-			expect(prompt).not.toContain("SHARED_PROVIDER_PREFIX");
+			expect(prompt).toContain("SHARED_PROVIDER_PREFIX");
 			expect(prompt).toContain("### alpha");
 			expect(prompt).toContain('Put result under "alpha".');
 			expect(prompt).toContain("### beta");
@@ -738,7 +738,7 @@ describe("EvaluatorService", () => {
 		expect(result.errors).toEqual([]);
 	});
 
-	it("trims oversized evaluator sections while retaining every evaluator name", async () => {
+	it("keeps oversized evaluator sections complete", async () => {
 		const runtime = makeRuntime();
 		const processed: string[] = [];
 		const evaluatorTail = "RUNAWAY_EVALUATOR_TAIL";
@@ -752,7 +752,7 @@ describe("EvaluatorService", () => {
 				prompt: () =>
 					name === "runaway"
 						? `RUNAWAY_EVALUATOR_PREFIX${"x".repeat(
-								EVALUATOR_PROMPT_MAX_CHARS,
+								LARGE_PROMPT_SECTION_CHARS,
 							)}${evaluatorTail}`
 						: `Extract ${name}.`,
 				parse: (output) => output as never,
@@ -770,8 +770,7 @@ describe("EvaluatorService", () => {
 
 		const useModel = vi.fn(async (_modelType, params) => {
 			const prompt = String(params.messages?.[0]?.content ?? "");
-			expect(prompt.length).toBeLessThanOrEqual(EVALUATOR_PROMPT_MAX_CHARS);
-			expect(prompt).toContain("[... truncated; kept latest tail ...]");
+			expect(prompt.length).toBeGreaterThan(LARGE_PROMPT_SECTION_CHARS);
 			expect(prompt).toContain(evaluatorTail);
 			expect(prompt).toContain("RUNAWAY_EVALUATOR_PREFIX");
 			for (const name of ["small", "runaway", "later"]) {

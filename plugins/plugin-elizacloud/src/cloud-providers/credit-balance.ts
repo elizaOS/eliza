@@ -9,7 +9,6 @@ import { getCachedAccountSnapshot } from "./cloud-account";
 const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 const creditCaches = new WeakMap<IAgentRuntime, { value: number; at: number }>();
 const TTL = 60_000;
-const MAX_CREDIT_TEXT_CHARS = 240;
 
 export const creditBalanceProvider: Provider = {
   name: "elizacloud_credits",
@@ -33,13 +32,13 @@ export const creditBalanceProvider: Provider = {
     const shared = getCachedAccountSnapshot(runtime);
     if (shared) {
       const result = format(shared.balance);
-      return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+      return result;
     }
 
     const cached = creditCaches.get(runtime);
     if (cached && Date.now() - cached.at < TTL) {
       const result = format(cached.value);
-      return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+      return result;
     }
 
     let balance: number;
@@ -52,7 +51,7 @@ export const creditBalanceProvider: Provider = {
       );
       if (cached) {
         const result = format(cached.value);
-        return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+        return result;
       }
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }
@@ -60,7 +59,7 @@ export const creditBalanceProvider: Provider = {
 
     if (balance < 1.0) logger.warn(`[CloudCredits] Low balance: $${balance.toFixed(2)}`);
     const result = format(balance);
-    return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+    return result;
   },
 };
 

@@ -40,8 +40,6 @@ const SCHEDULED_TASK_TITLE_BASELINE = [
   "Use natural assistant voice and keep it under 8 words.",
 ].join("\n");
 
-const RESOLVED_CONTEXT_PROMPT_LIMIT = 24_000;
-
 function serializeResolvedContext(
   context: ScheduledTaskDispatchRecord["resolvedContext"],
 ): string {
@@ -53,8 +51,7 @@ function serializeResolvedContext(
     // data, so a cyclic/manual value becomes an explicit unavailable marker.
     return JSON.stringify({ unavailable: "resolved_context_not_serializable" });
   }
-  if (serialized.length <= RESOLVED_CONTEXT_PROMPT_LIMIT) return serialized;
-  return JSON.stringify({ unavailable: "resolved_context_too_large" });
+  return serialized;
 }
 
 /** Whether this runtime has a registered text model for scheduled voicing. */

@@ -405,10 +405,10 @@ export class MemoryService {
   async getRoomContext(
     roomId: string,
     organizationId: string,
-    depth: number = 20,
+    depth?: number,
   ): Promise<MemoryRoomContext> {
     const cached = await memoryCache.getRoomContext(roomId, organizationId);
-    if (cached && cached.depth >= depth) {
+    if (cached && depth !== undefined && cached.depth >= depth) {
       logger.debug(`[Memory Service] Cache HIT for room context: ${roomId}`);
       return cached;
     }
@@ -418,7 +418,7 @@ export class MemoryService {
     const memories = await runtime.getMemoriesByRoomIds({
       tableName: "messages",
       roomIds: [roomId as UUID],
-      limit: depth,
+      ...(depth !== undefined ? { limit: depth } : {}),
     });
 
     const participants = await runtime.getParticipantsForRoom(roomId as UUID);
@@ -431,7 +431,7 @@ export class MemoryService {
       messages: memories,
       participants,
       metadata: room?.metadata || {},
-      depth,
+      depth: depth ?? memories.length,
       timestamp: new Date(),
     };
 
@@ -463,11 +463,7 @@ export class MemoryService {
       // If cached content doesn't match expected structure, continue to generate new summary
     }
 
-    const context = await this.getRoomContext(
-      input.roomId,
-      input.organizationId,
-      input.lastN || 50,
-    );
+    const context = await this.getRoomContext(input.roomId, input.organizationId, input.lastN);
 
     const summaryPrompt = this.buildSummaryPrompt(context, input.style || "brief");
 
@@ -525,10 +521,7 @@ export class MemoryService {
   }
 
   private buildSummaryPrompt(context: MemoryRoomContext, style: string): string {
-    const messages = context.messages
-      .slice(0, 50)
-      .map((m) => `${m.entityId}: ${m.content.text}`)
-      .join("\n");
+    const messages = context.messages.map((m) => `${m.entityId}: ${m.content.text}`).join("\n");
 
     const styleInstructions = {
       brief: "Provide a concise 2-3 sentence summary.",
@@ -559,81 +552,6 @@ Summary:`;
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map((e) => e[0]);
-  }
-
-  async estimateTokenCount(messages: Memory[]): Promise<number> {
-    const totalText = messages.map((m) => m.content.text || "").join(" ");
-    return Math.ceil(totalText.length / 4);
-  }
-
-  async optimizeContextWindow(
-    roomId: string,
-    organizationId: string,
-    maxTokens: number,
-    query?: string,
-    preserveRecent: number = 5,
-  ): Promise<{
-    messages: Memory[];
-    totalTokens: number;
-    messageCount: number;
-    relevanceScores: Array<{ messageId: string; score: number }>;
-  }> {
-    const context = await this.getRoomContext(roomId, organizationId, 100);
-
-    const recentMessages = context.messages.slice(0, preserveRecent);
-    const olderMessages = context.messages.slice(preserveRecent);
-
-    const selectedMessages = [...recentMessages];
-    let currentTokens = await this.estimateTokenCount(recentMessages);
-
-    const relevanceScores: Array<{ messageId: string; score: number }> = [];
-
-    if (query) {
-      for (const msg of olderMessages) {
-        const msgText = msg.content.text || "";
-        const score = this.calculateRelevanceScore(msgText, query);
-        relevanceScores.push({
-          messageId: msg.id?.toString() || "",
-          score,
-        });
-      }
-
-      relevanceScores.sort((a, b) => b.score - a.score);
-
-      for (const scoreItem of relevanceScores) {
-        const msg = olderMessages.find((m) => m.id?.toString() === scoreItem.messageId);
-        if (msg) {
-          const msgTokens = await this.estimateTokenCount([msg]);
-          if (currentTokens + msgTokens <= maxTokens) {
-            selectedMessages.push(msg);
-            currentTokens += msgTokens;
-          } else {
-            break;
-          }
-        }
-      }
-    } else {
-      for (const msg of olderMessages) {
-        const msgTokens = await this.estimateTokenCount([msg]);
-        if (currentTokens + msgTokens <= maxTokens) {
-          selectedMessages.push(msg);
-          currentTokens += msgTokens;
-        } else {
-          break;
-        }
-      }
-    }
-
-    logger.info(
-      `[Memory Service] Optimized context: ${selectedMessages.length}/${context.messages.length} messages, ${currentTokens}/${maxTokens} tokens`,
-    );
-
-    return {
-      messages: selectedMessages,
-      totalTokens: currentTokens,
-      messageCount: selectedMessages.length,
-      relevanceScores,
-    };
   }
 
   async exportConversation(

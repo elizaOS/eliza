@@ -20,10 +20,8 @@ describe("native storage R2 contract in Workerd", () => {
               async fetch(request, env) {
                 const key = "__eliza_storage_authority/v2/org/test/object/1";
                 if (request.method === "PUT") {
-                  const body = await request.arrayBuffer();
-                  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))]
-                    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
-                  const stored = await env.BLOB.put(key, body, {
+                  const digest = request.headers.get("x-content-sha256");
+                  const stored = await env.BLOB.put(key, request.body, {
                     onlyIf: { etagDoesNotMatch: "*" },
                     sha256: digest,
                     customMetadata: { requestDigest: request.headers.get("x-request-digest") },
@@ -53,14 +51,22 @@ describe("native storage R2 contract in Workerd", () => {
   test("keeps deterministic generations immutable and observes deletion immediately", async () => {
     const first = await miniflare.dispatchFetch("https://storage.test/", {
       method: "PUT",
-      headers: { "x-request-digest": "request-one" },
+      headers: {
+        "x-request-digest": "request-one",
+        "x-content-sha256":
+          "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e",
+      },
       body: "first",
     });
     expect(await first.json()).toMatchObject({ stored: true, size: 5 });
 
     const collision = await miniflare.dispatchFetch("https://storage.test/", {
       method: "PUT",
-      headers: { "x-request-digest": "request-two" },
+      headers: {
+        "x-request-digest": "request-two",
+        "x-content-sha256":
+          "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4",
+      },
       body: "second",
     });
     expect(await collision.json()).toMatchObject({ stored: false, size: 5 });

@@ -520,7 +520,7 @@ export class InboxUnsubscribeService {
     if (result.senders.length === 0) {
       return `No active promotional senders found in the last scan (${result.summary.scannedMessageCount} messages checked).`;
     }
-    const top = result.senders.slice(0, 5).map((sender) => {
+    const top = result.senders.map((sender) => {
       return `- ${sender.senderDisplay} <${sender.senderEmail}>: ${sender.messageCount} msgs, ${sender.unsubscribeMethod}`;
     });
     return [

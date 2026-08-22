@@ -2,7 +2,7 @@
  * Built-in `DefaultMessageService` (the runtime's `IMessageService` singleton) and
  * the helpers it composes, implementing the full inbound-message pipeline: memory
  * creation, should-respond gating, the pre-LLM shortcut gate, Stage-1 response
- * generation with its retry/truncation policy, the planner loop over tiered
+ * generation with its retry and explicit cutoff policy, the planner loop over tiered
  * actions, attachment enrichment, voice-turn arbitration, and post-turn evaluation
  * — turning a received `Memory` into a response plus any executed actions. The
  * runtime message loop drives it; a host may swap in an alternate `IMessageService`
@@ -30,7 +30,6 @@ import {
 } from "../features/advanced-capabilities/evaluators/task-completion";
 import {
 	decideReplyGate,
-	enforceVerbosity,
 	type ReplyGateMode,
 	resolveEffectiveReplyGate,
 } from "../features/advanced-capabilities/personality";
@@ -103,10 +102,6 @@ import {
 	renderContextObject,
 	segmentBlock,
 } from "../runtime/context-renderer";
-import {
-	getMessageHistoryCompactionHook,
-	type MessageHistoryCompactionTelemetry,
-} from "../runtime/conversation-compaction-hook";
 import {
 	type DirectActionRoutingRule,
 	getDirectActionRoutingRules,
@@ -181,12 +176,10 @@ import {
 } from "../runtime/response-handler-evaluators";
 import type {
 	ResponseHandlerFieldContext,
-	ResponseHandlerFieldEvaluator,
 	ResponseHandlerFieldRunResult,
 	ResponseHandlerResult,
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
-import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
 import {
@@ -345,7 +338,7 @@ import {
 	extractFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
+import { toWellFormedUnicode } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -385,11 +378,7 @@ import {
 } from "./message/generate-text-result";
 import { resolveEffectiveMuteState } from "./message/mute-state";
 import { sanitizeOutboundText } from "./message/outbound-sanitize";
-import {
-	GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE,
-	isStage1GroupTriageTierEnabled,
-	isUnaddressedTextGroupTurn,
-} from "./message/stage1-prompt-tier";
+import { isUnaddressedTextGroupTurn } from "./message/stage1-prompt-tier";
 import type { OptimizedPromptTask } from "./optimized-prompt";
 import {
 	type OptimizedPromptRuntimeLike,
@@ -424,36 +413,10 @@ function resolveMaxReplyTokens(
 		: undefined;
 }
 
-const STAGE1_TRUNCATION_REPLY =
+const STAGE1_COMPLETION_LIMIT_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
 const CODE_SNIPPET_VALIDITY_INSTRUCTION =
 	"For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
-const COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION =
-	"For code snippets, prefer valid runnable syntax over impossible formatting constraints.";
-const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
-	"shouldRespond",
-	"facts",
-	"relationships",
-	"topics",
-	"addressedTo",
-	"emotion",
-]);
-
-function buildDirectChannelResponseFieldSelection(
-	fields: ReadonlyArray<Pick<ResponseHandlerFieldEvaluator, "name">>,
-	options?: { includeShouldRespond?: boolean },
-): ResponseHandlerFieldSelectionOptions {
-	const includeFieldNames = new Set<string>();
-	for (const field of fields) {
-		if (
-			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
-			(options?.includeShouldRespond === true && field.name === "shouldRespond")
-		) {
-			includeFieldNames.add(field.name);
-		}
-	}
-	return { includeFieldNames, compact: true };
-}
 
 function mergeAbortSignals(
 	signals: Array<AbortSignal | undefined>,
@@ -529,8 +492,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
-	return /<@!?[^>]+>|@\w+/u.test(safeText);
+	return /<@!?[^>]+>|@\w+/u.test(text);
 }
 
 /**
@@ -878,8 +840,7 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
 	// FACTS is dynamic and would otherwise never run during response
-	// composition. Stage 1 keeps it rendered when present (see
-	// STAGE1_EXTRA_PROVIDER_EXCLUSIONS) precisely so durable user facts
+	// composition. Stage 1 keeps it rendered so durable user facts
 	// ("my dog's name is Jeff", "my car is named Bertha") persisted by the
 	// facts-and-relationships stage can be recalled on a later turn — even a
 	// simple-path turn after the source message has scrolled out of the
@@ -941,88 +902,18 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
 	MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
 );
 
-/**
- * Stage 1 (messageHandler / shouldRespond) does NOT need room entities
- * or document store context. It just decides processMessage + which
- * contexts apply.
- *
- * These exclusions apply to COMPOSITION as well as rendering:
- * `composeResponseState` subtracts them from the include list it hands
- * `composeState`, so the providers never execute for a Stage-1-only turn
- * (ENTITIES is a room-participant DB fetch per inbound message — pure
- * waste on group noise that ends in IGNORE, since nothing on the Stage-1
- * or simple-reply path reads its output). Planner turns still get them:
- * `selectV5PlannerStateProviderNames` re-adds the core set and the
- * planner recompose runs any provider missing from the turn's cached
- * state (see composeState's refreshProviders contract in runtime.ts).
- *
- * CURRENT_TIME is deliberately NOT excluded: the system prompt promises
- * a CURRENT_TIME signal in every runtime context (see the date/time
- * exception in packages/prompts), and simple-path turns run exactly one
- * compose pass — excluding it here turns a missing provider into a
- * confidently hallucinated timestamp. A prose gate that re-included it
- * only for messages that "looked like" time questions silently dropped
- * the signal on near-miss phrasings ("whats todays date and time?").
- * The provider is pure synchronous formatting, and the prefix-cache cost
- * is nil in practice: FACTS is BM25-ranked per message and renders
- * adjacent to CURRENT_TIME, so the user-message bytes already churn at
- * that position every turn.
- *
- * Note: we still keep FACTS composed and rendered — Stage 1 may need a
- * grounded fact to discriminate ambiguous routing, and stored facts must
- * be recallable on the simple path (see CORE_RESPONSE_STATE_PROVIDERS).
- */
-const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = ["ENTITIES", "DOCUMENTS"] as const;
-
-/**
- * Providers withheld from EVERY composition pass and EVERY render of an
- * unaddressed text-group turn. Internal diagnostics belong in turns where the
- * agent is acting or its operator is engaging; rendered into the context of
- * ambient group chatter they hijack routing — a live "available_apps provider
- * timeout" block led Stage 1 to answer a bystander's crypto question as if it
- * were about the internal error (tj-f8249b30e986d6). The exclusion must own
- * the whole turn, not just Stage 1: the planner recompose re-adds every
- * `alwaysInResponseState` provider (selectV5PlannerStateProviderNames), and
- * composeState's turn cache can carry a previously composed block back into
- * any later state object — so the ambient gate is applied to the Stage-1
- * include list, to the planner include list, AND as a render exclusion on the
- * planner context (createV5MessageContextObject), keeping cached provider
- * state out of the prompt even when composition never requested it this pass.
- */
 const AMBIENT_TURN_PROVIDER_EXCLUSIONS = ["RECENT_ERRORS"] as const;
 
-/**
- * The ambient exclusions, gated on the structural classifier the Stage-1
- * prompt tier branches on (channel type + addressing + source metadata, never
- * message-text heuristics). Anything not positively identified as unaddressed
- * group traffic — DMs, mentions, replies, name-drops, autonomous/sub-agent
- * turns, unknown channels — gets an empty list, so addressed turns keep the
- * full provider set byte-identical to before.
- */
 function ambientTurnProviderExclusions(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): readonly string[] {
-	if (
-		isUnaddressedTextGroupTurn(
-			message,
-			messageExplicitlyAddressesAgent(runtime, message),
-		)
-	) {
-		return AMBIENT_TURN_PROVIDER_EXCLUSIONS;
-	}
-	return [];
-}
-
-/** Per-turn Stage-1 exclusions: the static set plus the ambient-turn gate. */
-function stage1ExtraProviderExclusions(
-	runtime: IAgentRuntime,
-	message: Memory,
-): readonly string[] {
-	return [
-		...STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
-		...ambientTurnProviderExclusions(runtime, message),
-	];
+	return isUnaddressedTextGroupTurn(
+		message,
+		messageExplicitlyAddressesAgent(runtime, message),
+	)
+		? AMBIENT_TURN_PROVIDER_EXCLUSIONS
+		: [];
 }
 
 function hasInboundBenchmarkContext(message: Memory): boolean {
@@ -1134,106 +1025,20 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 	return false;
 }
 
-function latestMessageHistoryCompactionTelemetry(
-	state: State,
-): MessageHistoryCompactionTelemetry | undefined {
-	const value = state.data?.messageHistoryCompaction;
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return undefined;
-	}
-	// The guards above narrow `value` to a non-null, non-array object, so a plain
-	// downcast suffices here — no `as unknown` laundering needed.
-	return value as MessageHistoryCompactionTelemetry;
-}
-
-function appendMessageHistoryCompactionTelemetry(
-	state: State,
-	telemetry: MessageHistoryCompactionTelemetry,
-): State {
-	const history = Array.isArray(state.data?.messageHistoryCompactionHistory)
-		? state.data.messageHistoryCompactionHistory
-		: [];
-	return {
-		...state,
-		data: {
-			...state.data,
-			messageHistoryCompaction: telemetry,
-			messageHistoryCompactionHistory: [...history, telemetry].slice(-10),
-		},
-	};
-}
-
-async function applyMessageHistoryCompactionHook(
-	runtime: IAgentRuntime,
-	message: Memory,
-	state: State,
-	source:
-		| "compose-response-state"
-		| "provider-grounded-state"
-		| "continuation-state",
-): Promise<State> {
-	const hook = getMessageHistoryCompactionHook(runtime);
-	if (!hook) return state;
-	try {
-		const result = await hook({ runtime, message, state, source });
-		if (!result?.state) return state;
-		return result.telemetry
-			? appendMessageHistoryCompactionTelemetry(result.state, result.telemetry)
-			: result.state;
-	} catch (error) {
-		// error-policy:J4 Compaction is an optional optimization. Preserve the
-		// uncompressed state while surfacing the unavailable optimization.
-		runtime.logger.warn(
-			{
-				src: "service:message",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Message-history compaction hook failed",
-		);
-		runtime.reportError("MessageService.historyCompaction", error, {
-			source,
-			roomId: message.roomId,
-		});
-		return state;
-	}
-}
-
-function withMessageHistoryCompactionProviderOptions<
-	T extends Record<string, unknown>,
->(providerOptions: T, state: State): T {
-	const telemetry = latestMessageHistoryCompactionTelemetry(state);
-	if (!telemetry) return providerOptions;
-	const eliza =
-		typeof providerOptions.eliza === "object" && providerOptions.eliza !== null
-			? (providerOptions.eliza as Record<string, unknown>)
-			: {};
-	return {
-		...providerOptions,
-		eliza: {
-			...eliza,
-			messageHistoryCompaction: telemetry,
-		},
-	} as T;
-}
-
 /**
  * The provider include list for Stage-1 response-state composition: the core
- * response providers plus always-on plugin providers, minus the Stage-1
- * exclusions (which are execution exclusions, not just render exclusions —
- * see STAGE1_EXTRA_PROVIDER_EXCLUSIONS). Exported for tests.
+ * response providers plus always-on plugin providers. Exported for tests.
  */
 export function stage1ResponseStateProviderNames(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): string[] {
-	const exclusions = new Set<string>(
-		stage1ExtraProviderExclusions(runtime, message),
-	);
+	const excluded = new Set(ambientTurnProviderExclusions(runtime, message));
 	return [
 		...CORE_RESPONSE_STATE_PROVIDERS,
 		...alwaysOnResponseStateProviderNames(runtime),
 		...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
-	].filter((name) => !exclusions.has(name));
+	].filter((name) => !excluded.has(name));
 }
 
 async function composeResponseState(
@@ -1243,26 +1048,14 @@ async function composeResponseState(
 ): Promise<State> {
 	const providers = stage1ResponseStateProviderNames(runtime, message);
 	if (hasPageScopedRoutingMetadata(message)) {
-		const state = await runtime.composeState(
+		return runtime.composeState(
 			message,
 			[...providers, "page-scoped-context"],
 			true,
 			skipCache,
 		);
-		return applyMessageHistoryCompactionHook(
-			runtime,
-			message,
-			state,
-			"compose-response-state",
-		);
 	}
-	const state = await runtime.composeState(message, providers, true, skipCache);
-	return applyMessageHistoryCompactionHook(
-		runtime,
-		message,
-		state,
-		"compose-response-state",
-	);
+	return runtime.composeState(message, providers, true, skipCache);
 }
 
 export function selectV5PlannerStateProviderNames(args: {
@@ -1304,19 +1097,12 @@ export function selectV5PlannerStateProviderNames(args: {
 		providerNames.add(name);
 	}
 
-	// The ambient gate owns this composition pass too: without it, the
-	// always-on re-add above restores RECENT_ERRORS for ambient turns routed
-	// to planning, undoing the Stage-1 exclusion exactly on the turns that
-	// reach a model twice. Stage-1-only exclusions (ENTITIES/DOCUMENTS) are
-	// deliberately NOT subtracted here — the planner legitimately re-adds
-	// them; the ambient exclusions are turn-scoped, not stage-scoped.
 	for (const excluded of ambientTurnProviderExclusions(
 		args.runtime,
 		args.message,
 	)) {
 		providerNames.delete(excluded);
 	}
-
 	return [...providerNames];
 }
 
@@ -1897,8 +1683,7 @@ function trackSettledPlannerToolResult(
  * is a planner-only directive and never user-facing; the body below it is the
  * sub-agent's finished result, already composed for user delivery. Lets a
  * failed relay turn deliver the completed result instead of discarding it for
- * the generic failed-tool fallback (#18208). Capped so a runaway transcript
- * cannot flood the channel.
+ * the generic failed-tool fallback (#18208).
  */
 export function subAgentCompletionRelayBody(
 	text: string | undefined,
@@ -1913,10 +1698,7 @@ export function subAgentCompletionRelayBody(
 	}
 	const body = trimmed.slice(headerEnd + 1).trim();
 	if (!body) return undefined;
-	const maxLength = 1500;
-	const wellFormed = toWellFormedUnicode(body);
-	if (wellFormed.length <= maxLength) return wellFormed;
-	return `${truncateWellFormed(wellFormed, maxLength - 1).trimEnd()}…`;
+	return toWellFormedUnicode(body);
 }
 
 /**
@@ -2447,10 +2229,7 @@ export function cleanPriorDialogueSpeakerName(
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	const wellFormed = toWellFormedUnicode(normalized);
-	return wellFormed.length > 80
-		? `${truncateWellFormed(wellFormed, 77)}...`
-		: wellFormed;
+	return toWellFormedUnicode(normalized);
 }
 
 function senderIdentityName(value: unknown): string | undefined {
@@ -2858,7 +2637,6 @@ function getRecentConversationSearchText(
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-		.slice(0, 8)
 		.map((memory) => memory.content.text.trim())
 		.filter(Boolean);
 }
@@ -3439,6 +3217,7 @@ function buildV5PlannerActionSurface(params: {
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
+	restrictToCandidateActions?: boolean;
 	// The messageHandler-selected contexts for this turn. Passed through to
 	// `retrieveActions` as a *weight* (boost on-context candidates) — never
 	// as a filter. See `services/collectV5PlannerCandidateActions` for why
@@ -3533,6 +3312,12 @@ function buildV5PlannerActionSurface(params: {
 	const exposedActionNames = new Set(
 		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
 	);
+	if (params.restrictToCandidateActions && candidateActions.length > 0) {
+		const allowed = new Set(candidateActions.map(normalizeActionIdentifier));
+		for (const exposed of exposedActionNames) {
+			if (!allowed.has(exposed)) exposedActionNames.delete(exposed);
+		}
+	}
 
 	let fallback: string | undefined;
 	if (
@@ -3542,7 +3327,7 @@ function buildV5PlannerActionSurface(params: {
 		)
 	) {
 		let addedFallbackAction = false;
-		for (const result of retrieval.results.slice(0, 3)) {
+		for (const result of retrieval.results) {
 			if (result.score <= 0) {
 				continue;
 			}
@@ -3637,7 +3422,7 @@ function buildV5PlannerActionSurface(params: {
 						candidateActions: [...candidateActions],
 						parentActionHints: [...parentActionHints],
 					},
-					results: retrieval.results.slice(0, 25).map((r, idx) => ({
+					results: retrieval.results.map((r, idx) => ({
 						name: r.name,
 						score: r.score,
 						rank: idx,
@@ -3692,10 +3477,10 @@ function buildV5PlannerActionSurface(params: {
 			),
 			tierBParents: tieredSurface.sortedTierBParentNames,
 			omittedParentCount: tieredSurface.omittedParentNames.length,
-			omittedParentNamesPreview: tieredSurface.omittedParentNames.slice(0, 20),
+			omittedParentNamesPreview: tieredSurface.omittedParentNames,
 			actionSurfaceHash: tieredSurface.actionSurfaceHash,
 			warnings: catalog.warnings.length,
-			queryTokens: retrieval.query.tokens.slice(0, 32),
+			queryTokens: retrieval.query.tokens,
 			candidateActions,
 			parentActionHints,
 			...(fallback ? { fallback } : {}),
@@ -4701,42 +4486,6 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 		},
 	];
 
-const DIRECT_MESSAGE_HANDLER_TEMPLATE = `task: Plan this direct message.
-
-available_contexts:
-{{availableContexts}}
-
-direct/private rules:
-- Chat, static knowledge, writing, rewriting, translation, brainstorming, and explanations: contexts=["simple"]; answer in replyText.
-- Simple replyText must be natural and complete, not a placeholder, unless terse was requested.
-- Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
-- UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
-- Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
-- Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
-- Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
-- Reading or changing goals/todos/reminders/alarms/habits/routines DATA is non-simple; goals -> tasks + OWNER_GOALS, todos -> tasks + OWNER_TODOS, reminders -> tasks + OWNER_REMINDERS, alarms -> tasks + OWNER_ALARMS, habits/routines -> tasks + OWNER_ROUTINES, never work threads and never VIEWS. Opening or showing their PAGE ("open my todos page", "show the reminders screen") stays UI navigation -> VIEWS per the rule above.
-- Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
-- Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
-- Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
-- History never creates a capability: a surface with no matching context/action (SMS/texting, calls, unlisted connectors) is "not available here" even if earlier messages implied it; never ask follow-up details for a surface you don't have.
-- A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.
-- Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.
-- For tool/planning paths, replyText is only a brief ack ("On it."). Never refuse because tools may run after this stage.
-- Never invent omitted shouldRespond.
-- contexts use available_contexts ids; unclear tool context => ["general"].
-
-Return one {{handleResponseToolName}} JSON object; no prose, markdown, or thinking.
-`;
-
-// Live voice keeps the compact direct-message prompt and its single model call,
-// but must retain the runtime's engagement decision. This pays no additional
-// inference round trip while allowing natural acknowledgements and ambient
-// speech to end in deliberate silence.
-const VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE =
-	DIRECT_MESSAGE_HANDLER_TEMPLATE.replace(
-		"task: Plan this direct message.",
-		"task: Decide whether to respond, then plan this live voice turn.",
-	).replace("- Never invent omitted shouldRespond.\n", "");
 const VOICE_ENGAGEMENT_RULES = [
 	"- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
 	"- shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise, or ambient speech clearly not addressed to the agent.",
@@ -4946,7 +4695,6 @@ function isTerseReplyWorthKeeping(args: {
  */
 export function formatAvailableContextsForPrompt(
 	contexts: readonly ContextDefinition[],
-	options?: { compact?: boolean },
 ): string {
 	if (contexts.length === 0) {
 		return "(no contexts registered)";
@@ -4975,15 +4723,6 @@ export function formatAvailableContextsForPrompt(
 				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
 			].filter(Boolean);
 			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
-			if (options?.compact) {
-				// Compact catalog lines carry only the short routing hint (when the
-				// definition ships one) — never the full description, which is what
-				// the compact tiers exist to avoid.
-				const compressed = definition.descriptionCompressed?.trim();
-				return compressed
-					? `- ${definition.id}${suffix}: ${compressed}`
-					: `- ${definition.id}${suffix}`;
-			}
 			return description
 				? `- ${definition.id}${suffix}: ${description}`
 				: `- ${definition.id}${suffix}`;
@@ -5036,37 +4775,18 @@ function renderMessageHandlerInstructions(
 	options?: {
 		directMessage?: boolean;
 		voiceDirectMessage?: boolean;
-		groupTriage?: boolean;
 		responseHandlerFields?: string;
 	},
 ): string {
-	// Four tiers: DM/private (compact, no shouldRespond), live voice DM
-	// (compact + shouldRespond), unaddressed
-	// group-triage (compact + shouldRespond — most such turns end in IGNORE,
-	// so they must not pay the full ~16KB rule block), and the full template
-	// for addressed/respond-likely turns.
-	const compactTier =
-		options?.directMessage === true ||
-		options?.voiceDirectMessage === true ||
-		options?.groupTriage === true;
-	const baselineTemplate = options?.voiceDirectMessage
-		? VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE
-		: options?.directMessage
-			? DIRECT_MESSAGE_HANDLER_TEMPLATE
-			: options?.groupTriage
-				? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
-				: messageHandlerTemplate;
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
-		baselineTemplate,
+		messageHandlerTemplate,
 	);
 	const rendered = composePrompt({
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
-			availableContexts: formatAvailableContextsForPrompt(availableContexts, {
-				compact: compactTier,
-			}),
+			availableContexts: formatAvailableContextsForPrompt(availableContexts),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
 		template: baseline,
@@ -5076,18 +4796,12 @@ function renderMessageHandlerInstructions(
 				"\n",
 			)
 		: rendered;
-	const renderedWithSharedRules = compactTier
-		? [
-				renderedWithVoiceRules,
-				"",
-				`- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
-			].join("\n")
-		: [
-				renderedWithVoiceRules,
-				"",
-				"## Shared Response Quality Rules",
-				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
-			].join("\n");
+	const renderedWithSharedRules = [
+		renderedWithVoiceRules,
+		"",
+		"## Shared Response Quality Rules",
+		`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+	].join("\n");
 	if (!options?.responseHandlerFields?.trim()) {
 		return renderedWithSharedRules;
 	}
@@ -5224,13 +4938,13 @@ export async function renderMessageHandlerStablePrefix(
 		state,
 		userRoles: [senderRole],
 		availableContexts,
-		// Per-turn exclusions so the stable-prefix render is owned by the same
-		// gate as every live render; the synthetic VOICE_DM message classifies
-		// as addressed, so today this resolves to the static set.
-		extraProviderExclusions: stage1ExtraProviderExclusions(
+		extraProviderExclusions: ambientTurnProviderExclusions(
 			runtime,
 			syntheticMessage,
 		),
+		// Per-turn exclusions so the stable-prefix render is owned by the same
+		// gate as every live render; the synthetic VOICE_DM message classifies
+		// as addressed, so today this resolves to the static set.
 	});
 	const rendered = renderContextObject(context);
 	const stableSegments = rendered.promptSegments.filter(
@@ -7016,10 +6730,9 @@ function stage1HitCompletionLimit(
 
 /**
  * Whether a Stage-1 result should be regenerated. Empty or garbled output can be
- * fixed by retrying, but a completion-limit truncation cannot: regenerating at
- * the same token cap just truncates again, burning a full Stage-1 turn for the
- * same result. A truncated envelope is routed to the dedicated truncation
- * recovery below instead. Exported for unit coverage of the retry policy.
+ * fixed by retrying, but hitting a completion limit cannot: regenerating at
+ * the same token cap repeats the failure and burns a full Stage-1 turn. The
+ * partial response is rejected explicitly. Exported for unit coverage.
  */
 export function shouldRetryStage1Generation(
 	reason: ReturnType<typeof getStage1RetryReason>,
@@ -7030,124 +6743,14 @@ export function shouldRetryStage1Generation(
 	return !stage1HitCompletionLimit(raw, maxTokens);
 }
 
-function extractJsonStringField(
-	text: string,
-	fieldName: string,
-): string | null {
-	const pattern = new RegExp(
-		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*"`,
-		"u",
-	);
-	const match = pattern.exec(text);
-	if (!match) return null;
-	const valueStart = match.index + match[0].length;
-	let escaped = false;
-	for (let i = valueStart; i < text.length; i++) {
-		const ch = text[i];
-		if (escaped) {
-			escaped = false;
-			continue;
-		}
-		if (ch === "\\") {
-			escaped = true;
-			continue;
-		}
-		if (ch === '"') {
-			try {
-				return JSON.parse(`"${text.slice(valueStart, i)}"`) as string;
-			} catch {
-				// error-policy:J3 partial planner text is untrusted model input;
-				// malformed string escapes make this field explicitly unavailable.
-				return null;
-			}
-		}
-	}
-	return null;
-}
-
-function extractJsonStringArrayField(
-	text: string,
-	fieldName: string,
-): string[] {
-	const pattern = new RegExp(
-		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*\\[([^\\]]*)\\]`,
-		"u",
-	);
-	const match = pattern.exec(text);
-	if (!match?.[1]) return [];
-	const values: string[] = [];
-	const itemPattern = /"((?:\\.|[^"\\])*)"/gu;
-	for (const item of match[1].matchAll(itemPattern)) {
-		try {
-			values.push(JSON.parse(`"${item[1]}"`) as string);
-		} catch {
-			// error-policy:J3 partial planner text is untrusted model input; a
-			// malformed element invalidates the recovered array.
-			return [];
-		}
-	}
-	return values;
-}
-
-function extractJsonBooleanField(
-	text: string,
-	fieldName: string,
-): boolean | null {
-	const pattern = new RegExp(
-		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*(true|false)`,
-		"u",
-	);
-	const match = pattern.exec(text);
-	if (!match) return null;
-	return match[1] === "true";
-}
-
-function recoverStage1TruncatedMessageHandler(
-	raw: string | GenerateTextResult,
-): MessageHandlerResult | null {
-	const text = getV5ModelText(raw);
-	const replyText = extractJsonStringField(text, "replyText")?.trim();
-	if (!replyText) return null;
-	const contexts = extractJsonStringArrayField(text, "contexts");
-	const candidateActions = extractJsonStringArrayField(
-		text,
-		"candidateActionNames",
-	);
-	const requiresTool = extractJsonBooleanField(text, "requiresTool");
-	const hasOnlySimpleContext =
-		contexts.length === 0 ||
-		contexts.every((context) => context === SIMPLE_CONTEXT_ID);
-	if (!hasOnlySimpleContext) return null;
-	if (candidateActions.length > 0) return null;
-	if (requiresTool === true) return null;
-	const strippedReply = stripReasoningBlocks(replyText);
-	if (
-		!looksLikeCompleteDirectReply(strippedReply) &&
-		!looksLikeInlineCodeSnippetRequest(strippedReply)
-	) {
-		return null;
-	}
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Stage 1 hit the completion limit; recovered a completed replyText field from the truncated envelope.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			reply: strippedReply,
-			simple: true,
-			requiresTool: false,
-		},
-	};
-}
-
-function synthesizeStage1TruncationReply(): MessageHandlerResult {
+function synthesizeStage1CompletionLimitReply(): MessageHandlerResult {
 	return {
 		processMessage: "RESPOND",
 		thought:
 			"Stage 1 hit the completion limit and no complete replyText field could be recovered.",
 		plan: {
 			contexts: [SIMPLE_CONTEXT_ID],
-			reply: STAGE1_TRUNCATION_REPLY,
+			reply: STAGE1_COMPLETION_LIMIT_REPLY,
 			simple: true,
 			requiresTool: false,
 		},
@@ -7522,12 +7125,8 @@ interface SubPlannerSubStep {
 	error?: string;
 }
 
-const SUB_STEP_SUMMARY_MAX_CHARS = 400;
-
-function truncateSubStepText(text: string): string {
-	const wellFormed = toWellFormedUnicode(text.trim());
-	if (wellFormed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return wellFormed;
-	return `${truncateWellFormed(wellFormed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+function normalizeSubStepText(text: string): string {
+	return toWellFormedUnicode(text.trim());
 }
 
 function collectSubPlannerSubSteps(
@@ -7554,12 +7153,14 @@ function collectSubPlannerSubSteps(
 			success: result.success,
 			callDigest: subPlannerCallDigest(step.toolCall),
 			retryable: result.data?.retryable !== false,
-			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
+			...(summarySource
+				? { summary: normalizeSubStepText(summarySource) }
+				: {}),
 			...(result.transcriptVisibility === "internal" &&
 			typeof result.text === "string"
 				? { internalTranscriptText: result.text }
 				: {}),
-			...(errorText ? { error: truncateSubStepText(errorText) } : {}),
+			...(errorText ? { error: normalizeSubStepText(errorText) } : {}),
 		});
 	}
 	return subSteps;
@@ -8203,13 +7804,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
-		// Per-turn exclusions (not the static list): even if a cached compose
-		// left RECENT_ERRORS in state, an unaddressed group turn must not
-		// render internal diagnostics into its Stage-1 context.
-		extraProviderExclusions: stage1ExtraProviderExclusions(
+		extraProviderExclusions: ambientTurnProviderExclusions(
 			args.runtime,
 			args.message,
 		),
+		// Per-turn exclusions (not the static list): even if a cached compose
+		// left RECENT_ERRORS in state, an unaddressed group turn must not
+		// render internal diagnostics into its Stage-1 context.
 	});
 	const stage1PreprocessStartedAt = performance.now();
 
@@ -8285,20 +7886,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		// metadata, never message text; anything uncertain fails open to
 		// addressed). Drives the planner's ambient-turn policy instruction and
 		// the deliberate-silence terminal below, independent of the Stage-1
-		// compact-tier env lever.
 		const ambientTurn =
 			!directMessageChannel &&
 			isUnaddressedTextGroupTurn(
 				args.message,
 				messageExplicitlyAddressesAgent(args.runtime, args.message),
 			);
-		// Compact-triage tier: an unaddressed text-group turn usually ends in
-		// IGNORE, so it gets the compact template + compact context catalog +
-		// compressed field docs instead of the full ~27KB static rule block.
-		// Structural signals only; anything uncertain fails open to the full
-		// tier (see stage1-prompt-tier.ts).
-		const groupTriageTurn =
-			ambientTurn && isStage1GroupTriageTierEnabled(args.runtime);
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
@@ -8309,31 +7902,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			senderRole: senderRole as ResponseHandlerSenderRole,
 			turnSignal: stage1TurnSignal,
 		};
-		const responseHandlerFields =
-			args.runtime.responseHandlerFieldRegistry.list();
-		// Group-triage turns keep the full field set (shouldRespond is the whole
-		// point) but render the compressed prompt slices; the schema is
-		// unaffected by `compact` so the HANDLE_RESPONSE contract is identical.
-		const responseHandlerFieldSelection = directMessageChannel
-			? buildDirectChannelResponseFieldSelection(responseHandlerFields, {
-					includeShouldRespond: voiceDirectMessageChannel,
-				})
-			: groupTriageTurn
-				? { compact: true }
-				: undefined;
 		const selectedResponseHandlerFields =
-			args.runtime.responseHandlerFieldRegistry.list(
-				responseHandlerFieldSelection,
-			);
+			args.runtime.responseHandlerFieldRegistry.list();
 		const responseHandlerFieldPrompt =
 			await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
 				responseHandlerFieldContext,
-				responseHandlerFieldSelection,
 			);
 		const responseHandlerSchema =
-			args.runtime.responseHandlerFieldRegistry.composeSchema(
-				responseHandlerFieldSelection,
-			);
+			args.runtime.responseHandlerFieldRegistry.composeSchema();
 		const messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
@@ -8341,7 +7917,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			{
 				directMessage: directMessageChannel && !voiceDirectMessageChannel,
 				voiceDirectMessage: voiceDirectMessageChannel,
-				groupTriage: groupTriageTurn,
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
 		);
@@ -8367,29 +7942,25 @@ export async function runV5MessageRuntimeStage1(args: {
 					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
 		];
-		const messageHandlerProviderOptions =
-			withMessageHistoryCompactionProviderOptions(
-				withModelInputBudgetProviderOptions(
-					cacheProviderOptions({
-						prefixHash: stage1PrefixHash,
-						segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-						promptSegments: messageHandlerInput.promptSegments,
-						// Use `roomId` as the conversation id for local-inference slot
-						// pinning. Cloud providers ignore it; local backends route
-						// every turn of the same room to the same KV slot, which is
-						// the dominant cache reuse signal for chat.
-						conversationId: args.message.roomId
-							? String(args.message.roomId)
-							: undefined,
-					}),
-					buildModelInputBudget({
-						messages: messageHandlerInput.messages,
-						promptSegments: messageHandlerInput.promptSegments,
-						tools: messageHandlerTools,
-					}),
-				),
-				args.state,
-			);
+		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
+			cacheProviderOptions({
+				prefixHash: stage1PrefixHash,
+				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+				promptSegments: messageHandlerInput.promptSegments,
+				// Use `roomId` as the conversation id for local-inference slot
+				// pinning. Cloud providers ignore it; local backends route
+				// every turn of the same room to the same KV slot, which is
+				// the dominant cache reuse signal for chat.
+				conversationId: args.message.roomId
+					? String(args.message.roomId)
+					: undefined,
+			}),
+			buildModelInputBudget({
+				messages: messageHandlerInput.messages,
+				promptSegments: messageHandlerInput.promptSegments,
+				tools: messageHandlerTools,
+			}),
+		);
 
 		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
 		// call. Used to inject providers / facts / relationships into the
@@ -8439,9 +8010,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				actions: args.runtime.actions ?? [],
 				responseHandlerFields: selectedResponseHandlerFields,
 				responseHandlerFieldSignature:
-					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(
-						responseHandlerFieldSelection,
-					),
+					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
 			},
 			{
 				contexts: availableContexts.map((definition) => String(definition.id)),
@@ -8629,10 +8198,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				"[message] Stage 1 hit the completion-token limit",
 			);
 		}
-		if (!messageHandler && stage1CompletionLimitHit) {
-			messageHandler =
-				recoverStage1TruncatedMessageHandler(rawMessageHandler) ??
-				synthesizeStage1TruncationReply();
+		if (stage1CompletionLimitHit) {
+			messageHandler = synthesizeStage1CompletionLimitReply();
 		}
 		if (
 			!messageHandler &&
@@ -9430,6 +8997,8 @@ export async function runV5MessageRuntimeStage1(args: {
 					message: args.message,
 					state: plannerState,
 					messageHandler,
+					restrictToCandidateActions:
+						responseHandlerEvaluation.candidateActionsClearedByEvaluators,
 					selectedContexts,
 					recorder,
 					trajectoryId,
@@ -9459,14 +9028,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			preselectedActions: exposedPlannerActions,
 			actionSurface,
 			ambientTurn,
-			// Render-side half of the ambient gate: the include-list exclusion in
-			// selectV5PlannerStateProviderNames stops fresh composition, but
-			// composeState merges the whole turn cache into the state it returns,
-			// so a block composed earlier in the turn would still render here.
-			// The exclusion must own cached rendering as well as composition.
-			...(ambientTurn
-				? { extraProviderExclusions: AMBIENT_TURN_PROVIDER_EXCLUSIONS }
-				: {}),
+			extraProviderExclusions: ambientTurnProviderExclusions(
+				args.runtime,
+				args.message,
+			),
 		});
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
@@ -9781,7 +9346,6 @@ export async function runV5MessageRuntimeStage1(args: {
 								input: io.input,
 								output: io.output,
 								errorText: io.errorText,
-								truncated: io.truncated,
 							},
 						};
 						await recorder.recordStage(trajectoryId, stage);
@@ -11247,8 +10811,7 @@ function isStopResponse(
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
-	const trimmed = safe
+	const trimmed = value
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
 		.replace(/^["'`]+|["'`]+$/g, "");
@@ -12321,50 +11884,8 @@ export function wrapSingleTurnVisibleCallback(
 			: response;
 	};
 
-	if (typeof fullRuntime.getService !== "function") {
-		return async (response, actionName) =>
-			deliver(await voiceActionReply(response, actionName), actionName);
-	}
-	// Resolve verbosity once per turn — cheap because PersonalityStore is
-	// in-memory. Returning the original callback when no override is set
-	// keeps the hot path zero-cost.
-	const store = getPersonalityStore(fullRuntime);
-	if (!store) {
-		return async (response, actionName) =>
-			deliver(await voiceActionReply(response, actionName), actionName);
-	}
-	const userSlot =
-		message.entityId && message.entityId !== fullRuntime.agentId
-			? store.getSlot(message.entityId)
-			: null;
-	const globalSlot = store.getSlot("global");
-	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
-	if (verbosity !== "terse") {
-		return async (response, actionName) =>
-			deliver(await voiceActionReply(response, actionName), actionName);
-	}
-
-	const wrapped: HandlerCallback = async (response, actionName) => {
-		response = await voiceActionReply(response, actionName);
-		if (typeof response?.text === "string" && response.text.length > 0) {
-			const result = enforceVerbosity(response.text, "terse");
-			if (result.truncated) {
-				fullRuntime.logger.debug(
-					{
-						src: "service:message",
-						messageId: message.id,
-						roomId: message.roomId,
-						originalTokens: result.originalTokens,
-						finalTokens: result.finalTokens,
-					},
-					"Personality verbosity=terse — truncated response",
-				);
-				response = { ...response, text: result.text };
-			}
-		}
-		return deliver(response, actionName);
-	};
-	return wrapped;
+	return async (response, actionName) =>
+		deliver(await voiceActionReply(response, actionName), actionName);
 }
 
 function resolveCallbackActionName(
@@ -12649,13 +12170,7 @@ async function _composeContinuationDecisionState(
 		false,
 		false,
 	);
-	const compactedState = await applyMessageHistoryCompactionHook(
-		runtime,
-		message,
-		state,
-		"continuation-state",
-	);
-	return withContextRoutingValues(compactedState, contextRoutingStateValues);
+	return withContextRoutingValues(state, contextRoutingStateValues);
 }
 
 /**
@@ -15768,7 +15283,7 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 
-		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
+		replyText = replyText.trim();
 
 		// Preserve the terminal cause at the delivery boundary. Provider failures
 		// encountered while generating the apology take precedence because the

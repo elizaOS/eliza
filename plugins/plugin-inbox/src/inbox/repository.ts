@@ -287,7 +287,6 @@ export class InboxRepository {
     limit?: number;
     includeSnoozed?: boolean;
   }): Promise<TriageEntry[]> {
-    const limit = opts.limit ?? 50;
     const clauses = [`agent_id = ${sqlText(this.agentId)}`, "resolved = FALSE"];
     if (!opts.includeSnoozed) {
       clauses.push(
@@ -322,7 +321,7 @@ export class InboxRepository {
        ORDER BY
          CASE urgency WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          created_at DESC
-       LIMIT ${sqlInteger(resolveLimit(limit))}`,
+       ${opts.limit !== undefined ? `LIMIT ${sqlInteger(resolveLimit(opts.limit))}` : ""}`,
     );
     return rows.map(parseTriageEntry);
   }
@@ -335,7 +334,6 @@ export class InboxRepository {
       includeSnoozed?: boolean;
     },
   ): Promise<TriageEntry[]> {
-    const limit = opts?.limit ?? 50;
     const unresolvedOnly = opts?.unresolvedOnly !== false;
     const resolvedClause = unresolvedOnly ? "AND resolved = FALSE" : "";
     const snoozeClause =
@@ -350,7 +348,7 @@ export class InboxRepository {
          ${resolvedClause}
          ${snoozeClause}
        ORDER BY created_at DESC
-       LIMIT ${sqlInteger(resolveLimit(limit))}`,
+       ${opts?.limit !== undefined ? `LIMIT ${sqlInteger(resolveLimit(opts.limit))}` : ""}`,
     );
     return rows.map(parseTriageEntry);
   }
@@ -466,14 +464,14 @@ export class InboxRepository {
     return rows.map(parseTriageEntry);
   }
 
-  async getRecentAutoReplies(limit = 5): Promise<TriageEntry[]> {
+  async getRecentAutoReplies(limit?: number): Promise<TriageEntry[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_inbox.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND auto_replied = TRUE
        ORDER BY created_at DESC
-       LIMIT ${sqlInteger(resolveLimit(limit, 5))}`,
+       ${limit !== undefined ? `LIMIT ${sqlInteger(resolveLimit(limit))}` : ""}`,
     );
     return rows.map(parseTriageEntry);
   }

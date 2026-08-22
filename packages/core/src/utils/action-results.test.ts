@@ -1,8 +1,6 @@
 /**
- * Action-result helpers bound how much of a (potentially huge) tool output
- * lands in prompt state. Token estimation, middle-truncation with a full-output
- * reference, and oversize warnings keep a verbose action from blowing the
- * context budget.
+ * Action-result helpers preserve complete tool output for prompt state while
+ * retaining diagnostic token estimates and oversize warnings.
  */
 
 import { describe, expect, it } from "vitest";
@@ -10,10 +8,10 @@ import type { ActionResult } from "../types/components";
 import {
 	collectActionResultSizeWarnings,
 	estimateActionResultTokens,
+	formatCompleteActionResultText,
 	getActionResultActionName,
 	getActionResultReference,
 	stringifyActionResultError,
-	truncateMiddle,
 } from "./action-results.ts";
 
 const result = (r: Partial<ActionResult>): ActionResult => r as ActionResult;
@@ -60,20 +58,18 @@ describe("getActionResultReference", () => {
 	});
 });
 
-describe("truncateMiddle", () => {
+describe("formatCompleteActionResultText", () => {
 	it("returns short text trimmed, unchanged", () => {
-		expect(truncateMiddle("  short  ", 100)).toBe("short");
+		expect(formatCompleteActionResultText("  short  ", 100)).toBe("short");
 	});
 
-	it("middle-truncates long text and can append a reference", () => {
-		const long = "x".repeat(500);
-		const out = truncateMiddle(long, 80);
-		expect(out.length).toBeLessThan(long.length);
-		expect(out).toMatch(/chars omitted/);
-		expect(out.startsWith("x")).toBe(true);
+	it("preserves long text despite a legacy max argument", () => {
+		const long = `HEAD${"x".repeat(150_000)}TAIL`;
+		const out = formatCompleteActionResultText(long, 80);
+		expect(out).toBe(long);
 
-		const withRef = truncateMiddle(long, 80, "/tmp/full");
-		expect(withRef).toMatch(/Full output: \/tmp\/full$/);
+		const withRef = formatCompleteActionResultText(long, 80, "/tmp/full");
+		expect(withRef).toBe(`${long}\n\nFull output: /tmp/full`);
 	});
 });
 
@@ -94,34 +90,11 @@ describe("collectActionResultSizeWarnings", () => {
 	});
 });
 
-describe("truncateMiddle Unicode safety", () => {
-	it("never splits a surrogate pair when truncating emoji-bearing output", () => {
-		// A raw .slice() lands on an arbitrary UTF-16 index; when that index
-		// falls between the halves of a surrogate pair the result carries a
-		// lone surrogate, which strict-JSON providers reject outright.
+describe("formatCompleteActionResultText Unicode safety", () => {
+	it("preserves complete emoji-bearing output", () => {
 		const text = '{"user":"ana","note":"shipped 🚀 ok"},'.repeat(400);
-		const out = truncateMiddle(text, 4000);
-
+		const out = formatCompleteActionResultText(text, 4000);
+		expect(out).toBe(text);
 		expect(out.isWellFormed()).toBe(true);
-		expect(out.length).toBeLessThanOrEqual(4000);
-		const marker = out.match(/\n\n\[\.\.\. (\d+) chars omitted \.\.\.\]\n\n/);
-		expect(marker).not.toBeNull();
-		const [head, tail] = out.split(marker?.[0] ?? "");
-		expect(Number(marker?.[1])).toBe(text.length - head.length - tail.length);
-	});
-
-	it("stays well-formed across truncation lengths, not just lucky ones", () => {
-		const text = "abc😀".repeat(400);
-		for (let maxChars = 40; maxChars <= 240; maxChars++) {
-			const out = truncateMiddle(text, maxChars);
-			expect(out.isWellFormed()).toBe(true);
-			expect(out.length).toBeLessThanOrEqual(maxChars);
-		}
-	});
-
-	it("honors limits too small for an omission marker", () => {
-		const out = truncateMiddle("😀".repeat(20), 3);
-		expect(out.isWellFormed()).toBe(true);
-		expect(out.length).toBeLessThanOrEqual(3);
 	});
 });

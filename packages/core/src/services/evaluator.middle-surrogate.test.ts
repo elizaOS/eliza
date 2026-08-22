@@ -1,6 +1,5 @@
 /**
- * Regression for the head-and-tail truncation of an oversized evaluator section
- * (`trimHeadAndTailForPrompt`).
+ * Regression for lossless rendering of a large evaluator section.
  *
  * Evaluator sections keep their extraction rules (head) and the newest context
  * (tail), so the assembled prompt carries two independent cut points. Both are
@@ -11,10 +10,10 @@ import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory } from "../types";
-import { EVALUATOR_PROMPT_MAX_CHARS, EvaluatorService } from "./evaluator";
+import { EvaluatorService } from "./evaluator";
 
 const FOX = "\u{1F98A}";
-const TRUNCATION_MARKER = "[... truncated; kept latest tail ...]";
+const LARGE_SECTION_CHARS = 130_000;
 
 function isWellFormed(value: string): boolean {
 	const native = value as unknown as { isWellFormed?: () => boolean };
@@ -99,14 +98,13 @@ async function sectionPromptFor(
 	return captured as string;
 }
 
-describe("evaluator section head-and-tail truncation is surrogate-safe", () => {
+describe("large evaluator sections are lossless and surrogate-safe", () => {
 	it("never emits a lone surrogate at either cut across parities", async () => {
-		const body = FOX.repeat(EVALUATOR_PROMPT_MAX_CHARS);
+		const body = FOX.repeat(LARGE_SECTION_CHARS);
 		const illFormed: number[] = [];
 		for (let pad = 0; pad < 8; pad++) {
 			const prompt = await sectionPromptFor(body, pad);
-			expect(prompt).toContain(TRUNCATION_MARKER);
-			expect(prompt.length).toBeLessThanOrEqual(EVALUATOR_PROMPT_MAX_CHARS);
+			expect(prompt).toContain(body);
 			if (!isWellFormed(prompt)) illFormed.push(pad);
 		}
 		expect(illFormed).toEqual([]);
@@ -114,20 +112,17 @@ describe("evaluator section head-and-tail truncation is surrogate-safe", () => {
 
 	it("keeps the rules head and the newest tail of an oversized section", async () => {
 		const body = `HEAD_RULES_SENTINEL${FOX.repeat(
-			EVALUATOR_PROMPT_MAX_CHARS,
+			LARGE_SECTION_CHARS,
 		)}TAIL_CONTEXT_SENTINEL`;
 		const prompt = await sectionPromptFor(body);
 		expect(isWellFormed(prompt)).toBe(true);
 		expect(prompt).toContain("HEAD_RULES_SENTINEL");
 		expect(prompt).toContain("TAIL_CONTEXT_SENTINEL");
-		expect(prompt).toContain(TRUNCATION_MARKER);
+		expect(prompt).toContain(body);
 	}, 60_000);
 
 	it("serializes to a provider body with no lone-surrogate escape", async () => {
-		const prompt = await sectionPromptFor(
-			FOX.repeat(EVALUATOR_PROMPT_MAX_CHARS),
-			1,
-		);
+		const prompt = await sectionPromptFor(FOX.repeat(LARGE_SECTION_CHARS), 1);
 		const serialized = JSON.stringify({ messages: [{ content: prompt }] });
 		expect(/\\ud[89ab][0-9a-f]{2}(?!\\ud[c-f])/i.test(serialized)).toBe(false);
 		expect(JSON.parse(serialized).messages[0].content).toBe(prompt);
@@ -137,7 +132,7 @@ describe("evaluator section head-and-tail truncation is surrogate-safe", () => {
 		const body = `Short evaluator section with ${FOX} emoji`;
 		const prompt = await sectionPromptFor(body);
 		expect(prompt).toContain(body);
-		expect(prompt).not.toContain(TRUNCATION_MARKER);
+		expect(prompt).toContain(body);
 		expect(isWellFormed(prompt)).toBe(true);
 	}, 60_000);
 });

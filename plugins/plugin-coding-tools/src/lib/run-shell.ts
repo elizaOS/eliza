@@ -55,7 +55,11 @@ export interface ShellResult {
   sandbox: ShellSandboxBackend;
   timedOut: boolean;
   signal: NodeJS.Signals | null;
+  /** True only when complete capture was refused; stdout/stderr are empty. */
+  outputLimitExceeded?: boolean;
 }
+
+const COMPLETE_SHELL_CAPTURE_LIMIT_CHARS = 1_000_000;
 
 export interface BackgroundShellStartResult {
   process: HostShellProcess;
@@ -140,8 +144,6 @@ function toSandboxWorkdir(cwd: string): string | undefined {
   }
   return undefined;
 }
-
-const STREAM_CAP_CHARS = 30_000;
 
 function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
@@ -561,18 +563,30 @@ function runOnHostWithShell(
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let outputLimitExceeded = false;
+    const rejectOversizeCapture = () => {
+      if (outputLimitExceeded) return;
+      outputLimitExceeded = true;
+      stdout = "";
+      stderr = "";
+      killHostProcess(proc.pid, "SIGTERM", useProcessGroup, proc);
+    };
 
     // Preserve code points split across OS pipe chunks before accumulating.
     proc.stdout.setEncoding("utf8");
     proc.stderr.setEncoding("utf8");
     proc.stdout.on("data", (chunk: string) => {
-      if (stdout.length < STREAM_CAP_CHARS * 2) {
-        stdout += chunk;
+      if (outputLimitExceeded) return;
+      stdout += chunk;
+      if (stdout.length + stderr.length > COMPLETE_SHELL_CAPTURE_LIMIT_CHARS) {
+        rejectOversizeCapture();
       }
     });
     proc.stderr.on("data", (chunk: string) => {
-      if (stderr.length < STREAM_CAP_CHARS * 2) {
-        stderr += chunk;
+      if (outputLimitExceeded) return;
+      stderr += chunk;
+      if (stdout.length + stderr.length > COMPLETE_SHELL_CAPTURE_LIMIT_CHARS) {
+        rejectOversizeCapture();
       }
     });
 
@@ -595,6 +609,7 @@ function runOnHostWithShell(
         timedOut,
         durationMs: Date.now() - start,
         sandbox: "host",
+        outputLimitExceeded,
       });
     });
     proc.on("error", (err) => {
@@ -607,6 +622,7 @@ function runOnHostWithShell(
         timedOut,
         durationMs: Date.now() - start,
         sandbox: "host",
+        outputLimitExceeded,
       });
     });
   });

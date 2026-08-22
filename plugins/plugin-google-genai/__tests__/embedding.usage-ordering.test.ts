@@ -203,7 +203,7 @@ describe("Google GenAI embedding usage accounting on billed-but-failing calls (#
     );
   });
 
-  it("meters the exact provider-counted prefix used for a truncated call", async () => {
+  it("does not emit billed usage when an oversized input is rejected before embedding", async () => {
     mocks.countEmbeddingTokens.mockImplementation(
       async ({ contents }: { contents: string }) => ({
         totalTokens: contents.length,
@@ -211,18 +211,10 @@ describe("Google GenAI embedding usage accounting on billed-but-failing calls (#
     );
     const runtime = createRuntime();
 
-    await handleTextEmbedding(runtime, "x".repeat(3_000));
-
-    expect(mocks.emitModelUsageEvent).toHaveBeenCalledWith(
-      runtime,
-      "TEXT_EMBEDDING",
-      "x".repeat(2_048),
-      {
-        promptTokens: 2_048,
-        completionTokens: 0,
-        totalTokens: 2_048,
-      },
-    );
+    await expect(
+      handleTextEmbedding(runtime, "x".repeat(3_000)),
+    ).rejects.toMatchObject({ code: "EMBEDDING_INPUT_TOO_LARGE" });
+    expect(mocks.emitModelUsageEvent).not.toHaveBeenCalled();
   });
 
   describe("metering is observability, not control flow", () => {

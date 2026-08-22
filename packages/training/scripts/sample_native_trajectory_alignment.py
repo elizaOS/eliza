@@ -74,7 +74,6 @@ DEFAULT_MODEL = (
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_SEED = "eliza-native-audit-2026-05-07"
 
-MAX_PREVIEW_CHARS = 2_400
 MAX_JSON_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_SCAN_ROWS = 50_000
 SKIP_DIRS = {".cache", ".git", "__pycache__", "node_modules"}
@@ -162,28 +161,19 @@ def rng_for(seed: str, *parts: object) -> random.Random:
     return random.Random(stable_int(seed, *parts))
 
 
-def compact(value: Any, limit: int = MAX_PREVIEW_CHARS) -> Any:
+def preserve_value(value: Any) -> Any:
     if isinstance(value, (bytes, bytearray, memoryview)):
         raw = bytes(value)
         return {
-            "_bytes": raw[: min(64, len(raw))].hex(),
+            "_bytes": raw.hex(),
             "length": len(raw),
-            **({"truncated": True} if len(raw) > 64 else {}),
         }
     if isinstance(value, str):
-        value = value.replace("\x00", "")
-        return value if len(value) <= limit else value[:limit] + f"... <truncated {len(value) - limit} chars>"
+        return value.replace("\x00", "")
     if isinstance(value, list):
-        return [compact(v, limit=max(300, limit // max(1, len(value)))) for v in value[:12]]
+        return [preserve_value(v) for v in value]
     if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        budget = max(300, limit // max(1, min(len(value), 20)))
-        for idx, (key, item) in enumerate(value.items()):
-            if idx >= 40:
-                out["__truncated_keys__"] = len(value) - idx
-                break
-            out[str(key)] = compact(item, budget)
-        return out
+        return {str(key): preserve_value(item) for key, item in value.items()}
     return value
 
 
@@ -270,7 +260,7 @@ def read_jsonl_samples(
             try:
                 parsed = json.loads(line)
             except json.JSONDecodeError:
-                parsed = {"_raw": compact(line)}
+                parsed = {"_raw": preserve_value(line)}
             if len(rows) < limit:
                 rows.append(parsed)
             else:
@@ -285,7 +275,7 @@ def read_jsonl_samples(
 def read_json_samples(path: Path, limit: int, rng: random.Random) -> list[Any]:
     if path.stat().st_size > MAX_JSON_BYTES:
         with path.open("r", encoding="utf-8", errors="replace") as f:
-            return [{"_raw_preview": compact(f.read(MAX_PREVIEW_CHARS))}]
+            return [{"_raw": preserve_value(f.read())}]
     with path.open("r", encoding="utf-8", errors="replace") as f:
         raw = json.load(f)
     if isinstance(raw, list):
@@ -359,7 +349,7 @@ def read_tabular_samples(
 
 def read_text_sample(path: Path) -> list[Any]:
     with path.open("r", encoding="utf-8", errors="replace") as f:
-        return [{"_text_preview": compact(f.read(MAX_PREVIEW_CHARS))}]
+        return [{"_text": preserve_value(f.read())}]
 
 
 def read_samples_from_file(
@@ -425,7 +415,7 @@ def collect_dataset_samples(
                     "features": sorted(features),
                     "nativeBoundaryComponents": native_boundary_components(features),
                     "stageSimilarity": stage_similarity(features),
-                    "preview": compact(raw),
+                    "value": preserve_value(raw),
                 }
             )
             if len(samples) >= samples_per_source:
@@ -850,7 +840,7 @@ def base_context_object(
         },
         "plannedQueue": [],
         "metrics": {},
-        "limits": {"maxIterations": 50, "compactionEnabled": True},
+        "limits": {"maxIterations": 50},
         "events": [user_event],
     }
     return context, static_segments
@@ -1406,11 +1396,11 @@ def recorded_model_stage(
         },
         "normalizedOutput": normalized,
         "providerEnvelope": {
-            "runtimeUseModelParams": compact(shape["runtimeUseModelParams"]),
-            "cerebrasChatCompletionsPayload": compact(shape["cerebrasChatCompletionsPayload"]),
-            "aiSdkCommon": compact(shape["aiSdkCommon"]),
+            "runtimeUseModelParams": preserve_value(shape["runtimeUseModelParams"]),
+            "cerebrasChatCompletionsPayload": preserve_value(shape["cerebrasChatCompletionsPayload"]),
+            "aiSdkCommon": preserve_value(shape["aiSdkCommon"]),
         },
-        "rawProviderResponse": compact(raw_response),
+        "rawProviderResponse": preserve_value(raw_response),
     }
 
 
@@ -1683,8 +1673,8 @@ def summarize_real_trajectories(paths: list[Path], seed: str, max_trajectories: 
                                 key: key in model and model.get(key) not in (None, "", [])
                                 for key in ("response", "toolCalls", "finishReason", "usage", "providerMetadata")
                             },
-                            "promptPreview": compact(model.get("prompt") or "", 500),
-                            "toolCallsPreview": compact(model.get("toolCalls"), 800),
+                            "prompt": preserve_value(model.get("prompt") or ""),
+                            "toolCalls": preserve_value(model.get("toolCalls")),
                         }
                     )
 

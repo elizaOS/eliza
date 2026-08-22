@@ -12,11 +12,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  stripHtmlRawTextElements,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { stripHtmlRawTextElements, toWellFormedUnicode } from "@elizaos/core";
 import {
   failureToActionResult,
   readStringParam,
@@ -24,8 +20,6 @@ import {
 } from "../lib/format.js";
 import { guardedTextHttpRequest } from "../lib/web-http.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
-
-const WEB_FETCH_RESULT_CHARS = 8_000;
 
 /**
  * Capability kill switch, mirroring the agent-runtime WEB_FETCH action:
@@ -215,19 +209,14 @@ export const webFetchAction: Action = {
         extract,
       );
       const wellFormed = toWellFormedUnicode(extracted.value);
-      const value =
-        wellFormed.length > WEB_FETCH_RESULT_CHARS
-          ? `${truncateWellFormed(wellFormed, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
-          : wellFormed;
-      return successActionResult(value, {
+      return successActionResult(wellFormed, {
         action: "WEB_FETCH",
         url,
         final_url: response.url,
         status: response.status,
         content_type: response.contentType,
         kind: extracted.kind,
-        truncated:
-          response.truncated || wellFormed.length > WEB_FETCH_RESULT_CHARS,
+        truncated: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

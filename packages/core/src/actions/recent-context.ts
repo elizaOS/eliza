@@ -1,5 +1,5 @@
 /**
- * Recent-conversation text extraction. Pulls the last N conversation lines from
+ * Conversation text extraction. Pulls every available conversation line from
  * `State` (the `recentMessages` / `text` values plus the recent-messages memory
  * array), strips language-agnostic speaker-prefix labels ("Name: …"), and dedupes
  * while preserving order. `recentConversationTexts` additionally falls back to
@@ -42,7 +42,7 @@ function dedupePreservingOrder(values: string[]): string[] {
 
 export function recentConversationTextsFromState(
 	state: State | undefined,
-	limit: number,
+	_limit?: number,
 ): string[] {
 	const collected: string[] = [];
 	const pushText = (value: unknown) => {
@@ -61,7 +61,7 @@ export function recentConversationTextsFromState(
 		}
 	}
 
-	return dedupePreservingOrder(collected.slice(-Math.max(1, limit)));
+	return dedupePreservingOrder(collected);
 }
 
 export async function recentConversationTexts(args: {
@@ -70,16 +70,11 @@ export async function recentConversationTexts(args: {
 	state: State | undefined;
 	limit: number;
 }): Promise<string[]> {
-	const limit = Math.max(1, args.limit);
-	const stateTexts = recentConversationTextsFromState(args.state, limit);
+	const stateTexts = recentConversationTextsFromState(args.state);
 	const roomId =
 		typeof args.message?.roomId === "string" ? args.message.roomId : "";
 
-	if (
-		stateTexts.length >= limit ||
-		!roomId ||
-		typeof args.runtime.getMemories !== "function"
-	) {
+	if (!roomId || typeof args.runtime.getMemories !== "function") {
 		return stateTexts;
 	}
 
@@ -87,7 +82,6 @@ export async function recentConversationTexts(args: {
 		const memories = await args.runtime.getMemories({
 			roomId,
 			tableName: "messages",
-			limit: limit,
 		});
 		const memoryTexts = Array.isArray(memories)
 			? memories
@@ -98,7 +92,7 @@ export async function recentConversationTexts(args: {
 					)
 					.filter((text) => text.length > 0)
 			: [];
-		return dedupePreservingOrder([...memoryTexts, ...stateTexts].slice(-limit));
+		return dedupePreservingOrder([...memoryTexts, ...stateTexts]);
 	} catch (error) {
 		// error-policy:J2 A failed history read is not equivalent to an empty room;
 		// report the room context and preserve the storage error.

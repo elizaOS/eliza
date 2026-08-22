@@ -2,11 +2,9 @@
  * Per-conversation background shell sessions for long-running coding commands.
  *
  * The service owns child process groups, stable handles, stdin writes, and
- * bounded stdout/stderr buffers. Polling uses absolute character offsets per
- * stream and projects configured-secret taint across the ordered stream graph.
- * When a caller asks for an offset older than the retained ring window, the
- * returned chunk starts at the retained floor and reports `truncatedBefore` so
- * the caller can distinguish lost output from an empty incremental read.
+ * complete stdout/stderr capture. A real resource ceiling terminates the
+ * process and makes polling fail explicitly; partial output is never presented
+ * to the planner as though it were complete.
  */
 import {
   logger as coreLogger,
@@ -22,7 +20,7 @@ import {
 import { redactShellText } from "../shell/redaction.js";
 import { BACKGROUND_SHELL_SERVICE, CODING_TOOLS_LOG_PREFIX } from "../types.js";
 
-const DEFAULT_BUFFER_CHARS = 64_000;
+const DEFAULT_BUFFER_CHARS = 1_000_000;
 const DEFAULT_KILL_GRACE_MS = 1_500;
 const MAX_WRITE_CHARS = 1_000_000;
 const MAX_SESSIONS_PER_CONVERSATION = 16;
@@ -90,6 +88,7 @@ interface BackgroundShellSession {
   stderr: StreamRing;
   redaction: FragmentRedactionState;
   stdinError?: Error;
+  outputLimitExceeded?: boolean;
   killTimer?: NodeJS.Timeout;
 }
 
@@ -229,6 +228,11 @@ export class BackgroundShellService extends Service {
     stderrOffset?: number;
   }): BackgroundShellPollResult {
     const session = this.requireSession(args.conversationId, args.handle);
+    if (session.outputLimitExceeded) {
+      throw new Error(
+        `background shell output exceeded the ${this.bufferChars}-character complete-capture safety limit; no partial output is available`,
+      );
+    }
     refreshSessionRedaction(this.runtime, session);
     return {
       ...snapshot(this.runtime, session),
@@ -402,6 +406,21 @@ function appendSessionOutput(
   cap: number,
 ): void {
   if (!text) return;
+  if (session.outputLimitExceeded) return;
+  if (
+    session.stdout.text.length + session.stderr.text.length + text.length >
+    cap
+  ) {
+    session.outputLimitExceeded = true;
+    session.status = "error";
+    session.exitCode = -1;
+    session.endedAt = Date.now();
+    session.stdout = emptyRing();
+    session.stderr = emptyRing();
+    session.redaction = emptyFragmentRedactionState();
+    signalHostProcessGroup(session.process, "SIGTERM");
+    return;
+  }
   const ring = session[source];
   const startOffset = ring.endOffset;
   const profile = runtime.locateConfiguredSecretFragmentTaint([
@@ -571,13 +590,8 @@ function appendRing(
   if (!text) return;
   ring.text += text;
   ring.endOffset += text.length;
-  ring.truncatedBefore = Math.max(ring.truncatedBefore, ring.endOffset - cap);
-  const storageCap = cap + redactionOverlapChars;
-  if (ring.text.length > storageCap) {
-    const drop = ring.text.length - storageCap;
-    ring.text = ring.text.slice(drop);
-    ring.startOffset += drop;
-  }
+  void cap;
+  void redactionOverlapChars;
 }
 
 function readRing(

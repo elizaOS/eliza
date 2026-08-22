@@ -170,7 +170,7 @@ describe("coding-tools WEB_FETCH", () => {
     }
   });
 
-  it("caps large text responses and marks metadata as truncated", async () => {
+  it("rejects a response beyond the complete-capture ceiling without partial text", async () => {
     usePinnedRoutes({
       "https://public.example.test/large.txt": new Response(
         "x".repeat(300_000),
@@ -182,17 +182,12 @@ describe("coding-tools WEB_FETCH", () => {
       url: "https://public.example.test/large.txt",
     });
 
-    expect(result.success).toBe(true);
-    expect((result.text ?? "").length).toBeLessThanOrEqual(8_012);
-    expect(result.data).toMatchObject({
-      action: "WEB_FETCH",
-      status: 200,
-      kind: "text",
-      truncated: true,
-    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("complete-capture safety limit");
+    expect(result.text).not.toContain("x".repeat(100));
   });
 
-  it("keeps surrogate pairs intact when truncating large responses", async () => {
+  it("preserves the complete response and surrogate pairs", async () => {
     const text = `${"a".repeat(7_999)}🦊${"b".repeat(100)}`;
     usePinnedRoutes({
       "https://public.example.test/emoji.txt": new Response(text, {
@@ -204,13 +199,12 @@ describe("coding-tools WEB_FETCH", () => {
       url: "https://public.example.test/emoji.txt",
     });
     expect(result.success).toBe(true);
-    const truncated = (result.text ?? "").split("\n")[0];
-    expect(truncated.isWellFormed()).toBe(true);
-    expect(truncated.length).toBeLessThanOrEqual(8_000);
-    expect(truncated).toBe("a".repeat(7_999));
+    const complete = result.text ?? "";
+    expect(complete.isWellFormed()).toBe(true);
+    expect(complete).toBe(text);
   });
 
-  it("preserves a fitting emoji under the truncation cap", async () => {
+  it("preserves an emoji in a complete response", async () => {
     const text = `${"a".repeat(100)}🦊`;
     usePinnedRoutes({
       "https://public.example.test/fitting.txt": new Response(text, {

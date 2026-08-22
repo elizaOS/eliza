@@ -36,7 +36,7 @@ function dedupePreservingOrder(values: string[]): string[] {
 
 export function recentConversationTextsFromState(
   state: State | undefined,
-  limit = 6,
+  _limit = 6,
 ): string[] {
   if (!state || typeof state !== "object") {
     return [];
@@ -66,7 +66,7 @@ export function recentConversationTextsFromState(
     pushText(content.text);
   }
 
-  return dedupePreservingOrder(collected).slice(-Math.max(1, limit));
+  return dedupePreservingOrder(collected);
 }
 
 export async function recentConversationTexts(args: {
@@ -75,16 +75,11 @@ export async function recentConversationTexts(args: {
   state: State | undefined;
   limit?: number;
 }): Promise<string[]> {
-  const limit = Math.max(1, args.limit ?? 6);
-  const stateTexts = recentConversationTextsFromState(args.state, limit);
+  const stateTexts = recentConversationTextsFromState(args.state);
   const roomId =
     typeof args.message?.roomId === "string" ? args.message.roomId : "";
 
-  if (
-    stateTexts.length >= limit ||
-    !roomId ||
-    typeof args.runtime.getMemories !== "function"
-  ) {
+  if (!roomId || typeof args.runtime.getMemories !== "function") {
     return stateTexts;
   }
 
@@ -92,7 +87,6 @@ export async function recentConversationTexts(args: {
     const memories = await args.runtime.getMemories({
       roomId,
       tableName: "messages",
-      limit,
     });
     const memoryTexts = Array.isArray(memories)
       ? memories
@@ -103,7 +97,7 @@ export async function recentConversationTexts(args: {
           )
           .filter((text) => text.length > 0)
       : [];
-    return dedupePreservingOrder([...memoryTexts, ...stateTexts].slice(-limit));
+    return dedupePreservingOrder([...memoryTexts, ...stateTexts]);
   } catch {
     return stateTexts;
   }

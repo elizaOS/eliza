@@ -460,7 +460,7 @@ describe("terminal action effect proof", () => {
             }),
             {
               status: 200,
-              headers: { "Content-Length": String(2 * 1024 * 1024 + 1) },
+              headers: { "Content-Length": String(8 * 1024 * 1024 + 1) },
             },
           ),
       ),

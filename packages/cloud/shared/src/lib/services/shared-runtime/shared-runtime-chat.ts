@@ -72,7 +72,6 @@ import { capabilityWallActionResult } from "./shared-capability-wall";
 import {
   buildSharedFactsContext,
   extractSharedTurnFacts,
-  SHARED_FACTS_CONTEXT_MAX_FACTS,
   SHARED_FACTS_EXTRACTION_TIMEOUT_MS,
   sharedFactsEnabled,
 } from "./shared-facts";
@@ -81,13 +80,11 @@ import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
   embedTextViaSidecar,
-  SHARED_RECALL_DEFAULT_TOP_K,
   SHARED_RECALL_EMBEDDING_MODEL,
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import {
-  MAX_HISTORY_MESSAGES,
   sharedPublicWebGrounding,
   sharedRuntimeModelHistoryMessages,
 } from "./shared-runtime-history-policy";
@@ -106,7 +103,6 @@ import {
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
 
-export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
@@ -583,7 +579,10 @@ async function sharedTurnRecallContext(
       history,
       embed: (text) => embedTextViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, text),
       storeSearch: async (vector) => {
-        const hits = await store.searchByEmbedding(vector, SHARED_RECALL_DEFAULT_TOP_K);
+        // This is relevance retrieval, not prompt shortening: the durable transcript
+        // is already supplied in full. Ask the repository for its complete supported
+        // candidate page, then preserve every returned row in the recall block.
+        const hits = await store.searchByEmbedding(vector, 200);
         return hits.map((hit) => ({
           id: hit.id,
           role: hit.entity_id === hit.agent_id ? ("assistant" as const) : ("user" as const),
@@ -619,7 +618,7 @@ async function sharedTurnFactsContext(
 ): Promise<string | undefined> {
   if (!store || !sharedFactsEnabled()) return undefined;
   try {
-    const facts = await store.listFacts(SHARED_FACTS_CONTEXT_MAX_FACTS);
+    const facts = await store.listFacts(Number.MAX_SAFE_INTEGER);
     return buildSharedFactsContext(facts) ?? undefined;
   } catch (error) {
     // error-policy:J4 knowledge loss degrades to a facts-free turn; the warn is
@@ -668,7 +667,7 @@ function extractSharedTurnFactsOffPath(
         await Promise.all([
           import("ai"),
           import("../../providers/language-model"),
-          store.listFacts(SHARED_FACTS_CONTEXT_MAX_FACTS),
+          store.listFacts(Number.MAX_SAFE_INTEGER),
         ]);
       const facts = await extractSharedTurnFacts({
         agentName: character.name,
@@ -832,7 +831,7 @@ async function mergeHistory(
     agentId,
     roomId,
     valid,
-    MAX_HISTORY_MESSAGES,
+    Number.MAX_SAFE_INTEGER,
   )) as SharedTurnMessage[];
 }
 

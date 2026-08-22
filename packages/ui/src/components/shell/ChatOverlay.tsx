@@ -2203,19 +2203,34 @@ export function ChatOverlay({
   // never prepend into the newly active one.
   const loadOlderConversationIdRef = React.useRef(activeConversationId);
   loadOlderConversationIdRef.current = activeConversationId;
+  const loadOlderResumeRef = React.useRef<{
+    conversationId: string | null;
+    before?: number;
+  }>({ conversationId: activeConversationId });
   const fetchOlder = React.useCallback(async () => {
     const conversationId = activeConversationId;
     if (!conversationId) return { hasMore: false, prependedCount: 0 };
-    return await loadOlderConversationMessages({
+    if (loadOlderResumeRef.current.conversationId !== conversationId) {
+      loadOlderResumeRef.current = { conversationId };
+    }
+    const result = await loadOlderConversationMessages({
       client,
       conversationId,
       currentMessages: conversationMessages,
+      before: loadOlderResumeRef.current.before,
       prependMessages: (older) => {
         if (loadOlderConversationIdRef.current === conversationId) {
           prependConversationMessages(older);
         }
       },
     });
+    if (loadOlderConversationIdRef.current === conversationId) {
+      loadOlderResumeRef.current = {
+        conversationId,
+        before: result.resumeBefore,
+      };
+    }
+    return result;
   }, [activeConversationId, conversationMessages, prependConversationMessages]);
   // The render window slides UP as the reader scrolls into history (#14329,
   // #15281): it opens at MAX_RENDERED_SHELL_MESSAGES (lean idle/drag DOM) and

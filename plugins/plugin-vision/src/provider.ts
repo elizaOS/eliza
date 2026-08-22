@@ -1,6 +1,6 @@
 /**
  * Context provider that injects current visual perception state into media and
- * browser turns without exposing unbounded detection lists to the prompt.
+ * browser turns with the complete tracked detection state.
  */
 
 import {
@@ -18,10 +18,6 @@ import type {
   EntityAttributes,
 } from "./types";
 import { hasReadyInputForMode, VisionMode } from "./types";
-
-const MAX_VISION_OBJECTS_IN_STATE = 50;
-const MAX_VISION_PEOPLE_IN_STATE = 25;
-const MAX_TRACKED_ENTITIES_IN_STATE = 25;
 
 export const visionProvider: Provider = {
   name: "VISION_PERCEPTION",
@@ -110,25 +106,21 @@ export const visionProvider: Provider = {
         const stats = entityTracker.getStatistics();
 
         entityData = {
-          activeEntities: activeEntities
-            .slice(0, MAX_TRACKED_ENTITIES_IN_STATE)
-            .map((e) => ({
-              id: e.id,
-              type: e.entityType,
-              name: e.attributes.name,
-              firstSeen: e.firstSeen,
-              duration: Date.now() - e.firstSeen,
-              position: e.lastPosition,
-              attributes: e.attributes,
-            })),
-          recentlyLeft: recentlyLeft
-            .slice(0, MAX_TRACKED_ENTITIES_IN_STATE)
-            .map(({ entity, leftAt }) => ({
-              id: entity.id,
-              name: entity.attributes.name,
-              leftAt,
-              timeAgo: Date.now() - leftAt,
-            })),
+          activeEntities: activeEntities.map((e) => ({
+            id: e.id,
+            type: e.entityType,
+            name: e.attributes.name,
+            firstSeen: e.firstSeen,
+            duration: Date.now() - e.firstSeen,
+            position: e.lastPosition,
+            attributes: e.attributes,
+          })),
+          recentlyLeft: recentlyLeft.map(({ entity, leftAt }) => ({
+            id: entity.id,
+            name: entity.attributes.name,
+            leftAt,
+            timeAgo: Date.now() - leftAt,
+          })),
           statistics: stats,
         };
       }
@@ -221,9 +213,7 @@ export const visionProvider: Provider = {
           }
 
           if (sceneDescription.objects.length > 0) {
-            const objectTypes = sceneDescription.objects
-              .slice(0, MAX_VISION_OBJECTS_IN_STATE)
-              .map((o) => o.type);
+            const objectTypes = sceneDescription.objects.map((o) => o.type);
             const uniqueObjects = [...new Set(objectTypes)];
             const sourceLabel: Record<DetectionSource, string> = {
               yolo: "YOLO",
@@ -289,7 +279,7 @@ export const visionProvider: Provider = {
               }
 
               if (tileAnalysis.text) {
-                perceptionText += `\n\nVisible text:\n"${tileAnalysis.text.substring(0, 200)}${tileAnalysis.text.length > 200 ? "..." : ""}"`;
+                perceptionText += `\n\nVisible text:\n"${tileAnalysis.text}"`;
               }
 
               if (tileAnalysis.objects && tileAnalysis.objects.length > 0) {
@@ -344,11 +334,8 @@ export const visionProvider: Provider = {
         };
 
         data = {
-          objects:
-            sceneDescription?.objects.slice(0, MAX_VISION_OBJECTS_IN_STATE) ||
-            [],
-          people:
-            sceneDescription?.people.slice(0, MAX_VISION_PEOPLE_IN_STATE) || [],
+          objects: sceneDescription?.objects || [],
+          people: sceneDescription?.people || [],
           screenCapture: screenCapture || null,
           enhancedData:
             (sceneDescription as EnhancedSceneDescription)?.screenAnalysis ||

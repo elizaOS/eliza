@@ -49,15 +49,12 @@ export const GOOGLE_MEET_API_SURFACE = [
   { method: "generateReport", capabilities: ["meet.read"] },
 ] as const;
 
-const MAX_GOOGLE_MEET_PAGES = 1_000;
-
 interface MeetPaginationState {
-  pageCount: number;
   seenPageTokens: Set<string>;
 }
 
 function createMeetPaginationState(): MeetPaginationState {
-  return { pageCount: 0, seenPageTokens: new Set<string>() };
+  return { seenPageTokens: new Set<string>() };
 }
 
 function nextMeetPageToken(
@@ -65,7 +62,6 @@ function nextMeetPageToken(
   state: MeetPaginationState,
   resource: string
 ): string | undefined {
-  state.pageCount += 1;
   if (!token?.trim()) return undefined;
   if (state.seenPageTokens.has(token)) {
     throw new ElizaError(`Google Meet repeated a ${resource} page token.`, {
@@ -73,16 +69,6 @@ function nextMeetPageToken(
       context: { resource },
       severity: "fatal",
     });
-  }
-  if (state.pageCount >= MAX_GOOGLE_MEET_PAGES) {
-    throw new ElizaError(
-      `Google Meet ${resource} pagination exceeded ${MAX_GOOGLE_MEET_PAGES} pages.`,
-      {
-        code: "GOOGLE_MEET_PAGE_LIMIT_EXCEEDED",
-        context: { maxPages: MAX_GOOGLE_MEET_PAGES, resource },
-        severity: "fatal",
-      }
-    );
   }
   state.seenPageTokens.add(token);
   return token;

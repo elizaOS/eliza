@@ -423,7 +423,7 @@ export class TrustEngine extends Service {
 			overallTrust,
 			confidence,
 			interactionCount: evidence.length,
-			evidence: evidence.slice(0, 100), // Keep most recent 100
+			evidence,
 			lastCalculated: Date.now(),
 			calculationMethod: "dimensional_aggregation_v1",
 			trend,
@@ -778,8 +778,7 @@ export class TrustEngine extends Service {
 		}
 		const historicalProfiles: TrustProfile[] = candidateProfiles
 			.filter(isTrustProfile)
-			.sort((a, b) => b.lastCalculated - a.lastCalculated)
-			.slice(0, 10);
+			.sort((a, b) => b.lastCalculated - a.lastCalculated);
 
 		const firstProfile = historicalProfiles[0];
 		const lastProfile = historicalProfiles[historicalProfiles.length - 1];
