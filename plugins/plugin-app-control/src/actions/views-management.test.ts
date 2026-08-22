@@ -1884,6 +1884,28 @@ describe("view management actions", () => {
 		expect(ownerCheck).toHaveBeenCalledTimes(3);
 	});
 
+	it("owner-gates a pending create choice follow-up", async () => {
+		const { runtime } = createRuntime({
+			tasks: [
+				{
+					id: "task-1",
+					metadata: {
+						roomId: "room-1",
+						intent: "create a remote ledger view",
+						choices: [{ key: "new", label: "Create a new view plugin" }],
+					},
+				},
+			],
+		});
+		const ownerCheck = vi.fn(async () => false);
+		const action = createViewsAction({ hasOwnerAccess: ownerCheck });
+
+		await expect(
+			action.validate?.(runtime as never, message("new") as never),
+		).resolves.toBe(false);
+		expect(ownerCheck).toHaveBeenCalledTimes(1);
+	});
+
 	it("owner-gates the rollback sub-mode like other mutating modes (#8915)", async () => {
 		const { runtime } = createRuntime();
 		const ownerCheck = vi.fn(async () => false);

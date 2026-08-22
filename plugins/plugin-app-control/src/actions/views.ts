@@ -2867,7 +2867,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 			// Multi-turn create follow-up: choice reply matches a pending intent task.
 			if (isChoiceReply(text)) {
-				if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+					return ownerCheck(runtime, message);
+				}
 			}
 
 			// Multi-turn delete follow-up: structured confirm boolean matches a
