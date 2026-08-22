@@ -470,7 +470,20 @@ function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function textContainsAgentName(
+const NON_DISTINCTIVE_AGENT_NAME_TOKENS = new Set([
+	"agent",
+	"assistant",
+	"bot",
+	"chatbot",
+	"demo",
+	"helper",
+	"system",
+	"test",
+]);
+
+/** Returns whether text names the agent through a complete configured alias or
+ * a distinctive token from a multi-word alias. */
+export function textContainsAgentName(
 	text: string | undefined,
 	names: Array<string | null | undefined>,
 ): boolean {
@@ -482,15 +495,22 @@ function textContainsAgentName(
 	// "remilio nubilio" answers to "nubilio …" (live 2026-08-22: the full-phrase
 	// match classified "nubilio whats the setting …" as ambient, arming the
 	// engagement gate on a message that literally opens with the agent's name).
-	// Tokens under 4 characters stay excluded — short fragments ("al", "bot")
-	// would match ordinary prose.
+	// Short fragments and generic role/test words stay excluded because length
+	// alone does not make "agent", "assistant", or "test" an identity signal.
+	// The complete configured name/username remains authoritative even when one
+	// of its component words is generic.
 	const candidates = new Set<string>();
 	for (const name of names) {
 		const candidate = name?.trim();
 		if (!candidate) continue;
 		candidates.add(candidate);
 		for (const token of candidate.split(/\s+/u)) {
-			if (token.length >= 4) candidates.add(token);
+			if (
+				token.length >= 4 &&
+				!NON_DISTINCTIVE_AGENT_NAME_TOKENS.has(token.toLowerCase())
+			) {
+				candidates.add(token);
+			}
 		}
 	}
 
@@ -8762,16 +8782,12 @@ export async function runV5MessageRuntimeStage1(args: {
 							message: args.message,
 						})
 				).catch((error) => {
-					// error-policy:J4 an unresolved addressee must not suppress a
-					// response, but the failed room lookup remains observable.
-					// (optional-call: fail-open diagnostics on partial runtimes.)
-					args.runtime.reportError?.(
-						"MessageService.resolveAddressees",
-						error,
-						{
-							roomId: args.message.roomId,
-						},
-					);
+					// error-policy:J7 addressee-resolution diagnostics must not kill
+					// the message loop or suppress a response, but the required runtime
+					// error stream still owns the failure.
+					args.runtime.reportError("MessageService.resolveAddressees", error, {
+						roomId: args.message.roomId,
+					});
 					return false;
 				})
 			: false;
