@@ -135,6 +135,23 @@ function asConfigRecord<T extends object>(
   return value as T & Record<string, unknown>;
 }
 
+/** Replace a live config in place so references held by callers stay valid. */
+function replaceConfigInPlace(state: ElizaConfig, next: ElizaConfig): void {
+  const stateRecord = asConfigRecord(state);
+  const nextRecord = asConfigRecord(next);
+  for (const key of Object.keys(stateRecord)) {
+    if (!(key in nextRecord)) {
+      delete stateRecord[key];
+    }
+  }
+  for (const [key, value] of Object.entries(nextRecord)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    stateRecord[key] = value;
+  }
+}
+
 /**
  * Compute which top-level keys differ between the current in-memory config
  * and a freshly-loaded copy from disk, and bucket them into hot-reloadable
@@ -185,19 +202,8 @@ async function applyReloadedConfig(params: {
   const { state, next, runtime, isBlockedEnvKey } = params;
 
   // Replace top-level keys in the live state.config with the loaded values.
-  const stateRecord = asConfigRecord(state);
+  replaceConfigInPlace(state, next);
   const nextRecord = asConfigRecord(next);
-  for (const key of Object.keys(stateRecord)) {
-    if (!(key in nextRecord)) {
-      delete stateRecord[key];
-    }
-  }
-  for (const [key, value] of Object.entries(nextRecord)) {
-    if (key === "__proto__" || key === "constructor" || key === "prototype") {
-      continue;
-    }
-    stateRecord[key] = value;
-  }
 
   // Sync provider API keys into process.env (the runtime reads them at
   // request time via getSetting → process.env).
@@ -553,11 +559,78 @@ export async function handleConfigRoutes(
       );
     }
 
-    safeMerge(config as Record<string, unknown>, filtered);
+    let nextConfig: ElizaConfig;
+    try {
+      // structuredClone preserves the complete config graph instead of using
+      // a JSON round-trip that would silently drop or rewrite values.
+      nextConfig = structuredClone(config);
+    } catch (err) {
+      logger.warn(
+        `[api] Config update staging failed: ${err instanceof Error ? err.message : err}`,
+      );
+      // error-policy:J1 route boundary translates an internal staging failure.
+      error(res, "Config update could not be staged", 500);
+      return true;
+    }
 
-    // If the client updated env vars, synchronise them into process.env so
-    // subsequent hot-restarts see the latest values (loadElizaConfig()
-    // only fills missing env vars and does not override existing ones).
+    safeMerge(asConfigRecord(nextConfig), filtered);
+
+    if (
+      filtered.env &&
+      typeof filtered.env === "object" &&
+      !Array.isArray(filtered.env)
+    ) {
+      // Keep the staged config clean: drop empty env.vars entries so we don't
+      // persist null/empty-string tombstones forever.
+      const cfgEnv = asConfigRecord(nextConfig).env;
+      if (cfgEnv && typeof cfgEnv === "object" && !Array.isArray(cfgEnv)) {
+        const cfgVars = (cfgEnv as Record<string, unknown>).vars;
+        if (cfgVars && typeof cfgVars === "object" && !Array.isArray(cfgVars)) {
+          for (const [k, v] of Object.entries(
+            cfgVars as Record<string, unknown>,
+          )) {
+            if (typeof v !== "string" || !v.trim()) {
+              delete (cfgVars as Record<string, unknown>)[k];
+            }
+          }
+        }
+      }
+    }
+
+    if (
+      canonicalDeploymentTargetRequested ||
+      canonicalLinkedAccountsRequested ||
+      canonicalServiceRoutingRequested
+    ) {
+      applyCanonicalFirstRunConfig(nextConfig, {
+        deploymentTarget: normalizedDeploymentTarget,
+        linkedAccounts: normalizedLinkedAccounts,
+        serviceRouting: normalizedServiceRouting,
+      });
+    }
+
+    try {
+      saveElizaConfig(nextConfig);
+      if (isElizaSettingsDebugEnabled()) {
+        const cfg = asConfigRecord(nextConfig);
+        const cloud = cfg.cloud as Record<string, unknown> | undefined;
+        logger.debug(
+          `[eliza][settings][api] PUT /api/config → saveElizaConfig OK cloud(after)=${JSON.stringify(settingsDebugCloudSummary(cloud))}`,
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+      );
+      // error-policy:J1 route boundary translates a persistence failure.
+      error(res, "Config update could not be persisted", 500);
+      return true;
+    }
+
+    replaceConfigInPlace(config, nextConfig);
+
+    // Synchronise env only after persistence succeeds so a failed write cannot
+    // leave process.env ahead of durable and in-memory configuration.
     if (
       filtered.env &&
       typeof filtered.env === "object" &&
@@ -587,49 +660,6 @@ export async function handleConfigRoutes(
         if (v.trim()) process.env[k] = v;
         else delete process.env[k];
       }
-
-      // Keep config clean: drop empty env.vars entries so we don't persist
-      // null/empty-string tombstones forever.
-      const cfgEnv = (config as Record<string, unknown>).env;
-      if (cfgEnv && typeof cfgEnv === "object" && !Array.isArray(cfgEnv)) {
-        const cfgVars = (cfgEnv as Record<string, unknown>).vars;
-        if (cfgVars && typeof cfgVars === "object" && !Array.isArray(cfgVars)) {
-          for (const [k, v] of Object.entries(
-            cfgVars as Record<string, unknown>,
-          )) {
-            if (typeof v !== "string" || !v.trim()) {
-              delete (cfgVars as Record<string, unknown>)[k];
-            }
-          }
-        }
-      }
-    }
-
-    if (
-      canonicalDeploymentTargetRequested ||
-      canonicalLinkedAccountsRequested ||
-      canonicalServiceRoutingRequested
-    ) {
-      applyCanonicalFirstRunConfig(config, {
-        deploymentTarget: normalizedDeploymentTarget,
-        linkedAccounts: normalizedLinkedAccounts,
-        serviceRouting: normalizedServiceRouting,
-      });
-    }
-
-    try {
-      saveElizaConfig(config);
-      if (isElizaSettingsDebugEnabled()) {
-        const cfg = config as Record<string, unknown>;
-        const cloud = cfg.cloud as Record<string, unknown> | undefined;
-        logger.debug(
-          `[eliza][settings][api] PUT /api/config → saveElizaConfig OK cloud(after)=${JSON.stringify(settingsDebugCloudSummary(cloud))}`,
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
-      );
     }
     json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;
