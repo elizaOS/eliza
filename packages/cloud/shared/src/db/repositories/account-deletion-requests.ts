@@ -1,17 +1,6 @@
 /** Persists durable deletion receipts and generation-fenced worker state transitions. */
 
-import {
-  and,
-  asc,
-  eq,
-  gt,
-  inArray,
-  isNull,
-  lt,
-  lte,
-  notInArray,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AccountDeletionExport,
@@ -92,9 +81,7 @@ export class AccountDeletionRequestsRepository {
       .where(
         and(
           eq(accountDeletionRequests.user_id, userId),
-          notInArray(accountDeletionRequests.status, [
-            ...TERMINAL_REQUEST_STATUSES,
-          ]),
+          notInArray(accountDeletionRequests.status, [...TERMINAL_REQUEST_STATUSES]),
         ),
       )
       .limit(1);
@@ -130,30 +117,17 @@ export class AccountDeletionRequestsRepository {
         .where(
           and(
             eq(accountDeletionRequests.user_id, input.userId),
-            notInArray(accountDeletionRequests.status, [
-              ...TERMINAL_REQUEST_STATUSES,
-            ]),
+            notInArray(accountDeletionRequests.status, [...TERMINAL_REQUEST_STATUSES]),
           ),
         )
         .for("update")
         .limit(1);
       if (existing) {
-        const [rotated] = await tx
-          .update(accountDeletionRequests)
-          .set({
-            status_token_hash: input.statusTokenHash,
-            status_token_expires_at: input.statusTokenExpiresAt,
-            recovery_token_hash: input.recoveryTokenHash,
-            recovery_token_expires_at: input.recoveryTokenExpiresAt,
-            updated_at: input.now,
-          })
-          .where(eq(accountDeletionRequests.id, existing.id))
-          .returning();
-        if (!rotated)
-          throw new Error(
-            "Open account deletion receipt disappeared while locked",
-          );
-        return { outcome: "existing", request: rotated };
+        // The first committed receipt owns both opaque capabilities. Rotating
+        // them on a concurrent replay can invalidate credentials already
+        // returned to the winner and can orphan an export encrypted to the
+        // original recovery credential.
+        return { outcome: "existing", request: existing };
       }
 
       if (!current || !current.is_active || current.deleted_at) {
@@ -161,12 +135,8 @@ export class AccountDeletionRequestsRepository {
       }
       if (current.is_anonymous) return { outcome: "anonymous_account" };
 
-      const activeMembers = members.filter(
-        (member) => member.is_active && !member.deleted_at,
-      );
-      const activeOwners = activeMembers.filter(
-        (member) => member.role === "owner",
-      );
+      const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
+      const activeOwners = activeMembers.filter((member) => member.role === "owner");
       if (activeMembers.length !== 1) {
         return {
           outcome: "transfer_required",
@@ -184,19 +154,15 @@ export class AccountDeletionRequestsRepository {
           operation_kind: "personal_account_deletion",
           status: "reserved",
           lifecycle_revision:
-            Math.max(
-              current.account_lifecycle_revision,
-              organization.account_lifecycle_revision,
-            ) + 1,
+            Math.max(current.account_lifecycle_revision, organization.account_lifecycle_revision) +
+            1,
           status_token_hash: input.statusTokenHash,
           status_token_expires_at: input.statusTokenExpiresAt,
           recovery_token_hash: input.recoveryTokenHash,
           recovery_token_expires_at: input.recoveryTokenExpiresAt,
           request_digest: input.requestDigest,
-          restore_auto_top_up_enabled:
-            organization.auto_top_up_enabled ?? false,
-          restore_pay_as_you_go_from_earnings:
-            organization.pay_as_you_go_from_earnings,
+          restore_auto_top_up_enabled: organization.auto_top_up_enabled ?? false,
+          restore_pay_as_you_go_from_earnings: organization.pay_as_you_go_from_earnings,
           requested_at: input.now,
           recovery_expires_at: input.recoveryExpiresAt,
           execute_after: input.recoveryExpiresAt,
@@ -233,20 +199,12 @@ export class AccountDeletionRequestsRepository {
         .update(apiKeys)
         .set({ is_active: false, updated_at: input.now })
         .where(
-          and(
-            eq(apiKeys.user_id, input.userId),
-            eq(apiKeys.organization_id, input.organizationId),
-          ),
+          and(eq(apiKeys.user_id, input.userId), eq(apiKeys.organization_id, input.organizationId)),
         );
       await tx
         .update(userSessions)
         .set({ ended_at: input.now, updated_at: input.now })
-        .where(
-          and(
-            eq(userSessions.user_id, input.userId),
-            isNull(userSessions.ended_at),
-          ),
-        );
+        .where(and(eq(userSessions.user_id, input.userId), isNull(userSessions.ended_at)));
 
       await tx.insert(accountDeletionPhaseReceipts).values(
         input.phases.map((phase) => ({
@@ -291,37 +249,29 @@ export class AccountDeletionRequestsRepository {
         )
         .for("update")
         .limit(1);
-      if (
-        !current ||
-        current.status === "completed" ||
-        current.status === "action_required"
-      ) {
+      if (!current || current.status === "completed" || current.status === "action_required") {
         return undefined;
       }
-      if (current.lease_expires_at && current.lease_expires_at > input.now)
-        return undefined;
-      if (current.next_attempt_at && current.next_attempt_at > input.now)
-        return undefined;
+      if (current.lease_expires_at && current.lease_expires_at > input.now) return undefined;
+      if (current.next_attempt_at && current.next_attempt_at > input.now) return undefined;
 
       const generation = current.lease_generation + 1;
       const [leased] = await tx
         .update(accountDeletionPhaseReceipts)
         .set({
-          status: current.status === "calling" ? "reconciling" : "leased",
+          status:
+            current.status === "calling" || current.status === "reconciling"
+              ? "reconciling"
+              : "leased",
           lease_generation: generation,
           lease_owner_digest: input.leaseOwnerDigest,
-          lease_expires_at: new Date(
-            input.now.getTime() + input.leaseMilliseconds,
-          ),
+          lease_expires_at: new Date(input.now.getTime() + input.leaseMilliseconds),
           updated_at: input.now,
         })
         .where(
           and(
             eq(accountDeletionPhaseReceipts.id, current.id),
-            eq(
-              accountDeletionPhaseReceipts.lease_generation,
-              current.lease_generation,
-            ),
+            eq(accountDeletionPhaseReceipts.lease_generation, current.lease_generation),
           ),
         )
         .returning();
@@ -390,10 +340,7 @@ export class AccountDeletionRequestsRepository {
         .set({ identity_deactivated_at: input.now, updated_at: input.now })
         .where(eq(accountDeletionRequests.id, input.requestId))
         .returning({ id: accountDeletionRequests.id });
-      if (!request)
-        throw new Error(
-          "Deletion request disappeared after Steward deactivation",
-        );
+      if (!request) throw new Error("Deletion request disappeared after Steward deactivation");
       return true;
     });
   }
@@ -443,10 +390,7 @@ export class AccountDeletionRequestsRepository {
           ),
         )
         .returning({ id: accountDeletionRequests.id });
-      if (!request)
-        throw new Error(
-          "Canceled deletion receipt disappeared during reactivation",
-        );
+      if (!request) throw new Error("Canceled deletion receipt disappeared during reactivation");
       return true;
     });
   }
@@ -480,24 +424,145 @@ export class AccountDeletionRequestsRepository {
     return updated !== undefined;
   }
 
+  async markPhaseRetryable(input: {
+    phaseReceiptId: string;
+    generation: number;
+    errorCode: string;
+    retryClass: "definite_pre_provider_failure" | "provider_absence_confirmed";
+    now: Date;
+    retryAt: Date;
+  }): Promise<boolean> {
+    const [updated] = await dbWrite
+      .update(accountDeletionPhaseReceipts)
+      .set({
+        status: "retry",
+        retry_class: input.retryClass,
+        next_attempt_at: input.retryAt,
+        lease_owner_digest: null,
+        lease_expires_at: null,
+        last_error_code: input.errorCode,
+        updated_at: input.now,
+      })
+      .where(
+        and(
+          eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+          inArray(accountDeletionPhaseReceipts.status, ["leased", "reconciling"]),
+          eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+        ),
+      )
+      .returning({ id: accountDeletionPhaseReceipts.id });
+    return updated !== undefined;
+  }
+
+  async markExportBuilding(input: {
+    requestId: string;
+    phaseReceiptId: string;
+    generation: number;
+    now: Date;
+  }): Promise<boolean> {
+    return await dbWrite.transaction(async (tx) => {
+      const [phase] = await tx
+        .select({ id: accountDeletionPhaseReceipts.id })
+        .from(accountDeletionPhaseReceipts)
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            eq(accountDeletionPhaseReceipts.status, "leased"),
+            eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!phase) return false;
+      const [updated] = await tx
+        .update(accountDeletionExports)
+        .set({ status: "building", last_error_code: null, updated_at: input.now })
+        .where(eq(accountDeletionExports.request_id, input.requestId))
+        .returning({ id: accountDeletionExports.id });
+      return updated !== undefined;
+    });
+  }
+
+  async completeExportPhase(input: {
+    requestId: string;
+    phaseReceiptId: string;
+    generation: number;
+    contentDigest: string;
+    objectReceiptDigest: string;
+    byteCount: number;
+    now: Date;
+  }): Promise<boolean> {
+    return await dbWrite.transaction(async (tx) => {
+      const [completed] = await tx
+        .update(accountDeletionPhaseReceipts)
+        .set({
+          status: "completed",
+          provider_receipt_digest: input.objectReceiptDigest,
+          provider_acknowledged_at: input.now,
+          reconciled_at: input.now,
+          completed_at: input.now,
+          lease_owner_digest: null,
+          lease_expires_at: null,
+          next_attempt_at: null,
+          last_error_code: null,
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            inArray(accountDeletionPhaseReceipts.status, ["calling", "reconciling"]),
+            eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+          ),
+        )
+        .returning({ id: accountDeletionPhaseReceipts.id });
+      if (!completed) return false;
+
+      const [exportReceipt] = await tx
+        .update(accountDeletionExports)
+        .set({
+          status: "ready",
+          content_digest: input.contentDigest,
+          object_receipt_digest: input.objectReceiptDigest,
+          byte_count: input.byteCount,
+          ready_at: input.now,
+          last_error_code: null,
+          updated_at: input.now,
+        })
+        .where(eq(accountDeletionExports.request_id, input.requestId))
+        .returning({ id: accountDeletionExports.id });
+      if (!exportReceipt) throw new Error("Deletion export receipt disappeared during completion");
+
+      const [request] = await tx
+        .update(accountDeletionRequests)
+        .set({ status: "recovery", updated_at: input.now })
+        .where(
+          and(
+            eq(accountDeletionRequests.id, input.requestId),
+            inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
+          ),
+        )
+        .returning({ id: accountDeletionRequests.id });
+      if (!request) throw new Error("Deletion request cannot enter recovery after export");
+      return true;
+    });
+  }
+
   async cancelDuringRecovery(input: {
     recoveryTokenHash: string;
     reactivationIdempotencyKeyDigest: string;
+    exportRevocationIdempotencyKeyDigest: string;
+    exportRevocationNotBefore: Date;
     now: Date;
   }): Promise<CancelAccountDeletionResult> {
     const [observed] = await dbWrite
       .select()
       .from(accountDeletionRequests)
-      .where(
-        eq(
-          accountDeletionRequests.recovery_token_hash,
-          input.recoveryTokenHash,
-        ),
-      )
+      .where(eq(accountDeletionRequests.recovery_token_hash, input.recoveryTokenHash))
       .limit(1);
     if (!observed) return { outcome: "invalid_credential" };
-    if (observed.status === "canceled")
-      return { outcome: "already_canceled", request: observed };
+    if (observed.status === "canceled") return { outcome: "already_canceled", request: observed };
     if (
       !observed.user_id ||
       !observed.organization_id ||
@@ -528,10 +593,8 @@ export class AccountDeletionRequestsRepository {
         .where(eq(accountDeletionRequests.id, observed.id))
         .for("update")
         .limit(1);
-      if (!organization || !user || !request)
-        return { outcome: "recovery_expired" };
-      if (request.status === "canceled")
-        return { outcome: "already_canceled", request };
+      if (!organization || !user || !request) return { outcome: "recovery_expired" };
+      if (request.status === "canceled") return { outcome: "already_canceled", request };
       if (
         request.recovery_token_hash !== input.recoveryTokenHash ||
         !request.recovery_expires_at ||
@@ -550,8 +613,7 @@ export class AccountDeletionRequestsRepository {
           account_deletion_request_id: null,
           paid_work_fenced_at: null,
           auto_top_up_enabled: request.restore_auto_top_up_enabled ?? false,
-          pay_as_you_go_from_earnings:
-            request.restore_pay_as_you_go_from_earnings ?? false,
+          pay_as_you_go_from_earnings: request.restore_pay_as_you_go_from_earnings ?? false,
           is_active: true,
           updated_at: input.now,
         })
@@ -581,10 +643,7 @@ export class AccountDeletionRequestsRepository {
         .where(
           and(
             eq(accountDeletionPhaseReceipts.request_id, request.id),
-            notInArray(accountDeletionPhaseReceipts.status, [
-              "completed",
-              "canceled",
-            ]),
+            notInArray(accountDeletionPhaseReceipts.status, ["completed", "canceled"]),
           ),
         );
       await tx
@@ -595,6 +654,19 @@ export class AccountDeletionRequestsRepository {
           phase_order: 15,
           status: "pending",
           idempotency_key_digest: input.reactivationIdempotencyKeyDigest,
+          created_at: input.now,
+          updated_at: input.now,
+        })
+        .onConflictDoNothing();
+      await tx
+        .insert(accountDeletionPhaseReceipts)
+        .values({
+          request_id: request.id,
+          phase: "export_revoke",
+          phase_order: 16,
+          status: "pending",
+          idempotency_key_digest: input.exportRevocationIdempotencyKeyDigest,
+          next_attempt_at: input.exportRevocationNotBefore,
           created_at: input.now,
           updated_at: input.now,
         })
@@ -616,10 +688,7 @@ export class AccountDeletionRequestsRepository {
         })
         .where(eq(accountDeletionRequests.id, request.id))
         .returning();
-      if (!canceled)
-        throw new Error(
-          "Deletion receipt disappeared during recovery cancellation",
-        );
+      if (!canceled) throw new Error("Deletion receipt disappeared during recovery cancellation");
       return {
         outcome: "canceled",
         request: canceled,
@@ -635,6 +704,172 @@ export class AccountDeletionRequestsRepository {
       .where(eq(accountDeletionRequests.id, id))
       .limit(1);
     return request;
+  }
+
+  /** Primary-only recovery capability lookup for export and undo authority. */
+  async findByRecoveryTokenHash(
+    recoveryTokenHash: string,
+  ): Promise<AccountDeletionStatusRecord | undefined> {
+    const [request] = await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.recovery_token_hash, recoveryTokenHash))
+      .limit(1);
+    if (!request) return undefined;
+    const [exportReceipt] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, request.id))
+      .limit(1);
+    return { request, exportReceipt: exportReceipt ?? null };
+  }
+
+  async findExpiredExportCandidates(
+    now: Date,
+    limit: number,
+  ): Promise<Array<{ requestId: string; requestDigest: string }>> {
+    const rows = await dbWrite
+      .select({
+        requestId: accountDeletionRequests.id,
+        requestDigest: accountDeletionRequests.request_digest,
+      })
+      .from(accountDeletionExports)
+      .innerJoin(
+        accountDeletionRequests,
+        eq(accountDeletionRequests.id, accountDeletionExports.request_id),
+      )
+      .where(
+        and(
+          lte(accountDeletionExports.expires_at, now),
+          inArray(accountDeletionExports.status, ["pending", "building", "ready", "failed"]),
+        ),
+      )
+      .orderBy(asc(accountDeletionExports.expires_at))
+      .limit(limit);
+    return rows.flatMap((row) =>
+      row.requestDigest ? [{ requestId: row.requestId, requestDigest: row.requestDigest }] : [],
+    );
+  }
+
+  async ensureExportRevocationPhase(input: {
+    requestId: string;
+    idempotencyKeyDigest: string;
+    nextAttemptAt: Date;
+    now: Date;
+  }): Promise<void> {
+    await dbWrite.transaction(async (tx) => {
+      await tx
+        .update(accountDeletionExports)
+        .set({ status: "expired", updated_at: input.now })
+        .where(
+          and(
+            eq(accountDeletionExports.request_id, input.requestId),
+            notInArray(accountDeletionExports.status, ["deleted"]),
+          ),
+        );
+      await tx
+        .insert(accountDeletionPhaseReceipts)
+        .values({
+          request_id: input.requestId,
+          phase: "export_revoke",
+          phase_order: 16,
+          status: "pending",
+          idempotency_key_digest: input.idempotencyKeyDigest,
+          next_attempt_at: input.nextAttemptAt,
+          created_at: input.now,
+          updated_at: input.now,
+        })
+        .onConflictDoNothing();
+    });
+  }
+
+  async findExportRevocationsDue(
+    now: Date,
+    limit: number,
+  ): Promise<Array<{ requestId: string; requestDigest: string }>> {
+    const rows = await dbWrite
+      .select({
+        requestId: accountDeletionRequests.id,
+        requestDigest: accountDeletionRequests.request_digest,
+      })
+      .from(accountDeletionPhaseReceipts)
+      .innerJoin(
+        accountDeletionRequests,
+        eq(accountDeletionRequests.id, accountDeletionPhaseReceipts.request_id),
+      )
+      .where(
+        and(
+          eq(accountDeletionPhaseReceipts.phase, "export_revoke"),
+          notInArray(accountDeletionPhaseReceipts.status, [
+            "completed",
+            "canceled",
+            "action_required",
+          ]),
+          or(
+            isNull(accountDeletionPhaseReceipts.next_attempt_at),
+            lte(accountDeletionPhaseReceipts.next_attempt_at, now),
+          ),
+          or(
+            isNull(accountDeletionPhaseReceipts.lease_expires_at),
+            lte(accountDeletionPhaseReceipts.lease_expires_at, now),
+          ),
+        ),
+      )
+      .orderBy(asc(accountDeletionPhaseReceipts.created_at))
+      .limit(limit);
+    return rows.flatMap((row) =>
+      row.requestDigest ? [{ requestId: row.requestId, requestDigest: row.requestDigest }] : [],
+    );
+  }
+
+  async completeExportRevocation(input: {
+    requestId: string;
+    phaseReceiptId: string;
+    generation: number;
+    providerReceiptDigest: string;
+    now: Date;
+  }): Promise<boolean> {
+    return await dbWrite.transaction(async (tx) => {
+      const [phase] = await tx
+        .update(accountDeletionPhaseReceipts)
+        .set({
+          status: "completed",
+          provider_receipt_digest: input.providerReceiptDigest,
+          provider_acknowledged_at: input.now,
+          reconciled_at: input.now,
+          completed_at: input.now,
+          lease_owner_digest: null,
+          lease_expires_at: null,
+          next_attempt_at: null,
+          last_error_code: null,
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            inArray(accountDeletionPhaseReceipts.status, ["leased", "calling", "reconciling"]),
+            eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+          ),
+        )
+        .returning({ id: accountDeletionPhaseReceipts.id });
+      if (!phase) return false;
+      const [exportReceipt] = await tx
+        .update(accountDeletionExports)
+        .set({
+          status: "deleted",
+          content_digest: null,
+          object_receipt_digest: input.providerReceiptDigest,
+          byte_count: null,
+          deleted_at: input.now,
+          last_error_code: null,
+          updated_at: input.now,
+        })
+        .where(eq(accountDeletionExports.request_id, input.requestId))
+        .returning({ id: accountDeletionExports.id });
+      if (!exportReceipt) throw new Error("Deletion export receipt disappeared during revocation");
+      return true;
+    });
   }
 
   /** Primary-only lookup for the read-only post-session status capability. */
@@ -661,9 +896,7 @@ export class AccountDeletionRequestsRepository {
     return { request, exportReceipt: exportReceipt ?? null };
   }
 
-  async createIdempotent(
-    data: NewAccountDeletionRequest,
-  ): Promise<AccountDeletionRequest> {
+  async createIdempotent(data: NewAccountDeletionRequest): Promise<AccountDeletionRequest> {
     const [created] = await dbWrite
       .insert(accountDeletionRequests)
       .values(data)
@@ -676,9 +909,7 @@ export class AccountDeletionRequestsRepository {
     }
     const existing = await this.findOpenByUserId(data.user_id, true);
     if (!existing) {
-      throw new Error(
-        "Account deletion request conflicted but no open request was found",
-      );
+      throw new Error("Account deletion request conflicted but no open request was found");
     }
     return existing;
   }
@@ -695,10 +926,7 @@ export class AccountDeletionRequestsRepository {
     return updated;
   }
 
-  async claimDue(
-    limit: number,
-    now = new Date(),
-  ): Promise<AccountDeletionRequest[]> {
+  async claimDue(limit: number, now = new Date()): Promise<AccountDeletionRequest[]> {
     return await dbWrite.transaction(async (tx) => {
       const due = await tx
         .select()
@@ -767,10 +995,7 @@ export class AccountDeletionRequestsRepository {
         and(
           eq(accountDeletionRequests.id, id),
           eq(accountDeletionRequests.status, "processing"),
-          eq(
-            accountDeletionRequests.processing_started_at,
-            processingStartedAt,
-          ),
+          eq(accountDeletionRequests.processing_started_at, processingStartedAt),
         ),
       )
       .returning({ id: accountDeletionRequests.id });
@@ -796,10 +1021,7 @@ export class AccountDeletionRequestsRepository {
         and(
           eq(accountDeletionRequests.id, id),
           eq(accountDeletionRequests.status, "processing"),
-          eq(
-            accountDeletionRequests.processing_started_at,
-            processingStartedAt,
-          ),
+          eq(accountDeletionRequests.processing_started_at, processingStartedAt),
         ),
       )
       .returning();
@@ -807,5 +1029,4 @@ export class AccountDeletionRequestsRepository {
   }
 }
 
-export const accountDeletionRequestsRepository =
-  new AccountDeletionRequestsRepository();
+export const accountDeletionRequestsRepository = new AccountDeletionRequestsRepository();

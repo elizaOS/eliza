@@ -86,7 +86,13 @@ const deactivateSteward = mock(async () => ({ userId: "steward-1" }));
 const reactivateSteward = mock(async () => ({ userId: "steward-1" }));
 const deleteSteward = mock(async () => ({ userId: "steward-1" }));
 const purgeOrganizationResources = mock(async () => undefined);
+const reconcileAccountDeletionExportRevocations = mock(async () => ({
+  scheduled: 0,
+  completed: 0,
+  pending: 0,
+}));
 const blob = {
+  head: mock(async () => null),
   get: mock(async () => null),
   put: mock(async () => undefined),
   delete: mock(async () => undefined),
@@ -100,6 +106,9 @@ mock.module("./steward-platform-users", () => ({
   reactivateStewardPlatformUser: reactivateSteward,
   deleteStewardPlatformUser: deleteSteward,
 }));
+mock.module("./account-deletion-export", () => ({
+  reconcileAccountDeletionExportRevocations,
+}));
 mock.module("../utils/logger", () => ({
   logger: {
     info: mock(() => undefined),
@@ -108,11 +117,9 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
-const {
-  cancelAccountDeletion,
-  processDueAccountDeletions,
-  requestAccountDeletion,
-} = await import("./account-deletion");
+const { cancelAccountDeletion, processDueAccountDeletions, requestAccountDeletion } = await import(
+  "./account-deletion"
+);
 
 beforeEach(() => {
   reservePersonalAccountDeletion.mockReset();
@@ -159,6 +166,7 @@ beforeEach(() => {
   requestRepo.recordPurgeFailure.mockReset();
   requestRepo.recordPurgeFailure.mockResolvedValue(undefined);
   purgeOrganizationResources.mockClear();
+  reconcileAccountDeletionExportRevocations.mockClear();
 });
 
 describe("account deletion lifecycle", () => {
@@ -193,20 +201,32 @@ describe("account deletion lifecycle", () => {
   test.each([
     ["account_unavailable", "ACCOUNT_UNAVAILABLE"],
     ["anonymous_account", "ANONYMOUS_ACCOUNT"],
-  ] as const)(
-    "returns %s without crossing a provider boundary",
-    async (outcome, code) => {
-      reservePersonalAccountDeletion.mockResolvedValueOnce({ outcome });
-      await expect(
-        requestAccountDeletion({
-          userId: "user-1",
-          organizationId: "org-1",
-          stewardUserId: "steward-1",
-        }),
-      ).rejects.toMatchObject({ code });
-      expect(deactivateSteward).not.toHaveBeenCalled();
-    },
-  );
+  ] as const)("returns %s without crossing a provider boundary", async (outcome, code) => {
+    reservePersonalAccountDeletion.mockResolvedValueOnce({ outcome });
+    await expect(
+      requestAccountDeletion({
+        userId: "user-1",
+        organizationId: "org-1",
+        stewardUserId: "steward-1",
+      }),
+    ).rejects.toMatchObject({ code });
+    expect(deactivateSteward).not.toHaveBeenCalled();
+  });
+
+  test("rejects a replay without rotating capabilities or crossing a provider boundary", async () => {
+    reservePersonalAccountDeletion.mockResolvedValueOnce({
+      outcome: "existing",
+      request: reservedRequest(),
+    });
+    await expect(
+      requestAccountDeletion({
+        userId: "user-1",
+        organizationId: "org-1",
+        stewardUserId: "steward-1",
+      }),
+    ).rejects.toMatchObject({ code: "REQUEST_REPLAYED" });
+    expect(deactivateSteward).not.toHaveBeenCalled();
+  });
 
   test("returns actionable shared-owner state without mutating Steward", async () => {
     reservePersonalAccountDeletion.mockResolvedValueOnce({
@@ -250,8 +270,7 @@ describe("account deletion lifecycle", () => {
     expect(cancelDuringRecovery).toHaveBeenCalledWith(
       expect.objectContaining({
         recoveryTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-        reactivationIdempotencyKeyDigest:
-          expect.stringMatching(/^[a-f0-9]{64}$/),
+        reactivationIdempotencyKeyDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     );
     expect(reactivateSteward).toHaveBeenCalledWith("steward-1");
@@ -302,6 +321,7 @@ describe("account deletion lifecycle", () => {
       purgeOrganizationResources,
     });
     expect(result).toEqual({
+      exportRevocations: { scheduled: 0, completed: 0, pending: 0 },
       recovered: 0,
       processed: 1,
       completed: 0,

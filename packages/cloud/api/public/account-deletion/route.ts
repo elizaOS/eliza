@@ -29,6 +29,7 @@ app.use(
 );
 
 app.get("/", async (c) => {
+  c.header("Cache-Control", "no-store, private");
   const credential = c.req.header("X-Account-Deletion-Status")?.trim() ?? "";
   const request = await getAccountDeletionStatusByCredential(credential);
   if (!request) {
@@ -44,6 +45,7 @@ app.get("/", async (c) => {
 });
 
 app.delete("/", async (c) => {
+  c.header("Cache-Control", "no-store, private");
   const origin = checkElizaMutatingRequestOrigin(
     c.req,
     c.env.NODE_ENV === "production",
@@ -55,9 +57,13 @@ app.delete("/", async (c) => {
     );
   }
   const credential = c.req.header("X-Account-Deletion-Recovery")?.trim() ?? "";
-  const body: { confirmation?: unknown } = await c.req
-    .json<{ confirmation?: unknown }>()
-    .catch(() => ({}));
+  let body: { confirmation?: unknown } = {};
+  try {
+    body = await c.req.json<{ confirmation?: unknown }>();
+  } catch {
+    // error-policy:J3 malformed JSON is an invalid confirmation, never a
+    // fabricated valid recovery request.
+  }
   if (body.confirmation !== "CANCEL DELETION") {
     return c.json(
       {
@@ -71,6 +77,8 @@ app.delete("/", async (c) => {
     const request = await cancelAccountDeletion(credential);
     return c.json({ request });
   } catch (error) {
+    // error-policy:J1 typed recovery failures are translated only at this
+    // transport boundary and never expose the submitted capability.
     if (error instanceof AccountDeletionRecoveryError) {
       return c.json({ error: error.message, code: error.code }, 409);
     }
@@ -79,6 +87,7 @@ app.delete("/", async (c) => {
 });
 
 app.post("/", async (c) => {
+  c.header("Cache-Control", "no-store, private");
   const origin = checkElizaMutatingRequestOrigin(
     c.req,
     c.env.NODE_ENV === "production",
@@ -101,9 +110,13 @@ app.post("/", async (c) => {
         409,
       );
     }
-    const body: { confirmation?: unknown } = await c.req
-      .json<{ confirmation?: unknown }>()
-      .catch(() => ({}));
+    let body: { confirmation?: unknown } = {};
+    try {
+      body = await c.req.json<{ confirmation?: unknown }>();
+    } catch {
+      // error-policy:J3 malformed JSON is an invalid confirmation, never a
+      // fabricated valid deletion request.
+    }
     if (body.confirmation !== "DELETE") {
       return c.json(
         {
@@ -121,13 +134,13 @@ app.post("/", async (c) => {
     });
     return c.json(accepted, 202);
   } catch (error) {
+    // error-policy:J1 The public boundary emits no credential or identity values.
     if (error instanceof AccountDeletionConflictError) {
       return c.json(
         { error: error.message, code: error.code, details: error.details },
         409,
       );
     }
-    // error-policy:J1 The public boundary emits no credential or identity values.
     logger.error("[PublicAccountDeletionRoute] Request failed", {
       errorCode: error instanceof Error ? error.name : "unknown",
     });
