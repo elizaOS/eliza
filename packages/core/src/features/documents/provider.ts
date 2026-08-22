@@ -25,7 +25,6 @@ import { normalizeDocumentSourceValue } from "./utils.ts";
 
 const PINNED_DOCUMENT_TOKEN_BUDGET = 8_000;
 const APPROXIMATE_CHARACTERS_PER_TOKEN = 4;
-const PINNED_DOCUMENT_TITLE_MAX_CHARACTERS = 120;
 
 export const PINNED_DOCUMENT_TRUNCATION_MARKER =
 	"[Pinned document content omitted from this prompt. Use DOCUMENT read with its document ID to page the exact source.]";
@@ -63,13 +62,10 @@ export function renderPinnedDocuments(
 	const blocks: string[] = [];
 	const maximumCharacters = tokenBudget * APPROXIMATE_CHARACTERS_PER_TOKEN;
 	let truncated = false;
-	const headers = pinned.map((document, index) => {
-		const title = truncateWellFormed(
-			getDocumentTitle(document, index),
-			PINNED_DOCUMENT_TITLE_MAX_CHARACTERS,
-		);
-		return `## ${title} (${document.id}; reference document:${document.id})`;
-	});
+	const headers = pinned.map(
+		(document, index) =>
+			`## ${getDocumentTitle(document, index)} (${document.id}; reference document:${document.id})`,
+	);
 	const blockSeparators = Math.max(0, pinned.length - 1) * 2;
 	const headerNewlines = pinned.length;
 	const markerSeparator = pinned.length > 0 ? 2 : 0;

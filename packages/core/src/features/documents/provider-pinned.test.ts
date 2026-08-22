@@ -212,6 +212,26 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		}
 	});
 
+	it("preserves complete pinned titles and rejects identity-only overflow", () => {
+		const longTitle = `critical-${"owner-authored-title-".repeat(20)}`;
+		const rendered = renderPinnedDocuments(
+			[document(longTitle, "complete source", true)],
+			8_000,
+		);
+		expect(rendered.text).toContain(longTitle);
+
+		expect(() =>
+			renderPinnedDocuments(
+				[document(`critical-${"X".repeat(40_000)}`, "source", true)],
+				8_000,
+			),
+		).toThrowError(
+			expect.objectContaining({
+				code: "PINNED_DOCUMENT_IDENTITY_BUDGET_EXCEEDED",
+			}),
+		);
+	});
+
 	it("rejects repeating pagination cursors when listing pinned documents", async () => {
 		const agentId = "00000000-0000-0000-0000-0000000000a1" as UUID;
 		const queryDocumentsMock = vi.fn(async () => ({
