@@ -121,8 +121,9 @@ processes. The agent host's `FileMessageInteractionSessionStore` is durable and
 cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
 commit and a boot/process-generation-qualified stale-owner lock whose atomic,
 shared transition marker prevents retirement from detaching a fresh successor.
-Unpublished owners have an absolute recovery ceiling; unqualified live PIDs
-fail closed. Multi-host deployments must implement the
+Complete owner inodes publish through a no-replace hardlink; malformed owners
+have an absolute recovery ceiling and unqualified live PIDs fail closed.
+Multi-host deployments must implement the
 same store interface with a transactional database and idempotent effect/outbox
 boundary; the JSON store does not claim distributed exactly-once semantics.
 
