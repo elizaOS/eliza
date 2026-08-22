@@ -1,14 +1,14 @@
 /**
- * Regression coverage for the storage PUT byte budget.
+ * Regression coverage for storage PUT declared-length trust and cancel lifecycle.
  *
- * The budget guard only means anything if it is charged BEFORE the request
- * body is retained, so these cases assert on what the body stream was asked
- * for — pulls taken, cancellation issued — and not merely on the status code.
- * The route half drives the real Hono router from
- * `v1/apis/storage/objects/[...key]/route.ts` so the 400/413/201 contract is
- * exercised end to end; the helper half pins `readRequestBodyWithinBudget`'s
- * own semantics (untrustworthy `content-length`, exact limit, empty body,
- * cancellation failure reporting) at a small budget.
+ * After develop started streaming PUTs to R2, the Worker must not accumulate
+ * chunks. These cases mount the real Hono router from
+ * `v1/apis/storage/objects/[...key]/route.ts` and drive bodies whose
+ * `ReadableStream` counts pulls at `highWaterMark: 0`, so the assertions are
+ * about what the route actually asked for: untrusted length headers are refused
+ * unread, a tiny-chunk body is forwarded as a stream, and a cancel that never
+ * settles or rejects still answers 411/400. The helper half pins decimal
+ * parsing and finally-based cancel/release ordering.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -18,9 +18,7 @@ const ORGANIZATION_ID = "00000000-0000-4000-8000-000000021045";
 const ROUTE_PREFIX = "/api/v1/apis/storage/objects";
 const ROUTE_MOUNT = `${ROUTE_PREFIX}/:*{.+}`;
 const OBJECT_PATH = "uploads/blob.bin";
-// Mirrors MAX_PUT_BYTES in the route under test.
-const MAX_PUT_BYTES = 50 * 1024 * 1024;
-const CHUNK_BYTES = 10 * 1024 * 1024;
+const OBJECT_SHA256 = "a".repeat(64);
 
 const requireUserOrApiKeyWithOrg = mock();
 const getServiceMethodCost = mock();
@@ -86,8 +84,11 @@ mock.module("@/lib/utils/logger", () => ({
 const storageObjectsRoute = (
   await import("../v1/apis/storage/objects/[...key]/route")
 ).default;
-const { parseTrustworthyContentLength, readRequestBodyWithinBudget } =
-  await import("../v1/apis/storage/objects/[...key]/put-body-budget");
+const {
+  cancelBestEffort,
+  parseTrustworthyContentLength,
+  parseTrustworthyDecimalInteger,
+} = await import("../v1/apis/storage/objects/[...key]/put-body-budget");
 
 const app = new Hono();
 app.route(ROUTE_MOUNT, storageObjectsRoute);
@@ -98,15 +99,14 @@ interface ChunkedSource {
   cancelled: () => boolean;
 }
 
-/**
- * A lazily-pulled body. `available` is deliberately far larger than the budget
- * so a reader that does not stop early would have to materialize gigabytes:
- * the pull counter is the assertion that it stopped.
- */
 function chunkedBody(
   chunkBytes: number,
   available: number,
-  options: { cancelThrows?: boolean } = {},
+  options: {
+    cancelThrows?: boolean;
+    cancelRejects?: boolean;
+    cancelNever?: boolean;
+  } = {},
 ): ChunkedSource {
   let pulls = 0;
   let cancelled = false;
@@ -122,13 +122,22 @@ function chunkedBody(
       },
       cancel() {
         cancelled = true;
+        if (options.cancelNever) {
+          return new Promise(() => {
+            /* never settles */
+          });
+        }
+        if (options.cancelRejects) {
+          return Promise.reject(new Error("cancel refused"));
+        }
         if (options.cancelThrows) {
           throw new Error("cancel refused");
         }
+        return undefined;
       },
     },
     // High-water mark 0 removes the stream's own read-ahead, so a pull counts
-    // one read the budget actually asked for and nothing else.
+    // one read the route actually asked for and nothing else.
     { highWaterMark: 0 },
   );
   return { body, pulls: () => pulls, cancelled: () => cancelled };
@@ -137,6 +146,8 @@ function chunkedBody(
 function putRequest(init: {
   body?: BodyInit | null;
   contentLength?: string;
+  xContentLength?: string;
+  sha256?: string;
 }): Request {
   const headers: Record<string, string> = {
     "content-type": "application/octet-stream",
@@ -146,11 +157,16 @@ function putRequest(init: {
   if (init.contentLength !== undefined) {
     headers["content-length"] = init.contentLength;
   }
+  if (init.xContentLength !== undefined) {
+    headers["x-content-length"] = init.xContentLength;
+  }
+  if (init.sha256 !== undefined) {
+    headers["X-Content-SHA256"] = init.sha256;
+  }
   return new Request(`http://cloud.test${ROUTE_PREFIX}/_`, {
     method: "PUT",
     headers,
     body: init.body ?? null,
-    // Required by undici/workerd semantics for a streaming request body.
     duplex: "half",
   } as RequestInit & { duplex: "half" });
 }
@@ -165,7 +181,8 @@ async function jsonBody(response: Response): Promise<unknown> {
 }
 
 async function flushMicrotasks(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 beforeEach(() => {
@@ -190,92 +207,115 @@ beforeEach(() => {
   });
 });
 
-describe("storage PUT byte budget (production route)", () => {
-  test("refuses a declared oversize body with 413 before pulling a byte", async () => {
-    const source = chunkedBody(CHUNK_BYTES, 1024);
+describe("storage PUT declared-length trust (production route)", () => {
+  test("refuses an untrustworthy X-Content-Length with 411 before pulling a byte", async () => {
+    const source = chunkedBody(1, 1024);
 
     const response = await app.request(
       putRequest({
         body: source.body,
-        contentLength: String(MAX_PUT_BYTES + 1),
+        xContentLength: "1e3",
+        sha256: OBJECT_SHA256,
       }),
       undefined,
       { BLOB: bucket() },
     );
 
-    expect(response.status).toBe(413);
+    expect(response.status).toBe(411);
     expect(await jsonBody(response)).toEqual({
-      error: `Object exceeds ${MAX_PUT_BYTES} byte limit (${MAX_PUT_BYTES + 1})`,
+      error: "A positive X-Content-Length header is required",
+    });
+    expect(source.pulls()).toBe(0);
+    expect(source.cancelled()).toBe(true);
+    expect(executeNativeStoragePut).not.toHaveBeenCalled();
+    expect(getServiceMethodCost).not.toHaveBeenCalled();
+  });
+
+  test("refuses hex and signed X-Content-Length forms unread", async () => {
+    for (const untrustworthy of ["0x10", "+7", "12.5", "-1", "abc"]) {
+      const source = chunkedBody(1, 64);
+      const response = await app.request(
+        putRequest({
+          body: source.body,
+          xContentLength: untrustworthy,
+          sha256: OBJECT_SHA256,
+        }),
+        undefined,
+        { BLOB: bucket() },
+      );
+      expect(response.status).toBe(411);
+      expect(source.pulls()).toBe(0);
+      expect(source.cancelled()).toBe(true);
+      expect(executeNativeStoragePut).not.toHaveBeenCalled();
+    }
+  });
+
+  test("refuses an untrustworthy Content-Length even when X-Content-Length is a matching Number()", async () => {
+    const source = chunkedBody(1, 1024);
+
+    const response = await app.request(
+      putRequest({
+        body: source.body,
+        contentLength: "1e3",
+        xContentLength: "1000",
+        sha256: OBJECT_SHA256,
+      }),
+      undefined,
+      { BLOB: bucket() },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await jsonBody(response)).toEqual({
+      error: "Content-Length does not match X-Content-Length",
     });
     expect(source.pulls()).toBe(0);
     expect(source.cancelled()).toBe(true);
     expect(executeNativeStoragePut).not.toHaveBeenCalled();
   });
 
-  test("cuts an undeclared stream off at the first over-budget chunk", async () => {
-    const source = chunkedBody(CHUNK_BYTES, 1024);
-
-    const response = await app.request(
-      putRequest({ body: source.body }),
-      undefined,
-      { BLOB: bucket() },
-    );
-
-    // Six 10 MiB chunks is the first running total past the 50 MiB budget.
-    expect(response.status).toBe(413);
-    expect(await jsonBody(response)).toEqual({
-      error: `Object exceeds ${MAX_PUT_BYTES} byte limit (${CHUNK_BYTES * 6})`,
-    });
-    expect(source.pulls()).toBe(6);
-    expect(source.cancelled()).toBe(true);
-    expect(executeNativeStoragePut).not.toHaveBeenCalled();
-  });
-
-  test("cuts an under-declared stream off at the first over-budget chunk", async () => {
-    const source = chunkedBody(CHUNK_BYTES, 1024);
-
-    const response = await app.request(
-      putRequest({ body: source.body, contentLength: "1024" }),
-      undefined,
-      { BLOB: bucket() },
-    );
-
-    expect(response.status).toBe(413);
-    expect(await jsonBody(response)).toEqual({
-      error: `Object exceeds ${MAX_PUT_BYTES} byte limit (${CHUNK_BYTES * 6})`,
-    });
-    expect(source.pulls()).toBe(6);
-    expect(source.cancelled()).toBe(true);
-    expect(executeNativeStoragePut).not.toHaveBeenCalled();
-  });
-
-  test("accepts a body of exactly the budget and stores every byte", async () => {
+  test("forwards a tiny-chunk body as a stream without pulling it", async () => {
+    const source = chunkedBody(1, 64);
     getServiceMethodCost.mockResolvedValueOnce(0.25).mockResolvedValueOnce(0);
     executeNativeStoragePut.mockResolvedValue({
       key: OBJECT_PATH,
-      size: MAX_PUT_BYTES,
+      size: 8,
       contentType: "application/octet-stream",
       etag: "native-etag",
     });
 
     const response = await app.request(
-      putRequest({ body: new Uint8Array(MAX_PUT_BYTES) }),
+      putRequest({
+        body: source.body,
+        xContentLength: "8",
+        sha256: OBJECT_SHA256,
+      }),
       undefined,
       { BLOB: bucket() },
     );
 
     expect(response.status).toBe(201);
+    expect(source.pulls()).toBe(0);
+    expect(source.cancelled()).toBe(false);
     expect(executeNativeStoragePut).toHaveBeenCalledTimes(1);
     const call = executeNativeStoragePut.mock.calls[0]?.[0] as {
-      body: ArrayBuffer;
+      body: unknown;
+      sizeBytes: number;
     };
-    expect(call.body.byteLength).toBe(MAX_PUT_BYTES);
+    expect(call.body).toBeInstanceOf(ReadableStream);
+    expect(call.sizeBytes).toBe(8);
+    expect(call.body).toBe(source.body);
   });
 
-  test("still answers an empty body with the unchanged 400 contract", async () => {
-    const response = await app.request(putRequest({ body: null }), undefined, {
-      BLOB: bucket(),
-    });
+  test("still answers a missing body with the unchanged 400 contract", async () => {
+    const response = await app.request(
+      putRequest({
+        body: null,
+        xContentLength: "1",
+        sha256: OBJECT_SHA256,
+      }),
+      undefined,
+      { BLOB: bucket() },
+    );
 
     expect(response.status).toBe(400);
     expect(await jsonBody(response)).toEqual({
@@ -284,32 +324,70 @@ describe("storage PUT byte budget (production route)", () => {
     expect(executeNativeStoragePut).not.toHaveBeenCalled();
   });
 
-  test("logs a failed body cancellation without changing the 413", async () => {
-    const source = chunkedBody(CHUNK_BYTES, 1024, { cancelThrows: true });
+  test("a never-settling cancel still answers 411", async () => {
+    const source = chunkedBody(1, 1024, { cancelNever: true });
 
     const response = await app.request(
       putRequest({
         body: source.body,
-        contentLength: String(MAX_PUT_BYTES + 1),
+        xContentLength: "1e3",
+        sha256: OBJECT_SHA256,
+      }),
+      undefined,
+      { BLOB: bucket() },
+    );
+
+    expect(response.status).toBe(411);
+    expect(source.cancelled()).toBe(true);
+    expect(executeNativeStoragePut).not.toHaveBeenCalled();
+  });
+
+  test("a rejecting cancel still answers 411 and logs the failure", async () => {
+    const source = chunkedBody(1, 1024, { cancelRejects: true });
+
+    const response = await app.request(
+      putRequest({
+        body: source.body,
+        xContentLength: "0x10",
+        sha256: OBJECT_SHA256,
       }),
       undefined,
       { BLOB: bucket() },
     );
     await flushMicrotasks();
 
-    expect(response.status).toBe(413);
+    expect(response.status).toBe(411);
     expect(loggerWarn).toHaveBeenCalledWith(
-      "[storage proxy] failed to cancel oversized PUT body",
-      expect.objectContaining({ label: "content-length-precheck" }),
+      "[storage proxy] failed to cancel rejected PUT body",
+      expect.objectContaining({ label: "x-content-length" }),
+    );
+  });
+
+  test("a synchronous cancel throw still answers 400 on length mismatch", async () => {
+    const source = chunkedBody(1, 1024, { cancelThrows: true });
+
+    const response = await app.request(
+      putRequest({
+        body: source.body,
+        contentLength: "4",
+        xContentLength: "5",
+        sha256: OBJECT_SHA256,
+      }),
+      undefined,
+      { BLOB: bucket() },
+    );
+    await flushMicrotasks();
+
+    expect(response.status).toBe(400);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[storage proxy] failed to cancel rejected PUT body",
+      expect.objectContaining({ label: "content-length-mismatch" }),
     );
   });
 });
 
-describe("readRequestBodyWithinBudget", () => {
-  function helperRequest(init: {
-    body?: BodyInit | null;
-    contentLength?: string;
-  }): Request {
+describe("put-body-budget helpers", () => {
+  function helperRequest(init: { contentLength?: string }): Request {
     const headers: Record<string, string> = {};
     if (init.contentLength !== undefined) {
       headers["content-length"] = init.contentLength;
@@ -317,107 +395,110 @@ describe("readRequestBodyWithinBudget", () => {
     return new Request("http://cloud.test/helper", {
       method: "PUT",
       headers,
-      body: init.body ?? null,
-      duplex: "half",
-    } as RequestInit & { duplex: "half" });
+    });
   }
 
-  test("treats only a plain safe decimal content-length as trustworthy", () => {
+  test("treats only a plain safe decimal as trustworthy", () => {
+    expect(parseTrustworthyDecimalInteger(undefined)).toBeNull();
+    expect(parseTrustworthyDecimalInteger(null)).toBeNull();
+    expect(parseTrustworthyDecimalInteger("")).toBeNull();
+    expect(parseTrustworthyDecimalInteger("0")).toBe(0);
+    expect(parseTrustworthyDecimalInteger("  42  ")).toBe(42);
     expect(parseTrustworthyContentLength(helperRequest({}))).toBeNull();
     expect(
       parseTrustworthyContentLength(helperRequest({ contentLength: "0" })),
     ).toBe(0);
-    expect(
-      parseTrustworthyContentLength(helperRequest({ contentLength: "  42  " })),
-    ).toBe(42);
     for (const untrustworthy of ["abc", "1e3", "0x10", "12.5", "-1", "+7"]) {
+      expect(parseTrustworthyDecimalInteger(untrustworthy)).toBeNull();
       expect(
         parseTrustworthyContentLength(
           helperRequest({ contentLength: untrustworthy }),
         ),
       ).toBeNull();
     }
-    expect(
-      parseTrustworthyContentLength(
-        helperRequest({ contentLength: "99999999999999999999" }),
-      ),
-    ).toBeNull();
+    expect(parseTrustworthyDecimalInteger("99999999999999999999")).toBeNull();
   });
 
-  test("refuses a declared oversize body on the declared size, unread", async () => {
-    const source = chunkedBody(8, 1024);
-
-    const result = await readRequestBodyWithinBudget(
-      helperRequest({ body: source.body, contentLength: "64" }),
-      16,
-    );
-
-    expect(result).toEqual({ ok: false, bytes: 64 });
-    expect(source.pulls()).toBe(0);
-    expect(source.cancelled()).toBe(true);
-  });
-
-  test("accepts a body of exactly the budget", async () => {
-    const result = await readRequestBodyWithinBudget(
-      helperRequest({ body: new Uint8Array(16) }),
-      16,
-    );
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("expected an accepted body");
-    expect(result.body.byteLength).toBe(16);
-  });
-
-  test("refuses one byte past the budget on the running total", async () => {
-    const result = await readRequestBodyWithinBudget(
-      helperRequest({ body: new Uint8Array(17) }),
-      16,
-    );
-
-    expect(result).toEqual({ ok: false, bytes: 17 });
-  });
-
-  test("preserves an empty body as an accepted zero-byte read", async () => {
-    const result = await readRequestBodyWithinBudget(helperRequest({}), 16);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("expected an accepted body");
-    expect(result.body.byteLength).toBe(0);
-  });
-
-  test("reassembles a multi-chunk body inside the budget in order", async () => {
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new Uint8Array([1, 2, 3]));
-        controller.enqueue(new Uint8Array([4, 5]));
-        controller.close();
+  test("releases a reader lock only after cancel settles", async () => {
+    const order: string[] = [];
+    let releasedBeforeCancelSettled = false;
+    let cancelSettled = false;
+    const reader = {
+      cancel: async () => {
+        order.push("cancel-start");
+        await Promise.resolve();
+        cancelSettled = true;
+        order.push("cancel-settled");
       },
-    });
-
-    const result = await readRequestBodyWithinBudget(
-      helperRequest({ body }),
-      16,
-    );
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("expected an accepted body");
-    expect([...new Uint8Array(result.body)]).toEqual([1, 2, 3, 4, 5]);
-  });
-
-  test("reports a streamed cancellation failure and still refuses", async () => {
-    const source = chunkedBody(8, 1024, { cancelThrows: true });
-    const failures: Array<[string, unknown]> = [];
-
-    const result = await readRequestBodyWithinBudget(
-      helperRequest({ body: source.body }),
-      16,
-      (label, error) => {
-        failures.push([label, error]);
+      releaseLock: () => {
+        if (!cancelSettled) releasedBeforeCancelSettled = true;
+        order.push("release");
       },
-    );
+    };
+
+    cancelBestEffort(reader, "lock-order");
     await flushMicrotasks();
 
-    expect(result.ok).toBe(false);
-    expect(failures.map(([label]) => label)).toEqual(["streamed-budget"]);
+    expect(releasedBeforeCancelSettled).toBe(false);
+    expect(order).toEqual(["cancel-start", "cancel-settled", "release"]);
+  });
+
+  test("still releases after a rejecting cancel and reports the failure", async () => {
+    const failures: Array<[string, unknown]> = [];
+    let released = false;
+    const reader = {
+      cancel: async () => {
+        throw new Error("cancel refused");
+      },
+      releaseLock: () => {
+        released = true;
+      },
+    };
+
+    cancelBestEffort(reader, "reject-cancel", (label, error) => {
+      failures.push([label, error]);
+    });
+    await flushMicrotasks();
+
+    expect(released).toBe(true);
+    expect(failures.map(([label]) => label)).toEqual(["reject-cancel"]);
+  });
+
+  test("does not release while cancel never settles", async () => {
+    let released = false;
+    const reader = {
+      cancel: () =>
+        new Promise<void>(() => {
+          /* never settles */
+        }),
+      releaseLock: () => {
+        released = true;
+      },
+    };
+
+    cancelBestEffort(reader, "never-cancel");
+    await flushMicrotasks();
+
+    expect(released).toBe(false);
+  });
+
+  test("releases after a synchronous cancel throw", async () => {
+    const failures: Array<[string, unknown]> = [];
+    let released = false;
+    const reader = {
+      cancel: () => {
+        throw new Error("cancel refused");
+      },
+      releaseLock: () => {
+        released = true;
+      },
+    };
+
+    cancelBestEffort(reader, "sync-cancel", (label, error) => {
+      failures.push([label, error]);
+    });
+
+    expect(released).toBe(true);
+    expect(failures.map(([label]) => label)).toEqual(["sync-cancel"]);
   });
 });
