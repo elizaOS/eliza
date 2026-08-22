@@ -53,7 +53,10 @@ import {
   type InboundClaimState,
   tryClaim,
 } from "./inbound-claim";
-import { renderWhatsAppInteractions } from "./interactions";
+import {
+  renderPreparedWhatsAppInteraction,
+  renderWhatsAppInteractions,
+} from "./interactions";
 import {
   chunkWhatsAppText,
   isWhatsAppGroupJid,
@@ -770,6 +773,36 @@ export class WhatsAppConnectorService extends Service {
                   target.threadId ?? target.channelId ?? target.entityId ?? target.roomId ?? ""
                 ),
               }),
+        sendPreparedInteraction: async (_runtime, params) => {
+          const resolved = await resolveWhatsAppSendTarget(
+            runtime,
+            service,
+            params.target,
+            connectorAccountId,
+          );
+          if (!resolved) {
+            throw new ElizaError("WhatsApp prepared interaction target is unavailable.", {
+              code: "WHATSAPP_INTERACTION_TARGET_UNAVAILABLE",
+            });
+          }
+          const rendered = renderPreparedWhatsAppInteraction(params.interaction);
+          if (!rendered.interactive || rendered.outcome !== "native") {
+            throw new ElizaError(
+              "WhatsApp cannot render this prepared interaction natively; use the semantic text fallback.",
+              {
+                code: "WHATSAPP_INTERACTION_NATIVE_UNAVAILABLE",
+                context: {
+                  limitations: params.interaction.delivery.limitations.join(","),
+                },
+              },
+            );
+          }
+          await service.sendInteractiveMessage(
+            resolved.accountId,
+            resolved.chatId,
+            rendered.interactive,
+          );
+        },
         sendHandler: async (
           _runtime: IAgentRuntime,
           target: ConnectorTargetInfo,

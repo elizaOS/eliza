@@ -7,12 +7,13 @@
 import {
   buildInteractionUrlResolver,
   type Content,
+  encodePreparedInteractionCallback,
   type IAgentRuntime,
   type InteractionBlock,
-  type NeutralButton,
+  type PreparedMessageInteraction,
   parseInteractionBlocks,
+  renderContentInteractionsAsPlainText,
   stripDashboardOnlyMarkers,
-  toNeutralLayout,
 } from "@elizaos/core";
 import type { SlackBlock } from "./types";
 
@@ -32,25 +33,25 @@ export interface SlackInteractionOptions {
   resolveNavigateUrl?: (payload: string) => string | undefined;
 }
 
-function slackButton(button: NeutralButton, index: number) {
-  if (!button.url && !button.callbackData) return null;
+function slackButton(args: {
+  label: string;
+  value?: string;
+  url?: string;
+  index: number;
+}) {
+  if (!args.url && !args.value) return null;
   return {
     type: "button",
     text: {
       type: "plain_text",
-      text: button.label,
+      text: args.label,
       emoji: true,
       verbatim: undefined,
     },
-    actionId: `eliza_interaction_${index}`,
-    url: button.url,
-    value: button.callbackData,
-    style:
-      button.style === "danger"
-        ? "danger"
-        : button.style === "primary"
-          ? "primary"
-          : undefined,
+    action_id: `eliza_prepared_interaction_${args.index}`,
+    url: args.url,
+    value: args.value,
+    style: undefined,
   };
 }
 
@@ -74,60 +75,74 @@ export function renderSlackInteractions(
     };
   }
 
-  const blocks: SlackBlock[] = [];
-  const fallback: string[] = [];
-  let needsFreeTextReply = false;
-  let actionIndex = 0;
-
-  for (const interaction of sourceBlocks) {
-    const layout = toNeutralLayout(interaction, {
-      ...options,
-      maxButtonsPerRow: MAX_BUTTONS_PER_ACTIONS_BLOCK,
-      maxCallbackBytes: MAX_CALLBACK_BYTES,
-    });
-    let rendered = false;
-    for (const row of layout.rows) {
-      const rowButtons = row.buttons ?? [];
-      const elements = rowButtons
-        .map((button) => slackButton(button, actionIndex++))
-        .filter(
-          (button): button is NonNullable<typeof button> => button !== null,
-        );
-      if (elements.length === 0) continue;
-      if (blocks.length >= MAX_BLOCKS_PER_MESSAGE) {
-        fallback.push(
-          ...rowButtons.map((button) =>
-            button.url ? `${button.label} (${button.url})` : button.label,
-          ),
-        );
-        needsFreeTextReply = true;
-        continue;
-      }
-      blocks.push({
-        type: "actions",
-        blockId: undefined,
-        elements,
-        text: undefined,
-      });
-      rendered = true;
-    }
-    if (layout.needsFallback) needsFreeTextReply = true;
-    if (!rendered && layout.text) fallback.push(layout.text);
-  }
-
-  const text = stripDashboardOnlyMarkers(
-    [cleanedText, ...fallback].filter((part) => part.trim()).join("\n\n"),
-  );
+  const text = renderContentInteractionsAsPlainText(content, options).text;
   return {
     text,
-    blocks,
-    needsFreeTextReply,
-    outcome:
-      blocks.length > 0
-        ? needsFreeTextReply
-          ? "fallback"
-          : "native"
-        : "fallback",
+    blocks: [],
+    needsFreeTextReply: true,
+    outcome: "fallback",
+  };
+}
+
+/** Render only host-prepared authority as provider-native Block Kit controls. */
+export function renderPreparedSlackInteraction(
+  prepared: PreparedMessageInteraction,
+  options: SlackInteractionOptions = {},
+): SlackInteractionRender {
+  const block = prepared.block;
+  if (prepared.delivery.mode !== "native") {
+    return {
+      text: renderContentInteractionsAsPlainText({ interactions: [block] }, options).text,
+      blocks: [],
+      needsFreeTextReply: true,
+      outcome: "fallback",
+    };
+  }
+  const optionsToRender =
+    block.kind === "choice"
+      ? block.options.map((option) => ({ label: option.label, value: option.value }))
+      : block.kind === "followups"
+        ? block.options
+            .filter((option) => option.kind !== "navigate")
+            .map((option) => ({ label: option.label, value: option.payload }))
+        : [];
+  const elements = optionsToRender
+    .map((option, index) => {
+      const value = encodePreparedInteractionCallback(
+        prepared.callbackData,
+        { value: option.value },
+        MAX_CALLBACK_BYTES,
+      );
+      return value ? slackButton({ label: option.label, value, index }) : null;
+    })
+    .filter((value): value is NonNullable<typeof value> => value !== null);
+  if (elements.length !== optionsToRender.length || elements.length === 0) {
+    return {
+      text: renderContentInteractionsAsPlainText({ interactions: [block] }, options).text,
+      blocks: [],
+      needsFreeTextReply: true,
+      outcome: "fallback",
+    };
+  }
+  const rows = Array.from(
+    { length: Math.ceil(elements.length / MAX_BUTTONS_PER_ACTIONS_BLOCK) },
+    (_, index) => elements.slice(index * MAX_BUTTONS_PER_ACTIONS_BLOCK, (index + 1) * MAX_BUTTONS_PER_ACTIONS_BLOCK),
+  );
+  if (rows.length > MAX_BLOCKS_PER_MESSAGE) {
+    return {
+      text: renderContentInteractionsAsPlainText({ interactions: [block] }, options).text,
+      blocks: [],
+      needsFreeTextReply: true,
+      outcome: "fallback",
+    };
+  }
+  return {
+    text: stripDashboardOnlyMarkers(
+      block.kind === "choice" ? block.prompt ?? "Choose an option." : "Choose an option.",
+    ),
+    blocks: rows.map((row) => ({ type: "actions", elements: row, text: undefined })),
+    needsFreeTextReply: false,
+    outcome: "native",
   };
 }
 

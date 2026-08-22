@@ -242,7 +242,7 @@ interface SlackAttachmentField {
 
 export interface SlackBlock {
   type: string;
-  blockId: string | undefined;
+  block_id?: string;
   elements: SlackBlockElement[] | undefined;
   text: SlackBlockText | undefined;
 }
@@ -250,7 +250,7 @@ export interface SlackBlock {
 interface SlackBlockElement {
   type: string;
   text: SlackBlockText | undefined;
-  actionId: string | undefined;
+  action_id?: string;
   url: string | undefined;
   value: string | undefined;
   style: string | undefined;

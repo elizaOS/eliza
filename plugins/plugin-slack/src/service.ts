@@ -39,6 +39,7 @@ import {
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorQueryContext,
+  type MessageConnectorPreparedInteractionParams,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   type MessageMetadata,
@@ -416,7 +417,10 @@ import {
   resolveDefaultSlackAccountId,
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
-import { buildSlackInteractionPayload } from "./interactions";
+import {
+  buildSlackInteractionPayload,
+  renderPreparedSlackInteraction,
+} from "./interactions";
 import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
@@ -656,6 +660,8 @@ export class SlackService extends Service implements ISlackService {
             target,
             accountId: normalizedAccountId ?? context.accountId,
           }),
+        sendPreparedInteraction: (handlerRuntime, params) =>
+          serviceInstance.handleSendPreparedInteraction(handlerRuntime, params),
         resolveTargets: (query, context) =>
           serviceInstance.resolveConnectorTargets(
             query,
@@ -2727,6 +2733,53 @@ export class SlackService extends Service implements ISlackService {
         accountId,
       );
     }
+  }
+
+  async handleSendPreparedInteraction(
+    runtime: IAgentRuntime,
+    params: MessageConnectorPreparedInteractionParams,
+  ): Promise<void> {
+    const { target, interaction } = params;
+    const accountId = await this.resolveAccountIdForTarget(runtime, target);
+    let channelId = target.channelId;
+    let threadTs = target.threadId;
+    if (target.roomId && (!channelId || !threadTs)) {
+      const room = await runtime.getRoom(target.roomId);
+      channelId = channelId ?? room?.channelId;
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      threadTs =
+        threadTs ??
+        (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
+    }
+    if (!channelId) {
+      throw new ElizaError("Slack prepared interaction requires a channel target.", {
+        code: "SLACK_INTERACTION_TARGET_UNAVAILABLE",
+      });
+    }
+    const rendered = renderPreparedSlackInteraction(interaction);
+    if (rendered.outcome !== "native") {
+      throw new ElizaError(
+        "Slack cannot render this prepared interaction natively; use the semantic text fallback.",
+        {
+          code: "SLACK_INTERACTION_NATIVE_UNAVAILABLE",
+          context: { limitations: interaction.delivery.limitations.join(",") },
+        },
+      );
+    }
+    await this.sendMessage(
+      channelId,
+      params.text?.trim() || rendered.text || "Choose an option.",
+      {
+        threadTs,
+        replyBroadcast: undefined,
+        unfurlLinks: undefined,
+        unfurlMedia: undefined,
+        mrkdwn: undefined,
+        attachments: undefined,
+        blocks: rendered.blocks,
+      },
+      accountId,
+    );
   }
 
   /**

@@ -7,12 +7,12 @@
 import {
   buildInteractionUrlResolver,
   type Content,
+  encodePreparedInteractionCallback,
   type IAgentRuntime,
-  type NeutralButton,
+  type PreparedMessageInteraction,
   parseInteractionBlocks,
   renderContentInteractionsAsPlainText,
   stripDashboardOnlyMarkers,
-  toNeutralLayout,
 } from "@elizaos/core";
 import type { WhatsAppInteractiveMessage } from "./types";
 
@@ -43,42 +43,55 @@ export function renderWhatsAppInteractions(
     return { text: fallback, outcome: "fallback", reason: "multiple-blocks" };
   }
 
-  const interaction = interactions[0];
-  if (interaction.kind !== "choice" && interaction.kind !== "followups") {
+  return { text: fallback, outcome: "fallback", reason: "unsupported-kind" };
+}
+
+/** Render only a host-prepared interaction as Cloud API reply controls. */
+export function renderPreparedWhatsAppInteraction(
+  prepared: PreparedMessageInteraction,
+): WhatsAppInteractionRender {
+  const interaction = prepared.block;
+  const fallback = renderContentInteractionsAsPlainText({ interactions: [interaction] }).text;
+  if (
+    prepared.delivery.mode !== "native" ||
+    (interaction.kind !== "choice" && interaction.kind !== "followups") ||
+    (interaction.kind === "followups" &&
+      interaction.options.some((option) => option.kind === "navigate"))
+  ) {
     return { text: fallback, outcome: "fallback", reason: "unsupported-kind" };
   }
+  const providerOptions =
+    interaction.kind === "choice"
+      ? interaction.options.map((option) => ({
+          label: option.label,
+          value: option.value,
+        }))
+      : interaction.options.map((option) => ({
+          label: option.label,
+          value: option.payload,
+        }));
+  const callbackButtons = providerOptions.map((option) => ({
+    label: option.label,
+    callbackData: encodePreparedInteractionCallback(
+      prepared.callbackData,
+      { value: option.value },
+      200,
+    ),
+  }));
   if (
-    interaction.kind === "followups" &&
-    interaction.options.some((option) => option.kind === "navigate")
-  ) {
-    return { text: fallback, outcome: "fallback", reason: "link-action" };
-  }
-
-  const layout = toNeutralLayout(interaction, {
-    maxButtonsPerRow: 3,
-    maxCallbackBytes: 200,
-  });
-  const buttons = layout.rows.flatMap((row) => row.buttons ?? []);
-  if (
-    layout.needsFallback ||
-    buttons.length === 0 ||
-    buttons.length > 10 ||
-    buttons.some((button) => !button.callbackData || button.url)
+    callbackButtons.length === 0 ||
+    callbackButtons.length > 10 ||
+    callbackButtons.some((button) => !button.callbackData)
   ) {
     return { text: fallback, outcome: "fallback", reason: "provider-limit" };
   }
-  const callbackButtons = buttons.filter(
-    (button): button is NeutralButton & { callbackData: string; url?: never } =>
-      Boolean(button.callbackData) && !button.url
-  );
 
   const bodyText =
-    stripDashboardOnlyMarkers(parsed.cleanedText).trim() ||
     (interaction.kind === "choice" ? interaction.prompt?.trim() : "") ||
     "Choose an option.";
   if (callbackButtons.length <= 3 && callbackButtons.every((button) => button.label.length <= 20)) {
     return {
-      text: parsed.cleanedText,
+      text: bodyText,
       outcome: "native",
       interactive: {
         type: "button",
@@ -86,7 +99,7 @@ export function renderWhatsAppInteractions(
         action: {
           buttons: callbackButtons.map((button) => ({
             type: "reply" as const,
-            reply: { id: button.callbackData, title: button.label },
+            reply: { id: button.callbackData as string, title: button.label },
           })),
         },
       },
@@ -96,7 +109,7 @@ export function renderWhatsAppInteractions(
     return { text: fallback, outcome: "fallback", reason: "provider-limit" };
   }
   return {
-    text: parsed.cleanedText,
+    text: bodyText,
     outcome: "native",
     interactive: {
       type: "list",
@@ -106,7 +119,7 @@ export function renderWhatsAppInteractions(
         sections: [
           {
             rows: callbackButtons.map((button) => ({
-              id: button.callbackData,
+              id: button.callbackData as string,
               title: button.label,
             })),
           },
