@@ -206,9 +206,13 @@ export class RemoteCommandEnvelopesRepository {
 
   async enqueue(input: {
     organizationId: string;
+    ownerId: string;
     envelope: EncryptedRemoteCommandEnvelope;
   }): Promise<EnqueueRemoteCommandResult> {
     validateEnvelopeKind(input.envelope, "command");
+    if (input.envelope.ownerId !== input.ownerId) {
+      return { kind: "not_found" };
+    }
     const scope: RemoteRelayScope = {
       ownerId: input.envelope.ownerId,
       grantId: input.envelope.grantId,
@@ -233,7 +237,7 @@ export class RemoteCommandEnvelopesRepository {
           and(
             eq(remoteHosts.id, scope.targetRuntimeId),
             eq(remoteHosts.organization_id, input.organizationId),
-            eq(remoteHosts.user_id, scope.ownerId),
+            eq(remoteHosts.user_id, input.ownerId),
             eq(remoteHosts.status, "active"),
           ),
         )
@@ -250,7 +254,7 @@ export class RemoteCommandEnvelopesRepository {
             eq(remoteSessions.grant_revision, scope.grantRevision),
             eq(remoteSessions.host_id, host.id),
             eq(remoteSessions.organization_id, input.organizationId),
-            eq(remoteSessions.user_id, scope.ownerId),
+            eq(remoteSessions.user_id, input.ownerId),
           ),
         )
         .for("update");
@@ -320,7 +324,7 @@ export class RemoteCommandEnvelopesRepository {
           grant_id: scope.grantId,
           grant_revision: scope.grantRevision,
           organization_id: input.organizationId,
-          user_id: scope.ownerId,
+          user_id: input.ownerId,
           host_id: host.id,
           controller_device_id: scope.controllerDeviceId,
           controller_key_id: scope.controllerKeyId,

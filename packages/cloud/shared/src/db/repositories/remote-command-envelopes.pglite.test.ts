@@ -31,6 +31,7 @@ import { RemoteSessionsRepository } from "./remote-sessions-store";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const ownerId = "20000000-0000-4000-8000-000000000001";
+const otherOwnerId = "20000000-0000-4000-8000-000000000002";
 const hostId = "40000000-0000-4000-8000-000000000001";
 const sessionId = "50000000-0000-4000-8000-000000000001";
 const grantId = "60000000-0000-4000-8000-000000000001";
@@ -180,6 +181,7 @@ async function enrollAndPair(activate = true): Promise<void> {
 async function enqueue(commandEnvelope = envelope("command")) {
   return commands.enqueue({
     organizationId,
+    ownerId,
     envelope: commandEnvelope,
   });
 }
@@ -266,6 +268,7 @@ describe("secure remote relay repositories", () => {
       (
         await commands.enqueue({
           organizationId,
+          ownerId,
           envelope: envelope("command", {
             commandId: "command-gap",
             sequence: 3,
@@ -278,10 +281,24 @@ describe("secure remote relay repositories", () => {
       (
         await commands.enqueue({
           organizationId,
+          ownerId,
           envelope: envelope("command", { commandId: "command-two", sequence: 2 }),
         })
       ).kind,
     ).toBe("replay");
+  });
+
+  it("rejects an envelope that is not bound to the authenticated owner", async () => {
+    await enrollAndPair();
+
+    expect(
+      await commands.enqueue({
+        organizationId,
+        ownerId: otherOwnerId,
+        envelope: envelope("command"),
+      }),
+    ).toEqual({ kind: "not_found" });
+    expect(await database.select().from(remoteCommandEnvelopes)).toHaveLength(0);
   });
 
   it("retries only an expired pre-start claim and fences its stale attempt", async () => {
@@ -350,6 +367,7 @@ describe("secure remote relay repositories", () => {
     await enqueue();
     await commands.enqueue({
       organizationId,
+      ownerId,
       envelope: envelope("command", {
         commandId: "command-two",
         sequence: 2,

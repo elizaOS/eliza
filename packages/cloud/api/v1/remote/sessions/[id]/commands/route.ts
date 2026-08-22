@@ -45,9 +45,13 @@ app.post("/", async (c) => {
         400,
       );
     }
+    if (envelope.ownerId !== user.id) {
+      return c.json({ success: false, error: "Remote session not found" }, 404);
+    }
 
     const result = await remoteCommandEnvelopesRepository.enqueue({
       organizationId: user.organization_id,
+      ownerId: user.id,
       envelope,
     });
     if (result.kind === "not_found") {

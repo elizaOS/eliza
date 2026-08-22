@@ -367,7 +367,7 @@ describe("secure remote relay routes", () => {
     );
   });
 
-  test("rejects malformed envelopes before persistence and hides wrong-owner sessions", async () => {
+  test("rejects malformed envelopes and authenticated-owner mismatches before persistence", async () => {
     const malformed = await request(
       `/api/v1/remote/sessions/${sessionId}/commands`,
       {
@@ -377,7 +377,6 @@ describe("secure remote relay routes", () => {
     expect(malformed.status).toBe(400);
     expect(enqueue).not.toHaveBeenCalled();
 
-    enqueue.mockResolvedValue({ kind: "not_found" });
     const foreign = await request(
       `/api/v1/remote/sessions/${sessionId}/commands`,
       {
@@ -385,10 +384,7 @@ describe("secure remote relay routes", () => {
       },
     );
     expect(foreign.status).toBe(404);
-    expect(enqueue).toHaveBeenCalledWith({
-      organizationId,
-      envelope: expect.objectContaining({ ownerId: "another-owner" }),
-    });
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   test("maps replay and sequence gaps to stable conflict codes", async () => {
