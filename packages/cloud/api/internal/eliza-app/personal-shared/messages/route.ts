@@ -42,6 +42,7 @@ const FAILURE_STAGE_HEADER = "X-Eliza-Failure-Stage";
 const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
 const GROUP_CLAIM_TTL_MS = 10 * 60_000;
 const GROUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH = 240;
 
 type DeliveryStage =
   | "authentication"
@@ -139,7 +140,11 @@ const sharedMessageSchema = z.union([
     project: projectSchema,
     connectorAccountId: connectorAccountIdSchema,
     chatId: z.string().trim().min(1).max(160),
-    sourceMessageId: z.string().trim().min(1).max(240),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
     leaseToken: z.string().uuid(),
     invocation: z.enum(["mention", "command", "reply", "ambient"]),
     authority: groupDeliveryAuthoritySchema,
@@ -150,7 +155,11 @@ const sharedMessageSchema = z.union([
     project: projectSchema,
     connectorAccountId: connectorAccountIdSchema,
     chatId: z.string().trim().min(1).max(160),
-    sourceMessageId: z.string().trim().min(1).max(240),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
     leaseToken: z.string().uuid(),
     authority: groupDeliveryAuthoritySchema,
   }),
@@ -160,7 +169,11 @@ const sharedMessageSchema = z.union([
     project: projectSchema,
     connectorAccountId: connectorAccountIdSchema,
     chatId: z.string().trim().min(1).max(160),
-    sourceMessageId: z.string().trim().min(1).max(160),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
     providerMessageIds: z
       .array(z.string().trim().min(1).max(160))
       .min(1)

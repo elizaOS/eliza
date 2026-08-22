@@ -1127,6 +1127,54 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
+  test("accepts the full shared source-message boundary for delivery receipts", async () => {
+    recordGroupDeliveryReceipts.mockImplementationOnce(async () => ({
+      recorded: true,
+      inserted: 1,
+    }));
+    const sourceMessageId = "s".repeat(240);
+    const response = await request({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      chatId: "chat_group_123",
+      sourceMessageId,
+      providerMessageIds: ["outgoing-boundary"],
+      leaseToken: "00000000-0000-4000-8000-000000000095",
+      authority: {
+        bindingId: canonicalGroupBinding.id,
+        ownerUserId: canonicalGroupBinding.owner_user_id,
+        personalAgentId: canonicalGroupBinding.personal_agent_id,
+        version: canonicalGroupBinding.authority_version,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(recordGroupDeliveryReceipts).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceMessageId }),
+    );
+
+    const rejected = await request({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      chatId: "chat_group_123",
+      sourceMessageId: "s".repeat(241),
+      providerMessageIds: ["outgoing-over-boundary"],
+      leaseToken: "00000000-0000-4000-8000-000000000094",
+      authority: {
+        bindingId: canonicalGroupBinding.id,
+        ownerUserId: canonicalGroupBinding.owner_user_id,
+        personalAgentId: canonicalGroupBinding.personal_agent_id,
+        version: canonicalGroupBinding.authority_version,
+      },
+    });
+    expect(rejected.status).toBe(400);
+    expect(recordGroupDeliveryReceipts).toHaveBeenCalledTimes(1);
+  });
+
   test("revalidates the exact binding generation before provider egress", async () => {
     const leaseToken = "00000000-0000-4000-8000-000000000099";
     authorizeGroupDelivery.mockImplementationOnce(async () => ({

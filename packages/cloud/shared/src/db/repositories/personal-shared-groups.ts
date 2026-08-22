@@ -1,6 +1,17 @@
 /** Atomic claim and binding authority for Personal Shared provider groups. */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, gt, inArray, isNotNull, isNull, lte, notExists, or, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import { dbWrite } from "../client";
 import {
@@ -119,7 +130,10 @@ export const personalSharedGroupsRepository = {
             eq(personalSharedGroupClaims.owner_user_id, input.ownerUserId),
             eq(personalSharedGroupClaims.platform, input.platform),
             eq(personalSharedGroupClaims.project, input.project),
-            eq(personalSharedGroupClaims.connector_account_id, input.connectorAccountId),
+            eq(
+              personalSharedGroupClaims.connector_account_id,
+              input.connectorAccountId,
+            ),
             isNull(personalSharedGroupClaims.consumed_at),
           ),
         );
@@ -147,7 +161,8 @@ export const personalSharedGroupsRepository = {
     verifiedAt?: Date;
   }): Promise<ConsumePersonalSharedGroupClaimResult> {
     return dbWrite.transaction(async (tx) => {
-      const now = input.verifiedAt ?? new Date();
+      const leaseNow = new Date();
+      const now = input.verifiedAt ?? leaseNow;
       const [claim] = await tx
         .update(personalSharedGroupClaims)
         .set({ consumed_at: now })
@@ -156,8 +171,14 @@ export const personalSharedGroupsRepository = {
             eq(personalSharedGroupClaims.code_hash, input.codeHash),
             eq(personalSharedGroupClaims.platform, input.platform),
             eq(personalSharedGroupClaims.project, input.project),
-            eq(personalSharedGroupClaims.connector_account_id, input.connectorAccountId),
-            eq(personalSharedGroupClaims.issued_to_platform_user_id, input.actorPlatformUserId),
+            eq(
+              personalSharedGroupClaims.connector_account_id,
+              input.connectorAccountId,
+            ),
+            eq(
+              personalSharedGroupClaims.issued_to_platform_user_id,
+              input.actorPlatformUserId,
+            ),
             isNull(personalSharedGroupClaims.consumed_at),
             gt(personalSharedGroupClaims.expires_at, now),
           ),
@@ -190,8 +211,14 @@ export const personalSharedGroupsRepository = {
           and(
             eq(personalSharedGroupBindings.platform, input.platform),
             eq(personalSharedGroupBindings.project, input.project),
-            eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-            eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+            eq(
+              personalSharedGroupBindings.connector_account_id,
+              input.connectorAccountId,
+            ),
+            eq(
+              personalSharedGroupBindings.provider_chat_id,
+              input.providerChatId,
+            ),
           ),
         )
         .limit(1);
@@ -234,6 +261,10 @@ export const personalSharedGroupsRepository = {
             state: "active",
             response_policy: "mention_only",
             authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+            delivery_lease_source_id: null,
+            delivery_lease_token: null,
+            delivery_lease_expires_at: null,
+            delivery_lease_committed_at: null,
             created_by_platform_user_id: input.actorPlatformUserId,
             last_verified_at: now,
             updated_at: now,
@@ -243,13 +274,50 @@ export const personalSharedGroupsRepository = {
           // and a deliberately revoked group may be claimed anew, but another
           // participant cannot replace a live owner's billing and policy
           // boundary merely by presenting their own valid claim.
-          setWhere: or(
-            eq(personalSharedGroupBindings.owner_user_id, claim.owner_user_id),
-            eq(personalSharedGroupBindings.state, "revoked"),
+          setWhere: and(
+            or(
+              eq(
+                personalSharedGroupBindings.owner_user_id,
+                claim.owner_user_id,
+              ),
+              eq(personalSharedGroupBindings.state, "revoked"),
+            ),
+            deliveryLeaseAvailable(leaseNow),
           ),
         })
         .returning();
-      if (!binding) return { status: "already_bound" } as const;
+      if (!binding) {
+        const [current] = await tx
+          .select({
+            ownerUserId: personalSharedGroupBindings.owner_user_id,
+            state: personalSharedGroupBindings.state,
+          })
+          .from(personalSharedGroupBindings)
+          .where(
+            and(
+              eq(personalSharedGroupBindings.platform, input.platform),
+              eq(personalSharedGroupBindings.project, input.project),
+              eq(
+                personalSharedGroupBindings.connector_account_id,
+                input.connectorAccountId,
+              ),
+              eq(
+                personalSharedGroupBindings.provider_chat_id,
+                input.providerChatId,
+              ),
+            ),
+          )
+          .limit(1);
+        const mayRebind =
+          current?.ownerUserId === claim.owner_user_id ||
+          current?.state === "revoked";
+        if (mayRebind) {
+          // Throwing rolls back claim consumption so the exact owner can retry
+          // after an uncommitted lease expires or a committed send is reconciled.
+          throw new PersonalSharedGroupDeliveryPendingError();
+        }
+        return { status: "already_bound" } as const;
+      }
       return { status: "bound", binding } as const;
     });
   },
@@ -267,8 +335,14 @@ export const personalSharedGroupsRepository = {
         and(
           eq(personalSharedGroupBindings.platform, input.platform),
           eq(personalSharedGroupBindings.project, input.project),
-          eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-          eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+          eq(
+            personalSharedGroupBindings.connector_account_id,
+            input.connectorAccountId,
+          ),
+          eq(
+            personalSharedGroupBindings.provider_chat_id,
+            input.providerChatId,
+          ),
         ),
       )
       .limit(1);
@@ -317,7 +391,10 @@ export const personalSharedGroupsRepository = {
     );
   },
 
-  async revokeBinding(input: { bindingId: string; ownerUserId: string }): Promise<boolean> {
+  async revokeBinding(input: {
+    bindingId: string;
+    ownerUserId: string;
+  }): Promise<boolean> {
     return Boolean(
       await waitForAuthorityMutation(
         async (now) => {
@@ -331,7 +408,10 @@ export const personalSharedGroupsRepository = {
             .where(
               and(
                 eq(personalSharedGroupBindings.id, input.bindingId),
-                eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
+                eq(
+                  personalSharedGroupBindings.owner_user_id,
+                  input.ownerUserId,
+                ),
                 deliveryLeaseAvailable(now),
               ),
             )
@@ -345,7 +425,10 @@ export const personalSharedGroupsRepository = {
             .where(
               and(
                 eq(personalSharedGroupBindings.id, input.bindingId),
-                eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
+                eq(
+                  personalSharedGroupBindings.owner_user_id,
+                  input.ownerUserId,
+                ),
                 deliveryLeaseBlocksAuthority(now),
               ),
             )
@@ -380,8 +463,14 @@ export const personalSharedGroupsRepository = {
             and(
               eq(personalSharedGroupBindings.platform, input.platform),
               eq(personalSharedGroupBindings.project, input.project),
-              eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-              eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+              eq(
+                personalSharedGroupBindings.connector_account_id,
+                input.connectorAccountId,
+              ),
+              eq(
+                personalSharedGroupBindings.provider_chat_id,
+                input.providerChatId,
+              ),
               eq(
                 personalSharedGroupBindings.state,
                 input.membershipChange === "joined" ? "suspended" : "active",
@@ -400,8 +489,14 @@ export const personalSharedGroupsRepository = {
             and(
               eq(personalSharedGroupBindings.platform, input.platform),
               eq(personalSharedGroupBindings.project, input.project),
-              eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-              eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+              eq(
+                personalSharedGroupBindings.connector_account_id,
+                input.connectorAccountId,
+              ),
+              eq(
+                personalSharedGroupBindings.provider_chat_id,
+                input.providerChatId,
+              ),
               deliveryLeaseBlocksAuthority(now),
             ),
           )
@@ -432,13 +527,28 @@ export const personalSharedGroupsRepository = {
       .where(
         and(
           eq(personalSharedGroupBindings.id, input.authority.bindingId),
-          eq(personalSharedGroupBindings.owner_user_id, input.authority.ownerUserId),
-          eq(personalSharedGroupBindings.personal_agent_id, input.authority.personalAgentId),
-          eq(personalSharedGroupBindings.authority_version, input.authority.version),
+          eq(
+            personalSharedGroupBindings.owner_user_id,
+            input.authority.ownerUserId,
+          ),
+          eq(
+            personalSharedGroupBindings.personal_agent_id,
+            input.authority.personalAgentId,
+          ),
+          eq(
+            personalSharedGroupBindings.authority_version,
+            input.authority.version,
+          ),
           eq(personalSharedGroupBindings.platform, input.platform),
           eq(personalSharedGroupBindings.project, input.project),
-          eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-          eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+          eq(
+            personalSharedGroupBindings.connector_account_id,
+            input.connectorAccountId,
+          ),
+          eq(
+            personalSharedGroupBindings.provider_chat_id,
+            input.providerChatId,
+          ),
           eq(personalSharedGroupBindings.state, "active"),
           notExists(
             dbWrite
@@ -450,7 +560,10 @@ export const personalSharedGroupsRepository = {
                     personalSharedGroupDeliveryReceipts.binding_id,
                     personalSharedGroupBindings.id,
                   ),
-                  eq(personalSharedGroupDeliveryReceipts.source_message_id, input.sourceMessageId),
+                  eq(
+                    personalSharedGroupDeliveryReceipts.source_message_id,
+                    input.sourceMessageId,
+                  ),
                 ),
               ),
           ),
@@ -460,8 +573,14 @@ export const personalSharedGroupsRepository = {
           or(
             deliveryLeaseAvailable(now),
             and(
-              eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
-              eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+              eq(
+                personalSharedGroupBindings.delivery_lease_source_id,
+                input.sourceMessageId,
+              ),
+              eq(
+                personalSharedGroupBindings.delivery_lease_token,
+                input.leaseToken,
+              ),
             ),
           ),
         ),
@@ -503,16 +622,37 @@ export const personalSharedGroupsRepository = {
       .where(
         and(
           eq(personalSharedGroupBindings.id, input.authority.bindingId),
-          eq(personalSharedGroupBindings.owner_user_id, input.authority.ownerUserId),
-          eq(personalSharedGroupBindings.personal_agent_id, input.authority.personalAgentId),
-          eq(personalSharedGroupBindings.authority_version, input.authority.version),
+          eq(
+            personalSharedGroupBindings.owner_user_id,
+            input.authority.ownerUserId,
+          ),
+          eq(
+            personalSharedGroupBindings.personal_agent_id,
+            input.authority.personalAgentId,
+          ),
+          eq(
+            personalSharedGroupBindings.authority_version,
+            input.authority.version,
+          ),
           eq(personalSharedGroupBindings.platform, input.platform),
           eq(personalSharedGroupBindings.project, input.project),
-          eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-          eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+          eq(
+            personalSharedGroupBindings.connector_account_id,
+            input.connectorAccountId,
+          ),
+          eq(
+            personalSharedGroupBindings.provider_chat_id,
+            input.providerChatId,
+          ),
           eq(personalSharedGroupBindings.state, "active"),
-          eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
-          eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+          eq(
+            personalSharedGroupBindings.delivery_lease_source_id,
+            input.sourceMessageId,
+          ),
+          eq(
+            personalSharedGroupBindings.delivery_lease_token,
+            input.leaseToken,
+          ),
           or(
             isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
             gt(personalSharedGroupBindings.delivery_lease_expires_at, now),
@@ -538,13 +678,18 @@ export const personalSharedGroupsRepository = {
       if (expected.size > 0) {
         const prior = await tx
           .select({
-            providerMessageId: personalSharedGroupDeliveryReceipts.provider_message_id,
-            sourceMessageId: personalSharedGroupDeliveryReceipts.source_message_id,
+            providerMessageId:
+              personalSharedGroupDeliveryReceipts.provider_message_id,
+            sourceMessageId:
+              personalSharedGroupDeliveryReceipts.source_message_id,
           })
           .from(personalSharedGroupDeliveryReceipts)
           .where(
             and(
-              eq(personalSharedGroupDeliveryReceipts.binding_id, input.authority.bindingId),
+              eq(
+                personalSharedGroupDeliveryReceipts.binding_id,
+                input.authority.bindingId,
+              ),
               inArray(
                 personalSharedGroupDeliveryReceipts.provider_message_id,
                 input.providerMessageIds,
@@ -553,7 +698,9 @@ export const personalSharedGroupsRepository = {
           );
         const durablePrior = new Set(
           prior
-            .filter((receipt) => receipt.sourceMessageId === input.sourceMessageId)
+            .filter(
+              (receipt) => receipt.sourceMessageId === input.sourceMessageId,
+            )
             .map((receipt) => receipt.providerMessageId),
         );
         if (
@@ -569,16 +716,37 @@ export const personalSharedGroupsRepository = {
         .where(
           and(
             eq(personalSharedGroupBindings.id, input.authority.bindingId),
-            eq(personalSharedGroupBindings.owner_user_id, input.authority.ownerUserId),
-            eq(personalSharedGroupBindings.personal_agent_id, input.authority.personalAgentId),
-            eq(personalSharedGroupBindings.authority_version, input.authority.version),
+            eq(
+              personalSharedGroupBindings.owner_user_id,
+              input.authority.ownerUserId,
+            ),
+            eq(
+              personalSharedGroupBindings.personal_agent_id,
+              input.authority.personalAgentId,
+            ),
+            eq(
+              personalSharedGroupBindings.authority_version,
+              input.authority.version,
+            ),
             eq(personalSharedGroupBindings.platform, input.platform),
             eq(personalSharedGroupBindings.project, input.project),
-            eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-            eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+            eq(
+              personalSharedGroupBindings.connector_account_id,
+              input.connectorAccountId,
+            ),
+            eq(
+              personalSharedGroupBindings.provider_chat_id,
+              input.providerChatId,
+            ),
             eq(personalSharedGroupBindings.state, "active"),
-            eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
-            eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+            eq(
+              personalSharedGroupBindings.delivery_lease_source_id,
+              input.sourceMessageId,
+            ),
+            eq(
+              personalSharedGroupBindings.delivery_lease_token,
+              input.leaseToken,
+            ),
             isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
           ),
         )
@@ -603,8 +771,10 @@ export const personalSharedGroupsRepository = {
         .returning({ id: personalSharedGroupDeliveryReceipts.id });
       const recorded = await tx
         .select({
-          providerMessageId: personalSharedGroupDeliveryReceipts.provider_message_id,
-          sourceMessageId: personalSharedGroupDeliveryReceipts.source_message_id,
+          providerMessageId:
+            personalSharedGroupDeliveryReceipts.provider_message_id,
+          sourceMessageId:
+            personalSharedGroupDeliveryReceipts.source_message_id,
         })
         .from(personalSharedGroupDeliveryReceipts)
         .where(
@@ -618,11 +788,15 @@ export const personalSharedGroupsRepository = {
         );
       const durable = new Set(
         recorded
-          .filter((receipt) => receipt.sourceMessageId === input.sourceMessageId)
+          .filter(
+            (receipt) => receipt.sourceMessageId === input.sourceMessageId,
+          )
           .map((receipt) => receipt.providerMessageId),
       );
       const result = {
-        recorded: durable.size === expected.size && [...expected].every((id) => durable.has(id)),
+        recorded:
+          durable.size === expected.size &&
+          [...expected].every((id) => durable.has(id)),
         inserted: inserted.length,
       };
       if (result.recorded) {
@@ -637,8 +811,14 @@ export const personalSharedGroupsRepository = {
           .where(
             and(
               eq(personalSharedGroupBindings.id, binding.id),
-              eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
-              eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+              eq(
+                personalSharedGroupBindings.delivery_lease_source_id,
+                input.sourceMessageId,
+              ),
+              eq(
+                personalSharedGroupBindings.delivery_lease_token,
+                input.leaseToken,
+              ),
             ),
           );
       }
@@ -656,7 +836,10 @@ export const personalSharedGroupsRepository = {
       .where(
         and(
           eq(personalSharedGroupDeliveryReceipts.binding_id, input.bindingId),
-          eq(personalSharedGroupDeliveryReceipts.provider_message_id, input.providerMessageId),
+          eq(
+            personalSharedGroupDeliveryReceipts.provider_message_id,
+            input.providerMessageId,
+          ),
         ),
       )
       .limit(1);
