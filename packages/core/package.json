@@ -132,8 +132,8 @@
 				"import": "./src/errors.ts",
 				"default": "./src/errors.ts"
 			},
-			"import": "./dist/errors.js",
-			"default": "./dist/errors.js"
+			"import": "./dist/node/errors.js",
+			"default": "./dist/node/errors.js"
 		},
 		"./security/kms": {
 			"types": "./dist/security/kms/index.d.ts",
