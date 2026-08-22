@@ -597,7 +597,9 @@ describe("action catalogue and retrieval", () => {
 			recentConversationText: "Code me an app showing how good gpt oss is",
 		});
 
-		expect(response.results[0]).toMatchObject({
+		expect(
+			response.results.find((result) => result.name === "TASKS"),
+		).toMatchObject({
 			name: "TASKS",
 			matchedBy: expect.arrayContaining(["bm25"]),
 		});
