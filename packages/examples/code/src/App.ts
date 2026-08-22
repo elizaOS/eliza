@@ -1224,6 +1224,7 @@ During a turn: Enter queues the message, Esc/Ctrl+C aborts (queued messages are 
         room,
         text,
         identity: state.identity,
+        codingMode: true,
         abortSignal: turnAbortController.signal,
         onDelta: (delta) => {
           if (turnAbortController.signal.aborted) return;

@@ -208,6 +208,30 @@ describe("MessageManager long message splitting", () => {
     ]);
     expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toBe(text);
   });
+
+  it("cuts before the last newline in the window instead of mid-paragraph", async () => {
+    const { manager, sendMessage } = createManager();
+    const first = "a".repeat(3000);
+    const second = "b".repeat(3000);
+    const text = `${first}\n${second}`;
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    expect(sendMessage.mock.calls.map((call) => call[1])).toEqual([
+      first,
+      `\n${second}`,
+    ]);
+    expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toBe(text);
+  });
 });
 
 describe("MessageManager malformed payload handling", () => {
