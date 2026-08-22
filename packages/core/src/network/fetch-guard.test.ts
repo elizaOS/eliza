@@ -13,6 +13,21 @@ import { SsrfBlockedError } from "./ssrf.ts";
  * internal targets and redirect-to-internal, while letting public hosts through.
  */
 describe("fetchWithSsrfGuard without a lookupFn (literal-host checks)", () => {
+	it("does not dispatch when the caller signal is already aborted", async () => {
+		const fetchImpl = vi.fn(async () => new Response("unexpected"));
+		const controller = new AbortController();
+		controller.abort();
+
+		await expect(
+			fetchWithSsrfGuard({
+				url: "https://example.com/page",
+				fetchImpl,
+				signal: controller.signal,
+			}),
+		).rejects.toMatchObject({ name: "AbortError" });
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
 	it("allows a public hostname (no DNS pin required)", async () => {
 		const fetchImpl = vi.fn(async () => new Response("hi", { status: 200 }));
 		const { response, release } = await fetchWithSsrfGuard({
@@ -71,6 +86,44 @@ describe("fetchWithSsrfGuard without a lookupFn (literal-host checks)", () => {
 		// The internal hop is rejected before any fetch; only the public hop ran.
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 	});
+
+	it.each(["pending", "rejecting"] as const)(
+		"returns the primary redirect error when body cancellation is %s",
+		async (cancellationBehavior) => {
+			let cancellationStarted = false;
+			const fetchImpl = vi.fn(
+				async () =>
+					new Response(
+						new ReadableStream({
+							cancel() {
+								cancellationStarted = true;
+								return cancellationBehavior === "pending"
+									? new Promise<void>(() => {})
+									: Promise.reject(new Error("hostile cancellation"));
+							},
+						}),
+						{
+							status: 302,
+							headers: { location: "https://example.com/next" },
+						},
+					),
+			);
+
+			await expect(
+				Promise.race([
+					fetchWithSsrfGuard({
+						url: "https://example.com/start",
+						fetchImpl,
+						maxRedirects: 0,
+					}),
+					new Promise((_, reject) =>
+						setTimeout(() => reject(new Error("guard remained blocked")), 100),
+					),
+				]),
+			).rejects.toThrow("Too many redirects");
+			expect(cancellationStarted).toBe(true);
+		},
+	);
 
 	it("honors allowPrivateNetwork to permit a private target", async () => {
 		const fetchImpl = vi.fn(async () => new Response("ok", { status: 200 }));

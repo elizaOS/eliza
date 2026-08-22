@@ -28,6 +28,18 @@ function abortableHungFetch(): typeof fetch {
 }
 
 describe("sandboxBridgeFetch", () => {
+  test("does not dispatch when the caller signal is already aborted", async () => {
+    const fetchMock = mock(async () => new Response("unexpected"));
+    globalThis.fetch = fetchMock as typeof fetch;
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      sandboxBridgeFetch(BRIDGE_URL, { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: "LOCAL_SANDBOX_BRIDGE_FETCH_FAILED" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("times out even when the caller signal has not aborted", async () => {
     globalThis.fetch = abortableHungFetch();
     const controller = new AbortController();
@@ -88,6 +100,37 @@ describe("sandboxBridgeFetch", () => {
     expect(cancelled).toBe(true);
   });
 
+  test.each(["pending", "rejecting"] as const)(
+    "returns the HTTP error when response cancellation is %s",
+    async (cancellationBehavior) => {
+      let cancellationStarted = false;
+      globalThis.fetch = mock(
+        async () =>
+          new Response(
+            new ReadableStream({
+              cancel() {
+                cancellationStarted = true;
+                return cancellationBehavior === "pending"
+                  ? new Promise<void>(() => {})
+                  : Promise.reject(new Error("hostile cancellation"));
+              },
+            }),
+            { status: 503 },
+          ),
+      ) as typeof fetch;
+
+      await expect(
+        Promise.race([
+          sandboxBridgeFetch(BRIDGE_URL),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("bridge remained blocked")), 100),
+          ),
+        ]),
+      ).rejects.toMatchObject({ code: "LOCAL_SANDBOX_BRIDGE_HTTP_ERROR" });
+      expect(cancellationStarted).toBe(true);
+    },
+  );
+
   test("rejects targets outside the provider-owned loopback range before fetch", async () => {
     const fetchMock = mock(async () => new Response("ok"));
     globalThis.fetch = fetchMock as typeof fetch;
@@ -130,4 +173,38 @@ describe("sandboxBridgeFetch", () => {
     });
     expect(cancelled).toBe(true);
   });
+
+  test.each(["pending", "rejecting"] as const)(
+    "returns the size error when overflow cancellation is %s",
+    async (cancellationBehavior) => {
+      let cancellationStarted = false;
+      globalThis.fetch = mock(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new Uint8Array(16 * 1024 * 1024 + 1));
+              },
+              cancel() {
+                cancellationStarted = true;
+                return cancellationBehavior === "pending"
+                  ? new Promise<void>(() => {})
+                  : Promise.reject(new Error("hostile cancellation"));
+              },
+            }),
+          ),
+      ) as typeof fetch;
+
+      const response = await sandboxBridgeFetch(BRIDGE_URL);
+      await expect(
+        Promise.race([
+          response.arrayBuffer(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("bridge body remained blocked")), 100),
+          ),
+        ]),
+      ).rejects.toMatchObject({ code: "LOCAL_SANDBOX_BRIDGE_RESPONSE_TOO_LARGE" });
+      expect(cancellationStarted).toBe(true);
+    },
+  );
 });
