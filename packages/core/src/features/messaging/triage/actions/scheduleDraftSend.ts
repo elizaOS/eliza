@@ -18,6 +18,7 @@ import type {
 	Memory,
 	State,
 } from "../../../../types/index.ts";
+import { formatSendAtIso } from "../schedule-time.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {
 	draftIdParameter,
@@ -25,28 +26,7 @@ import {
 	validateMessageAction,
 } from "./_shared.ts";
 
-export function formatSendAtIso(sendAtMs: number): string {
-	if (!Number.isFinite(sendAtMs)) {
-		throw new ElizaError(
-			`Invalid sendAtMs: ${String(sendAtMs)} is not finite`,
-			{
-				code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
-				context: { sendAtMs },
-			},
-		);
-	}
-	const date = new Date(sendAtMs);
-	if (Number.isNaN(date.getTime())) {
-		throw new ElizaError(
-			`Invalid sendAtMs: ${String(sendAtMs)} is out of Date range`,
-			{
-				code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
-				context: { sendAtMs },
-			},
-		);
-	}
-	return date.toISOString();
-}
+export { formatSendAtIso } from "../schedule-time.ts";
 
 export const scheduleDraftSendAction: Action = {
 	name: "MESSAGE",

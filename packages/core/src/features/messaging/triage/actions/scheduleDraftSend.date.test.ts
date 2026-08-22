@@ -77,4 +77,29 @@ describe("scheduleDraftSend date safety", () => {
 		expect(mockStore.getDraft).not.toHaveBeenCalled();
 		expect(callback).not.toHaveBeenCalled();
 	});
+
+	test.each([
+		Number.NaN,
+		Number.POSITIVE_INFINITY,
+		Number.NEGATIVE_INFINITY,
+		8_640_000_000_000_001,
+		-8_640_000_000_000_001,
+	])(
+		"service rejects invalid time %s before its store or scheduler",
+		async (sendAtMs) => {
+			const { TriageService } = await import("../triage-service.ts");
+			const service = new TriageService();
+			const getDraft = vi.spyOn(service.getStore(), "getDraft");
+			await expect(
+				service.scheduleDraftSend(
+					{ agentId: "agent-1" } as never,
+					"draft-1",
+					sendAtMs,
+				),
+			).rejects.toMatchObject({
+				code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+			});
+			expect(getDraft).not.toHaveBeenCalled();
+		},
+	);
 });

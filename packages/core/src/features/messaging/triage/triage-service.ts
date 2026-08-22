@@ -19,6 +19,7 @@ import {
 	getDefaultMessageRefStore,
 	type MessageRefStore,
 } from "./message-ref-store.ts";
+import { formatSendAtIso } from "./schedule-time.ts";
 import { rankScored, scoreMessages } from "./triage-engine.ts";
 import type {
 	DraftRecord,
@@ -581,6 +582,7 @@ export class TriageService {
 		draftId: string,
 		sendAtMs: number,
 	): Promise<DraftRecord> {
+		formatSendAtIso(sendAtMs);
 		const record = this.store.getDraft(draftId);
 		if (!record) {
 			throw new ElizaError(`No draft found for id ${draftId}`, {
