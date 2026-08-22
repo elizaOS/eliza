@@ -40,8 +40,6 @@ interface SignalBarsProps {
   rssi: number;
 }
 
-const VISIBLE_NETWORK_LIMIT = 12;
-
 /**
  * Map dBm to a 0–4 bar count. Standard Android thresholds:
  *   >= -50  → 4 bars (excellent)
@@ -218,7 +216,7 @@ export function WifiAppView(props: OverlayAppContext) {
     setScanning(true);
     setError(null);
     try {
-      const result = await WiFi.listAvailableNetworks({ limit: 50 });
+      const result = await WiFi.listAvailableNetworks();
       setNetworks(result.networks);
       await refreshState();
     } catch (err) {
@@ -338,12 +336,7 @@ export function WifiAppView(props: OverlayAppContext) {
               <WifiIcon className="h-4 w-4 text-muted" />
               Networks
             </div>
-            <span className="text-xs text-muted">
-              {sortedNetworks.length}
-              {sortedNetworks.length > VISIBLE_NETWORK_LIMIT
-                ? ` / ${VISIBLE_NETWORK_LIMIT} shown`
-                : ""}
-            </span>
+            <span className="text-xs text-muted">{sortedNetworks.length}</span>
           </div>
           {sortedNetworks.length === 0 && !scanning ? (
             <div className="px-4 py-8 text-center">
@@ -375,7 +368,7 @@ export function WifiAppView(props: OverlayAppContext) {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {sortedNetworks.slice(0, VISIBLE_NETWORK_LIMIT).map((network) => (
+              {sortedNetworks.map((network) => (
                 <NetworkRow
                   key={`${network.bssid}-${network.ssid}`}
                   network={network}

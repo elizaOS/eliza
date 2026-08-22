@@ -103,7 +103,7 @@ describe("factsProvider keyword retrieval", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("retrieves matching facts with BM25 keywords, degrading past an unavailable embedding model", async () => {
+	it("retrieves every readable fact and uses lexical relevance only for ordering", async () => {
 		const runtime = makeRuntime({
 			recentMessages: [memory("msg-1", "Berlin keeps coming up today")],
 			facts: [
@@ -130,20 +130,17 @@ describe("factsProvider keyword retrieval", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
-		// The semantic lane attempted a LOCAL embedding, failed, and lexical
-		// retrieval still delivered — embedding failure must never break recall.
-		expect(runtime.useModel).toHaveBeenCalled();
+		expect(runtime.useModel).not.toHaveBeenCalled();
 		expect(runtime.getMemories).toHaveBeenCalledWith(
-			expect.objectContaining({ tableName: "facts", count: 120 }),
+			expect.objectContaining({ tableName: "facts" }),
 		);
 		const sections = result.text.split("\n\n");
 		const knowledgeSection = sections.find((section) =>
 			section.startsWith("Things Eliza knows about"),
 		);
 		expect(knowledgeSection).toContain("the user lives in Berlin");
-		// The stored preference is NOT BM25-relevant to this turn, so it stays
-		// out of the ranked knowledge section — it surfaces only through the
-		// bounded standing-preferences lane, where the model judges relevance.
+		// Preferences retain their dedicated attribution section while remaining
+		// complete regardless of lexical overlap.
 		expect(knowledgeSection).not.toContain("Tokyo hotels");
 		const preferenceSection = sections.find((section) =>
 			section.startsWith("Standing preferences"),
@@ -195,7 +192,7 @@ describe("factsProvider keyword retrieval", () => {
 		expect(result.text).toContain("the user prefers aisle seats");
 	});
 
-	it("always surfaces the sender's top preference facts in a bounded lane, even with zero lexical overlap", async () => {
+	it("surfaces every sender preference even with zero lexical overlap", async () => {
 		const launchFacts = Array.from({ length: 6 }, (_, index) =>
 			memory(`fact-launch-${index}`, `launch planning detail ${index}`, {
 				kind: "durable",
@@ -260,14 +257,12 @@ describe("factsProvider keyword retrieval", () => {
 
 		const durableFacts = result.data.durableFacts as Memory[];
 		const durableIds = durableFacts.map((fact) => fact.id);
-		// Lane = top-3 sender preferences by prior, merged ahead of the ranked
-		// pool: 6 ranked launch facts + 3 lane rows.
+		// Relevance affects ordering, never membership.
 		expect(durableIds).toContain("fact-style");
 		expect(durableIds).toContain("fact-domain");
 		expect(durableIds).toContain("fact-timing");
-		expect(durableIds).not.toContain("fact-overflow");
-		expect(durableIds).not.toContain("fact-other");
-		expect(durableFacts).toHaveLength(9);
+		expect(durableIds).toContain("fact-overflow");
+		expect(durableIds).toContain("fact-other");
 
 		const sections = result.text.split("\n\n");
 		const preferenceSection = sections.find((section) =>
@@ -828,9 +823,7 @@ describe("factsProvider semantic union (Grove/Zcash replay)", () => {
 		{ source: "discord" },
 	);
 
-	it("BEFORE-shape: lexical-only retrieval drops the Zcash fact when other facts keyword-match", async () => {
-		// No semanticFacts -> embedding model throws -> pure lexical path,
-		// which is exactly the pre-fix behavior for this pool.
+	it("preserves lexically disjoint facts without requiring an embedding lane", async () => {
 		const runtime = makeRuntime({ facts: [conventFact, zcashFact] });
 
 		const result = await factsProvider.get(runtime, groveQuery, {
@@ -840,10 +833,10 @@ describe("factsProvider semantic union (Grove/Zcash replay)", () => {
 		});
 
 		expect(result.text).toContain("Grove originated at the Convent");
-		expect(result.text).not.toContain("Zcash");
+		expect(result.text).toContain("Zcash");
 	});
 
-	it("AFTER: the semantic lane unions the lexically-disjoint Zcash fact into the output", async () => {
+	it("does not need semantic top-k retrieval to preserve stored facts", async () => {
 		const semanticZcash: Memory = { ...zcashFact, similarity: 0.62 };
 		const runtime = makeRuntime({
 			facts: [conventFact, zcashFact],
@@ -856,13 +849,11 @@ describe("factsProvider semantic union (Grove/Zcash replay)", () => {
 			text: "",
 		});
 
-		// Lexical winners keep their place AND the semantic hit surfaces.
+		// Both stored facts surface directly; no second lossy retrieval lane runs.
 		expect(result.text).toContain("Grove originated at the Convent");
 		expect(result.text).toContain("Zcash");
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
-		expect(runtime.searchMemories).toHaveBeenCalledWith(
-			expect.objectContaining({ tableName: "facts", count: 8 }),
-		);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.searchMemories).not.toHaveBeenCalled();
 	});
 
 	it("drops semantic hits below the similarity floor", async () => {

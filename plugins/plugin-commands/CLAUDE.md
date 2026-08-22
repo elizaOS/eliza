@@ -92,7 +92,7 @@ Defined in `src/registry.ts` as `DEFAULT_COMMANDS`. Each agent runtime receives 
 
 **Status** (`category: "status"`): `help` (`/help /h /?`), `commands` (`/commands /cmds`), `status` (`/status /s`), `context` (`/context /ctx`), `whoami` (`/whoami /who`)
 
-**Session** (`category: "session"`): `stop` (`/stop /abort /cancel`), `restart` (`/restart`, auth), `reset` (`/reset`, auth), `new` (`/new`), `compact` (`/compact`)
+**Session** (`category: "session"`): `stop` (`/stop /abort /cancel`), `restart` (`/restart`, auth), `reset` (`/reset`, auth), `new` (`/new`)
 
 **Options** (`category: "options"`): `think` (`/think /thinking /t`), `verbose` (`/verbose /v`), `reasoning` (`/reasoning /reason`), `elevated` (`/elevated /elev`, auth), `model` (`/model /m`), `models` (`/models`), `usage` (`/usage`), `queue` (`/queue /q`)
 
@@ -127,7 +127,7 @@ registerCommand({
 ## Conventions / gotchas
 
 - **Registry is per-agent.** `initForRuntime(agentId)` must be called in `plugin.init()` before any registry access; otherwise all agents share the fallback store. The plugin's own `init()` already does this.
-- **Built-in deterministic actions live here.** The plugin registers `*_COMMAND` actions for deterministic built-in keys (`commandActions`, built from `DETERMINISTIC_COMMAND_KEYS` via `createCommandActions()` in `actions/`): status/help-style commands, option-setting commands owned by the command-settings store, and the reset/new/compact session commands. Broader management commands whose side effects live outside this package (`stop`, `restart`, `allowlist`, `approve`, etc.) still flow through the normal pipeline. Plugin-specific or skill commands still register their own Action objects elsewhere.
+- **Built-in deterministic actions live here.** The plugin registers `*_COMMAND` actions for deterministic built-in keys (`commandActions`, built from `DETERMINISTIC_COMMAND_KEYS` via `createCommandActions()` in `actions/`): status/help-style commands, option-setting commands owned by the command-settings store, and the reset/new session commands. Broader management commands whose side effects live outside this package (`stop`, `restart`, `allowlist`, `approve`, etc.) still flow through the normal pipeline. Plugin-specific or skill commands still register their own Action objects elsewhere.
 - **Similes must be slash-only.** Never add natural-language similes to command actions — the LLM will misroute conversational messages.
 - **`bash` command is elevated + disabled by default.** `requiresElevated: true` in the definition; `enabled` is set to `false` during `init()` because `COMMANDS_BASH_ENABLED` defaults to `"false"`. Set `COMMANDS_BASH_ENABLED=true` to enable it.
 - **Provider context-gates itself.** For non-command messages the provider returns an empty string to keep the prompt clean.

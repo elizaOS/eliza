@@ -41,7 +41,6 @@ import {
   TRACE_ENV,
   type TrajectoryUsageRollup,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -60,6 +59,7 @@ import {
   type SerializableSpawnOpts,
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
+import { deriveChildTerminalResult } from "./child-terminal-result.js";
 import {
   extractWriteLedger,
   verifyClaimedFiles,
@@ -155,7 +155,6 @@ import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
-  MAX_ATTEMPT_REFLECTIONS,
   MAX_SESSION_RETRY_ATTEMPTS,
   nextTaskStatus,
   type OrchestratorAccountAssignment,
@@ -309,9 +308,8 @@ function configuredDefaultAgentType(runtime: {
   // Fall back to process.env. runtime.getSetting reads character
   // settings/secrets, not raw env, so a deployment that configures the default
   // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
-  // container) would otherwise be ignored and the spawn would fall through to
-  // the "opencode" fallback, which may not be installed. This mirrors the env
-  // resolution the spawn-workdir path already does.
+  // container) would otherwise be ignored. This mirrors the env resolution the
+  // spawn-workdir path already does.
   for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
     const raw = process.env[key];
     if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
@@ -323,10 +321,6 @@ function configuredDefaultAgentType(runtime: {
  *  read-only execution verifier (#8898), distinct from the text judge's
  *  `llm-goal-verifier`, so the validation event's origin is unambiguous. */
 const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
-
-/** Cap on child trajectories ingested per task_complete (#13775) so a runaway
- *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
-const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
 
 /** Default retention window for per-task child-trajectory dirs under the state
  *  dir (#14109). A per-task `<stateDir>/orchestrator/child-trajectories/<taskId>`
@@ -627,11 +621,8 @@ function readAttemptReflections(
   return out;
 }
 
-function truncate(text: string, max = 2000): string {
-  const wellFormed = toWellFormedUnicode(text);
-  return wellFormed.length > max
-    ? `${truncateWellFormed(wellFormed, max)}…`
-    : wellFormed;
+function normalizeTaskText(text: string): string {
+  return toWellFormedUnicode(text);
 }
 
 /**
@@ -844,7 +835,7 @@ function eventExcerpt(
 ): string {
   const data =
     Object.keys(event.data).length > 0
-      ? `\nData: ${truncate(JSON.stringify(event.data), 1200)}`
+      ? `\nData: ${normalizeTaskText(JSON.stringify(event.data))}`
       : "";
   return `Event ${event.id} (${event.eventType}): ${event.summary}${data}`;
 }
@@ -863,7 +854,7 @@ function retryInstruction(
     lines.push(
       "",
       `Source message ${source.id} (${source.senderKind}/${source.direction}):`,
-      truncate(source.content),
+      normalizeTaskText(source.content),
     );
   }
   return lines.join("\n");
@@ -892,7 +883,7 @@ function withPlanRevisionContext(
     `Revision: ${revision.id}`,
   ];
   if (revision.editSummary) lines.push(`Summary: ${revision.editSummary}`);
-  lines.push(`Plan: ${truncate(JSON.stringify(revision.plan), 2000)}`);
+  lines.push(`Plan: ${normalizeTaskText(JSON.stringify(revision.plan))}`);
   return lines.join("\n");
 }
 
@@ -964,21 +955,21 @@ function describeEvent(event: string, data: unknown): string {
       return `Running ${title}`;
     }
     case "message":
-      return truncate(str(record.text) ?? "Sub-agent message", 160);
+      return normalizeTaskText(str(record.text) ?? "Sub-agent message");
     case "reasoning":
-      return truncate(str(record.text) ?? "Sub-agent reasoning", 160);
+      return normalizeTaskText(str(record.text) ?? "Sub-agent reasoning");
     case "plan": {
       const count = Array.isArray(record.entries) ? record.entries.length : 0;
       return `Updated plan — ${count} item${count === 1 ? "" : "s"}`;
     }
     case "blocked":
-      return truncate(str(record.message) ?? "Blocked on input", 160);
+      return normalizeTaskText(str(record.message) ?? "Blocked on input");
     case "login_required":
       return "Sub-agent requires authentication";
     case "task_complete":
       return "Sub-agent reported completion (pending validation)";
     case "error":
-      return truncate(str(record.message) ?? "Sub-agent error", 160);
+      return normalizeTaskText(str(record.message) ?? "Sub-agent error");
     case "stopped":
       return "Sub-agent stopped";
     case "reconnected":
@@ -1179,7 +1170,7 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
+        return this.onSessionEvent(
           sessionId,
           event,
           data,
@@ -1613,6 +1604,17 @@ export class OrchestratorTaskService extends Service {
           ? snapshotTaskId
           : await this.resolveTaskId(sessionId);
       if (!taskId) return;
+      const rawData = isRecord(data) ? data : { value: data };
+      const taskDoc = await this.store.getTask(taskId);
+      const childTerminalResult = taskDoc
+        ? deriveChildTerminalResult(taskDoc, {
+            eventType: event,
+            sessionId,
+            summary: describeEvent(event, data),
+            data: rawData,
+            timestamp: Date.now(),
+          })
+        : undefined;
       await this.store.addEvent({
         id: randomUUID(),
         taskId,
@@ -1620,7 +1622,10 @@ export class OrchestratorTaskService extends Service {
         ...(turnId ? { turnId } : {}),
         eventType: event,
         summary: describeEvent(event, data),
-        data: isRecord(data) ? data : { value: data },
+        data: {
+          ...rawData,
+          ...(childTerminalResult ? { childTerminalResult } : {}),
+        },
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
@@ -1645,6 +1650,10 @@ export class OrchestratorTaskService extends Service {
           note: "further event-record failures for this session are suppressed",
         });
       }
+      // Account identity is an authority boundary: its caller awaits this
+      // consumer before exposing failover credentials to a child. Other
+      // telemetry events retain their established diagnostics-only behavior.
+      if (event === "account_switched") throw err;
     }
   }
 
@@ -1733,7 +1742,7 @@ export class OrchestratorTaskService extends Service {
           {
             status: "completed",
             taskDelivered: true,
-            completionSummary: summary ? truncate(summary) : undefined,
+            completionSummary: summary,
             stoppedAt: Date.now(),
           },
           taskId,
@@ -2249,10 +2258,7 @@ export class OrchestratorTaskService extends Service {
     const freshFiles = files.filter((path) => !existingArtifactPaths.has(path));
     if (freshFiles.length === 0) return [];
 
-    // Newest first, capped so a runaway child can't flood the task doc; the
-    // store's MAX_ARTIFACTS also clamps. Cap applies to genuinely-new files only
-    // so a large already-ingested backlog can't starve fresh trajectories out of
-    // the window.
+    // Newest first while retaining every genuinely new trajectory.
     const withMtime = await Promise.all(
       freshFiles.map(async (path) => ({
         path,
@@ -2260,11 +2266,10 @@ export class OrchestratorTaskService extends Service {
       })),
     );
     withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
 
     const session = (await this.store.findSession(sessionId, taskId))?.session;
     const ingested: string[] = [];
-    for (const { path } of capped) {
+    for (const { path } of withMtime) {
       // The recorder names files `<trajectoryId>.json`.
       const trajectoryId = basename(path, ".json");
       await this.store.addArtifact({
@@ -3815,9 +3820,10 @@ export class OrchestratorTaskService extends Service {
    * 3. **Independent execution verifier (#8898).** For code-change tasks
    *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
    *    the tests/diff and returns an execution-grounded verdict. A failing verdict
-   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
-   *    the task `validating` (never a false promotion on a verifier crash); a
-   *    passing/skipped verdict falls through.
+   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict
+   *    reopens a retryable worker turn without consuming its corrective-attempt
+   *    budget (never a false promotion on a verifier crash); a passing/skipped
+   *    verdict falls through.
    * 4. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
    *    judges the evidence and promotes (→ `done`) or re-prompts.
    *
@@ -3854,12 +3860,50 @@ export class OrchestratorTaskService extends Service {
       );
     } catch (err) {
       // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
-      // failure warns and must not break the session-event write path.
+      // failure warns and must not break the session-event write path. Recover
+      // the durable state too: logging alone used to strand the task forever in
+      // `validating`, with no retry surface and no terminal signal.
       this.log("warn", "auto goal verification failed", {
         taskId,
         sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
+      this.runtime.reportError?.(
+        "OrchestratorTaskService.autoVerifyCompletion",
+        err,
+        { taskId, sessionId },
+      );
+      try {
+        await this.withTaskWriteLock(taskId, () =>
+          this.retryInconclusiveVerification({
+            taskId,
+            sessionId,
+            eventType: "auto_verify_inconclusive",
+            verifier: "auto-verifier-infrastructure",
+            summary: `Automatic verification could not run: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            correction:
+              "Automatic verification was temporarily unavailable. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+          }),
+        );
+      } catch (recoveryErr) {
+        // error-policy:J7 diagnostics/recovery must not reject the detached
+        // event handler. A second failure is reported distinctly.
+        this.log("error", "failed to recover inconclusive auto verification", {
+          taskId,
+          sessionId,
+          error:
+            recoveryErr instanceof Error
+              ? recoveryErr.message
+              : String(recoveryErr),
+        });
+        this.runtime.reportError?.(
+          "OrchestratorTaskService.autoVerifyRecovery",
+          recoveryErr,
+          { taskId, sessionId },
+        );
+      }
     } finally {
       this.autoVerifyInFlight.delete(taskId);
     }
@@ -4044,9 +4088,23 @@ export class OrchestratorTaskService extends Service {
       }
 
       const acceptanceCriteria = doc.task.acceptanceCriteria;
-      // Criteria-free tasks keep the prior behavior after deterministic gates:
-      // stay `validating` for a human/manual caller, with no model spend.
-      if (acceptanceCriteria.length === 0) return;
+      // With no criteria there is nothing for the model judge to decide. Once
+      // the deterministic residuals/ground-truth gates above are clear, finish
+      // explicitly instead of leaving the task permanently `validating`.
+      if (acceptanceCriteria.length === 0) {
+        await this.validateTaskLocked(taskId, {
+          passed: true,
+          summary:
+            "No acceptance criteria were specified; deterministic completion gates passed.",
+          evidence:
+            completionEvidence.trim() ||
+            rawCompletion.trim() ||
+            "Criteria-free completion passed deterministic gates.",
+          verifier: "criteria-free-completion-gate",
+        });
+        this.emitChange(taskId);
+        return;
+      }
 
       // 2. Structural envelope gate (#8895) — BEFORE any model spend.
       if (parse.present && !parse.ok) {
@@ -4232,17 +4290,10 @@ export class OrchestratorTaskService extends Service {
       );
       if (independent) {
         if (independent.inconclusive) {
-          // A verifier crash/empty verdict is never a pass — but a silent
-          // return here parked the task in `validating` forever with no
-          // re-prompt, no escalation, and no signal to the task creator
-          // (observed live: a website-build task whose final task_complete hit
-          // "no usable CompletionEnvelope" and then sat `validating` for
-          // hours while the user asked "is it done?"). Route it through the
-          // shared re-engage/escalate path like every other non-pass verdict:
-          // under the attempts cap the worker is re-prompted to re-report
-          // with the structured envelope (making the next verify decidable);
-          // at the cap the task parks on waiting_on_user instead of ghosting.
-          await this.reEngageOrEscalate({
+          // A verifier crash/empty verdict is an infrastructure outcome, not
+          // evidence that the worker failed a criterion. Re-open a retryable
+          // turn, but preserve the worker's bounded corrective-attempt budget.
+          await this.retryInconclusiveVerification({
             taskId,
             sessionId,
             correction: [
@@ -4255,11 +4306,6 @@ export class OrchestratorTaskService extends Service {
             eventType: "independent_verify_inconclusive",
             verifier: INDEPENDENT_ACP_VERIFIER_NAME,
             summary: independent.summary,
-            missing: [
-              ...independent.unmet,
-              ...independent.failedCommands.map((c) => `command failed: ${c}`),
-            ],
-            attempt: attempts,
           });
           return;
         }
@@ -4322,6 +4368,19 @@ export class OrchestratorTaskService extends Service {
         },
       );
 
+      if (verdict.inconclusive) {
+        await this.retryInconclusiveVerification({
+          taskId,
+          sessionId,
+          eventType: "goal_verify_inconclusive",
+          verifier: LLM_GOAL_VERIFIER_NAME,
+          summary: verdict.summary,
+          correction:
+            "The goal-verification model was temporarily unavailable or returned no usable verdict. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+        });
+        return;
+      }
+
       if (verdict.passed) {
         await this.validateTaskLocked(taskId, {
           passed: true,
@@ -4353,6 +4412,70 @@ export class OrchestratorTaskService extends Service {
         attempt: attempts,
       });
     }
+  }
+
+  /**
+   * Re-open a task when the verifier itself could not decide. This deliberately
+   * does not write `autoVerifyAttempts` or `attemptReflections`: those counters
+   * measure worker proof failures, not provider outages, malformed judge
+   * responses, or verifier subprocess failures.
+   */
+  private async retryInconclusiveVerification(args: {
+    taskId: string;
+    sessionId: string;
+    correction: string;
+    eventType: string;
+    verifier: string;
+    summary: string;
+  }): Promise<void> {
+    const { taskId, sessionId, correction, eventType, verifier, summary } =
+      args;
+    const doc = await this.store.getTask(taskId);
+    if (doc?.task.status !== "validating") return;
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType,
+      summary,
+      data: { verifier, retryable: true },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    try {
+      await this.store.updateSession(sessionId, {
+        status: "ready",
+        taskDelivered: false,
+        stoppedAt: undefined,
+      });
+      await this.sendToTaskAgent(
+        taskId,
+        sessionId,
+        correction,
+        "validation_failed",
+      );
+      await this.advanceTaskStatus(taskId, "validation_failed");
+    } catch (sendErr) {
+      // error-policy:J1 boundary — an inconclusive verifier plus an unavailable
+      // worker is surfaced to a human instead of remaining stuck validating.
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "auto_verify_retry_failed",
+        summary:
+          "Verification was inconclusive and its retry could not be delivered; escalating to a human.",
+        data: {
+          verifier,
+          retryable: true,
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.advanceTaskStatus(taskId, "awaiting_user");
+    }
+    this.emitChange(taskId);
   }
 
   /**
@@ -4419,7 +4542,7 @@ export class OrchestratorTaskService extends Service {
     const attemptReflections = [
       ...readAttemptReflections(doc.task.metadata),
       { attempt: attempt + 1, missing, summary },
-    ].slice(-MAX_ATTEMPT_REFLECTIONS);
+    ];
     await this.store.updateTask(taskId, {
       metadata: {
         ...doc.task.metadata,

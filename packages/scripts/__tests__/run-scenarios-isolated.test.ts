@@ -34,6 +34,7 @@ interface FixtureCase {
   status: ScenarioStatus;
   exitCode?: number;
   signal?: NodeJS.Signals;
+  sleepMs?: number;
 }
 
 interface AggregateReport {
@@ -72,6 +73,17 @@ if (!fixture || !reportPath) {
   process.exit(2);
 }
 
+if (process.env.ISOLATED_REQUIRE_UNIQUE_REPORT_ROOT === "1") {
+  const normalized = reportPath.replaceAll("\\\\", "/");
+  if (!normalized.includes("/scenario-isolated-run-") || !normalized.endsWith("/report.json")) {
+    process.stderr.write("report path is not run-scoped: " + reportPath + "\\n");
+    process.exit(2);
+  }
+}
+if (fixture.sleepMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, fixture.sleepMs);
+}
+
 fs.writeFileSync(
   reportPath,
   JSON.stringify({
@@ -92,7 +104,10 @@ function isolatedTmpReport(id: string): string {
   );
 }
 
-function runFixture(cases: Record<string, FixtureCase>): {
+function runFixture(
+  cases: Record<string, FixtureCase>,
+  options: { args?: string[]; env?: Record<string, string> } = {},
+): {
   result: ReturnType<typeof spawnSync>;
   report: AggregateReport;
 } {
@@ -113,17 +128,23 @@ function runFixture(cases: Record<string, FixtureCase>): {
 
     const result = spawnSync(
       process.execPath,
-      [SCRIPT, scenariosDir, "--report", reportPath],
+      [SCRIPT, scenariosDir, "--report", reportPath, ...(options.args ?? [])],
       {
         cwd: REPO_ROOT,
         encoding: "utf8",
         env: {
           ...process.env,
           ISOLATED_SCENARIO_CASES: JSON.stringify(cases),
+          ...options.env,
           PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
         },
       },
     );
+    if (!existsSync(reportPath)) {
+      throw new Error(
+        `isolated runner produced no aggregate report: ${result.stderr}`,
+      );
+    }
     const report = JSON.parse(
       readFileSync(reportPath, "utf8"),
     ) as AggregateReport;
@@ -222,4 +243,50 @@ test("zero-exit pass and fail reports retain their report semantics", () => {
     { id: "zero-passed", status: "passed", durationMs: 1 },
     { id: "zero-failed", status: "failed", durationMs: 1 },
   ]);
+});
+
+test("each child writes into a collision-free run directory", () => {
+  const { result, report } = runFixture(
+    {
+      "same/sanitized": { status: "passed" },
+      "same:sanitized": { status: "passed" },
+    },
+    {
+      env: { ISOLATED_REQUIRE_UNIQUE_REPORT_ROOT: "1" },
+      args: ["--workers", "2"],
+    },
+  );
+
+  expect(result.status).toBe(0);
+  expect(report.totals.passed).toBe(2);
+});
+
+test("a timed-out child fails instead of hanging the lane", () => {
+  const { result, report } = runFixture(
+    { slow: { status: "passed", sleepMs: 1_500 } },
+    { args: ["--timeout-ms", "1000"] },
+  );
+
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("slow failed (timeout after 1000ms)");
+  expect(report.totals.failed).toBe(1);
+});
+
+test("rejects unsafe worker counts before launching children", () => {
+  const fixtureRoot = mkdtempSync(
+    path.join(tmpdir(), "scenario-isolation-invalid-"),
+  );
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, fixtureRoot, "--workers", "0"],
+      { cwd: REPO_ROOT, encoding: "utf8" },
+    );
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      "--workers must be an integer from 1 through 32",
+    );
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });

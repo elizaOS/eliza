@@ -18,8 +18,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { WorkdirRouteUrlMapping } from "./task-agent-routing.js";
 
-const MAX_CANDIDATE_PATHS = 24;
-const MAX_PROBE_URLS = 5;
 const PROBE_TIMEOUT_MS = 5_000;
 
 /** Absolute or workdir-relative file-path tokens in worker output. */
@@ -34,7 +32,6 @@ export function mineCandidatePaths(texts: readonly string[]): string[] {
     for (const match of text.matchAll(PATH_CANDIDATE_RE)) {
       const candidate = match[1];
       if (candidate) out.add(candidate);
-      if (out.size >= MAX_CANDIDATE_PATHS) return [...out];
     }
   }
   return [...out];
@@ -69,7 +66,7 @@ export function collectFsObservedFiles(input: FsObservedFilesInput): string[] {
   const stat = input.statImpl ?? defaultStat;
   const root = path.resolve(input.workdir);
   const observed: string[] = [];
-  for (const candidate of input.candidatePaths.slice(0, MAX_CANDIDATE_PATHS)) {
+  for (const candidate of input.candidatePaths) {
     const absolute = path.resolve(root, candidate);
     const relative = path.relative(root, absolute);
     if (
@@ -120,33 +117,35 @@ export function deriveRouteMappedUrls(
       }
     }
   }
-  return [...urls].slice(0, MAX_PROBE_URLS * 2);
+  return [...urls];
 }
 
 /**
  * Probe candidate URLs and return those answering 200 — the same epistemic
  * status as router-probed URLs: verified by request, never by narration.
- * Bounded and timeout-guarded; probe failures simply do not verify.
+ * Timeout-guarded; probe failures simply do not verify.
  */
 export async function probeMappedUrls(
   urls: readonly string[],
   fetchImpl: typeof fetch = fetch,
 ): Promise<string[]> {
-  const verified: string[] = [];
-  for (const url of urls.slice(0, MAX_PROBE_URLS)) {
-    try {
-      const response = await fetchImpl(url, {
-        method: "GET",
-        redirect: "follow",
-        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-      });
-      if (response.ok) verified.push(url);
-    } catch {
-      // error-policy:J3 an unreachable candidate is explicitly unverified —
-      // absence from the result is the honest outcome, never a fake 200.
-    }
-  }
-  return verified;
+  const results = await Promise.all(
+    urls.map(async (url): Promise<string | undefined> => {
+      try {
+        const response = await fetchImpl(url, {
+          method: "GET",
+          redirect: "follow",
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+        });
+        return response.ok ? url : undefined;
+      } catch {
+        // error-policy:J3 an unreachable candidate is explicitly unverified —
+        // absence from the result is the honest outcome, never a fake 200.
+        return undefined;
+      }
+    }),
+  );
+  return results.filter((url): url is string => url !== undefined);
 }
 
 /** Tooling manifests that make a check-class criterion RUNNABLE where the
@@ -209,7 +208,7 @@ export function detectCheckSurfaces(
     });
   const root = path.resolve(workdir);
   const dirs = new Set<string>();
-  for (const file of relativeFiles.slice(0, MAX_CANDIDATE_PATHS)) {
+  for (const file of relativeFiles) {
     const dir = path.resolve(root, path.dirname(file));
     const relative = path.relative(root, dir);
     if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
@@ -232,19 +231,14 @@ export function detectCheckSurfaces(
   };
 }
 
-const MAX_CONTENT_FILES = 3;
-// Typical quick-app files run 6-8KB; a 2KB cap cut them exactly where the
-// judged content lived (velvet-moth live park). 8KB covers the class whole.
-const MAX_CONTENT_CHARS = 8_000;
 /** Text-asset extensions worth showing the judge verbatim. */
 const TEXT_CONTENT_RE = /\.(?:html?|css|js|svg|md|txt|json)$/i;
 
 /**
- * Read the (capped) contents of small fs-verified text files so content
+ * Read the complete contents of fs-verified text files so content
  * criteria are judged against the real file text. Same epistemic status as
  * the stat probe: the orchestrator reads the bytes itself; worker narration
- * never enters. Unreadable/oversized-beyond-cap files contribute a truncated
- * or absent entry, never a fabricated one.
+ * never enters. Unreadable files contribute no entry, never a fabricated one.
  */
 export function readFsVerifiedContents(
   workdir: string,
@@ -264,7 +258,6 @@ export function readFsVerifiedContents(
   const root = path.resolve(workdir);
   const out: Array<{ path: string; content: string }> = [];
   for (const file of relativeFiles) {
-    if (out.length >= MAX_CONTENT_FILES) break;
     if (!TEXT_CONTENT_RE.test(file)) continue;
     const absolute = path.resolve(root, file);
     const relative = path.relative(root, absolute);
@@ -273,10 +266,7 @@ export function readFsVerifiedContents(
     if (content === undefined) continue;
     out.push({
       path: relative,
-      content:
-        content.length > MAX_CONTENT_CHARS
-          ? `${content.slice(0, MAX_CONTENT_CHARS)}\n… [truncated]`
-          : content,
+      content,
     });
   }
   return out;

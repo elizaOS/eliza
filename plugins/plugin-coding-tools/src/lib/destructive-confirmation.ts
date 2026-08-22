@@ -1,7 +1,7 @@
 /**
  * Holds short-lived one-time shell confirmation challenges per runtime.
- * Entries contain only an opaque nonce and command digest, never command text,
- * and authorization is bound to the requesting entity and room.
+ * Entries contain only an opaque nonce, command digest, and execution context,
+ * never command text; authorization is bound to the requester and room.
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
@@ -11,6 +11,7 @@ const MAX_CHALLENGES_PER_RUNTIME = 64;
 
 interface Challenge {
   commandDigest: string;
+  executionDirectory: string;
   entityId: string;
   issuingMessageId: string;
   roomId: string;
@@ -46,6 +47,7 @@ function sweep(entries: Map<string, Challenge>, now: number): void {
 export function issueDestructiveChallenge(args: {
   runtime: IAgentRuntime;
   command: string;
+  executionDirectory: string;
   message: Memory;
   now?: number;
 }): string | undefined {
@@ -62,6 +64,7 @@ export function issueDestructiveChallenge(args: {
   for (const [token, challenge] of entries) {
     if (
       challenge.commandDigest === commandDigest &&
+      challenge.executionDirectory === args.executionDirectory &&
       challenge.roomId === roomId &&
       challenge.entityId === entityId
     ) {
@@ -71,6 +74,7 @@ export function issueDestructiveChallenge(args: {
   const token = randomBytes(18).toString("base64url");
   entries.set(token, {
     commandDigest,
+    executionDirectory: args.executionDirectory,
     roomId,
     entityId,
     issuingMessageId,
@@ -89,6 +93,7 @@ export type ChallengeConsumption =
         | "requester_mismatch"
         | "room_mismatch"
         | "command_mismatch"
+        | "cwd_mismatch"
         | "same_message"
         | "token_not_confirmed";
     };
@@ -103,6 +108,7 @@ export function consumeDestructiveChallenge(args: {
   runtime: IAgentRuntime;
   token: string | undefined;
   command: string;
+  executionDirectory: string;
   message: Memory;
   now?: number;
 }): ChallengeConsumption {
@@ -126,6 +132,9 @@ export function consumeDestructiveChallenge(args: {
   }
   if (challenge.commandDigest !== destructiveCommandDigest(args.command)) {
     return { authorized: false, reason: "command_mismatch" };
+  }
+  if (challenge.executionDirectory !== args.executionDirectory) {
+    return { authorized: false, reason: "cwd_mismatch" };
   }
   if (!confirmsToken(args.message.content?.text, args.token)) {
     return { authorized: false, reason: "token_not_confirmed" };

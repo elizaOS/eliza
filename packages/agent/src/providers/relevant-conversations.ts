@@ -31,7 +31,6 @@ import {
   revalidateOwnerExclusiveDisclosure,
   searchCanonicalConversationMemories,
   stringToUuid,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
@@ -46,16 +45,12 @@ import {
 } from "../shared/conversation-format.ts";
 
 const MAX_RELEVANT_RESULTS = 10;
-const MAX_HASH_MEMORY_RESULTS = 4;
-const HASH_MEMORY_SCAN_LIMIT = 2_000;
 const MATCH_THRESHOLD = 0.7;
 // rankByKeyword returns a [0,1] max-normalized BM25 score. Require a hit to be at
 // least half as relevant as the best match in the scan; BM25's IDF already
 // down-weights common stop words ("you"/"are"), so weak/stop-word-only matches
 // score far below a real hit and fall under this floor.
 const MIN_HASH_MEMORY_SCORE = 0.5;
-const HASH_MEMORY_SNIPPET_LENGTH = 700;
-const RELEVANT_SNIPPET_LENGTH = 200;
 
 function memoryText(memory: Memory): string {
   return typeof memory.content.text === "string" ? memory.content.text : "";
@@ -80,7 +75,6 @@ async function loadHashMemories(
   const memories = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    limit: HASH_MEMORY_SCAN_LIMIT,
     includeEmbedding: false,
     accessContext,
   });
@@ -99,7 +93,6 @@ async function loadHashMemories(
       if (right.score !== left.score) return right.score - left.score;
       return memoryCreatedAt(right.item) - memoryCreatedAt(left.item);
     })
-    .slice(0, MAX_HASH_MEMORY_RESULTS)
     .map(({ item }) => item);
 }
 
@@ -194,8 +187,8 @@ export const relevantConversationsProvider: Provider = {
       const semanticMemories =
         semanticRecall?.items.map((item) => item.memory) ?? [];
 
-      // Filter out messages from the current conversation to avoid echo, dedupe
-      // by id (hash memories prepended so they win on overlap), then cap.
+      // Filter out messages from the current conversation to avoid echo and dedupe
+      // by id (hash memories prepended so they win on overlap).
       const currentRoomId = message.roomId;
       const readable = filterByAccessContext(
         [...hashMemories, ...semanticMemories],
@@ -208,8 +201,7 @@ export const relevantConversationsProvider: Provider = {
           (memory, index, all) =>
             !memory.id ||
             all.findIndex((candidate) => candidate.id === memory.id) === index,
-        )
-        .slice(0, MAX_RELEVANT_RESULTS);
+        );
 
       if (
         filtered.some(
@@ -282,12 +274,7 @@ export const relevantConversationsProvider: Provider = {
         const tag = roomSourceTag(room);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
-        const source = (mem.content as { source?: string } | undefined)?.source;
-        const snippetLength =
-          source === HASH_MEMORY_SOURCE
-            ? HASH_MEMORY_SNIPPET_LENGTH
-            : RELEVANT_SNIPPET_LENGTH;
-        const msgText = truncateWellFormed(memoryText(mem), snippetLength);
+        const msgText = memoryText(mem);
         lines.push(`${tag} ${age}${speaker}: ${msgText}`);
       }
 

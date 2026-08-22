@@ -34,6 +34,13 @@ const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
 
+export function resolveSmithersBunExecutable(): string {
+  const configured = process.env.BUN_BIN?.trim();
+  if (configured) return configured;
+  if (process.versions.bun) return process.execPath;
+  return 'bun';
+}
+
 function appendSmithersProtocolChunk(
   buffer: string,
   chunk: string,
@@ -343,7 +350,7 @@ export async function controlSmithersRun(
       mode: 0o600,
     }
   );
-  const child = spawn(process.env.BUN_BIN || 'bun', ['--eval', createSmithersControlScript()], {
+  const child = spawn(resolveSmithersBunExecutable(), ['--eval', createSmithersControlScript()], {
     cwd: PLUGIN_ROOT,
     env: {
       PATH: process.env.PATH,
@@ -432,7 +439,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   );
 
   const timeoutMs = resolveSmithersTimeoutMs(request.timeoutMs);
-  const worker = spawn(process.env.BUN_BIN || 'bun', ['--eval', createSmithersWorkerScript()], {
+  const worker = spawn(resolveSmithersBunExecutable(), ['--eval', createSmithersWorkerScript()], {
     cwd: PLUGIN_ROOT,
     env: {
       PATH: process.env.PATH,

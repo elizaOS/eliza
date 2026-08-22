@@ -1,0 +1,111 @@
+{
+  "name": "@elizaos/plugin-doordash",
+  "version": "2.0.3-beta.7",
+  "description": "DoorDash consumer-ordering actions backed by a configured MCP adapter, with preview-bound checkout confirmation.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "ADAPTER_REVIEW.md",
+    "registry-entry.json",
+    "dist",
+    "auto-enable.ts"
+  ],
+  "keywords": [
+    "eliza",
+    "plugin",
+    "doordash",
+    "food-delivery",
+    "mcp"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-mcp": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "scripts": {
+    "build": "bun run build:js && bun run build:types",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MCP_SERVER_DOORDASH_URL": {
+        "type": "string",
+        "description": "HTTPS streamable-HTTP endpoint for the DoorDash MCP adapter.",
+        "required": false,
+        "sensitive": true
+      },
+      "MCP_SERVER_DOORDASH_TYPE": {
+        "type": "string",
+        "description": "DoorDash MCP transport type; normally streamable-http.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "food-ordering",
+        "doordash"
+      ]
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node"
+  }
+}

@@ -1,4 +1,4 @@
-/** Public entry for @elizaos/plugin-documents: the HTTP route plugin plus its documents view, presenter, and type re-exports. */
+/** Public entry for the document HTTP routes, reusable document components, presenter, and types. */
 export {
   type DocumentCard,
   type DocumentSearchHit,

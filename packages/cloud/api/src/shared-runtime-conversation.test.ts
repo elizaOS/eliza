@@ -121,7 +121,6 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
   },
 }));
 mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
-  MAX_HISTORY_MESSAGES: 40,
   sharedRuntimeChatService: {
     getHistory: async (
       agentId: string,
@@ -182,7 +181,10 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         {
           id: `message-${rpc.id}`,
           role: "user",
-          content: `turn-${rpc.id}`,
+          content:
+            rpc.id === "large-history"
+              ? (rpc.params?.text ?? "")
+              : `turn-${rpc.id}`,
           createdAt: Date.now(),
         },
       ]);
@@ -1638,6 +1640,72 @@ test("concurrent turns serialize through one room and retain both writes", async
     "turn-concurrent-one",
     "turn-concurrent-two",
   ]);
+  await Promise.all(background.splice(0));
+});
+
+test("archives and restores an oversized message without changing its content", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+  const content = "x".repeat(1_600_000);
+
+  const turn = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "bridge",
+        agent: AGENT_FIXTURE,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "large-history",
+          method: "message.send",
+          params: { text: content, roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  expect(turn.status).toBe(200);
+  await turn.arrayBuffer();
+
+  const stored = data.get("conversation") as { history: unknown[] };
+  expect(stored.history).toEqual([]);
+  expect(
+    [...data.keys()].filter((key) => key.startsWith("history-archive-body:"))
+      .length,
+  ).toBeGreaterThan(1);
+
+  const historyResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/history", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "history",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  const history = (await historyResponse.json()) as {
+    history: Array<{ content: string }>;
+  };
+  expect(history.history).toHaveLength(1);
+  expect(history.history[0]?.content).toBe(content);
   await Promise.all(background.splice(0));
 });
 

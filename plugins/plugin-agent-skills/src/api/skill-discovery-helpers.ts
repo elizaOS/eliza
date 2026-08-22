@@ -393,7 +393,7 @@ export async function discoverSkills(
 							return {
                 id: s.slug,
                 name: s.name || s.slug,
-                description: (s.description || "").slice(0, 200),
+                description: s.description || "",
 								enabled,
                 scanStatus,
               };
@@ -571,7 +571,7 @@ export function scanSkillsDir(
 			skills.push({
           id: entry,
           name: skillName,
-          description: description.slice(0, 200),
+          description,
 				enabled:
 					resolveSkillEnabled(entry, config, dbPrefs) &&
 					(!isFindingStatus(scanStatus) || acknowledged),

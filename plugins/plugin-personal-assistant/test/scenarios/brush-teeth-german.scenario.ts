@@ -16,7 +16,7 @@ export default scenario({
   rooms: [
     {
       id: "main",
-      source: "signal",
+      source: "telegram",
       title: "LifeOps Brush Teeth German",
     },
   ],

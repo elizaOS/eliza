@@ -1,5 +1,5 @@
 /**
- * The `lifeops_browser` provider: injects a bounded projection of the owner's
+ * The `lifeops_browser` provider: injects the owner's
  * browser-companion state (paired companions and open tabs) into the model
  * prompt so the assistant can reason about the browser. Gated on owner access.
  */
@@ -14,10 +14,6 @@ import {
 } from "@elizaos/core";
 import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { LifeOpsService } from "./lifeops/service.js";
-
-const MAX_COMPANIONS = 4;
-const MAX_TABS = 6;
-const MAX_SESSIONS = 6;
 
 function formatSettingsLine(
   settings: Awaited<ReturnType<LifeOpsService["getBrowserSettings"]>>,
@@ -78,16 +74,14 @@ export const lifeOpsBrowserProvider: Provider = {
           service.getCurrentBrowserPage(),
           service.listBrowserSessions(),
         ]);
-      const activeSessions = sessions
-        .filter(
-          (session: LifeOpsBrowserSession) =>
-            session.status === "awaiting_confirmation" ||
-            session.status === "queued" ||
-            session.status === "running",
-        )
-        .slice(0, MAX_SESSIONS);
-      const listedCompanions = companions.slice(0, MAX_COMPANIONS);
-      const listedTabs = tabs.slice(0, MAX_TABS);
+      const activeSessions = sessions.filter(
+        (session: LifeOpsBrowserSession) =>
+          session.status === "awaiting_confirmation" ||
+          session.status === "queued" ||
+          session.status === "running",
+      );
+      const listedCompanions = companions;
+      const listedTabs = tabs;
       const lines = [
         "## Agent Browser Bridge",
         "This is the user's real browser profile connected through Agent Browser Bridge, not Eliza Desktop Browser.",

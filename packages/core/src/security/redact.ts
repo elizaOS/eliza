@@ -36,7 +36,11 @@ const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
  */
 const DEFAULT_REDACT_PATTERNS: string[] = [
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
-	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
+	// Keep the broad environment-name form case-sensitive: compiling bare
+	// `key` case-insensitively also matches ordinary source such as
+	// `key = prefix + tag` and corrupts code returned by READ. Lowercase env
+	// spellings remain covered when they use an unambiguous compound name.
+	String.raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/g`,
 	// JSON fields.
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
 	// Quoted credential keys with arbitrary naming. The ENV-style row above
