@@ -16,8 +16,9 @@ not supported. The service stays disabled when credentials are absent.
 
 - `InstagramService` (`serviceType = "instagram"`) — lifecycle manager for one or more Instagram
   accounts. On `start()` it reads config, validates credentials, and registers both the DM
-  `MessageConnector` and the feed `PostConnector` with the runtime. Exposes methods for sending DMs,
-  posting/replying to comments, liking media, following/unfollowing users, and fetching threads.
+  `MessageConnector` and the feed `PostConnector` with the runtime. Exposes Graph-backed methods for
+  scoped profiles, owned media, conversations/messages, text DMs, and comment/reply writes. Legacy
+  like/follow methods remain public for compatibility but fail explicitly as unsupported.
 
 **Actions:** none registered — DMs route through `MESSAGE`, comments through `POST`.
 
