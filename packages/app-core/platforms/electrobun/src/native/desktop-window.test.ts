@@ -4,11 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
 import {
   ensureWindowTransparentBackground,
+  getMacLaunchAtLoginStatus,
   isAppActive,
   isKeyWindow,
   makeKeyAndOrderFront,
   orderOut,
   pollWindowOutsideClick,
+  setMacLaunchAtLoginEnabled,
   setWindowInteractiveMaterialSize,
   setWindowNonactivatingPanel,
 } from "./mac-window-effects";
@@ -46,6 +48,8 @@ vi.mock("./mac-window-effects", () => ({
   isFnMonitorHealthy: vi.fn(() => false),
   isFnKeyDown: vi.fn(() => false),
   getFnSystemUsageType: vi.fn(() => 0),
+  getMacLaunchAtLoginStatus: vi.fn(() => "disabled" as const),
+  setMacLaunchAtLoginEnabled: vi.fn(() => "disabled" as const),
 }));
 
 const electrobunMock = vi.hoisted(() => {
@@ -1348,5 +1352,57 @@ describe("DesktopManager dockless (tray-first) Dock tracking (#12184)", () => {
     manager.setMainWindowFullWindow(true);
     manager.setManagedWindowsPresent(true);
     expect(electrobunMock.Utils.setDockIconVisible).not.toHaveBeenCalled();
+  });
+});
+
+describe("DesktopManager macOS Launch at Login", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    resetDesktopManagerForTesting();
+    vi.mocked(getMacLaunchAtLoginStatus).mockReset();
+    vi.mocked(getMacLaunchAtLoginStatus).mockReturnValue("disabled");
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReset();
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReturnValue("disabled");
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      configurable: true,
+    });
+  });
+
+  it("reads the public SMAppService state without a LaunchAgent file", async () => {
+    vi.mocked(getMacLaunchAtLoginStatus).mockReturnValue("enabled");
+    const manager = new DesktopManager();
+
+    await expect(manager.getAutoLaunchStatus()).resolves.toEqual({
+      enabled: true,
+      openAsHidden: false,
+    });
+    expect(getMacLaunchAtLoginStatus).toHaveBeenCalledOnce();
+  });
+
+  it("updates the public SMAppService state", async () => {
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReturnValue("enabled");
+    const manager = new DesktopManager();
+
+    await manager.setAutoLaunch({ enabled: true, openAsHidden: true });
+
+    expect(setMacLaunchAtLoginEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it("fails clearly when macOS cannot register the app", async () => {
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReturnValue("not-found");
+    const manager = new DesktopManager();
+
+    await expect(manager.setAutoLaunch({ enabled: true })).rejects.toThrow(
+      "could not update Launch at Login",
+    );
   });
 });

@@ -14,6 +14,7 @@
 #import <EventKit/EventKit.h>
 #import <IOKit/hidsystem/IOLLEvent.h>
 #import <objc/runtime.h>
+#import <ServiceManagement/ServiceManagement.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 #include <atomic>
@@ -1164,6 +1165,40 @@ extern "C" bool requestAccessibilityPermission(void) {
  */
 extern "C" bool checkAccessibilityPermission(void) {
 	return AXIsProcessTrusted();
+}
+
+/**
+ * Read the public macOS main-app login-item state.
+ * Returns the SMAppServiceStatus raw value on macOS 13+, or -2 when the API is
+ * unavailable. This deliberately avoids hand-written LaunchAgent plists.
+ */
+extern "C" int elizaLaunchAtLoginStatus(void) {
+	if (@available(macOS 13.0, *)) {
+		return (int)[SMAppService mainAppService].status;
+	}
+	return -2;
+}
+
+/**
+ * Register or unregister this signed application through SMAppService.
+ * Returns the resulting SMAppServiceStatus, -1 on an API error, or -2 when the
+ * host OS predates macOS 13.
+ */
+extern "C" int elizaLaunchAtLoginSetEnabled(bool enabled) {
+	if (@available(macOS 13.0, *)) {
+		SMAppService *service = [SMAppService mainAppService];
+		NSError *error = nil;
+		BOOL succeeded = enabled
+			? [service registerAndReturnError:&error]
+			: [service unregisterAndReturnError:&error];
+		if (!succeeded) {
+			NSLog(@"[ElizaDesktop] Launch at Login update failed: %@",
+				  error.localizedDescription ?: @"unknown error");
+			return -1;
+		}
+		return (int)service.status;
+	}
+	return -2;
 }
 
 /**

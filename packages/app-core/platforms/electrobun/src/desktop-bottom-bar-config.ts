@@ -1,10 +1,10 @@
 /**
  * Chromeless bottom-bar desktop shell (#9953).
  *
- * The macOS assistant product opens as a minimal chromeless chat bar pinned to
- * the bottom of the screen. The cross-platform Workspace experience and legacy
- * flags can explicitly override that default. This module owns the shell's
- * launch decision, renderer route, and screen geometry. Kiosk mode always wins.
+ * Focused assistant builds can open as a minimal chromeless chat bar pinned to
+ * the bottom of the screen. The normal product opens the full cross-platform
+ * Workspace. This module owns the optional shell's launch decision, renderer
+ * route, and screen geometry. Kiosk mode always wins.
  */
 
 import { isMacosAssistantExperience } from "./desktop-experience-config";

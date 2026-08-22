@@ -46,6 +46,8 @@ type MacEffectsSymbols = {
   elizaOnboardingNotificationDismiss(): void;
   checkNotificationPermission(): number;
   requestNotificationPermission(): number;
+  elizaLaunchAtLoginStatus(): number;
+  elizaLaunchAtLoginSetEnabled(enabled: boolean): number;
   elizaFnMonitorStart(): number;
   elizaFnMonitorStop(): void;
   elizaFnMonitorPoll(): number;
@@ -168,6 +170,11 @@ function loadLib(): MacEffectsLib {
       },
       checkNotificationPermission: { args: [], returns: FFIType.i32 },
       requestNotificationPermission: { args: [], returns: FFIType.i32 },
+      elizaLaunchAtLoginStatus: { args: [], returns: FFIType.i32 },
+      elizaLaunchAtLoginSetEnabled: {
+        args: [FFIType.bool],
+        returns: FFIType.i32,
+      },
       elizaFnMonitorStart: { args: [], returns: FFIType.i32 },
       elizaFnMonitorStop: { args: [], returns: FFIType.void },
       elizaFnMonitorPoll: { args: [], returns: FFIType.i32 },
@@ -410,6 +417,51 @@ export function checkNotificationPermission(): number | null {
 export function requestNotificationPermission(): number | null {
   const lib = getLib();
   return lib ? lib.symbols.requestNotificationPermission() : null;
+}
+
+export type MacLaunchAtLoginStatus =
+  | "disabled"
+  | "enabled"
+  | "requires-approval"
+  | "not-found"
+  | "unavailable"
+  | "error";
+
+function mapMacLaunchAtLoginStatus(value: number): MacLaunchAtLoginStatus {
+  switch (value) {
+    case 0:
+      return "disabled";
+    case 1:
+      return "enabled";
+    case 2:
+      return "requires-approval";
+    case 3:
+      return "not-found";
+    case -2:
+      return "unavailable";
+    default:
+      return "error";
+  }
+}
+
+/** Read Launch at Login from Apple's public SMAppService authority. */
+export function getMacLaunchAtLoginStatus(): MacLaunchAtLoginStatus {
+  const lib = getLib();
+  return lib
+    ? mapMacLaunchAtLoginStatus(lib.symbols.elizaLaunchAtLoginStatus())
+    : "unavailable";
+}
+
+/** Update Launch at Login through Apple's public SMAppService authority. */
+export function setMacLaunchAtLoginEnabled(
+  enabled: boolean,
+): MacLaunchAtLoginStatus {
+  const lib = getLib();
+  return lib
+    ? mapMacLaunchAtLoginStatus(
+        lib.symbols.elizaLaunchAtLoginSetEnabled(enabled),
+      )
+    : "unavailable";
 }
 
 // ── Fn-key hold monitor (push-to-talk quasimode, #20483) ──────────────────

@@ -28,8 +28,9 @@ xcrun clang++ \
   -framework Contacts \
   -framework CoreGraphics \
   -framework CoreLocation \
-  -framework EventKit \
-  -framework WebKit \
+	-framework EventKit \
+	-framework ServiceManagement \
+	-framework WebKit \
   -framework UserNotifications \
   "$SRC_FILE" \
   -o "$OUT_FILE"

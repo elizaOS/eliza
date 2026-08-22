@@ -57,17 +57,17 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("shouldStartBottomBar", () => {
-    it("defaults macOS to the assistant pill and other platforms to Workspace", () => {
-      expect(shouldStartBottomBar({}, [], "darwin")).toBe(true);
+    it("defaults every desktop platform to Workspace", () => {
+      expect(shouldStartBottomBar({}, [], "darwin")).toBe(false);
       expect(shouldStartBottomBar({}, [], "win32")).toBe(false);
       expect(shouldStartBottomBar({}, [], "linux")).toBe(false);
       expect(
         shouldStartBottomBar(
-          { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+          { ELIZA_DESKTOP_EXPERIENCE: "macos-assistant" },
           [],
           "darwin",
         ),
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it("opts in through explicit truthy values", () => {
@@ -323,7 +323,7 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("defaults macOS to the assistant pill and other platforms to an opaque Workspace", () => {
+    it("defaults every platform to an opaque Workspace", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
         mode: "default",
         titleBarStyle: "default",
@@ -332,11 +332,11 @@ describe("desktop bottom-bar config", () => {
         nativeChromeInteractive: true,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
-        mode: "bottom-bar",
-        titleBarStyle: "hidden",
-        transparent: true,
-        nativeShadow: false,
-        nativeChromeInteractive: false,
+        mode: "default",
+        titleBarStyle: "hiddenInset",
+        transparent: false,
+        nativeShadow: true,
+        nativeChromeInteractive: true,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
         mode: "default",

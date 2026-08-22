@@ -757,30 +757,32 @@ export function DesktopWorkspaceSection({
                 })
               }
             />
-            <WorkspaceActionRow
-              agentId="desktop-toggle-hidden-launch"
-              label={
-                snapshot?.autoLaunch?.openAsHidden
-                  ? t("desktopworkspacesection.LaunchVisibleOnLogin")
-                  : t("desktopworkspacesection.LaunchHiddenOnLogin")
-              }
-              group="desktop-lifecycle"
-              disabled={busyAction === "desktop-toggle-hidden-launch"}
-              onClick={() =>
-                void runAction("desktop-toggle-hidden-launch", async () => {
-                  await invokeDesktopBridgeRequest<void>({
-                    rpcMethod: "desktopSetAutoLaunch",
-                    ipcChannel: "desktop:setAutoLaunch",
-                    params: {
-                      enabled: snapshot?.autoLaunch?.enabled ?? false,
-                      openAsHidden: !(
-                        snapshot?.autoLaunch?.openAsHidden ?? false
-                      ),
-                    },
-                  });
-                })
-              }
-            />
+            {!isMacDesktop && (
+              <WorkspaceActionRow
+                agentId="desktop-toggle-hidden-launch"
+                label={
+                  snapshot?.autoLaunch?.openAsHidden
+                    ? t("desktopworkspacesection.LaunchVisibleOnLogin")
+                    : t("desktopworkspacesection.LaunchHiddenOnLogin")
+                }
+                group="desktop-lifecycle"
+                disabled={busyAction === "desktop-toggle-hidden-launch"}
+                onClick={() =>
+                  void runAction("desktop-toggle-hidden-launch", async () => {
+                    await invokeDesktopBridgeRequest<void>({
+                      rpcMethod: "desktopSetAutoLaunch",
+                      ipcChannel: "desktop:setAutoLaunch",
+                      params: {
+                        enabled: snapshot?.autoLaunch?.enabled ?? false,
+                        openAsHidden: !(
+                          snapshot?.autoLaunch?.openAsHidden ?? false
+                        ),
+                      },
+                    });
+                  })
+                }
+              />
+            )}
           </SettingsGroup>
         </div>
 

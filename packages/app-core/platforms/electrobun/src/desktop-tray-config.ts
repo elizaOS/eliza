@@ -27,9 +27,9 @@ export function shouldCreateDesktopTray(
 }
 
 /**
- * Whether macOS should launch dockless with the menu-bar item as its recovery
- * surface. The assistant experience defaults on; Workspace and legacy flags
- * can explicitly opt out. Windows and Linux never use this accessory policy.
+ * Whether an explicitly selected macOS assistant build should launch dockless
+ * with the menu-bar item as its recovery surface. The normal Workspace keeps
+ * its Dock presence. Windows and Linux never use this accessory policy.
  */
 export function shouldStartTrayFirst(
   env: NodeJS.ProcessEnv = process.env,

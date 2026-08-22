@@ -13,33 +13,33 @@ import {
 } from "./desktop-tray-config";
 
 /**
- * Pins the macOS assistant and cross-platform Workspace startup contracts while
- * preserving explicit legacy overrides and kiosk precedence.
+ * Pins the normal cross-platform Workspace startup contract while preserving
+ * the explicit macOS assistant, legacy overrides, and kiosk precedence.
  */
 describe("desktop experience contract — startup", () => {
-  it("defaults macOS to assistant and other platforms to Workspace", () => {
-    expect(resolveDesktopExperience({}, "darwin")).toBe("macos-assistant");
+  it("defaults every desktop platform to the full Workspace", () => {
+    expect(resolveDesktopExperience({}, "darwin")).toBe("workspace");
     expect(resolveDesktopExperience({}, "win32")).toBe("workspace");
     expect(resolveDesktopExperience({}, "linux")).toBe("workspace");
-    expect(shouldStartBottomBar({}, [], "darwin")).toBe(true);
+    expect(shouldStartBottomBar({}, [], "darwin")).toBe(false);
     expect(shouldStartBottomBar({}, [], "win32")).toBe(false);
   });
 
-  it("supports an explicit macOS Workspace experience", () => {
+  it("supports an explicit macOS assistant experience", () => {
     expect(
       shouldStartBottomBar(
-        { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+        { ELIZA_DESKTOP_EXPERIENCE: "macos-assistant" },
         [],
         "darwin",
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       resolveDesktopShellWindowPresentation(
-        { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+        { ELIZA_DESKTOP_EXPERIENCE: "macos-assistant" },
         [],
         "darwin",
       ).mode,
-    ).toBe("default");
+    ).toBe("bottom-bar");
   });
 
   it("honors explicit legacy bottom-bar overrides", () => {
@@ -55,10 +55,10 @@ describe("desktop experience contract — startup", () => {
     }
   });
 
-  it("keeps Cloud-only macOS installs on the same assistant contract", () => {
+  it("keeps Cloud-only macOS installs on the normal full-app contract", () => {
     expect(
       shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [], "darwin"),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("kiosk mode overrides the bottom bar (env and argv)", () => {
@@ -89,16 +89,16 @@ describe("desktop experience contract — startup", () => {
     }
   });
 
-  it("presents the macOS default as the transparent assistant pill", () => {
+  it("presents the macOS default as the opaque full application", () => {
     const presentation = resolveDesktopShellWindowPresentation(
       {},
       [],
       "darwin",
     );
-    expect(presentation.mode).toBe("bottom-bar");
-    expect(presentation.titleBarStyle).toBe("hidden");
-    expect(presentation.transparent).toBe(true);
-    expect(presentation.nativeShadow).toBe(false);
+    expect(presentation.mode).toBe("default");
+    expect(presentation.titleBarStyle).toBe("hiddenInset");
+    expect(presentation.transparent).toBe(false);
+    expect(presentation.nativeShadow).toBe(true);
   });
 
   it("keeps the optional bottom bar transparent", () => {
@@ -147,18 +147,18 @@ describe("desktop experience contract — tray", () => {
     expect(shouldCreateDesktopTray({ ELIZA_DESKTOP_TRAY: "0" })).toBe(false);
   });
 
-  it("defaults macOS assistant to tray-first with an explicit Workspace opt-out", () => {
-    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
+  it("keeps the normal macOS app in the Dock and supports explicit assistant tray-first", () => {
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
     ).toBe(true);
     expect(
       shouldStartTrayFirst(
-        { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+        { ELIZA_DESKTOP_EXPERIENCE: "macos-assistant" },
         "darwin",
         [],
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(false);
     expect(
       shouldEnableTrayPopover(

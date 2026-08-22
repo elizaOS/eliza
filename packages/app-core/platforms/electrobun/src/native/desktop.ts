@@ -103,6 +103,7 @@ import {
   ensureWindowTransparentBackground,
   type FnMonitorStartResult,
   getFnSystemUsageType,
+  getMacLaunchAtLoginStatus,
   isAppActive,
   isFnKeyDown,
   isFnMonitorHealthy,
@@ -111,6 +112,7 @@ import {
   orderOut,
   pollFnMonitor,
   pollWindowOutsideClick,
+  setMacLaunchAtLoginEnabled,
   setWindowInteractiveMaterialSize,
   setWindowNonactivatingPanel,
   startAccessingSecurityScopedBookmark,
@@ -1218,16 +1220,18 @@ export class DesktopManager {
     enabled: boolean;
     openAsHidden?: boolean;
   }): Promise<void> {
-    const appPath = process.execPath;
-
     const openAsHidden = options.openAsHidden ?? false;
 
     if (process.platform === "darwin") {
-      await this.setAutoLaunchMac(options.enabled, appPath, openAsHidden);
+      this.setAutoLaunchMac(options.enabled);
     } else if (process.platform === "linux") {
-      this.setAutoLaunchLinux(options.enabled, appPath, openAsHidden);
+      this.setAutoLaunchLinux(options.enabled, process.execPath, openAsHidden);
     } else if (process.platform === "win32") {
-      await this.setAutoLaunchWin(options.enabled, appPath, openAsHidden);
+      await this.setAutoLaunchWin(
+        options.enabled,
+        process.execPath,
+        openAsHidden,
+      );
     } else {
       logger.warn(
         `[DesktopManager] setAutoLaunch: unsupported platform ${process.platform}`,
@@ -1240,11 +1244,10 @@ export class DesktopManager {
     openAsHidden: boolean;
   }> {
     if (process.platform === "darwin") {
-      const plistPath = this.getMacLaunchAgentPath();
-      if (!fs.existsSync(plistPath))
-        return { enabled: false, openAsHidden: false };
-      const content = fs.readFileSync(plistPath, "utf8");
-      return { enabled: true, openAsHidden: content.includes("--hidden") };
+      return {
+        enabled: getMacLaunchAtLoginStatus() === "enabled",
+        openAsHidden: false,
+      };
     }
 
     if (process.platform === "linux") {
@@ -1265,61 +1268,13 @@ export class DesktopManager {
 
   // MARK: - Auto-launch helpers (macOS)
 
-  private getMacLaunchAgentPath(): string {
-    return path.join(
-      os.homedir(),
-      "Library",
-      "LaunchAgents",
-      getBrandConfig().macLaunchAgentPlist,
-    );
-  }
-
-  private async setAutoLaunchMac(
-    enabled: boolean,
-    appPath: string,
-    openAsHidden = false,
-  ): Promise<void> {
-    const plistPath = this.getMacLaunchAgentPath();
-
-    if (enabled) {
-      const hiddenArg = openAsHidden ? "\n    <string>--hidden</string>" : "";
-      const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${getBrandConfig().macLaunchAgentLabel}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${appPath}</string>${hiddenArg}
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <false/>
-</dict>
-</plist>
-`;
-      const dir = path.dirname(plistPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(plistPath, plistContent, "utf8");
-
-      const proc = Bun.spawn(["launchctl", "load", plistPath], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      await proc.exited;
-    } else {
-      if (fs.existsSync(plistPath)) {
-        const proc = Bun.spawn(["launchctl", "unload", plistPath], {
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        await proc.exited;
-        fs.unlinkSync(plistPath);
-      }
+  private setAutoLaunchMac(enabled: boolean): void {
+    const status = setMacLaunchAtLoginEnabled(enabled);
+    if (status === "error" || status === "not-found") {
+      throw new Error("macOS could not update Launch at Login for this app.");
+    }
+    if (status === "unavailable") {
+      throw new Error("Launch at Login requires macOS 13 or later.");
     }
   }
 
