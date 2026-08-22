@@ -1,13 +1,13 @@
 /**
- * Exercises calendar preview truncation through the exported next-event
- * formatter so the configured 60-character contract includes its ellipsis.
+ * Proves next-event model context preserves complete linked-mail snippets,
+ * including graphemes that cross the former 60-code-unit preview boundary.
  */
 import type { LifeOpsNextCalendarEventContext } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { formatNextEventContext } from "./format.ts";
 
-describe("calendar preview truncation", () => {
-  it("keeps the linked-mail snippet and marker within 60 characters", () => {
+describe("calendar linked-mail context integrity", () => {
+  it("preserves the complete linked-mail snippet", () => {
     const now = new Date("2026-08-18T12:00:00.000Z");
     const context: LifeOpsNextCalendarEventContext = {
       event: {
@@ -61,11 +61,11 @@ describe("calendar preview truncation", () => {
       .find((line) => line.startsWith('- "Agenda"'));
     const snippet = relatedLine?.match(/\(([^()]*)\)$/)?.[1];
 
-    expect(snippet).toBe(`${"a".repeat(59)}…`);
-    expect(snippet).toHaveLength(60);
+    expect(snippet).toBe("a".repeat(200));
+    expect(snippet).toHaveLength(200);
   });
 
-  it("does not split a surrogate pair at the preview boundary", () => {
+  it("preserves complete surrogate pairs and grapheme clusters", () => {
     const now = new Date("2026-08-18T12:00:00.000Z");
     const context: LifeOpsNextCalendarEventContext = {
       event: {
@@ -119,9 +119,8 @@ describe("calendar preview truncation", () => {
       .find((line) => line.startsWith('- "Agenda"'));
     const snippet = relatedLine?.match(/\(([^()]*)\)$/)?.[1];
 
-    expect(snippet).toBe(`${"a".repeat(58)}…`);
+    expect(snippet).toBe(`${"a".repeat(58)}🙂tail`);
     expect(snippet?.isWellFormed()).toBe(true);
-    expect(snippet?.length).toBeLessThanOrEqual(60);
 
     for (const grapheme of ["e\u0301", "👨‍👩‍👧‍👦"]) {
       const mail = context.linkedMail[0];
@@ -132,9 +131,8 @@ describe("calendar preview truncation", () => {
         .find((line) => line.startsWith('- "Agenda"'))
         ?.match(/\(([^()]*)\)$/)?.[1];
 
-      expect(bounded).toBe(`${"a".repeat(58)}…`);
+      expect(bounded).toBe(`${"a".repeat(58)}${grapheme}tail`);
       expect(bounded?.isWellFormed()).toBe(true);
-      expect(bounded?.length).toBeLessThanOrEqual(60);
     }
   });
 });
