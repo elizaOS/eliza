@@ -232,6 +232,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/options\.command\.substring\(/,
 		/options\.command\.slice\(/,
 	],
+	"packages/agent/src/shared/conversation-format.ts": [
+		/room\.id\.slice\(/,
+		/room\.id\.substring\(/,
+	],
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
 	],
