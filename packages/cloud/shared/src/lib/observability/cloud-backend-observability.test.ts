@@ -1,5 +1,5 @@
 /** Ensures Cloud request telemetry records both successful and thrown requests. */
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 
 import {
@@ -70,5 +70,54 @@ describe("observeCloudRequest", () => {
       traceId: "trace-hono-12345678",
       status: 500,
     });
+  });
+});
+
+describe("telemetry threshold env parsing", () => {
+  const KEYS = [
+    "CLOUD_SLOW_DB_MS",
+    "CLOUD_SLOW_REQUEST_MS",
+    "CLOUD_DB_BURST_COUNT",
+  ];
+  const saved = new Map<string, string | undefined>();
+
+  beforeEach(() => {
+    for (const key of KEYS) {
+      if (!saved.has(key)) saved.set(key, process.env[key]);
+    }
+    clearCloudTelemetry();
+  });
+
+  afterEach(() => {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    saved.clear();
+  });
+
+  test("ignores a trailing-garbage threshold instead of publishing its prefix", () => {
+    // parseInt("500junk") is 500, so the snapshot reported a slow-DB boundary
+    // of 500ms — a value nobody configured — and classified against it.
+    process.env.CLOUD_SLOW_DB_MS = "500junk";
+    expect(getCloudTelemetrySnapshot().thresholds.slowDbMs).toBe(250);
+  });
+
+  test("still honours a clean threshold", () => {
+    process.env.CLOUD_SLOW_DB_MS = "500";
+    expect(getCloudTelemetrySnapshot().thresholds.slowDbMs).toBe(500);
+  });
+
+  test("still honours an explicitly signed positive threshold", () => {
+    // `Number.parseInt` accepted "+500"; rejecting it would be a regression.
+    process.env.CLOUD_SLOW_DB_MS = "+500";
+    expect(getCloudTelemetrySnapshot().thresholds.slowDbMs).toBe(500);
+  });
+
+  test("falls back for an integer beyond the safe range", () => {
+    // This patch tightens the predicate from finite to safe-integer, so the
+    // boundary it claims is covered explicitly.
+    process.env.CLOUD_SLOW_DB_MS = "9007199254740993";
+    expect(getCloudTelemetrySnapshot().thresholds.slowDbMs).toBe(250);
   });
 });

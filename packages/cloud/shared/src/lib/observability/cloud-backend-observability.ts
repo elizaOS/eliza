@@ -106,8 +106,17 @@ const streamMilestones: CloudStreamMilestoneTelemetry[] = [];
 
 function numberEnv(name: string, fallback: number): number {
   const raw = typeof process !== "undefined" ? process.env?.[name] : undefined;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // `Number.parseInt` stops at the first non-digit, so "500junk" parsed to a
+  // positive 500 and was accepted as a deliberate threshold. The snapshot
+  // publishes the threshold it used, so a typo made the report describe — and
+  // classify against — a boundary nobody configured.
+  const trimmed = raw?.trim();
+  // The optional leading plus is kept deliberately: `Number.parseInt` accepted
+  // "+500", so rejecting it here would be a compatibility regression rather
+  // than a fix.
+  const parsed =
+    trimmed && /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function thresholds() {
