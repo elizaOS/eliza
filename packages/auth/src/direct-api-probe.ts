@@ -49,21 +49,47 @@ export interface DirectApiProbeResult {
  * Ceiling on the provider error body kept for diagnostics. Orders of magnitude
  * above any real provider error, so in practice nothing is lost — but the base
  * URL is operator-configurable through the `*_BASE_URL` overrides, so the read
- * must not be unbounded. Exceeding it is reported in the text rather than
- * silently trimmed: a truncation the reader cannot see is the failure mode this
- * function exists to avoid.
+ * must not be unbounded. Exceeding it rejects the optional body as a whole;
+ * partial provider text is never presented as the provider's diagnostic.
  */
 const MAX_PROBE_FAILURE_BODY_BYTES = 64 * 1024;
 
 async function readProbeFailureBody(response: Response): Promise<string> {
   try {
-    const body = await response.text();
-    const bytes = new TextEncoder().encode(body);
-    if (bytes.length <= MAX_PROBE_FAILURE_BODY_BYTES) return body;
-    const kept = new TextDecoder().decode(
-      bytes.subarray(0, MAX_PROBE_FAILURE_BODY_BYTES),
-    );
-    return `${kept}[truncated: ${bytes.length} bytes exceeded the ${MAX_PROBE_FAILURE_BODY_BYTES}-byte probe diagnostic limit]`;
+    const declaredLength = Number(response.headers?.get?.("content-length"));
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > MAX_PROBE_FAILURE_BODY_BYTES
+    ) {
+      return `[response body rejected: ${declaredLength} bytes exceeds the ${MAX_PROBE_FAILURE_BODY_BYTES}-byte probe diagnostic limit]`;
+    }
+    if (!response.body) {
+      const body = await response.text();
+      const bytes = new TextEncoder().encode(body);
+      if (bytes.length <= MAX_PROBE_FAILURE_BODY_BYTES) return body;
+      return `[response body rejected: ${bytes.length} bytes exceeds the ${MAX_PROBE_FAILURE_BODY_BYTES}-byte probe diagnostic limit]`;
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > MAX_PROBE_FAILURE_BODY_BYTES) {
+        await reader.cancel();
+        return `[response body rejected: more than ${MAX_PROBE_FAILURE_BODY_BYTES} bytes exceeds the probe diagnostic limit]`;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(bytes);
   } catch (cause) {
     // error-policy:J4 explicit diagnostic degrade — the HTTP status remains the
     // authoritative failed probe; only the optional provider body is unavailable.
