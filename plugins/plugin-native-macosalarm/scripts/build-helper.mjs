@@ -62,6 +62,38 @@ function readThinMachOCpuType(bytes) {
 
   const thin = THIN_MAGICS.get(bytes.subarray(0, 4).toString("hex"));
   if (!thin || bytes.length < thin.headerSize) return undefined;
+
+  const fileType = readUInt32(bytes, 12, thin.endian);
+  const commandCount = readUInt32(bytes, 16, thin.endian);
+  const commandBytes = readUInt32(bytes, 20, thin.endian);
+  const commandRegionEnd = thin.headerSize + commandBytes;
+  if (
+    fileType !== 2 ||
+    commandCount === 0 ||
+    commandBytes < commandCount * 8 ||
+    !Number.isSafeInteger(commandRegionEnd) ||
+    commandRegionEnd > bytes.length
+  ) {
+    return undefined;
+  }
+
+  let commandOffset = thin.headerSize;
+  for (let index = 0; index < commandCount; index += 1) {
+    if (commandOffset + 8 > commandRegionEnd) return undefined;
+    const commandSize = readUInt32(bytes, commandOffset + 4, thin.endian);
+    const nextCommandOffset = commandOffset + commandSize;
+    if (
+      commandSize < 8 ||
+      commandSize % 4 !== 0 ||
+      !Number.isSafeInteger(nextCommandOffset) ||
+      nextCommandOffset > commandRegionEnd
+    ) {
+      return undefined;
+    }
+    commandOffset = nextCommandOffset;
+  }
+  if (commandOffset !== commandRegionEnd) return undefined;
+
   return readUInt32(bytes, 4, thin.endian);
 }
 

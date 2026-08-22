@@ -81,9 +81,16 @@ function thinMachO(
   bits: MachOBits = 64,
   endian: Endian = "le",
 ): Buffer {
-  const bytes = Buffer.alloc(bits === 32 ? 28 : 32);
+  const headerSize = bits === 32 ? 28 : 32;
+  const loadCommandSize = 24;
+  const bytes = Buffer.alloc(headerSize + loadCommandSize);
   Buffer.from(THIN_MAGICS[`${bits}-${endian}`], "hex").copy(bytes);
   writeUInt32(bytes, cpuType, 4, endian);
+  writeUInt32(bytes, 2, 12, endian);
+  writeUInt32(bytes, 1, 16, endian);
+  writeUInt32(bytes, loadCommandSize, 20, endian);
+  writeUInt32(bytes, 0x1b, headerSize, endian);
+  writeUInt32(bytes, loadCommandSize, headerSize + 4, endian);
   return bytes;
 }
 
@@ -179,6 +186,32 @@ describe("Mach-O architecture cache validity", () => {
     }
   });
 
+  it("rejects header-only and structurally incomplete thin executables", () => {
+    for (const bits of [32, 64] as const) {
+      const complete = thinMachO(CPU_ARM64, bits);
+      const headerSize = bits === 32 ? 28 : 32;
+      expect(readMachOCpuTypes(complete.subarray(0, headerSize))).toEqual([]);
+
+      const oversizedRegion = Buffer.from(complete);
+      oversizedRegion.writeUInt32LE(28, 20);
+      expect(readMachOCpuTypes(oversizedRegion)).toEqual([]);
+
+      const inconsistentCount = Buffer.from(complete);
+      inconsistentCount.writeUInt32LE(2, 16);
+      expect(readMachOCpuTypes(inconsistentCount)).toEqual([]);
+
+      const undersizedCommand = Buffer.from(complete);
+      undersizedCommand.writeUInt32LE(4, headerSize + 4);
+      expect(readMachOCpuTypes(undersizedCommand)).toEqual([]);
+    }
+  });
+
+  it("rejects a non-executable Mach-O slice", () => {
+    const dylib = thinMachO(CPU_ARM64);
+    dylib.writeUInt32LE(6, 12);
+    expect(readMachOCpuTypes(dylib)).toEqual([]);
+  });
+
   it("rejects fat headers without complete tables or slice payloads", () => {
     const complete = universalMachO([CPU_ARM64]);
     expect(readMachOCpuTypes(complete.subarray(0, 8))).toEqual([]);
@@ -229,6 +262,27 @@ describe("Mach-O architecture cache validity", () => {
           targetArch: "arm64",
         }),
       ).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a matching source stamp when the helper is header-only", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "macosalarm-thin-"));
+    const binaryPath = path.join(directory, "helper");
+    const stampPath = path.join(directory, "helper.source.sha256");
+    try {
+      writeFileSync(stampPath, "same-source-and-flags\n");
+      writeFileSync(binaryPath, thinMachO(CPU_ARM64).subarray(0, 32));
+
+      expect(
+        helperCacheIsCurrent({
+          binaryPath,
+          stampPath,
+          expectedStamp: "same-source-and-flags",
+          targetArch: "arm64",
+        }),
+      ).toBe(false);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
