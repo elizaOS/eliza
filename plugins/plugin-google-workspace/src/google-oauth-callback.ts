@@ -50,6 +50,8 @@ export interface GoogleOAuthCallbackConfigOptions {
 
 type RuntimeWithSettings = Pick<IAgentRuntime, "getSetting">;
 
+const FALLBACK_CALLBACK_EXAMPLE = "http://127.0.0.1:31437/api/connectors/google/oauth/callback";
+
 function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -65,6 +67,24 @@ function normalizedHostname(url: URL): string {
     .trim()
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
+}
+
+function servedCallbackExample(options?: GoogleOAuthCallbackConfigOptions): string {
+  if (options?.servedOrigin === undefined) return FALLBACK_CALLBACK_EXAMPLE;
+  try {
+    const served =
+      options.servedOrigin instanceof URL ? options.servedOrigin : new URL(options.servedOrigin);
+    if (
+      (served.protocol !== "http:" && served.protocol !== "https:") ||
+      served.username !== "" ||
+      served.password !== ""
+    ) {
+      return FALLBACK_CALLBACK_EXAMPLE;
+    }
+    return `${served.origin}${GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH}`;
+  } catch {
+    return FALLBACK_CALLBACK_EXAMPLE;
+  }
 }
 
 /**
@@ -89,6 +109,7 @@ export function assessGoogleOAuthCallbackConfig(
   options?: GoogleOAuthCallbackConfigOptions
 ): GoogleOAuthCallbackConfigAssessment {
   const raw = readRedirectUriSetting(runtime);
+  const callbackExample = servedCallbackExample(options);
   if (!raw) {
     return {
       configured: false,
@@ -96,8 +117,7 @@ export function assessGoogleOAuthCallbackConfig(
       issues: [
         {
           code: "missing",
-          message:
-            "GOOGLE_REDIRECT_URI is not configured. Set it to the served connector callback, for example http://127.0.0.1:31437/api/connectors/google/oauth/callback.",
+          message: `GOOGLE_REDIRECT_URI is not configured. Set it to the served connector callback: ${callbackExample}.`,
         },
       ],
     };
@@ -158,8 +178,7 @@ export function assessGoogleOAuthCallbackConfig(
   if (isPortlessLoopbackRedirectUrl(parsed)) {
     issues.push({
       code: "portless_loopback",
-      message:
-        "GOOGLE_REDIRECT_URI uses a portless loopback origin. Include the served API port, for example http://127.0.0.1:31437/api/connectors/google/oauth/callback.",
+      message: `GOOGLE_REDIRECT_URI uses a portless loopback origin. Include the served API port: ${callbackExample}.`,
     });
   }
 
