@@ -22,11 +22,13 @@ import {
   createUniqueUuid,
   ElizaError,
   type IAgentRuntime,
+  type IFileStorageService,
   lifeOpsPassiveConnectorsEnabled,
   type Media,
   type Memory,
   type Room,
   Service,
+  ServiceType,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -1275,13 +1277,21 @@ export class WhatsAppConnectorService extends Service {
       typeof configuredMaxMb === "number" && Number.isFinite(configuredMaxMb) && configuredMaxMb > 0
         ? Math.floor(configuredMaxMb * 1024 * 1024)
         : DEFAULT_WHATSAPP_MEDIA_MAX_BYTES;
+    const storageService = this.runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES);
+    const fileStorage =
+      storageService && "read" in storageService && typeof storageService.read === "function"
+        ? (storageService as Pick<IFileStorageService, "read">)
+        : null;
+    if (storageService !== null && !fileStorage) {
+      throw new Error("Runtime file-storage service does not implement the canonical contract");
+    }
     const staged = await stageWhatsAppMedia(
       media.url,
       {
         maxBytes,
         filePathHint: filename,
       },
-      this.runtime.fetch
+      fileStorage
     );
     const mediaContent: WhatsAppMediaMessage = {
       data: staged.buffer,

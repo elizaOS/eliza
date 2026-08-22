@@ -2,7 +2,15 @@
  * Guards the hard cutover from the retired BlueBubbles bridge to the native
  * iMessage plugin across the generated first-party registration authorities.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -23,8 +31,7 @@ function maintainedFiles(root: string): string[] {
     if (entry.name === "dist" || entry.name === "node_modules") continue;
     const resolved = path.join(root, entry.name);
     if (entry.isDirectory()) files.push(...maintainedFiles(resolved));
-    else if (/\.(?:ts|tsx|js|mjs|json|md)$/.test(entry.name))
-      files.push(resolved);
+    else files.push(resolved);
   }
   return files;
 }
@@ -160,28 +167,55 @@ describe("retired transport registration", () => {
       /whatsapp-cloud-webhook|WHATSAPP_ACCESS_TOKEN|WHATSAPP_PHONE_NUMBER_ID|WHATSAPP_APP_SECRET/i,
     );
 
-    for (const authority of [
-      "packages/agent/src/runtime/build-character-config.ts",
-      "packages/agent/src/api/public-route-audit.baseline.json",
-      ".env.test.example",
-      "packages/shared/src/contracts/personal-assistant.ts",
-      "plugins/plugin-health/src/contracts/lifeops.ts",
-      "plugins/plugin-personal-assistant/src/lifeops/domains/whatsapp-service.ts",
-      "plugins/plugin-personal-assistant/src/lifeops/service.ts",
-      "plugins/plugin-personal-assistant/test/support/helpers/lifeops-simulator.ts",
-      "plugins/plugin-personal-assistant/test/support/fixtures/lifeops-simulator.ts",
+    const localAuthorityFiles = [
       "packages/registry/src/first-party/generated.json",
       "packages/scripts/post-merge-secrets.txt",
-      "packages/scripts/test-console/lib/connections.mjs",
-      "packages/ui/src/components/connectors/connector-mode-registry.ts",
-      "scripts/lifeops/connector-paths.mjs",
-      "scripts/lifeops/credential-probes.mjs",
-      "scripts/lifeops/hitl-credential-dashboard.mjs",
-    ]) {
-      expect(
-        readFileSync(path.join(repositoryRoot, authority), "utf8"),
-      ).not.toMatch(
-        /whatsapp-cloud-webhook|WHATSAPP_ACCESS_TOKEN|WHATSAPP_PHONE_NUMBER_ID|WHATSAPP_APP_SECRET|graph\.facebook\.com.*whatsapp/i,
+      ".env.test.example",
+      ...[
+        "packages/agent/src",
+        "packages/core/src",
+        "packages/app-core/src",
+        "packages/app-core/test/live-agent",
+        "packages/shared/src/contracts",
+        "plugins/plugin-health/src/contracts",
+        "plugins/plugin-personal-assistant/src/lifeops",
+        "plugins/plugin-personal-assistant/test/support",
+        "packages/scripts/test-console",
+        "packages/ui/src/components/connectors",
+        "scripts/lifeops",
+        "docs/testing",
+        "packages/docs/tracks/agent",
+      ].flatMap((authorityRoot) =>
+        maintainedFiles(path.join(repositoryRoot, authorityRoot)),
+      ),
+    ].map((authority) =>
+      path.isAbsolute(authority)
+        ? authority
+        : path.join(repositoryRoot, authority),
+    );
+    const retiredLocalAuthority =
+      /whatsapp-cloud-webhook|whatsappSessionPath|WHATSAPP_(?:TOKEN|ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID|SESSION_PATH)|whatsapp_business_account|graph\.facebook\.com[^\n]{0,200}whatsapp|whatsapp[^\n]{0,120}(?:cloud api|webhook|access token|phone number id|app secret)|(?:cloud api|webhook|access token|phone number id|app secret)[^\n]{0,120}whatsapp/i;
+    const retiredCoreAuthority =
+      /WHATSAPP_(?:TOKEN|ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID|SESSION_PATH)|whatsapp-cloud-webhook|whatsapp_business_account|graph\.facebook\.com[^\n]{0,200}whatsapp/i;
+    for (const authority of new Set(localAuthorityFiles)) {
+      let source = readFileSync(authority, "utf8");
+      if (
+        authority ===
+        path.join(
+          repositoryRoot,
+          "packages/shared/src/contracts/first-run-routes.ts",
+        )
+      ) {
+        expect(source.match(/whatsappSessionPath/g), authority).toHaveLength(1);
+        source = source.replace(
+          "whatsappSessionPath",
+          "retired-field-tombstone",
+        );
+      }
+      expect(source, authority).not.toMatch(
+        authority.startsWith(path.join(repositoryRoot, "packages/core/"))
+          ? retiredCoreAuthority
+          : retiredLocalAuthority,
       );
     }
 
@@ -212,6 +246,29 @@ describe("retired transport registration", () => {
       "plugins/plugin-whatsapp/src/api/whatsapp-routes.ts",
     ]) {
       expect(existsSync(path.join(repositoryRoot, removedSurface))).toBe(false);
+    }
+  });
+
+  it("discovers extensionless and uncommon-extension authority files", () => {
+    const root = mkdtempSync(
+      path.join(os.tmpdir(), "retired-transport-ratchet-"),
+    );
+    try {
+      writeFileSync(
+        path.join(root, "Dockerfile"),
+        "WHATSAPP_ACCESS_TOKEN=retired\n",
+      );
+      writeFileSync(
+        path.join(root, "connector.env.production"),
+        "WHATSAPP_TOKEN=retired\n",
+      );
+      expect(
+        maintainedFiles(root)
+          .map((file) => path.basename(file))
+          .sort(),
+      ).toEqual(["Dockerfile", "connector.env.production"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

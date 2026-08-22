@@ -360,7 +360,10 @@ export function persistMediaBytes(
  * JSON files) is rejected before the path is even resolved. Used by agent
  * backup/export to bundle referenced media bytes.
  */
-export function readStoredMediaBytes(fileName: string): Buffer | null {
+export function readStoredMediaBytes(
+  fileName: string,
+  maxBytes?: number,
+): Buffer | null {
   if (!MEDIA_FILE_NAME.test(fileName)) return null;
   const filePath = path.join(mediaDir(), fileName);
   if (path.dirname(filePath) !== mediaDir()) return null;
@@ -369,8 +372,31 @@ export function readStoredMediaBytes(fileName: string): Buffer | null {
   // null silently drops referenced bytes from a backup/export, so it throws.
   if (!fs.existsSync(filePath)) return null;
   try {
-    return fs.readFileSync(filePath);
+    if (maxBytes !== undefined) {
+      if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+        throw new ElizaError("media read requires a positive maxBytes", {
+          code: "MEDIA_STORE_READ_LIMIT_INVALID",
+          context: { fileName, maxBytes },
+        });
+      }
+      const size = fs.statSync(filePath).size;
+      if (size > maxBytes) {
+        throw new ElizaError(`stored media exceeds maxBytes ${maxBytes}`, {
+          code: "MEDIA_STORE_READ_LIMIT_EXCEEDED",
+          context: { fileName, size, maxBytes },
+        });
+      }
+    }
+    const bytes = fs.readFileSync(filePath);
+    if (maxBytes !== undefined && bytes.length > maxBytes) {
+      throw new ElizaError(`stored media exceeds maxBytes ${maxBytes}`, {
+        code: "MEDIA_STORE_READ_LIMIT_EXCEEDED",
+        context: { fileName, size: bytes.length, maxBytes },
+      });
+    }
+    return bytes;
   } catch (err) {
+    if (err instanceof ElizaError) throw err;
     // error-policy:J2 context-adding rethrow — an unreadable stored file is a
     // real I/O failure, distinct from absence; surface it to the export boundary.
     throw new ElizaError(`media read failed for ${fileName}`, {

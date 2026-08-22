@@ -48,18 +48,19 @@ describe("WhatsApp guarded media staging", () => {
 
   it("bounds canonical local media through the explicitly trusted runtime fetch", async () => {
     const storedUrl = `/api/media/${"a".repeat(64)}.png`;
-    const localFetch = vi.fn(async () =>
-      new Response(Buffer.from("stored"), {
-        headers: { "content-type": "image/png", "content-length": "6" },
+    const canonicalStore = {
+      read: vi.fn(async (_fileName: string, maxBytes: number) => {
+        if (6 > maxBytes) throw new Error(`stored media exceeds maxBytes ${maxBytes}`);
+        return { bytes: Buffer.from("stored"), mimeType: "image/png", size: 6 };
       }),
-    );
+    };
 
     expect(isCanonicalStoredMediaUrl(storedUrl)).toBe(true);
     expect(isCanonicalStoredMediaUrl("/api/media/not-a-hash.png")).toBe(false);
-    await expect(stageWhatsAppMedia(storedUrl, { maxBytes: 5 }, localFetch)).rejects.toThrow(
+    await expect(stageWhatsAppMedia(storedUrl, { maxBytes: 5 }, canonicalStore)).rejects.toThrow(
       "exceeds maxBytes 5",
     );
-    expect(localFetch).toHaveBeenCalledWith(storedUrl, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(canonicalStore.read).toHaveBeenCalledWith(`${"a".repeat(64)}.png`, 5);
   });
 
   it("hands only staged bytes to the Baileys adapter", () => {
