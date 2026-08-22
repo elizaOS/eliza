@@ -16,8 +16,8 @@ import {
 } from "../../../db/repositories/phone-metadata-readers";
 import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
 import { agentPhoneNumbers, type PhoneMessageLog } from "../../../db/schemas/agent-phone-numbers";
-import { logger } from "../../utils/logger";
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
+import { logger } from "../../utils/logger";
 
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import {
@@ -47,7 +47,6 @@ export function messageRouterTwilioFetch(
     maxResponseBytes: MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES,
   });
 }
-
 
 function isUndefinedTableError(error: unknown): boolean {
   return isPostgresUndefinedTableError(error);
