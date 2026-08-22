@@ -398,6 +398,41 @@ export class HeadscaleClient {
     }
   }
 
+  /**
+   * Expire a v0.28 pre-auth key by numeric id. The v0.28 REST contract uses a
+   * JSON body at POST /api/v1/preauthkey/expire (not a key in the URL).
+   */
+  async expirePreAuthKey(id: string): Promise<void> {
+    if (!/^[1-9]\d*$/.test(id)) {
+      throw new Error("[headscale] invalid pre-auth key id");
+    }
+    try {
+      await this.request<Record<string, unknown>>("POST", "/api/v1/preauthkey/expire", { id });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("404")) return;
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a v0.28 pre-auth key by numeric id. grpc-gateway exposes the id as a
+   * query parameter on DELETE /api/v1/preauthkey.
+   */
+  async deletePreAuthKey(id: string): Promise<void> {
+    if (!/^[1-9]\d*$/.test(id)) {
+      throw new Error("[headscale] invalid pre-auth key id");
+    }
+    try {
+      await this.request<Record<string, unknown>>(
+        "DELETE",
+        `/api/v1/preauthkey?id=${encodeURIComponent(id)}`,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("404")) return;
+      throw error;
+    }
+  }
+
   async ensureUser(user = this.user): Promise<number> {
     const existing = await this.findUser(user);
     if (existing) return existing;

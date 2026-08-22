@@ -129,6 +129,96 @@ export class RemoteHostsRepository {
     return host;
   }
 
+  async recordManagedEnrollment(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    hostname: string;
+    preAuthKeyId: string;
+  }): Promise<RemoteHost> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_hostname: input.hostname,
+        headscale_preauth_key_id: input.preAuthKeyId,
+        headscale_cleanup_pending: true,
+        headscale_cleanup_error: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+          eq(remoteHosts.status, "active"),
+        ),
+      )
+      .returning();
+    if (!host) {
+      throw storageFailure("Managed remote-host enrollment could not be recorded", {
+        hostId: input.hostId,
+      });
+    }
+    return host;
+  }
+
+  async recordManagedCleanupFailure(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    message: string;
+  }): Promise<void> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_cleanup_pending: true,
+        headscale_cleanup_error: input.message.slice(0, 1_000),
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+        ),
+      )
+      .returning({ id: remoteHosts.id });
+    if (!host) {
+      throw storageFailure("Managed remote-host cleanup failure could not be recorded", {
+        hostId: input.hostId,
+      });
+    }
+  }
+
+  async completeManagedCleanup(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<void> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_preauth_key_id: null,
+        headscale_hostname: null,
+        headscale_cleanup_pending: false,
+        headscale_cleanup_error: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+        ),
+      )
+      .returning({ id: remoteHosts.id });
+    if (!host) {
+      throw storageFailure("Managed remote-host cleanup could not be completed", {
+        hostId: input.hostId,
+      });
+    }
+  }
+
   /**
    * Rotates a lost one-time host bearer only when the authenticated owner
    * proves the complete immutable public enrollment identity. This closes the

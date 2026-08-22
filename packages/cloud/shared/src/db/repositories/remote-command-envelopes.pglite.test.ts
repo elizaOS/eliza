@@ -208,6 +208,7 @@ beforeAll(async () => {
     "0275_remote_sessions_first_class_expiry",
     "0305_secure_remote_hosts",
     "0306_secure_remote_command_relay",
+    "0307_remote_host_managed_network",
   ]) {
     await applyMigration(migration);
   }
@@ -224,6 +225,37 @@ afterAll(async () => {
 });
 
 describe("secure remote relay repositories", () => {
+  it("persists and clears managed-network compensation without storing an auth key", async () => {
+    await enrollAndPair(false);
+    await hosts.recordManagedEnrollment({
+      hostId,
+      organizationId,
+      userId: ownerId,
+      hostname: "eliza-host-test",
+      preAuthKeyId: "123",
+    });
+    let [host] = await database.select().from(remoteHosts);
+    expect(host).toMatchObject({
+      headscale_hostname: "eliza-host-test",
+      headscale_preauth_key_id: "123",
+      headscale_cleanup_pending: true,
+    });
+    expect(JSON.stringify(host)).not.toContain("hskey-");
+
+    await hosts.completeManagedCleanup({
+      hostId,
+      organizationId,
+      userId: ownerId,
+    });
+    [host] = await database.select().from(remoteHosts);
+    expect(host).toMatchObject({
+      headscale_hostname: null,
+      headscale_preauth_key_id: null,
+      headscale_cleanup_pending: false,
+      headscale_cleanup_error: null,
+    });
+  });
+
   it("records a host heartbeat even when its active session has no command", async () => {
     await enrollAndPair();
     expect((await commands.claimNext({ sessionId, hostId, hostToken })).kind).toBe("empty");

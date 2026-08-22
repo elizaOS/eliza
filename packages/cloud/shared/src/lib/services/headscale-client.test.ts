@@ -193,6 +193,58 @@ describe("HeadscaleClient upstream errors", () => {
   });
 });
 
+describe("HeadscaleClient v0.28 pre-auth cleanup contract", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("expires by JSON id and deletes by query id", async () => {
+    const requests: Array<{ url: string; method: string; body?: string }> = [];
+    globalThis.fetch = vi.fn(async (input, init) => {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        ...(typeof init?.body === "string" ? { body: init.body } : {}),
+      });
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+    await client.expirePreAuthKey("123");
+    await client.deletePreAuthKey("123");
+    expect(requests).toEqual([
+      {
+        url: "https://headscale.example/api/v1/preauthkey/expire",
+        method: "POST",
+        body: JSON.stringify({ id: "123" }),
+      },
+      {
+        url: "https://headscale.example/api/v1/preauthkey?id=123",
+        method: "DELETE",
+      },
+    ]);
+  });
+
+  it("rejects non-numeric ids before sending a bearer", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+    await expect(client.expirePreAuthKey("key-secret")).rejects.toThrow(/invalid pre-auth key id/);
+    await expect(client.deletePreAuthKey("0")).rejects.toThrow(/invalid pre-auth key id/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 /**
  * Blue/green upgrade regression: when the preserved green node still holds the
  * base hostname, Headscale renames the freshly registered blue node to
