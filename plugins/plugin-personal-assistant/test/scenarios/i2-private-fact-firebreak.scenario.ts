@@ -40,7 +40,7 @@ export default scenario({
       options: {
         action: "draft_reply",
         recipient: "Talia Reed",
-        channel: "signal",
+        channel: "whatsapp",
         requiresConfirmation: true,
         body: "Can you use the 6:00 setup window so the table handoff stays simple?",
       },

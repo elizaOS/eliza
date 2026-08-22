@@ -880,7 +880,6 @@ function approvalChannelForDraft(
     case "email":
     case "telegram":
     case "discord":
-    case "signal":
     case "whatsapp":
     case "imessage":
     case "sms":

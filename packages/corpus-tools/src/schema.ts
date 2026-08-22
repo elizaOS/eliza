@@ -3,7 +3,7 @@
  * and mock loaders. The schema is intentionally collector-neutral: source
  * platforms keep their native provenance in `platform`/`accountId`, while
  * downstream tests consume validated messages, contacts, threads, and shard
- * manifests without learning Gmail, Telegram, Discord, iMessage, Signal, or X
+ * manifests without learning Gmail, Telegram, Discord, iMessage, or X
  * export formats.
  */
 import { z } from "zod";
@@ -20,7 +20,6 @@ export const corpusPlatforms = [
   "telegram",
   "discord",
   "imessage",
-  "signal",
   "x",
 ] as const;
 

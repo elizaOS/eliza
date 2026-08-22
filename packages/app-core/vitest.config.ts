@@ -77,7 +77,6 @@ const pluginRegistrySrc = path.join(
   monorepoRoot,
   "plugins/plugin-registry/src",
 );
-const pluginSignalSrc = path.join(monorepoRoot, "plugins/plugin-signal/src");
 const pluginVideoSrc = path.join(monorepoRoot, "plugins/plugin-video/src");
 const pluginWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src");
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
@@ -478,10 +477,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-registry\/(.+)$/,
         replacement: path.join(pluginRegistrySrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-signal$/,
-        replacement: path.join(pluginSignalSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-video$/,

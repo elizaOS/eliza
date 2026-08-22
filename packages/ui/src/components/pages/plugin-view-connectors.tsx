@@ -1,6 +1,6 @@
 /**
  * Connector cards for the Plugins view: renders each connector plugin (Discord,
- * Telegram, Signal, cloud OAuth connections, …) as an expandable card that
+ * Telegram, WhatsApp, cloud OAuth connections, …) as an expandable card that
  * co-renders its config form and its setup/account-management panel — including
  * the case where a mode delegates its setup panel to a *different* plugin id.
  * `ConnectorPluginGroups` groups the visible connectors and lays them out flat

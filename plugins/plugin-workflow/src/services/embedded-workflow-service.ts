@@ -887,6 +887,32 @@ export class EmbeddedWorkflowService extends Service {
     return tag;
   }
 
+  async getOrCreateTag(name: string): Promise<WorkflowTag> {
+    const normalizedName = name.trim();
+    if (!normalizedName) throw new WorkflowApiError('Tag name is required', 400);
+    const timestamp = nowIso();
+    await this.getDb()
+      .insert(embeddedTags)
+      .values({
+        agentId: this.tenantId,
+        id: randomUUID(),
+        name: normalizedName,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .onConflictDoNothing({ target: [embeddedTags.agentId, embeddedTags.name] });
+    const rows = await this.getDb()
+      .select()
+      .from(embeddedTags)
+      .where(and(eq(embeddedTags.agentId, this.tenantId), eq(embeddedTags.name, normalizedName)))
+      .limit(1);
+    const tag = rows[0];
+    if (!tag) {
+      throw new WorkflowApiError(`Tag could not be read after creation: ${normalizedName}`, 500);
+    }
+    return cloneJson(tag);
+  }
+
   async updateWorkflowTags(id: string, tagIds: string[]): Promise<WorkflowTag[]> {
     const workflow = await this.getWorkflow(id);
     const all = await this.listTags();

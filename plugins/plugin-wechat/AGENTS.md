@@ -146,6 +146,7 @@ mapping to `WECHAT_TYPE_MAP` in `src/callback-server.ts`.
 - **Message dedup.** `Bot` tracks seen message IDs in a 30-minute window (max
   1 000 entries), makes concurrent duplicates await the owning delivery, and
   keeps a failed delivery claimed when an outbound side effect already occurred.
+- **Connector target inventories are complete.** Resolution, recent-target discovery, room listing, and roomless reads consider every configured WeChat account target. Do not silently slice these model-facing lists.
 - **Chunking.** `ReplyDispatcher` breaks outgoing text at 2 000-character
   boundaries (newline > space > hard cut) because WeChat enforces a per-message
   size limit.

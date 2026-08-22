@@ -8,7 +8,9 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { dockerNodes } from "../../schemas/docker-nodes";
 import {
   AgentBackupSourceAuthorityError,
@@ -42,8 +44,12 @@ function registration(hostname = "robot.example.test") {
 
 beforeAll(async () => {
   try {
-    const { apply } = await pushSchema({ dockerNodes } as never, dbWrite as never);
+    const { apply } = await pushSchema(
+      { agentNodeIncarnationHistories, dockerNodes } as never,
+      dbWrite as never,
+    );
     await apply();
+    await installAgentNodeOccurrenceTriggerForTests((statement) => dbWrite.execute(statement));
   } catch (error) {
     schemaFailure = error instanceof Error ? error.message : String(error);
   }
@@ -52,6 +58,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
   await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
 });
 
 afterAll(async () => {

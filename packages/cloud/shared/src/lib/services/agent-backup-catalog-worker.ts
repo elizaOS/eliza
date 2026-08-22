@@ -35,10 +35,12 @@ import {
   type ObjectDeleteReceipt,
   type ObjectHeadReceipt,
   ObjectLocatorReceipt,
+  type ObjectRequestControl,
   ObjectStorageLifecycleError,
 } from "../storage/object-store";
 
 const MAX_GC_RETRY_DELAY_MS = 6 * 60 * 60 * 1_000;
+const GC_LEASE_SETTLEMENT_MARGIN_MS = 1_000;
 
 async function sha256Bytes(bytes: Uint8Array): Promise<Uint8Array> {
   const stableBytes = new Uint8Array(new ArrayBuffer(bytes.byteLength));
@@ -184,12 +186,14 @@ function storedObjectLocator(object: AgentBackupObject): ObjectLocatorReceipt | 
 async function resolveGcDeletionLocator(
   store: AgentBackupObjectStore,
   claim: AgentBackupGcClaim,
+  control: ObjectRequestControl,
 ): Promise<{ claim: AgentBackupGcClaim; locator: ObjectLocatorReceipt }> {
   const { object } = claim;
   const persisted = storedObjectLocator(object);
   if (persisted) return { claim, locator: persisted };
 
-  const observed = await store.head(object.object_key);
+  const observed = await store.head(object.object_key, control);
+  control.signal?.throwIfAborted();
   requireLocatorMatchesObject(object, observed.locator);
   if (observed.status === "absent") {
     if (!object.provider_write_started) {
@@ -243,6 +247,7 @@ async function resolveGcDeletionLocator(
     providerChecksum: checksumIdentity(observed.metadata.checksum),
     uploadReceiptDigest: recoveredUploadReceiptDigest,
   });
+  control.signal?.throwIfAborted();
   const locator = storedObjectLocator(adopted.object);
   if (!locator) {
     throw new ObjectStorageLifecycleError(
@@ -661,6 +666,7 @@ async function deletionReceiptDigest(
 export async function executeAgentBackupGcClaim(params: {
   claim: AgentBackupGcClaim;
   registry: AgentBackupObjectStoreRegistry;
+  signal?: AbortSignal;
 }): Promise<void> {
   const { claim } = params;
   const generation = claim.outbox.claim_generation;
@@ -668,14 +674,29 @@ export async function executeAgentBackupGcClaim(params: {
   if (!generation || !ownerId) {
     throw new Error("Claimed backup GC intent is missing its execution fence");
   }
+  params.signal?.throwIfAborted();
+  const leaseExpiresAt = claim.outbox.lease_expires_at;
+  if (!(leaseExpiresAt instanceof Date) || !Number.isFinite(leaseExpiresAt.getTime())) {
+    throw new Error("Claimed backup GC intent has no canonical lease expiry");
+  }
+  const control: ObjectRequestControl = {
+    signal: params.signal,
+    deadline: new Date(leaseExpiresAt.getTime() - GC_LEASE_SETTLEMENT_MARGIN_MS),
+  };
   const store = params.registry.forStoredObject(storedAgentBackupObjectAuthority(claim.object));
-  const resolved = await resolveGcDeletionLocator(store, claim);
-  const receipt = await store.delete({
-    key: resolved.claim.object.object_key,
-    locator: resolved.locator,
-  });
+  const resolved = await resolveGcDeletionLocator(store, claim, control);
+  params.signal?.throwIfAborted();
+  const receipt = await store.delete(
+    {
+      key: resolved.claim.object.object_key,
+      locator: resolved.locator,
+    },
+    control,
+  );
+  params.signal?.throwIfAborted();
   requireLocatorMatchesObject(resolved.claim.object, receipt.locator);
   const receiptDigest = await deletionReceiptDigest(resolved.claim, receipt);
+  params.signal?.throwIfAborted();
   await settleAgentBackupGc({
     outboxId: resolved.claim.outbox.id,
     ownerId,
@@ -711,6 +732,7 @@ export async function executeAgentBackupGcClaims(params: {
   claims: readonly AgentBackupGcClaim[];
   registry: AgentBackupObjectStoreRegistry;
   retryDelayMs: number;
+  signal?: AbortSignal;
 }): Promise<{ completed: number; failed: number }> {
   if (
     !Number.isSafeInteger(params.retryDelayMs) ||
@@ -722,10 +744,16 @@ export async function executeAgentBackupGcClaims(params: {
   let completed = 0;
   let failed = 0;
   for (const claim of params.claims) {
+    params.signal?.throwIfAborted();
     try {
-      await executeAgentBackupGcClaim({ claim, registry: params.registry });
+      await executeAgentBackupGcClaim({
+        claim,
+        registry: params.registry,
+        signal: params.signal,
+      });
       completed += 1;
     } catch (error) {
+      params.signal?.throwIfAborted();
       // error-policy:J1 the durable worker boundary translates provider failure
       // into a retryable or terminal outbox receipt before continuing the batch.
       const ownerId = claim.outbox.claim_owner;

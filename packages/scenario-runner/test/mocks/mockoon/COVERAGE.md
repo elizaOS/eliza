@@ -185,8 +185,8 @@ sit beside `messaging.gmail` and `messaging.cross-platform`. The new
 domains assert on *agent behavior* (action selection, channel routing,
 identity dedup, ranking) rather than just on Mockoon traffic shape, but
 they still exercise the gmail (18801) env for any scenario that uses
-`gmailInbox`-typed seeds. Cross-channel scenarios exercise telegram,
-signal, discord, and bluebubbles envs indirectly through identity-merge
+`gmailInbox`-typed seeds. Cross-channel scenarios exercise Telegram,
+WhatsApp, Discord, and iMessage indirectly through identity-merge
 and channel-routing predicates.
 
 Lifeops.inbox-triage new scenarios (17 — extends existing dir):
@@ -237,7 +237,6 @@ Lifeops.cross-channel new scenarios (13 — NEW domain):
 - cross-channel.respond-via-original-channel
 - cross-channel.unanswered-decision-bump
 - cross-channel.identity-rename-survives
-- cross-channel.signal-permission-denied-degraded
 - cross-channel.discord-bot-token-expired
 - cross-channel.urgent-routed-to-most-active-channel
 - cross-channel.imessage-fda-denied-fallback
@@ -263,7 +262,7 @@ These lifeops.* scenarios do not reference any Mockoon-backed connector by
 keyword today. Most use an inline seed or an in-memory fake. Wave-2 follow-up:
 
 - `lifeops.controls/lifeops.device-intent.broadcast-reminder` — should hit
-  `ntfy` (push) + `signal`/`telegram` (broadcast).
+  `ntfy` (push) + `telegram` (broadcast).
 - `lifeops.controls/lifeops.pause.vacation-window` — should hit `calendar`
   (vacation window source of truth).
 - `lifeops.documents/documents.ocr-fail` — should hit `eliza-cloud`
@@ -289,7 +288,7 @@ The 55 new scenarios authored in Wave-2 by W2-4 cover four NEW lifeops
 domains (travel, followup, identity, push). They exercise multiple Mockoon
 envs via the action surfaces involved (BOOK_TRAVEL → duffel + eliza-cloud,
 DEVICE_INTENT → ntfy, VOICE_CALL / SMS → twilio, identity reads → gmail +
-telegram + signal + discord). All use inline seeds for the entity state,
+telegram + whatsapp + discord). All use inline seeds for the entity state,
 which means the assertions exercise the agent's read/write/escalation paths
 without requiring round-trips to a third-party API.
 
@@ -314,7 +313,7 @@ Per-env additions (cross-cutting; each scenario can touch several):
   `push.urgent-bypasses-do-not-disturb`
 - ntfy (18812): `push.ntfy-delivery-receipt`, plus indirect coverage from any
   DEVICE_INTENT scenario in the push directory
-- gmail (18801), telegram (18805), signal (18818), discord (18804): identity
+- gmail (18801), telegram (18805), whatsapp (18806), discord (18804): identity
   merge / search / impersonation / rename scenarios consume handles across all
   four platforms (`identity.merge-2-platforms-same-person`,
   `identity.merge-4-platforms-same-person`, `identity.detect-likely-rename`,

@@ -134,7 +134,7 @@
       },
       "CODING_TOOLS_MAX_FILE_SIZE_BYTES": {
         "type": "number",
-        "description": "Pre-stat byte cap on FILE action=read. Files larger than this are rejected with a message instructing the agent to read in chunks.",
+        "description": "Byte cap for selected FILE action=read content. Larger files require an explicit line limit (and optional offset) and are scanned with bounded memory.",
         "required": false,
         "default": 262144,
         "sensitive": false

@@ -423,10 +423,6 @@ describe("LifeOps package boundaries", () => {
     const routeManifest = readPackageFile("src/routes/plugin.ts");
     const routes = readPackageFile("src/routes/lifeops-routes.ts");
     const connectorAction = readPackageFile("src/actions/connector.ts");
-    const signalMixin = readPackageFile("src/lifeops/service-mixin-signal.ts");
-    const signalContribution = readPackageFile(
-      "src/lifeops/connectors/signal.ts",
-    );
 
     expect(
       existsSync(
@@ -489,11 +485,12 @@ describe("LifeOps package boundaries", () => {
       expect(source).not.toContain("/api/lifeops/connectors/signal/disconnect");
     }
     expect(connectorAction).not.toContain("service.disconnectSignal");
-    expect(signalContribution).not.toContain("service.disconnectSignal");
-    expect(signalMixin).not.toContain("startSignalPairing");
-    expect(signalMixin).not.toContain("getSignalPairingStatus");
-    expect(signalMixin).not.toContain("stopSignalPairing");
-    expect(signalMixin).not.toContain("disconnectSignal");
+    expect(
+      existsSync(resolve(packageRoot, "src/lifeops/connectors/signal.ts")),
+    ).toBe(false);
+    expect(
+      existsSync(resolve(packageRoot, "src/lifeops/service-mixin-signal.ts")),
+    ).toBe(false);
     expect(rendererEntrypoint).not.toContain("connector-whatsapp-pair");
     expect(rendererEntrypoint).not.toContain("WhatsAppQrOverlay");
     expect(rendererEntrypoint).not.toContain("Pair WhatsApp");

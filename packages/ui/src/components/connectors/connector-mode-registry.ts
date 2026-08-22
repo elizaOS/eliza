@@ -267,8 +267,8 @@ export function registerConnectorChannelModeFallback(
  * lens (a mode omitting `channelMode` is lens-neutral and always matches). A
  * connector with no declared modes uses its registered fallback classification;
  * with neither, it shows under both lenses. A connector whose every declared
- * mode is classified into the *other* lens (e.g. Slack under `"delegate"`,
- * Signal under `"bot"`) is filtered out of that lens by the Connectors surface.
+ * mode is classified into the *other* lens (e.g. Slack under `"delegate"`)
+ * is filtered out of that lens by the Connectors surface.
  */
 export function connectorSupportsChannelMode(
   connectorId: string,
@@ -444,19 +444,6 @@ registerConnectorModes("x", [
     descriptionKey: "connectormode.x.developer.description",
     managementMode: "local-config",
     setupPluginId: "x",
-    channelMode: "delegate",
-  },
-]);
-
-registerConnectorModes("signal", [
-  {
-    id: "qr",
-    label: "QR Pair",
-    labelKey: "connectormode.signal.qr.label",
-    description: "Link as a device to your Signal account via QR code",
-    descriptionKey: "connectormode.signal.qr.description",
-    managementMode: "local-setup",
-    setupPluginId: "signal",
     channelMode: "delegate",
   },
 ]);

@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 10
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 172
+- **Registered runtime actions:** 174
 
 ## Actions
 
@@ -46,7 +46,7 @@ Primary action for addressed messaging surfaces: DMs, group chats, channels, roo
 | Parameter | Required | Type | Description |
 | --- | --- | --- | --- |
 | `action` | no | string | Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. |
-| `source` | no | string | Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge. |
+| `source` | no | string | Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge. |
 | `accountId` | no | string | Optional connector account id for multi-account message connectors. |
 | `sources` | no | array | Optional inbox sources for action=triage, list_inbox, or search_inbox. |
 | `target` | no | string | Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID. |
@@ -342,6 +342,7 @@ list. Regenerate this document after changing the registered action surface.
 - `AGENT_SWITCH` — `plugins/plugin-app-control/src/actions/agent-switch.ts`
 - `ALARM` — `plugins/plugin-native-macosalarm/src/actions.ts`
 - `APP` — `plugins/plugin-app-control/src/actions/app.ts`
+- `ASSERT_MEETING_MOCK_LEDGER` — `plugins/plugin-meetings/src/test-support.ts`
 - `ATTACH_TO_CHAT` — `packages/agent/src/actions/knowledge.ts`
 - `ATTACHMENT` — `packages/core/src/features/working-memory/readAttachmentAction.ts`
 - `AWAIT_CHILD_AGENT_DECISION` — `packages/core/src/features/sub-agent-credentials/actions/await-child-agent-decision.ts`
@@ -384,6 +385,7 @@ list. Regenerate this document after changing the registered action surface.
 - `DEPLOY_FRONTEND` — `plugins/plugin-cloud-apps/src/actions/deploy-frontend.ts`
 - `DISABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `DOCUMENT` — `packages/core/src/features/documents/actions.ts`
+- `DOORDASH` — `plugins/plugin-doordash/src/action.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`

@@ -246,6 +246,8 @@ export type ObjectStorageLifecycleErrorCode =
   | "OBJECT_STORAGE_LOCATOR_MISMATCH"
   | "OBJECT_STORAGE_VERSION_MISMATCH"
   | "OBJECT_STORAGE_DELETE_UNCONFIRMED"
+  | "OBJECT_STORAGE_DELETE_ABORTED"
+  | "OBJECT_STORAGE_DELETE_DEADLINE_EXCEEDED"
   | "OBJECT_STORAGE_UPLOAD_TOO_LARGE"
   | "OBJECT_STORAGE_IMMUTABLE_CONFLICT"
   | "OBJECT_STORAGE_IMMUTABLE_PUT_UNSUPPORTED"
@@ -897,7 +899,7 @@ async function headObjectOnBackend(
   keyFingerprint: string,
   requestChecksum = false,
   providerVersionId?: string,
-  control?: ImmutableUploadAbortContext,
+  control?: ProviderRequestAbortContext,
 ): Promise<ObjectHeadReceipt> {
   if (backend.runtimeBucket) {
     const request = backend.runtimeBucket.head(key);
@@ -1569,7 +1571,7 @@ export async function getExactObjectAtBackend(params: {
   return getExactObjectOnBackend(params.backend, params.input);
 }
 
-interface ImmutableUploadAbortContext {
+interface ProviderRequestAbortContext {
   readonly signal: AbortSignal;
   ensureActive(): void;
   failure(): ObjectStorageLifecycleError;
@@ -1578,22 +1580,31 @@ interface ImmutableUploadAbortContext {
   dispose(): void;
 }
 
-function createImmutableUploadAbortContext(
+function createProviderRequestAbortContext(
   input: ObjectRequestControl,
-): ImmutableUploadAbortContext {
+  policy: Readonly<{
+    operation: string;
+    deadlineCode: ObjectStorageLifecycleErrorCode;
+    abortCode: ObjectStorageLifecycleErrorCode;
+  }> = {
+    operation: "Immutable object upload",
+    deadlineCode: "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
+    abortCode: "OBJECT_STORAGE_UPLOAD_ABORTED",
+  },
+): ProviderRequestAbortContext {
   const now = Date.now();
   const suppliedDeadline = input.deadline?.getTime();
   if (suppliedDeadline !== undefined && !Number.isFinite(suppliedDeadline)) {
     throw new ObjectStorageLifecycleError(
       "OBJECT_STORAGE_METADATA_INVALID",
-      "Immutable object upload requires a valid absolute deadline",
+      `${policy.operation} requires a valid absolute deadline`,
     );
   }
   const deadlineAt = suppliedDeadline ?? now + DEFAULT_IMMUTABLE_UPLOAD_DURATION_MS;
   if (deadlineAt - now > MAX_IMMUTABLE_UPLOAD_DURATION_MS) {
     throw new ObjectStorageLifecycleError(
       "OBJECT_STORAGE_METADATA_INVALID",
-      "Immutable object upload deadline exceeds the bounded provider-I/O window",
+      `${policy.operation} deadline exceeds the bounded provider-I/O window`,
     );
   }
 
@@ -1624,12 +1635,12 @@ function createImmutableUploadAbortContext(
   const failure = () =>
     source === "deadline"
       ? new ObjectStorageLifecycleError(
-          "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
-          "Immutable object provider I/O exceeded its deadline",
+          policy.deadlineCode,
+          `${policy.operation} provider I/O exceeded its deadline`,
         )
       : new ObjectStorageLifecycleError(
-          "OBJECT_STORAGE_UPLOAD_ABORTED",
-          "Immutable object provider I/O was aborted",
+          policy.abortCode,
+          `${policy.operation} provider I/O was aborted`,
         );
 
   const ensureActive = () => {
@@ -1684,7 +1695,7 @@ export async function headObject(
   control: ObjectRequestControl = {},
 ): Promise<ObjectHeadReceipt> {
   requireExactKey(key);
-  const context = createImmutableUploadAbortContext(control);
+  const context = createProviderRequestAbortContext(control);
   try {
     const [backend, keyFingerprint] = await context.race(
       Promise.all([resolveLifecycleBackend(), fingerprintKey(key)]),
@@ -1703,7 +1714,7 @@ export async function headObjectAtBackend(
 ): Promise<ObjectHeadReceipt> {
   requireExactKey(key);
   requireExactBackendLocator(backend.locator);
-  const context = createImmutableUploadAbortContext(control);
+  const context = createProviderRequestAbortContext(control);
   try {
     const keyFingerprint = await context.race(fingerprintKey(key));
     return await headObjectOnBackend(backend, key, keyFingerprint, false, undefined, context);
@@ -1827,7 +1838,7 @@ function immutableReceiptFromHead(
 
 async function immutableRetryBackoff(
   attempt: number,
-  context: ImmutableUploadAbortContext,
+  context: ProviderRequestAbortContext,
 ): Promise<void> {
   const delayMs = 25 * 2 ** Math.max(0, attempt - 1);
   await context.wait(delayMs);
@@ -1863,10 +1874,10 @@ async function putImmutableObjectOnBackend(params: {
     );
   }
   const body = immutableUploadBytes(params.body, params.transferBodyOwnership === true);
-  let context: ImmutableUploadAbortContext | undefined;
+  let context: ProviderRequestAbortContext | undefined;
   let digestBytes: Uint8Array<ArrayBuffer> | undefined;
   try {
-    context = createImmutableUploadAbortContext(params);
+    context = createProviderRequestAbortContext(params);
     const backend = params.backend;
     const [keyFingerprint, sha256] = await context.race(
       Promise.all([fingerprintKey(params.key), immutableSha256(body)]),
@@ -2067,7 +2078,9 @@ export async function putImmutableObjectAtBackend(params: {
 async function deleteObjectOnBackend(
   backend: ExactObjectStorageBackend,
   target: ObjectDeleteTarget,
+  control: ProviderRequestAbortContext,
 ): Promise<ObjectDeleteReceipt> {
+  control.ensureActive();
   requireExactKey(target.key);
   requireExactBackendLocator(backend.locator);
   const keyFingerprint = await fingerprintKey(target.key);
@@ -2089,6 +2102,7 @@ async function deleteObjectOnBackend(
     keyFingerprint,
     false,
     providerVersionId,
+    control,
   );
   if (before.status === "absent") {
     return {
@@ -2113,22 +2127,25 @@ async function deleteObjectOnBackend(
 
   let providerRequestId: string | null = null;
   if (backend.runtimeBucket) {
-    await backend.runtimeBucket.delete(target.key);
+    await control.race(backend.runtimeBucket.delete(target.key));
   } else {
     try {
-      const output = await backend.s3Client.send(
-        new DeleteObjectCommand({
-          Bucket: backend.locator.bucket,
-          Key: target.key,
-          VersionId:
-            target.locator.versionSource === "provider"
-              ? (target.locator.version ?? undefined)
-              : undefined,
-          IfMatch:
-            target.locator.versionSource === "etag"
-              ? (target.locator.version ?? undefined)
-              : undefined,
-        }),
+      const output = await control.race(
+        backend.s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: backend.locator.bucket,
+            Key: target.key,
+            VersionId:
+              target.locator.versionSource === "provider"
+                ? (target.locator.version ?? undefined)
+                : undefined,
+            IfMatch:
+              target.locator.versionSource === "etag"
+                ? (target.locator.version ?? undefined)
+                : undefined,
+          }),
+          { abortSignal: control.signal },
+        ),
       );
       providerRequestId = output.$metadata.requestId ?? null;
     } catch (error) {
@@ -2148,6 +2165,7 @@ async function deleteObjectOnBackend(
     keyFingerprint,
     false,
     providerVersionId,
+    control,
   );
   if (after.status !== "absent") {
     throw new ObjectStorageLifecycleError(
@@ -2165,16 +2183,40 @@ async function deleteObjectOnBackend(
 }
 
 /** Delete using the legacy process-global backend selector. */
-export async function deleteObject(target: ObjectDeleteTarget): Promise<ObjectDeleteReceipt> {
-  return deleteObjectOnBackend(await resolveLifecycleBackend(), target);
+export async function deleteObject(
+  target: ObjectDeleteTarget,
+  control: ObjectRequestControl = {},
+): Promise<ObjectDeleteReceipt> {
+  const context = createProviderRequestAbortContext(control, {
+    operation: "Exact object deletion",
+    deadlineCode: "OBJECT_STORAGE_DELETE_DEADLINE_EXCEEDED",
+    abortCode: "OBJECT_STORAGE_DELETE_ABORTED",
+  });
+  try {
+    return await context.race(
+      resolveLifecycleBackend().then((backend) => deleteObjectOnBackend(backend, target, context)),
+    );
+  } finally {
+    context.dispose();
+  }
 }
 
 /** Delete one exact object on a caller-resolved backend and prove absence. */
 export async function deleteObjectAtBackend(params: {
   backend: ExactObjectStorageBackend;
   target: ObjectDeleteTarget;
+  control?: ObjectRequestControl;
 }): Promise<ObjectDeleteReceipt> {
-  return deleteObjectOnBackend(params.backend, params.target);
+  const context = createProviderRequestAbortContext(params.control ?? {}, {
+    operation: "Exact object deletion",
+    deadlineCode: "OBJECT_STORAGE_DELETE_DEADLINE_EXCEEDED",
+    abortCode: "OBJECT_STORAGE_DELETE_ABORTED",
+  });
+  try {
+    return await deleteObjectOnBackend(params.backend, params.target, context);
+  } finally {
+    context.dispose();
+  }
 }
 
 /**

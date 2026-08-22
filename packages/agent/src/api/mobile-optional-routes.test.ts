@@ -114,6 +114,29 @@ describe("handleMobileOptionalRoutes", () => {
     });
   });
 
+  it("returns the explicit unsupported Signal status tombstone", async () => {
+    const req = makeReq();
+    req.url = "/api/signal/status?accountId=legacy-account";
+    const res = makeRes();
+
+    const handled = await handleMobileOptionalRoutes(
+      req,
+      res,
+      "/api/signal/status",
+      "GET",
+    );
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(501);
+    expect(res.json()).toMatchObject({
+      accountId: "legacy-account",
+      status: "unsupported",
+      available: false,
+      supported: false,
+      code: "SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE",
+    });
+  });
+
   it("does not force local runtime mode for device bridge cloud controllers", async () => {
     delete process.env.ELIZA_MOBILE_LOCAL_AGENT;
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";

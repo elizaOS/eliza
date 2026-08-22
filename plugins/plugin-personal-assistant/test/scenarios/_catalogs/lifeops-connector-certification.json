@@ -33,11 +33,6 @@
       "requiredAxes": ["core", "disconnected"]
     },
     {
-      "connector": "signal",
-      "providers": ["Signal bridge"],
-      "requiredAxes": ["core", "session-revoked"]
-    },
-    {
       "connector": "whatsapp",
       "providers": ["WhatsApp bridge"],
       "requiredAxes": ["core", "delivery-degraded"]

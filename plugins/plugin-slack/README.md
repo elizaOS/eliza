@@ -122,6 +122,10 @@ const agent = {
 
 This plugin registers no elizaOS actions. Slack messaging is handled via the `MessageConnector` interface. The registered connector exposes these capabilities: `send_message`, `read_messages`, `search_messages`, `resolve_targets`, `list_rooms`, `list_servers`, `chat_context`, `user_context`, `react_message`, `edit_message`, `delete_message`, `pin_message`, `get_user`.
 
+Connector target resolution, room listing, and recent-target discovery return
+the complete deduplicated matching inventory; the connector does not silently
+drop targets past a fixed count.
+
 ## Events
 
 The plugin emits the following events:
@@ -180,4 +184,3 @@ const channels = await slackService.listChannels();
 1. Verify your `SLACK_APP_TOKEN` starts with `xapp-`
 2. Check that the app-level token has `connections:write` scope
 3. Ensure only one instance of the bot is running per token
-

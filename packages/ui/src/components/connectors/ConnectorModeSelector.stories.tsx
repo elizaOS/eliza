@@ -53,15 +53,7 @@ const meta = {
   argTypes: {
     connectorId: {
       control: "select",
-      options: [
-        "discord",
-        "telegram",
-        "slack",
-        "x",
-        "whatsapp",
-        "imessage",
-        "signal",
-      ],
+      options: ["discord", "telegram", "slack", "x", "whatsapp", "imessage"],
     },
     initialMode: { control: "text" },
     elizaCloudConnected: { control: "boolean" },

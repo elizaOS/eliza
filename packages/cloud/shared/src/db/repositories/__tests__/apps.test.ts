@@ -41,7 +41,7 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { buildMobileAppAuthCredentialProvenance } from "../../mobile-app-auth-credential-policy";
-import { apiKeys } from "../../schemas/api-keys";
+import { type ApiKey, apiKeys, type NewApiKey } from "../../schemas/api-keys";
 import { appConfig } from "../../schemas/app-config";
 import { appDomains } from "../../schemas/app-domains";
 import type { AppFrontendDeployment } from "../../schemas/app-frontend-deployments";
@@ -198,6 +198,43 @@ async function createApp(
     api_key_id: overrides.api_key_id ?? crypto.randomUUID(),
     ...overrides,
   });
+}
+
+/** Persists the nullable app state that the initial-key CAS is allowed to mutate. */
+async function createProvisionalApp(organizationId: string, userId: string): Promise<App> {
+  const name = uniq("provisional-app");
+  return appsRepository.create({
+    name,
+    slug: uniq("provisional-app-slug"),
+    app_url: `https://${name}.example`,
+    organization_id: organizationId,
+    created_by_user_id: userId,
+    api_key_id: null,
+  });
+}
+
+/** Inserts one real candidate row so attachment tests exercise the SQL boundary. */
+async function createAttachmentCandidate(
+  organizationId: string,
+  userId: string,
+  overrides: Partial<NewApiKey> = {},
+): Promise<ApiKey> {
+  const secret = uniq("attachment-key");
+  return apiKeysRepository.create({
+    name: uniq("Attachment Candidate"),
+    key_hash: createHash("sha256").update(secret).digest("hex"),
+    key_prefix: secret.slice(0, 12),
+    organization_id: organizationId,
+    user_id: userId,
+    ...overrides,
+  });
+}
+
+/** Runs the production repository CAS in a real write transaction. */
+async function attachCandidate(app: App, candidate: ApiKey): Promise<App | undefined> {
+  return dbWrite.transaction(async (tx) =>
+    appsRepository.attachInitialApiKey(app.id, app.organization_id, candidate.id, tx),
+  );
 }
 
 describe("AppsRepository.create + reads", () => {
@@ -1312,6 +1349,91 @@ describe("AppsService.isNameAvailable", () => {
   });
 });
 
+describe("AppsRepository.attachInitialApiKey", () => {
+  test("attaches one active ordinary key owned by the app creator", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const app = await createProvisionalApp(organizationId, userId);
+    const candidate = await createAttachmentCandidate(organizationId, userId, {
+      expires_at: new Date(Date.now() + 60_000),
+    });
+
+    const attached = await attachCandidate(app, candidate);
+    const persisted = await dbWrite.query.apps.findFirst({ where: eq(apps.id, app.id) });
+
+    expect(attached?.api_key_id).toBe(candidate.id);
+    expect(persisted?.api_key_id).toBe(candidate.id);
+  });
+
+  const rejectedCandidates: Array<{
+    name: string;
+    build: (context: { app: App; organizationId: string; userId: string }) => Promise<ApiKey>;
+  }> = [
+    {
+      name: "a same-organization key owned by another user",
+      build: async ({ organizationId }) =>
+        createAttachmentCandidate(organizationId, await seedUser(organizationId)),
+    },
+    {
+      name: "a cross-organization key",
+      build: async ({ userId }) => createAttachmentCandidate(await seedOrg(), userId),
+    },
+    {
+      name: "an inactive key",
+      build: async ({ organizationId, userId }) =>
+        createAttachmentCandidate(organizationId, userId, { is_active: false }),
+    },
+    {
+      name: "an expired key",
+      build: async ({ organizationId, userId }) =>
+        createAttachmentCandidate(organizationId, userId, {
+          expires_at: new Date(Date.now() - 60_000),
+        }),
+    },
+    {
+      name: "a soft-deleted key",
+      build: async ({ organizationId, userId }) =>
+        createAttachmentCandidate(organizationId, userId, {
+          deleted_at: new Date(),
+          is_active: true,
+        }),
+    },
+    {
+      name: "a mobile lifecycle credential",
+      build: async ({ app, organizationId, userId }) =>
+        createAttachmentCandidate(organizationId, userId, { source_app_id: app.id }),
+    },
+  ];
+
+  for (const rejected of rejectedCandidates) {
+    test(`rejects ${rejected.name}`, async () => {
+      expect(pgliteReady).toBe(true);
+      const { organizationId, userId } = await seedOrgAndUser();
+      const app = await createProvisionalApp(organizationId, userId);
+      const candidate = await rejected.build({ app, organizationId, userId });
+
+      expect(await attachCandidate(app, candidate)).toBeUndefined();
+      expect(
+        (await dbWrite.query.apps.findFirst({ where: eq(apps.id, app.id) }))?.api_key_id,
+      ).toBeNull();
+    });
+  }
+
+  test("rejects a second attachment and preserves the first key", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const app = await createProvisionalApp(organizationId, userId);
+    const first = await createAttachmentCandidate(organizationId, userId);
+    const second = await createAttachmentCandidate(organizationId, userId);
+
+    expect((await attachCandidate(app, first))?.api_key_id).toBe(first.id);
+    expect(await attachCandidate(app, second)).toBeUndefined();
+    expect((await dbWrite.query.apps.findFirst({ where: eq(apps.id, app.id) }))?.api_key_id).toBe(
+      first.id,
+    );
+  });
+});
+
 describe("AppsService.create organization cap", () => {
   test("uses the default cap only when the environment variable is unset", () => {
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
@@ -1377,7 +1499,7 @@ describe("AppsService.create organization cap", () => {
     }
   });
 
-  test("rolls back the API key when the org is already at the configured app cap", async () => {
+  test("rejects at the configured app cap before API-key minting", async () => {
     expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1";
@@ -1388,7 +1510,9 @@ describe("AppsService.create organization cap", () => {
         organization_id: organizationId,
         created_by_user_id: userId,
       });
-      const deleteKey = spyOn(apiKeysService, "delete");
+      const createKey = spyOn(apiKeysService, "create").mockRejectedValue(
+        new Error("API-key mint must not run after quota rejection"),
+      );
 
       try {
         await expect(
@@ -1408,9 +1532,9 @@ describe("AppsService.create organization cap", () => {
         expect(
           await apiKeysRepository.findByUserAndName(userId, "Blocked App - App API Key"),
         ).toEqual([]);
-        expect(deleteKey).not.toHaveBeenCalled();
+        expect(createKey).not.toHaveBeenCalled();
       } finally {
-        deleteKey.mockRestore();
+        createKey.mockRestore();
       }
     } finally {
       if (previousLimit === undefined) {
@@ -1455,7 +1579,7 @@ describe("AppsService.create organization cap", () => {
     }
   });
 
-  test("rolls back the generated API key without compensation when the cap check rejects", async () => {
+  test("does not mint an API key when the quota-authoritative insert rejects", async () => {
     expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "25";
@@ -1465,7 +1589,9 @@ describe("AppsService.create organization cap", () => {
         appsRepository,
         "createIfOrganizationBelowLimit",
       ).mockImplementation(async () => undefined);
-      const deleteKey = spyOn(apiKeysService, "delete");
+      const createKey = spyOn(apiKeysService, "create").mockRejectedValue(
+        new Error("API-key mint must not run after quota rejection"),
+      );
 
       try {
         await expect(
@@ -1485,9 +1611,9 @@ describe("AppsService.create organization cap", () => {
           await apiKeysRepository.findByUserAndName(userId, "Race Rejected App - App API Key"),
         ).toEqual([]);
         expect(await appsRepository.countByOrganization(organizationId)).toBe(0);
-        expect(deleteKey).not.toHaveBeenCalled();
+        expect(createKey).not.toHaveBeenCalled();
       } finally {
-        deleteKey.mockRestore();
+        createKey.mockRestore();
         createIfBelowLimit.mockRestore();
       }
     } finally {
@@ -1499,7 +1625,7 @@ describe("AppsService.create organization cap", () => {
     }
   });
 
-  test("preserves an app insert failure while rolling back the generated API key", async () => {
+  test("preserves a provisional app insert failure without minting an API key", async () => {
     expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "25";
@@ -1512,7 +1638,9 @@ describe("AppsService.create organization cap", () => {
       ).mockImplementation(async () => {
         throw insertFailure;
       });
-      const deleteKey = spyOn(apiKeysService, "delete");
+      const createKey = spyOn(apiKeysService, "create").mockRejectedValue(
+        new Error("API-key mint must not run after app insert failure"),
+      );
 
       try {
         await expect(
@@ -1528,10 +1656,109 @@ describe("AppsService.create organization cap", () => {
           await apiKeysRepository.findByUserAndName(userId, "Insert Failure App - App API Key"),
         ).toEqual([]);
         expect(await appsRepository.countByOrganization(organizationId)).toBe(0);
-        expect(deleteKey).not.toHaveBeenCalled();
+        expect(createKey).not.toHaveBeenCalled();
       } finally {
-        deleteKey.mockRestore();
+        createKey.mockRestore();
         createIfBelowLimit.mockRestore();
+      }
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("rolls back the provisional app when API-key minting fails", async () => {
+    expect(pgliteReady).toBe(true);
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "25";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+      const mintFailure = new Error("synthetic API-key mint failure");
+      const createKey = spyOn(apiKeysService, "create").mockRejectedValue(mintFailure);
+
+      try {
+        await expect(
+          appsService.create({
+            name: "Mint Failure App",
+            organization_id: organizationId,
+            created_by_user_id: userId,
+            app_url: "https://mint-failure.example",
+          }),
+        ).rejects.toBe(mintFailure);
+
+        expect(createKey).toHaveBeenCalledTimes(1);
+        expect(await appsRepository.countByOrganization(organizationId)).toBe(0);
+        expect(
+          await apiKeysRepository.findByUserAndName(userId, "Mint Failure App - App API Key"),
+        ).toEqual([]);
+      } finally {
+        createKey.mockRestore();
+      }
+    } finally {
+      if (previousLimit === undefined) {
+        delete process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+      } else {
+        process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = previousLimit;
+      }
+    }
+  });
+
+  test("rolls back the provisional app and key when the real attachment CAS rejects ownership", async () => {
+    expect(pgliteReady).toBe(true);
+    const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
+    process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "25";
+    try {
+      const { organizationId, userId } = await seedOrgAndUser();
+      const wrongUserId = await seedUser(organizationId);
+      const candidateId = crypto.randomUUID();
+      const createKey = spyOn(apiKeysService, "create").mockImplementation(async (data, tx) => {
+        if (!tx) throw new Error("app creation must pass its write transaction to key creation");
+        const secret = uniq("wrong-owner-key");
+        const apiKey = await apiKeysRepository.create(
+          {
+            id: candidateId,
+            name: data.name,
+            description: data.description,
+            key_hash: createHash("sha256").update(secret).digest("hex"),
+            key_prefix: secret.slice(0, 12),
+            organization_id: data.organization_id,
+            user_id: wrongUserId,
+            rate_limit: data.rate_limit,
+            is_active: true,
+            expires_at: null,
+          },
+          tx,
+        );
+        return { apiKey, plainKey: `eliza_${secret}` };
+      });
+
+      try {
+        await expect(
+          appsService.create({
+            name: "Attach Failure App",
+            organization_id: organizationId,
+            created_by_user_id: userId,
+            app_url: "https://attach-failure.example",
+          }),
+        ).rejects.toMatchObject({
+          name: "ElizaError",
+          code: "APP_INITIAL_API_KEY_ATTACH_FAILED",
+        });
+
+        expect(createKey).toHaveBeenCalledTimes(1);
+        expect(await appsRepository.countByOrganization(organizationId)).toBe(0);
+        expect(await apiKeysRepository.findById(candidateId)).toBeUndefined();
+        expect(
+          await apiKeysRepository.findByUserAndName(
+            wrongUserId,
+            "Attach Failure App - App API Key",
+          ),
+        ).toEqual([]);
+      } finally {
+        createKey.mockRestore();
       }
     } finally {
       if (previousLimit === undefined) {

@@ -147,11 +147,22 @@ export type AgentBackupCaptureV2PublicationBoundary =
   | AgentBackupCaptureV2UploadBoundary;
 
 export interface RunAgentBackupCaptureV2PipelineInput {
+  /**
+   * Durable catalogue identity request. Its `agentId` binds manifest, spool,
+   * chunk AAD, and KMS contexts; it must never be replaced by a runtime
+   * character ID used to open the HTTP stream.
+   */
   request: AgentBackupCaptureV2Request;
+  /** SHA-256 of the canonical wire-only runtime principal authority. */
+  runtimePrincipalSha256: string;
   /** Durable job execution fence bound to exclusive spool ownership. */
   executionToken: string;
   authority: AgentBackupCaptureV3ManifestAuthority;
-  /** Opens a fresh authenticated HTTP framed stream for initial/partial replay. */
+  /**
+   * Opens a fresh authenticated HTTP framed stream for initial/partial replay.
+   * The transport may verify a distinct runtime character identity; returned
+   * frames are ingress data only and cannot redefine durable `request` authority.
+   */
   openCapture(signal?: AbortSignal): AsyncIterable<AgentBackupCaptureV2Frame>;
   spool: AgentBackupCaptureV3SpoolConfig;
   keyBundle: AgentBackupCaptureV3KeyBundleProvider;
@@ -324,6 +335,14 @@ export function canonicalAgentBackupCaptureV3CatalogManifestBytes(
 
 function digestCanonical(value: unknown): string {
   return sha256Hex(new TextEncoder().encode(canonicalJson(value)));
+}
+
+/** Fence a partial spool to the exact `/api/snapshot/v2` character principal. */
+export function deriveAgentBackupCaptureV3RuntimePrincipalSha256(runtimeAgentId: string): string {
+  return digestCanonical({
+    format: "elizaos.agent-backup.capture-v3-runtime-principal.v1",
+    runtimeAgentId,
+  });
 }
 
 /**
@@ -1774,6 +1793,7 @@ export async function runAgentBackupCaptureV2Pipeline(
     executionToken: input.executionToken,
     requestSha256,
     authoritySha256,
+    runtimePrincipalSha256: input.runtimePrincipalSha256,
   });
 
   try {

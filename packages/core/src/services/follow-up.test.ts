@@ -266,3 +266,40 @@ describe("FollowUpService completion lifecycle", () => {
 		await followUps.stop();
 	});
 });
+
+describe("FollowUpService suggestion completeness", () => {
+	it("returns every qualifying suggestion in priority order", async () => {
+		const contacts = Array.from({ length: 12 }, (_, index) => ({
+			entityId:
+				`00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
+			categories: [],
+		}));
+		const relationshipsService = {
+			searchContacts: async () => contacts,
+			getRelationshipInsights: async () => ({
+				needsAttention: contacts.map((contact, index) => ({
+					entity: { id: contact.entityId },
+					daysSinceContact: 20 + index,
+				})),
+			}),
+			analyzeRelationship: async () => ({ strength: 50 }),
+		};
+		const runtime = {
+			agentId: AGENT_ID,
+			getEntityById: async (id: UUID) => ({ id, names: [`Contact ${id}`] }),
+		};
+		const followUps = new FollowUpService(runtime as never);
+		(
+			followUps as unknown as {
+				relationshipsService: typeof relationshipsService;
+			}
+		).relationshipsService = relationshipsService;
+
+		const suggestions = await followUps.getFollowUpSuggestions();
+
+		expect(suggestions).toHaveLength(12);
+		expect(suggestions.map((item) => item.daysSinceLastContact)).toEqual(
+			Array.from({ length: 12 }, (_, index) => 31 - index),
+		);
+	});
+});

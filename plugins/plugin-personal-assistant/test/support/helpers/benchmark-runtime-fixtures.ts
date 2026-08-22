@@ -274,7 +274,7 @@ function createBenchmarkComputerUseService() {
 }
 
 function registerBenchmarkSendHandlers(runtime: AgentRuntime): void {
-  const channels = ["telegram", "discord", "signal"] as const;
+  const channels = ["telegram", "discord", "whatsapp"] as const;
   for (const channel of channels) {
     runtime.registerSendHandler(channel, async () => {});
   }

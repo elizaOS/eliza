@@ -12,6 +12,10 @@
  * @module services/orchestrator-task-mapper
  */
 
+import {
+  type ChildTerminalResultEnvelope,
+  deriveChildTerminalResult,
+} from "./child-terminal-result.js";
 import type {
   ArtifactVerificationStatus,
   OrchestratorTaskDocument,
@@ -230,6 +234,9 @@ export interface TaskThreadDetailDto extends TaskThreadDto {
   messages: TaskMessageDto[];
   transcripts: TaskTranscriptDto[];
   planRevisions: TaskPlanRevisionDto[];
+  /** Additive typed terminal result; absent until a child reaches a terminal or
+   *  user-blocked state, preserving the historical wire shape for active tasks. */
+  childTerminalResult?: ChildTerminalResultEnvelope;
 }
 
 function latestSession(doc: OrchestratorTaskDocument) {
@@ -467,6 +474,7 @@ function deriveAdmission(
 export function toTaskThreadDetail(
   doc: OrchestratorTaskDocument,
 ): TaskThreadDetailDto {
+  const childTerminalResult = deriveChildTerminalResult(doc);
   return {
     ...toTaskThread(doc),
     goal: doc.task.goal,
@@ -560,5 +568,6 @@ export function toTaskThreadDetail(
         createdAt: message.createdAt,
       })),
     planRevisions: doc.planRevisions.map(toTaskPlanRevisionDto),
+    ...(childTerminalResult ? { childTerminalResult } : {}),
   };
 }

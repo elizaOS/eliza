@@ -4,7 +4,7 @@
  * scheduler-task helpers callers use to bootstrap the plugin at init.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
 import type { HouseholdGrantExpiryWarningReceipt } from "./household/grant-expiry-warning.js";
 import {
@@ -153,7 +153,10 @@ export async function executeLifeOpsSchedulerTask(
 
 export function registerLifeOpsTaskWorker(
   runtime: IAgentRuntime,
-  options: { disabled?: boolean } = {},
+  options: {
+    disabled?: boolean;
+    isWorkflowClaimSchemaReady?: () => boolean;
+  } = {},
 ): void {
   if (runtime.getTaskWorker(LIFEOPS_TASK_NAME)) {
     return;
@@ -169,6 +172,7 @@ export function registerLifeOpsTaskWorker(
     // switch exactly: the timer still validates the row, but never executes it.
     shouldRun: async (rt) => {
       if (disabled) return false;
+      if (options.isWorkflowClaimSchemaReady?.() === false) return false;
       try {
         const state = await loadLifeOpsAppState(rt as IAgentRuntime);
         return state.enabled;
@@ -181,7 +185,21 @@ export function registerLifeOpsTaskWorker(
         return false;
       }
     },
-    execute: async (rt, taskOptions) =>
-      executeLifeOpsSchedulerTask(rt, isRecord(taskOptions) ? taskOptions : {}),
+    execute: async (rt, taskOptions) => {
+      if (options.isWorkflowClaimSchemaReady?.() === false) {
+        throw new ElizaError(
+          "[LifeOpsScheduler] workflow-run claim schema is not ready",
+          {
+            code: "LIFEOPS_WORKFLOW_RUN_CLAIM_SCHEMA_NOT_READY",
+            context: { agentId: rt.agentId },
+            severity: "ephemeral",
+          },
+        );
+      }
+      return executeLifeOpsSchedulerTask(
+        rt,
+        isRecord(taskOptions) ? taskOptions : {},
+      );
+    },
   });
 }

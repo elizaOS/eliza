@@ -1027,7 +1027,6 @@ export function sendJsonError(
 const CONNECTOR_SOURCE_ALIASES: Record<string, readonly string[]> = {
   discord: ["discord", "discord-local"],
   imessage: ["imessage"],
-  signal: ["signal"],
   slack: ["slack"],
   sms: ["sms"],
   telegram: ["telegram", "telegram-account", "telegramaccount"],

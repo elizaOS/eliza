@@ -540,7 +540,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       "https://cloud.example/remote-runner",
     );
     expect(config.remoteHttpToken).toBe("token");
-    expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
+    expect(config.agentRunners).toEqual(["codex", "claude-code"]);
   });
 
   it("resolves Eliza Cloud API-backed provisioning settings", () => {
@@ -608,7 +608,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
     );
     expect(config.remoteHttpToken).toBe("token");
-    expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
+    expect(config.agentRunners).toEqual(["codex", "claude-code"]);
   });
 
   it("rejects runner timeout settings that overflow the JavaScript timer range", () => {
@@ -767,7 +767,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
         remoteHttpBaseUrl: "http://home.local:2468",
         remoteAccessUrl:
           "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
-        agentRunners: ["codex", "opencode"],
+        agentRunners: ["codex"],
       }),
       new FakeFactory(),
     );
@@ -841,7 +841,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
             apiKey: undefined,
             remoteHttpBaseUrl: server.baseUrl,
             remoteHttpToken: "token",
-            agentRunners: ["codex", "claude-code", "opencode"],
+            agentRunners: ["codex", "claude-code"],
           }),
         );
 
@@ -1264,7 +1264,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
           apiKey: undefined,
           cloudApiBaseUrl: server.baseUrl,
           cloudApiToken: "cloud-key",
-          agentRunners: ["codex", "claude-code", "opencode"],
+          agentRunners: ["codex", "claude-code"],
         }),
       );
 
@@ -1295,7 +1295,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
           environmentVars: {
             HOST: "0.0.0.0",
             ELIZA_CODING_WORKSPACE: "/workspace",
-            ELIZA_SANDBOX_AGENT_RUNNERS: "codex,claude-code,opencode",
+            ELIZA_SANDBOX_AGENT_RUNNERS: "codex,claude-code",
           },
         },
       });
