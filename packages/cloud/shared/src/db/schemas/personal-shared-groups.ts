@@ -71,9 +71,15 @@ export const personalSharedGroupBindings = pgTable(
       .$type<PersonalSharedGroupResponsePolicy>()
       .notNull()
       .default("mention_only"),
-    authority_version: bigint("authority_version", { mode: "number" })
-      .notNull()
-      .default(1),
+    authority_version: bigint("authority_version", { mode: "number" }).notNull().default(1),
+    delivery_lease_source_id: text("delivery_lease_source_id"),
+    delivery_lease_token: uuid("delivery_lease_token"),
+    delivery_lease_expires_at: timestamp("delivery_lease_expires_at", {
+      withTimezone: true,
+    }),
+    delivery_lease_committed_at: timestamp("delivery_lease_committed_at", {
+      withTimezone: true,
+    }),
     created_by_platform_user_id: text("created_by_platform_user_id").notNull(),
     last_verified_at: timestamp("last_verified_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
