@@ -9,6 +9,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
 
+/** Telegram Bot API caption cap (photo/video/document/audio/animation). */
+const BOT_API_CAPTION_MAX = 1024;
+
 // Outbound media coverage for the Telegram connector (#8876): when the agent
 // sends a message that carries `Media` attachments, each attachment must be
 // dispatched through the matching Telegram API method (sendPhoto / sendVideo /
@@ -167,6 +170,57 @@ describe("Telegram connector outbound media", () => {
       "https://cdn.example.com/cat.png",
       { caption: "a cat", message_thread_id: 77 },
     );
+  });
+
+  it("keeps previously-valid captions at or under the Bot API cap unchanged", async () => {
+    const { manager, ctx, senders } = setup();
+    const corpus = [
+      "a cat",
+      "report",
+      "a".repeat(BOT_API_CAPTION_MAX),
+      "café 🦊",
+      "",
+    ];
+    for (const caption of corpus) {
+      senders.sendPhoto.mockClear();
+      await manager.sendMedia(
+        ctx,
+        "https://cdn.example.com/cat.png",
+        MediaType.PHOTO,
+        caption,
+      );
+      expect(senders.sendPhoto.mock.calls[0][2]?.caption).toBe(caption);
+    }
+  });
+
+  it("clamps an over-limit caption to 1024 well-formed units before send", async () => {
+    const { manager, ctx, senders } = setup();
+    const over = `${"a".repeat(BOT_API_CAPTION_MAX)}z`;
+    await manager.sendMedia(
+      ctx,
+      "https://cdn.example.com/cat.png",
+      MediaType.PHOTO,
+      over,
+    );
+    const sent = senders.sendPhoto.mock.calls[0][2]?.caption as string;
+    expect(sent.length).toBe(BOT_API_CAPTION_MAX);
+    expect(sent).toBe("a".repeat(BOT_API_CAPTION_MAX));
+    expect(sent.isWellFormed()).toBe(true);
+  });
+
+  it("does not split a trailing surrogate pair when clamping a caption", async () => {
+    const { manager, ctx, senders } = setup();
+    const over = `${"a".repeat(BOT_API_CAPTION_MAX - 1)}🦊`;
+    await manager.sendMedia(
+      ctx,
+      "https://cdn.example.com/cat.png",
+      MediaType.PHOTO,
+      over,
+    );
+    const sent = senders.sendPhoto.mock.calls[0][2]?.caption as string;
+    expect(sent.length).toBe(BOT_API_CAPTION_MAX - 1);
+    expect(sent).toBe("a".repeat(BOT_API_CAPTION_MAX - 1));
+    expect(sent.isWellFormed()).toBe(true);
   });
 
   it("routes local-file media through the active forum topic", async () => {

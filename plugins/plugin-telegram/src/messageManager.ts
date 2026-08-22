@@ -159,6 +159,8 @@ async function resolveTelegramFileBytes(
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+/** Bot API caption cap for photo/video/document/audio/animation sends. */
+export const TELEGRAM_CAPTION_MAX = 1024;
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 const ACTION_PROGRESS_SOURCE = "action_progress";
 const COMPUTER_USE_APPROVAL_CALLBACK_RE =
@@ -1322,8 +1324,15 @@ export class MessageManager {
       if (!ctx.chat) {
         throw new Error("sendMedia: ctx.chat is undefined");
       }
+      const captionForSend =
+        caption === undefined || caption.length === 0
+          ? caption
+          : truncateWellFormed(
+              toWellFormedUnicode(caption),
+              TELEGRAM_CAPTION_MAX,
+            );
       const sendOptions = {
-        caption,
+        caption: captionForSend,
         ...(messageThreadId !== undefined
           ? { message_thread_id: messageThreadId }
           : {}),
