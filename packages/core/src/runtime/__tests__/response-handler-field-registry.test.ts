@@ -339,9 +339,7 @@ describe("ResponseHandlerFieldRegistry", () => {
 			);
 			plain.register(makeEvaluator({ name: "field", description: "docs" }));
 			expect(reg.composeSchema()).toEqual(plain.composeSchema());
-			expect(reg.composeSchemaSignature()).toBe(
-				plain.composeSchemaSignature(),
-			);
+			expect(reg.composeSchemaSignature()).toBe(plain.composeSchemaSignature());
 		});
 
 		it("renders only a selected field subset", async () => {
