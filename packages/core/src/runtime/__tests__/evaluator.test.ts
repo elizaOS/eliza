@@ -222,7 +222,7 @@ df -h / /home
 			evaluatorParams.providerOptions.eliza.modelInputBudget,
 		).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 		expect(evaluatorParams.providerOptions.eliza.thinking).toBe("off");
 		expect(result.decision).toBe("FINISH");

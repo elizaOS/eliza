@@ -3586,7 +3586,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				eliza?: {
 					modelInputBudget?: {
 						reserveTokens?: number;
-						shouldCompact?: boolean;
+						shouldReject?: boolean;
 					};
 				};
 			};
@@ -3643,7 +3643,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.providerOptions?.eliza?.modelInputBudget).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 	});
 

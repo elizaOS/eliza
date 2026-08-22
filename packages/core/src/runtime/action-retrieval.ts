@@ -170,10 +170,6 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 	},
 };
 
-// Cerebras "compress" mode caps top-K at 8 regardless of tier default.
-// When `ELIZA_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
-// tighter token budget on the available-actions block.
-const COMPRESS_MODE_TOP_K_CAP = 8;
 // A candidate name can hint MORE than one parent when the phrasing is genuinely
 // ambiguous between surfaces. "OPEN_APP" can mean the apps *page* (VIEWS) or
 // launching the application itself (APP) — hint both and let the planner
@@ -484,28 +480,17 @@ function resolveTierOverridesFromEnv():
 	| undefined {
 	const raw =
 		typeof process !== "undefined" ? process.env.MODEL_TIER?.trim() : undefined;
-	const compress =
-		typeof process !== "undefined" && process.env.ELIZA_PROMPT_COMPRESS === "1";
 	if (
 		raw !== "small" &&
 		raw !== "mid" &&
 		raw !== "large" &&
 		raw !== "frontier"
 	) {
-		if (compress) {
-			return {
-				topK: COMPRESS_MODE_TOP_K_CAP,
-				stageWeights: {},
-			};
-		}
 		return undefined;
 	}
 	const entry = RETRIEVAL_TIER_DEFAULTS[raw];
-	const topK = compress
-		? Math.min(entry.topK, COMPRESS_MODE_TOP_K_CAP)
-		: entry.topK;
 	return {
-		topK,
+		topK: entry.topK,
 		stageWeights: { ...entry.stageWeights },
 	};
 }

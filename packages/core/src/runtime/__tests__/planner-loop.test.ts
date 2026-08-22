@@ -2,7 +2,7 @@
  * Core planner-loop suite: `parsePlannerOutput` shape/recovery parsing and
  * end-to-end `runPlannerLoop` behavior — tool dispatch, the evaluator FINISH
  * gate, trajectory limits, coding/full-surface token caps, required-tool
- * handling, suffix compaction, and `plannerTemplate` policy text. Deterministic
+ * handling, explicit input-budget rejection, and `plannerTemplate` policy text. Deterministic
  * — `useModel`, `executeToolCall`, and `evaluate` are vitest mocks; no live
  * model.
  */
@@ -503,7 +503,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
 		expect(plannerParams.providerOptions.eliza.modelInputBudget).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 		expect(plannerParams.maxTokens).toBe(4096);
 		expect(plannerParams.providerOptions.eliza.thinking).toBe("off");
@@ -1318,7 +1318,7 @@ describe("v5 planner loop skeleton", () => {
 			{
 				contextWindowTokens: 131_000,
 				reserveTokens: 26_200,
-				compactionThresholdTokens: 104_800,
+				dispatchThresholdTokens: 104_800,
 				resolvedModelKey: "gpt-oss-120b",
 			},
 		);
@@ -1349,9 +1349,57 @@ describe("v5 planner loop skeleton", () => {
 			{
 				contextWindowTokens: 131_000,
 				reserveTokens: 5_000,
-				compactionThresholdTokens: 126_000,
+				dispatchThresholdTokens: 126_000,
 				resolvedModelKey: "gpt-oss-120b",
 			},
+		);
+	});
+
+	it("rejects a complete oversized input before provider dispatch", async () => {
+		const runtime = { useModel: vi.fn() };
+		const oversized = `HEAD_SENTINEL${"x".repeat(40_000)}TAIL_SENTINEL`;
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trj-over-budget"),
+			recordStage: vi.fn(async (_trajectoryId, stage) => {
+				recordedStages.push(stage);
+			}),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				recorder,
+				trajectoryId: "trj-over-budget",
+				context: {
+					id: "ctx",
+					events: [
+						{
+							id: "oversized-message",
+							type: "message",
+							message: {
+								role: "user",
+								content: { text: oversized },
+							},
+						},
+					],
+				},
+				config: {
+					contextWindowTokens: 2_000,
+					compactionReserveTokens: 200,
+				},
+			}),
+		).rejects.toMatchObject({ code: "PLANNER_INPUT_OVER_BUDGET" });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		const rejected = recordedStages.find((stage) => stage.kind === "planner");
+		const serialized = JSON.stringify(rejected?.model?.messages);
+		expect(serialized).toContain("HEAD_SENTINEL");
+		expect(serialized).toContain("TAIL_SENTINEL");
+		expect(rejected?.model?.response).toContain(
+			"code: PLANNER_INPUT_OVER_BUDGET",
 		);
 	});
 

@@ -63,10 +63,6 @@ import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
-	buildContentProjectionDiagnostics,
-	isProgressiveContentProjectionEnabled,
-} from "./content-projection-policy";
-import {
 	computePrefixHashes,
 	hashString,
 	stableJsonStringify,
@@ -94,14 +90,11 @@ import {
 	TrajectoryLimitExceeded,
 } from "./limits";
 import {
-	buildContentProjectionBudget,
 	buildModelInputBudget,
-	type ContentProjectionBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
-	type ToolResultProjectionStats,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -1919,13 +1912,10 @@ function renderPlannerModelInput(params: {
 	template?: string;
 	codingMode?: boolean;
 	runtime?: PlannerRuntime;
-	projectionBudget?: ContentProjectionBudget;
-	omitRecoverableText?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
-	projectionStats: ToolResultProjectionStats;
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
@@ -1936,21 +1926,8 @@ function renderPlannerModelInput(params: {
 					template.split("context_object:")[0] ?? template,
 				)
 	).trim();
-	let projectionStats: ToolResultProjectionStats = {
-		resultCount: 0,
-		pagesIncluded: 0,
-		pagesOmitted: 0,
-		omissionReasons: {},
-	};
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		redactText: composeToolDiagnosticRedactor(params.runtime),
-		...(params.projectionBudget
-			? { projectionBudget: params.projectionBudget }
-			: {}),
-		...(params.omitRecoverableText ? { omitRecoverableText: true } : {}),
-		onProjectionStats: (stats) => {
-			projectionStats = stats;
-		},
 	});
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
@@ -2007,7 +1984,7 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments, projectionStats };
+	return { messages, promptSegments, cacheKeySegments };
 }
 
 function compactionReserveForBudget(
@@ -2038,11 +2015,8 @@ function normalizePlannerToolName(name: string): string {
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
  *
- * When `ELIZA_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
- * entirely — the Cerebras compress-mode escape hatch trades these hints for a
- * tighter token budget. Memoized on `context.events` identity; the events
- * array is immutable per planner iteration (`appendContextEvent` returns a
- * new array each time).
+ * Memoized on `context.events` identity; the events array is immutable per
+ * planner iteration (`appendContextEvent` returns a new array each time).
  */
 const ROUTING_HINTS_MEMO = new WeakMap<
 	NonNullable<ContextObject["events"]>,
@@ -2081,7 +2055,6 @@ function appendMandatoryPlannerPolicy(instructions: string): string {
 }
 
 function renderRoutingHintsBlock(context: ContextObject): string | null {
-	if (process.env.ELIZA_PROMPT_COMPRESS === "1") return null;
 	const events = context.events;
 	if (events && ROUTING_HINTS_MEMO.has(events)) {
 		return ROUTING_HINTS_MEMO.get(events) ?? null;
@@ -2494,16 +2467,12 @@ async function callPlanner(params: {
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
 	const budgetOptions = {
-		tools: params.tools,
 		modelName: params.config.contextWindowModelName,
 		...(params.config.contextWindowTokens
 			? { contextWindowTokens: params.config.contextWindowTokens }
 			: {}),
 		reserveTokens: compactionReserveForBudget(params.config),
 	};
-	const projectionEnabled = isProgressiveContentProjectionEnabled(
-		params.runtime,
-	);
 	const renderArgs = {
 		context: params.context,
 		trajectory: params.trajectory,
@@ -2514,53 +2483,7 @@ async function callPlanner(params: {
 		codingMode: params.trajectory.codingMode === true,
 		runtime: params.runtime,
 	};
-	const baselineInput = renderPlannerModelInput({
-		...renderArgs,
-		...(projectionEnabled ? { omitRecoverableText: true } : {}),
-	});
-	const baselineBudget = buildModelInputBudget({
-		messages: baselineInput.messages,
-		promptSegments: baselineInput.promptSegments,
-		...budgetOptions,
-	});
-	const projectionBudget = projectionEnabled
-		? buildContentProjectionBudget({
-				budget: baselineBudget,
-				resultCount: baselineInput.projectionStats.resultCount,
-			})
-		: undefined;
-	const renderedInput = projectionBudget
-		? renderPlannerModelInput({ ...renderArgs, projectionBudget })
-		: baselineInput;
-	const modelInputBudget = buildModelInputBudget({
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
-		...budgetOptions,
-	});
-	const contentProjection = buildContentProjectionDiagnostics({
-		enabled: projectionEnabled,
-		baselineBudget,
-		...(projectionBudget ? { projectionBudget } : {}),
-		stats: renderedInput.projectionStats,
-	});
-	params.runtime.logger?.debug?.(
-		{ src: "planner-loop", contentProjection },
-		"Computed progressive content projection",
-	);
-	if (projectionEnabled && modelInputBudget.shouldCompact) {
-		throw new ElizaError(
-			"Planner model input exceeds the resolved context budget after content projection",
-			{
-				code: "PLANNER_INPUT_OVER_BUDGET",
-				context: {
-					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
-					compactionThresholdTokens: modelInputBudget.compactionThresholdTokens,
-					contextWindowTokens: modelInputBudget.contextWindowTokens,
-					resultCount: contentProjection.resultCount,
-				},
-			},
-		);
-	}
+	const renderedInput = renderPlannerModelInput(renderArgs);
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -2581,17 +2504,14 @@ async function callPlanner(params: {
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
-		providerOptions: withModelInputBudgetProviderOptions(
-			cacheProviderOptions({
-				prefixHash,
-				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-				promptSegments: renderedInput.promptSegments,
-				provider: params.provider,
-				hasTools,
-				conversationId: params.trajectoryId,
-			}),
-			modelInputBudget,
-		),
+		providerOptions: cacheProviderOptions({
+			prefixHash,
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			promptSegments: renderedInput.promptSegments,
+			provider: params.provider,
+			hasTools,
+			conversationId: params.trajectoryId,
+		}),
 		// Chat planner turns stay at the small DEFAULT_PLANNER_MAX_TOKENS; a coding
 		// turn must be able to emit a whole file in one tool call, so coding mode
 		// raises the cap (see resolvePlannerMaxTokens / issue #10132).
@@ -2603,7 +2523,6 @@ async function callPlanner(params: {
 			...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
 				.eliza ?? {}),
 			thinking: "off",
-			contentProjection,
 		},
 	};
 	if (hasTools) {
@@ -2678,6 +2597,54 @@ async function callPlanner(params: {
 
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.ACTION_PLANNER;
+	// Measure the exact request shape after tool augmentation and structured
+	// decode metadata are final. No flag or fallback may rewrite this request to
+	// make it fit: dispatch it complete or record and reject it complete.
+	const modelInputBudget = buildModelInputBudget({
+		messages: modelParams.messages,
+		promptSegments: modelParams.promptSegments,
+		tools: modelParams.tools,
+		...budgetOptions,
+	});
+	modelParams.providerOptions = withModelInputBudgetProviderOptions(
+		modelParams.providerOptions,
+		modelInputBudget,
+	);
+	if (modelInputBudget.shouldReject) {
+		const error = new ElizaError(
+			"Planner model input exceeds the resolved context budget",
+			{
+				code: "PLANNER_INPUT_OVER_BUDGET",
+				context: {
+					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
+					dispatchThresholdTokens: modelInputBudget.dispatchThresholdTokens,
+					contextWindowTokens: modelInputBudget.contextWindowTokens,
+				},
+			},
+		);
+		await recordPlannerStage({
+			runtime: params.runtime,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration: params.iteration ?? 1,
+			modelType,
+			provider: params.provider,
+			modelParams,
+			raw: `[planner input budget failure] ${error.message} | code: PLANNER_INPUT_OVER_BUDGET`,
+			parsed: {
+				toolCalls: [],
+				raw: { text: "", code: "PLANNER_INPUT_OVER_BUDGET" },
+			},
+			startedAt,
+			endedAt: Date.now(),
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			prefixHash,
+			logger: params.runtime.logger,
+			providerAttributionState: params.providerAttributionState,
+		});
+		throw error;
+	}
 	const streamingContext = getStreamingContext();
 	const raw = await runWithStreamingContext(
 		streamingContext
