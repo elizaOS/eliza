@@ -1053,7 +1053,7 @@ async function handleCreateApiKeyAccount(
 
   // A newly stored key must prove its provider route just like a replacement.
   // AccountPool selects only `health: "ok"`, so this authenticated preflight is
-  // the fail-closed boundary between enrollment and coding-spawn eligibility.
+  // the fail-closed boundary between enrollment and inference eligibility.
   const probe =
     accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
       ? await probeDirectApiKey(
@@ -1131,7 +1131,15 @@ async function handleCreateApiKeyAccount(
     accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
       ? DIRECT_ACCOUNT_PROVIDER_ENV[accountProvider as DirectAccountProvider]
       : null;
-  if (envKey) {
+  // Newly linked OpenRouter/xAI credentials stay under encrypted account
+  // authority. Their inference adapters resolve a selected account through
+  // AccountPool; reflecting either secret into the parent process would bypass
+  // per-account health, rotation, removal, and lease isolation.
+  if (
+    envKey &&
+    accountProvider !== "openrouter-api" &&
+    accountProvider !== "xai-api"
+  ) {
     process.env[envKey] = parsed.data.apiKey;
     if (accountProvider === "zai-api") {
       process.env.Z_AI_API_KEY ??= parsed.data.apiKey;
