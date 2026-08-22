@@ -69,6 +69,12 @@ const BUILTIN_VIEW_CASES: Array<{
   { id: "database", path: "/apps/database" },
   { id: "desktop", path: "/desktop" },
   { id: "settings", path: "/settings" },
+  {
+    id: "vault",
+    path: "/vault",
+    readySelector: '[data-testid="vault-page"]',
+    viewHeaderTitle: "Vault",
+  },
   { id: "logs", path: "/apps/logs" },
   { id: "background", path: "/background" },
 ];

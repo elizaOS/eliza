@@ -121,6 +121,7 @@ const LAUNCHER_VIEW_COVERAGE: Record<string, LauncherViewCoverage> = {
   memories: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   database: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   logs: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
+  vault: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   settings: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   background: {
     smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL,
@@ -254,6 +255,7 @@ describe("launcher view coverage gate", () => {
         "plugins-page",
         "settings",
         "trajectories",
+        "vault",
       ].sort(),
     );
   });
