@@ -5,8 +5,9 @@
  * the corresponding pending row.
  */
 
-const VERIFIER_PREFIX = "hmac-sha256-v2";
-const VERIFIER_PATTERN = /^hmac-sha256-v2:(\d{13}):([0-9a-f]{64})$/;
+const AGENT_VERIFIER_PREFIX = "hmac-sha256-v2";
+const HOST_VERIFIER_PREFIX = "hmac-sha256-v3";
+const VERIFIER_PATTERN = /^hmac-sha256-v([23]):(\d{13}):([0-9a-f]{64})$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CODE_PATTERN = /^\d{6}$/;
 const PAIRING_PURPOSE = "remote-control";
@@ -15,8 +16,21 @@ const PAIRING_PURPOSE = "remote-control";
 export interface RemotePairingVerifierContext {
   organizationId: string;
   userId: string;
-  agentId: string;
   sessionId: string;
+  agentId?: string;
+  hostId?: string;
+}
+
+function pairingTarget(context: RemotePairingVerifierContext): {
+  kind: "agent" | "host";
+  id: string;
+} {
+  const hasAgent = typeof context.agentId === "string";
+  const hasHost = typeof context.hostId === "string";
+  if (hasAgent === hasHost) {
+    throw new TypeError("remote pairing context must bind exactly one target");
+  }
+  return hasAgent ? { kind: "agent", id: context.agentId! } : { kind: "host", id: context.hostId! };
 }
 
 /** Reports whether an untrusted pairing identifier is a canonical UUID. */
@@ -40,10 +54,11 @@ function assertSecret(secret: string): ArrayBuffer {
 }
 
 function assertContext(context: RemotePairingVerifierContext): void {
+  const target = pairingTarget(context);
   const entries = [
     ["organization", context.organizationId],
     ["user", context.userId],
-    ["agent", context.agentId],
+    [target.kind, target.id],
     ["session", context.sessionId],
   ] as const;
   for (const [name, value] of entries) {
@@ -72,13 +87,28 @@ function signingPayload(
   code: string,
   expiresAtMs: number,
 ): ArrayBuffer {
+  const target = pairingTarget(context);
+  if (target.kind === "agent") {
+    return textBuffer(
+      [
+        "eliza.remote-pairing.v2",
+        PAIRING_PURPOSE,
+        context.organizationId,
+        context.userId,
+        target.id,
+        context.sessionId,
+        String(expiresAtMs),
+        code,
+      ].join("\0"),
+    );
+  }
   return textBuffer(
     [
-      "eliza.remote-pairing.v2",
-      PAIRING_PURPOSE,
+      "eliza.remote-pairing.v3",
+      "remote-runtime-host",
       context.organizationId,
       context.userId,
-      context.agentId,
+      target.id,
       context.sessionId,
       String(expiresAtMs),
       code,
@@ -113,8 +143,8 @@ async function importHmacKey(secret: string, usage: "sign" | "verify"): Promise<
 /** Returns the signed expiry for a structurally valid verifier. */
 export function remotePairingVerifierExpiryMs(verifier: string | null): number | null {
   const match = VERIFIER_PATTERN.exec(verifier ?? "");
-  if (!match?.[1]) return null;
-  const expiresAtMs = Number(match[1]);
+  if (!match?.[2]) return null;
+  const expiresAtMs = Number(match[2]);
   return Number.isSafeInteger(expiresAtMs) ? expiresAtMs : null;
 }
 
@@ -150,7 +180,9 @@ export async function deriveRemotePairingCodeVerifier(
     key,
     signingPayload(context, code, expiresAtMs),
   );
-  return `${VERIFIER_PREFIX}:${expiresAtMs}:${bytesToHex(signature)}`;
+  const prefix =
+    pairingTarget(context).kind === "agent" ? AGENT_VERIFIER_PREFIX : HOST_VERIFIER_PREFIX;
+  return `${prefix}:${expiresAtMs}:${bytesToHex(signature)}`;
 }
 
 /** Verifies the code, session binding, signature, and expiry without exposing the code. */
@@ -162,8 +194,10 @@ export async function verifyRemotePairingCodeVerifier(
   now: Date,
 ): Promise<boolean> {
   const match = VERIFIER_PATTERN.exec(verifier);
-  if (!match?.[1] || !match[2]) return false;
-  const expiresAtMs = Number(match[1]);
+  if (!match?.[1] || !match[2] || !match[3]) return false;
+  const target = pairingTarget(context);
+  if ((match[1] === "2") !== (target.kind === "agent")) return false;
+  const expiresAtMs = Number(match[2]);
   const nowMs = now.getTime();
   if (!Number.isSafeInteger(nowMs) || !Number.isSafeInteger(expiresAtMs) || expiresAtMs <= nowMs) {
     return false;
@@ -178,7 +212,7 @@ export async function verifyRemotePairingCodeVerifier(
   return crypto.subtle.verify(
     "HMAC",
     key,
-    hexToBuffer(match[2]),
+    hexToBuffer(match[3]),
     signingPayload(context, code, expiresAtMs),
   );
 }
