@@ -372,6 +372,9 @@ function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
 
 type ScenarioRoomDefinition = {
   id: string;
+  logicalWorldId: string;
+  logicalEntityId: string;
+  accountId: string;
   roomId: UUID;
   userId: UUID;
   worldId: UUID;
@@ -735,7 +738,7 @@ function normalizeChannelType(value: unknown): ChannelType {
 function resolveScenarioRooms(
   scenario: ScenarioDefinition,
 ): ScenarioRoomDefinition[] {
-  const worldId = stringToUuid(`scenario-runner-world:${scenario.id}`);
+  const defaultWorldId = stringToUuid(`scenario-runner-world:${scenario.id}`);
   const maybeRooms = (scenario as { rooms?: unknown }).rooms;
   const rooms = Array.isArray(maybeRooms) ? maybeRooms : [];
   const resolved = rooms
@@ -752,6 +755,16 @@ function resolveScenarioRooms(
         typeof raw.account === "string" && raw.account.trim().length > 0
           ? raw.account.trim()
           : `scenario-user:${scenario.id}:${id}`;
+      const logicalEntityId =
+        typeof raw.entity === "string" && raw.entity.trim().length > 0
+          ? raw.entity.trim()
+          : account;
+      const explicitEntity =
+        typeof raw.entity === "string" && raw.entity.trim().length > 0;
+      const logicalWorldId =
+        typeof raw.world === "string" && raw.world.trim().length > 0
+          ? raw.world.trim()
+          : "default";
       const userName =
         typeof raw.title === "string" && raw.title.trim().length > 0
           ? raw.title.trim()
@@ -759,9 +772,17 @@ function resolveScenarioRooms(
 
       return {
         id,
+        logicalWorldId,
+        logicalEntityId,
+        accountId: account,
         roomId: stringToUuid(`scenario-room:${scenario.id}:${id}`),
-        userId: stringToUuid(`scenario-account:${account}`),
-        worldId,
+        userId: explicitEntity
+          ? stringToUuid(`scenario-entity:${scenario.id}:${logicalEntityId}`)
+          : stringToUuid(`scenario-account:${account}`),
+        worldId:
+          logicalWorldId === "default"
+            ? defaultWorldId
+            : stringToUuid(`scenario-world:${scenario.id}:${logicalWorldId}`),
         source:
           typeof raw.source === "string" && raw.source.trim().length > 0
             ? raw.source.trim()
@@ -779,9 +800,12 @@ function resolveScenarioRooms(
   return [
     {
       id: "main",
+      logicalWorldId: "default",
+      logicalEntityId: `${scenario.id}:main`,
+      accountId: `${scenario.id}:main`,
       roomId: stringToUuid(`scenario-room:${scenario.id}:main`),
       userId: stringToUuid(`scenario-account:${scenario.id}:main`),
-      worldId,
+      worldId: defaultWorldId,
       source: "scenario-runner",
       channelType: ChannelType.DM,
       userName: "ScenarioUser",
@@ -2553,6 +2577,22 @@ export async function runScenario(
   // entity so the core FACTS provider can surface them during turns.
   ctx.primaryRoomId = primaryRoom.roomId;
   ctx.primaryUserId = primaryRoom.userId;
+  ctx.roomIds = Object.fromEntries(rooms.map((room) => [room.id, room.roomId]));
+  ctx.worldIds = Object.fromEntries(
+    rooms.map((room) => [room.logicalWorldId, room.worldId]),
+  );
+  ctx.entityIds = Object.fromEntries(
+    rooms.map((room) => [room.logicalEntityId, room.userId]),
+  );
+  ctx.accountEntityIds = Object.fromEntries(
+    rooms.map((room) => [room.accountId, room.userId]),
+  );
+  ctx.roomWorldIds = Object.fromEntries(
+    rooms.map((room) => [room.id, room.worldId]),
+  );
+  ctx.roomEntityIds = Object.fromEntries(
+    rooms.map((room) => [room.id, room.userId]),
+  );
   const variables: ScenarioVariableState = {
     baseNow: new Date(startedAt),
     capturesByName: new Map<string, unknown>(),

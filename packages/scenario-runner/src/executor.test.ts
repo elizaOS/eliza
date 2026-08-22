@@ -14,6 +14,7 @@ import type {
 } from "@elizaos/core";
 import {
   pendingPostDeliveryTaskCount,
+  stringToUuid,
   trackPostDeliveryTask,
 } from "@elizaos/core";
 import {
@@ -21,6 +22,7 @@ import {
   type DeterministicModelFixtureRegistry,
 } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
+import type { ScenarioContext } from "../schema/index.d.ts";
 import { runScenario } from "./executor";
 
 function createRuntime(
@@ -45,6 +47,105 @@ function createRuntime(
     ...overrides,
   } as unknown as AgentRuntime;
 }
+
+describe("scenario executor multi-world topology", () => {
+  it("resolves two worlds and two accounts to one explicit canonical entity", async () => {
+    const connections: Array<Parameters<AgentRuntime["ensureConnection"]>[0]> =
+      [];
+    const ensureConnection = vi.fn(
+      async (connection: Parameters<AgentRuntime["ensureConnection"]>[0]) => {
+        connections.push(connection);
+      },
+    );
+    const runtime = createRuntime([], { ensureConnection });
+    let seedContext: ScenarioContext | undefined;
+
+    const report = await runScenario(
+      {
+        id: "multi-world-linked-owner",
+        title: "Multi-world linked owner",
+        domain: "executor",
+        rooms: [
+          {
+            id: "discord-home",
+            world: "discord-guild-42",
+            account: "discord:owner-123",
+            entity: "owner",
+            source: "discord",
+            title: "Owner on Discord",
+          },
+          {
+            id: "telegram-home",
+            world: "telegram-space-99",
+            account: "telegram:owner-456",
+            entity: "owner",
+            source: "telegram",
+            title: "Owner on Telegram",
+          },
+        ],
+        seed: [
+          {
+            type: "custom",
+            name: "capture resolved topology",
+            apply(ctx) {
+              seedContext = ctx;
+            },
+          },
+        ],
+        turns: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(ensureConnection).toHaveBeenCalledTimes(2);
+    const discordConnection = connections[0];
+    const telegramConnection = connections[1];
+    const expectedEntityId = stringToUuid(
+      "scenario-entity:multi-world-linked-owner:owner",
+    );
+    expect(discordConnection?.entityId).toBe(expectedEntityId);
+    expect(telegramConnection?.entityId).toBe(expectedEntityId);
+    expect(discordConnection?.worldId).toBe(
+      stringToUuid("scenario-world:multi-world-linked-owner:discord-guild-42"),
+    );
+    expect(telegramConnection?.worldId).toBe(
+      stringToUuid("scenario-world:multi-world-linked-owner:telegram-space-99"),
+    );
+    expect(discordConnection?.worldId).not.toBe(telegramConnection?.worldId);
+
+    expect(seedContext?.roomIds).toEqual({
+      "discord-home": stringToUuid(
+        "scenario-room:multi-world-linked-owner:discord-home",
+      ),
+      "telegram-home": stringToUuid(
+        "scenario-room:multi-world-linked-owner:telegram-home",
+      ),
+    });
+    expect(seedContext?.worldIds).toEqual({
+      "discord-guild-42": discordConnection?.worldId,
+      "telegram-space-99": telegramConnection?.worldId,
+    });
+    expect(seedContext?.entityIds).toEqual({ owner: expectedEntityId });
+    expect(seedContext?.accountEntityIds).toEqual({
+      "discord:owner-123": expectedEntityId,
+      "telegram:owner-456": expectedEntityId,
+    });
+    expect(seedContext?.roomEntityIds).toEqual({
+      "discord-home": expectedEntityId,
+      "telegram-home": expectedEntityId,
+    });
+    expect(seedContext?.roomWorldIds).toEqual({
+      "discord-home": discordConnection?.worldId,
+      "telegram-home": telegramConnection?.worldId,
+    });
+  });
+});
 
 describe("scenario executor wait turns", () => {
   it("fails strict final validation when a caught model mismatch remains", async () => {
