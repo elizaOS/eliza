@@ -640,6 +640,8 @@ export function CodingAgentTasksPanel({
       label: searchLabel,
       group: "task-filters",
       description: "Filter task threads by title or request text",
+      getValue: () => search,
+      onFill: setSearch,
     });
   const { ref: archivedRef, agentProps: archivedAgentProps } =
     useAgentElement<HTMLButtonElement>({
