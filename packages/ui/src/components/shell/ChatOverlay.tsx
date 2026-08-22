@@ -7324,6 +7324,17 @@ export function ChatOverlay({
                   ref={inputRef}
                   rows={1}
                   value={draft}
+                  // WKWebView paints a native autocorrection candidate popover
+                  // above a detached composer on the first keystroke. In the
+                  // 64px desktop host that looks like a duplicate/flashing text
+                  // row and is clipped by the exact window. Disable only those
+                  // OS writing suggestions here; Eliza's explicit slash-command
+                  // menu below remains unchanged, and browser/mobile composers
+                  // retain their platform spelling behavior.
+                  autoComplete={desktopOverlayHost ? "off" : undefined}
+                  autoCorrect={desktopOverlayHost ? "off" : undefined}
+                  autoCapitalize={desktopOverlayHost ? "off" : undefined}
+                  spellCheck={desktopOverlayHost ? false : undefined}
                   // Onboarding is sign-in-first: before launch the composer is
                   // disabled. While the external browser owns sign-in it is
                   // read-only, so clicking the compact composer can reopen the

@@ -3217,6 +3217,11 @@ describe("ChatOverlay", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    const input = screen.getByTestId("chat-composer-textarea");
+    expect(input.getAttribute("autocomplete")).toBeNull();
+    expect(input.getAttribute("autocorrect")).toBeNull();
+    expect(input.getAttribute("autocapitalize")).toBeNull();
+    expect(input.getAttribute("spellcheck")).toBeNull();
 
     const pill = screen.getByTestId("chat-pill");
     expect(pill.className).toContain("pointer-events-none");
@@ -4420,6 +4425,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       const fixedGrabber = screen.getByTestId("chat-sheet-grabber");
       const traveler = screen.getByTestId("chat-pill");
       const mark = screen.getByTestId("chat-pill-mark");
+      const input = screen.getByTestId("chat-composer-textarea");
 
       expect(fixedGrabber.style.pointerEvents).toBe("none");
       expect(fixedGrabber.getAttribute("aria-hidden")).toBe("true");
@@ -4428,6 +4434,10 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       expect(traveler.getAttribute("aria-hidden")).toBeNull();
       expect(traveler.style.width).toBe("64px");
       expect(traveler.style.height).toBe("12px");
+      expect(input.getAttribute("autocomplete")).toBe("off");
+      expect(input.getAttribute("autocorrect")).toBe("off");
+      expect(input.getAttribute("autocapitalize")).toBe("off");
+      expect(input.getAttribute("spellcheck")).toBe("false");
       await waitFor(() => {
         expect(
           screen.getByTestId("chat-desktop-pill-traveler").style.transform,
