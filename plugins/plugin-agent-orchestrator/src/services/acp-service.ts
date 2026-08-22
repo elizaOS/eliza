@@ -3093,7 +3093,16 @@ export class AcpService extends Service {
     // Operator commands are opaque adapter boundaries. Mutating them with
     // flags from a different codex-acp generation can silently change their
     // argv contract, so only the declared legacy default is upgraded above.
-    return command;
+    //
+    // Anchoring is not such a mutation and must still apply here: a native
+    // session spawns with `cwd: session.workdir`, while availability resolves
+    // against the service cwd, so an unanchored relative command makes the two
+    // disagree about which file they mean (#24683). The managed default's
+    // executable is the bare `npx`, which `anchorRelativeCommandLine` leaves
+    // untouched, so the identity comparisons against
+    // DEFAULT_CODEX_ACP_COMMAND above and in the landlock-retry and
+    // INITIAL_AGENT_MODE gates keep matching.
+    return anchorRelativeCommandLine(command);
   }
 
   private shouldRetryManagedCodexLandlock(

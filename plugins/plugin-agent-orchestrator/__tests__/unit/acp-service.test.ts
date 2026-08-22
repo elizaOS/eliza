@@ -149,6 +149,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
 
 import {
   AcpService,
+  defaultCodexAcpCommand,
   normalizeClaudeAcpModelId,
 } from "../../src/services/acp-service.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
@@ -530,6 +531,53 @@ describe("AcpService", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("anchors a relative ELIZA_CODEX_ACP_COMMAND before the session changes cwd (#24683)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "relative-codex-command-"));
+    const executable = join(dir, "codex-acp");
+    try {
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(executable, 0o755);
+      const relative = path.relative(process.cwd(), executable);
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_CODEX_ACP_COMMAND: `${relative} --stdio`,
+        }),
+      );
+      const inspect = service as unknown as {
+        nativeAgentCommand(agentType: string): string;
+        agentCommandAvailability(agentType: string): { available: boolean };
+      };
+
+      // The managed-codex branch previously returned the configured value
+      // unanchored, so availability resolved it against the service cwd while
+      // the native client spawns with cwd: session.workdir.
+      expect(inspect.nativeAgentCommand("codex")).toBe(`${executable} --stdio`);
+      expect(inspect.agentCommandAvailability("codex")).toEqual({
+        available: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves the managed default Codex command unanchored (#24683)", async () => {
+    const service = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "native" }),
+    );
+    const inspect = service as unknown as {
+      nativeAgentCommand(agentType: string): string;
+    };
+
+    // Anchoring must be identity on the managed default: its executable is the
+    // bare `npx`, and the DEFAULT_CODEX_ACP_COMMAND identity comparisons that
+    // drive managed-mode validation, landlock retry, and INITIAL_AGENT_MODE
+    // all depend on this value being returned unchanged.
+    const command = inspect.nativeAgentCommand("codex");
+    expect(command).toBe(defaultCodexAcpCommand());
+    expect(command.startsWith("npx ")).toBe(true);
   });
 
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
