@@ -168,6 +168,32 @@ describe("ComputerUseService browser command dispatch", () => {
     expect(browser.switchBrowserTab).toHaveBeenCalledWith("0");
   });
 
+  it.each([
+    ["tabId", { tabId: "auto" }],
+    ["index", { index: -1 }],
+    ["tab_index", { tab_index: 1.5 }],
+  ] as const)(
+    "ignores a malformed %s alias for an unrelated browser action",
+    async (_, strayAlias) => {
+      vi.mocked(browser.navigateBrowser).mockClear();
+
+      const result = await service.executeBrowserAction({
+        action: "navigate",
+        url: "https://example.com/ignored-tab-alias",
+        ...strayAlias,
+      });
+
+      expect(result).toMatchObject({ success: true });
+      expect(result).not.toHaveProperty(
+        "error",
+        INVALID_BROWSER_TAB_ID_MESSAGE,
+      );
+      expect(browser.navigateBrowser).toHaveBeenCalledWith(
+        "https://example.com/ignored-tab-alias",
+      );
+    },
+  );
+
   it("rejects malformed close/switch tab IDs before adapter dispatch", async () => {
     const cases = [
       {
@@ -180,21 +206,29 @@ describe("ComputerUseService browser command dispatch", () => {
         tabId: "1.5",
         adapter: browser.switchBrowserTab,
       },
+      {
+        action: "close_tab" as const,
+        index: -1,
+        adapter: browser.closeBrowserTab,
+      },
+      {
+        action: "switch_tab" as const,
+        tab_index: 1.5,
+        adapter: browser.switchBrowserTab,
+      },
     ];
 
     for (const testCase of cases) {
-      vi.mocked(testCase.adapter).mockClear();
+      const { adapter, ...params } = testCase;
+      vi.mocked(adapter).mockClear();
 
-      const result = await service.executeBrowserAction({
-        action: testCase.action,
-        tabId: testCase.tabId,
-      });
+      const result = await service.executeBrowserAction(params);
 
       expect(result).toEqual({
         success: false,
         error: INVALID_BROWSER_TAB_ID_MESSAGE,
       });
-      expect(testCase.adapter).not.toHaveBeenCalled();
+      expect(adapter).not.toHaveBeenCalled();
       expect(service.getRecentActions().at(-1)).toMatchObject({
         action: `browser_${testCase.action}`,
         params: { action: testCase.action },
@@ -203,7 +237,29 @@ describe("ComputerUseService browser command dispatch", () => {
       expect(service.getRecentActions().at(-1)?.params).not.toHaveProperty(
         "tabId",
       );
+      expect(service.getRecentActions().at(-1)?.params).not.toHaveProperty(
+        "index",
+      );
+      expect(service.getRecentActions().at(-1)?.params).not.toHaveProperty(
+        "tab_index",
+      );
     }
+  });
+
+  it("does not fall back from a malformed tabId to a valid numeric alias", async () => {
+    vi.mocked(browser.closeBrowserTab).mockClear();
+
+    const result = await service.executeBrowserAction({
+      action: "close_tab",
+      tabId: "1junk",
+      index: 1,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: INVALID_BROWSER_TAB_ID_MESSAGE,
+    });
+    expect(browser.closeBrowserTab).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed tab ID through command routing", async () => {

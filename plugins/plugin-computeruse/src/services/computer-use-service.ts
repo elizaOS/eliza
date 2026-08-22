@@ -1798,17 +1798,22 @@ export class ComputerUseService extends Service {
   private normalizeBrowserActionParams(
     params: BrowserActionParams,
   ): BrowserActionParams {
+    const action = this.normalizeBrowserAction(params.action);
     const tabIdCandidate = params.tabId ?? params.index ?? params.tab_index;
+    const validatesTabId = action === "close_tab" || action === "switch_tab";
+    let tabId: string | undefined;
+    if (tabIdCandidate !== undefined) {
+      tabId = validatesTabId
+        ? normalizeBrowserTabId(tabIdCandidate)
+        : String(tabIdCandidate);
+    }
     return {
       ...params,
       ...(params.url === undefined
         ? {}
         : { url: assertHttpBrowserUrl(params.url) }),
-      tabId:
-        tabIdCandidate !== undefined
-          ? normalizeBrowserTabId(tabIdCandidate)
-          : undefined,
-      action: this.normalizeBrowserAction(params.action),
+      tabId,
+      action,
     };
   }
 
