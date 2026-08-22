@@ -32,7 +32,7 @@ function telegramGroupLinkTarget(
   text: string,
   botUsername: string,
 ): "not-link" | "this-bot" | "other-bot" {
-  const match = text.match(TELEGRAM_GROUP_LINK_COMMAND);
+  const match = text.trim().match(TELEGRAM_GROUP_LINK_COMMAND);
   if (!match) return "not-link";
   const target = match[1];
   if (!target) return "this-bot";
