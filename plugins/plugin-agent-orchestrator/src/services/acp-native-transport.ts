@@ -10,6 +10,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { persistDurableContent } from "./durable-content-store.js";
 import type { AcpJsonRpcMessage, ApprovalPreset } from "./types.js";
 
 export type NativeAcpEventCallback = (
@@ -113,6 +114,9 @@ type TerminalRecord = {
   proc: ChildProcessWithoutNullStreams;
   output: string;
   truncated: boolean;
+  /** Durable reference to the head captured before overflow discarded the
+   *  buffer (`acpx-content:<sha256>`); undefined when the persist failed. */
+  overflowRef?: string;
   limit: number;
   exitCode?: number | null;
   signal?: NodeJS.Signals | null;
@@ -135,6 +139,14 @@ const ACP_PROTOCOL_VERSION = 1;
 // longer waits can override via `ACPX_DEFAULT_TIMEOUT_MS` or
 // `ELIZA_ACP_PROMPT_TIMEOUT_MS` env vars.
 const DEFAULT_TIMEOUT_MS = 300_000;
+// Complete-capture safety limit for ACP terminal output. Deliberate fail-closed
+// REJECT (prompt-integrity: "typed pre-dispatch rejection"): when a command's
+// output exceeds the limit, terminal/output THROWS instead of returning a
+// partial capture as if it were the result — a prefix or tail posing as the
+// complete command output is exactly the failure mode this guards against. The
+// head captured before overflow is persisted to the durable content store and
+// named in the thrown error, so the refusal stays diagnosable without being
+// weakened (see createTerminal's capture callback and terminalOutput).
 const TERMINAL_OUTPUT_LIMIT = 512 * 1024;
 const AGENT_CLOSE_TERM_GRACE_MS = 1_500;
 const TERMINAL_KILL_GRACE_MS = 1_500;
@@ -200,7 +212,7 @@ export class NativeAcpClient {
     });
     proc.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
-      this.stderrBuffer = `${this.stderrBuffer}${text}`.slice(-16_384);
+      this.stderrBuffer = appendBoundedStderr(this.stderrBuffer, text);
       // Observer callback — a consumer throw here must not surface as a stream
       // 'error' event that tears down stderr for the whole agent.
       try {
@@ -235,9 +247,9 @@ export class NativeAcpClient {
           version: "2.0.0",
         },
       },
-      // The first opencode spawn compiles its TS tree and installs the provider
-      // npm package (e.g. @ai-sdk/cerebras), which can exceed the 300s default.
-      // Honor the configured session timeout for the handshake too.
+      // A slow first spawn (toolchain compile, provider npm install) can
+      // exceed the 300s default. Honor the configured session timeout for the
+      // handshake too.
       this.opts.timeoutMs && this.opts.timeoutMs > 0
         ? this.opts.timeoutMs
         : DEFAULT_TIMEOUT_MS,
@@ -585,6 +597,14 @@ export class NativeAcpClient {
     return cancelledPermission();
   }
 
+  /**
+   * ACP `fs/read_text_file`. The line/limit window is CALLER-REQUESTED
+   * pagination per the ACP spec (compliant with prompt-integrity's "paginate
+   * only when the caller explicitly requested it"): with neither param the
+   * COMPLETE file content is returned; with them, the requesting model owns
+   * the continuation contract (the ACP result shape carries no explicit
+   * EOF/hasMore field beyond the spec's line/limit semantics).
+   */
   private async readTextFile(params: Record<string, unknown> | undefined) {
     if (!this.isOperationApproved("read")) {
       throw new PermissionDeniedError(
@@ -663,7 +683,18 @@ export class NativeAcpClient {
       record.output += chunk.toString("utf8");
       if (Buffer.byteLength(record.output, "utf8") > record.limit) {
         record.truncated = true;
-        // Never expose a prefix or tail as if it were the complete command result.
+        // Fail-closed REJECT: never expose a prefix or tail as if it were the
+        // complete command result. Persist the head captured so far FIRST so
+        // terminalOutput's typed refusal can name where the partial evidence
+        // lives.
+        try {
+          record.overflowRef = persistDurableContent(record.output).ref;
+        } catch {
+          // error-policy:J7 recoverability plumbing on a rejection path — the
+          // rejection stands either way; a persist fault only costs the
+          // diagnostic head, which the thrown error then reports as lost.
+          record.overflowRef = undefined;
+        }
         record.output = "";
       }
     };
@@ -677,8 +708,15 @@ export class NativeAcpClient {
   private terminalOutput(params: Record<string, unknown> | undefined) {
     const terminal = this.requireTerminal(stringValue(params?.terminalId));
     if (terminal.truncated) {
+      // Compliant REJECT (prompt-integrity: typed pre-dispatch rejection): the
+      // sub-agent model never receives a partial capture posing as the command
+      // result. The persisted head reference keeps the refusal diagnosable
+      // without weakening it.
+      const headNote = terminal.overflowRef
+        ? ` The head captured before overflow is preserved at ${terminal.overflowRef} (GET /api/orchestrator/content/${terminal.overflowRef.slice("acpx-content:".length)}).`
+        : " The head captured before overflow could not be persisted and is lost.";
       throw new Error(
-        `Terminal output exceeded the ${terminal.limit}-byte complete-capture safety limit; no partial result is available`,
+        `Terminal output exceeded the ${terminal.limit}-byte complete-capture safety limit; no partial result is available. Re-run with output redirected to a file (e.g. \`> out.log 2>&1\`) and read the file instead.${headNote}`,
       );
     }
     return {
@@ -976,7 +1014,10 @@ function jsonRpcError(error: unknown): Error {
   const data = record?.data;
   // JSON-RPC error.data carries the diagnostic detail (e.g. a ZodError for
   // -32602 "Invalid params"). Surface a compact form of it in the message so
-  // failures stay debuggable, and keep the structured value on the error.
+  // failures stay debuggable, and keep the structured value on the error:
+  // AcpRequestError.data is the CANONICAL complete value; the "(data: ...)"
+  // message fragment is a named bounded preview of it (see compactJson).
+  // Consumers relaying failure text into model context should prefer .data.
   if (data === undefined) {
     return new AcpRequestError(baseMessage, code);
   }
@@ -985,6 +1026,11 @@ function jsonRpcError(error: unknown): Error {
   return new AcpRequestError(message, code, data);
 }
 
+/**
+ * Named 2,000-char PREVIEW of a serialized diagnostic value for embedding in
+ * an error MESSAGE. Never the canonical value — callers keep the complete
+ * structured value on AcpRequestError.data (see jsonRpcError).
+ */
 export function compactJson(value: unknown): string | undefined {
   try {
     const raw = JSON.stringify(value);
@@ -1001,6 +1047,45 @@ export function compactJson(value: unknown): string | undefined {
     // value (e.g. a circular error.data) yields no compact detail, not a crash.
     return undefined;
   }
+}
+
+// In-memory bound for the ACP agent process's accumulated stderr — a MEMORY
+// bound, not a data bound (see appendBoundedStderr).
+const AGENT_STDERR_TAIL_BYTES = 16_384;
+
+/**
+ * Accumulate agent stderr into a bounded tail without losing data: on overflow
+ * the COMPLETE pre-slice text is persisted to the durable content store first
+ * (successive overflow records chain — each begins with the previous record's
+ * marker — so together they cover the whole stream), and the retained tail is
+ * headed by a marker naming the resolver route. The process-close failure text
+ * that embeds this buffer is therefore a named, reference-bearing tail view
+ * rather than a silent head drop. The tail slice is byte-accurate and
+ * well-formed (the previous code-unit `.slice(-16_384)` compared bytes but cut
+ * UTF-16 units and could bisect a surrogate pair). Exported for unit coverage.
+ */
+export function appendBoundedStderr(current: string, chunk: string): string {
+  const combined = `${current}${chunk}`;
+  const buf = Buffer.from(combined, "utf8");
+  if (buf.byteLength <= AGENT_STDERR_TAIL_BYTES) return combined;
+  let marker: string;
+  try {
+    const ref = persistDurableContent(combined);
+    const sha = ref.ref.slice("acpx-content:".length);
+    marker = `[agent stderr tail — full stderr: GET /api/orchestrator/content/${sha}]`;
+  } catch (err) {
+    // error-policy:J2 the durable persist is the PRECONDITION for keeping only
+    // a tail: when it fails, NOTHING may be dropped — retain the COMPLETE
+    // accumulation with the fault declared once (idempotent across repeated
+    // failing appends), never a tail whose head is unrecoverable.
+    if (combined.startsWith("[agent stderr durable persist failed")) {
+      return combined;
+    }
+    return `[agent stderr durable persist failed (${err instanceof Error ? err.message : String(err)}); complete stderr retained inline]\n${combined}`;
+  }
+  return `${marker}\n${toWellFormedUnicode(
+    buf.subarray(buf.byteLength - AGENT_STDERR_TAIL_BYTES).toString("utf8"),
+  )}`;
 }
 
 function extractAgentSessionId(meta: unknown): string | undefined {
