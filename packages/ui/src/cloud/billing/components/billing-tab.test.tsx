@@ -257,9 +257,22 @@ describe("BillingTab buy-credits accessibility", () => {
     await actor.type(input, "{Enter}");
 
     await waitFor(() => {
-      expect(apiMock).toHaveBeenCalledWith(
-        "/api/stripe/create-checkout-session",
-        { method: "POST", json: { amount: 25, returnUrl: "settings" } },
+      const checkoutCall = apiMock.mock.calls.find(
+        (call) =>
+          String(call[0]).startsWith("/api/stripe/create-checkout-session"),
+      );
+      expect(checkoutCall).toBeDefined();
+      const init = checkoutCall?.[1] as {
+        method?: string;
+        json?: unknown;
+        headers?: Record<string, string>;
+      };
+      expect(init.method).toBe("POST");
+      expect(init.json).toEqual({ amount: 25, returnUrl: "settings" });
+      // The idempotency key is present and satisfies the server contract
+      // (#24144); Enter and click submissions share the same handler.
+      expect(init.headers?.["Idempotency-Key"]).toMatch(
+        /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/,
       );
     });
     // The in-flight label stays verb-first ("Processing…"), never a passive
