@@ -109,6 +109,7 @@ function humanIntervention(value: unknown): DoorDashHumanIntervention | null {
     // error-policy:J3 untrusted MCP handoff output is never rendered as a link.
     return null;
   }
+  let appBrowserUrl = liveViewUrl;
   let nativeAppDeepLink: string | undefined;
   if (
     value.providerBlocked === true &&
@@ -120,6 +121,7 @@ function humanIntervention(value: unknown): DoorDashHumanIntervention | null {
         native.protocol === "https:" &&
         native.hostname === "www.doordash.com"
       ) {
+        appBrowserUrl = native.href;
         nativeAppDeepLink = `elizaos://browser?browse=${encodeURIComponent(native.href)}`;
       }
     } catch {
@@ -128,8 +130,8 @@ function humanIntervention(value: unknown): DoorDashHumanIntervention | null {
   }
   return {
     liveViewUrl,
-    appBrowserPath: `/browser?browse=${encodeURIComponent(liveViewUrl)}`,
-    appDeepLink: `elizaos://browser?browse=${encodeURIComponent(liveViewUrl)}`,
+    appBrowserPath: `/browser?browse=${encodeURIComponent(appBrowserUrl)}`,
+    appDeepLink: `elizaos://browser?browse=${encodeURIComponent(appBrowserUrl)}`,
     providerBlocked: value.providerBlocked === true,
     ...(nativeAppDeepLink ? { nativeAppDeepLink } : {}),
     ...(typeof value.handoffId === "string"
