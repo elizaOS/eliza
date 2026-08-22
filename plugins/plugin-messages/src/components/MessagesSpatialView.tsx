@@ -38,6 +38,7 @@ export interface MessagesSnapshot {
   /** When not held, the package name of whichever app holds the role. */
   smsRoleHolder: string | null;
   loading?: boolean;
+  sending?: boolean;
   error?: string | null;
 }
 
@@ -102,6 +103,7 @@ export function MessagesSpatialView({
     snapshot.threads.find((t) => t.id === snapshot.selectedThreadId) ?? null;
   const unread = totalUnread(snapshot.threads);
   const canSend =
+    !snapshot.sending &&
     snapshot.composeAddress.trim().length > 0 &&
     snapshot.composeBody.trim().length > 0;
 
@@ -220,18 +222,23 @@ export function MessagesSpatialView({
           disabled={!canSend}
           variant={canSend ? "solid" : "outline"}
           tone={canSend ? "primary" : "default"}
-          agent="send"
+          agent={{ id: "messages-send", role: "button", label: "Send SMS" }}
           onPress={dispatch("send")}
         >
-          Send
+          {snapshot.sending ? "Sending…" : "Send"}
         </Button>
         <Button
           variant="outline"
           tone="default"
-          agent="refresh"
+          agent={{
+            id: "messages-refresh",
+            role: "button",
+            label: "Refresh messages",
+          }}
+          disabled={snapshot.loading}
           onPress={dispatch("refresh")}
         >
-          Refresh
+          {snapshot.loading ? "Refreshing…" : "Refresh"}
         </Button>
       </HStack>
     </Card>
