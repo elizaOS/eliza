@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../types/model";
 import {
 	projectToolResultForModel,
+	renderActionResultsForModel,
 	toolMessageContent,
 	trajectoryStepsToMessages,
 } from "../planner-rendering";
@@ -78,6 +79,67 @@ describe("trajectoryStepsToMessages", () => {
 				`${index}:${"z".repeat(50_000)}:${index}`,
 			);
 		}
+	});
+});
+
+describe("renderActionResultsForModel", () => {
+	it("removes recoverable page text while retaining its exact continuation", () => {
+		const page = `BEGIN${"x".repeat(20_000)}END`;
+		const rendered = renderActionResultsForModel(
+			[
+				{
+					success: true,
+					text: page,
+					data: { actionName: "FILE", rawBody: "SECOND_CARRIER" },
+					promptData: { actionName: "FILE", readView: readViewFor(page) },
+				},
+			],
+			{ omitRecoverableText: true },
+		);
+
+		expect(rendered.text).toContain("file_opaque");
+		expect(rendered.text).not.toContain("BEGIN");
+		expect(rendered.text).not.toContain("SECOND_CARRIER");
+		expect(rendered.stats).toEqual({
+			resultCount: 1,
+			pagesIncluded: 0,
+			pagesOmitted: 1,
+			omissionReasons: { "model-input-budget": 1 },
+		});
+	});
+
+	it("fails rather than dropping a non-recoverable oversized result", () => {
+		expect(() =>
+			renderActionResultsForModel(
+				[
+					{
+						success: true,
+						text: "x".repeat(20_000),
+						data: { actionName: "BASH" },
+					},
+				],
+				{
+					projectionBudget: {
+						perResultTokens: 100,
+						aggregateTokens: 100,
+					},
+				},
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
+	});
+
+	it("redacts credentials from legacy model-facing results", () => {
+		const rendered = renderActionResultsForModel([
+			{
+				success: true,
+				text: "completed with sk-test-secret-value",
+				data: { apiKey: "must-not-leak", actionName: "FETCH" },
+			},
+		]);
+
+		expect(rendered.text).not.toContain("sk-test-secret-value");
+		expect(rendered.text).not.toContain("must-not-leak");
+		expect(rendered.text).toContain("[REDACTED]");
 	});
 });
 
@@ -154,6 +216,28 @@ describe("toolMessageContent", () => {
 		expect(rendered).not.toContain("must-not-duplicate");
 	});
 
+	it("omits recoverable legacy-data text without discarding its continuation", () => {
+		const text = `BEGIN${"x".repeat(20_000)}END`;
+		const readView = readViewFor(text);
+		const parsed = JSON.parse(
+			toolMessageContent(
+				{
+					success: true,
+					text,
+					data: { actionName: "FILE", readView },
+				},
+				{ maxSerializedTokens: 500 },
+			),
+		);
+
+		expect(parsed.text).toBeUndefined();
+		expect(parsed.data.readView).toEqual(readView);
+		expect(parsed.contentProjection).toEqual({
+			textIncluded: false,
+			reason: "model-input-budget",
+		});
+	});
+
 	it("preserves exact page text and its validated slice hash when included", () => {
 		const text = `BEGIN\u0000é🙂\r\n${"exact ".repeat(200)}END`;
 		const readView = readViewFor(text);
@@ -173,13 +257,13 @@ describe("toolMessageContent", () => {
 		);
 	});
 
-	it("retains nested search references when oversized search prose is omitted", () => {
+	it("does not treat reference-only search metadata as a recoverable page", () => {
 		const reference = {
 			kind: "document" as const,
 			ref: "document:00000000-0000-0000-0000-000000000001",
 			revision: "rev:stable",
 		};
-		const parsed = JSON.parse(
+		expect(() =>
 			toolMessageContent(
 				{
 					success: true,
@@ -188,13 +272,7 @@ describe("toolMessageContent", () => {
 				},
 				{ maxSerializedTokens: 100 },
 			),
-		);
-		expect(parsed.text).toBeUndefined();
-		expect(parsed.promptData.results).toEqual([{ reference }]);
-		expect(parsed.contentProjection).toEqual({
-			textIncluded: false,
-			reason: "model-input-budget",
-		});
+		).toThrow(/Non-recoverable tool result exceeds/u);
 	});
 
 	it("does not treat an arbitrary nested reference as proof that result text is recoverable", () => {

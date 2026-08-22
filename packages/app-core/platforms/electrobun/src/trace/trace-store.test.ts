@@ -159,4 +159,20 @@ describe("trace store env limits", () => {
     }
     expect(traces.listSessions().length).toBe(5);
   });
+
+  it("keeps an explicit leading plus and rejects one past the safe range", () => {
+    process.env[KEY] = "+2";
+    const explicitlyBounded = new TraceStore();
+    for (let i = 0; i < 5; i++) {
+      explicitlyBounded.createSession({ title: `run ${i}`, source: "agent" });
+    }
+    expect(explicitlyBounded.listSessions()).toHaveLength(2);
+
+    process.env[KEY] = String(Number.MAX_SAFE_INTEGER + 1);
+    const fallbackBounded = new TraceStore();
+    for (let i = 0; i < 5; i++) {
+      fallbackBounded.createSession({ title: `run ${i}`, source: "agent" });
+    }
+    expect(fallbackBounded.listSessions()).toHaveLength(5);
+  });
 });

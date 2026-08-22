@@ -2475,6 +2475,20 @@ async function callPlanner(params: {
 		{ src: "planner-loop", contentProjection },
 		"Computed progressive content projection",
 	);
+	if (projectionEnabled && modelInputBudget.shouldCompact) {
+		throw new ElizaError(
+			"Planner model input exceeds the resolved context budget after content projection",
+			{
+				code: "PLANNER_INPUT_OVER_BUDGET",
+				context: {
+					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
+					compactionThresholdTokens: modelInputBudget.compactionThresholdTokens,
+					contextWindowTokens: modelInputBudget.contextWindowTokens,
+					resultCount: contentProjection.resultCount,
+				},
+			},
+		);
+	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =

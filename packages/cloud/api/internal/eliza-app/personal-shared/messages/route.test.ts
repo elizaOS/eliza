@@ -111,7 +111,9 @@ const consumeGroupClaimAndBind = mock(
 const resolveGroupBinding = mock(
   async (): Promise<Record<string, unknown> | null> => null,
 );
-const setGroupResponsePolicy = mock(async () => null);
+const setGroupResponsePolicy = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
 const revokeGroupBinding = mock(async () => false);
 const applyGroupMembershipChange = mock(
   async (): Promise<Record<string, unknown> | null> => null,

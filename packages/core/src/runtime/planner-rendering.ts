@@ -12,9 +12,11 @@ import {
 	projectToolDiagnosticValue,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
-import { isContentReference, isReadView } from "../types/content";
+import type { ActionResult } from "../types/components";
+import { isReadView } from "../types/content";
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
+import { getActionResultActionName } from "../utils/action-results";
 import { stringifyForModel } from "./json-output";
 import {
 	type ContentProjectionBudget,
@@ -50,6 +52,84 @@ export interface ToolResultProjectionStats {
 	pagesIncluded: number;
 	pagesOmitted: number;
 	omissionReasons: Record<string, number>;
+}
+
+export interface RenderedActionResultsForModel {
+	text: string;
+	stats: ToolResultProjectionStats;
+}
+
+/**
+ * Render legacy ActionResults through the same promptData-over-data and
+ * recoverable-page projection used by native tool messages. This is the
+ * migration bridge for prompt builders that cannot yet carry structured tool
+ * messages; non-model display code should keep using its display formatter.
+ */
+export function renderActionResultsForModel(
+	results: readonly ActionResult[],
+	options: {
+		header?: string;
+		projectionBudget?: ContentProjectionBudget;
+		omitRecoverableText?: boolean;
+		redactText?: ToolDiagnosticTextRedactor;
+	} = {},
+): RenderedActionResultsForModel {
+	if (results.length === 0) {
+		return {
+			text: "No action results available.",
+			stats: {
+				resultCount: 0,
+				pagesIncluded: 0,
+				pagesOmitted: 0,
+				omissionReasons: {},
+			},
+		};
+	}
+	const fairResultBudget = options.projectionBudget
+		? Math.min(
+				options.projectionBudget.perResultTokens,
+				Math.floor(options.projectionBudget.aggregateTokens / results.length),
+			)
+		: undefined;
+	let pagesIncluded = 0;
+	let pagesOmitted = 0;
+	const omissionReasons: Record<string, number> = {};
+	const redactText = options.redactText ?? composeToolDiagnosticRedactor();
+	const rendered = results.map((result, index) => {
+		const safeResult = projectToolDiagnosticValue(
+			result,
+			redactText,
+		) as PlannerToolResult;
+		const body = toolMessageContent(safeResult, {
+			...(fairResultBudget === undefined
+				? {}
+				: { maxSerializedTokens: fairResultBudget }),
+			omitRecoverableText: options.omitRecoverableText,
+			onProjection: (observation) => {
+				if (!observation.validatedReadView) return;
+				if (observation.textIncluded) {
+					pagesIncluded++;
+					return;
+				}
+				pagesOmitted++;
+				const reason = observation.omissionReason ?? "unknown";
+				omissionReasons[reason] = (omissionReasons[reason] ?? 0) + 1;
+			},
+		});
+		const status = result.success === false ? "failed" : "succeeded";
+		return `${index + 1}. ${getActionResultActionName(result)} - ${status}\n${JSON.stringify(JSON.parse(body))}`;
+	});
+	return {
+		text: [options.header ?? "# Current Chain Action Results", ...rendered]
+			.filter(Boolean)
+			.join("\n\n"),
+		stats: {
+			resultCount: results.length,
+			pagesIncluded,
+			pagesOmitted,
+			omissionReasons,
+		},
+	};
 }
 
 /**
@@ -188,7 +268,9 @@ export function toolMessageContent(
 		onProjection?: (observation: ToolResultProjectionObservation) => void;
 	} = {},
 ): string {
-	const validatedReadView = hasRecoverableContentLocator(result.promptData);
+	const validatedReadView = hasRecoverableContentLocator(
+		result.promptData ?? result.data,
+	);
 	const projected = projectToolResultForModel(
 		result,
 		options.omitRecoverableText,
@@ -255,22 +337,6 @@ export interface ToolResultProjectionObservation {
 }
 
 function hasRecoverableContentLocator(value: unknown): boolean {
-	if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-		const results = (value as Record<string, unknown>).results;
-		if (
-			Array.isArray(results) &&
-			results.length > 0 &&
-			results.every(
-				(item) =>
-					item !== null &&
-					typeof item === "object" &&
-					!Array.isArray(item) &&
-					isContentReference((item as Record<string, unknown>).reference),
-			)
-		) {
-			return true;
-		}
-	}
 	const pending: Array<{ value: unknown; depth: number }> = [
 		{ value, depth: 0 },
 	];
@@ -323,7 +389,9 @@ export function projectToolResultForModel(
 ): PlannerToolResult & {
 	contentProjection?: { textIncluded: boolean; reason?: string };
 } {
-	const hasReadView = hasRecoverableContentLocator(result.promptData);
+	const hasReadView = hasRecoverableContentLocator(
+		result.promptData ?? result.data,
+	);
 	const projected = { ...result };
 	if (result.promptData !== undefined) {
 		delete projected.data;

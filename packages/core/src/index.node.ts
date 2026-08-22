@@ -259,6 +259,8 @@ export {
 	registerCandidateActionBackstopRule,
 } from "./runtime/candidate-action-backstop";
 export * from "./runtime/cleanup-scope";
+export * from "./runtime/content-access-manifest";
+export * from "./runtime/content-projection-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export {
@@ -293,6 +295,7 @@ export {
 // layers (message service, orchestrator completion relays) can recognize it
 // by identity and drop it as redundant next to an authoritative outcome.
 export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop";
+export { renderActionResultsForModel } from "./runtime/planner-rendering";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
