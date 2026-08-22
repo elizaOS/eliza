@@ -1,15 +1,18 @@
 /**
- * Proves app and initial API-key creation share one real PostgreSQL transaction.
+ * Proves app admission, initial-key attachment, and expiry checks against real PostgreSQL.
  *
  * Two service calls run on independent pool sessions while an external holder
  * owns the organization row lock. Both calls must be blocked in open
  * transactions before the holder releases them; with one slot remaining,
  * exactly one linked app/key pair commits and the loser never reaches minting.
+ * Repository cases also exercise PostgreSQL transaction-clock and session-zone
+ * semantics that an in-process substitute cannot establish authoritatively.
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { pushSchema } from "drizzle-kit/api";
+import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import {
   acquireEphemeralPostgres,
@@ -85,6 +88,43 @@ async function waitUntilBlockedWaiters(observer: Client, minimum: number): Promi
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${minimum} blocked app-create transactions`);
+}
+
+async function createAttachableCandidate(
+  database: NonNullable<typeof dbWrite>,
+  initializedAppsRepository: NonNullable<typeof appsRepository>,
+  initializedApiKeysRepository: NonNullable<typeof apiKeysRepository>,
+  expiresAt: Date,
+) {
+  const suffix = randomUUID();
+  const [organization] = await database
+    .insert(organizations)
+    .values({ name: "Expiry Org", slug: `expiry-org-${suffix}` })
+    .returning();
+  const [user] = await database
+    .insert(users)
+    .values({
+      steward_user_id: `expiry-user-${suffix}`,
+      organization_id: organization.id,
+    })
+    .returning();
+  const app = await initializedAppsRepository.create({
+    name: "Expiry App",
+    slug: `expiry-app-${suffix}`,
+    organization_id: organization.id,
+    created_by_user_id: user.id,
+    app_url: "https://expiry.example",
+    api_key_id: null,
+  });
+  const candidate = await initializedApiKeysRepository.create({
+    name: "Expiry Candidate",
+    key_hash: `expiry-${suffix}`,
+    key_prefix: suffix.slice(0, 12),
+    organization_id: organization.id,
+    user_id: user.id,
+    expires_at: expiresAt,
+  });
+  return { app, candidate };
 }
 
 async function cleanupHarness(): Promise<void> {
@@ -320,4 +360,70 @@ realPostgres("app and initial API-key atomicity", () => {
       await Promise.all([holder.end(), observer.end()]);
     }
   }, 30_000);
+
+  test("rejects a key that expires after transaction start but before attachment", async () => {
+    if (!dbWrite || !appsRepository || !apiKeysRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const initializedDatabase = dbWrite;
+    const initializedAppsRepository = appsRepository;
+    const { app, candidate } = await createAttachableCandidate(
+      initializedDatabase,
+      initializedAppsRepository,
+      apiKeysRepository,
+      new Date(Date.now() + 60_000),
+    );
+
+    const attached = await initializedDatabase.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL TIME ZONE 'UTC'`);
+      await tx.execute(sql`SELECT CURRENT_TIMESTAMP`);
+      await tx
+        .update(apiKeys)
+        .set({
+          expires_at: sql`(clock_timestamp() AT TIME ZONE 'UTC') + INTERVAL '100 milliseconds'`,
+        })
+        .where(eq(apiKeys.id, candidate.id));
+      await tx.execute(sql`SELECT pg_sleep(0.25)`);
+      return initializedAppsRepository.attachInitialApiKey(
+        app.id,
+        app.organization_id,
+        candidate.id,
+        tx,
+      );
+    });
+
+    expect(attached).toBeUndefined();
+    expect(
+      (await initializedDatabase.query.apps.findFirst({ where: eq(apps.id, app.id) }))?.api_key_id,
+    ).toBeNull();
+  });
+
+  test("rejects an expired UTC key in a non-UTC database session", async () => {
+    if (!dbWrite || !appsRepository || !apiKeysRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const initializedDatabase = dbWrite;
+    const initializedAppsRepository = appsRepository;
+    const { app, candidate } = await createAttachableCandidate(
+      initializedDatabase,
+      initializedAppsRepository,
+      apiKeysRepository,
+      new Date(Date.now() - 60 * 60 * 1000),
+    );
+
+    const attached = await initializedDatabase.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL TIME ZONE 'Pacific/Honolulu'`);
+      return initializedAppsRepository.attachInitialApiKey(
+        app.id,
+        app.organization_id,
+        candidate.id,
+        tx,
+      );
+    });
+
+    expect(attached).toBeUndefined();
+    expect(
+      (await initializedDatabase.query.apps.findFirst({ where: eq(apps.id, app.id) }))?.api_key_id,
+    ).toBeNull();
+  });
 });
