@@ -25,6 +25,16 @@ export {
   TelegramApiResponseError,
 };
 
+const TELEGRAM_GROUP_LINK_COMMAND =
+  /^(?:\/eliza_link(?:@([a-z0-9_]{5,32}))?|eliza\s+link)\s+[2-9A-HJ-NP-Z]{8}$/i;
+
+function isTelegramGroupLinkForBot(text: string, botUsername: string): boolean {
+  const match = text.match(TELEGRAM_GROUP_LINK_COMMAND);
+  if (!match) return false;
+  const target = match[1];
+  return !target || target.toLowerCase() === botUsername.toLowerCase();
+}
+
 function asTelegramEvent(event: ChatEvent): TelegramConnectorEvent {
   if (event.platform !== "telegram") {
     throw new TypeError("Telegram adapter received a non-Telegram event");
@@ -103,7 +113,7 @@ export const telegramAdapter: PlatformAdapter = {
       // may enter the model. Telegram privacy mode may still hide them.
       allowAmbient: true,
     });
-    if (event && /^\/eliza_link(?:@[a-z0-9_]{5,32})?\s+/i.test(event.text)) {
+    if (event && isTelegramGroupLinkForBot(event.text, botUsername)) {
       try {
         event.groupActorRole = await resolveTelegramGroupActorRole(
           config ?? {},
