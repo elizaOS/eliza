@@ -64,11 +64,10 @@ On startup and before sync, the extension asks the registered
 credential. The desktop broker authenticates the current OS user and is the
 authority for the API origin and credential. A loopback page or server cannot
 enroll an extension. Explicit disconnects and server revocations suppress
-automatic enrollment until the owner imports a new authenticated pairing.
-
-Manual recovery remains available: create a browser companion pairing from
-authenticated Eliza Browser settings, copy its pairing JSON, paste it into
-**Pairing and Advanced Tools**, and click **Import Pairing JSON**.
+automatic enrollment. The normal popup never displays or imports pairing
+credentials. Its explicit Reconnect action clears extension-local suppression
+and retries the native broker; a revoked browser remains blocked until the
+owner resets the durable revocation in authenticated Eliza settings.
 
 ### Stable extension IDs
 

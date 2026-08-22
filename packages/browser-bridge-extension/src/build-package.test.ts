@@ -30,7 +30,6 @@ type BuiltManifest = {
   web_accessible_resources: Array<{
     resources: string[];
     matches: string[];
-    use_dynamic_url?: boolean;
   }>;
   content_security_policy: { extension_pages: string };
   background: { service_worker?: string; scripts?: string[] };
@@ -81,10 +80,7 @@ describe("cross-browser extension build", () => {
     const chrome = await readManifest("chrome");
     const firefox = await readManifest("firefox");
 
-    for (const [kind, manifest] of [
-      ["chrome", chrome],
-      ["firefox", firefox],
-    ] as const) {
+    for (const manifest of [chrome, firefox]) {
       expect(manifest.manifest_version).toBe(3);
       expect(manifest.host_permissions).not.toContain("<all_urls>");
       expect(manifest.host_permissions).toEqual([
@@ -116,7 +112,6 @@ describe("cross-browser extension build", () => {
         {
           resources: ["blocked.html", "blocked.js"],
           matches: ["http://*/*", "https://*/*"],
-          ...(kind === "chrome" ? { use_dynamic_url: true } : {}),
         },
       ]);
     }

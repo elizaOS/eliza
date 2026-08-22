@@ -409,29 +409,6 @@ export async function resetNativeEnrollmentState(): Promise<void> {
   });
 }
 
-type NativeEnrollmentStateStore = {
-  load: () => Promise<NativeEnrollmentState>;
-  save: (state: NativeEnrollmentState) => Promise<void>;
-};
-
-/** Clears only the suppression created by the same owner's Disconnect action. */
-export async function resumeNativeEnrollmentAfterOwnerDisconnect(
-  store: NativeEnrollmentStateStore = {
-    load: loadNativeEnrollmentState,
-    save: saveNativeEnrollmentState,
-  },
-): Promise<boolean> {
-  const state = await store.load();
-  if (state.suppressedReason !== "owner_disconnected") return false;
-  await store.save({
-    consecutiveFailures: 0,
-    nextAttemptAt: null,
-    lastFailureCode: null,
-    suppressedReason: null,
-  });
-  return true;
-}
-
 export async function loadBackgroundState(): Promise<BackgroundState | null> {
   return await storageGet<BackgroundState>(STATE_KEY);
 }

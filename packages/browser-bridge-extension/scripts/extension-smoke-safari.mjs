@@ -347,7 +347,7 @@ async function importSafariPairing(config) {
   const encodedConfig = Buffer.from(JSON.stringify(config), "utf8").toString(
     "base64",
   );
-  const javascript = `document.querySelector('#details').open = true; document.querySelector('#recovery').open = true; document.querySelector('#pairingJson').value = atob('${encodedConfig}'); document.querySelector('#importPairing').click();`;
+  const javascript = `chrome.runtime.sendMessage({ type: 'browser-bridge:save-config', config: JSON.parse(atob('${encodedConfig}')) }, () => chrome.runtime.sendMessage({ type: 'browser-bridge:sync-now' }, () => location.reload()));`;
   const escapedJavascript = javascript
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"');
