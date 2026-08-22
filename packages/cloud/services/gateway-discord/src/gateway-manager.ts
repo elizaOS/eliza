@@ -40,6 +40,7 @@ import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { tryConfirmDiscordIdentityLink } from "./identity-link";
 import { invalidIntegerEnvError, parseIntegerEnvValue } from "./integer-env";
 import { logger } from "./logger";
+import { managedGuildMessageTurn } from "./managed-guild-message-policy";
 import {
   createManagedGuildVoiceCloudBridge,
   MANAGED_GUILD_VOICE_INTENT,
@@ -2545,31 +2546,14 @@ export class GatewayManager {
       return;
     }
 
-    const trimmedContent = message.content.trim();
-    if (!trimmedContent) {
-      return;
-    }
-
-    const botMentionRegex = new RegExp(`<@!?${botUserId}>`, "g");
-    const botMentioned =
-      message.mentions.users.has(botUserId) ||
-      botMentionRegex.test(trimmedContent);
-    if (!botMentioned) {
-      return;
-    }
-
-    const mentionedOtherUser = message.mentions.users.some(
-      (user: { id: string }) => user.id !== botUserId,
-    );
-    const repliedUserId = message.mentions.repliedUser?.id;
-    const repliedToAnotherUser = Boolean(
-      repliedUserId && repliedUserId !== botUserId,
-    );
-    if (
-      mentionedOtherUser ||
-      message.mentions.everyone ||
-      repliedToAnotherUser
-    ) {
+    const turn = managedGuildMessageTurn({
+      botUserId,
+      content: message.content,
+      mentionedUserIds: message.mentions.users.map((user) => user.id),
+      repliedUserId: message.mentions.repliedUser?.id,
+      mentionsEveryone: message.mentions.everyone,
+    });
+    if (!turn) {
       logger.debug("Ignoring managed guild message that targets someone else", {
         guildId: message.guildId,
         channelId: message.channelId,
@@ -2578,12 +2562,7 @@ export class GatewayManager {
       return;
     }
 
-    const sanitizedContent = trimmedContent.replace(botMentionRegex, "").trim();
-    if (!sanitizedContent) {
-      return;
-    }
-
-    await this.routeManagedAgentMessage(message, sanitizedContent);
+    await this.routeManagedAgentMessage(message, turn.content);
   }
 
   private async routeManagedAgentMessage(
