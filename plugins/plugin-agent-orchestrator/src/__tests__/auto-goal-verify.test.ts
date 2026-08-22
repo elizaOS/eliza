@@ -192,7 +192,7 @@ async function seedTaskWithSession(
     id: "row-1",
     taskId,
     sessionId,
-    framework: "opencode",
+    framework: "eliza-code",
     label: "Ada",
     originalTask: "do the thing",
     ...(opts.repo ? { repo: opts.repo } : {}),
@@ -959,7 +959,7 @@ describe("independent read-only verifier (#8898)", () => {
     expect(doc?.task.metadata.autoVerifyAttempts).toBeUndefined();
     expect(doc?.task.metadata.attemptReflections).toBeUndefined();
     expect(useModel).not.toHaveBeenCalled();
-    // #20794: the worker is an `opencode` session, which never emits a
+    // #20794: the worker is an `eliza-code` session, which never emits a
     // CompletionEnvelope — the correction must demand producible evidence,
     // not the envelope contract.
     const correction = fake.service.sendToSession.mock.calls.at(-1)?.[1] ?? "";

@@ -51,6 +51,10 @@ describe("capturePrGateChangeSet → reviewDiff (real git)", () => {
     expect(changeSet?.changedFiles).toContain("src.ts");
     // README.md was on base, must NOT appear in the branch-scoped diff.
     expect(changeSet?.changedFiles).not.toContain("README.md");
+    // Honest flags: a complete capture reports false — these are DETECTED
+    // verdicts now, never hard-coded decoration.
+    expect(changeSet?.truncated).toBe(false);
+    expect(changeSet?.filesTruncated).toBe(false);
 
     const result = reviewDiff({
       diff: changeSet?.diff ?? "",
@@ -79,6 +83,47 @@ describe("capturePrGateChangeSet → reviewDiff (real git)", () => {
     expect(result.passed).toBe(false);
     expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
   });
+
+  // The Bun fallback path streams git stdout to a file (no read-buffer cut is
+  // possible there), so the forced-truncation seam only exercises the Node
+  // spawnSync path.
+  it.skipIf(Boolean(process.versions.bun))(
+    "a buffer-cut diff reports truncated:true and the gate fails closed",
+    async () => {
+      process.env.WORKSPACE_DIFF_GIT_MAX_BUFFER = "256";
+      try {
+        git("checkout", "-q", "-b", "huge");
+        writeFileSync(
+          join(dir, "big.ts"),
+          `export const blob = "${"a".repeat(20_000)}";\n`,
+        );
+        git("add", "-A");
+        git("commit", "-q", "-m", "huge change");
+
+        const changeSet = await capturePrGateChangeSet(dir, "main");
+        expect(changeSet).toBeDefined();
+        // The diff read cannot fit the 256-byte buffer: the cut is DETECTED
+        // and reported, not silently stamped complete.
+        expect(changeSet?.truncated).toBe(true);
+
+        // End-to-end: the honest flag makes the secret-scan gate fail closed
+        // with the typed truncated-diff BLOCK instead of passing a partial
+        // scan as clean.
+        const result = reviewDiff({
+          diff: changeSet?.diff ?? "",
+          changedFiles: changeSet?.changedFiles ?? [],
+          diffTruncated: changeSet?.truncated,
+          changedFilesTruncated: changeSet?.filesTruncated,
+        });
+        expect(result.passed).toBe(false);
+        expect(result.blocking.some((f) => f.check === "truncated-diff")).toBe(
+          true,
+        );
+      } finally {
+        delete process.env.WORKSPACE_DIFF_GIT_MAX_BUFFER;
+      }
+    },
+  );
 
   it("returns undefined for a non-git directory (gate unavailable, fail-safe)", async () => {
     const nonGit = mkdtempSync(join(tmpdir(), "pr-gate-nongit-"));

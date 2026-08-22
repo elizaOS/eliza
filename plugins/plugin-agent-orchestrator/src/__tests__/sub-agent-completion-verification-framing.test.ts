@@ -202,4 +202,19 @@ describe("sub-agent completion: verification-aware framing", () => {
     >[0]);
     expect(result.reply).toBe("The answer is 42.");
   });
+
+  it("never relays a loopback verification URL, whatever authored the body", async () => {
+    const message = makeCompletion("done.", "some-session");
+    (message.content.metadata as Record<string, unknown>).subAgentDeliverable =
+      "Built it.\n- Public URL: https://nubilio.org/apps/snake/\n- Verified at `http://127.0.0.1:6900/apps/snake/`.";
+    const result = await subAgentCompletionResponseEvaluator.evaluate({
+      runtime: { getService: () => undefined },
+      message,
+      messageHandler: makeHandler(),
+    } as unknown as Parameters<
+      typeof subAgentCompletionResponseEvaluator.evaluate
+    >[0]);
+    expect(result.reply).toContain("https://nubilio.org/apps/snake/");
+    expect(result.reply).not.toContain("127.0.0.1");
+  });
 });

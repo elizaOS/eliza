@@ -102,6 +102,23 @@ describe("collectCompletionResiduals — real git legs", () => {
     expect(residual?.items?.join("\n")).toContain("untracked.ts");
   });
 
+  it("residualDetails carries the complete item lists into the reflexion missing entries", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "README.md"), "modified\n");
+    writeFileSync(join(workdir, "untracked.ts"), "export {};\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
+    const details = residualDetails(result);
+    const line = details.find((d) => d.includes("uncommitted path(s)"));
+    expect(line).toContain(" M README.md");
+    expect(line).toContain("?? untracked.ts");
+    // The one-line event summary stays a NAMED PREVIEW without items — the
+    // complete record persists in event data / task metadata.
+    expect(summarizeResiduals(result)).not.toContain("untracked.ts");
+  });
+
   it("reports every dirty path", async () => {
     const { workdir } = makeRepo();
     const pathCount = 125;

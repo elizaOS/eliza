@@ -246,8 +246,10 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success, JSON.stringify({ result, replies })).toBe(true);
     expect(result.text).toContain("Workspace changes committed and pushed.");
     const data = result.data as { commitHash: string; workspaceId: string };
+    // Prose (model-phrased, here the factual fallback) + the machine appendix
+    // carrying the commit hash byte-identical below it.
     expect(result.text).toBe(
-      `Workspace changes committed and pushed.\nCommit: ${data.commitHash.slice(0, 8)}`,
+      `Workspace changes committed and pushed.\n\nCommit: ${data.commitHash.slice(0, 8)}`,
     );
     expect(data.workspaceId).toBe("ws-submit-1");
     const [receipt] = result.effectReceipts as Array<{

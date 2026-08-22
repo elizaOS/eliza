@@ -152,6 +152,17 @@ describe("summarizeEnvelope + envelopeCorrection (#8895)", () => {
     expect(s).toContain("unmet: lint clean");
   });
 
+  it("labels itself a preview and keeps the sanitizer-anchored leading field", () => {
+    const s = summarizeEnvelope(validEnvelope());
+    // Trailing named-preview label pointing at the complete persisted record.
+    expect(s).toContain(
+      "[envelope summary — complete envelope: task metadata completionEnvelope]",
+    );
+    // transcript-sanitizer strips this machine line by its line-anchored
+    // `diff: ` prefix — the label must never displace it.
+    expect(s.startsWith("diff: ")).toBe(true);
+  });
+
   it("builds a correction listing the parse errors", () => {
     const c = envelopeCorrection(["testResults must be an array"]);
     expect(c).toContain("did not include a valid CompletionEnvelope");

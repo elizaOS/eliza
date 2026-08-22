@@ -647,6 +647,10 @@ describe("SubAgentRouter", () => {
     expect(content.text).toContain("❓ [fix-bug-42]");
     expect(content.text).not.toContain("[sub-agent:");
     expect(content.source).toBe("sub_agent");
+    // The question body is the sub-agent's own model prose; the post is
+    // stamped agent-voiced so the core transport voice gate cannot rewrite it
+    // or strip the ❓ [label] marker.
+    expect((content as { agentVoiced?: boolean }).agentVoiced).toBe(true);
   });
 
   it("does not add a direct post for QUESTION_FOR_TASK_CREATOR when the origin room IS the task room", async () => {
@@ -801,6 +805,12 @@ describe("SubAgentRouter", () => {
   });
 
   it("does NOT dedup task_complete with a different response", async () => {
+    // Layer under test: the content dedup key (distinct responses hash to
+    // distinct keys). Strip the stable request id so the request-voice ledger
+    // downstream fails open and the dedup layer's behavior stays observable
+    // (with a stable id, the ledger deliberately suppresses the second
+    // completion — covered in the request-voice describe block below).
+    delete (session.metadata as Record<string, unknown>).messageId;
     const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
     await SubAgentRouter.start(runtime);
 
@@ -868,7 +878,15 @@ describe("SubAgentRouter", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("does not absorb distinct parallel task completions for the same origin message", async () => {
+  it("suppresses the second parallel completion for the same user request (request-voice ledger)", async () => {
+    // CONTRACT CHANGE with the request-voice ledger: distinct parallel
+    // subtasks spawned from ONE user message share the request key
+    // (spawnRootIdFor stamps the same root on both), and one user request
+    // gets ONE user-facing terminal. Before the ledger both completions
+    // posted (their completion lineages differ via initialTask) — the exact
+    // multi-message fan-out observed live (~12 messages per request). The
+    // second completion is still captured for the spawn-cap relay
+    // (captureOriginResultForCompletion), just not posted.
     const SESSION_ID_2 = "abcdef01-2345-6789-abcd-ef0123456789";
     const first = makeSession({
       id: SESSION_ID,
@@ -911,13 +929,111 @@ describe("SubAgentRouter", () => {
       listSessions: vi.fn(async () => [first, second]),
     };
     const { runtime, handleMessage } = makeRuntime({ acp: service });
-    await SubAgentRouter.start(runtime);
+    const router = await SubAgentRouter.start(runtime);
 
     acp2.fn?.(SESSION_ID, "task_complete", { response: "frontend done" });
     await new Promise((r) => setImmediate(r));
-    acp2.fn?.(SESSION_ID_2, "task_complete", { response: "backend done" });
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+
+    acp2.fn?.(SESSION_ID_2, "task_complete", {
+      response: "backend done with a longer distinct result body",
+    });
     await new Promise((r) => setImmediate(r));
 
+    // One voice per request: the second parallel completion is suppressed…
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    // …but its (longer) result is still captured for the spawn-cap relay.
+    const captured = router.bestResultFor(`${PARENT_MSG}\0codex`);
+    expect(captured?.text).toContain("backend done");
+  });
+
+  it("gives each fan-out lane its own voice slot (requestVoicePart) while a lane respawn still shares its predecessor's", async () => {
+    // A deliberate multi-lane fan-out from ONE user message stamps a distinct
+    // requestVoicePart per lane, so each genuinely parallel lane's completion
+    // relays — the first lane's terminal must not gag the siblings' genuine
+    // results. A RESPAWN of a lane inherits its part verbatim (task-metadata
+    // carry + router re-stamp), so its duplicate completion is still absorbed
+    // by that lane's slot: the respawn-shares-key dedupe holds per lane.
+    const LANE_B_ID = "abcdef01-2345-6789-abcd-ef0123456789";
+    const LANE_A_RESPAWN_ID = "0a0b0c0d-1122-3344-5566-778899aabbcc";
+    const laneA = makeSession({
+      id: SESSION_ID,
+      metadata: {
+        label: "frontend-lane",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        spawnRootMessageId: PARENT_MSG,
+        requestVoicePart: "lane:w1:a",
+        source: "telegram",
+        initialTask: "Build the frontend lane",
+      },
+    });
+    const laneB = makeSession({
+      id: LANE_B_ID,
+      name: "backend-lane",
+      metadata: {
+        label: "backend-lane",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        spawnRootMessageId: PARENT_MSG,
+        requestVoicePart: "lane:w1:b",
+        source: "telegram",
+        initialTask: "Build the backend lane",
+      },
+    });
+    const laneARespawn = makeSession({
+      id: LANE_A_RESPAWN_ID,
+      name: "frontend-lane-respawn",
+      metadata: {
+        label: "frontend-lane",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        spawnRootMessageId: PARENT_MSG,
+        requestVoicePart: "lane:w1:a",
+        source: "telegram",
+        initialTask: "Build the frontend lane",
+      },
+    });
+    const acp2: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof acp2.fn) => {
+        acp2.fn = handler;
+        return () => {
+          acp2.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => {
+        if (id === SESSION_ID) return laneA;
+        if (id === LANE_B_ID) return laneB;
+        if (id === LANE_A_RESPAWN_ID) return laneARespawn;
+        return null;
+      }),
+      listSessions: vi.fn(async () => [laneA, laneB, laneARespawn]),
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: service });
+    await SubAgentRouter.start(runtime);
+
+    acp2.fn?.(SESSION_ID, "task_complete", { response: "frontend lane done" });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+
+    // Lane B owns its own slot: its genuine parallel result relays too.
+    acp2.fn?.(LANE_B_ID, "task_complete", {
+      response: "backend lane done with its own distinct result",
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+
+    // Lane A's respawn inherits lane A's part → same slot → suppressed.
+    acp2.fn?.(LANE_A_RESPAWN_ID, "task_complete", {
+      response: "frontend lane done again from the respawn generation",
+    });
+    await new Promise((r) => setImmediate(r));
     expect(handleMessage).toHaveBeenCalledTimes(2);
   });
 
@@ -1118,6 +1234,12 @@ describe("SubAgentRouter", () => {
   });
 
   it("caps round-trips at ACPX_SUB_AGENT_ROUND_TRIP_CAP and force-stops", async () => {
+    // Layer under test: the round-trip cap. Strip the stable request id so
+    // the request-voice ledger fails open — with it, the first completion
+    // claims the request's single terminal and every later post (including
+    // the cap notice) is deliberately suppressed (covered in the
+    // request-voice describe block below).
+    delete (session.metadata as Record<string, unknown>).messageId;
     const stopSession = vi.fn(async () => undefined);
     const acpWithStop = {
       ...acp.service,
@@ -1148,6 +1270,9 @@ describe("SubAgentRouter", () => {
   });
 
   it("does not re-fire cap notice if more events arrive after cap exceeded", async () => {
+    // Same fail-open setup as the cap test above: the cap layer is under
+    // test, not the request-voice ledger.
+    delete (session.metadata as Record<string, unknown>).messageId;
     const stopSession = vi.fn(async () => undefined);
     const acpWithStop = {
       ...acp.service,
@@ -1233,6 +1358,525 @@ describe("SubAgentRouter", () => {
     // The suppressed session must not have been force-stopped for tripping the
     // cap on events that never posted.
     expect(stopSession).not.toHaveBeenCalledWith(SESSION_ID_2);
+  });
+
+  describe("request-voice ledger (one ack, one terminal per user request)", () => {
+    const ROOT = "root-req-0001";
+    const RESPAWN_ID = "0abc1234-5678-4abc-8def-0123456789ab";
+
+    /** Point runtime.getService at named services, falling back for the rest.
+     * Applied AFTER SubAgentRouter.start so the ACP bind is untouched. */
+    function dispatchGetService(
+      runtime: unknown,
+      services: Record<string, unknown>,
+      fallback: unknown,
+    ): void {
+      (runtime as { getService: unknown }).getService = vi.fn(
+        (name: string) => services[name] ?? fallback,
+      );
+    }
+
+    function twoSessionAcp(
+      a: SessionInfo,
+      b: SessionInfo,
+    ): { service: unknown; emit: NonNullable<CapturedHandler["fn"]> } {
+      const captured: CapturedHandler = {};
+      const service = {
+        onSessionEvent: vi.fn((handler: typeof captured.fn) => {
+          captured.fn = handler;
+          return () => {
+            captured.fn = undefined;
+          };
+        }),
+        getSession: vi.fn(async (id: string) => {
+          if (id === a.id) return a;
+          if (id === b.id) return b;
+          return null;
+        }),
+        listSessions: vi.fn(async () => [a, b]),
+        stopSession: vi.fn(async () => undefined),
+        getChangedPaths: vi.fn(() => [] as string[]),
+        updateSessionMetadata: vi.fn(async () => undefined),
+        getSessionOutput: vi.fn(async () => ""),
+      };
+      return {
+        service,
+        emit: (sessionId, event, data, snapshot, turnId) =>
+          captured.fn?.(sessionId, event, data, snapshot, turnId),
+      };
+    }
+
+    it("suppresses a re-engage completion AND a respawned session's duplicate via the request slot", async () => {
+      // The live defect: auto-verify re-engages session A (another turn, another
+      // task_complete), then a verify-driven respawn mints session B under the
+      // same durable task — a NEW session and a NEW completion lineage, so the
+      // per-lineage claim granted every generation and each relayed to the
+      // user. The request slot is keyed on the stable spawnRootMessageId and
+      // spans all of them.
+      const sessionA = makeSession({
+        metadata: {
+          label: "tide-lines",
+          roomId: ROOM,
+          worldId: WORLD,
+          userId: USER,
+          messageId: PARENT_MSG,
+          source: "telegram",
+          spawnRootMessageId: ROOT,
+          initialTask: "build the tide app",
+        },
+      });
+      const sessionB = makeSession({
+        id: RESPAWN_ID,
+        name: "tide-lines-respawn",
+        metadata: {
+          label: "tide-lines",
+          roomId: ROOM,
+          worldId: WORLD,
+          userId: USER,
+          messageId: PARENT_MSG,
+          source: "telegram",
+          spawnRootMessageId: ROOT,
+          // Different instruction text ⇒ different completion LINEAGE, so the
+          // pre-existing lineage claim grants it — proving the request slot,
+          // not the lineage dedupe, performs this suppression.
+          initialTask: "re-engage: close the verify gaps in the tide app",
+        },
+      });
+      const { service, emit } = twoSessionAcp(sessionA, sessionB);
+      const { runtime, handleMessage } = makeRuntime({ acp: service });
+      await SubAgentRouter.start(runtime);
+
+      emit(SESSION_ID, "task_complete", { response: "tide app is live" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // A's re-engage turn completes again — suppressed.
+      emit(SESSION_ID, "task_complete", {
+        response: "re-checked, everything passes now",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // The respawned session B completes — suppressed.
+      emit(RESPAWN_ID, "task_complete", {
+        response: "rebuilt after respawn, done again",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("resolves the same request key for task-service-spawned sessions via task:<taskId>", async () => {
+      // Task-service spawns carry no connector/root message id at all; the
+      // taskId fallback keys both generations to the same request.
+      const sessionA = makeSession({
+        metadata: {
+          label: "durable-task",
+          roomId: ROOM,
+          source: "telegram",
+          taskId: "task-77",
+        },
+      });
+      const sessionB = makeSession({
+        id: RESPAWN_ID,
+        metadata: {
+          label: "durable-task",
+          roomId: ROOM,
+          source: "telegram",
+          taskId: "task-77",
+          initialTask: "re-engage with correction prompt",
+        },
+      });
+      const { service, emit } = twoSessionAcp(sessionA, sessionB);
+      const { runtime, handleMessage } = makeRuntime({ acp: service });
+      const router = await SubAgentRouter.start(runtime);
+      expect(router.requestKeyForMeta(sessionA.metadata)).toBe("task:task-77");
+
+      emit(SESSION_ID, "task_complete", { response: "first done" });
+      await new Promise((r) => setImmediate(r));
+      emit(RESPAWN_ID, "task_complete", { response: "respawn done too" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("terminal_denied also suppresses the OS notification and screenshot delivery", async () => {
+      const shotDir = fs.mkdtempSync(path.join(os.tmpdir(), "router-shots-"));
+      const shot = path.join(shotDir, "final.png");
+      fs.writeFileSync(shot, "png-bytes");
+      try {
+        session = makeSession({
+          metadata: {
+            label: "shots",
+            roomId: ROOM,
+            worldId: WORLD,
+            userId: USER,
+            messageId: PARENT_MSG,
+            source: "telegram",
+            spawnRootMessageId: ROOT,
+            screenshotPaths: [shot],
+          },
+        });
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, sendMessageToTarget } = makeRuntime({
+          acp: acp.service,
+        });
+        const notify = vi.fn(async () => undefined);
+        const router = await SubAgentRouter.start(runtime);
+        dispatchGetService(runtime, { notification: { notify } }, acp.service);
+
+        acp.emit(SESSION_ID, "task_complete", { response: "app is done" });
+        await new Promise((r) => setImmediate(r));
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        expect(notify).toHaveBeenCalledTimes(1);
+        const shotsAfterFirst = sendMessageToTarget.mock.calls.length;
+        expect(shotsAfterFirst).toBeGreaterThan(0);
+
+        // Denied duplicate: NO fan-out, NO notification, NO screenshots.
+        acp.emit(SESSION_ID, "task_complete", {
+          response: "done again after re-engage",
+        });
+        await new Promise((r) => setImmediate(r));
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        expect(notify).toHaveBeenCalledTimes(1);
+        expect(sendMessageToTarget.mock.calls.length).toBe(shotsAfterFirst);
+        await router.stop();
+      } finally {
+        fs.rmSync(shotDir, { recursive: true, force: true });
+      }
+    });
+
+    it("relays a question while the request terminal is only provisional", async () => {
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", { response: "done (provisional)" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // A provisional result must NOT gag questions — verification may still
+      // re-engage and the session may legitimately need the user.
+      acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
+        message: "should I also deploy to prod?",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it("suppresses a question after the request terminal is finalized", async () => {
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      // A failure terminal finalizes immediately.
+      acp.emit(SESSION_ID, "error", { message: "acpx exited with code 1" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // A parked/failed request's session asking questions is noise.
+      acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
+        message: "want me to try again?",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("relays the invited retry's genuine completion after an error narration (failure → result supersede)", async () => {
+      const sessionA = makeSession({
+        metadata: {
+          label: "tide-lines",
+          roomId: ROOM,
+          worldId: WORLD,
+          userId: USER,
+          messageId: PARENT_MSG,
+          source: "telegram",
+          spawnRootMessageId: ROOT,
+          initialTask: "build the tide app",
+        },
+      });
+      const sessionB = makeSession({
+        id: RESPAWN_ID,
+        name: "tide-lines-retry",
+        metadata: {
+          label: "tide-lines",
+          roomId: ROOM,
+          worldId: WORLD,
+          userId: USER,
+          messageId: PARENT_MSG,
+          source: "telegram",
+          spawnRootMessageId: ROOT,
+          // Different instruction ⇒ different completion LINEAGE: the request
+          // slot alone decides whether the retry's success reaches the user.
+          initialTask: "retry the tide app from scratch",
+        },
+      });
+      const { service, emit } = twoSessionAcp(sessionA, sessionB);
+      const { runtime, handleMessage } = makeRuntime({ acp: service });
+      await SubAgentRouter.start(runtime);
+
+      // Session A dies on a generic error. The failure narration posts — and
+      // explicitly invites the planner to retry from scratch.
+      emit(SESSION_ID, "error", { message: "acpx exited with code 1" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // The planner's retry re-carries the SAME spawnRootMessageId (#8875).
+      // Its GENUINE task_complete must supersede the stale failure and relay —
+      // before the fix the failure holder terminal_denied it and the invited
+      // retry succeeded invisibly.
+      emit(RESPAWN_ID, "task_complete", { response: "retry shipped the app" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(2);
+      const last = handleMessage.mock.calls[1]?.[1] as Memory | undefined;
+      expect(String(last?.content?.text ?? "")).toContain(
+        "retry shipped the app",
+      );
+    });
+
+    it("noteRespawnAdmitted revives a failure-gagged request for the retry generation", async () => {
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      const router = await SubAgentRouter.start(runtime);
+      const requestKey = router.requestKeyForMeta(session.metadata);
+      expect(requestKey).not.toBeNull();
+
+      acp.emit(SESSION_ID, "error", { message: "acpx exited with code 1" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(router.isRequestTerminalFinalized(requestKey as string)).toBe(
+        true,
+      );
+
+      // The TASKS spawn path admits the retry: the failure terminal clears,
+      // so the finalized gates (question gate here; the progress mute in
+      // index.ts consumes the same flag) release for the new generation.
+      expect(router.noteRespawnAdmitted(requestKey as string)).toBe(true);
+      expect(router.isRequestTerminalFinalized(requestKey as string)).toBe(
+        false,
+      );
+      acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
+        message: "retry here — which repo should I target?",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(2);
+
+      // Idempotent bookkeeping: nothing left to revive.
+      expect(router.noteRespawnAdmitted(requestKey as string)).toBe(false);
+    });
+
+    it("suppresses a failure narration after a result already holds the request voice", async () => {
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", { response: "shipped" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // A late teardown error from the same request must not follow the
+      // deliverable with a contradictory failure message.
+      acp.emit(SESSION_ID, "error", {
+        message: "process exited during teardown",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("suppresses the cap-exceeded notice when the request already delivered its result", async () => {
+      const stopSession = vi.fn(async () => undefined);
+      const acpWithStop = {
+        ...acp.service,
+        stopSession,
+      } as Parameters<typeof makeRuntime>[0]["acp"];
+      const { runtime, handleMessage } = makeRuntime({
+        acp: acpWithStop,
+        setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "1" },
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", { response: "shipped" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // The runaway session is still force-stopped, but the cap-exceeded
+      // FAILURE narration is denied by the request's result holder — the user
+      // already has the answer.
+      acp.emit(SESSION_ID, "task_complete", { response: "again" });
+      await new Promise((r) => setImmediate(r));
+      expect(stopSession).toHaveBeenCalledTimes(1);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("still posts the cap-exceeded notice when the request never delivered a result", async () => {
+      const stopSession = vi.fn(async () => undefined);
+      const acpWithStop = {
+        ...acp.service,
+        stopSession,
+      } as Parameters<typeof makeRuntime>[0]["acp"];
+      const { runtime, handleMessage } = makeRuntime({
+        acp: acpWithStop,
+        setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "1" },
+      });
+      await SubAgentRouter.start(runtime);
+
+      // Questions round-trip but never claim the terminal slot.
+      acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", { message: "hmm?" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // Cap trips: no result holds the voice, so the honest cap notice is the
+      // request's one terminal (never-silent invariant).
+      acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", { message: "again?" });
+      await new Promise((r) => setImmediate(r));
+      expect(stopSession).toHaveBeenCalledTimes(1);
+      expect(handleMessage).toHaveBeenCalledTimes(2);
+      const last = handleMessage.mock.calls[1]?.[1];
+      expect(last?.content?.text).toContain("round-trip cap exceeded");
+    });
+
+    it("fails open with no gating when the session has no stable request key", async () => {
+      delete (session.metadata as Record<string, unknown>).messageId;
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      const router = await SubAgentRouter.start(runtime);
+      expect(router.requestKeyForMeta(session.metadata)).toBeNull();
+
+      acp.emit(SESSION_ID, "task_complete", { response: "first" });
+      await new Promise((r) => setImmediate(r));
+      acp.emit(SESSION_ID, "task_complete", { response: "second" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it("exposes the canonical key ladder and the ack/terminal claims structurally", async () => {
+      const { runtime } = makeRuntime({ acp: acp.service });
+      const router = await SubAgentRouter.start(runtime);
+      // Ladder: spawnRootMessageId ?? originConnectorMessageId ?? uuid
+      // messageId ?? task:<taskId> ?? null.
+      expect(
+        router.requestKeyForMeta({
+          spawnRootMessageId: "root",
+          originConnectorMessageId: "conn",
+          messageId: PARENT_MSG,
+          taskId: "t",
+        }),
+      ).toBe("root");
+      expect(
+        router.requestKeyForMeta({
+          originConnectorMessageId: "conn",
+          messageId: PARENT_MSG,
+        }),
+      ).toBe("conn");
+      expect(router.requestKeyForMeta({ messageId: PARENT_MSG })).toBe(
+        PARENT_MSG,
+      );
+      expect(router.requestKeyForMeta({ messageId: "not-a-uuid" })).toBeNull();
+      expect(router.requestKeyForMeta({ taskId: "t9" })).toBe("task:t9");
+      expect(router.requestKeyForMeta(undefined)).toBeNull();
+
+      // Ack slot: once per request, consumed structurally by the spawn path.
+      expect(router.claimRequestAck("req-x", "s1")).toBe(true);
+      expect(router.claimRequestAck("req-x", "s2")).toBe(false);
+
+      // Terminal slot: provisional result → parked supersede exactly once.
+      expect(
+        router.claimRequestTerminal("req-x", "s1", "result", true),
+      ).toEqual({ granted: true });
+      expect(router.isRequestTerminalFinalized("req-x")).toBe(false);
+      expect(
+        router.claimRequestTerminal("req-x", "s2", "parked", false),
+      ).toEqual({ granted: true, superseded: true });
+      expect(router.isRequestTerminalFinalized("req-x")).toBe(true);
+      expect(
+        router.claimRequestTerminal("req-x", "s3", "parked", false),
+      ).toEqual({ granted: false, holderKind: "parked" });
+      await router.stop();
+    });
+  });
+
+  describe("verify-churn suppression through getTaskForSession", () => {
+    it("suppresses a re-engage completion resolved via the per-session task mapping (survives respawn)", async () => {
+      // The stated live insufficiency: the old resolution scanned
+      // listTasks().latestSessionId, which MOVES to the respawned session —
+      // the original session's re-engage completions then resolved no task
+      // and relayed anyway. getTaskForSession maps via the store's
+      // per-session index and keeps resolving for every generation.
+      const getTaskForSession = vi.fn(async (sid: string) =>
+        sid === SESSION_ID
+          ? {
+              status: "validating",
+              metadata: { autoVerifyAttempts: 1 },
+            }
+          : null,
+      );
+      // The old path would have found nothing for SESSION_ID (latestSessionId
+      // moved to the respawn) — leave it in the mock and assert it is unused.
+      const listTasks = vi.fn(async () => [
+        {
+          id: "t1",
+          status: "validating",
+          latestSessionId: "some-other-respawned-session",
+        },
+      ]);
+      const getTask = vi.fn(async () => {
+        throw new Error("old listTasks/getTask path must not be used");
+      });
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+      (runtime as { getService: unknown }).getService = vi.fn((name: string) =>
+        name === "ORCHESTRATOR_TASK_SERVICE"
+          ? { getTaskForSession, listTasks, getTask }
+          : acp.service,
+      );
+
+      acp.emit(SESSION_ID, "task_complete", { response: "re-engage done" });
+      await new Promise((r) => setImmediate(r));
+
+      expect(getTaskForSession).toHaveBeenCalledWith(SESSION_ID);
+      expect(getTask).not.toHaveBeenCalled();
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
+    it("suppresses when the task is already parked with the escalation notice sent", async () => {
+      const getTaskForSession = vi.fn(async () => ({
+        status: "waiting_on_user",
+        metadata: { verifyEscalationNotifiedAt: 1734567890123 },
+      }));
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+      (runtime as { getService: unknown }).getService = vi.fn((name: string) =>
+        name === "ORCHESTRATOR_TASK_SERVICE"
+          ? { getTaskForSession }
+          : acp.service,
+      );
+
+      acp.emit(SESSION_ID, "task_complete", { response: "late completion" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
+
+    it("fails open when the task service lacks getTaskForSession or has no task for the session", async () => {
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+      (runtime as { getService: unknown }).getService = vi.fn((name: string) =>
+        name === "ORCHESTRATOR_TASK_SERVICE"
+          ? { listTasks: vi.fn(async () => []) } // no getTaskForSession
+          : acp.service,
+      );
+      acp.emit(SESSION_ID, "task_complete", { response: "genuine first" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+
+      // And a resolvable service with NO task row also relays.
+      const { runtime: runtime2, handleMessage: handleMessage2 } = makeRuntime({
+        acp: acp.service,
+      });
+      // Fresh session id so the first router's ledger state is irrelevant.
+      await SubAgentRouter.start(runtime2);
+      (runtime2 as { getService: unknown }).getService = vi.fn(
+        (name: string) =>
+          name === "ORCHESTRATOR_TASK_SERVICE"
+            ? { getTaskForSession: vi.fn(async () => null) }
+            : acp.service,
+      );
+      acp.emit(SESSION_ID, "task_complete", { response: "still relays" });
+      await new Promise((r) => setImmediate(r));
+      expect(handleMessage2).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("verify-retry on incomplete builds", () => {
@@ -2386,7 +3030,11 @@ describe("SubAgentRouter", () => {
       await new Promise((r) => setTimeout(r, 200));
 
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
-      expect(fetched).toEqual([freshUrl]);
+      // Post-merge semantics: the stale URL is skipped via cachedStaleMissUrls
+      // AND the fresh URL is narration-only (not grounded in the user's task),
+      // which develop's grounding rule leaves unprobed. What this test pins is
+      // the outcome: no stale re-check, no false verify-retry, one clean relay.
+      expect(fetched).not.toContain(staleUrl);
       expect(spawnSession).not.toHaveBeenCalled();
       expect(handleMessage).toHaveBeenCalledTimes(1);
       const posted = handleMessage.mock.calls[0]?.[1];
@@ -2561,10 +3209,15 @@ describe("extractShortToolDeliverable", () => {
     expect(extractShortToolDeliverable(data)).toBe("two");
   });
 
-  it("returns undefined when the block exceeds the 2KB verbatim gate", () => {
+  it("projects an oversized block with a resolvable continuation instead of dropping it", () => {
     const big = "x".repeat(2049);
     const data = { response: `[tool output: dump]\n${big}\n[/tool output]` };
-    expect(extractShortToolDeliverable(data)).toBeUndefined();
+    const projected = extractShortToolDeliverable(data);
+    // Cap-audit contract: the user-asked output is never silently withheld —
+    // the head is emitted with a marker naming the durable content record.
+    expect(projected).toBeDefined();
+    expect(projected).toContain("/api/orchestrator/content/");
+    expect((projected ?? "").length).toBeLessThanOrEqual(2049);
   });
 
   it("relays a block at the 2KB boundary verbatim", () => {

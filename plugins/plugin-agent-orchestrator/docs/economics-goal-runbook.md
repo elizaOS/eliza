@@ -52,9 +52,8 @@ within a spend cap.
    ELIZA_CLOUD_BASE_URL=http://127.0.0.1:<apiPort>
    ELIZAOS_CLOUD_API_KEY=<a seeded org API key>      # see cloud-e2e seedTestUser
    ELIZA_AGENT_SPEND_CAP_USD=20
-   ELIZA_ACP_DEFAULT_AGENT=opencode                   # Cerebras auto-detected; or codex/claude with their keys
-   OPENCODE_DISABLE_AUTOUPDATE=1                       # opencode's network update check can blow the spawn timeout
-   ACPX_DEFAULT_TIMEOUT_MS=600000                      # first opencode init (compile + provider fetch) ~3-5min
+   ELIZA_ACP_DEFAULT_AGENT=elizaos                    # eliza-code (runtime-routed); or codex/claude with their keys
+   ACPX_DEFAULT_TIMEOUT_MS=600000                      # headroom for a slow first spawn (provider fetch/build)
    ```
 
 3. Create an economics task — `/economics build and monetize a tiny app` in the

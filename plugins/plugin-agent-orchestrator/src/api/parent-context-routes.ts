@@ -46,6 +46,12 @@ const MEMORY_TABLES = ["facts", "messages", "documents"] as const;
 /** How many of the most recent orchestrator decisions the bridge exposes. A
  * resumed/nested session needs the latest choices to avoid re-litigating them,
  * not the full audit log. */
+/** Recency window over the task's durable decision log. A resumed/nested
+ * session needs the latest choices, not the full audit trail — but the
+ * elision is explicit: `totalDecisions` rides alongside and, when older
+ * entries exist, `decisionsContinuation` names the paginated route
+ * (`GET /api/orchestrator/tasks/:taskId/events?cursor=&limit=`) that resolves
+ * the complete durable record. */
 const MAX_ORIGINATING_DECISIONS = 20;
 
 /** The narrow slice of the AgentSkillsService the bridge reads. Structural to
@@ -129,11 +135,27 @@ function parseSessionId(raw: string): string | null {
   return decoded;
 }
 
+/** Parse `?limit=` for the bridge memory search. Absent → the default.
+ * Anything present must be a canonical integer in [1, MAX_MEMORY_LIMIT];
+ * malformed or out-of-range input gets a typed 400 BEFORE dispatch — never a
+ * silent clamp, which left the child believing it received all N hits
+ * (prompt-integrity: typed pre-dispatch rejection). Mirrors the
+ * agent-routes `?lines=` contract. */
 function parseLimit(raw: string | null): number {
-  if (!raw) return DEFAULT_MEMORY_LIMIT;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return DEFAULT_MEMORY_LIMIT;
-  return Math.max(1, Math.min(MAX_MEMORY_LIMIT, Math.floor(parsed)));
+  if (raw === null || raw === "") return DEFAULT_MEMORY_LIMIT;
+  const parsed = /^[1-9]\d*$/.test(raw) ? Number(raw) : Number.NaN;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_MEMORY_LIMIT
+  ) {
+    throw new BridgeRouteError(
+      "invalid_limit",
+      400,
+      `limit must be an integer from 1 to ${MAX_MEMORY_LIMIT}.`,
+    );
+  }
+  return parsed;
 }
 
 function withBridgeTimeout<T>(promise: Promise<T>): Promise<T> {
@@ -302,7 +324,9 @@ function normalizeMemoryHit(
  * from an orchestrator task (no `taskId` in metadata), the task store is absent,
  * or the task no longer exists.
  */
-async function loadOriginatingTask(
+/** Exported for deterministic unit coverage of the decisions projection
+ * contract (recency window + totalDecisions + continuation reference). */
+export async function loadOriginatingTask(
   ctx: RouteContext,
   metadata: Record<string, unknown>,
 ): Promise<JsonValue> {
@@ -315,7 +339,8 @@ async function loadOriginatingTask(
   if (!service?.getTask) return null;
   const task = await service.getTask(taskId);
   if (!task) return null;
-  const decisions = (task.decisions ?? [])
+  const allDecisions = task.decisions ?? [];
+  const decisions = allDecisions
     .slice(-MAX_ORIGINATING_DECISIONS)
     .map((decision) => ({
       id: decision.id,
@@ -339,6 +364,16 @@ async function loadOriginatingTask(
     // duplicate (#14119). Absent for unbound tasks or projects with no Cloud app.
     cloudAppId: resolveCloudAppId(task.projectId),
     decisions,
+    // The window above is a projection of a durable record, not the record:
+    // totalDecisions discloses the elision and the continuation names the
+    // existing cursor-paginated route over the task's full event log.
+    totalDecisions: allDecisions.length,
+    ...(allDecisions.length > MAX_ORIGINATING_DECISIONS
+      ? {
+          decisionsTruncated: true,
+          decisionsContinuation: `GET /api/orchestrator/tasks/${encodeURIComponent(taskId)}/events?cursor=&limit=`,
+        }
+      : {}),
   };
 }
 
@@ -426,6 +461,11 @@ async function searchParentMemory(
       return hits.map((hit) => normalizeMemoryHit(tableName, hit));
     }),
   );
+  // Caller-requested top-k (prompt-integrity: caller-driven pagination): the
+  // union of the per-table searches can exceed `limit`; the response is the k
+  // best-ranked hits with the honored `limit` echoed back. Similarity search
+  // has no stable cursor — a caller wanting more raises limit, bounded by
+  // MAX_MEMORY_LIMIT which is enforced with a typed 400, never a silent clamp.
   const hits = grouped
     .flat()
     .sort(

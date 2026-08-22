@@ -50,6 +50,8 @@ function runtimeWithTaskService(
       serviceType === "ORCHESTRATOR_TASK_SERVICE" ? { createTask } : acp,
     ),
     hasService: vi.fn(() => true),
+    agentId: "agent1",
+    getSetting: vi.fn(() => undefined),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     getRoom: vi.fn(async () => ({ id: "room1" })),
     reportError: vi.fn(),
@@ -89,13 +91,18 @@ describe("TASKS hardened-envelope unwrap", () => {
     // With no planner title, the derived title comes from the payload too.
     expect(stored.title).toBe(PAYLOAD);
 
+    // The widget block rides on result.text for the app UI; the visible
+    // callback is the short early ack. Neither may leak the envelope.
+    expect(String(result?.text ?? "")).toContain(`[TASK:${THREAD_ID}]`);
+    expect(String(result?.text ?? "")).not.toContain(
+      "EXTERNAL_UNTRUSTED_CONTENT",
+    );
     const emitted = emittedText(cb);
-    expect(emitted).toContain(`[TASK:${THREAD_ID}]`);
     expect(emitted).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
     expect(emitted).not.toContain("SECURITY NOTICE");
   });
 
-  it("create clamps a planner-supplied title blob at the persist/display seam", async () => {
+  it("create collapses a planner-supplied title blob to one complete line", async () => {
     const acp = serviceMock();
     const createTask = vi.fn(async () => ({ id: THREAD_ID, title: "t" }));
     const runtime = runtimeWithTaskService(acp, createTask);
@@ -120,14 +127,17 @@ describe("TASKS hardened-envelope unwrap", () => {
     expect(result?.success).toBe(true);
     const stored = createTask.mock.calls[0]?.[0] as { title: string };
     expect(stored.title).not.toContain("\n");
-    expect(stored.title.length).toBeLessThanOrEqual(121);
+    // Prompt-integrity: the stored title is the COMPLETE planner value,
+    // whitespace-collapsed to one line — never length-clamped.
     expect(stored.title).toContain("first line of a blob");
+    expect(stored.title).toContain("x".repeat(300));
+    expect(String(result?.text ?? "")).toContain(`[TASK:${THREAD_ID}]`);
     const emitted = emittedText(cb);
-    expect(emitted).toContain(`[TASK:${THREAD_ID}]`);
-    expect(emitted).not.toContain("x".repeat(200));
+    // The callback carries the ack, not the blob dump.
+    expect(emitted).not.toContain("x".repeat(300));
   });
 
-  it("spawn_agent clamps a planner-supplied label blob before it reaches session metadata", async () => {
+  it("spawn_agent collapses a planner-supplied label blob to one complete line", async () => {
     const acp = serviceMock();
     const runtime = runtimeWith(acp);
     const blobLabel = `deploy helper\n${"y".repeat(400)}`;
@@ -154,8 +164,9 @@ describe("TASKS hardened-envelope unwrap", () => {
     };
     const label = spawnArg.metadata?.label ?? "";
     expect(label).not.toContain("\n");
-    expect(label.length).toBeLessThanOrEqual(121);
+    // Complete one-line label; no length clamp.
     expect(label).toContain("deploy helper");
+    expect(label).toContain("y".repeat(400));
   });
 
   it("control continue forwards the unwrapped payload as the follow-up instruction", async () => {

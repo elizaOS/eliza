@@ -7,7 +7,7 @@ task history, and runtime-driven sub-agent routing.
 ## Purpose / role
 
 This plugin adds a full coding-agent orchestration surface to any Eliza agent.
-It spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) as
+It spawns local coding agents (elizaos, pi-agent, codex, claude) as
 ACP subprocesses, routes their terminal events back into the elizaOS runtime as
 synthetic inbound messages, and manages the git workspace and GitHub issue
 lifecycle that accompanies repo-hosted coding tasks.
@@ -108,8 +108,8 @@ See issue #9146.
 
 | Device profile | Supported? | Reason | Coding backends |
 |---|---|---|---|
-| Desktop / server (Node, non-store) | ✅ | — | all 5 |
-| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all 5 |
+| Desktop / server (Node, non-store) | ✅ | — | all 4 |
+| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all 4 |
 | iOS (vanilla mobile runtime) | ❌ | `vanilla_mobile` | none — stub action only |
 | Store build (sandboxed distribution) | ❌ | `store_build` | none — stub action only |
 | Android Play/store build (not local-yolo) | ❌ | `not_local_yolo` | none — stub action only |
@@ -144,7 +144,6 @@ preferred over API key):
 | `pi-agent` | runtime-routed |
 | `claude` | anthropic-subscription → anthropic-api |
 | `codex` | openai-codex → openai-api |
-| `opencode` | cerebras-api |
 
 ## Layout
 
@@ -206,7 +205,6 @@ plugins/plugin-agent-orchestrator/
       goal-prompt.ts             Goal prompt construction helpers
       interruption-decider.ts    Decides whether to interrupt a running sub-agent
       json-model-output.ts       Structured JSON output helpers for model calls
-      opencode-config.ts         OpenCode-specific ACP configuration
       repo-input.ts              Repository input parsing and validation
       session-event-queue.ts     Per-session event queue for ordered delivery
       smithers-task-executor.ts  TaskStepExecutor impl — drives ACP turns per step
@@ -284,7 +282,6 @@ README → "GitHub credentials".
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
-| `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
 | `ELIZA_ACP_SYSTEM_SESSION_HEADROOM` | `2` | Reserved concurrent slots for short-lived `system` spawns (the #8898 read-only verifier), counted separately from `ELIZA_ACP_MAX_SESSIONS` so validation never deadlocks behind the worker cap |
 | `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |

@@ -827,16 +827,23 @@ describe("TASKS create lane planner integration", () => {
     expect(taskService.createTask).not.toHaveBeenCalled();
   });
 
-  it("propagates a lane execution throw after lane 1 without replaying the original request", async () => {
+  it("reports a lane 2 spawn failure without aborting or replaying lane 1", async () => {
     const acp = makeAcp();
-    let resolveCalls = 0;
-    acp.resolveAgentType.mockImplementation(async () => {
-      resolveCalls += 1;
-      if (resolveCalls === 2) {
-        throw new Error("lane 2 backend resolution exploded");
-      }
-      return "codex";
-    });
+    // Lanes share the pre-resolved base backend, so the per-lane failure
+    // seam is the spawn itself: lane 1 spawns, lane 2's spawn explodes. The
+    // turn must survive with lane 1's work intact and the failure reported —
+    // not reject, and not replay lane 1.
+    const realSpawn = acp.spawnSession.getMockImplementation();
+    let spawnCalls = 0;
+    acp.spawnSession.mockImplementation(
+      async (opts: Record<string, unknown>) => {
+        spawnCalls += 1;
+        if (spawnCalls === 2) {
+          throw new Error("lane 2 spawn exploded");
+        }
+        return realSpawn?.(opts);
+      },
+    );
     const taskService = makeTaskService();
     const runtime = makeRuntime(
       { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
@@ -844,28 +851,39 @@ describe("TASKS create lane planner integration", () => {
       taskService,
     );
 
-    await expect(
-      tasksAction.handler(
-        runtime,
-        makeMessage("split work"),
-        {} as State,
-        {
-          parameters: {
-            action: "create",
-            agents: [
-              "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
-              "Update packages/core/src/runtime.ts",
-            ].join(" | "),
-          },
+    const result = await tasksAction.handler(
+      runtime,
+      makeMessage("split work"),
+      {} as State,
+      {
+        parameters: {
+          action: "create",
+          agents: [
+            "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+            "Update packages/core/src/runtime.ts",
+          ].join(" | "),
         },
-        vi.fn(async () => []) as unknown as HandlerCallback,
-      ),
-    ).rejects.toThrow("lane 2 backend resolution exploded");
+      },
+      vi.fn(async () => []) as unknown as HandlerCallback,
+    );
 
-    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
+    expect(acp.spawnSession).toHaveBeenCalledTimes(2);
     expect(acp.sendPrompt).toHaveBeenCalledTimes(1);
-    expect(taskService.createTask).toHaveBeenCalledTimes(1);
-    expect(resolveCalls).toBe(2);
+    // Durable linkage persists per-lane BEFORE the spawn, so lane 2's task
+    // record exists even though its spawn failed.
+    expect(taskService.createTask).toHaveBeenCalledTimes(2);
+    // The failure-report return carries the failed lane's row (error intact);
+    // lane 1's success is delivered through its own task lifecycle, not here.
+    const data = (result as { data?: Record<string, unknown> })?.data;
+    const agents = (data?.agents ?? []) as Array<{
+      status?: string;
+      error?: string;
+      label?: string;
+    }>;
+    expect(agents).toHaveLength(1);
+    expect(agents[0]?.status).toBe("failed");
+    expect(agents[0]?.error).toBe("lane 2 spawn exploded");
+    expect(agents[0]?.label).toContain("packages/core/src/runtime.ts");
   });
 
   it("returns an ordinary failed lane result without replaying the original request", async () => {

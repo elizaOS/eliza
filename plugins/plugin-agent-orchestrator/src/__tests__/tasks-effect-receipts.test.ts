@@ -12,7 +12,7 @@ import { CodingWorkspaceService } from "../services/workspace-service.ts";
 
 const SESSION_ID = "session-without-provider-receipt";
 
-function runtimeWithVoidSend(): {
+function runtimeWithVoidSend(sendResult: unknown = undefined): {
   runtime: IAgentRuntime;
   sendToSession: ReturnType<typeof vi.fn>;
 } {
@@ -27,7 +27,7 @@ function runtimeWithVoidSend(): {
     lastActivityAt: new Date(0),
     metadata: {},
   };
-  const sendToSession = vi.fn(async () => undefined);
+  const sendToSession = vi.fn(async () => sendResult);
   const acp = {
     getSession: vi.fn(async (id: string) =>
       id === SESSION_ID ? session : undefined,
@@ -84,10 +84,11 @@ describe("TASKS effect receipts", () => {
     );
 
     expect(sendToSession).toHaveBeenCalledOnce();
-    expect(result).toMatchObject({
-      success: true,
-      verifiedUserFacing: true,
-    });
+    // The unconfirmed-outcome hedge is planner grounding, deliberately NOT
+    // granted the do-not-paraphrase license: shipping it verbatim buried the
+    // evaluator's in-voice reply under mechanism prose (live 2026-08-20).
+    expect(result).toMatchObject({ success: true });
+    expect(result?.verifiedUserFacing).toBeUndefined();
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",
@@ -104,10 +105,49 @@ describe("TASKS effect receipts", () => {
     // Receipt settlement provides canonical planner input without leaking a
     // raw tool callback; the turn evaluator remains the sole visible voice.
     expect(replies).toEqual([]);
-    expect(result?.userFacingText).toContain("no authoritative commit receipt");
-    expect(result?.userFacingEffectReceiptIds).toEqual([
-      result?.effectReceipts?.[0]?.receiptId,
+    // The unconfirmed-outcome projection is model-phrased with a factual
+    // fallback (this runtime has no model) and carries no internal
+    // receipt/commit vocabulary.
+    // The hedge lives on planner-facing `text` now; userFacingText and the
+    // receipt binding are deliberately absent (see the license note above).
+    expect(result?.userFacingText).toBeUndefined();
+    expect(String(result?.text)).toContain("could not confirm");
+    expect(String(result?.text)).not.toMatch(/receipt|commit/i);
+    expect(result?.userFacingEffectReceiptIds).toBeUndefined();
+  });
+
+  it("settles a send the session ran to a stop as provider-accepted", async () => {
+    const { runtime, sendToSession } = runtimeWithVoidSend({
+      sessionId: SESSION_ID,
+      response: "done",
+      finalText: "done",
+      stopReason: "end_turn",
+      durationMs: 12,
+    });
+    const result = await tasksAction.handler(
+      runtime,
+      message(),
+      undefined as unknown as State,
+      {
+        parameters: {
+          action: "send",
+          sessionId: SESSION_ID,
+          input: "Continue and verify the result.",
+        },
+      },
+      async () => [],
+    );
+
+    expect(sendToSession).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ success: true });
+    expect(result?.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "applied",
+        resource: { kind: "acp.session", id: SESSION_ID },
+        commit: expect.objectContaining({ kind: "provider_accepted" }),
+      }),
     ]);
+    expect(String(result?.text)).toBe("Sent input to agent");
   });
 
   it("binds non-empty action text without inventing a direct callback", async () => {

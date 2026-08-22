@@ -90,7 +90,7 @@ describe("issueFailureReply", () => {
       "doesn't exist",
     );
     expect(issueFailureReply("o/r", "socket hang up")).toContain(
-      "couldn't finish",
+      "Couldn't finish",
     );
   });
 });

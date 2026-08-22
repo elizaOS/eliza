@@ -123,7 +123,11 @@ describe("resolveOriginatingRequestText", () => {
     expect(resolved).toContain("markdown-to-html previewer");
   });
 
-  it("skips the agent's own messages in the state window and keeps the human request", async () => {
+  it("a genuine user turn routes on its own words — the previous request never leaks in", async () => {
+    // The user's message IS the request: unioning the state window's earlier
+    // human message steered an unrelated ask by the last request's route
+    // keywords ("write me a python script" landed in the repo checkout the
+    // previous message had named, live 2026-08-22).
     const action = msg({ content: { text: "create a previewer" } });
     const state = stateWithRecentMessages([
       msg({
@@ -144,11 +148,38 @@ describe("resolveOriginatingRequestText", () => {
       state,
     );
 
-    // The agent message also said "web page", but we must route on the human's
-    // actual wording — assert the human request is present and unioned with the
-    // action's own (terse) text.
+    expect(resolved).toBe("create a previewer");
+  });
+
+  it("a synthetic trigger skips the agent's own messages in the window and keeps the human request", async () => {
+    const action = msg({
+      entityId: AGENT_ID,
+      content: { text: "create a previewer", source: "sub_agent" },
+    });
+    const state = stateWithRecentMessages([
+      msg({
+        id: "m-user",
+        entityId: "user-1",
+        content: { text: "make me a static site for my bakery" },
+      }),
+      msg({
+        id: "m-agent",
+        entityId: AGENT_ID,
+        content: { text: "Sure, building a web page for you." },
+      }),
+    ]);
+
+    const resolved = await resolveOriginatingRequestText(
+      bareRuntime(),
+      action,
+      state,
+    );
+
+    // The agent message also said "web page", but routing keys on the human's
+    // wording, unioned with the trigger's own text.
     expect(resolved).toContain("static site for my bakery");
     expect(resolved).toContain("create a previewer");
+    expect(resolved).not.toContain("building a web page");
   });
 
   it("falls back to getMemories only when state has no usable request", async () => {
