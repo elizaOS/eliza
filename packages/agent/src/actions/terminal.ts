@@ -56,7 +56,7 @@ type CapturedTerminalRun = {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  truncated: boolean;
+  truncated: false;
   maxDurationMs?: number;
 };
 
@@ -308,6 +308,17 @@ function normalizeCapturedRun(
     });
   }
 
+  if (value.truncated) {
+    throw new ElizaError(
+      "Terminal response contained incomplete stdout or stderr",
+      {
+        code: "TERMINAL_OUTPUT_INCOMPLETE",
+        context: { acceptance: "accepted", runId },
+        severity: "fatal",
+      },
+    );
+  }
+
   return {
     command,
     runId,
@@ -315,7 +326,7 @@ function normalizeCapturedRun(
     stdout: value.stdout,
     stderr: value.stderr,
     timedOut: value.timedOut,
-    truncated: value.truncated,
+    truncated: false,
     maxDurationMs:
       typeof value.maxDurationMs === "number" &&
       Number.isFinite(value.maxDurationMs)
@@ -335,7 +346,6 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     result.timedOut
       ? `Timed out: yes${typeof result.maxDurationMs === "number" ? ` (${result.maxDurationMs} ms limit)` : ""}`
       : "Timed out: no",
-    result.truncated ? "Captured output truncated to 128 KB." : "",
     "",
     "STDOUT:",
     formatOutputBlock(result.stdout),
@@ -349,7 +359,6 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
 
 function terminalAttachmentReadView(
   outputAttachment: TerminalOutputAttachment | undefined,
-  result: CapturedTerminalRun,
 ) {
   if (!outputAttachment?.memoryId) return undefined;
   const content = outputAttachment.attachment.text ?? "";
@@ -366,17 +375,14 @@ function terminalAttachmentReadView(
         unit: "byte",
         start: 0,
         end: byteLength,
-        ...(!result.truncated ? { total: byteLength } : {}),
+        total: byteLength,
       },
       hasPrevious: false,
       hasMore: false,
       revision: outputAttachment.memoryId,
-      completeness: result.truncated ? "partial-source-loss" : "complete",
+      completeness: "complete",
       sliceSha256: digest,
-      ...(!result.truncated ? { sourceSha256: digest } : {}),
-      ...(result.truncated
-        ? { reason: "terminal provider reported upstream output truncation" }
-        : {}),
+      sourceSha256: digest,
     },
   });
 }
@@ -409,7 +415,7 @@ async function createCommandOutputAttachment(
     url: `memory://terminal-output/${attachmentId}`,
     title,
     source: TERMINAL_ACTION_NAME,
-    description: `${result.truncated ? "Truncated captured" : "Complete captured"} stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
+    description: `Complete captured stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
     text: buildCommandArtifactContent(result),
     contentType: ContentType.DOCUMENT,
   };
@@ -537,7 +543,6 @@ function buildCapturedResponseText(
     result.timedOut
       ? `Timed out${typeof result.maxDurationMs === "number" ? ` after ${result.maxDurationMs} ms` : ""}.`
       : "",
-    result.truncated ? "Captured output truncated to 128 KB." : "",
     outputAttachment
       ? `Full output attachment: ${outputAttachment.attachment.id} (${outputAttachment.attachment.title})`
       : "",
@@ -699,6 +704,12 @@ export const terminalAction: Action = {
     try {
       rawRun = normalizeCapturedRun(command, responseBody, runId);
     } catch (error) {
+      if (
+        error instanceof ElizaError &&
+        error.code === "TERMINAL_OUTPUT_INCOMPLETE"
+      ) {
+        throw error;
+      }
       // error-policy:J2 a 2xx body that cannot prove the bound run's terminal
       // result is still an ambiguous effect, not a safely retryable parse error.
       throw new ElizaError("Terminal execution outcome is unknown", {
@@ -730,12 +741,11 @@ export const terminalAction: Action = {
       message,
       capturedRun,
     );
-    const readView = terminalAttachmentReadView(outputAttachment, capturedRun);
+    const readView = terminalAttachmentReadView(outputAttachment);
 
     const cleanStdout =
       capturedRun.exitCode === 0 &&
       !capturedRun.timedOut &&
-      !capturedRun.truncated &&
       capturedRun.stderr.trim().length === 0
         ? capturedRun.stdout.trim()
         : "";

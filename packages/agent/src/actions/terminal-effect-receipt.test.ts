@@ -148,7 +148,8 @@ describe("terminal action effect proof", () => {
     expect(JSON.stringify(prompt)).not.toContain("private output");
   });
 
-  it("classifies provider truncation as unrecoverable source loss", async () => {
+  it("rejects provider-truncated output before it reaches model-visible data", async () => {
+    const rt = runtime();
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
@@ -159,27 +160,13 @@ describe("terminal action effect proof", () => {
         }),
       ),
     );
-    const result = await terminalAction.handler(
-      runtime(),
-      message(),
-      undefined,
-      options(),
-    );
-    const view = ((result?.promptData ?? {}) as Record<string, unknown>)
-      .readView as {
-      slice: {
-        completeness: string;
-        hasMore: boolean;
-        nextOffset?: number;
-        sourceSha256?: string;
-      };
-    };
-    expect(view.slice).toMatchObject({
-      completeness: "partial-source-loss",
-      hasMore: false,
+    await expect(
+      terminalAction.handler(rt, message(), undefined, options()),
+    ).rejects.toMatchObject({
+      code: "TERMINAL_OUTPUT_INCOMPLETE",
+      context: { acceptance: "accepted" },
     });
-    expect(view.slice.nextOffset).toBeUndefined();
-    expect(view.slice.sourceSha256).toBeUndefined();
+    expect(rt.createMemory).not.toHaveBeenCalled();
   });
 
   it("does not mint a restart-unsafe reference when attachment persistence fails", async () => {
@@ -389,7 +376,7 @@ describe("terminal action effect proof", () => {
     });
   });
 
-  it("keeps action-owned empty, stderr, truncated, and timeout statuses canonical", async () => {
+  it("keeps action-owned empty, stderr, and timeout statuses canonical", async () => {
     const cases = [
       {
         override: { stdout: "" },
@@ -397,10 +384,6 @@ describe("terminal action effect proof", () => {
       },
       {
         override: { stdout: "partial", stderr: "warning" },
-        text: "The command finished successfully with exit code 0.",
-      },
-      {
-        override: { stdout: "partial", truncated: true },
         text: "The command finished successfully with exit code 0.",
       },
       {
