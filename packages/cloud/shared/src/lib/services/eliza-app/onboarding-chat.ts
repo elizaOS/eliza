@@ -85,6 +85,10 @@ async function bufferOnboardingResponse(
       const next = await reader.read();
       throwIfAbortedOrExpired();
       if (next.done) break;
+      // Empty fragments do not contribute to the bounded payload. Retaining
+      // them would let a hostile stream grow the chunk-object inventory without
+      // consuming any of the byte budget.
+      if (next.value.byteLength === 0) continue;
       receivedBytes += next.value.byteLength;
       if (receivedBytes > ONBOARDING_RESPONSE_MAX_BYTES) {
         const error = new ElizaError("Onboarding hop response exceeds the byte limit", {
@@ -104,15 +108,24 @@ async function bufferOnboardingResponse(
       chunks.push(next.value);
     }
   } catch (error) {
+    let rejection = error;
     try {
-      await reader.cancel(error);
+      throwIfAbortedOrExpired();
+    } catch (abortOrDeadlineReason) {
+      // The composed signal is the authoritative cancellation boundary. A
+      // transport is allowed to reject its reader/cancel hooks with a different
+      // error, but callers must still observe the exact signal reason.
+      rejection = abortOrDeadlineReason;
+    }
+    try {
+      await reader.cancel(rejection);
     } catch (cause) {
       // error-policy:J6 The bounded read already failed; cancellation only releases the stream.
       logger.debug("[onboarding-chat] Failed to cancel rejected onboarding response body", {
         cause,
       });
     }
-    throw error;
+    throw rejection;
   } finally {
     signal.removeEventListener("abort", cancelBody);
     try {

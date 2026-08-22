@@ -241,6 +241,38 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
     expect(cancelled).toBe(true);
   });
 
+  test("preserves the caller reason when stream cancellation rejects differently", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("caller owns this reason", "AbortError");
+    const transportFailure = new Error("transport cancellation failed");
+    let releasePull!: () => void;
+    const blockedPull = new Promise<void>((resolve) => {
+      releasePull = resolve;
+    });
+    const stub = {
+      fetch: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async pull() {
+              await blockedPull;
+            },
+            cancel() {
+              throw transportFailure;
+            },
+          }),
+        ),
+    };
+
+    const pending = onboardingFetch(stub, "https://onboarding.internal/resolve", {
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort(reason);
+    releasePull();
+
+    await expect(pending).rejects.toBe(reason);
+  });
+
   test("does not let a bodyless response win over caller cancellation", async () => {
     const controller = new AbortController();
     const reason = new DOMException("caller stopped after headers", "AbortError");
