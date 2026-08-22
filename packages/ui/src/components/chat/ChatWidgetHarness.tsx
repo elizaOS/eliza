@@ -147,6 +147,18 @@ const INITIAL_MESSAGES: ConversationMessage[] = [
     failureKind: "rate_limited",
   },
   {
+    id: "gallery-connector-choice",
+    role: "assistant",
+    text: "Looking up Slack.\n[CHOICE:connector-add id=gallery-connector-add]\nAdd the Slack connector=Add it\nNot now=Not now\n[/CHOICE]",
+    timestamp: 12.1,
+  },
+  {
+    id: "gallery-connector-card",
+    role: "assistant",
+    text: "Adding Slack now.\n[CONNECTOR:slack]\nTap the card to sign in.",
+    timestamp: 12.2,
+  },
+  {
     id: "gallery-secret",
     role: "assistant",
     text: "",
