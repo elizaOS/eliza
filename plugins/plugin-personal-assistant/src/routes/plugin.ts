@@ -357,13 +357,15 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/money/plaid/sync" },
   {
     type: "POST",
-    path: "/api/lifeops/money/plaid/webhook",
-    public: true,
     name: "lifeops.money.plaid.webhook",
     publicReason:
       "Plaid delivers Item/transaction webhooks directly to the callback URL registered at link time; Plaid cannot hold the local gate token.",
     publicWrite:
       "Authenticated out-of-band by the Plaid-Verification ES256 JWT: signature against Plaid's JWK (kid lookup through Eliza Cloud), exact raw-body SHA-256 pinning, and a bounded iat freshness window — all verified before any lookup or state change.",
+    // `path` sits directly above `public` so the public-route audit ledger
+    // attributes this declaration to the webhook path, not a neighbouring route.
+    path: "/api/lifeops/money/plaid/webhook",
+    public: true,
   },
   { type: "POST", path: "/api/lifeops/money/paypal/authorize-url" },
   { type: "POST", path: "/api/lifeops/money/paypal/complete" },
