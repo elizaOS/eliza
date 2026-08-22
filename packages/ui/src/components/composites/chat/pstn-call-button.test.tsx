@@ -46,6 +46,7 @@ describe("PstnCallButton", () => {
       })
       .mockResolvedValueOnce({
         success: true,
+        callSid: "CA11111111111111111111111111111111",
         status: "queued",
         to: "***0100",
       });
@@ -61,6 +62,7 @@ describe("PstnCallButton", () => {
       (screen.getByLabelText("Phone number") as HTMLInputElement).readOnly,
     ).toBe(true);
     expect(document.body.textContent).not.toMatch(/808|788-1821/);
+    expect(screen.getByText(/AI-generated voice/i)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Call me" }));
 
     await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(2));
@@ -72,6 +74,49 @@ describe("PstnCallButton", () => {
       headers: { "Idempotency-Key": expect.any(String) },
     });
     expect(mocks.success).toHaveBeenCalledWith("Eliza is calling ***0100");
+    expect(await screen.findByRole("button", { name: "Hang up" })).toBeTruthy();
+  });
+
+  it("hangs up the active call with a separate idempotency key", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA22222222222222222222222222222222",
+        status: "queued",
+        to: "***0100",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA22222222222222222222222222222222",
+        status: "hangup-requested",
+        to: "***0100",
+        answeredAt: null,
+        terminalAt: null,
+        hangupRequestedAt: "2026-08-22T08:00:00.000Z",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+    await user.click(await screen.findByRole("button", { name: "Hang up" }));
+
+    await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(3));
+    expect(mocks.api.mock.calls[2]?.[0]).toBe(
+      "/api/v1/twilio/voice/calls/CA22222222222222222222222222222222",
+    );
+    expect(mocks.api.mock.calls[2]?.[1]).toMatchObject({
+      method: "DELETE",
+      headers: { "Idempotency-Key": expect.any(String) },
+    });
+    expect(mocks.success).toHaveBeenCalledWith("Hangup requested");
   });
 
   it("does not enable calling for an unverified account phone", async () => {

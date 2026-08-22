@@ -3304,6 +3304,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../v1/twilio/status/route"),
   },
   {
+    path: "/api/v1/twilio/voice/calls/:callSid",
+    shard: "v1/twilio",
+    load: () => import("../v1/twilio/voice/calls/[callSid]/route"),
+  },
+  {
     path: "/api/v1/twilio/voice/calls",
     shard: "v1/twilio",
     load: () => import("../v1/twilio/voice/calls/route"),
@@ -3317,6 +3322,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     path: "/api/v1/twilio/voice/media",
     shard: "v1/twilio",
     load: () => import("../v1/twilio/voice/media/route"),
+  },
+  {
+    path: "/api/v1/twilio/voice/status",
+    shard: "v1/twilio",
+    load: () => import("../v1/twilio/voice/status/route"),
   },
   {
     path: "/api/v1/twitter/callback",
