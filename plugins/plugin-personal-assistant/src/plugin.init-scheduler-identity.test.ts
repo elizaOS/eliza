@@ -16,6 +16,10 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const schedulingMocks = vi.hoisted(() => ({
+  waitForScheduledTaskRunnerService: vi.fn(async () => ({})),
+}));
+
 // Isolate PA's own init wiring (registries, workers, policies, the scheduler
 // identity under test) from the cross-plugin connector boot. Each connector
 // package has its own dedicated suite; here they are neutralized so init runs
@@ -35,6 +39,11 @@ vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   registerHealthDefaultPacks: vi.fn(),
   registerCircadianInsightContract: vi.fn(),
   createDefaultCircadianInsightContract: vi.fn(() => ({})),
+}));
+vi.mock("@elizaos/plugin-scheduling", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  waitForScheduledTaskRunnerService:
+    schedulingMocks.waitForScheduledTaskRunnerService,
 }));
 
 import { areLifeOpsActivitySignalsActive } from "./lifeops/activity-signal-lifecycle.js";
@@ -165,5 +174,23 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     expect(worker).toBeDefined();
     // When enabled, shouldRun consults live app state (not a hardcoded false).
     expect(typeof worker?.shouldRun).toBe("function");
+  });
+
+  it("uses scheduling-owned runner readiness for enabled startup work", async () => {
+    delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    const { runtime } = createRecordingRuntime();
+
+    await personalAssistantPlugin.init?.({}, runtime);
+
+    await vi.waitFor(() => {
+      expect(
+        schedulingMocks.waitForScheduledTaskRunnerService,
+      ).toHaveBeenCalled();
+    });
+    for (const call of schedulingMocks.waitForScheduledTaskRunnerService.mock
+      .calls) {
+      expect(call).toHaveLength(1);
+      expect(call[0]).toBe(runtime);
+    }
   });
 });
