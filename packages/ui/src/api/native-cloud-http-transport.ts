@@ -1,13 +1,14 @@
 /**
- * AgentRequestTransport for native (Capacitor) builds talking to Eliza Cloud:
- * uses CapacitorHttp for direct cloud hosts (bypassing the WKWebView CORS/cookie
- * limits), falling back to fetch for everything else.
+ * Native HTTP transport for Eliza Cloud and explicitly selected remote agents.
+ * Bounded JSON/binary calls use CapacitorHttp while agent SSE keeps the browser
+ * streaming body; arbitrary public origins remain outside this transport.
  */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/shared/elizacloud";
+import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -71,6 +72,31 @@ function isNativeCloudHttpsUrl(url: string): boolean {
   );
 }
 
+/**
+ * A user-selected remote-Mac endpoint is allowed to bypass WKWebView CORS only
+ * after the canonical runtime-mode and private-network trust gates agree. The
+ * full request URL may carry an API path, so validate its origin rather than
+ * rejecting a legitimate path/query as if it were a persisted base URL.
+ */
+function isNativeTrustedRemoteAgentUrl(url: string): boolean {
+  const parsed = parseUrl(url);
+  if (!parsed || !Capacitor.isNativePlatform()) return false;
+  try {
+    if (
+      globalThis.localStorage?.getItem("eliza:mobile-runtime-mode") !==
+      "remote-mac"
+    ) {
+      return false;
+    }
+  } catch {
+    // error-policy:J3 unreadable runtime selection cannot authorize a native
+    // CORS bypass; the request stays on the ordinary browser transport.
+    return false;
+  }
+  if (parsed.username || parsed.password) return false;
+  return isTrustedRestoreApiBaseUrl(parsed.origin);
+}
+
 type NativeWebFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -113,8 +139,9 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     // full reply landing as one blob after generation finishes. Scoped to agent
     // subdomains only: they serve CORS for the app origin. The central
     // `api.eliza.app` does not, so its SSE stays on CapacitorHttp below.
+    const isRemoteAgent = isNativeTrustedRemoteAgentUrl(url);
     if (
-      isNativeCloudAgentSubdomain(url) &&
+      (isNativeCloudAgentSubdomain(url) || isRemoteAgent) &&
       isStreamingRequest(url, init.headers)
     ) {
       const webFetch = nativeWebFetch();
@@ -129,7 +156,7 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     const wantsBinary = context?.responseType === "arraybuffer";
     const isDirectApi = isNativeDirectCloudApiUrl(url);
     const isCloudHost = isNativeCloudHttpsUrl(url);
-    if (!isDirectApi && !(wantsBinary && isCloudHost)) {
+    if (!isDirectApi && !isRemoteAgent && !(wantsBinary && isCloudHost)) {
       return fetchAgentTransport.request(url, init, context);
     }
 
@@ -193,5 +220,6 @@ export function nativeCloudHttpTransportForUrl(
   // all other requests fall through to the patched global fetch.
   if (isNativeDirectCloudApiUrl(url)) return nativeCloudHttpTransport;
   if (isNativeCloudHttpsUrl(url)) return nativeCloudHttpTransport;
+  if (isNativeTrustedRemoteAgentUrl(url)) return nativeCloudHttpTransport;
   return null;
 }

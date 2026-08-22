@@ -1,6 +1,6 @@
 /**
- * Unit coverage for the native cloud transport: CapacitorHttp for direct cloud
- * hosts, fetch otherwise. CapacitorHttp mocked, no live cloud.
+ * Unit coverage for native Cloud and trusted remote-agent HTTP routing.
+ * CapacitorHttp and browser fetch are mocked; no live network is used.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +30,11 @@ let globalFetchMock: ReturnType<typeof vi.fn>;
 const originalWebFetch = (globalThis as { CapacitorWebFetch?: unknown })
   .CapacitorWebFetch;
 const originalFetch = globalThis.fetch;
+const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "localStorage",
+);
+const runtimeModeStorage = new Map<string, string>();
 
 function streamResponse(): Response {
   return new Response("data: hi\n\n", {
@@ -51,12 +56,31 @@ beforeEach(() => {
   (globalThis as { CapacitorWebFetch?: unknown }).CapacitorWebFetch =
     webFetchMock;
   globalThis.fetch = globalFetchMock as unknown as typeof fetch;
+  runtimeModeStorage.clear();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => runtimeModeStorage.get(key) ?? null,
+      setItem: (key: string, value: string) =>
+        runtimeModeStorage.set(key, value),
+      removeItem: (key: string) => runtimeModeStorage.delete(key),
+    },
+  });
 });
 
 afterEach(() => {
   (globalThis as { CapacitorWebFetch?: unknown }).CapacitorWebFetch =
     originalWebFetch;
   globalThis.fetch = originalFetch;
+  if (originalLocalStorageDescriptor) {
+    Object.defineProperty(
+      globalThis,
+      "localStorage",
+      originalLocalStorageDescriptor,
+    );
+  } else {
+    Reflect.deleteProperty(globalThis, "localStorage");
+  }
   vi.restoreAllMocks();
 });
 
@@ -74,6 +98,25 @@ describe("nativeCloudHttpTransportForUrl selection", () => {
   it("ignores non-cloud hosts", () => {
     expect(
       nativeCloudHttpTransportForUrl("https://example.com/api/x"),
+    ).toBeNull();
+  });
+
+  it("claims a trusted LAN agent only in explicit remote-mac mode", () => {
+    globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "remote-mac");
+    expect(
+      nativeCloudHttpTransportForUrl("http://192.168.1.30:31338/api/status"),
+    ).not.toBeNull();
+
+    globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "cloud");
+    expect(
+      nativeCloudHttpTransportForUrl("http://192.168.1.30:31338/api/status"),
+    ).toBeNull();
+  });
+
+  it("does not let remote-mac mode claim an arbitrary public origin", () => {
+    globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "remote-mac");
+    expect(
+      nativeCloudHttpTransportForUrl("https://attacker.example/api/status"),
     ).toBeNull();
   });
 
@@ -173,6 +216,22 @@ describe("SSE streaming bypass", () => {
     expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
   });
 
+  it("streams a trusted remote-Mac chat through the native browser fetch", async () => {
+    globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "remote-mac");
+    const url =
+      "http://192.168.1.30:31338/api/conversations/abc/messages/stream";
+    const transport = nativeCloudHttpTransportForUrl(url);
+    await transport?.request(url, {
+      method: "POST",
+      headers: { Accept: "text/event-stream" },
+      body: "{}",
+    });
+
+    expect(webFetchMock).toHaveBeenCalledTimes(1);
+    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
+    expect(globalFetchMock).not.toHaveBeenCalled();
+  });
+
   it("does NOT use the native fetch for SSE to the central cloud API (CORS blocks the app origin there)", async () => {
     // The canonical API does not serve CORS to the app origin, so its SSE
     // (e.g. computer-use/approvals/stream) must stay on CapacitorHttp's
@@ -219,6 +278,33 @@ describe("non-streaming requests are unchanged", () => {
     expect(globalFetchMock).toHaveBeenCalledTimes(1);
     expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
     expect(webFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("routes trusted remote-Mac pairing through bounded CapacitorHttp", async () => {
+    globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "remote-mac");
+    const url = "http://192.168.1.30:31338/api/auth/pair";
+    const transport = nativeCloudHttpTransportForUrl(url);
+    await transport?.request(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "redacted-test-code" }),
+      },
+      { timeoutMs: 10_000 },
+    );
+
+    expect(capacitorHttpRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url,
+        method: "POST",
+        data: JSON.stringify({ code: "redacted-test-code" }),
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+        disableRedirects: true,
+      }),
+    );
+    expect(globalFetchMock).not.toHaveBeenCalled();
   });
 });
 
