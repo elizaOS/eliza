@@ -727,6 +727,50 @@ describe("production manifest persistence", () => {
     });
   }, 120_000);
 
+  it("closes a committed apply control when ambiguity discovery also fails", async () => {
+    const target = runtime();
+    const input = manifest("ambiguous-control-discovery");
+    const originalSetCache = target.setCache.bind(target);
+    const originalGetRelationshipsByPairs =
+      target.getRelationshipsByPairs.bind(target);
+    let controlFaultInjected = false;
+    let discoveryFaultInjected = false;
+    target.setCache = async (key, value) => {
+      const written = await originalSetCache(key, value);
+      if (
+        !controlFaultInjected &&
+        key.startsWith("scenario-manifest:reset-control:") &&
+        typeof value === "object" &&
+        value !== null &&
+        "state" in value &&
+        value.state === "applied"
+      ) {
+        controlFaultInjected = true;
+        throw new Error("injected post-control-commit failure");
+      }
+      return written;
+    };
+    target.getRelationshipsByPairs = async (pairs) => {
+      if (controlFaultInjected && !discoveryFaultInjected) {
+        discoveryFaultInjected = true;
+        throw new Error("injected discovery readback failure");
+      }
+      return originalGetRelationshipsByPairs(pairs);
+    };
+    try {
+      await expect(
+        applyProductionManifest(target, input),
+      ).rejects.toMatchObject({
+        code: "SCENARIO_MANIFEST_DIRTY",
+      });
+    } finally {
+      target.setCache = originalSetCache;
+      target.getRelationshipsByPairs = originalGetRelationshipsByPairs;
+    }
+    const retried = await applyProductionManifest(target, input);
+    await resetProductionManifest(target, retried);
+  }, 120_000);
+
   it("compensates a schedule committed before its receipt is returned", async () => {
     const target = runtime();
     const input = manifest("ambiguous-schedule");

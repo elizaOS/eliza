@@ -2230,6 +2230,7 @@ export async function applyProductionManifest(
       let rollbackCause: unknown;
       try {
         await resetRecordedManifestWrites(runtime, receipt);
+        await completeCompensatedApplyControl(runtime, receipt);
       } catch (error) {
         rollbackCause = error;
       }
