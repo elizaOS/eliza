@@ -175,16 +175,13 @@ export const COMPAT_ROOM_KEY_MAX_LENGTH = 120;
  * 120-char prefix — JWT-style ids, path-like conversation keys — derive the
  * same roomId and silently share one conversation's memory. Keys within the
  * limit keep their exact historical derivation; longer keys are prefixed with
- * a digest of the full key, so every distinct key derives a distinct room
- * going forward (rooms created before this fix from a >120-char key are not
- * reachable under the new derivation by design: they were already merged with
- * any prefix-sharing sibling).
+ * the complete SHA-256 digest of the full key, giving the room derivation a
+ * collision-resistant scope. Rooms created before this fix from a >120-char
+ * key are not reachable under the new derivation by design: they were already
+ * merged with any prefix-sharing sibling.
  */
 export function scopeCompatRoomKey(rawKey: string): string {
   if (rawKey.length <= COMPAT_ROOM_KEY_MAX_LENGTH) return rawKey;
-  const digest = createHash("sha256")
-    .update(rawKey, "utf8")
-    .digest("hex")
-    .slice(0, 16);
-  return `${rawKey.slice(0, COMPAT_ROOM_KEY_MAX_LENGTH)}#${digest}`;
+  const digest = createHash("sha256").update(rawKey, "utf8").digest("hex");
+  return `sha256:${digest}`;
 }

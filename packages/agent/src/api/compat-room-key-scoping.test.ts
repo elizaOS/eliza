@@ -1,12 +1,19 @@
 /**
  * Pins the compat room-key scoping invariant: keys within the historical
- * 120-char limit keep their exact derivation, and longer keys never alias two
- * distinct conversations onto one room the way the previous bare
- * `.slice(0, 120)` did.
+ * 120-char limit keep their exact derivation, and longer keys retain the full
+ * digest strength needed for collision-resistant room isolation instead of
+ * sharing the previous bare `.slice(0, 120)` prefix.
  */
 
-import { stringToUuid, type UUID } from "@elizaos/core";
+import type http from "node:http";
+import {
+  type AgentRuntime,
+  type Memory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { type ChatRouteContext, handleChatRoutes } from "./chat-routes.ts";
 import {
   COMPAT_ROOM_KEY_MAX_LENGTH,
   resolveCompatRoomKey,
@@ -40,6 +47,7 @@ describe("scopeCompatRoomKey", () => {
 
     const scopedFirst = scopeCompatRoomKey(first);
     const scopedSecond = scopeCompatRoomKey(second);
+    expect(scopedFirst).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(scopedFirst).not.toBe(scopedSecond);
     expect(roomUuid(scopedFirst)).not.toBe(roomUuid(scopedSecond));
 
@@ -52,6 +60,89 @@ describe("scopeCompatRoomKey", () => {
   it("is deterministic for the same long key across requests", () => {
     const key = "k".repeat(300);
     expect(scopeCompatRoomKey(key)).toBe(scopeCompatRoomKey(key));
+  });
+
+  it("keeps prefix-colliding identifiers in distinct rooms through the OpenAI route", async () => {
+    const prefix = "route-conversation:".padEnd(120, "x");
+    const roomIds: UUID[] = [];
+    const inboundTurns: Memory[] = [];
+    const roomActors = new Map<UUID, UUID>();
+    const agentId = stringToUuid("compat-route-agent") as UUID;
+    const ownerId = stringToUuid("compat-route-owner") as UUID;
+    const roomLease = {};
+    const runtime = {
+      agentId,
+      character: { name: "Eliza" },
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? ownerId : undefined,
+      ensureConnection: async (connection: {
+        entityId: UUID;
+        roomId: UUID;
+      }) => {
+        roomIds.push(connection.roomId);
+        roomActors.set(connection.roomId, connection.entityId);
+      },
+      getParticipantsForRoom: async (roomId: UUID) => [
+        agentId,
+        roomActors.get(roomId) as UUID,
+      ],
+      roomHandlerQueue: {
+        currentLease: () => roomLease,
+        ownsLease: () => true,
+      },
+      reportError: () => undefined,
+      emitEvent: async (_type: unknown, payload: { message: Memory }) => {
+        inboundTurns.push(payload.message);
+        throw new Error("stop after route constructs the inbound turn");
+      },
+    } as unknown as AgentRuntime;
+
+    const invoke = async (conversationKey: string): Promise<void> => {
+      const responses: Array<{ data: unknown; status?: number }> = [];
+      const handled = await handleChatRoutes({
+        req: { headers: {} } as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        method: "POST",
+        pathname: "/v1/chat/completions",
+        readJsonBody: async <T extends object>() =>
+          ({
+            model: "eliza",
+            user: conversationKey,
+            messages: [{ role: "user", content: "remember this room" }],
+          }) as T,
+        json: (_response, data, status) => responses.push({ data, status }),
+        error: () =>
+          expect.unreachable("compat failures use the JSON responder"),
+        state: {
+          runtime,
+          config: {},
+          agentName: "Eliza",
+          logBuffer: [],
+          chatRoomId: null,
+          chatUserId: null,
+          chatConnectionReady: null,
+          chatConnectionPromise: null,
+          adminEntityId: null,
+        },
+      } as ChatRouteContext);
+      expect(handled).toBe(true);
+      expect(responses.at(-1)).toEqual({
+        data: {
+          error: {
+            message: "stop after route constructs the inbound turn",
+            type: "server_error",
+          },
+        },
+        status: 500,
+      });
+    };
+
+    await invoke(`${prefix}first`);
+    await invoke(`${prefix}second`);
+
+    expect(roomIds).toHaveLength(2);
+    expect(roomIds[0]).not.toBe(roomIds[1]);
+    expect(inboundTurns.map((turn) => turn.roomId)).toEqual(roomIds);
   });
 });
 
