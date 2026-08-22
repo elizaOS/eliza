@@ -31,6 +31,27 @@ function sseResponse(
   });
 }
 
+async function streamTerminalActionResult(actionResult: Record<string, unknown>) {
+  const fetchImpl = (async () =>
+    sseResponse([
+      `event: done\ndata: ${JSON.stringify({ actionResults: [actionResult] })}\n\n`,
+    ])) as unknown as typeof fetch;
+  return streamElizaConversation(
+    {
+      endpoint: "http://x",
+      authorization: "Bearer s",
+      model: "m",
+      transcript: "launch demo",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+      traceId: "trace-app-navigation",
+      signal: new AbortController().signal,
+      fetchImpl,
+    },
+    () => {},
+  );
+}
+
 describe("eliza sse bridge", () => {
   test("decodes delta.content tokens and completes on [DONE]", async () => {
     const deltas: string[] = [];
@@ -758,6 +779,56 @@ describe("eliza sse bridge", () => {
         subview: "recent",
       },
     });
+  });
+
+  test("returns a successful APP launch handoff addressed to Browser", async () => {
+    await expect(
+      streamTerminalActionResult({
+        actionName: "APP",
+        success: true,
+        values: {
+          mode: "launch",
+          viewId: "browser",
+          viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+          subview: "preview",
+        },
+      }),
+    ).resolves.toEqual({
+      completed: true,
+      aborted: false,
+      viewHandoff: {
+        viewId: "browser",
+        viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+        subview: "preview",
+      },
+    });
+  });
+
+  test("rejects failed, wrong-mode, and non-Browser APP handoffs", async () => {
+    const rejected = [
+      {
+        actionName: "APP",
+        success: false,
+        values: { mode: "launch", viewId: "browser", viewPath: "/browser" },
+      },
+      {
+        actionName: "APP",
+        success: true,
+        values: { mode: "stop", viewId: "browser", viewPath: "/browser" },
+      },
+      {
+        actionName: "APP",
+        success: true,
+        values: { mode: "launch", viewId: "wallet", viewPath: "/wallet" },
+      },
+    ];
+
+    for (const actionResult of rejected) {
+      await expect(streamTerminalActionResult(actionResult)).resolves.toEqual({
+        completed: true,
+        aborted: false,
+      });
+    }
   });
 
   test("does not promote failed or malformed terminal action results", async () => {

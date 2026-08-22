@@ -902,6 +902,55 @@ export async function heartbeatAgentBackupOperation(params: {
   return updated;
 }
 
+/**
+ * Release the exact capture execution fence after `recordCaptured` is durably
+ * confirmed. This is a stage handoff only: the catalogue remains `captured`
+ * until an independently claimed publication executor advances it.
+ */
+export async function handoffCapturedAgentBackupOperation(params: {
+  organizationId: string;
+  backupId: string;
+  operationId: string;
+  lifecycleGeneration: string;
+  execution: AgentBackupOperationExecution;
+}): Promise<StoredAgentSandboxBackup> {
+  requireUuid(params.organizationId, "organizationId");
+  requireUuid(params.backupId, "backupId");
+  requireUuid(params.operationId, "operationId");
+  requireUuid(params.lifecycleGeneration, "lifecycleGeneration");
+  requireOperationExecution(params.execution);
+
+  const [updated] = await dbWrite
+    .update(agentSandboxBackups)
+    .set({
+      catalog_lease_owner: null,
+      catalog_lease_generation: null,
+      catalog_lease_expires_at: null,
+      catalog_updated_at: sql`NOW()`,
+    })
+    .where(
+      and(
+        eq(agentSandboxBackups.id, params.backupId),
+        eq(agentSandboxBackups.catalog_version, 2),
+        eq(agentSandboxBackups.catalog_organization_id, params.organizationId),
+        eq(agentSandboxBackups.backup_operation_id, params.operationId),
+        eq(agentSandboxBackups.lifecycle_generation, params.lifecycleGeneration),
+        eq(agentSandboxBackups.catalog_state, "captured"),
+        eq(agentSandboxBackups.catalog_lease_owner, params.execution.ownerId),
+        eq(agentSandboxBackups.catalog_lease_generation, params.execution.generation),
+        gt(agentSandboxBackups.catalog_lease_expires_at, sql`NOW()`),
+        sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
+      ),
+    )
+    .returning();
+  if (!updated) {
+    throw new AgentBackupCatalogConflictError(
+      "Captured backup handoff lost its exact execution fence",
+    );
+  }
+  return updated;
+}
+
 interface CapturedAgentBackupManifestCommon {
   /** Exact canonical manifest draft bytes (integrity.manifestSha256 omitted). */
   canonicalManifestDraft: string;

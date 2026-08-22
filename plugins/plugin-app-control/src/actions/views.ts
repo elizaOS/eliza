@@ -37,6 +37,7 @@ import {
 	userRequestMessageText,
 } from "../params.js";
 import { matchViewCommand } from "./view-command-matcher.js";
+import { readViewInteractionClientId } from "./view-delivery.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
@@ -113,7 +114,6 @@ const VIEWLESS_TEXT_CONNECTOR_SOURCES = new Set([
 	"telegram",
 	"matrix",
 	"slack",
-	"signal",
 	"whatsapp",
 	"twitter",
 	"x",
@@ -150,15 +150,6 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 // app-control must not import orchestrator internals, so this constant is kept
 // local and points at the orchestrator's owning constant.
 const SUB_AGENT_RELAY_SOURCE = "sub_agent";
-const SAFE_VIEW_CLIENT_ID = /^[A-Za-z0-9._-]{1,128}$/;
-
-function readViewInteractionClientId(message: Memory): string | undefined {
-	const clientId = readContentMetadata(message).viewClientId;
-	return typeof clientId === "string" && SAFE_VIEW_CLIENT_ID.test(clientId)
-		? clientId
-		: undefined;
-}
-
 function lowerSource(source: unknown): string {
 	return typeof source === "string" ? source.toLowerCase() : "";
 }

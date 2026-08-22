@@ -1,16 +1,13 @@
 name: Merge Candidate Biome
 
-# Merge queue events point github.sha at GitHub's synthesized candidate commit,
-# which includes the current develop tip and every queued pull request in the
-# candidate group. This gate intentionally runs on that tree instead of a PR
-# head so formatting conflicts introduced by integration cannot land.
+# Full-tree Biome diagnostics remain available on demand. PR and merge events
+# are owned exclusively by pr-static-smoke.yml.
 on:
-  merge_group:
-    types: [checks_requested]
+  workflow_dispatch:
 
 concurrency:
-  group: merge-candidate-biome-${{ github.ref }}
-  cancel-in-progress: true
+  group: merge-candidate-biome-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

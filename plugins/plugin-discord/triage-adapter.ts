@@ -33,7 +33,6 @@ import {
 	type SendHandlerOutcome,
 	type TargetInfo,
 	toWellFormedUnicode,
-	truncateWellFormed,
 } from "@elizaos/core";
 import { DISCORD_SERVICE_NAME } from "./constants";
 
@@ -45,7 +44,6 @@ const MAX_CHANNELS_PER_SWEEP = 15;
 const PER_CHANNEL_FETCH_CAP = 100;
 /** Bounded MessageRef cache so long-running agents don't grow unbounded. */
 const MESSAGE_CACHE_CAP = 2000;
-const SNIPPET_LENGTH = 240;
 
 interface DiscordConnectorFetchParams {
 	target?: TargetInfo;
@@ -106,15 +104,6 @@ function metaString(
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function clip(value: string, maxLength: number): string {
-	const wellFormed = toWellFormedUnicode(value);
-	if (wellFormed.length <= maxLength) {
-		return wellFormed;
-	}
-	const budget = Math.max(0, maxLength - 3);
-	return `${truncateWellFormed(wellFormed, budget)}...`;
-}
-
 function refId(discordMessageId: string): string {
 	return `discord:${discordMessageId}`;
 }
@@ -136,7 +125,7 @@ export function mapDiscordMemoryToRef(memory: Memory): MessageRef | null {
 	const externalId = metaString(meta, "discordMessageId");
 	const channelId = metaString(meta, "discordChannelId");
 	if (!externalId || !channelId) return null;
-	const text = memory.content?.text?.trim() ?? "";
+	const text = toWellFormedUnicode(memory.content?.text?.trim() ?? "");
 	const fromId = metaString(meta, "fromId") ?? String(memory.entityId);
 	const attachments = memory.content?.attachments;
 	return {
@@ -149,7 +138,7 @@ export function mapDiscordMemoryToRef(memory: Memory): MessageRef | null {
 				metaString(meta, "entityName") ?? metaString(meta, "entityUserName"),
 		},
 		to: [{ identifier: channelId }],
-		snippet: clip(text, SNIPPET_LENGTH),
+		snippet: text,
 		body: text,
 		receivedAtMs: Number(memory.createdAt ?? Date.now()),
 		hasAttachments: Array.isArray(attachments) && attachments.length > 0,
@@ -277,7 +266,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				: undefined;
 		this.draftCounter += 1;
 		const draftId = `discord-draft:${channelId}:${Date.now()}:${this.draftCounter}`;
-		const preview = clip(draft.body, SNIPPET_LENGTH);
+		const preview = toWellFormedUnicode(draft.body);
 		this.draftCache.set(draftId, {
 			request: draft,
 			channelId,

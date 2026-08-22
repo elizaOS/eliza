@@ -49,7 +49,7 @@ const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
 	{
 		name: "source",
 		description:
-			"Message source for a new outbound draft, such as gmail, discord, telegram, signal, imessage, whatsapp, or twitter.",
+			"Message source for a new outbound draft, such as gmail, discord, telegram, imessage, whatsapp, or twitter.",
 		required: false,
 		schema: { type: "string" as const },
 	},
@@ -122,7 +122,7 @@ ${text}
 
 Return ONLY this XML, leaving a field empty when the request does not specify it:
 <response>
-<source>the platform/app to send on — one of telegram, discord, signal, whatsapp, imessage, gmail, twitter — or empty</source>
+<source>the platform/app to send on — one of telegram, discord, whatsapp, imessage, gmail, twitter — or empty</source>
 <recipient>who to send to (a name, @handle, or contact), or empty</recipient>
 <body>the exact message text to send, or empty</body>
 </response>`;
@@ -248,7 +248,7 @@ export const sendDraftAction: Action = {
 	description:
 		"Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. Without confirmed=true it only creates or previews the draft and asks for confirmation; it never sends directly.",
 	descriptionCompressed:
-		"outbound draft/send Telegram|Signal|Discord|email|SMS|iMessage|DM; requires confirmed=true",
+		"outbound draft/send Telegram|Discord|email|SMS|iMessage|WhatsApp|DM; requires confirmed=true",
 	similes: [
 		"DISPATCH_DRAFT",
 		"CONFIRM_AND_SEND",

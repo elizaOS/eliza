@@ -184,7 +184,6 @@
         "@elizaos/app-core#build",
         "@elizaos/plugin-sql#build",
         "@elizaos/plugin-telegram#build",
-        "@elizaos/plugin-signal#build",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
         "@elizaos/ui#build"

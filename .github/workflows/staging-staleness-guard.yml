@@ -32,10 +32,6 @@
 name: Staging Staleness Guard
 
 on:
-  schedule:
-    # Every 2 hours at :23 (off the top-of-hour Actions crunch). Cheap: one
-    # curl + two API reads. Drift thresholds below decide pass/fail.
-    - cron: "23 */2 * * *"
   workflow_dispatch:
     inputs:
       self_heal:

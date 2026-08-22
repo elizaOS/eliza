@@ -1,5 +1,5 @@
 {
-  "uuid": "bbbb1111-aaaa-4000-8000-000000020103",
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200f3",
   "lastMigration": 33,
   "name": "lifeops-cerebras-mock",
   "endpointPrefix": "",
@@ -9,14 +9,14 @@
   "folders": [],
   "routes": [
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f9",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e9",
       "type": "http",
       "documentation": "POST v1/chat/completions",
       "method": "post",
       "endpoint": "v1/chat/completions",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fa",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ea",
           "body": "{\n  \"id\": \"chatcmpl-mock-2026-05-09-001\",\n  \"object\": \"chat.completion\",\n  \"created\": 1746810600,\n  \"model\": \"gemma-4-31b\",\n  \"choices\": [\n    {\n      \"index\": 0,\n      \"message\": {\n        \"role\": \"assistant\",\n        \"content\": \"{\\\"action\\\":\\\"route_to_inbox\\\",\\\"confidence\\\":0.91,\\\"rationale\\\":\\\"Routine standup confirmation; not urgent.\\\"}\"\n      },\n      \"finish_reason\": \"stop\"\n    }\n  ],\n  \"usage\": {\n    \"prompt_tokens\": 184,\n    \"completion_tokens\": 31,\n    \"total_tokens\": 215\n  }\n}",
           "latency": 0,
           "statusCode": 200,
@@ -40,7 +40,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fb",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200eb",
           "body": "{\n  \"error\": {\n    \"type\": \"rate_limit_exceeded\",\n    \"code\": \"rate_limit_exceeded\",\n    \"message\": \"Rate limit reached\"\n  }\n}",
           "latency": 0,
           "statusCode": 429,
@@ -83,7 +83,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fc",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ec",
           "body": "{\n  \"error\": {\n    \"type\": \"invalid_request_error\",\n    \"code\": \"invalid_api_key\",\n    \"message\": \"Incorrect API key provided.\"\n  }\n}",
           "latency": 0,
           "statusCode": 401,
@@ -122,7 +122,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fd",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ed",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -164,14 +164,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200fe",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ee",
       "type": "http",
       "documentation": "POST v1/embeddings",
       "method": "post",
       "endpoint": "v1/embeddings",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ff",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ef",
           "body": "{\n  \"object\": \"list\",\n  \"data\": [\n    {\n      \"object\": \"embedding\",\n      \"index\": 0,\n      \"embedding\": [\n        0.0123,\n        -0.0456,\n        0.0789,\n        -0.0234,\n        0.0567,\n        -0.089,\n        0.0345,\n        -0.0678\n      ]\n    }\n  ],\n  \"model\": \"text-embedding-3-small\",\n  \"usage\": {\n    \"prompt_tokens\": 8,\n    \"total_tokens\": 8\n  }\n}",
           "latency": 0,
           "statusCode": 200,
@@ -195,7 +195,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020100",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f0",
           "body": "{\n  \"error\": {\n    \"type\": \"rate_limit_exceeded\",\n    \"code\": \"rate_limit_exceeded\",\n    \"message\": \"Rate limit reached\"\n  }\n}",
           "latency": 0,
           "statusCode": 429,
@@ -238,7 +238,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020101",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f1",
           "body": "{\n  \"error\": {\n    \"type\": \"invalid_request_error\",\n    \"code\": \"invalid_api_key\",\n    \"message\": \"Incorrect API key provided.\"\n  }\n}",
           "latency": 0,
           "statusCode": 401,
@@ -277,7 +277,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020102",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f2",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -322,11 +322,11 @@
   "rootChildren": [
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f9"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e9"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200fe"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ee"
     }
   ],
   "proxyMode": false,

@@ -24,6 +24,7 @@ import type {
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
 	DocumentDeleteParams,
+	DocumentDirectGrantUpdateParams,
 	DocumentFragmentQueryParams,
 	DocumentGetQueryParams,
 	DocumentListQueryParams,
@@ -116,9 +117,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 {
 	/**
 	 * Exact document-store contract implemented by every first-class adapter.
-	 * Version 3 adds atomic parent-and-fragment revision replacement.
+	 * Version 4 adds storage-enforced direct-grant replacement.
 	 */
-	abstract readonly documentListQueryCapability: 3;
+	abstract readonly documentListQueryCapability: 4;
 
 	abstract queryDocuments(
 		params: DocumentListQueryParams,
@@ -132,6 +133,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	abstract compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+
+	abstract updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult>;
 
 	abstract replaceDocumentRevision(
@@ -648,6 +653,13 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	// ── Task CRUD (batch-only) ───────────────────────────────────────────
 	abstract createTasks(tasks: Task[]): Promise<UUID[]>;
 	abstract getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
+	/**
+	 * Optional-adapter compatibility default. Official adapters override this
+	 * with a storage-atomic transition; returning false fails closed.
+	 */
+	async updatePendingTask(_id: UUID, _task: Partial<Task>): Promise<boolean> {
+		return false;
+	}
 	abstract updateTasks(
 		updates: Array<{ id: UUID; task: Partial<Task> }>,
 	): Promise<void>;

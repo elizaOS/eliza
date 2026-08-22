@@ -19,7 +19,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "cross-channel.search-across-platforms",
-  title: "Search spans Gmail + Signal + Telegram",
+  title: "Search spans Gmail + WhatsApp + Telegram",
   domain: "lifeops.cross-channel",
   tags: ["lifeops", "cross-channel", "search", "search-all"],
   isolation: "per-scenario",
@@ -39,7 +39,7 @@ export default scenario({
       kind: "message",
       name: "topic-search",
       room: "main",
-      text: "Search across everything — Gmail, Signal, Telegram — for anything about the Q4 budget discussion.",
+      text: "Search across everything — Gmail, WhatsApp, Telegram — for anything about the Q4 budget discussion.",
       timeoutMs: 180_000,
     },
   ],
@@ -50,14 +50,14 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: ["MESSAGE", "READ_MESSAGES"],
         description: "search across multiple channels for one topic",
-        includesAny: ["q4", "budget", "gmail", "signal", "telegram"],
+        includesAny: ["q4", "budget", "gmail", "whatsapp", "telegram"],
       }),
     },
     judgeRubric({
       name: "cross-channel-search-rubric",
       threshold: 0.7,
       description:
-        "Agent issued search across at least Gmail, Signal, and Telegram for the Q4 budget topic — and reported real or honest no-match results, not fabricated matches.",
+        "Agent issued search across at least Gmail, WhatsApp, and Telegram for the Q4 budget topic — and reported real or honest no-match results, not fabricated matches.",
     }),
   ],
 });

@@ -116,7 +116,7 @@ Add an endpoint:
 - `/api/health` is answered directly in `index.ts` (never boots the full app) — keep it dependency-free.
 - The global auth middleware allowlists public paths in `middleware/auth.ts`; programmatic auth (`X-API-Key`, `Bearer eliza_*`) passes through and is validated per-route, not by the gate.
 - `src/stubs/*` exist because workerd lacks some node-only deps; they are wired via `wrangler.toml` aliases/`[define]`, not by direct import. Don't import node-only modules in route code.
-- Special-cased routes registered manually in `bootstrap-app.ts` (root `/`, `/steward*`, blooio/bluebubbles webhooks, legacy birdeye 308 redirect, jwks, OIDC discovery + OIDC jwks) bypass the codegen tree — keep that list in sync when touching those surfaces. The OIDC pair must stay root-mounted: relying parties derive `/.well-known/openid-configuration` from the issuer origin and never look under `/api`.
+- Special-cased routes registered manually in `bootstrap-app.ts` (root `/`, `/steward*`, legacy birdeye 308 redirect, jwks, OIDC discovery + OIDC jwks) bypass the codegen tree — keep that list in sync when touching those surfaces. Connector webhooks, including Blooio, are owned only by the generated route tree. The OIDC pair must stay root-mounted: relying parties derive `/.well-known/openid-configuration` from the issuer origin and never look under `/api`.
 - This is the only `@elizaos/*` package with no published consumers; treat `wrangler.toml` + `index.ts` as the contract.
 
 ## Verification
