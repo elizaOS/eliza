@@ -110,7 +110,7 @@ describe("readCodingRouting", () => {
 
   it("prefers character routing over the env JSON", () => {
     process.env.ELIZA_BACKEND_ROUTING = JSON.stringify({
-      coding: { default: "opencode" },
+      coding: { default: "elizaos" },
     });
     const axis = readCodingRouting(
       fakeRuntime({ routing: { coding: { default: "codex" } } }),
@@ -128,13 +128,13 @@ describe("resolveCodingBackend precedence", () => {
   it("1. explicit user ask wins over character routing and pin", () => {
     const runtime = fakeRuntime({
       routing: { coding: { default: "codex", byTag: { hard: "claude" } } },
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "elizaos" },
     });
     const r = resolveCodingBackend({
       runtime,
       explicit: "claude",
       tag: "simple",
-      plannerGuess: "opencode",
+      plannerGuess: "elizaos",
     });
     expect(r).toEqual({ agentType: "claude", source: "explicit" });
   });
@@ -155,7 +155,7 @@ describe("resolveCodingBackend precedence", () => {
   it("2. character byTag wins over character default and pin", () => {
     const runtime = fakeRuntime({
       routing: { coding: { default: "codex", byTag: { hard: "claude" } } },
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "elizaos" },
     });
     const r = resolveCodingBackend({
       runtime,
@@ -168,7 +168,7 @@ describe("resolveCodingBackend precedence", () => {
   it("3. character default applies when the tag has no mapping", () => {
     const runtime = fakeRuntime({
       routing: { coding: { default: "codex", byTag: { hard: "claude" } } },
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "elizaos" },
     });
     const r = resolveCodingBackend({ runtime, tag: "simple" });
     expect(r).toEqual({ agentType: "codex", source: "character:default" });
@@ -189,10 +189,23 @@ describe("resolveCodingBackend precedence", () => {
 
   it("4. operator pin wins over the planner's heuristic guess", () => {
     const runtime = fakeRuntime({
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "elizaos" },
     });
     const r = resolveCodingBackend({ runtime, plannerGuess: "claude" });
-    expect(r).toEqual({ agentType: "opencode", source: "pin" });
+    expect(r).toEqual({ agentType: "elizaos", source: "pin" });
+  });
+
+  it("resolves the retired opencode name to the elizaos backend", () => {
+    const runtime = fakeRuntime({
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+    });
+    expect(resolveCodingBackend({ runtime, plannerGuess: "claude" })).toEqual({
+      agentType: "elizaos",
+      source: "pin",
+    });
+    expect(
+      resolveCodingBackend({ runtime: fakeRuntime({}), explicit: "opencode" }),
+    ).toEqual({ agentType: "elizaos", source: "explicit" });
   });
 
   it("5. planner guess used when nothing more authoritative applies", () => {
@@ -224,7 +237,7 @@ describe("resolveCodingBackend precedence", () => {
   it("a non-fixed selection strategy disables the pin", () => {
     const runtime = fakeRuntime({
       settings: {
-        ELIZA_ACP_DEFAULT_AGENT: "opencode",
+        ELIZA_ACP_DEFAULT_AGENT: "elizaos",
         ELIZA_AGENT_SELECTION_STRATEGY: "dynamic",
       },
     });
@@ -238,9 +251,9 @@ describe("resolveCodingBackend operator allow lock-list", () => {
     const runtime = fakeRuntime({
       routing: { coding: { default: "claude", allow: ["claude", "codex"] } },
     });
-    // user asks for opencode, but operator locked to claude|codex → skipped,
+    // user asks for elizaos, but operator locked to claude|codex → skipped,
     // resolution continues to the allowed character default.
-    const r = resolveCodingBackend({ runtime, explicit: "opencode" });
+    const r = resolveCodingBackend({ runtime, explicit: "elizaos" });
     expect(r).toEqual({ agentType: "claude", source: "character:default" });
   });
 
@@ -255,9 +268,9 @@ describe("resolveCodingBackend operator allow lock-list", () => {
   it("constrains the pin to the allow-list too", () => {
     const runtime = fakeRuntime({
       routing: { coding: { allow: ["claude"] } },
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "elizaos" },
     });
-    // pin=opencode is disallowed; planner guess claude is allowed.
+    // pin=elizaos is disallowed; planner guess claude is allowed.
     const r = resolveCodingBackend({ runtime, plannerGuess: "claude" });
     expect(r).toEqual({ agentType: "claude", source: "planner" });
   });
@@ -265,7 +278,7 @@ describe("resolveCodingBackend operator allow lock-list", () => {
   it("returns undefined when nothing satisfies the allow-list", () => {
     const runtime = fakeRuntime({
       routing: { coding: { allow: ["elizaos"] } },
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "codex" },
     });
     expect(
       resolveCodingBackend({
@@ -279,7 +292,7 @@ describe("resolveCodingBackend operator allow lock-list", () => {
   it("fails closed when the configured allow-list normalizes to no known backends", () => {
     const runtime = fakeRuntime({
       routing: { coding: { allow: ["gpt-9000", ""] } },
-      settings: { ELIZA_ACP_DEFAULT_AGENT: "opencode" },
+      settings: { ELIZA_ACP_DEFAULT_AGENT: "elizaos" },
     });
     expect(
       resolveCodingBackend({

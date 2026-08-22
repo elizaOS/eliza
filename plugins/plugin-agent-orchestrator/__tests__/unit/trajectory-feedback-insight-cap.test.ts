@@ -1,18 +1,18 @@
 /**
  * Per-trajectory insight budget regression (audit-2 #7).
  *
- * The fast path (pre-extracted metadata insights) has always capped at 50
- * insights per trajectory via `.slice(0, 50)`. The slow-path detail scan
+ * Prompt-integrity contract: BOTH extraction paths surface every insight a
+ * trajectory recorded — an item-count window on model-facing reasoning
  * (legacy trajectories with no metadata insights) previously had NO such cap,
  * so a single trajectory with many steps/LLM calls could balloon the
  * intermediate `experiences` array before the final dedup + `maxEntries` cap.
- * These tests pin BOTH paths to the same 50/trajectory budget.
+ * history is a silent context loss. These tests pin both paths uncapped.
  */
 
 import { describe, expect, it } from "vitest";
 import { queryPastExperience } from "../../src/services/trajectory-feedback";
 
-const MAX = 50;
+const SEEDED = 120;
 
 type Summary = {
   id: string;
@@ -79,18 +79,18 @@ function fastPathLogger(insightCount: number) {
 }
 
 describe("queryPastExperience per-trajectory insight cap (audit-2 #7)", () => {
-  it("caps the SLOW path at 50 insights from a single trajectory", async () => {
+  it("extracts every SLOW-path insight from a single trajectory", async () => {
     // 120 unique decisions in one trajectory; maxEntries is set high so the
     // per-trajectory cap — not the final cap — is what limits the result.
     const runtime = makeRuntime(slowPathLogger(120));
     const result = await queryPastExperience(runtime, { maxEntries: 1_000 });
-    expect(result.length).toBe(MAX);
+    expect(result.length).toBe(SEEDED);
   });
 
-  it("caps the FAST path at 50 insights from a single trajectory", async () => {
+  it("extracts every FAST-path insight from a single trajectory", async () => {
     const runtime = makeRuntime(fastPathLogger(120));
     const result = await queryPastExperience(runtime, { maxEntries: 1_000 });
-    expect(result.length).toBe(MAX);
+    expect(result.length).toBe(SEEDED);
   });
 
   it("returns all insights when a trajectory is under the cap", async () => {

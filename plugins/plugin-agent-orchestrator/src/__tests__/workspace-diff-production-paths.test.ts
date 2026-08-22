@@ -9,6 +9,7 @@ import {
   captureBaselineSha,
   captureChangeSet,
   parseLsFiles,
+  spawnOutputWasTruncated,
   summarizeChangeSet,
   verifyChangedFilesOnDisk,
 } from "../services/workspace-diff.js";
@@ -87,11 +88,40 @@ describe("workspace diff production paths", () => {
     }
   });
 
-  it("drops an incomplete ls-files tail", () => {
-    expect(parseLsFiles("one.ts\ntwo.ts\npartial")).toEqual([
-      "one.ts",
-      "two.ts",
+  it("drops an incomplete ls-files tail AND reports the cut honestly", () => {
+    // A listing that does not end where git ended it (no trailing newline)
+    // was cut by the read buffer: the garbage half-path is dropped and the
+    // cut is REPORTED, never silent — files after the cut are absent and the
+    // caller must mark the change set truncated.
+    expect(parseLsFiles("one.ts\ntwo.ts\npartial")).toEqual({
+      files: ["one.ts", "two.ts"],
+      truncated: true,
+    });
+    expect(parseLsFiles("one.ts\ntwo.ts\n")).toEqual({
+      files: ["one.ts", "two.ts"],
+      truncated: false,
+    });
+    expect(parseLsFiles(undefined)).toEqual({ files: [], truncated: false });
+  });
+
+  it("a complete capture reports truncated:false (honest, not decorative)", async () => {
+    const baseline = await captureBaselineSha(dir);
+    writeFileSync(join(dir, "session.txt"), "created by tool\n");
+    const result = await captureChangeSet(dir, baseline, [
+      join(dir, "session.txt"),
     ]);
-    expect(parseLsFiles(undefined)).toEqual([]);
+    expect(result?.truncated).toBe(false);
+  });
+
+  it("spawnOutputWasTruncated detects ENOBUFS and buffer-sized short reads", () => {
+    const enobufs = Object.assign(new Error("stdout maxBuffer exceeded"), {
+      code: "ENOBUFS",
+    });
+    expect(spawnOutputWasTruncated(enobufs, 100, 1024)).toBe(true);
+    // A read that filled the buffer exactly is a short read: the cut can land
+    // on the boundary with no error object.
+    expect(spawnOutputWasTruncated(undefined, 1024, 1024)).toBe(true);
+    expect(spawnOutputWasTruncated(undefined, 100, 1024)).toBe(false);
+    expect(spawnOutputWasTruncated(new Error("other"), 100, 1024)).toBe(false);
   });
 });

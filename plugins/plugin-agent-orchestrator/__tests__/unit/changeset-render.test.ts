@@ -61,6 +61,11 @@ describe("renderChangeSetBody", () => {
         truncated: true,
       }),
     );
-    expect(out.endsWith("(changeset truncated)")).toBe(true);
+    // The marker must be recoverable: it names the durable record and the
+    // resolver route instead of a bare "(changeset truncated)".
+    expect(out).toContain("changeset truncated at capture");
+    expect(out).toMatch(
+      /GET \/api\/orchestrator\/content\/[0-9a-f]{64}|durable persistence of the captured record failed/,
+    );
   });
 });
