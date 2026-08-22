@@ -143,10 +143,6 @@ const iosDeviceLib = readFileSync(
   path.join(repoRoot, "packages/app/scripts/ios-device-lib.mjs"),
   "utf8",
 );
-const iosDeviceCapture = readFileSync(
-  path.join(repoRoot, "packages/app/scripts/ios-device-capture.mjs"),
-  "utf8",
-);
 const mobileBuildScript = readFileSync(
   path.join(repoRoot, "packages/app-core/scripts/run-mobile-build.mjs"),
   "utf8",
@@ -564,8 +560,8 @@ describe("native assistant entry contracts", () => {
     expect(iosDeviceLib).toContain(
       '"AppUITests/DeviceExtensionSurfaceUITests"',
     );
-    expect(iosDeviceCapture).toContain('"CODE_SIGNING_ALLOWED=YES"');
-    expect(iosDeviceCapture).toContain('"CODE_SIGN_IDENTITY=-"');
+    expect(iosDeviceLib).toContain('"CODE_SIGNING_ALLOWED=YES"');
+    expect(iosDeviceLib).toContain('"CODE_SIGN_IDENTITY=-"');
 
     // This is the assert-level counterpart to WidgetGalleryCaptureUITests.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
