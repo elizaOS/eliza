@@ -978,22 +978,84 @@ final class BootCaptureUITests: XCTestCase {
             app.keyboards.firstMatch.waitForExistence(timeout: 10),
             "the pairing-code keyboard never appeared"
         )
-        pairingField.typeText(pairingCode)
-        let normalizedLength = ((pairingField.value as? String) ?? "")
-            .filter { $0.isLetter || $0.isNumber }.count
-        XCTAssertEqual(
-            normalizedLength,
-            12,
-            "the pasted pairing code did not have the required 12-character shape"
-        )
+        var enteredPairingCode = ""
+        for _ in 0..<3 {
+            let currentValue = (pairingField.value as? String) ?? ""
+            if !currentValue.isEmpty,
+               currentValue.caseInsensitiveCompare("Enter pairing code") != .orderedSame
+            {
+                pairingField.typeText(
+                    String(
+                        repeating: XCUIKeyboardKey.delete.rawValue,
+                        count: min(currentValue.count, 64)
+                    )
+                )
+            }
+            pairingField.typeText(pairingCode)
+            enteredPairingCode = ((pairingField.value as? String) ?? "")
+                .filter { $0.isLetter || $0.isNumber }
+                .uppercased()
+            if enteredPairingCode == pairingCode { break }
+        }
+        guard enteredPairingCode == pairingCode else {
+            throw StrictGateFailure(
+                message: "the pairing field could not be populated with the exact 12-character code"
+            )
+        }
 
+        // The phone keyboard covers the form's visual Submit button on the
+        // compact viewport even though WebKit still reports that button as
+        // hittable. Tapping its stale frame types a character instead of
+        // submitting. Use the real keyboard Done control, which follows the
+        // form's Enter-key path and cannot target the obscured page behind it.
+        let keyboardDone = app.keyboards.buttons.matching(
+            NSPredicate(format: "identifier ==[c] 'Done' OR label ==[c] 'done'")
+        ).firstMatch
+        guard keyboardDone.waitForExistence(timeout: 5), keyboardDone.isHittable else {
+            throw StrictGateFailure(message: "the pairing keyboard Done control was unavailable")
+        }
+        keyboardDone.tap()
+        guard app.keyboards.firstMatch.waitForNonExistence(timeout: 5) else {
+            throw StrictGateFailure(message: "the pairing keyboard did not dismiss")
+        }
+
+        // On WebKit, Done can either submit the form or only blur the field.
+        // A successful submit reloads the app and may replay the original
+        // remote-server trust prompt. Resolve only that exact prompt; if the
+        // form remains, tap its now-unobscured Submit control once. Do not
+        // mistake the trust prompt's hidden page for a missing Submit button.
+        let trustCopy = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'Connect to this server?'")
+        ).firstMatch
+        let pairingTitle = app.staticTexts.matching(
+            NSPredicate(format: "label ==[c] 'Pairing Required'")
+        ).firstMatch
         let submit = app.buttons["Submit"]
-        XCTAssertTrue(submit.waitForExistence(timeout: 5), "pairing Submit control was unavailable")
-        XCTAssertTrue(submit.isHittable, "pairing Submit control was not hittable")
-        submit.tap()
-        XCTAssertTrue(
-            pairingField.waitForNonExistence(timeout: 30),
-            "the app did not leave PairingView after submitting the one-time code"
+        var submittedByButton = false
+        var stableAuthenticatedPolls = 0
+        let connectionDeadline = Date().addingTimeInterval(30)
+        while Date() < connectionDeadline {
+            if trustCopy.exists {
+                try confirmRemoteServerTrustPromptIfNeeded(app, timeout: 5)
+                stableAuthenticatedPolls = 0
+                continue
+            }
+            if pairingField.exists || pairingTitle.exists {
+                stableAuthenticatedPolls = 0
+                if !submittedByButton, submit.exists, submit.isHittable {
+                    submit.tap()
+                    submittedByButton = true
+                }
+            } else if app.webViews.firstMatch.exists {
+                stableAuthenticatedPolls += 1
+                if stableAuthenticatedPolls >= 3 { return }
+            }
+            Thread.sleep(forTimeInterval: 0.35)
+        }
+        attachScreenshot(named: "pairing-020-connection-timeout")
+        attachAccessibilitySnapshot(of: app)
+        throw StrictGateFailure(
+            message: "the app did not reach a stable authenticated shell after pairing"
         )
     }
 
@@ -1056,18 +1118,26 @@ final class BootCaptureUITests: XCTestCase {
         ).firstMatch
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if pairingField.exists {
-                return
-            }
             if trustCopy.exists {
-                let confirm = app.buttons["Ok"]
-                guard confirm.exists, confirm.isHittable else {
-                    throw StrictGateFailure(
-                        message: "the remote-server trust prompt had no hittable Ok control"
-                    )
+                let confirm = app.alerts.firstMatch.buttons.matching(
+                    NSPredicate(format: "label ==[c] 'Ok' OR label ==[c] 'Connect'")
+                ).firstMatch
+                if confirm.exists, confirm.isHittable {
+                    attachScreenshot(named: "pairing-006-server-trust-prompt")
+                    confirm.tap()
+                    return
                 }
-                attachScreenshot(named: "pairing-006-server-trust-prompt")
-                confirm.tap()
+                if confirm.exists, !confirm.frame.isEmpty,
+                   Date().timeIntervalSince(deadline.addingTimeInterval(-timeout)) > 2
+                {
+                    attachScreenshot(named: "pairing-006-server-trust-prompt")
+                    confirm.coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                    ).tap()
+                    return
+                }
+            }
+            if pairingField.exists {
                 return
             }
             Thread.sleep(forTimeInterval: 0.25)
@@ -1075,7 +1145,7 @@ final class BootCaptureUITests: XCTestCase {
         attachScreenshot(named: "pairing-007-server-trust-prompt-missing")
         attachAccessibilitySnapshot(of: app)
         throw StrictGateFailure(
-            message: "the remote-agent deep link exposed neither trust confirmation nor PairingView"
+            message: "the remote-agent deep link exposed no usable trust confirmation or PairingView"
         )
     }
 
