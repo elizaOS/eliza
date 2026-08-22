@@ -8,7 +8,8 @@ This lane now provides a coherent Linux-native demo candidate with the same shar
 
 - Worktree: `/home/nubs/Documents/Codex/2026-08-22/eliza-linux-devices-runtimes`
 - Branch: `codex/linux-devices-runtimes-20260822`
-- Base: `origin/develop` at `c97833f1c53332af08d53bbf0cc029ec05d1bb42`
+- Candidate head: `e1327d8df24284a72dd8f85ef85ffbc0d16fea39`
+- Merged base: `origin/develop` at `8155f4bef54b20a9546ebf1f02be2e52ce56fb46`
 - Draft PR: [#24414](https://github.com/elizaOS/eliza/pull/24414)
 - Publication boundary: the branch and draft PR are pushed for review. Nothing has been merged, deployed, or applied to cloud/production infrastructure.
 - Preserved checkout: `/home/nubs/Documents/Codex/2026-08-14/eliza-voice-implementation-2/work/eliza` was not reset, cleaned, or used for edits.
@@ -77,6 +78,7 @@ Additional current gates:
 - UI TypeScript typecheck: passed.
 - Biome checks over changed files: passed.
 - CI Bun pin contract: 289 sites scanned; 65 contract tests passed.
+- Hosted PR Static Smoke: [run 32596814519](https://github.com/elizaOS/eliza/actions/runs/32596814519) passed on candidate head `e1327d8df` (candidate diff validation, secret scan, workflow lint, pinned workspace setup, core build, affected lint, affected typecheck, and affected build).
 - Earlier full branch suites: Electrobun 82 files with 620 passes and 15 intentional skips; app-core 2,175 tests passed; Linux remote-target suite 19 tests passed.
 - Real local inference on this host: Vulkan ASR and OmniVoice TTS FFI execution passed. This is not physical microphone/speaker or live-provider proof.
 
@@ -88,7 +90,7 @@ Durable QA details and artifact paths are in `reports/linux-parity/packaged-qa.m
 2. **Installer lifecycle:** no `.deb`, `.rpm`, AppImage, Flatpak, clean install, upgrade, uninstall, or reinstall evidence was produced. Available disk headroom was not sufficient for another safe multi-GiB staging tree.
 3. **Physical desktop QA:** Xvfb pixel and compositor-geometry checks are green, but GNOME/Wayland placement, tray integration, shortcuts, suspend/resume, and reboot persistence still require owner-visible hardware QA. Wayland did not permit reliable unattended global screenshots.
 4. **Real devices/providers:** physical microphone/speaker, camera capture, live voice provider chain, second machine/Mac/VPS, WAN reconnect, and changed SSH-host-key confirmation remain separate evidence tiers.
-5. **Hosted gates:** draft-PR CI must be green before review. Merge, release signing, publication, deployment, staging, and production remain approval-gated.
+5. **Review and release authority:** hosted draft-PR CI is green on candidate head `e1327d8df`. Human review, merge, release signing, publication, deployment, staging, and production remain approval-gated.
 
 The native package contains no CEF runtime. Some native wrapper source/binary strings still mention historical CEF sandbox flags; absence of the CEF runtime is the supported claim, not absence of every CEF-related source string.
 
