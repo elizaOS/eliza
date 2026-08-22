@@ -29,6 +29,11 @@ type StoredDiscordEntityProfile = {
 };
 
 const DISCORD_PROFILE_CACHE_TTL_MS = 5 * 60_000;
+// Hard entry cap with newest-wins eviction. The message-author cache is keyed
+// by channelId:messageId (essentially insert-once-never-read-again), so a TTL
+// alone can never collect it — without a cap the process heap grows with the
+// volume of distinct Discord messages ever surfaced (see #24165).
+const DISCORD_PROFILE_CACHE_MAX_ENTRIES = 512;
 
 const discordUserProfileCache = new Map<
 	string,
@@ -61,6 +66,22 @@ function readCachedValue<T>(
 		return undefined;
 	}
 	return entry.value;
+}
+
+function setCachedValue<T>(
+	cache: Map<string, { expiresAt: number; value: T }>,
+	key: string,
+	value: T,
+	now = Date.now(),
+): void {
+	// Reinsert moves the key to the newest slot (Map iteration order).
+	cache.delete(key);
+	cache.set(key, { expiresAt: now + DISCORD_PROFILE_CACHE_TTL_MS, value });
+	while (cache.size > DISCORD_PROFILE_CACHE_MAX_ENTRIES) {
+		const oldest = cache.keys().next().value;
+		if (oldest === undefined) break;
+		cache.delete(oldest);
+	}
 }
 
 function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
@@ -265,10 +286,7 @@ export async function resolveDiscordMessageAuthorProfile(
 					.messages.fetch
 			: null;
 	if (!fetchMessage) {
-		discordMessageAuthorProfileCache.set(cacheKey, {
-			expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-			value: null,
-		});
+		setCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
 		return null;
 	}
 
@@ -299,16 +317,10 @@ export async function resolveDiscordMessageAuthorProfile(
 			avatarUrl: readDiscordAvatarUrl(author),
 			...(rawUserId ? { rawUserId } : {}),
 		};
-		discordMessageAuthorProfileCache.set(cacheKey, {
-			expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-			value: profile,
-		});
+		setCachedValue(discordMessageAuthorProfileCache, cacheKey, profile);
 		return profile;
 	} catch {
-		discordMessageAuthorProfileCache.set(cacheKey, {
-			expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-			value: null,
-		});
+		setCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
 		return null;
 	}
 }
@@ -336,16 +348,10 @@ export async function resolveDiscordUserProfile(
 					: undefined,
 			avatarUrl: readDiscordAvatarUrl(user),
 		};
-		discordUserProfileCache.set(userId, {
-			expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-			value: profile,
-		});
+		setCachedValue(discordUserProfileCache, userId, profile);
 		return profile;
 	} catch {
-		discordUserProfileCache.set(userId, {
-			expiresAt: Date.now() + DISCORD_PROFILE_CACHE_TTL_MS,
-			value: null,
-		});
+		setCachedValue(discordUserProfileCache, userId, null);
 		return null;
 	}
 }
