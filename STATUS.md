@@ -1,89 +1,98 @@
 # LifeOps email and calendar lane
 
-Private checkpoint for the Gmail, Google Calendar, and Apple Calendar product audit. This file contains no provider content, account identifiers, credentials, or secret values.
+Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar candidate. It contains no provider content, account identifiers, credential values, or private event/message data.
 
-## Workspace and checkpoints
+## Workspace and exact checkpoints
 
-- Worktree: `/Users/nubs/.codex/worktrees/a428/eliza`
-- Branch: `codex/lifeops-email-calendar-20260822`
-- Action-time base: `e40d0ae27296741bf75f663235cb4633d07b9d28` (`origin/develop` when the isolated worktree was created)
-- Gmail checkpoint: `6d9e558c23311bbd4ba2f2f4d555c1960f42210e`, tag `lifeops-gmail-sync-receipts-20260822`
-- Apple/Calendar checkpoint: `a56941d8b285c2e45031aa7e2a6735ce0d73de37`, tag `lifeops-apple-calendar-provenance-20260822`
-- `origin/develop` advanced by one commit after these checkpoints. No rebase, push, merge, deploy, OAuth consent, or provider mutation was performed during the overnight closeout.
-- Dirty/shared checkouts were inspected read-only and left untouched.
-- `packages/app-core/platforms/electrobun/native/macos/window-effects.mm` has no LifeOps diff.
+- Worktree: `/Users/nubs/.codex/worktrees/lifeops-ux-recovery-20260822/eliza`
+- Branch: `codex/lifeops-ux-recovery-20260822`
+- Reconciliation merge: `2147c2f0ccdc69a97ca3b93b468d56b1641e0494`
+- `origin/develop` reconciled at recovery time: `6d5ce29a5e45ba7b0cd6957349f71e5c2a141fc4`
+- Preserved Gmail checkpoint: `6d9e558c23311bbd4ba2f2f4d555c1960f42210e`, tag `lifeops-gmail-sync-receipts-20260822`
+- Preserved Apple/Calendar checkpoint: `a56941d8b285c2e45031aa7e2a6735ce0d73de37`, tag `lifeops-apple-calendar-provenance-20260822`
+- Preserved overnight ledger: `0a325e37d98e11c69461470a4fdadaec024d9e32`, tag `lifeops-overnight-checkpoint-20260822`
+- Shared contracts checkpoint: `8f89c8b38d146660e3bb3a176ddb7b305df02188`, tag `lifeops-connection-contracts-20260822`
+- Provider-neutral backend checkpoint: `6a112ea122152d656c011f4590463a14c82de5c6`, tag `lifeops-connection-backend-20260822`
+- Connection UI implementation head: `044eece51502c8a59fb82a70f16b4ceb75a88717`, tag `lifeops-connection-ui-20260822`
+- The annotated UI tag resolves to the implementation head above. This ledger is the immediate follow-on documentation checkpoint.
+- `packages/app-core/platforms/electrobun/native/macos/window-effects.mm` is byte-for-byte unchanged by this lane.
+- No push, PR mutation, merge, deployment, OAuth consent, native permission prompt, or real provider mutation occurred.
 
-## Existing implementation and history
+## Ownership slices
 
-- `plugins/plugin-google-workspace` is the canonical account-scoped Google connector: OAuth, protected credential references, Gmail, and Google Calendar provider APIs.
-- `plugins/plugin-calendar` owns the unified calendar read model, provider synchronization, selection, mutation gateway, and source health.
-- `plugins/plugin-native-calendar` owns the iOS EventKit permission/CRUD bridge and the shared macOS EventKit bridge policy.
-- `plugins/plugin-inbox`, `plugins/plugin-personal-assistant`, and `plugins/plugin-scheduling` own the unified inbox, LifeOps composition/confirmation/audit behavior, and scheduled-item architecture respectively.
-- The superseded experiment `origin/feat/google-personal-mcp-only` at `cb7a81569b` replaces the local Google connector with an official-MCP control plane; it was not copied or revived.
-- `plugins/plugin-personal-assistant/docs/LIFEOPS_LIVE_VALIDATION.md` remains the historical acceptance script and states that real account-backed evidence is outstanding.
-- No separate local-only LifeOps/Gmail/Calendar plugin was found. The maintained first-party plugins above are the user-created/product implementation that was preserved and extended.
+| Slice | Commit | Owned result |
+| --- | --- | --- |
+| Shared contracts | `8f89c8b38d` | Explicit Gmail History health, calendar source/change-delivery health, stable provider provenance, and provider-safe imported-data purge receipts |
+| Provider-neutral backend | `6a112ea122` | Durable Gmail/calendar projections, bounded resync and purge paths, source selection, exact-account identity, retries, and partial-failure receipts |
+| Connection UI/tests/docs | `044eece515` | Focused first-five-minutes and ongoing-management surface, no-provider browser harness, view registration/bundle, component tests, and contributor documentation |
+| macOS native handoff | Existing bounded artifact | `plugins/plugin-calendar/docs/MACOS_EVENTKIT_PROVENANCE_CONTRACT.md`; native implementation remains with the macOS owner |
 
 ## Current capability matrix
 
-Legend: deterministic means fixture/static/integration-backed local evidence; real means current provider/device evidence captured in this lane.
+Legend: deterministic means fixture/unit/integration/local-browser evidence. Real means current provider or physical-device evidence captured in this lane.
 
-| Area | Current implementation | Deterministic | Real | Remaining acceptance boundary |
+| Area | Candidate behavior | Deterministic | Real | Remaining gate |
 | --- | --- | --- | --- | --- |
-| Google OAuth | PKCE/state plus per-flow OIDC nonce; capability-derived least-privilege scopes; server-side token exchange and canonical credential writer | Yes | No | Account chooser, consent, refresh, revoke, and protected-store read-back on a real account |
-| Gmail seed/read | Bounded search/triage seed, paginated provider reads, canonical message/thread projection, attachment metadata | Yes | No | User-facing date/folder selection, resumable seed progress, provider account evidence |
-| Gmail incremental sync | Durable History cursor, fixed multi-page `startHistoryId`, label refresh, tombstones, repeated-token guard, typed expired-cursor bounded resync | Yes | No | Scheduled health presentation, restart/provider cursor-expiry evidence |
-| Gmail drafts | Local preview or explicit provider-backed unsent draft with draft/message receipt and reply threading headers | Yes | No | Real draft create/read-back; no send was performed |
-| Gmail mutations | Immediate confirmation for every execute path; per-message trash receipts; deduped IDs; retryability classification; cache updates only for provider successes; honest partial/failed result | Yes | No | Real disposable send/reply/archive/trash/label acceptance; batch Gmail APIs remain atomic rather than per-message partial |
-| Google Calendar | Existing discovery/selection, bounded seed, sync-token replay, 410 resync, recurrence/exception/all-day/timezone/attendee/reminder/cancellation handling, watch renewal and polling fallback | Yes | No | Real disposable calendar flow, reconnect, webhook loss, DST/conflict evidence |
-| Apple Calendar iOS | EventKit permissions/CRUD, source provenance, portable UID/occurrence/last-modified/recurrence/reminder serialization, `EKEventStoreChanged` cache invalidation | Yes | No | Built app on simulator/device, permission denied/recovery, external-edit evidence |
-| Apple Calendar macOS | Existing native bridge remains owned by the macOS lane | Contract only | No | Implement and validate `plugins/plugin-calendar/docs/MACOS_EVENTKIT_PROVENANCE_CONTRACT.md` without changing its field names |
-| Cross-calendar dedup | Exact RFC5545 UID plus original occurrence identity; direct Google is authoritative over Google surfaced through Apple; both provider sources retained; no title/time fuzzy merge or automatic mirroring | Yes | No | macOS serializer parity and real overlap/no-feedback-loop evidence |
-| Calendar model context | Complete linked-mail snippets preserved, including surrogate pairs, combining marks, and ZWJ graphemes; no model-facing truncation | Yes | N/A | None for this regression |
-| Connection UI | Existing generic connector, Calendar source/health, Inbox, revoke, and selection surfaces | Partial | No | One first-five-minutes Gmail/Google Calendar/Apple Calendar seed-progress/privacy/delete-imported-data flow was not added in the narrowed overnight scope |
+| Google connection | Account-aware connector status; explicit identity scopes and separately selectable Gmail read/draft/send/manage plus Calendar read/write capabilities; least-effect defaults | Yes | No | Real chooser, consent/MFA if requested, callback, protected-token read-back, refresh, and revoke |
+| Account/calendar selection | Active Google account selector; per-source Google and Apple Calendar selection with stable provider/account/calendar provenance | Yes | No | Real multi-account and device-calendar inventory |
+| Bounded seeding | Owner chooses 7, 30, or 90 days; progress phases and final message/event/source/duplicate counts are visible | Yes | No | Real bounded provider counts using disposable data |
+| Gmail ongoing sync | History cursor presence/mode, cache count, last sync, resync reason, retryable partial failures, and explicit refresh | Yes | No | Real restart, expired History cursor, revocation, and quota recovery |
+| Calendar ongoing sync | Per-source freshness, polling/channel health, last success, retryable partial failures, and source-preserving refresh | Yes | No | Real token expiry, webhook loss, EventKit store change, DST, recurrence, and conflicts |
+| Drafts and mutations | UI explains that drafting never sends and proposing never creates; send/manage/calendar-write capabilities default off; effect paths require fresh confirmation and provider receipts | Yes | No | Explicitly approved disposable provider acceptance; no real send or event mutation was run |
+| Apple permissions | EventKit purpose, granted/denied/restricted/unavailable states, request path, and System Settings recovery | Yes | No | Packaged macOS plus simulator/physical-device permission acceptance |
+| Provenance and dedup | Exact provider/account/calendar/external/recurrence identities; Google surfaced through Apple remains read-once/write-once; no title/time fuzzy merge | Yes | No | Real overlap case and macOS serializer parity |
+| Disconnect/purge/reconnect | Disconnect preserves imported projection; purge is separately confirmed and returns `providerMutation: false`; reconnect clears stale grants and reuses stable identities without duplicate counts | Yes | No | Real revoke/reconnect plus disposable imported-data verification |
+| Responsive/accessibility | Desktop and 390px mobile layouts, no horizontal overflow, 44px mobile buttons, semantic dialogs/controls, visible errors, reduced-motion handling | Yes | No | VoiceOver, Dynamic Type, packaged-app keyboard/focus, and physical touch review |
 
 ## Done
 
-- Preserved the existing connector/plugin architecture and isolated all edits from shared/dirty worktrees.
-- Added Google OIDC nonce generation, authorization binding, callback validation, and mismatch coverage.
-- Added Gmail Drafts capability/scope and provider receipt without conflating drafting with sending.
-- Added Gmail History cursor persistence, paginated incremental replay, expiry recovery, tombstones, durable high-water advancement, and database round-trip coverage.
-- Added structured Gmail mutation receipts, per-message partial failure for trash, duplicate prevention, retryability, immediate confirmation, and success-only cache mutation.
-- Fixed reply-draft threading across legacy and rich Gmail metadata.
-- Preserved complete Unicode model context instead of applying a code-unit cap.
-- Added iOS EventKit portable identity, recurrence/reminder/source provenance, store-change observation, and Calendar cache invalidation.
-- Added exact Google-via-Apple recurrence-instance deduplication evidence and the bounded macOS serialization handoff.
-- Created two atomic local commits and two annotated local tags. No external effect occurred.
+- Recovered and preserved the existing implementation rather than replacing it.
+- Reconciled the preserved three-commit checkpoint chain onto the then-current `origin/develop` in an isolated worktree.
+- Split the recovery diff into tagged contracts, backend, and UI checkpoints.
+- Added one focused `/lifeops/connections` surface without duplicating Inbox, Calendar, Auth login, or shared general connector UI.
+- Added explicit OAuth scope/capability explanation and safe read/draft defaults.
+- Added Google account and cross-provider calendar selection, bounded seed range, progress, counts, cursor/source health, partial failure, retry, and denied-permission recovery.
+- Added separate disconnect and imported-data purge confirmations with honest non-provider-mutation receipts.
+- Added provenance/dedup explanation and deterministic disconnect/reconnect/no-duplicate acceptance.
+- Added a real-Chromium no-provider harness on isolated port 41873 with temporary state/evidence outside the repository.
+- Physically inspected final desktop initial, seeded, disconnected, and mobile captures.
+- Preserved the macOS EventKit provenance contract and left the owned native bridge unchanged.
 
 ## Verification evidence
 
-- `plugin-google-workspace` full suite: 29 files, 325 tests passed.
-- Google OAuth/Gmail focused suite: 4 files, 15 tests passed.
-- `plugin-calendar` full suite: 67 files passed, 2 skipped; 644 tests passed, 4 skipped.
-- Calendar Unicode/provenance focused suite: 2 files, 4 tests passed.
-- `plugin-native-calendar` full suite: 3 files, 28 tests passed.
-- Personal Assistant Gmail focused suite: 1 file, 6 tests passed.
-- Personal Assistant repository domain CRUD: 1 file, 3 tests passed.
-- Shared connector catalog: 1 file, 11 tests passed.
-- Typecheck passed for Shared, Google Workspace, Calendar, and native Calendar.
-- Personal Assistant production build passed. Its package-wide typecheck is not a valid green gate in this worktree because unrelated workspace package declaration outputs are absent; the focused compiled suites and production no-check declaration build pass.
-- Package lint checks passed for Shared, Google Workspace, Calendar, native Calendar, and Personal Assistant. Personal Assistant emitted only pre-existing informational suggestions in unrelated surrogate tests.
-- `xcrun swiftc -frontend -parse` passed for the iOS EventKit bridge.
-- `git diff --check` passed and the forbidden macOS owner file has no diff.
-- Root `bun run verify` passed repository guide parity, toolchain/i18n/dependency/alias/workspace-resolution checks, then stopped in the global Turbo lane on existing `packages/ui` formatting errors (`login-page.same-origin.test.tsx` and `maps-card.tsx`). This branch has no `packages/ui` diff.
+- Final no-provider browser acceptance: 13/13 assertions passed in real headless Chromium.
+  - Partial source error, Gmail History cursor, Apple denial recovery, bounded seed/count receipt, explicit retry, purge confirmation, `providerMutation: false`, disconnect stale-grant clearing, reconnect/no duplicates, desktop page errors, mobile overflow, 44px touch targets, and mobile page errors.
+  - Redacted temporary captures: `/var/folders/h3/hz68shz96gz0h9lnyctghppc0000gn/T/eliza-lifeops-e2e-6uzJrn`
+- Focused UI/registration/boundary Vitest: 4 files, 23 tests passed.
+- Focused provider-neutral backend/component/boundary Vitest: 6 files, 50 tests passed.
+- Calendar package unit lane: 67 files passed, 2 skipped; 645 tests passed, 4 skipped.
+- Calendar integration lane through the repository integration config: 2 files, 18 tests passed.
+- Personal Assistant production build passed, including the 34.84 kB focused view bundle and declaration emission.
+- Focused production connection UI TypeScript check passed with no diagnostics.
+- Biome passed all 15 changed TypeScript/TSX/MJS/JSON source files with no fixes.
+- Repository CLAUDE/AGENTS parity passed for all 160 tracked pairs.
+- App audit passed: 224 views reviewed, 211 verified, 0 broken, and 13 audit entries left for human eyeballing; final LifeOps desktop/mobile captures were manually inspected separately.
+- `git diff --check` passed before the UI commit.
+- No test or harness contacted Google, Gmail, Google Calendar, Apple Calendar, OAuth, or a native permission surface.
+
+## Known non-scoped repository baselines
+
+- The package-wide Personal Assistant typecheck continues to report pre-existing diagnostics in unrelated browser, Signal, and legacy Google delegate modules. The focused production connection UI typecheck is green.
+- A broad Personal Assistant suite was intentionally stopped after unrelated existing brief/fuzz/connector/anticipation/register failures appeared. The exact owned test selection above is green and is the acceptance gate for this bounded checkpoint.
+- These baselines were not expanded into this lane and do not invalidate the focused connection candidate.
 
 ## Doing
 
-- No further feature expansion is active in this overnight checkpoint. The implementation is committed; only the private status checkpoint and local final tag remain.
+- No local implementation work remains in the bounded Gmail/Google Calendar/Apple Calendar connection UI checkpoint.
 
-## Next
+## Next: true external gates only
 
-- Rebase a review branch onto then-current `origin/develop`, rerun affected and root gates, and prepare a draft PR only when external GitHub work is authorized.
-- Route the exact macOS EventKit contract to the macOS owner; do not edit its native file from this lane.
-- Run real-provider acceptance only with explicit action-time approval: Google OAuth/account chooser, disposable Gmail/calendar data, Apple permission prompts, packaged macOS, and iOS simulator/device.
-- If the broader LifeOps product lane resumes, finish the unified first-five-minutes connection/seed/progress/privacy/disconnect/delete/reconnect UI and visual audits. That work is intentionally outside this narrowed overnight checkpoint.
+- Real Google account chooser/consent/MFA, callback, token refresh/revoke, and protected credential-store read-back.
+- Explicitly approved disposable Gmail and Google Calendar acceptance; sending mail or changing provider events remains prohibited until that approval.
+- Packaged macOS Apple Calendar permission/recovery and macOS owner implementation of the preserved EventKit serialization contract.
+- iOS simulator/physical-device EventKit permission, external-edit, recurrence, timezone/DST, and reconnect acceptance.
+- Hosted reviewer/CI, draft PR, signing, and deployment gates; no push, PR, merge, signing, or deployment is authorized here.
 
-## Concrete user actions and gates
+## Concrete user action now
 
-- No user action is needed for this local checkpoint.
-- No real email was sent, archived, labeled, trashed, or deleted. No real calendar event was created, changed, invited, or deleted.
-- OAuth consent, password/MFA, Apple permission prompts, provider billing/configuration, push/PR, merge, deployment, and production changes remain explicit future gates.
+- None. The local deterministic candidate is complete. The next action is only needed when the user chooses to supervise a real Google chooser/MFA or Apple permission prompt, or authorizes hosted review/deployment work.
