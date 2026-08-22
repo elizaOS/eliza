@@ -79,10 +79,9 @@ describe("repository ruleset contract", () => {
     expect(helper).toContain("repository ruleset drift detected");
   });
 
-  test("runs readback on schedule, manual request, and external dispatch", () => {
+  test("runs readback by manual request and external dispatch", () => {
     expect(Object.keys(drift.on).sort()).toEqual([
       "repository_dispatch",
-      "schedule",
       "workflow_dispatch",
     ]);
     expect(drift.on.repository_dispatch.types).toEqual([

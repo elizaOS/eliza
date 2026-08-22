@@ -14,22 +14,23 @@ building plus linting and typechecking the affected workspace closure. It does
 not run tests, scenarios, live providers, devices, deployments, or destructive
 effects. New commits cancel stale work for the same pull request or merge group.
 
-`ci.yml` is currently the primary develop validation graph. A newer develop tip
-cancels its older read-only run. It remains directly push-triggered during the
-trigger-authority migration; the next consolidation slice must put this graph
-and the other develop validation families behind one `Develop Full` entry point.
-Until that lands, a green `ci.yml` run is not the complete-manifest develop
-verdict and must not be represented as one.
+`develop-full.yml` is the sole develop-push workflow. Its stable concurrency
+group cancels the complete read-only graph for a superseded tip, delegates each
+validation family to its reusable workflow, and publishes `Complete manifest`
+only when every family succeeds. Publication and deployment workflows remain
+manual until durable current-SHA effect fencing makes cancellation safe.
+The delegated `platform-smoke.yml` family preserves macOS and Windows core
+proof without a separate periodic authority.
 
 `.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
 manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
 is read-only by default (`--check`) and requires explicit `--apply` authority to
 create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
-same semantic readback on a schedule, by manual dispatch, and through the
+same semantic readback by manual dispatch and through the
 `repository_ruleset_drift` external repository-dispatch event. A green readback
 proves configuration parity only; owner audit-log review plus red/green and
-direct-push canaries remain required after an authorized apply. Scheduled and
-external readback requires an owner-provisioned
+direct-push canaries remain required after an authorized apply. External
+readback requires an owner-provisioned
 `REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
 `Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
 that repository permission and is never used for this readback.
@@ -50,25 +51,10 @@ after proving contributor-safe signed squash/rebase canaries; ordinary approval,
 last-push approval, thread resolution, status checks, linear history, and the
 force-push/deletion bans remain active here.
 
-`nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
-core smoke tests. It never publishes packages or creates releases.
+## On-demand security analysis
 
-`develop-health.yml` is the canonical uncontended trunk-health lane (#19181).
-Pending push-triggered develop runs can still supersede each other during merge
-waves and hosted capacity can delay their start. This lane independently runs
-the repository verify gate on the live develop tip four times a day (and on
-manual dispatch) from a single hosted runner, in a fixed
-never-cancelled concurrency group, and publishes the outcome as a
-`develop-health` commit status on the exact SHA it measured. A missing status
-means no measurement concluded; a red status means develop is actually red —
-the lane exists to keep those two states distinguishable while the fleet is
-saturated.
-[![develop health](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml/badge.svg?branch=develop)](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml)
-
-## Scheduled security analysis
-
-`codeql.yml` runs JavaScript/TypeScript CodeQL analysis only on its weekly
-schedule or by explicit manual dispatch. It deliberately has no `push` or
+`codeql.yml` runs JavaScript/TypeScript CodeQL analysis only by explicit manual
+dispatch. It deliberately has no `push` or
 `pull_request` trigger, so CodeQL cannot add work or checks to ordinary pull
 request updates. Seven category-distinct production shards keep the default
 security suite inside hosted-job limits while covering every maintained package,
@@ -84,7 +70,7 @@ title check cover narrower contracts. None replaces the required
 `All Tests Passed` aggregate.
 Representative examples:
 
-- `gitleaks.yml` scans protected-branch pushes. `pr-static-smoke.yml` owns the
+- `gitleaks.yml` scans the develop tip inside Develop Full. `pr-static-smoke.yml` owns the
   equivalent diff-scoped pull-request secret scan on a hosted runner.
 - `quality.yml` supplies the extended homepage build and workspace format gate
   for `main`-targeted PRs and post-merge pushes, including the single
@@ -95,15 +81,8 @@ Representative examples:
   WebKit fixture gates when `packages/ui/src/**` changes.
 - `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
   device-bundle producer (#19640). Pull requests never call it;
-  `workflow_dispatch` is the on-demand route, and a weekly cadence currently
-  hard-gates only the explicit host-safe Android subset;
-  scheduled runs do not allocate the macOS/iOS job. A scheduled Android
-  non-success opens, updates, or reopens one stable failure issue containing
-  exact run-attempt, attempt-scoped artifact, and revision links; the next
-  successful cadence updates and closes it so the issue never remains stale.
-  The notifier has job-scoped read access to Actions and contents plus issue
-  write access; reusable and manually dispatched runs never write issues.
-  [![scheduled device e2e](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml/badge.svg?branch=develop&event=schedule)](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml?query=event%3Aschedule)
+  `workflow_dispatch` is the on-demand route and `workflow_call` is available to
+  an explicit trusted caller.
   Artifact names include the run ID and attempt so reruns cannot overwrite or
   link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
   root after checkout, then run the bundle-owning runners with `--output`. A
@@ -111,7 +90,7 @@ Representative examples:
   `junit.xml`) on success and failure; an earlier toolchain or device failure
   retains the bootstrap record plus the Actions log. No job reads a repository
   secret.
-- `android-arm64-local-e2e.yml` is the separate weekly, schedule-only
+- `android-arm64-local-e2e.yml` is the separate trusted repository-dispatch
   self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
   `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
   contract: the job stays queued until such a runner is online, then fails
@@ -119,8 +98,9 @@ Representative examples:
   toolchain preflight. Preflight output is uploaded even when a prerequisite
   fails before the bundle runner starts. It runs local chat plus
   local-runtime/route WebView probes; on-device voice remains separately
-  qualified. Manual arbitrary-ref dispatch is intentionally unavailable
-  because this runner persists and owns a physical device.
+  qualified. Manual arbitrary-ref dispatch is intentionally unavailable because
+  this runner persists and owns a physical device; repository dispatch resolves
+  the workflow from the trusted default branch.
 
 ## Manual operations
 
@@ -132,8 +112,7 @@ Representative examples:
   and an always-uploaded evidence bundle. The
   `dedicated` suite owns the managed dedicated staging canary and exact
   stale-canary recovery. Specialized app and voice evidence also flows through
-  `app-live-e2e.yml` and `voice-live-e2e.yml`, which run on schedule or
-  dispatch.
+  `app-live-e2e.yml` and `voice-live-e2e.yml`, which run only by dispatch.
 - `release.yaml` is the npm, canonical Git tag, and GitHub Release authority.
   It creates the release as the final step of its npm/version transaction.
   The stable tag then triggers `release-electrobun.yml`, which resolves and
@@ -319,9 +298,8 @@ reads a value back from a provider.
 
 ## Maintenance and assistance
 
-`weekly-maintenance.yml` provides the single scheduled dependency/security
-maintenance signal. `claude.yml` remains opt-in through mentions and is not a
-required check.
+`weekly-maintenance.yml` provides on-demand dependency/security maintenance.
+`claude.yml` remains opt-in through mentions and is not a required check.
 
 When adding automation, prefer extending an existing package script and one of
 these workflows. A new workflow requires a distinct trigger, credential, runner,

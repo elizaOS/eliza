@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Enforces develop-only automated pushes and one lightweight pull-request and
- * merge-group authority. Other PR-adjacent triggers remain forbidden while
- * develop validation is consolidated behind its own top-level authority.
+ * Enforces one lightweight pull-request authority and one latest-tip develop
+ * authority. Periodic and completion-chained triggers remain forbidden so a
+ * merged develop tip is the repository's only automatic full-validation event.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -17,6 +17,8 @@ const FORBIDDEN_EVENTS = new Set([
   "pull_request_target",
 ]);
 const CANONICAL_ADMISSION_WORKFLOW = "pr-static-smoke.yml";
+const DEVELOP_AUTHORITY_WORKFLOW = "develop-full.yml";
+const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
 const REQUIRED_PR_BRANCHES = ["develop", "main"];
 const REQUIRED_PR_TYPES = [
   "opened",
@@ -70,6 +72,11 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     if (name === CANONICAL_ADMISSION_WORKFLOW) sawCanonicalWorkflow = true;
 
     for (const [eventName, config] of entries) {
+      if (FORBIDDEN_AUTOMATION_EVENTS.has(eventName)) {
+        failures.push(
+          `${name}: ${eventName} is forbidden; Develop Full owns automatic post-merge validation`,
+        );
+      }
       if (FORBIDDEN_EVENTS.has(eventName)) {
         failures.push(
           `${name}: forbidden pull-request event trigger: ${eventName}`,
@@ -136,12 +143,19 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
         continue;
       }
       developPushWorkflows += 1;
+      if (name !== DEVELOP_AUTHORITY_WORKFLOW) {
+        failures.push(
+          `${name}: develop push is reserved for ${DEVELOP_AUTHORITY_WORKFLOW}`,
+        );
+      }
     }
   }
 
   if (files === 0) failures.push("No workflow files were found.");
-  if (developPushWorkflows === 0)
-    failures.push("No develop push workflows were found.");
+  if (developPushWorkflows !== 1)
+    failures.push(
+      `Expected exactly one develop push workflow (${DEVELOP_AUTHORITY_WORKFLOW}); found ${developPushWorkflows}.`,
+    );
   if (sawCanonicalWorkflow && !sawCanonicalPullRequest) {
     failures.push(
       `${CANONICAL_ADMISSION_WORKFLOW}: canonical pull_request trigger is absent or invalid`,
@@ -155,7 +169,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   if (failures.length > 0) {
     throw new Error(
       [
-        "GitHub workflow triggers must expose only the PR Static Smoke authority, reserve other PR-adjacent events, and target automated branch pushes to develop:",
+        "GitHub workflow triggers must expose only PR Static Smoke and Develop Full as automatic validation authorities:",
         ...failures,
       ].join("\n"),
     );
