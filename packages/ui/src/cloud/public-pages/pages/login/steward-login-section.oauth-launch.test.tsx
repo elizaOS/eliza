@@ -90,6 +90,26 @@ vi.mock("@stwd/sdk", () => ({
 }));
 
 vi.mock("./telegram-login-widget", () => ({
+  configuredTelegramBotUsername: () => "elizastagingfelibot",
+  TelegramLoginWidget: ({
+    onAuth,
+  }: {
+    onAuth: (payload: Record<string, unknown>) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onAuth({
+          id: 42,
+          first_name: "Eliza",
+          auth_date: 1_787_000_000,
+          hash: "signed-payload",
+        })
+      }
+    >
+      Complete Telegram sign-in
+    </button>
+  ),
   TelegramLoginCancelledError: class TelegramLoginCancelledError extends Error {},
   getConfiguredTelegramBotId: () => "7684336618",
   requestTelegramLogin: () =>
@@ -261,6 +281,9 @@ describe("StewardLoginSection OAuth launch", () => {
     renderSection();
 
     fireEvent.click(await screen.findByRole("button", { name: "Telegram" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete Telegram sign-in" }),
+    );
 
     await waitFor(() => expect(oauthState.telegramSignIns).toHaveLength(1));
     expect(oauthState.telegramSignIns[0]).toMatchObject({

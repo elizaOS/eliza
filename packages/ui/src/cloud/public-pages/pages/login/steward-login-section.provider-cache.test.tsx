@@ -65,6 +65,8 @@ vi.mock("./passkey-capability", () => ({
 }));
 
 vi.mock("./telegram-login-widget", () => ({
+  configuredTelegramBotUsername: () => "elizastagingfelibot",
+  TelegramLoginWidget: () => null,
   TelegramLoginCancelledError: class TelegramLoginCancelledError extends Error {},
   getConfiguredTelegramBotId: () => "7684336618",
   requestTelegramLogin: () => new Promise(() => {}),
@@ -126,7 +128,6 @@ const CACHED_PROVIDERS = {
   github: false,
   telegram: true,
   twitter: false,
-  telegram: true,
   oauth: [],
 };
 
