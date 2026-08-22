@@ -39,6 +39,8 @@ import {
 	type DocumentListQueryParams,
 	type DocumentListRequesterRole,
 	type DocumentMutationSnapshot,
+	type DocumentRangeReadParams,
+	type DocumentRangeReadResult,
 	type IAgentRuntime,
 	type Memory,
 	MemoryType,
@@ -710,6 +712,40 @@ export class DocumentService extends Service {
 			fragments.push(...page);
 			if (page.length < pageSize) return fragments;
 		}
+	}
+
+	/**
+	 * Read an exact authorized source page without fetching the parent content
+	 * into the runtime. Adapters must advertise the native capability; there is
+	 * deliberately no whole-document compatibility fallback.
+	 */
+	async readDocumentRange(
+		documentId: UUID,
+		options: Pick<DocumentRangeReadParams, "unit" | "offset" | "limit">,
+		message?: Memory,
+	): Promise<DocumentRangeReadResult | null> {
+		const adapter = this.runtime.adapter;
+		if (
+			adapter.documentRangeReadCapability !== 1 ||
+			typeof adapter.readDocumentRange !== "function"
+		) {
+			throw new ElizaError(
+				"The database adapter does not support bounded document reads",
+				{
+					code: "DOCUMENT_RANGE_READ_UNSUPPORTED",
+					context: { documentId },
+				},
+			);
+		}
+		const requester = await resolveDocumentRequester(this.runtime, message);
+		return adapter.readDocumentRange({
+			agentId: this.runtime.agentId,
+			documentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+			...options,
+		});
 	}
 
 	async listDocuments(

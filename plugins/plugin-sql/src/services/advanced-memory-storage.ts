@@ -281,7 +281,7 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       worldId,
       source: ADVANCED_MEMORY_SOURCE,
       type: ChannelType.SELF,
-      name: `Advanced Memory ${entityId.slice(0, 8)}`,
+      name: `Advanced Memory ${entityId}`,
       metadata: {
         purpose: "long_term_memory",
         entityId,

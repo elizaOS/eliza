@@ -977,9 +977,6 @@ function buildNativeRequestBody(
   }
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
   if (userReasoningEffort) {
-    // Token caps bound output length; they do not express reasoning intent.
-    // Preserve the explicit user pin unless the caller independently asks for
-    // thinking="off" below.
     requestBody.reasoning_effort = userReasoningEffort;
   }
   // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"

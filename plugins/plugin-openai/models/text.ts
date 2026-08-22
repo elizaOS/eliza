@@ -30,6 +30,7 @@ import {
   recordLlmCall,
   resolveEffectiveSystemPrompt,
   sanitizeFunctionNameForCerebras,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   generateText,
@@ -371,6 +372,7 @@ function resolveThinkingOffReasoningEffort(
   if (isCerebrasMode(runtime)) {
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
+    if (cerebrasId === "gemma-4-31b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -379,23 +381,24 @@ function resolveThinkingOffReasoningEffort(
 }
 
 /**
- * Per-model Cerebras reasoning default. Only exact models in the published
- * provider contract receive the field; compatible endpoints reject unknown
- * request properties instead of ignoring them.
+ * Per-model Cerebras reasoning default. Gemma does not reason unless this
+ * field is sent, so its non-surprising default is explicit `"none"`; callers
+ * that deliberately configure a different effort remain authoritative.
  */
 function resolveCerebrasDefaultReasoningEffort(
   modelName: string | undefined
-): ReasoningEffort | undefined {
+): ReasoningEffort | "none" | undefined {
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  if (id === "gemma-4-31b") return "none";
   return undefined;
 }
 
 function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
-): ReasoningEffort | undefined {
+): ReasoningEffort | "none" | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
@@ -407,7 +410,8 @@ function resolveReasoningEffort(
     );
   }
   // The exact provider contract gates this default: family lookalikes may
-  // reject the field. An explicit valid value above wins over this default.
+  // reject the field, while each documented model has its own safe default.
+  // An explicit valid value above always wins over this default.
   if (isCerebrasMode(runtime)) {
     return resolveCerebrasDefaultReasoningEffort(modelName);
   }
@@ -681,6 +685,19 @@ function restoreStrictSafePlannerArgs(value: unknown): unknown {
   return restored;
 }
 
+function sanitizeToolDescriptionPreservingDescriptors<T extends object>(tool: T): T {
+  const descriptor = Object.getOwnPropertyDescriptor(tool, "description");
+  if (!descriptor || !("value" in descriptor) || typeof descriptor.value !== "string") {
+    return tool;
+  }
+  const description = toWellFormedUnicode(descriptor.value);
+  if (description === descriptor.value) return tool;
+  const sanitized = Object.create(Object.getPrototypeOf(tool)) as T;
+  Object.defineProperties(sanitized, Object.getOwnPropertyDescriptors(tool));
+  Object.defineProperty(sanitized, "description", { ...descriptor, value: description });
+  return sanitized;
+}
+
 /**
  * Native tool normalization plus the strict-safe record/map transform selected
  * for #13111. Tool schemas still close every object with additionalProperties:
@@ -699,81 +716,48 @@ function normalizeNativeToolsForCall(
     return { recordArgTransformsByTool };
   }
 
-  // Existing AI SDK callers already pass a ToolSet keyed by tool name. Normalize
-  // only those wire keys. Preserve lazy/accessor descriptors without observing
-  // them while repairing serializable fields that are already concrete values.
+  // Existing AI SDK callers already pass a ToolSet keyed by tool name. Keep it
+  // descriptor-compatible so custom tool instances, execute hooks, lazy schema
+  // wrappers, and dynamic metadata are preserved. Raw object-style definitions
+  // are still sanitized before the SDK observes them.
   if (!Array.isArray(tools)) {
-    if (typeof tools !== "object" || tools === null) {
-      throw new ElizaError("[OpenAI] Native tools must be an array or ToolSet object.", {
-        code: "OPENAI_INVALID_TOOL_SET",
-        severity: "ephemeral",
-      });
-    }
-    const source = tools as Record<PropertyKey, unknown>;
-    const normalized = Object.create(null) as Record<PropertyKey, unknown>;
-    const toolNameMap = new Map<string, string>();
-    const originalNameByRegisteredName = new Map<string, string>();
+    const toolSet = tools as ToolSet;
+    const descriptors = Object.getOwnPropertyDescriptors(toolSet);
     let changed = false;
-    for (const key of Reflect.ownKeys(source)) {
-      const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    const sanitized = Object.create(Object.getPrototypeOf(toolSet)) as ToolSet;
+    for (const key of Reflect.ownKeys(descriptors)) {
+      const descriptor = descriptors[key as keyof typeof descriptors];
       if (!descriptor) continue;
-      if (typeof key !== "string" || !descriptor.enumerable) {
-        Object.defineProperty(normalized, key, descriptor);
-        continue;
-      }
-      const wellFormedName = deepToWellFormedUnicode(key);
-      const registeredName = options.cerebrasMode
-        ? sanitizeFunctionNameForCerebras(wellFormedName)
-        : wellFormedName;
-      const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
-      if (collidingOriginalName !== undefined && collidingOriginalName !== key) {
-        throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
+      const sanitizedKey = typeof key === "string" ? toWellFormedUnicode(key) : key;
+      if (Object.hasOwn(sanitized, sanitizedKey)) {
+        throw new ElizaError("[OpenAI] Native tool names collide after Unicode normalization.", {
           code: "OPENAI_TOOL_NAME_COLLISION",
-          context: {
-            registeredName,
-            toolNames: [collidingOriginalName, key],
-          },
           severity: "ephemeral",
         });
       }
-      originalNameByRegisteredName.set(registeredName, key);
-      toolNameMap.set(key, registeredName);
-      let normalizedDescriptor = descriptor;
-      if ("value" in descriptor && descriptor.value && typeof descriptor.value === "object") {
-        const tool = descriptor.value as Record<PropertyKey, unknown>;
-        const toolClone = Object.create(null) as Record<PropertyKey, unknown>;
-        let toolChanged = false;
-        for (const toolKey of Reflect.ownKeys(tool)) {
-          const toolDescriptor = Object.getOwnPropertyDescriptor(tool, toolKey);
-          if (!toolDescriptor) continue;
-          let nextDescriptor = toolDescriptor;
-          if (
-            typeof toolKey === "string" &&
-            toolDescriptor.enumerable &&
-            "value" in toolDescriptor &&
-            (typeof toolDescriptor.value === "string" || toolKey === "parameters")
-          ) {
-            const sanitizedValue = deepToWellFormedUnicode(toolDescriptor.value);
-            if (sanitizedValue !== toolDescriptor.value) {
-              toolChanged = true;
-              nextDescriptor = { ...toolDescriptor, value: sanitizedValue };
-            }
+      let nextDescriptor = descriptor;
+      if ("value" in descriptor) {
+        const tool = descriptor.value;
+        if (tool && typeof tool === "object") {
+          const inputSchemaDescriptor = Object.getOwnPropertyDescriptor(tool, "inputSchema");
+          const parametersDescriptor = Object.getOwnPropertyDescriptor(tool, "parameters");
+          const sanitizedTool = inputSchemaDescriptor
+            ? sanitizeToolDescriptionPreservingDescriptors(tool)
+            : parametersDescriptor
+              ? deepToWellFormedUnicode(tool)
+              : sanitizeToolDescriptionPreservingDescriptors(tool);
+          if (sanitizedTool !== tool) {
+            nextDescriptor = { ...descriptor, value: sanitizedTool };
+            changed = true;
           }
-          Object.defineProperty(toolClone, toolKey, nextDescriptor);
-        }
-        Object.setPrototypeOf(toolClone, Object.getPrototypeOf(tool));
-        if (toolChanged) {
-          changed = true;
-          normalizedDescriptor = { ...descriptor, value: toolClone };
         }
       }
-      changed ||= registeredName !== key;
-      Object.defineProperty(normalized, registeredName, normalizedDescriptor);
+      if (sanitizedKey !== key) changed = true;
+      Object.defineProperty(sanitized, sanitizedKey, nextDescriptor);
     }
     return {
-      tools: (changed ? normalized : tools) as ToolSet,
+      tools: changed ? sanitized : toolSet,
       recordArgTransformsByTool,
-      toolNameMap,
     };
   }
 
@@ -898,7 +882,7 @@ function normalizeNativeToolsForCall(
       // so the assembled ToolSet must never be deep-walked afterwards (every
       // child RESPONSE_HANDLER call died on it, live 2026-08-21).
       ...(description ? { description: deepToWellFormedUnicode(description) } : {}),
-      inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      inputSchema: jsonSchema(deepToWellFormedUnicode(inputSchema) as JSONSchema7),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined

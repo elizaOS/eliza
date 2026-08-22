@@ -18,18 +18,26 @@ import {
 	listConversationAttachments,
 	readAttachmentRecords,
 } from "./attachmentContext.ts";
+import { readAttachmentAction } from "./readAttachmentAction.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000a9" as UUID;
 const userId = "00000000-0000-0000-0000-000000000002" as UUID;
 const ownerId = "00000000-0000-0000-0000-000000000003" as UUID;
 const roomId = "00000000-0000-0000-0000-000000000004" as UUID;
+const worldId = "00000000-0000-0000-0000-00000000000a" as UUID;
 
 function makeRuntime(recentMessages: Memory[]): IAgentRuntime {
 	return {
 		agentId,
 		getConversationLength: () => 20,
 		getMemories: async () => recentMessages,
-		getRoom: async () => null,
+		getRoom: async () => ({ id: roomId, worldId }),
+		getWorld: async () => ({
+			id: worldId,
+			agentId,
+			metadata: { roles: { [userId]: "USER" } },
+		}),
+		getService: () => null,
 		logger: { warn: () => undefined },
 	} as unknown as IAgentRuntime;
 }
@@ -39,6 +47,7 @@ function viewerMessage(text = "read the attachment"): Memory {
 		id: "00000000-0000-0000-0000-000000000005" as UUID,
 		entityId: userId,
 		roomId,
+		worldId,
 		content: { text },
 		createdAt: 2,
 	} as Memory;
@@ -82,6 +91,15 @@ function privateAttachmentMemory(granted = false): Memory {
 	} as Memory;
 }
 
+function fullGrantPrivateAttachmentMemory(): Memory {
+	const memory = privateAttachmentMemory(false);
+	memory.metadata = {
+		...memory.metadata,
+		share: { grants: [{ entityId: userId, mode: "full" }] },
+	};
+	return memory;
+}
+
 describe("attachmentContext disclosure", () => {
 	it("omits owner-private attachments for an ungranted requester", async () => {
 		const attachments = await listConversationAttachments(
@@ -107,6 +125,60 @@ describe("attachmentContext disclosure", () => {
 		expect(records[0]?.attachment.thumbnailUrl).toBeUndefined();
 		expect(records[0]?.attachment.text).toBeUndefined();
 		expect(records[0]?.content).toBe("");
+	});
+
+	it("rechecks disclosure on every action page and blocks a continuation after revocation", async () => {
+		let recentMessages = [fullGrantPrivateAttachmentMemory()];
+		const modelCalls: string[] = [];
+		const runtime = {
+			...makeRuntime(recentMessages),
+			getMemories: async () => recentMessages,
+			getSetting: () => undefined,
+			getService: () => null,
+			reportError: () => undefined,
+			useModel: async (_type: unknown, params: { prompt: string }) => {
+				modelCalls.push(params.prompt);
+				return "authorized answer";
+			},
+		} as unknown as IAgentRuntime;
+		const first = await readAttachmentAction.handler?.(
+			runtime,
+			viewerMessage(),
+			undefined,
+			{
+				parameters: {
+					action: "read",
+					attachmentId: "private-image",
+					limit: 8,
+				},
+			},
+		);
+		expect(first?.success).toBe(true);
+		expect(first?.text).toBe("full ext");
+		const revision = (
+			first?.data as { readView: { slice: { revision?: string } } } | undefined
+		)?.readView.slice.revision;
+
+		recentMessages = [privateAttachmentMemory(false)];
+		const revoked = await readAttachmentAction.handler?.(
+			runtime,
+			viewerMessage(),
+			undefined,
+			{
+				parameters: {
+					action: "read",
+					attachmentId: "private-image",
+					offset: 8,
+					limit: 8,
+					expectedRevision: revision,
+				},
+			},
+		);
+		expect(revoked?.success).toBe(false);
+		expect(revoked?.error).toBe("ATTACHMENT_UNAVAILABLE_OR_UNAUTHORIZED");
+		expect(revoked?.values).toMatchObject({ awaitingSelection: false });
+		expect(revoked?.text).not.toContain("racted text");
+		expect(modelCalls).toHaveLength(1);
 	});
 });
 

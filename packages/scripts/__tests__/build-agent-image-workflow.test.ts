@@ -17,6 +17,13 @@ const workflowText = readFileSync(
   new URL("../../../.github/workflows/build-agent-image.yml", import.meta.url),
   "utf8",
 );
+const parsedWorkflow = Bun.YAML.parse(workflowText) as {
+  on?: {
+    workflow_dispatch?: {
+      inputs?: Record<string, { options?: string[]; type?: string }>;
+    };
+  };
+};
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -175,8 +182,13 @@ describe("build-agent-image workflow", () => {
         options:
           - canonical
           - demo`);
-    expect(workflowText).not.toMatch(
-      /publication_target:[\s\S]*?type:\s*(?:string|environment)/,
+    expect(
+      parsedWorkflow.on?.workflow_dispatch?.inputs?.publication_target,
+    ).toEqual(
+      expect.objectContaining({
+        type: "choice",
+        options: ["canonical", "demo"],
+      }),
     );
     expect(workflowText).toContain("REGISTRY: ghcr.io");
     expect(workflowText).toContain(

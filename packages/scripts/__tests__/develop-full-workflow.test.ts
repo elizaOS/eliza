@@ -43,6 +43,7 @@ const surfaceGraph = JSON.parse(
   ),
 ) as {
   knownNonValidationInputs?: string[];
+  reusePolicy?: string;
   surfaces: Array<{ id: string; workflow: string; inputs: string[] }>;
 };
 
@@ -74,7 +75,7 @@ describe("Develop Full workflow authority", () => {
 
   test("delegates the complete read-only validation graph", () => {
     expect(Object.keys(workflow.jobs ?? {}).sort()).toEqual(
-      [...delegatedJobs, "complete", "plan"].sort(),
+      [...delegatedJobs, "complete", "handoff-effects", "plan"].sort(),
     );
     for (const name of delegatedJobs) {
       const job = workflow.jobs?.[name];
@@ -109,6 +110,7 @@ describe("Develop Full workflow authority", () => {
   });
 
   test("fails closed unless every delegated family has current evidence", () => {
+    expect(surfaceGraph.reusePolicy).toBe("current-run-only");
     const complete = workflow.jobs?.complete;
     expect(complete?.if).toBe(
       `\${{ always() && needs.plan.result == 'success' }}`,
@@ -143,5 +145,20 @@ describe("Develop Full workflow authority", () => {
         step.uses?.startsWith("actions/upload-artifact@"),
       ),
     ).toBe(true);
+  });
+
+  test("hands only the successful exact aggregate to durable reconciliation", () => {
+    const handoff = workflow.jobs?.["handoff-effects"];
+    expect(handoff?.needs).toBe("complete");
+    expect(handoff?.if).toBe(`\${{ needs.complete.result == 'success' }}`);
+    expect(handoff?.permissions).toEqual({
+      actions: "write",
+      contents: "read",
+    });
+    expect(handoff?.steps?.[0]?.run).toContain(
+      "/actions/workflows/develop-reconcile.yml/dispatches",
+    );
+    expect(handoff?.steps?.[0]?.run).toContain("inputs[source_sha]");
+    expect(handoff?.steps?.[0]?.run).toContain("inputs[source_run_id]");
   });
 });
