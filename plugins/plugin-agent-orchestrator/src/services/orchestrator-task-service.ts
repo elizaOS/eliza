@@ -665,7 +665,7 @@ export function composeVerifyEscalationNotice(
   const missingLine =
     missing.length > 0 ? ` Couldn't confirm: ${missing.join("; ")}.` : "";
   return (
-    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so I've parked it for you. ` +
+    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so it's waiting on you. ` +
     `${details.summary.trim()}${details.summary.trim().endsWith(".") ? "" : "."}${missingLine} ` +
     `The work itself may still be fine — check the result, then tell me to accept it or what to fix.`
   );
@@ -2857,11 +2857,15 @@ export class OrchestratorTaskService extends Service {
         : {}),
       ...(fsVerifiedFiles.length > 0 ? { fsVerifiedFiles } : {}),
       ...(checkSurfaces ? { checkSurfaces } : {}),
-      ...(fsVerifiedFiles.length > 0 && reportingSession?.workdir
+      // Every verified deliverable file's real text — ledger-verified too.
+      // With only the 3 KB diff excerpt to go on, the judge failed a served
+      // 123-line page twice for "the truncated diff hides the JavaScript"
+      // and each lane spent a coaching lap on it (live 2026-08-22).
+      ...(surfaceFiles.length > 0 && reportingSession?.workdir
         ? (() => {
             const fsVerifiedFileContents = readFsVerifiedContents(
               reportingSession.workdir,
-              fsVerifiedFiles,
+              [...new Set(surfaceFiles)],
             );
             return fsVerifiedFileContents.length > 0
               ? { fsVerifiedFileContents }
@@ -4139,7 +4143,10 @@ export class OrchestratorTaskService extends Service {
             attempts: details.attempts,
             summary: details.summary,
             ...(missing.length > 0 ? { couldNotConfirm: missing } : {}),
-            parked: true,
+            // User-facing state, not the internal status name: "parked"
+            // read as jargon in the room ("The page is parked", live
+            // 2026-08-22).
+            waitingOnYouNow: true,
             // A manufactured input means the output is NOT to be trusted —
             // "the work may still be fine" would soften a fabrication
             // (live 2026-08-22: "though the output looks right").
