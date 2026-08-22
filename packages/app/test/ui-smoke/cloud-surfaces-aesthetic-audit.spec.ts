@@ -789,14 +789,34 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
 
         const restPath = path.join(shotDir, `${auditCase.slug}.png`);
         // Billing's server-authoritative resource fields sit below the initial
-        // viewport. Preserve the whole affected surface in both rest and hover
-        // evidence instead of green-lighting a screenshot that only shows the
-        // credit form above it.
-        const captureFullPage = auditCase.slug === "cloud-billing";
-        let buffer = await page.screenshot({
-          path: restPath,
-          fullPage: captureFullPage,
-        });
+        // viewport inside an app-owned scroll container. Capture the complete
+        // Active Compute card in both states instead of green-lighting a frame
+        // that only shows the unrelated credit form above it.
+        const billingEvidenceTarget =
+          auditCase.slug === "cloud-billing"
+            ? page
+                .getByRole("heading", { name: "Active compute", exact: true })
+                .locator(
+                  "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' bg-bg-elevated ')][1]",
+                )
+            : null;
+        if (billingEvidenceTarget) {
+          const box = await billingEvidenceTarget.boundingBox();
+          if (box && box.height + 240 > vp.height) {
+            await page.setViewportSize({
+              width: vp.width,
+              height: Math.ceil(box.height) + 240,
+            });
+            await billingEvidenceTarget.evaluate((element) =>
+              element.scrollIntoView({ block: "start", inline: "nearest" }),
+            );
+          }
+        }
+        const captureEvidence = (targetPath: string) =>
+          billingEvidenceTarget
+            ? billingEvidenceTarget.screenshot({ path: targetPath })
+            : page.screenshot({ path: targetPath, fullPage: false });
+        let buffer = await captureEvidence(restPath);
         let quality = await analyzeScreenshot(buffer).catch(() => null);
         for (
           let attempt = 0;
@@ -804,10 +824,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           attempt += 1
         ) {
           await page.waitForTimeout(800);
-          buffer = await page.screenshot({
-            path: restPath,
-            fullPage: captureFullPage,
-          });
+          buffer = await captureEvidence(restPath);
           quality = await analyzeScreenshot(buffer).catch(() => null);
         }
         const qualityIssues = quality
@@ -823,21 +840,21 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
             ],
           }));
 
-        // Primary-button hover screenshot (the #10725 hover-rule artifact):
-        // hover the first visible enabled button and capture the state.
-        const hoverTarget = page
-          .locator("button:visible, a[role='button']:visible")
-          .first();
+        // Primary-button hover screenshot (the #10725 hover-rule artifact).
+        // The read-only compute card has no action, so hover its first resource
+        // to preserve the affected component in the paired stability frame.
+        const hoverTarget = billingEvidenceTarget
+          ? billingEvidenceTarget.locator("li").first()
+          : page.locator("button:visible, a[role='button']:visible").first();
         if (await hoverTarget.isVisible().catch(() => false)) {
           const hovered = await hoverTarget
             .hover({ timeout: 2000 })
             .then(() => true)
             .catch(() => false);
           if (hovered) {
-            await page.screenshot({
-              path: path.join(shotDir, `${auditCase.slug}--hover.png`),
-              fullPage: captureFullPage,
-            });
+            await captureEvidence(
+              path.join(shotDir, `${auditCase.slug}--hover.png`),
+            );
           }
         }
 
