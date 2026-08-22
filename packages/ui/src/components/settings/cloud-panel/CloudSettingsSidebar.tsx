@@ -144,9 +144,12 @@ export function CloudSettingsSidebar({
   return (
     <nav
       aria-label="Settings sections"
-      className="flex h-full w-60 shrink-0 flex-col bg-[var(--surface)] pt-8"
+      className="flex h-full w-60 shrink-0 flex-col bg-[var(--surface)] pb-20 pt-8 min-[1000px]:pb-0"
     >
       <div className="flex-1 overflow-y-auto px-3 py-4">
+        <h1 className="mb-5 px-2.5 text-xl font-semibold tracking-tight text-[var(--foreground)]">
+          Settings
+        </h1>
         {CLOUD_PANEL_GROUPS.map((group) => {
           const sections = grouped[group.id];
           if (!sections?.length) return null;

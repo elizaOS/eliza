@@ -109,6 +109,9 @@ function HubList({
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        <h1 className="mb-5 text-xl font-semibold tracking-tight text-[var(--foreground)]">
+          Settings
+        </h1>
         {Object.entries(grouped).map(([groupId, sections]) => (
           <div key={groupId} className="mb-5 last:mb-0">
             <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
