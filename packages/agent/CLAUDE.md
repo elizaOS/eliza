@@ -184,6 +184,10 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
   training, or later model context. Preserve each record's exact text regardless
   of length or surrounding whitespace; reject malformed Unicode rather than
   repairing the recorded request or response.
+- **Agent read actions are exhaustive.** `FILES`, `SEARCH_KNOWLEDGE`, and
+  `MEMORY` return every authorized match. Storage page sizes are internal
+  transport batches; repeated, changing, or incomplete traversals fail
+  explicitly and must never become a successful model-facing prefix.
 
 ## Package completion evidence
 
