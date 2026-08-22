@@ -23,6 +23,7 @@ export const BILLING_SNAPSHOT_V2_QUERY_KEY = [
 ] as const;
 
 const BILLING_SNAPSHOT_PATH = "/api/v1/billing/limits";
+const BILLING_SNAPSHOT_REFRESH_INTERVAL_MS = 30_000;
 const INVALID_RESPONSE_MESSAGE = "Billing snapshot response is invalid.";
 const EXACT_NON_NEGATIVE_DECIMAL = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const EXACT_NON_NEGATIVE_INTEGER = /^(?:0|[1-9]\d*)$/;
@@ -275,6 +276,7 @@ export function useBillingSnapshotV2(
     enabled,
     staleTime: 0,
     retry: false,
+    refetchInterval: BILLING_SNAPSHOT_REFRESH_INTERVAL_MS,
     refetchOnMount: "always",
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,

@@ -140,7 +140,10 @@ beforeEach(() => {
   };
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("parseBillingSnapshotV2Envelope", () => {
   it("preserves exact balance and compute decimals beyond Number precision", () => {
@@ -427,6 +430,24 @@ describe("useBillingSnapshotV2", () => {
       expect(second.result.current.isRefetchError).toBe(true),
     );
     expect(second.result.current.data).toBeDefined();
+    expect(apiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("revalidates a healthy snapshot while the billing view stays mounted", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    authenticatedAs("user-one");
+    apiMock.mockResolvedValue(readyEnvelope());
+    const client = createQueryClient();
+
+    const result = renderHook(() => useBillingSnapshotV2("org-one"), {
+      wrapper: queryWrapper(client),
+    });
+    await waitFor(() => expect(result.result.current.isSuccess).toBe(true));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
     expect(apiMock).toHaveBeenCalledTimes(2);
   });
 

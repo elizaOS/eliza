@@ -214,6 +214,24 @@ describe("ActiveComputeCardView", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
+  it("offers retry when aggregate cost is retryable but resources are not", () => {
+    const onRetry = vi.fn();
+    render(
+      <ActiveComputeCardView
+        state={ready(
+          snapshot({
+            resources: unavailable(false),
+            estimatedRecurringComputeCostPerDay: unavailable(true),
+          }),
+        )}
+        onRetry={onRetry}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps healthy resources visible when one exact rate is unavailable", () => {
     const resource = computeResource({ ratePerHour: unavailable(true) });
     const { rerender } = render(

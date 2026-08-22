@@ -475,7 +475,7 @@ export function ActiveComputeCardView({
                 </p>
               </div>
             </div>
-            {canRetryObservation(resourcesObservation) ? (
+            {canRetryObservation(resourcesObservation) || retryablePartial ? (
               <RetryButton
                 onRetry={onRetry}
                 retrying={state.refreshing}
