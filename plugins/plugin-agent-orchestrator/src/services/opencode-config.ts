@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL, ElizaError } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { resolveModelGatewayConfig } from "./model-gateway.js";
 
@@ -19,6 +19,127 @@ const OPENCODE_OPENAI_COMPATIBLE_NPM = "@ai-sdk/openai-compatible";
 const OPENCODE_CEREBRAS_NPM = "@ai-sdk/cerebras";
 const CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_DEFAULT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
+
+export type OpencodeApiBillingMode = "api-payg" | "api-credits-or-byok";
+
+export type OpencodeApiProviderId =
+  | "cerebras-api"
+  | "deepseek-api"
+  | "zai-api"
+  | "moonshot-api"
+  | "xai-api"
+  | "openrouter-api";
+
+export interface OpencodeApiRoute {
+  accountProviderId: OpencodeApiProviderId;
+  providerId: string;
+  providerLabel: string;
+  keyEnv: string;
+  keyEnvAliases?: readonly string[];
+  baseUrlEnv: readonly string[];
+  defaultBaseUrl: string;
+  defaultModel?: string;
+  authHeader: "Authorization: Bearer";
+  billingMode: OpencodeApiBillingMode;
+  termsPolicy: "direct-api" | "credits-or-byok";
+  headers?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Direct billing routes OpenCode can consume. Coding-plan endpoint keys are
+ * intentionally absent: Kimi and Z.AI subscription quota have distinct keys,
+ * endpoints, and terms, and must never be inferred from these PAYG entries.
+ */
+export const OPENCODE_API_ROUTES = {
+  "cerebras-api": {
+    accountProviderId: "cerebras-api",
+    providerId: "cerebras",
+    providerLabel: "Cerebras API",
+    keyEnv: "CEREBRAS_API_KEY",
+    baseUrlEnv: ["CEREBRAS_BASE_URL"],
+    defaultBaseUrl: CEREBRAS_DEFAULT_BASE_URL,
+    defaultModel: CEREBRAS_DEFAULT_MODEL,
+    authHeader: "Authorization: Bearer",
+    billingMode: "api-payg",
+    termsPolicy: "direct-api",
+  },
+  "deepseek-api": {
+    accountProviderId: "deepseek-api",
+    providerId: "deepseek",
+    providerLabel: "DeepSeek API (PAYG)",
+    keyEnv: "DEEPSEEK_API_KEY",
+    baseUrlEnv: ["DEEPSEEK_BASE_URL"],
+    defaultBaseUrl: "https://api.deepseek.com",
+    defaultModel: "deepseek-v4-pro",
+    authHeader: "Authorization: Bearer",
+    billingMode: "api-payg",
+    termsPolicy: "direct-api",
+  },
+  "zai-api": {
+    accountProviderId: "zai-api",
+    providerId: "zai",
+    providerLabel: "Z.AI API (PAYG)",
+    keyEnv: "ZAI_API_KEY",
+    keyEnvAliases: ["Z_AI_API_KEY"],
+    baseUrlEnv: ["ZAI_BASE_URL", "Z_AI_BASE_URL"],
+    defaultBaseUrl: "https://api.z.ai/api/paas/v4",
+    defaultModel: "glm-5.1",
+    authHeader: "Authorization: Bearer",
+    billingMode: "api-payg",
+    termsPolicy: "direct-api",
+  },
+  "moonshot-api": {
+    accountProviderId: "moonshot-api",
+    providerId: "moonshot",
+    providerLabel: "Kimi / Moonshot API (PAYG)",
+    keyEnv: "MOONSHOT_API_KEY",
+    keyEnvAliases: ["KIMI_API_KEY"],
+    baseUrlEnv: ["MOONSHOT_BASE_URL", "KIMI_BASE_URL"],
+    defaultBaseUrl: "https://api.moonshot.ai/v1",
+    defaultModel: "kimi-k2.5",
+    authHeader: "Authorization: Bearer",
+    billingMode: "api-payg",
+    termsPolicy: "direct-api",
+  },
+  "xai-api": {
+    accountProviderId: "xai-api",
+    providerId: "xai",
+    providerLabel: "xAI API (PAYG)",
+    keyEnv: "XAI_API_KEY",
+    baseUrlEnv: ["XAI_BASE_URL"],
+    defaultBaseUrl: "https://api.x.ai/v1",
+    defaultModel: "grok-build-0.1",
+    authHeader: "Authorization: Bearer",
+    billingMode: "api-payg",
+    termsPolicy: "direct-api",
+  },
+  "openrouter-api": {
+    accountProviderId: "openrouter-api",
+    providerId: "openrouter",
+    providerLabel: "OpenRouter credits / BYOK",
+    keyEnv: "OPENROUTER_API_KEY",
+    baseUrlEnv: ["OPENROUTER_BASE_URL"],
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    authHeader: "Authorization: Bearer",
+    billingMode: "api-credits-or-byok",
+    termsPolicy: "credits-or-byok",
+    headers: {
+      "HTTP-Referer": "https://elizaos.ai",
+      "X-OpenRouter-Title": "elizaOS coding agent",
+    },
+  },
+} as const satisfies Readonly<Record<OpencodeApiProviderId, OpencodeApiRoute>>;
+
+export const OPENCODE_API_KEY_ENVS = Object.freeze(
+  Object.values(OPENCODE_API_ROUTES).flatMap((route) => [
+    route.keyEnv,
+    ...("keyEnvAliases" in route ? route.keyEnvAliases : []),
+  ]),
+);
+
+function routeCredentialKeys(route: OpencodeApiRoute): readonly string[] {
+  return [route.keyEnv, ...(route.keyEnvAliases ?? [])];
+}
 
 // `webfetch` is a read-only HTTP GET (opencode caps the response at 5MB and
 // never mutates the workspace). `websearch` is opencode's general web-search
@@ -50,6 +171,10 @@ export interface OpencodeSpawnConfig {
   configContent: string;
   providerLabel: string;
   providerId: string;
+  accountProviderId?: OpencodeApiProviderId;
+  billingMode?: OpencodeApiBillingMode;
+  termsPolicy?: OpencodeApiRoute["termsPolicy"];
+  baseUrl?: string;
   model: string;
   smallModel?: string;
 }
@@ -90,6 +215,11 @@ function providerConfig(
   apiKey: string | undefined,
   powerful: string,
   fast: string | undefined,
+  metadata: Pick<
+    OpencodeSpawnConfig,
+    "accountProviderId" | "billingMode" | "termsPolicy"
+  > = {},
+  headers?: Readonly<Record<string, string>>,
 ): OpencodeSpawnConfig {
   const config = {
     $schema: "https://opencode.ai/config.json",
@@ -97,7 +227,11 @@ function providerConfig(
       [providerId]: {
         npm,
         name,
-        options: { baseURL, ...(apiKey ? { apiKey } : {}) },
+        options: {
+          baseURL,
+          ...(apiKey ? { apiKey } : {}),
+          ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+        },
         models: {
           [powerful]: { name: powerful },
           ...(fast && fast !== powerful ? { [fast]: { name: fast } } : {}),
@@ -114,9 +248,177 @@ function providerConfig(
     configContent: JSON.stringify(config),
     providerLabel: name,
     providerId,
+    ...metadata,
+    baseUrl: baseURL,
     model: `${providerId}/${powerful}`,
     smallModel: fast && fast !== powerful ? `${providerId}/${fast}` : undefined,
   };
+}
+
+function firstSetting(
+  runtime: RuntimeLike | undefined,
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = setting(runtime, env, key);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function normalizeRouteId(
+  value: string | undefined,
+): OpencodeApiProviderId | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  const aliases: Readonly<Record<string, OpencodeApiProviderId>> = {
+    cerebras: "cerebras-api",
+    "cerebras-api": "cerebras-api",
+    deepseek: "deepseek-api",
+    "deepseek-api": "deepseek-api",
+    zai: "zai-api",
+    "z.ai": "zai-api",
+    "zai-api": "zai-api",
+    moonshot: "moonshot-api",
+    kimi: "moonshot-api",
+    "moonshot-api": "moonshot-api",
+    xai: "xai-api",
+    grok: "xai-api",
+    "xai-api": "xai-api",
+    openrouter: "openrouter-api",
+    "openrouter-api": "openrouter-api",
+  };
+  return aliases[normalized];
+}
+
+function explicitlySelectedRoute(
+  runtime: RuntimeLike | undefined,
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+): OpencodeApiProviderId | undefined {
+  const raw =
+    setting(runtime, env, "ELIZA_OPENCODE_PROVIDER_ID") ??
+    setting(runtime, env, "ELIZA_OPENCODE_PROVIDER");
+  if (!raw) return undefined;
+  const providerId = normalizeRouteId(raw);
+  if (!providerId) {
+    throw new ElizaError(`Unsupported OpenCode API provider: ${raw}`, {
+      code: "OPENCODE_PROVIDER_UNSUPPORTED",
+      context: { providerId: raw },
+      severity: "fatal",
+    });
+  }
+  return providerId;
+}
+
+function autoDetectedRoute(
+  runtime: RuntimeLike | undefined,
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+): OpencodeApiProviderId | undefined {
+  const found = Object.values(OPENCODE_API_ROUTES).filter((route) =>
+    usableApiKey(firstSetting(runtime, env, routeCredentialKeys(route))),
+  );
+  if (found.length === 1) return found[0]?.accountProviderId;
+  // Preserve the historical Cerebras default on hosts with several general
+  // inference keys. A different provider must be selected explicitly so the
+  // provider/account/model/billing tuple cannot depend on object order.
+  if (found.some((route) => route.accountProviderId === "cerebras-api")) {
+    return "cerebras-api";
+  }
+  return undefined;
+}
+
+function buildTypedApiRouteConfig(
+  runtime: RuntimeLike | undefined,
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+  routeId: OpencodeApiProviderId,
+  powerfulOverride: string | undefined,
+  fastOverride: string | undefined,
+): OpencodeSpawnConfig {
+  const route: OpencodeApiRoute = OPENCODE_API_ROUTES[routeId];
+  const apiKey = usableApiKey(
+    firstSetting(runtime, env, routeCredentialKeys(route)),
+  );
+  if (!apiKey) {
+    throw new ElizaError(
+      `${route.providerLabel} requires ${route.keyEnv} for direct API billing.`,
+      {
+        code: "OPENCODE_PROVIDER_CREDENTIAL_MISSING",
+        context: { providerId: route.accountProviderId, keyEnv: route.keyEnv },
+        severity: "fatal",
+      },
+    );
+  }
+  const providerPrefix = `${route.providerId}/`;
+  const powerful =
+    powerfulOverride?.startsWith(providerPrefix) === true
+      ? powerfulOverride.slice(providerPrefix.length)
+      : (powerfulOverride ?? route.defaultModel);
+  if (!powerful) {
+    throw new ElizaError(
+      `${route.providerLabel} requires an explicit OpenCode model.`,
+      {
+        code: "OPENCODE_PROVIDER_MODEL_MISSING",
+        context: {
+          providerId: route.accountProviderId,
+          modelSetting: "ELIZA_OPENCODE_MODEL_POWERFUL",
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  if (
+    powerful.length > 256 ||
+    !/^[~A-Za-z0-9][A-Za-z0-9._:/+~-]*$/.test(powerful)
+  ) {
+    throw new ElizaError(
+      `${route.providerLabel} received an invalid OpenCode model id.`,
+      {
+        code: "OPENCODE_PROVIDER_MODEL_INVALID",
+        context: { providerId: route.accountProviderId },
+        severity: "fatal",
+      },
+    );
+  }
+  const configuredBaseUrl =
+    firstSetting(runtime, env, route.baseUrlEnv) ?? route.defaultBaseUrl;
+  let baseUrl: string;
+  try {
+    const parsed = new URL(configuredBaseUrl);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+      throw new Error("expected an HTTPS URL without embedded credentials");
+    }
+    baseUrl = parsed.toString().replace(/\/$/, "");
+  } catch (cause) {
+    // error-policy:J3 provider endpoint configuration is untrusted operator
+    // input; reject malformed or credential-bearing URLs before child spawn.
+    throw new ElizaError(
+      `${route.providerLabel} received an invalid API base URL.`,
+      {
+        code: "OPENCODE_PROVIDER_BASE_URL_INVALID",
+        cause,
+        context: { providerId: route.accountProviderId },
+        severity: "fatal",
+      },
+    );
+  }
+  return providerConfig(
+    route.providerId,
+    route.providerLabel,
+    route.accountProviderId === "cerebras-api"
+      ? OPENCODE_CEREBRAS_NPM
+      : OPENCODE_OPENAI_COMPATIBLE_NPM,
+    baseUrl,
+    apiKey,
+    powerful,
+    fastOverride,
+    {
+      accountProviderId: route.accountProviderId,
+      billingMode: route.billingMode,
+      termsPolicy: route.termsPolicy,
+    },
+    route.headers,
+  );
 }
 
 function isCerebrasBaseUrl(value: string | undefined): boolean {
@@ -191,6 +493,12 @@ export function buildOpencodeSpawnConfig(
       powerful || "claude-opus-4-8",
       fast || "claude-haiku-4-5",
     );
+  }
+
+  const explicitRoute = explicitlySelectedRoute(runtime, env);
+  const typedRoute = explicitRoute ?? autoDetectedRoute(runtime, env);
+  if (typedRoute) {
+    return buildTypedApiRouteConfig(runtime, env, typedRoute, powerful, fast);
   }
 
   const opencodeApiKey = usableApiKey(

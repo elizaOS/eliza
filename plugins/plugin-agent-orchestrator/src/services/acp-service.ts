@@ -92,6 +92,7 @@ import {
 } from "./model-gateway-lease.js";
 import {
   buildOpencodeAcpEnv,
+  OPENCODE_API_KEY_ENVS,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
 import {
@@ -4761,10 +4762,25 @@ export class AcpService extends Service {
       const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
       Object.assign(env, opencode.env);
       if (opencode.config) {
+        if (opencode.config.accountProviderId) {
+          for (const key of new Set([
+            ...MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
+            ...OPENCODE_API_KEY_ENVS,
+            "Z_AI_API_KEY",
+            "KIMI_API_KEY",
+            "GROK_API_KEY",
+          ])) {
+            delete env[key];
+          }
+        }
         this.log("info", "OpenCode ACP provider configured", {
           provider: opencode.config.providerLabel,
           model: opencode.config.model,
           smallModel: opencode.config.smallModel,
+          accountProviderId: opencode.config.accountProviderId,
+          billingMode: opencode.config.billingMode,
+          termsPolicy: opencode.config.termsPolicy,
+          endpoint: opencode.config.baseUrl,
           vendored: Boolean(opencode.vendoredShimDir),
         });
       }

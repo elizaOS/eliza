@@ -3,8 +3,8 @@
  * and its auth-failure triage (isAuthFailure): least-used vs priority vs config-
  * vs env-driven selection, per-agent env patches (CLAUDE_CODE_OAUTH_TOKEN, a
  * materialized CODEX_HOME/auth.json + config.toml with a TOML-injection guard,
- * active-generation discovery, CEREBRAS_API_KEY), usage attribution, and rate-
- * limit skipping. Runs against a real temp ELIZA_HOME / ELIZA_STATE_DIR and real
+ * active-generation discovery, typed OpenCode direct-API selectors), usage
+ * attribution, and rate-limit skipping. Runs against a real temp ELIZA_HOME / ELIZA_STATE_DIR and real
  * account storage — no mocked pool.
  */
 import {
@@ -569,8 +569,29 @@ describe("coding-account-bridge", () => {
     expect(sel?.accountId).toBe("cb-idle");
     // buildOpencodeSpawnConfig reads CEREBRAS_API_KEY from the injected env.
     expect(sel?.envPatch.CEREBRAS_API_KEY).toBe("cb-key-idle");
+    expect(sel?.envPatch.ELIZA_OPENCODE_PROVIDER_ID).toBe("cerebras-api");
     expect(sel?.source).toBe("api-key");
   });
+
+  it.each([
+    ["deepseek-api", "DEEPSEEK_API_KEY"],
+    ["zai-api", "ZAI_API_KEY"],
+    ["moonshot-api", "MOONSHOT_API_KEY"],
+  ] as const)(
+    "selects %s for OpenCode and pins its provider with %s",
+    async (providerId, envKey) => {
+      writeAccount(providerId, `${providerId}-account`, `${providerId}-secret`);
+      const sel = await getCodingAgentSelectorBridge()?.select("opencode");
+      expect(sel).toMatchObject({
+        providerId,
+        source: "api-key",
+      });
+      expect(sel?.envPatch).toEqual({
+        [envKey]: `${providerId}-secret`,
+        ELIZA_OPENCODE_PROVIDER_ID: providerId,
+      });
+    },
+  );
 
   it("attributes recorded usage to the serving account (per-account delta)", async () => {
     writeAccount("anthropic-subscription", "acct", "sk-ant-oat-acct");

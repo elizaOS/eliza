@@ -282,14 +282,7 @@ describe("accounts routes", () => {
       },
     });
 
-    for (const providerId of [
-      "zai-coding",
-      "kimi-coding",
-      "deepseek-coding",
-      "deepseek-api",
-      "zai-api",
-      "moonshot-api",
-    ]) {
+    for (const providerId of ["zai-coding", "kimi-coding", "deepseek-coding"]) {
       expect(
         response.providers.find((item) => item.providerId === providerId),
       ).toMatchObject({
@@ -298,6 +291,19 @@ describe("accounts routes", () => {
             available: false,
             credentialPath: "none",
             unavailableReason: expect.any(String),
+          },
+        },
+      });
+    }
+    for (const providerId of ["deepseek-api", "zai-api", "moonshot-api"]) {
+      expect(
+        response.providers.find((item) => item.providerId === providerId),
+      ).toMatchObject({
+        runtimeEligibility: {
+          codingAgent: {
+            available: true,
+            backend: "opencode",
+            credentialPath: "direct-api",
           },
         },
       });

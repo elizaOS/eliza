@@ -158,6 +158,9 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false`. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
+| `ELIZA_OPENCODE_PROVIDER` / `ELIZA_OPENCODE_PROVIDER_ID` | auto-detect only when unambiguous | Atomic OpenCode direct-API route selector: Cerebras, DeepSeek, Z.AI general API, Moonshot, xAI, or OpenRouter. |
+| `ELIZA_OPENCODE_MODEL_POWERFUL` / `OPENCODE_MODEL` | provider default; required for OpenRouter | Model id; OpenRouter accepts arbitrary catalog slugs. |
+| `DEEPSEEK_API_KEY` / `ZAI_API_KEY` / `MOONSHOT_API_KEY` / `XAI_API_KEY` / `OPENROUTER_API_KEY` | unset | Direct API credentials; existing `Z_AI_API_KEY` and `KIMI_API_KEY` aliases remain accepted. These routes are PAYG, credits, or BYOK—not consumer subscriptions. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `300000` (5m) | Per-prompt timeout. |
 | `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS` | `5000` (5s) | Maximum adapter-availability preflight wait. Values must be exact decimal integers from `250` through `2147483647`; missing/blank uses the default, and invalid values fail before the adapter probe starts. |

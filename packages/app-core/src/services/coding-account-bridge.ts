@@ -114,12 +114,9 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * subscriptions are preferred over direct API credentials.
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * opencode authenticates through its configured backend; the only backend it
- * resolves from a pooled key is Cerebras (`CEREBRAS_API_KEY`, see
- * buildOpencodeSpawnConfig), so opencode pool-rotates across `cerebras-api`
- * accounts and no-ops otherwise. z.ai / Kimi / GLM have no first-party coding
- * CLI — their accounts serve the main runtime's API-key routing — so they are
- * deliberately absent (advertising them would offer an unspawnable path).
+ * opencode authenticates through a typed direct-API route. Its candidate list
+ * contains only general API/PAYG products; dedicated coding-plan endpoint keys
+ * and native CLI OAuth remain separate capabilities.
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
@@ -838,7 +835,15 @@ async function buildEnvPatch(
       // (Z_AI_API_KEY → ZAI_API_KEY, KIMI_API_KEY → MOONSHOT_API_KEY).
       const envKey =
         DIRECT_ACCOUNT_PROVIDER_ENV[providerId as DirectAccountProvider];
-      return envKey ? { [envKey]: accessToken } : {};
+      if (!envKey) return {};
+      const opencodeProviders =
+        CODING_AGENT_BACKEND_PROVIDERS.opencode as readonly string[];
+      return {
+        [envKey]: accessToken,
+        ...(opencodeProviders.includes(providerId)
+          ? { ELIZA_OPENCODE_PROVIDER_ID: providerId }
+          : {}),
+      };
     }
   }
 }

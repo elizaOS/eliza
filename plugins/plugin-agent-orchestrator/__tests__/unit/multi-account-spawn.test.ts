@@ -256,9 +256,10 @@ describe("multi-account coding-agent spawn", () => {
     }
   });
 
-  it("injects the pooled CEREBRAS_API_KEY for an opencode spawn", async () => {
-    // opencode pool-rotates across cerebras-api accounts; the bridge injects
-    // CEREBRAS_API_KEY which buildOpencodeSpawnConfig reads to target Cerebras.
+  it("isolates a pooled Cerebras key in OpenCode config", async () => {
+    // opencode pool-rotates across typed direct-API accounts; this fixture uses
+    // Cerebras; buildOpencodeSpawnConfig consumes the bridge key and the final
+    // child environment retains only the generated config.
     const select = installBridge({
       opencode: {
         providerId: "cerebras-api",
@@ -277,7 +278,11 @@ describe("multi-account coding-agent spawn", () => {
       workdir: "/tmp/acp-test",
     });
     const env = firstNativeClient().opts.env ?? {};
-    expect(env.CEREBRAS_API_KEY).toBe("cb-key-pooled");
+    expect(env.CEREBRAS_API_KEY).toBeUndefined();
+    const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? "{}") as {
+      provider?: { cerebras?: { options?: { apiKey?: string } } };
+    };
+    expect(config.provider?.cerebras?.options?.apiKey).toBe("cb-key-pooled");
     expect(select).toHaveBeenCalledWith(
       "opencode",
       expect.objectContaining({ sessionKey: result.sessionId }),

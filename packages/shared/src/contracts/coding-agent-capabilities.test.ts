@@ -28,6 +28,9 @@ describe("coding-agent capability mapping", () => {
       "openai-codex",
       "anthropic-api",
       "openai-api",
+      "deepseek-api",
+      "zai-api",
+      "moonshot-api",
       "cerebras-api",
     ]);
     for (const providerId of mappedProviders) {
@@ -43,15 +46,22 @@ describe("coding-agent capability mapping", () => {
     "zai-coding",
     "kimi-coding",
     "deepseek-coding",
-    "deepseek-api",
-    "zai-api",
-    "moonshot-api",
   ] as const)("keeps %s enrollment separate from spawn availability", (id) => {
     const capability = codingAgentSpawnCapabilityForProvider(id);
     expect(capability.available).toBe(false);
     expect(capability.backend).toBeUndefined();
     expect(capability.unavailableReason).toBeTruthy();
   });
+
+  it.each(["deepseek-api", "zai-api", "moonshot-api"] as const)(
+    "routes direct API provider %s through OpenCode",
+    (providerId) => {
+      expect(codingAgentSpawnCapabilityForProvider(providerId)).toEqual({
+        available: true,
+        backend: "opencode",
+      });
+    },
+  );
 
   it("declares a preflight backend for every credential route", () => {
     expect(CODING_AGENT_BACKEND_PREFLIGHTS).toEqual({

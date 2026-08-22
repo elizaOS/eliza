@@ -55,7 +55,7 @@ describe("buildOpencodeSpawnConfig", () => {
       CEREBRAS_API_KEY: "csk-test",
     });
     expect(result?.providerId).toBe("cerebras");
-    expect(result?.providerLabel).toBe("Cerebras");
+    expect(result?.providerLabel).toBe("Cerebras API");
     expect(result?.model).toBe("cerebras/gemma-4-31b");
     const config = JSON.parse(result?.configContent ?? "{}");
     expect(config.provider.cerebras.options.baseURL).toBe(
@@ -63,6 +63,171 @@ describe("buildOpencodeSpawnConfig", () => {
     );
     expect(config.provider.cerebras.npm).toBe("@ai-sdk/cerebras");
     expect(config.provider.cerebras.options.apiKey).toBe("csk-test");
+  });
+
+  it.each([
+    {
+      selector: "deepseek-api",
+      keyEnv: "DEEPSEEK_API_KEY",
+      key: "deepseek-secret-never-log",
+      provider: "deepseek",
+      baseURL: "https://api.deepseek.com",
+      model: "deepseek-v4-pro",
+      label: "DeepSeek API (PAYG)",
+    },
+    {
+      selector: "zai-api",
+      keyEnv: "ZAI_API_KEY",
+      key: "zai-secret-never-log",
+      provider: "zai",
+      baseURL: "https://api.z.ai/api/paas/v4",
+      model: "glm-5.1",
+      label: "Z.AI API (PAYG)",
+    },
+    {
+      selector: "moonshot-api",
+      keyEnv: "MOONSHOT_API_KEY",
+      key: "moonshot-secret-never-log",
+      provider: "moonshot",
+      baseURL: "https://api.moonshot.ai/v1",
+      model: "kimi-k2.5",
+      label: "Kimi / Moonshot API (PAYG)",
+    },
+    {
+      selector: "xai-api",
+      keyEnv: "XAI_API_KEY",
+      key: "xai-secret-never-log",
+      provider: "xai",
+      baseURL: "https://api.x.ai/v1",
+      model: "grok-build-0.1",
+      label: "xAI API (PAYG)",
+    },
+  ])(
+    "builds an atomic $selector direct API route",
+    ({ selector, keyEnv, key, provider, baseURL, model, label }) => {
+      const result = buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER_ID: selector,
+        [keyEnv]: key,
+      });
+      expect(result).toMatchObject({
+        accountProviderId: selector,
+        billingMode: "api-payg",
+        termsPolicy: "direct-api",
+        providerLabel: label,
+        baseUrl: baseURL,
+        model: `${provider}/${model}`,
+      });
+      const config = JSON.parse(result?.configContent ?? "{}");
+      expect(config.provider[provider].options).toMatchObject({
+        baseURL,
+        apiKey: key,
+      });
+      expect(config.model).toBe(`${provider}/${model}`);
+    },
+  );
+
+  it("supports arbitrary OpenRouter models while labeling credits/BYOK truthfully", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ELIZA_OPENCODE_PROVIDER: "openrouter",
+      OPENROUTER_API_KEY: "openrouter-secret-never-log",
+      ELIZA_OPENCODE_MODEL_POWERFUL: "anthropic/claude-sonnet-4.5",
+    });
+    expect(result).toMatchObject({
+      accountProviderId: "openrouter-api",
+      billingMode: "api-credits-or-byok",
+      termsPolicy: "credits-or-byok",
+      providerLabel: "OpenRouter credits / BYOK",
+      model: "openrouter/anthropic/claude-sonnet-4.5",
+    });
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.provider.openrouter.options.baseURL).toBe(
+      "https://openrouter.ai/api/v1",
+    );
+    expect(config.provider.openrouter.options.headers).toEqual({
+      "HTTP-Referer": "https://elizaos.ai",
+      "X-OpenRouter-Title": "elizaOS coding agent",
+    });
+  });
+
+  it("fails closed when OpenRouter has no explicit arbitrary model", () => {
+    expect(() =>
+      buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: "openrouter",
+        OPENROUTER_API_KEY: "openrouter-secret-never-log",
+      }),
+    ).toThrow(/requires an explicit OpenCode model/i);
+  });
+
+  it("fails closed when an explicit route has no matching credential", () => {
+    expect(() =>
+      buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: "xai-api",
+        OPENROUTER_API_KEY: "must-not-be-used-for-xai",
+      }),
+    ).toThrow(/requires XAI_API_KEY/i);
+  });
+
+  it("does not guess among multiple non-Cerebras billing sources", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      DEEPSEEK_API_KEY: "deepseek-secret",
+      XAI_API_KEY: "xai-secret",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("honors provider-specific endpoint overrides without changing billing identity", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ELIZA_OPENCODE_PROVIDER: "z.ai",
+      ZAI_API_KEY: "zai-secret",
+      Z_AI_BASE_URL: "https://zai-proxy.test.invalid/v4",
+    });
+    expect(result?.accountProviderId).toBe("zai-api");
+    expect(result?.billingMode).toBe("api-payg");
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.provider.zai.options.baseURL).toBe(
+      "https://zai-proxy.test.invalid/v4",
+    );
+  });
+
+  it.each([
+    ["zai-api", "Z_AI_API_KEY", "zai"],
+    ["moonshot-api", "KIMI_API_KEY", "moonshot"],
+  ] as const)(
+    "accepts the existing %s credential alias %s",
+    (selector, keyEnv, provider) => {
+      const result = buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: selector,
+        [keyEnv]: `${selector}-legacy-alias-secret`,
+      });
+      const config = JSON.parse(result?.configContent ?? "{}");
+      expect(config.provider[provider].options.apiKey).toBe(
+        `${selector}-legacy-alias-secret`,
+      );
+    },
+  );
+
+  it("rejects malformed model ids and credential-bearing endpoints", () => {
+    expect(() =>
+      buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: "deepseek-api",
+        DEEPSEEK_API_KEY: "deepseek-secret",
+        ELIZA_OPENCODE_MODEL_POWERFUL: "deepseek-v4-pro\nignore-policy",
+      }),
+    ).toThrow(/invalid OpenCode model id/i);
+    expect(() =>
+      buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: "deepseek-api",
+        DEEPSEEK_API_KEY: "deepseek-secret",
+        DEEPSEEK_BASE_URL: "https://user:secret@example.invalid/v1",
+      }),
+    ).toThrow(/invalid API base URL/i);
+    expect(() =>
+      buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: "deepseek-api",
+        DEEPSEEK_API_KEY: "deepseek-secret",
+        DEEPSEEK_BASE_URL: "http://proxy.example.invalid/v1",
+      }),
+    ).toThrow(/invalid API base URL/i);
   });
 
   it("uses ELIZA_OPENCODE_MODEL_POWERFUL with a Cerebras base URL", () => {

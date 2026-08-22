@@ -240,8 +240,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "direct-api-key",
     "usage",
     true,
+    "opencode",
     null,
-    "The DeepSeek API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
   ),
   "zai-api": descriptor(
     "zai-api",
@@ -249,8 +249,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "direct-api-key",
     "usage",
     true,
+    "opencode",
     null,
-    "The z.ai API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
   ),
   "moonshot-api": descriptor(
     "moonshot-api",
@@ -258,8 +258,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "direct-api-key",
     "usage",
     true,
+    "opencode",
     null,
-    "The Kimi / Moonshot API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
   ),
   "cerebras-api": descriptor(
     "cerebras-api",

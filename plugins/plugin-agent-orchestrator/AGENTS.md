@@ -144,7 +144,13 @@ preferred over API key):
 | `pi-agent` | runtime-routed |
 | `claude` | anthropic-subscription → anthropic-api |
 | `codex` | openai-codex → openai-api |
-| `opencode` | cerebras-api |
+| `opencode` | cerebras-api → deepseek-api → zai-api → moonshot-api |
+
+OpenCode also supports explicit environment-only `xai-api` and
+`openrouter-api` routes. They are not pooled account candidates until the
+canonical linked-account authority lands. These are direct API billing routes:
+DeepSeek, Z.AI general API, Moonshot, and xAI are PAYG; OpenRouter uses credits
+or BYOK. They are not consumer or coding-plan subscriptions.
 
 ## Layout
 
@@ -285,6 +291,9 @@ README → "GitHub credentials".
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
+| `ELIZA_OPENCODE_PROVIDER` / `ELIZA_OPENCODE_PROVIDER_ID` | auto-detect only when unambiguous | Atomic direct-API route selector: `cerebras-api`, `deepseek-api`, `zai-api`, `moonshot-api`, `xai-api`, or `openrouter-api`. Pooled account selection writes the `_ID` form for the child. |
+| `ELIZA_OPENCODE_MODEL_POWERFUL` / `OPENCODE_MODEL` | provider default; required for OpenRouter | Model id for the selected route. OpenRouter accepts arbitrary catalog slugs. |
+| `DEEPSEEK_API_KEY` / `ZAI_API_KEY` / `MOONSHOT_API_KEY` / `XAI_API_KEY` / `OPENROUTER_API_KEY` | unset | Direct API/PAYG credentials. Existing `Z_AI_API_KEY` and `KIMI_API_KEY` aliases remain accepted. The selected key is embedded in child-only OpenCode config; conflicting provider keys are removed from the child environment. |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
 | `ELIZA_ACP_SYSTEM_SESSION_HEADROOM` | `2` | Reserved concurrent slots for short-lived `system` spawns (the #8898 read-only verifier), counted separately from `ELIZA_ACP_MAX_SESSIONS` so validation never deadlocks behind the worker cap |
 | `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |

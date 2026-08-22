@@ -1557,6 +1557,49 @@ describe("AcpService", () => {
     expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
   });
 
+  it("isolates a selected OpenCode direct API route from conflicting host keys", async () => {
+    const reg = nextProc();
+    const service = new AcpService(
+      runtime({
+        ELIZA_OPENCODE_PROVIDER: "deepseek-api",
+        DEEPSEEK_API_KEY: "deepseek-selected-secret",
+        XAI_API_KEY: "xai-conflicting-secret",
+        OPENROUTER_API_KEY: "openrouter-conflicting-secret",
+      }),
+    );
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "opencode-deepseek",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    await spawned;
+
+    const env = spawnMock.mock.calls[0]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}") as {
+      provider?: Record<string, { options?: { apiKey?: string } }>;
+      model?: string;
+    };
+    expect(config.model).toBe("deepseek/deepseek-v4-pro");
+    expect(config.provider?.deepseek?.options?.apiKey).toBe(
+      "deepseek-selected-secret",
+    );
+    expect(env?.DEEPSEEK_API_KEY).toBeUndefined();
+    expect(env?.XAI_API_KEY).toBeUndefined();
+    expect(env?.OPENROUTER_API_KEY).toBeUndefined();
+    expect(env?.OPENCODE_CONFIG_CONTENT).not.toContain(
+      "xai-conflicting-secret",
+    );
+    expect(env?.OPENCODE_CONFIG_CONTENT).not.toContain(
+      "openrouter-conflicting-secret",
+    );
+  });
+
   it("keeps BENCHMARK_TASK_AGENT=elizaos as the native default adapter", async () => {
     const reg = nextProc();
     const service = new AcpService(

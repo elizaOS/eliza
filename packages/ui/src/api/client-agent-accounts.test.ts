@@ -55,11 +55,11 @@ describe("ElizaClient account replacement transport", () => {
     await expect(accountsClient(body).listAccounts()).resolves.toEqual(body);
   });
 
-  it("rejects server metadata that advertises an unspawnable account provider", async () => {
+  it("rejects server metadata that advertises an unspawnable coding-plan account", async () => {
     const body = {
       providers: [
         {
-          providerId: "deepseek-api",
+          providerId: "kimi-coding",
           strategy: "priority",
           runtimeEligibility: {
             chat: { available: true, credentialPath: "direct-api" },

@@ -91,22 +91,24 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     name: "DeepSeek API",
     category: "chat",
     description:
-      "Direct DeepSeek API billing for model inference; coding-agent spawning is not wired yet.",
-    eligibility: ["chat", "API key"],
+      "Direct DeepSeek API billing for chat and OpenCode coding agents. This is API PAYG, not a consumer subscription.",
+    eligibility: ["chat", "coding agent", "API key", "PAYG"],
   },
   {
     id: "zai-api",
     name: "z.ai API",
     category: "chat",
-    description: "Direct z.ai API key for model routing.",
-    eligibility: ["chat", "API key"],
+    description:
+      "Direct z.ai general API billing for chat and OpenCode coding agents. The separate Coding Plan uses its dedicated endpoint key.",
+    eligibility: ["chat", "coding agent", "API key", "PAYG"],
   },
   {
     id: "moonshot-api",
     name: "Kimi / Moonshot API",
     category: "chat",
-    description: "Direct Moonshot API key for Kimi models.",
-    eligibility: ["chat", "API key"],
+    description:
+      "Direct Moonshot API billing for chat and OpenCode coding agents. This does not use Kimi membership quota.",
+    eligibility: ["chat", "coding agent", "API key", "PAYG"],
   },
 ];
 

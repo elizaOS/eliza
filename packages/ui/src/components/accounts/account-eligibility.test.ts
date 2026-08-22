@@ -44,13 +44,13 @@ describe("resolveProviderEligibility", () => {
     expect(resolved.codingAgent).toBe(true);
   });
 
-  it("does not infer coding-agent spawn support for inference-only APIs", () => {
+  it("infers OpenCode spawn support for routed direct API accounts", () => {
     const resolved = resolveProviderEligibility(
       option("deepseek-api"),
       undefined,
     );
     expect(resolved.chat).toBe(true);
-    expect(resolved.codingAgent).toBe(false);
+    expect(resolved.codingAgent).toBe(true);
   });
 
   it("surfaces the server's unsupported spawn reason", () => {
