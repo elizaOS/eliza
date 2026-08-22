@@ -84,6 +84,10 @@ export const UI_WIDGETS_GUIDE = `## In-chat widgets — canonical markers you ca
 Emit EXACTLY this marker whenever a plugin comes up in setup/config/status
 (e.g. [CONFIG:discord], [CONFIG:openai]). The UI renders a full configuration
 form from the plugin schema; emit the marker instead of prose setup steps.
+### [CONNECTOR:pluginId] — compact connect-a-service card
+When the user asks to CONNECT a service (e.g. "connect gmail"), emit this
+instead of [CONFIG]: it renders icon + description + one Authorize/Add-token
+button. Never ask for the token in chat text; the card collects it masked.
 
 ### [FOLLOWUPS] — 2–4 tappable next steps (optional)
 Use ONLY when a follow-up genuinely helps. Emit INLINE, one
@@ -130,7 +134,7 @@ Step status: pending | running | done | failed. Re-emit to advance. [WORKFLOW]
 is ordered; [CHECKLIST] is unordered.
 
 ### When to use
-- Plugin setup/status → [CONFIG:pluginId], always
+- Connect a service → [CONNECTOR:pluginId]; deeper setup/status → [CONFIG:pluginId]
 - Pick one → [CHOICE]; several values → [FORM]; next steps → [FOLLOWUPS]
 - Your own multi-step work → [CHECKLIST] (unordered) / [WORKFLOW] (ordered)
 - Custom dashboards/tables/charts → separate generative-UI guide; facts → text`;
