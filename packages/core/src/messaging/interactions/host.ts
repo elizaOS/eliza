@@ -17,6 +17,7 @@ import type {
 	MessageInteractionBindings,
 	MessageInteractionEffect,
 	MessageInteractionPurpose,
+	MessageInteractionReconcileContext,
 	MessageInteractionResponse,
 	MessageInteractionSession,
 } from "./sessions";
@@ -121,6 +122,17 @@ export interface MessageInteractionHost {
 		now?: number;
 	}): Promise<MessageInteractionSession>;
 	get(reference: string): Promise<MessageInteractionSession | null>;
+	/** Discover ambiguous committed effects for host/operator reconciliation. */
+	listCommitted(request: {
+		committedBefore: number;
+		limit: number;
+	}): Promise<MessageInteractionSession[]>;
+	/** Persist a verified external outcome without executing the effect again. */
+	reconcileCommitted(request: {
+		reference: string;
+		receipt: MessageInteractionHostReceipt;
+		now?: MessageInteractionReconcileContext["now"];
+	}): Promise<MessageInteractionSession>;
 	registerEffectHandler(
 		kind: string,
 		handler: MessageInteractionHostEffectHandler,
@@ -139,6 +151,8 @@ export function resolveMessageInteractionHost(
 		typeof candidate.consume !== "function" ||
 		typeof candidate.revoke !== "function" ||
 		typeof candidate.get !== "function" ||
+		typeof candidate.listCommitted !== "function" ||
+		typeof candidate.reconcileCommitted !== "function" ||
 		typeof candidate.registerEffectHandler !== "function"
 	) {
 		throw new ElizaError("Registered interaction host is malformed.", {

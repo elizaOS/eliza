@@ -45,12 +45,18 @@ const bindings = {
 
 async function seed(
   stateDirectory: string,
-  options: { now?: number; expiresAt?: string; retentionMs?: number } = {},
+  options: {
+    now?: number;
+    expiresAt?: string;
+    retentionMs?: number;
+    committedRetentionMs?: number;
+  } = {},
 ) {
   const now = options.now ?? Date.parse("2026-08-21T00:00:00.000Z");
   const store = new FileMessageInteractionSessionStore({
     stateDirectory,
     retentionMs: options.retentionMs,
+    committedRetentionMs: options.committedRetentionMs,
     clock: () => now,
   });
   const authority = new MessageInteractionSessionAuthority(store, {
@@ -523,6 +529,38 @@ describe("FileMessageInteractionSessionStore", () => {
     const bounded = new FileMessageInteractionSessionStore({
       stateDirectory,
       retentionMs: 0,
+      maxSessions: 1,
+      clock: () => now + 1,
+    });
+    const replacement = structuredClone(created.session);
+    replacement.reference = "fedcba9876543210fedcba9876543210";
+    await expect(bounded.create(replacement)).resolves.toBeUndefined();
+    expect(await bounded.get(created.session.reference)).toBeNull();
+    expect(await bounded.get(replacement.reference)).toMatchObject({
+      consume: { state: "pending" },
+    });
+  });
+
+  it("prunes retained committed outcomes before enforcing session capacity", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { store, created, now } = await seed(stateDirectory);
+    await store.claimIfCurrent({
+      ...bindings,
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+      claimTtlMs: 1,
+    });
+    await store.commitIfClaimed({
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+    });
+    const bounded = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      committedRetentionMs: 0,
       maxSessions: 1,
       clock: () => now + 1,
     });

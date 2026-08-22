@@ -201,6 +201,25 @@ describe("connector interaction profiles", () => {
 		);
 	});
 
+	it("rejects oversized native prose instead of delegating truncation", () => {
+		const constrained = structuredClone(profile(BUTTON_INTERACTION_PROFILE));
+		constrained.blocks.choice.modes = ["native"];
+		constrained.limits.text.maxMessageBytes = 128;
+		expect(() =>
+			negotiateInteractionDelivery(
+				{ ...choice, prompt: "complete prompt ".repeat(40) },
+				constrained,
+			),
+		).toThrowError(
+			expect.objectContaining({
+				code: "INTERACTION_DELIVERY_UNAVAILABLE",
+				context: expect.objectContaining({
+					limitations: expect.arrayContaining(["message bytes"]),
+				}),
+			}),
+		);
+	});
+
 	it("requires host verification before accepting a signed hosted URL", () => {
 		const signedOnly = structuredClone(profile(RICH_INTERACTION_PROFILE));
 		signedOnly.blocks.choice.modes = ["signed-hosted"];

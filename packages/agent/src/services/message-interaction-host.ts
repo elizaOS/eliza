@@ -461,6 +461,46 @@ export class MessageInteractionHostService
   async get(reference: string): Promise<MessageInteractionSession | null> {
     return this.store.get(reference);
   }
+
+  async listCommitted(request: {
+    committedBefore: number;
+    limit: number;
+  }): Promise<MessageInteractionSession[]> {
+    return this.store.listCommitted(request);
+  }
+
+  async reconcileCommitted(request: {
+    reference: string;
+    receipt: MessageInteractionHostReceipt;
+    now?: number;
+  }): Promise<MessageInteractionSession> {
+    const session = await this.store.get(request.reference);
+    if (!session) {
+      throw new ElizaError("Interaction session was not found.", {
+        code: "MESSAGE_INTERACTION_NOT_FOUND",
+      });
+    }
+    const receipt = hostReceipt(
+      request.receipt,
+      request.receipt.providerReceipt,
+      (text) => this.runtime.redactSecrets(text),
+    );
+    if (
+      receipt.providerReceipt.source !== session.bindings.connector.source ||
+      receipt.providerReceipt.accountId !== session.bindings.connector.accountId
+    ) {
+      throw new ElizaError(
+        "Reconciliation receipt belongs to another connector account.",
+        { code: "MESSAGE_INTERACTION_PROVIDER_RECEIPT_MISMATCH" },
+      );
+    }
+    return this.store.reconcileCommitted({
+      reference: request.reference,
+      replayKey: receipt.idempotencyKey,
+      receipt,
+      now: request.now ?? this.clock(),
+    });
+  }
 }
 
 /** Resolve the concrete host service without constructing a competing store. */

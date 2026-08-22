@@ -588,6 +588,12 @@ function nativeBlockLimitations(
 		)
 			issues.push("edit window expired");
 	}
+	// Native renderers still place prompt/title/form prose onto the connector's
+	// message surface. The canonical block is a conservative upper bound for all
+	// of those strings, so an accepted native delivery never depends on a later
+	// renderer silently shortening user-visible content.
+	if (utf8Bytes(stableStringify(block)) > limits.text.maxMessageBytes)
+		issues.push("message bytes");
 	return [...new Set(issues)].sort();
 }
 

@@ -288,6 +288,56 @@ describe("MessageInteractionHostService", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
+  it("reconciles a committed provider outcome without rerunning its effect", async () => {
+    const { service, execute, prepare, providerReceipt } = fixture();
+    const prepared = await prepare();
+    const provider = providerReceipt();
+    const request = {
+      callbackData: prepared.callbackData,
+      bindings: authenticatedBindings,
+      response: { value: "approve" },
+      providerReceipt: provider,
+    };
+    execute.mockRejectedValueOnce(
+      new Error("outcome lost after provider commit"),
+    );
+
+    await expect(service.consume(request)).rejects.toThrow(
+      "outcome lost after provider commit",
+    );
+    const committed = await service.listCommitted({
+      committedBefore: START,
+      limit: 10,
+    });
+    expect(committed).toMatchObject([
+      {
+        consume: { state: "committed", replayKey: provider.inboundEventId },
+      },
+    ]);
+
+    await expect(
+      service.reconcileCommitted({
+        reference: committed[0].reference,
+        receipt: {
+          receiptId: "receipt-provider-event-a",
+          idempotencyKey: provider.inboundEventId,
+          status: "completed",
+          completedAt: new Date(START).toISOString(),
+          canonicalInboundEventId: "memory-provider-event-a",
+          providerReceipt: provider,
+          auditId: "audit-provider-event-a",
+          appStateResult: { taskState: "approved" },
+          result: { accepted: true },
+        },
+      }),
+    ).resolves.toMatchObject({ consume: { state: "completed" } });
+    await expect(service.consume(request)).resolves.toMatchObject({
+      status: "replay",
+      receipt: { receiptId: "receipt-provider-event-a" },
+    });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   it("rejects mismatched provider authority and conflicting handlers", async () => {
     const { service, execute, prepare, providerReceipt } = fixture();
     expect(() =>
