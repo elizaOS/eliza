@@ -3,6 +3,7 @@ import type { Task, TaskMetadata, UUID } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { taskTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
+import { readTaskDueAt, serializeTaskDueAt } from "./task-timing";
 import type { Store, StoreContext } from "./types";
 
 export class TaskStore implements Store {
@@ -14,10 +15,14 @@ export class TaskStore implements Store {
 
   async create(task: Task): Promise<UUID> {
     if (!task.worldId) throw new Error("worldId is required");
+    const scheduledAt = task.dueAt === undefined ? undefined : serializeTaskDueAt(task.dueAt);
 
     return this.ctx.withRetry(async () => {
       const now = new Date();
-      const metadata = task.metadata || {};
+      const metadata: TaskMetadata = {
+        ...(task.metadata || {}),
+        ...(scheduledAt === undefined ? {} : { scheduledAt }),
+      };
 
       const values = {
         id: task.id as UUID,
@@ -25,6 +30,7 @@ export class TaskStore implements Store {
         description: task.description,
         roomId: task.roomId as UUID,
         worldId: task.worldId as UUID,
+        entityId: task.entityId as UUID,
         tags: task.tags,
         metadata: metadata,
         createdAt: now,
@@ -46,6 +52,7 @@ export class TaskStore implements Store {
           and(
             eq(taskTable.agentId, this.ctx.agentId),
             ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
+            ...(params.entityId ? [eq(taskTable.entityId, params.entityId)] : []),
             ...(params.tags && params.tags.length > 0
               ? [
                   sql`${taskTable.tags} @> ARRAY[${sql.join(
@@ -57,15 +64,20 @@ export class TaskStore implements Store {
           )
         );
 
-      return result.map((row) => ({
-        id: row.id as UUID,
-        name: row.name,
-        description: row.description ?? "",
-        roomId: row.roomId as UUID,
-        worldId: row.worldId as UUID,
-        tags: row.tags || [],
-        metadata: row.metadata as TaskMetadata,
-      }));
+      return result.map((row) => {
+        const metadata = (row.metadata || {}) as TaskMetadata;
+        return {
+          id: row.id as UUID,
+          name: row.name,
+          description: row.description ?? "",
+          roomId: row.roomId as UUID,
+          worldId: row.worldId as UUID,
+          entityId: row.entityId as UUID,
+          tags: row.tags || [],
+          dueAt: readTaskDueAt(metadata),
+          metadata,
+        };
+      });
     }, "TaskStore.getAll");
   }
 
@@ -76,15 +88,20 @@ export class TaskStore implements Store {
         .from(taskTable)
         .where(and(eq(taskTable.name, name), eq(taskTable.agentId, this.ctx.agentId)));
 
-      return result.map((row) => ({
-        id: row.id as UUID,
-        name: row.name,
-        description: row.description ?? "",
-        roomId: row.roomId as UUID,
-        worldId: row.worldId as UUID,
-        tags: row.tags || [],
-        metadata: (row.metadata || {}) as TaskMetadata,
-      }));
+      return result.map((row) => {
+        const metadata = (row.metadata || {}) as TaskMetadata;
+        return {
+          id: row.id as UUID,
+          name: row.name,
+          description: row.description ?? "",
+          roomId: row.roomId as UUID,
+          worldId: row.worldId as UUID,
+          entityId: row.entityId as UUID,
+          tags: row.tags || [],
+          dueAt: readTaskDueAt(metadata),
+          metadata,
+        };
+      });
     }, "TaskStore.getByName");
   }
 
@@ -99,19 +116,23 @@ export class TaskStore implements Store {
       if (result.length === 0) return null;
 
       const row = result[0];
+      const metadata = (row.metadata || {}) as TaskMetadata;
       return {
         id: row.id as UUID,
         name: row.name,
         description: row.description ?? "",
         roomId: row.roomId as UUID,
         worldId: row.worldId as UUID,
+        entityId: row.entityId as UUID,
         tags: row.tags || [],
-        metadata: (row.metadata || {}) as TaskMetadata,
+        dueAt: readTaskDueAt(metadata),
+        metadata,
       };
     }, "TaskStore.get");
   }
 
   async update(id: UUID, task: Partial<Task>): Promise<void> {
+    const scheduledAt = task.dueAt === undefined ? undefined : serializeTaskDueAt(task.dueAt);
     return this.ctx.withRetry(async () => {
       const dbUpdateValues: Partial<typeof taskTable.$inferInsert> & { updatedAt: Date } = {
         updatedAt: new Date(),
@@ -121,8 +142,17 @@ export class TaskStore implements Store {
       if (task.description !== undefined) dbUpdateValues.description = task.description;
       if (task.roomId !== undefined) dbUpdateValues.roomId = task.roomId;
       if (task.worldId !== undefined) dbUpdateValues.worldId = task.worldId;
+      if (task.entityId !== undefined) dbUpdateValues.entityId = task.entityId;
       if (task.tags !== undefined) dbUpdateValues.tags = task.tags;
-      if (task.metadata !== undefined) dbUpdateValues.metadata = task.metadata;
+      if (task.metadata !== undefined) {
+        dbUpdateValues.metadata = {
+          ...task.metadata,
+          ...(scheduledAt === undefined ? {} : { scheduledAt }),
+        };
+      } else if (scheduledAt !== undefined) {
+        const dueAtPatch = JSON.stringify({ scheduledAt });
+        dbUpdateValues.metadata = sql`COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${dueAtPatch}::jsonb`;
+      }
 
       await this.db
         .update(taskTable)

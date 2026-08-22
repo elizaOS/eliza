@@ -91,6 +91,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { sanitizeJsonObject } from "./sanitize-json";
+import { readTaskDueAt, serializeTaskDueAt, TaskTimingValidationError } from "./stores/task-timing";
 
 function agentBioRowsFromDb(bio: unknown): string[] {
   if (bio == null) return [];
@@ -763,6 +764,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       try {
         return await operation();
       } catch (error) {
+        if (error instanceof TaskTimingValidationError) throw error;
         lastError = error as Error;
 
         if (attempt < this.maxRetries) {
@@ -5096,10 +5098,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (!task.worldId) {
       task = { ...task, worldId: this.agentId as UUID };
     }
+    const scheduledAt = task.dueAt === undefined ? undefined : serializeTaskDueAt(task.dueAt);
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const now = new Date();
-        const metadata = task.metadata || {};
+        const metadata: TaskMetadata = {
+          ...(task.metadata || {}),
+          ...(scheduledAt === undefined ? {} : { scheduledAt }),
+        };
 
         const values = {
           // Only include id when provided; otherwise let the DB use its
@@ -5110,6 +5116,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           description: task.description,
           roomId: task.roomId as UUID,
           worldId: task.worldId as UUID,
+          entityId: task.entityId as UUID,
           tags: task.tags,
           metadata: metadata,
           createdAt: now,
@@ -5143,6 +5150,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             and(
               eq(taskTable.agentId, this.agentId),
               ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
+              ...(params.entityId ? [eq(taskTable.entityId, params.entityId)] : []),
               ...(params.tags && params.tags.length > 0
                 ? [
                     sql`${taskTable.tags} @> ARRAY[${sql.join(
@@ -5154,16 +5162,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             )
           );
 
-        return result.map((row) => ({
-          id: row.id as UUID,
-          agentId: row.agentId as UUID,
-          name: row.name,
-          description: row.description ?? "",
-          roomId: row.roomId as UUID,
-          worldId: row.worldId as UUID,
-          tags: row.tags || [],
-          metadata: row.metadata as TaskMetadata,
-        }));
+        return result.map((row) => {
+          const metadata = (row.metadata || {}) as TaskMetadata;
+          return {
+            id: row.id as UUID,
+            agentId: row.agentId as UUID,
+            name: row.name,
+            description: row.description ?? "",
+            roomId: row.roomId as UUID,
+            worldId: row.worldId as UUID,
+            entityId: row.entityId as UUID,
+            tags: row.tags || [],
+            dueAt: readTaskDueAt(metadata),
+            metadata,
+          };
+        });
       });
     });
   }
@@ -5181,16 +5194,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .from(taskTable)
           .where(and(eq(taskTable.name, name), eq(taskTable.agentId, this.agentId)));
 
-        return result.map((row) => ({
-          id: row.id as UUID,
-          agentId: row.agentId as UUID,
-          name: row.name,
-          description: row.description ?? "",
-          roomId: row.roomId as UUID,
-          worldId: row.worldId as UUID,
-          tags: row.tags || [],
-          metadata: (row.metadata || {}) as TaskMetadata,
-        }));
+        return result.map((row) => {
+          const metadata = (row.metadata || {}) as TaskMetadata;
+          return {
+            id: row.id as UUID,
+            agentId: row.agentId as UUID,
+            name: row.name,
+            description: row.description ?? "",
+            roomId: row.roomId as UUID,
+            worldId: row.worldId as UUID,
+            entityId: row.entityId as UUID,
+            tags: row.tags || [],
+            dueAt: readTaskDueAt(metadata),
+            metadata,
+          };
+        });
       });
     });
   }
@@ -5214,6 +5232,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
 
         const row = result[0];
+        const metadata = (row.metadata || {}) as TaskMetadata;
         return {
           id: row.id as UUID,
           agentId: row.agentId as UUID,
@@ -5221,8 +5240,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           description: row.description ?? "",
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
+          entityId: row.entityId as UUID,
           tags: row.tags || [],
-          metadata: (row.metadata || {}) as TaskMetadata,
+          dueAt: readTaskDueAt(metadata),
+          metadata,
         };
       });
     });
@@ -5235,6 +5256,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns Promise resolving when the update is complete
    */
   async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
+    const scheduledAt = task.dueAt === undefined ? undefined : serializeTaskDueAt(task.dueAt);
     await this.withRetry(async () => {
       await this.withDatabase(async () => {
         const updateValues: Partial<typeof taskTable.$inferInsert> = {};
@@ -5244,9 +5266,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (task.description !== undefined) updateValues.description = task.description;
         if (task.roomId !== undefined) updateValues.roomId = task.roomId;
         if (task.worldId !== undefined) updateValues.worldId = task.worldId;
+        if (task.entityId !== undefined) updateValues.entityId = task.entityId;
         if (task.tags !== undefined) updateValues.tags = task.tags;
-        if (task.metadata !== undefined)
-          updateValues.metadata = task.metadata as typeof taskTable.$inferInsert.metadata;
+        if (task.metadata !== undefined) {
+          updateValues.metadata = {
+            ...task.metadata,
+            ...(scheduledAt === undefined ? {} : { scheduledAt }),
+          };
+        } else if (scheduledAt !== undefined) {
+          const dueAtPatch = JSON.stringify({ scheduledAt });
+          updateValues.metadata = sql`COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${dueAtPatch}::jsonb`;
+        }
         // Handle createdAt if present in the task object (using type assertion for compatibility)
         const taskWithCreatedAt = task as {
           createdAt?: number | bigint | null;
@@ -5265,10 +5295,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         };
 
         // Handle metadata updates - just set it directly without merging
-        if (task.metadata !== undefined) {
-          dbUpdateValues.metadata = task.metadata;
-        }
-
         await this.db
           .update(taskTable)
           // createdAt is hella borked, number / Date
