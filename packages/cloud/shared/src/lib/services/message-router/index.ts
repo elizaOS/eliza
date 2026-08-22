@@ -122,8 +122,15 @@ function deliveryFailed(
 function deliveryUncertain(
   provider: SendMessageParams["provider"],
   code: string,
+  providerStatus?: number,
 ): MessageDeliveryOutcome {
-  return { status: "uncertain", provider, code, retryable: false };
+  return {
+    status: "uncertain",
+    provider,
+    code,
+    retryable: false,
+    ...(providerStatus === undefined ? {} : { providerStatus }),
+  };
 }
 
 function classifyProviderException(
@@ -133,10 +140,15 @@ function classifyProviderException(
   if (isElizaError(error) && error.code === "PROVIDER_REQUEST_REJECTED") {
     const providerStatus =
       typeof error.context?.status === "number" ? error.context.status : undefined;
-    if (providerStatus !== undefined && providerStatus >= 500) {
-      return deliveryUncertain(provider, "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN");
-    }
     const retryable = error.context?.retryable === true;
+    if (
+      providerStatus === 408 ||
+      providerStatus === 429 ||
+      (providerStatus !== undefined && providerStatus >= 500) ||
+      retryable
+    ) {
+      return deliveryUncertain(provider, "DELIVERY_PROVIDER_REJECTION_UNCERTAIN", providerStatus);
+    }
     return deliveryFailed(provider, "DELIVERY_PROVIDER_REJECTED", retryable, providerStatus);
   }
   if (isElizaError(error) && error.code === "PROVIDER_RECEIPT_INVALID") {
@@ -605,15 +617,14 @@ class MessageRouterService {
 
       if (!response.ok) {
         logger.error("[MessageRouter] Twilio API error", { status: response.status });
-        if (response.status >= 500) {
-          return deliveryUncertain("twilio", "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN");
+        if (response.status === 408 || response.status === 429 || response.status >= 500) {
+          return deliveryUncertain(
+            "twilio",
+            "DELIVERY_PROVIDER_REJECTION_UNCERTAIN",
+            response.status,
+          );
         }
-        return deliveryFailed(
-          "twilio",
-          "DELIVERY_PROVIDER_REJECTED",
-          response.status === 429 || response.status >= 500,
-          response.status,
-        );
+        return deliveryFailed("twilio", "DELIVERY_PROVIDER_REJECTED", false, response.status);
       }
 
       let receipt: unknown;

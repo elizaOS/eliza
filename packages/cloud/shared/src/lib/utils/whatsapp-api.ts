@@ -254,7 +254,7 @@ export async function sendWhatsAppMessage(
       context: {
         provider: "whatsapp",
         status: response.status,
-        retryable: response.status === 429 || response.status >= 500,
+        retryable: response.status === 408 || response.status === 429 || response.status >= 500,
       },
     });
   }

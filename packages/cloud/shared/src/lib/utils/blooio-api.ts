@@ -179,7 +179,7 @@ export async function blooioApiRequest<T>(
       context: {
         provider: "blooio",
         status: response.status,
-        retryable: response.status === 429 || response.status >= 500,
+        retryable: response.status === 408 || response.status === 429 || response.status >= 500,
       },
     });
   }
