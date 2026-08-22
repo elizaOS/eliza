@@ -1,10 +1,10 @@
 /**
  * Cloud-panel Permissions section — consolidates the three permission surfaces
  * the operator manages from one place: device/system permissions (microphone,
- * notifications, accessibility), per-app permission grants for installed
- * connectors/MCPs, and server-side cloud plugin grants with revoke. Device and
- * app permission state reuse the existing desktop + app-permissions machinery;
- * cloud plugin grants hit `GET/DELETE /api/v1/me/plugin-grants`.
+ * notifications, accessibility) and server-side cloud plugin grants with
+ * revoke. Cloud-only desktop does not host local apps, so local app permission
+ * grants are deliberately absent. Cloud plugin grants hit
+ * `GET/DELETE /api/v1/me/plugin-grants`.
  *
  * All three groups use the same row pattern:
  *   Title  →  Description  →  Status badge  →  Action control
@@ -14,8 +14,11 @@
  * grants (revoke). This matches macOS System Settings where every row has the
  * same structure but the control differs.
  */
+
+import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { Circle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
 import { cn } from "../../../../lib/utils";
 import { useAppSelector } from "../../../../state";
 import { useDesktopPermissionsState } from "../../permission-controls.hooks";
@@ -26,7 +29,6 @@ import {
   SettingsGroup,
   SettingsStack,
 } from "../nuphy-settings-primitives";
-import { Button as NuphyButton, IosToggle } from "@extrastu/nuphy-ui";
 
 /* ── Shared status badge ────────────────────────────────────────── */
 
@@ -108,11 +110,7 @@ function DevicePermissionRow({
         <span className="flex items-center gap-3">
           <StatusBadge granted={granted} />
           {granted ? (
-            <NuphyButton
-              variant="secondary"
-              size="sm"
-              onClick={onOpenSettings}
-            >
+            <NuphyButton variant="secondary" size="sm" onClick={onOpenSettings}>
               Open
             </NuphyButton>
           ) : (
@@ -143,6 +141,20 @@ function DevicePermissionsGroup() {
     );
   }
 
+  if (!permissions) {
+    return (
+      <SettingsGroup
+        title="Device permissions"
+        footer="This cloud-only build could not read the macOS permission service."
+      >
+        <NuphyRow
+          label="Permission status unavailable"
+          description="No permission was reported as denied or granted."
+        />
+      </SettingsGroup>
+    );
+  }
+
   return (
     <SettingsGroup
       title="Device permissions"
@@ -167,143 +179,68 @@ function DevicePermissionsGroup() {
   );
 }
 
-/* ── App permissions (per-connector/MCP toggles) ────────────────── */
-
-interface AppPermissionEntry {
-  slug: string;
-  label: string;
-  namespaces: { id: string; label: string; granted: boolean }[];
-}
-
-/**
- * Placeholder app-permission source. The real list comes from
- * `GET /api/apps/permissions` (see AppPermissionsSection); here we render a
- * compact toggle-per-grant view so the cloud panel owns the consolidated
- * surface without duplicating the fetch/reconcile logic.
- */
-function useAppPermissionEntries(): AppPermissionEntry[] {
-  return useMemo(
-    () => [
-      {
-        slug: "connector-filesystem",
-        label: "Filesystem connector",
-        namespaces: [
-          { id: "fs", label: "Filesystem", granted: true },
-          { id: "net", label: "Network", granted: false },
-        ],
-      },
-      {
-        slug: "mcp-web-search",
-        label: "Web search MCP",
-        namespaces: [{ id: "net", label: "Network", granted: true }],
-      },
-    ],
-    [],
-  );
-}
-
-function AppPermissionsGroup() {
-  const entries = useAppPermissionEntries();
-  const [grants, setGrants] = useState(() =>
-    entries.map((entry) => ({
-      slug: entry.slug,
-      granted: Object.fromEntries(
-        entry.namespaces.map((ns) => [ns.id, ns.granted]),
-      ),
-    })),
-  );
-
-  if (entries.length === 0) {
-    return (
-      <SettingsGroup
-        title="App permissions"
-        footer="No installed connectors or MCPs declare permissions."
-      >
-        <NuphyRow label="No app permissions declared" />
-      </SettingsGroup>
-    );
-  }
-
-  return (
-    <SettingsGroup
-      title="App permissions"
-      footer="Per-connector and per-MCP permission grants. Toggle a namespace to allow or revoke it."
-    >
-      {entries.flatMap((entry) =>
-        entry.namespaces.map((ns) => {
-          const toggleId = `cloud-perm-${entry.slug}-${ns.id}`;
-          const checked =
-            grants.find((g) => g.slug === entry.slug)?.granted[ns.id] ??
-            ns.granted;
-          return (
-            <NuphyRow
-              key={toggleId}
-              label={ns.label}
-              description={entry.label}
-              control={
-                <span className="flex items-center gap-3">
-                  <StatusBadge granted={checked} />
-                  <IosToggle
-                    id={toggleId}
-                    checked={checked}
-                    onCheckedChange={(next) =>
-                      setGrants((prev) =>
-                        prev.map((g) =>
-                          g.slug === entry.slug
-                            ? {
-                                ...g,
-                                granted: { ...g.granted, [ns.id]: next },
-                              }
-                            : g,
-                        ),
-                      )
-                    }
-                  />
-                </span>
-              }
-            />
-          );
-        }),
-      )}
-    </SettingsGroup>
-  );
-}
-
 /* ── Cloud plugin grants ────────────────────────────────────────── */
 
 interface CloudPluginGrant {
   grant_id: string;
   plugin_id: string;
-  plugin_name: string;
-  scopes: string[];
+  plugin_name?: string | null;
+  permission: string;
+  scope?: string | null;
 }
 
-/**
- * Placeholder grant list. The real data is fetched from
- * `GET /api/v1/me/plugin-grants`; revoke is `DELETE /api/v1/me/plugin-grants/:id`.
- */
-const PLACEHOLDER_GRANTS: CloudPluginGrant[] = [
-  {
-    grant_id: "g_1",
-    plugin_id: "cloud-scheduler",
-    plugin_name: "Cloud Scheduler",
-    scopes: ["calendar:read", "calendar:write"],
-  },
-  {
-    grant_id: "g_2",
-    plugin_id: "cloud-inbox",
-    plugin_name: "Cloud Inbox",
-    scopes: ["mail:read"],
-  },
-];
+type CloudGrantsState =
+  | { kind: "loading" }
+  | { kind: "ready"; grants: CloudPluginGrant[] }
+  | { kind: "missing" }
+  | { kind: "error"; message: string };
 
 function CloudPluginGrantsGroup() {
   const cloudConnected = useAppSelector((s) => s.elizaCloudConnected);
-  const [grants, setGrants] = useState<CloudPluginGrant[]>(PLACEHOLDER_GRANTS);
+  const [state, setState] = useState<CloudGrantsState>({ kind: "loading" });
+  const [revoking, setRevoking] = useState<string | null>(null);
 
-  const revoke = (grantId: string) => {
-    // DELETE /api/v1/me/plugin-grants/:grantId
-    setGrants((prev) => prev.filter((g) => g.grant_id !== grantId));
+  const load = useCallback(async () => {
+    setState({ kind: "loading" });
+    try {
+      const result = await api<{ grants?: CloudPluginGrant[] }>(
+        "/api/v1/me/plugin-grants",
+      );
+      setState({ kind: "ready", grants: result.grants ?? [] });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setState({ kind: "missing" });
+        return;
+      }
+      setState({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Could not load grants",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (cloudConnected) void load();
+  }, [cloudConnected, load]);
+
+  const revoke = async (grantId: string) => {
+    setRevoking(grantId);
+    try {
+      await apiFetch(
+        `/api/v1/me/plugin-grants/${encodeURIComponent(grantId)}`,
+        { method: "DELETE" },
+      );
+      await load();
+    } catch (error) {
+      setState({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "Could not revoke grant",
+      });
+    } finally {
+      setRevoking(null);
+    }
   };
 
   if (!cloudConnected) {
@@ -322,22 +259,34 @@ function CloudPluginGrantsGroup() {
       title="Cloud plugin grants"
       footer="Server-side permissions granted to cloud plugins. Revoke a grant to withdraw access immediately."
     >
-      {grants.length === 0 ? (
+      {state.kind === "loading" ? (
+        <NuphyRow label="Loading plugin grants…" />
+      ) : state.kind === "missing" ? (
+        <NuphyRow label="Plugin grant tracking is not available on this server." />
+      ) : state.kind === "error" ? (
+        <NuphyRow
+          label="Plugin grants unavailable"
+          description={state.message}
+        />
+      ) : state.grants.length === 0 ? (
         <NuphyRow label="No plugins have been granted permissions." />
       ) : (
-        grants.map((grant) => (
+        state.grants.map((grant) => (
           <NuphyRow
             key={grant.grant_id}
-            label={grant.plugin_name}
-            description={grant.scopes.join(" · ")}
+            label={grant.plugin_name ?? grant.plugin_id}
+            description={[grant.permission, grant.scope]
+              .filter(Boolean)
+              .join(" · ")}
             control={
               <span className="flex items-center gap-3">
                 <StatusBadge granted />
                 <DestructiveSecondaryButton
                   size="sm"
-                  onClick={() => revoke(grant.grant_id)}
+                  disabled={revoking === grant.grant_id}
+                  onClick={() => void revoke(grant.grant_id)}
                 >
-                  Revoke
+                  {revoking === grant.grant_id ? "Revoking…" : "Revoke"}
                 </DestructiveSecondaryButton>
               </span>
             }
@@ -354,7 +303,6 @@ export function PermissionsSection() {
   return (
     <SettingsStack>
       <DevicePermissionsGroup />
-      <AppPermissionsGroup />
       <CloudPluginGrantsGroup />
     </SettingsStack>
   );
