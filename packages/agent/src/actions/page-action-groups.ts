@@ -375,10 +375,20 @@ export const pageDelegateAction: PageActionGroup = {
         runtime,
         childContexts,
       );
+      // Self-correction affordance: planners routinely wrap a DIRECT action in
+      // PAGE_DELEGATE (live tj-…, PAGE_DELEGATE{action:"CHANNEL_RECAP"} then a
+      // bare stop). When the requested name exists as a directly callable tool,
+      // say so — the next iteration can recover instead of giving up.
+      const directlyCallable = runtime.actions.some(
+        (candidate) => candidate.name === requestedAction,
+      );
       return {
         success: false,
         text:
           `${requestedAction} is not available on the ${page} page.` +
+          (directlyCallable
+            ? ` ${requestedAction} IS a directly callable tool on this turn — call ${requestedAction} directly instead of wrapping it in PAGE_DELEGATE.`
+            : "") +
           (availableActions.length > 0
             ? ` Actions available on the ${page} page: ${availableActions.join(", ")}.`
             : ` No child actions are registered for the ${page} page in this deployment.`),
@@ -387,8 +397,9 @@ export const pageDelegateAction: PageActionGroup = {
           code: "PAGE_CHILD_UNAVAILABLE",
           page,
           requestedAction,
+          directlyCallable,
           availableActions,
-          retryable: false,
+          retryable: directlyCallable,
         },
       };
     }
