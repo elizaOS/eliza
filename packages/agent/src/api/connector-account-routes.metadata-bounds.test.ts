@@ -17,7 +17,9 @@
  * These tests pin both bounded layers: route-walk failures and the stricter
  * connector-storage projection are rejected with a 400 before provider
  * callbacks run, an over-budget stored value is served with an explicit
- * marker, and honest nested metadata is untouched.
+ * marker, and honest nested metadata is untouched. The refresh/default
+ * routes build patches from stored rows rather than caller bodies, so their
+ * tests seed a budget-edge row through the validated POST path first.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
@@ -42,6 +44,8 @@ const OVERFLOW_DEPTH = 60_000;
 const STORAGE_OVERFLOW_DEPTH = 17;
 /** Wide enough to exceed core's storage-node budget but not the route budget. */
 const STORAGE_OVERFLOW_WIDTH = 2_100;
+/** Root + 1,023 key/value pairs = 2,047 storage nodes: one below core's cap. */
+const STORAGE_EDGE_KEYS = 1_023;
 
 function deepChain(depth: number): Record<string, unknown> {
   const root: Record<string, unknown> = {};
@@ -169,6 +173,155 @@ describe("connector account metadata walk bounds (real route handler)", () => {
       },
     });
     expect(patchAccount).not.toHaveBeenCalled();
+  });
+
+  it("rejects a budget-edge refresh patch before a provider patch side effect", async () => {
+    const adapter = await newAdapter();
+    const runtime = createRuntime(adapter);
+    const manager = getConnectorAccountManager(runtime as never);
+    // Seed through the validated POST path: a row whose stored metadata sits
+    // one node below core's durable-storage cap (root + 1,023 pairs).
+    const seed = createContext(
+      runtime,
+      "POST",
+      `/api/connectors/${PROVIDER}/accounts`,
+      {
+        label: "edge@example.com",
+        metadata: wideObject(STORAGE_EDGE_KEYS),
+      },
+    );
+    expect(await handleConnectorAccountRoutes(seed.ctx)).toBe(true);
+    expect(seed.captured.status).toBe(201);
+    const seededId = (seed.captured.body as { id: string }).id;
+
+    const patchAccount = vi.fn(
+      async (_accountId: string, patch: ConnectorAccountPatch) => patch,
+    );
+    manager.registerProvider({ provider: PROVIDER, patchAccount });
+    // lastSyncedAt adds one more key/value pair: the merged patch now exceeds
+    // the storage budget and must be rejected before patchAccount runs.
+    const pathname = `/api/connectors/${PROVIDER}/accounts/${seededId}/refresh`;
+    const { ctx, captured } = createContext(runtime, "POST", pathname);
+
+    const handled = await handleConnectorAccountRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(captured).toEqual({
+      status: 400,
+      body: {
+        error: "Connector account metadata exceeds the bounded walk budget",
+      },
+    });
+    expect(patchAccount).not.toHaveBeenCalled();
+  });
+
+  it("rejects a budget-edge default patch before a provider patch side effect", async () => {
+    const adapter = await newAdapter();
+    const runtime = createRuntime(adapter);
+    const manager = getConnectorAccountManager(runtime as never);
+    const seed = createContext(
+      runtime,
+      "POST",
+      `/api/connectors/${PROVIDER}/accounts`,
+      {
+        label: "edge@example.com",
+        metadata: wideObject(STORAGE_EDGE_KEYS),
+      },
+    );
+    expect(await handleConnectorAccountRoutes(seed.ctx)).toBe(true);
+    expect(seed.captured.status).toBe(201);
+    const seededId = (seed.captured.body as { id: string }).id;
+
+    const patchAccount = vi.fn(
+      async (_accountId: string, patch: ConnectorAccountPatch) => patch,
+    );
+    manager.registerProvider({ provider: PROVIDER, patchAccount });
+    // Setting isDefault on the seeded row adds one key/value pair past the
+    // storage budget; rejection must precede the provider callback.
+    const pathname = `/api/connectors/${PROVIDER}/accounts/${seededId}/default`;
+    const { ctx, captured } = createContext(runtime, "POST", pathname);
+
+    const handled = await handleConnectorAccountRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(captured).toEqual({
+      status: 400,
+      body: {
+        error: "Connector account metadata exceeds the bounded walk budget",
+      },
+    });
+    expect(patchAccount).not.toHaveBeenCalled();
+  });
+
+  it("rejects a two-account default plan before any effect: over-budget second account means zero provider callbacks and zero row writes", async () => {
+    const adapter = await newAdapter();
+    const runtime = createRuntime(adapter);
+    const manager = getConnectorAccountManager(runtime as never);
+    // Seed the over-budget target FIRST so it has the older updatedAt; the
+    // storage adapter lists accounts newest-updated-first, so the valid old
+    // default is visited by the mutation loop before the invalid target.
+    const targetSeed = createContext(
+      runtime,
+      "POST",
+      `/api/connectors/${PROVIDER}/accounts`,
+      {
+        label: "edge@example.com",
+        metadata: wideObject(STORAGE_EDGE_KEYS),
+      },
+    );
+    expect(await handleConnectorAccountRoutes(targetSeed.ctx)).toBe(true);
+    expect(targetSeed.captured.status).toBe(201);
+    const targetId = (targetSeed.captured.body as { id: string }).id;
+
+    const firstSeed = createContext(
+      runtime,
+      "POST",
+      `/api/connectors/${PROVIDER}/accounts`,
+      { label: "old-default@example.com", metadata: {} },
+    );
+    expect(await handleConnectorAccountRoutes(firstSeed.ctx)).toBe(true);
+    expect(firstSeed.captured.status).toBe(201);
+    const firstId = (firstSeed.captured.body as { id: string }).id;
+    // Make it the current default; the manager-level patch also bumps its
+    // updatedAt so it sorts ahead of the target in listAccounts.
+    await manager.patchAccount(PROVIDER, firstId, {
+      metadata: { isDefault: true },
+    });
+
+    // Ordering precondition: without this, the invalid target would be
+    // visited first and the test would pass without exercising the
+    // validate-early-then-flip-later ordering the maintainer asked about.
+    const preOrder = await manager.listAccounts(PROVIDER);
+    expect(preOrder[0]?.id).toBe(firstId);
+    expect(preOrder[1]?.id).toBe(targetId);
+
+    const patchAccount = vi.fn(
+      async (_accountId: string, patch: ConnectorAccountPatch) => patch,
+    );
+    manager.registerProvider({ provider: PROVIDER, patchAccount });
+
+    const pathname = `/api/connectors/${PROVIDER}/accounts/${targetId}/default`;
+    const { ctx, captured } = createContext(runtime, "POST", pathname);
+
+    const handled = await handleConnectorAccountRoutes(ctx);
+
+    // The structured 400 is the whole outcome: the plan (flip the old default
+    // off, flip the new one on) must be validated before the first provider
+    // callback or row write, so a later-account rejection leaves the earlier
+    // account untouched.
+    expect(handled).toBe(true);
+    expect(captured).toEqual({
+      status: 400,
+      body: {
+        error: "Connector account metadata exceeds the bounded walk budget",
+      },
+    });
+    expect(patchAccount).not.toHaveBeenCalled();
+    const rows = await manager.listAccounts(PROVIDER);
+    const firstRow = rows.find((row) => row.id === firstId);
+    const targetRow = rows.find((row) => row.id === targetId);
+    expect(firstRow?.metadata?.isDefault).toBe(true);
+    expect(targetRow?.metadata?.isDefault).toBeUndefined();
   });
 
   it("rejects an over-deep POST body with a 400 instead of escaping the handler", async () => {

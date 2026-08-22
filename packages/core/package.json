@@ -29,11 +29,6 @@
 		"./package.json": "./package.json",
 		".": {
 			"types": "./dist/index.d.ts",
-			"eliza-source": {
-				"types": "./src/index.ts",
-				"import": "./src/index.ts",
-				"default": "./src/index.ts"
-			},
 			"workerd": {
 				"types": "./dist/edge/index.d.ts",
 				"import": "./dist/edge/index.edge.js",
@@ -43,6 +38,11 @@
 				"types": "./dist/index.browser.d.ts",
 				"import": "./dist/browser/index.browser.js",
 				"default": "./dist/browser/index.browser.js"
+			},
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
 			},
 			"node": {
 				"types": "./dist/index.node.d.ts",
@@ -68,11 +68,6 @@
 		},
 		"./browser": {
 			"types": "./dist/index.browser.d.ts",
-			"eliza-source": {
-				"types": "./src/index.browser.ts",
-				"import": "./src/index.browser.ts",
-				"default": "./src/index.browser.ts"
-			},
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},
@@ -88,15 +83,15 @@
 		},
 		"./client-public": {
 			"types": "./dist/client-public.d.ts",
-			"eliza-source": {
-				"types": "./src/client-public.ts",
-				"import": "./src/client-public.ts",
-				"default": "./src/client-public.ts"
-			},
 			"browser": {
 				"types": "./dist/client-public.d.ts",
 				"import": "./dist/browser/client-public.js",
 				"default": "./dist/browser/client-public.js"
+			},
+			"eliza-source": {
+				"types": "./src/client-public.ts",
+				"import": "./src/client-public.ts",
+				"default": "./src/client-public.ts"
 			},
 			"node": {
 				"types": "./dist/client-public.d.ts",
@@ -112,6 +107,11 @@
 		},
 		"./testing": {
 			"types": "./dist/testing/index.d.ts",
+			"eliza-source": {
+				"types": "./src/testing/index.ts",
+				"import": "./src/testing/index.ts",
+				"default": "./src/testing/index.ts"
+			},
 			"import": "./dist/testing/index.js",
 			"default": "./dist/testing/index.js"
 		},
@@ -124,6 +124,16 @@
 			},
 			"import": "./dist/node/utils/atomic-json.js",
 			"default": "./dist/node/utils/atomic-json.js"
+		},
+		"./errors": {
+			"types": "./dist/errors.d.ts",
+			"eliza-source": {
+				"types": "./src/errors.ts",
+				"import": "./src/errors.ts",
+				"default": "./src/errors.ts"
+			},
+			"import": "./dist/node/errors.js",
+			"default": "./dist/node/errors.js"
 		},
 		"./security/kms": {
 			"types": "./dist/security/kms/index.d.ts",

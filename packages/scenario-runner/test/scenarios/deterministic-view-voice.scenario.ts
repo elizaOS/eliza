@@ -108,9 +108,23 @@ function expectVoiceTurn(
   execution: ScenarioTurnExecution,
   view: VoiceView,
 ): string | undefined {
-  const expectedText = `Opened ${view.navigationLabel ?? view.label}.`;
-  if (execution.responseText !== expectedText) {
-    return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
+  let effect: Record<string, unknown>;
+  try {
+    effect = toRecord(JSON.parse(execution.responseText));
+  } catch {
+    return `expected a JSON view-navigation effect, saw ${JSON.stringify(execution.responseText)}`;
+  }
+  const expectedEffect = {
+    effect: "view_navigation",
+    status: "accepted",
+    viewId: view.id,
+    label: view.navigationLabel ?? view.label,
+    path: view.path,
+  };
+  for (const [key, expected] of Object.entries(expectedEffect)) {
+    if (effect[key] !== expected) {
+      return `expected navigation effect ${key}=${JSON.stringify(expected)}, saw ${JSON.stringify(effect[key])}`;
+    }
   }
   const action = execution.actionsCalled.find(
     (candidate) => candidate.actionName === "VIEWS",
@@ -202,7 +216,7 @@ export default scenario({
     text: view.noun,
     actionName: "VIEWS",
     options: { action: "show", viewType: "gui" },
-    responseIncludesAny: [`Opened ${view.navigationLabel ?? view.label}`],
+    responseIncludesAny: ['"effect":"view_navigation"'],
     assertTurn: (execution: ScenarioTurnExecution) =>
       expectVoiceTurn(execution, view),
   })),

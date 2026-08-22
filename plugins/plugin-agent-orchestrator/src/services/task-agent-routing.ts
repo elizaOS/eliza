@@ -36,6 +36,17 @@ export function normalizeTaskAgentAdapter(
     case "openai-codex":
     case "openai codex":
       return "codex";
+    case "kimi":
+    case "kimi-code":
+    case "kimi code":
+    case "moonshot":
+      return "kimi";
+    case "grok":
+    case "grok-build":
+    case "grok build":
+    case "xai":
+    case "x-ai":
+      return "grok";
     default:
       return normalized;
   }

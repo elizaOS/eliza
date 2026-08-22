@@ -35,7 +35,10 @@ function _readChoiceParameters(
 			: {};
 	const taskId = params.taskId ?? message.content.taskId;
 	const selectedOption =
-		params.selectedOption ?? message.content.selectedOption;
+		params.selectedOption ??
+		params.option ??
+		message.content.selectedOption ??
+		message.content.option;
 	return {
 		taskId:
 			typeof taskId === "string" && taskId.trim() ? taskId.trim() : undefined,
@@ -365,7 +368,7 @@ export const choiceAction: Action = {
 			schema: { type: "string" as const, minLength: 1 },
 		},
 		{
-			name: "selectedOption",
+			name: "option",
 			description: "Option name to select for the pending task.",
 			required: true,
 			schema: { type: "string" as const, minLength: 1 },

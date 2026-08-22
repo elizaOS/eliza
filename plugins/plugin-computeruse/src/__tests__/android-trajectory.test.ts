@@ -40,7 +40,7 @@ describe("emitAndroidAction", () => {
     }
   });
 
-  it("trims error messages over 256 chars", () => {
+  it("preserves complete long error messages in the payload and structured log", () => {
     const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
     try {
       const long = "x".repeat(2_000);
@@ -50,13 +50,14 @@ describe("emitAndroidAction", () => {
         errorCode: "accessibility_unavailable",
         errorMessage: long,
       });
-      expect(payload.errorMessage?.length).toBe(256);
+      expect(payload.errorMessage).toBe(long);
       expect(spy.mock.calls[0]?.[0]).toMatchObject({
         evt: "computeruse.android.action",
         platform: "android",
         kind: "tap",
         success: false,
         errorCode: "accessibility_unavailable",
+        errorMessage: long,
       });
     } finally {
       spy.mockRestore();
@@ -96,6 +97,27 @@ describe("emitAndroidAgentStep", () => {
       expect(obj.step).toBe(3);
       expect(obj.actionKind).toBe("click");
       expect(obj.success).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("preserves complete long agent-step errors", () => {
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      const error = "android bridge failure ".repeat(200);
+      const payload = emitAndroidAgentStep({
+        step: 4,
+        goal: "save the document",
+        actionKind: "click",
+        displayId: 0,
+        rois: 1,
+        success: false,
+        error,
+        rationale: "tap save",
+      });
+      expect(payload.error).toBe(error);
+      expect(spy.mock.calls[0]?.[0]).toMatchObject({ error });
     } finally {
       spy.mockRestore();
     }

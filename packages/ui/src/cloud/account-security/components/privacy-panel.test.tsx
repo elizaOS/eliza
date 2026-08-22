@@ -42,6 +42,12 @@ vi.mock("../data/audit-client", () => ({
 
 vi.mock("../data/consent-store", () => consentMock);
 vi.mock("../data/account-deletion-client", () => ({
+  getAccountDeletionStatus: vi.fn(async () => ({
+    state: "lifecycle_unavailable",
+    request: null,
+    code: "LIFECYCLE_RESERVATION_REQUIRED",
+    message: "Lifecycle reservation required",
+  })),
   submitAccountDeletion: vi.fn(),
   endLocalSessionAfterDeletion: vi.fn(),
 }));
@@ -53,8 +59,9 @@ afterEach(() => {
 });
 
 describe("PrivacyPanel", () => {
-  it("routes vision and trajectory toggles through SettingsSwitchRow", () => {
+  it("routes vision and trajectory toggles through SettingsSwitchRow", async () => {
     render(<PrivacyPanel />);
+    await screen.findByText("Deletion unavailable");
     const vision = screen.getByTestId("vision-toggle");
     const trajectory = screen.getByTestId("trajectory-toggle");
     expect(vision.getAttribute("role")).toBe("switch");
@@ -68,14 +75,14 @@ describe("PrivacyPanel", () => {
     expect(consentMock.setVisionEnabled).toHaveBeenCalledWith(true);
   });
 
-  it("routes DSR export and delete through labelled SettingsRows", () => {
+  it("routes DSR export and delete through labelled SettingsRows", async () => {
     render(<PrivacyPanel />);
     expect(screen.getByText("Download my data")).toBeTruthy();
-    const del = screen.getByTestId(
-      "delete-account-trigger",
-    ) as HTMLButtonElement;
-    expect(del.disabled).toBe(false);
-    expect(del.textContent).toContain("Delete account");
+    const del = (await screen.findByText(
+      "Deletion unavailable",
+    )) as HTMLButtonElement;
+    expect(screen.getByTestId("delete-account-trigger")).toBe(del);
+    expect(del.disabled).toBe(true);
     expect(screen.getByText("Export unavailable")).toBeTruthy();
   });
 });

@@ -46,20 +46,25 @@ type ButtonMockProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
   children?: ReactNode;
   onPress?: MouseEventHandler<HTMLButtonElement>;
   size?: string;
+  unstyled?: boolean;
   variant?: string;
 };
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     spawnPtySession: mocks.spawnPtySession,
     stopPtySession: mocks.stopPtySession,
     onWsEvent: mocks.onWsEvent,
   },
+}));
+
+vi.mock("@elizaos/ui/components/ui/button", () => ({
   Button: (props: ButtonMockProps) => {
     const {
       children,
       variant: _variant,
       size: _size,
+      unstyled: _unstyled,
       agent: _agent,
       onPress,
       onClick,

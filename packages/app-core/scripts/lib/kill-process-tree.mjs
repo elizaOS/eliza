@@ -87,13 +87,9 @@ export function signalSpawnedProcessTree(child, signal) {
 }
 
 /**
- * Signal the dedicated Unix process group created by `spawn(..., { detached:
- * true })`. Unlike a parent/child walk, this still reaches launcher descendants
- * after their immediate parent exits and they are reparented. Desktop dev uses
- * one dedicated group per service, so the negative PID target is exact.
- *
- * Falls back to the normal tree walk on Windows and when the child is not a
- * process-group leader.
+ * Signal a child spawned with `detached: true` as one Unix process group.
+ * Unlike a parent/child walk, the group remains addressable after its launcher
+ * exits and reparents a native descendant.
  *
  * @param {import("node:child_process").ChildProcess | null | undefined} child
  * @param {"SIGTERM" | "SIGKILL"} signal
@@ -101,34 +97,52 @@ export function signalSpawnedProcessTree(child, signal) {
 export function signalSpawnedProcessGroup(child, signal) {
   const pid = child?.pid;
   if (!Number.isFinite(pid) || pid <= 0) return;
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-pid, signal === "SIGKILL" ? "SIGKILL" : "SIGTERM");
-      return;
-    } catch {
-      // ESRCH means this child was not the leader of a live dedicated group.
-    }
+  if (process.platform === "win32") {
+    signalProcessTreeWin32(pid, signal);
+    return;
   }
-  signalProcessTree(pid, signal);
+  const sig = signal === "SIGKILL" ? "SIGKILL" : "SIGTERM";
+  try {
+    process.kill(-pid, sig);
+  } catch (error) {
+    // error-policy:J6 Group teardown is best-effort. Only a still-live
+    // non-detached child may use the exact-tree fallback; after leader exit an
+    // ESRCH must not target a newly reused positive PID.
+    if (
+      !(error instanceof Error && Reflect.get(error, "code") === "ESRCH") ||
+      child.exitCode != null ||
+      child.signalCode != null
+    ) {
+      return;
+    }
+    signalProcessTreeUnix(pid, sig);
+  }
 }
 
 /**
- * Whether a detached child's dedicated Unix process group still has members.
- * This detects GUI launcher descendants even after the tracked CLI parent has
- * exited, which ChildProcess.exitCode alone cannot do.
+ * Report whether the detached Unix process group led by `child.pid` still has
+ * members. The launcher may be reaped while a native descendant remains.
  *
  * @param {import("node:child_process").ChildProcess | null | undefined} child
  * @returns {boolean}
  */
 export function isSpawnedProcessGroupAlive(child) {
   const pid = child?.pid;
-  if (!Number.isFinite(pid) || pid <= 0 || process.platform === "win32") {
-    return false;
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  if (process.platform === "win32") {
+    return child.exitCode == null && child.signalCode == null;
   }
   try {
     process.kill(-pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J6 EPERM proves the group exists but is not signalable. An
+    // ESRCH while the child itself is live identifies a non-detached child.
+    const code = error instanceof Error ? Reflect.get(error, "code") : null;
+    if (code === "EPERM") return true;
+    if (code === "ESRCH") {
+      return child.exitCode == null && child.signalCode == null;
+    }
+    return true;
   }
 }

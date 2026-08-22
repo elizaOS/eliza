@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   createElectrobunConfig,
   resolveElectrobunCopyMap,
+  resolveLinuxRenderer,
   shouldEmbedRuntimeBundle,
 } from "../electrobun.config";
 
@@ -16,6 +17,33 @@ describe("Electrobun Store packaging", () => {
       bundleCEF: true,
       defaultRenderer: "cef",
     });
+  });
+
+  it("supports a CEF-free native Linux package for sandbox qualification", () => {
+    const originalRenderer = process.env.ELIZA_ELECTROBUN_LINUX_RENDERER;
+    try {
+      process.env.ELIZA_ELECTROBUN_LINUX_RENDERER = "native";
+      const config = createElectrobunConfig();
+
+      expect(config.build?.linux).toMatchObject({
+        bundleCEF: false,
+        bundleWGPU: true,
+        defaultRenderer: "native",
+      });
+      expect(config.build?.linux).not.toHaveProperty("chromiumFlags");
+    } finally {
+      if (originalRenderer === undefined) {
+        delete process.env.ELIZA_ELECTROBUN_LINUX_RENDERER;
+      } else {
+        process.env.ELIZA_ELECTROBUN_LINUX_RENDERER = originalRenderer;
+      }
+    }
+  });
+
+  it("rejects unknown Linux renderer selections", () => {
+    expect(() =>
+      resolveLinuxRenderer({ ELIZA_ELECTROBUN_LINUX_RENDERER: "unsafe" }),
+    ).toThrow(/must be "native" or "cef"/);
   });
 
   it("omits the embedded local agent runtime tree for Mac App Store builds", () => {

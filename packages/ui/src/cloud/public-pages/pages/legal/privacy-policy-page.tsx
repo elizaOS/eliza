@@ -66,7 +66,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
       title: t("cloud.privacy.s7Title", { defaultValue: "7. Data Retention" }),
       body: t("cloud.privacy.s7Body", {
         defaultValue:
-          "We retain personal information only as long as needed to provide the service or meet legal, tax, fraud-prevention, and security obligations. Verified account-deletion requests disable access immediately and schedule associated account data for deletion within 30 days; narrowly required records are deleted or anonymized when their retention obligation ends.",
+          "We retain personal information only as long as needed to provide the service or meet legal, tax, fraud-prevention, and security obligations. The account-deletion page checks whether a complete deletion lifecycle is available before accepting a request; unavailable requests are routed to support without claiming that access or data changed.",
       }),
     },
     {

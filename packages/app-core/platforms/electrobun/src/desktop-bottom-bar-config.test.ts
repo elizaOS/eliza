@@ -14,6 +14,8 @@ import {
   EXPANDED_BOTTOM_BAR_WIDTH,
   HOVER_BOTTOM_BAR_HEIGHT,
   HOVER_BOTTOM_BAR_WIDTH,
+  INPUT_BOTTOM_BAR_HEIGHT,
+  INPUT_BOTTOM_BAR_WIDTH,
   isBottomBarSurfaceState,
   normalizeBottomBarMaterialSize,
   resolveBottomBarFrameSize,
@@ -274,8 +276,8 @@ describe("desktop bottom-bar config", () => {
     it("gives input mode a composer-width taskbar strip", () => {
       expect(computeBottomBarSurfaceFrame(workArea, "INPUT")).toEqual(
         computeBottomBarFrame(workArea, {
-          width: HOVER_BOTTOM_BAR_WIDTH,
-          height: HOVER_BOTTOM_BAR_HEIGHT,
+          width: INPUT_BOTTOM_BAR_WIDTH,
+          height: INPUT_BOTTOM_BAR_HEIGHT,
         }),
       );
     });

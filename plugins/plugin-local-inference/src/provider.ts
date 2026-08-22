@@ -604,17 +604,12 @@ function createTextHandler(modelType: string) {
 			const budget = resolveBackgroundInferenceBudget(
 				inferenceRamClassFromEnv() ?? "standard",
 			);
-			const clamped = applyBackgroundInferenceBudget(
+			const budgetedArgs = applyBackgroundInferenceBudget(
 				{ prompt: args.prompt, maxTokens: args.maxTokens },
 				budget,
 			);
-			if (clamped.clamped.length > 0) {
-				logger.info(
-					`[local-inference] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
-				);
-			}
-			args.prompt = clamped.prompt;
-			args.maxTokens = clamped.maxTokens;
+			args.prompt = budgetedArgs.prompt;
+			args.maxTokens = budgetedArgs.maxTokens;
 			lockWaitMs = budget.lockWaitMs;
 		}
 		return getInferencePriorityGate().runExclusive(

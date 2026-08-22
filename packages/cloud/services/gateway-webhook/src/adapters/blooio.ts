@@ -5,32 +5,36 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
+import { boundedGatewayFetch } from "./bounded-fetch";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
-const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+export const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+const BLOOIO_RESPONSE_MAX_BYTES = 64 * 1024;
+
+const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
+const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
+const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
 
 /**
- * Bound every Blooio API hop so a hung gateway cannot pin the adapter. A
- * caller-provided abort signal is composed with the timeout (either cancelling
- * aborts), not substituted for it.
+ * The single bounded transport for every Blooio API hop — sends, read
+ * receipts, and typing state alike — so a hung or unbounded gateway response
+ * cannot pin the adapter. A caller-provided abort signal is composed with the
+ * owned deadline (whichever fires first cancels), never substituted for it,
+ * and the response body is read under the same deadline and byte ceiling.
  */
 export function blooioFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = BLOOIO_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal
-      ? AbortSignal.any([init.signal, timeoutSignal])
-      : timeoutSignal,
-  });
+  return boundedGatewayFetch(
+    fetch,
+    input,
+    init,
+    timeoutMs,
+    BLOOIO_RESPONSE_MAX_BYTES,
+  );
 }
-
-const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
-const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
-const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
 
 export class BlooioApiResponseError extends Error {
   constructor(

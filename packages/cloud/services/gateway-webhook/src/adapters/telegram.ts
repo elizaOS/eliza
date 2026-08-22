@@ -28,11 +28,17 @@ export {
 const TELEGRAM_GROUP_LINK_COMMAND =
   /^(?:\/eliza_link(?:@([a-z0-9_]{5,32}))?|eliza\s+link)\s+[2-9A-HJ-NP-Z]{8}$/i;
 
-function isTelegramGroupLinkForBot(text: string, botUsername: string): boolean {
-  const match = text.match(TELEGRAM_GROUP_LINK_COMMAND);
-  if (!match) return false;
+function telegramGroupLinkTarget(
+  text: string,
+  botUsername: string,
+): "not-link" | "this-bot" | "other-bot" {
+  const match = text.trim().match(TELEGRAM_GROUP_LINK_COMMAND);
+  if (!match) return "not-link";
   const target = match[1];
-  return !target || target.toLowerCase() === botUsername.toLowerCase();
+  if (!target) return "this-bot";
+  return botUsername && target.toLowerCase() === botUsername.toLowerCase()
+    ? "this-bot"
+    : "other-bot";
 }
 
 function asTelegramEvent(event: ChatEvent): TelegramConnectorEvent {
@@ -115,7 +121,14 @@ export const telegramAdapter: PlatformAdapter = {
       // may enter the model. Telegram privacy mode may still hide them.
       allowAmbient: true,
     });
-    if (event && isTelegramGroupLinkForBot(event.text, botUsername)) {
+    if (!event) return null;
+    const linkTarget = telegramGroupLinkTarget(event.text, botUsername);
+    // Telegram may deliver commands addressed to another bot when this bot is
+    // an administrator. Do not forward those commands as ambient text: the
+    // trusted Cloud route also recognizes the command grammar and would
+    // otherwise emit a control reply despite the foreign @username suffix.
+    if (linkTarget === "other-bot") return null;
+    if (linkTarget === "this-bot") {
       try {
         event.groupActorRole = await resolveTelegramGroupActorRole(
           config ?? {},

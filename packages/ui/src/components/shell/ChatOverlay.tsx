@@ -300,6 +300,8 @@ export type ChatState =
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";
 
+export type ChatSurfaceState = ChatState | "INPUT_MENU";
+
 /**
  * The chat's openness as a SINGLE source of truth — one ordered state machine
  * instead of separate `pilled` boolean + `detent` enum that had to be hand-kept
@@ -1308,7 +1310,7 @@ export function ChatOverlay({
   /** Reports the settled visible footprint to transparent desktop hosts. */
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   /** Compatibility signal for hosts that still consume the named surface state. */
-  onStateChange?: (state: ChatState) => void;
+  onStateChange?: (state: ChatSurfaceState) => void;
   /** Initial resting shape for a host-owned compact window. */
   initialMode?: Extract<ChatMode, "pill" | "input" | "half">;
   /**
@@ -1350,6 +1352,7 @@ export function ChatOverlay({
    */
   desktopOverlayHost?: boolean;
 }): React.JSX.Element {
+  const [chatActionsOpen, setChatActionsOpen] = React.useState(false);
   const {
     messages,
     phase,
@@ -3365,9 +3368,15 @@ export function ChatOverlay({
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
+  // The actions menu is portaled above the composer. INPUT's shallow 64px
+  // native desktop host would clip that portal at the window boundary. The
+  // dedicated INPUT_MENU host adds height only: it retains INPUT's exact width
+  // and bottom anchor so opening the floating menu cannot resize the composer.
+  const nativeSurfaceState: ChatSurfaceState =
+    chatActionsOpen && chatState === "INPUT" ? "INPUT_MENU" : chatState;
   React.useEffect(() => {
-    onStateChange?.(chatState);
-  }, [chatState, onStateChange]);
+    onStateChange?.(nativeSurfaceState);
+  }, [nativeSurfaceState, onStateChange]);
   // The status header is gated on the LIVE rendered height, NOT the settled enum
   // — otherwise dragging the panel below half keeps the top strip mounted on a
   // too-short panel. It shows only when the panel actually renders at/over half
@@ -6753,7 +6762,7 @@ export function ChatOverlay({
                 {transcriptionComposerActive ? (
                   <div
                     data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/75"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-2.5 py-0.5 text-xs-tight font-medium text-white/75"
                   >
                     {transcriptionFinishing
                       ? "Finishing transcription…"
@@ -7189,7 +7198,9 @@ export function ChatOverlay({
                   pure client affordance. */}
               {!transcriptionComposerActive ? (
                 <DropdownMenu
+                  open={chatActionsOpen}
                   onOpenChange={(open) => {
+                    setChatActionsOpen(open);
                     // A detached input pill is only 64px tall, so a portalled
                     // menu placed above the trigger is correctly clipped by
                     // its exact native host. Open the shared chat surface first

@@ -32,6 +32,8 @@ export interface DesktopBrandConfig {
    * corresponding runtime env flags from this at boot.
    */
   cloudOnly: boolean;
+  /** Cloud control-plane API baked into a runtime-less consumer bundle. */
+  cloudApiBase: string | null;
   /** Config export file name. */
   configExportFileName: string;
   /** User-facing description. */
@@ -124,6 +126,7 @@ const DEFAULT_CONFIG: DesktopBrandConfig = {
   releaseUrl: "",
   buildVariant: "direct",
   cloudOnly: false,
+  cloudApiBase: null,
   configExportFileName: "eliza-config.json",
   appDescription: "AI agents for the desktop",
   namespace: "eliza",
@@ -192,6 +195,10 @@ function resolveBrandConfig(): DesktopBrandConfig {
     cloudOnly:
       isTruthyFlag(envFallback("ELIZA_DESKTOP_CLOUD_ONLY")) ||
       fileConfig.cloudOnly === true,
+    cloudApiBase:
+      envFallback("ELIZA_DESKTOP_API_BASE") ||
+      fileConfig.cloudApiBase ||
+      DEFAULT_CONFIG.cloudApiBase,
     configExportFileName:
       fileConfig.configExportFileName ??
       `${appName.toLowerCase().replace(/\s+/g, "-")}-config.json`,

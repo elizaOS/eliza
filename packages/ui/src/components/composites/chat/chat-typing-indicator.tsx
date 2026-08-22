@@ -274,7 +274,7 @@ export function TurnStatus({
         aria-live="polite"
       >
         <MarkerContent
-          className="shimmer inline-flex min-h-[1.4375rem] items-center text-[13px] font-medium leading-[1.4375rem] motion-reduce:shimmer-none"
+          className="shimmer inline-flex min-h-[1.4375rem] items-center text-sm-tight font-medium leading-[1.4375rem] motion-reduce:shimmer-none"
           data-testid="turn-status-label"
           data-current-label={label}
         >
@@ -299,7 +299,7 @@ export function TurnStatus({
           className="text-white/70 motion-reduce:animate-none"
         />
       </MarkerIcon>
-      <MarkerContent className="inline-flex items-baseline text-[13px] font-medium tabular-nums">
+      <MarkerContent className="inline-flex items-baseline text-sm-tight font-medium tabular-nums">
         <span
           className="shimmer motion-reduce:shimmer-none"
           data-testid="turn-status-label"

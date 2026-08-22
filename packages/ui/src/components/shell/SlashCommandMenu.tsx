@@ -294,7 +294,7 @@ export function SlashCommandMenu({
     >
       <div
         className={cn(
-          "px-3.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wider",
+          "px-3.5 pb-1 pt-0.5 text-2xs font-medium uppercase tracking-wider",
           WALLPAPER_TEXT.muted,
           WALLPAPER_FLOAT_SHADOW,
         )}
@@ -308,7 +308,7 @@ export function SlashCommandMenu({
       {error ? (
         <div
           className={cn(
-            "mx-2 mb-1 rounded-lg border border-amber-400/25 bg-amber-400/5 px-2.5 py-1 text-[10px] text-amber-200/80",
+            "mx-2 mb-1 rounded-lg border border-amber-400/25 bg-amber-400/5 px-2.5 py-1 text-2xs text-amber-200/80",
             WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
@@ -348,7 +348,7 @@ export function SlashCommandMenu({
           >
             <span
               className={cn(
-                "min-w-0 shrink-0 font-mono text-[13px]",
+                "min-w-0 shrink-0 font-mono text-sm-tight",
                 WALLPAPER_TEXT.strong,
                 WALLPAPER_FLOAT_SHADOW,
               )}
@@ -358,7 +358,7 @@ export function SlashCommandMenu({
             {item.secondary ? (
               <span
                 className={cn(
-                  "min-w-0 flex-1 truncate text-[12px]",
+                  "min-w-0 flex-1 truncate text-xs",
                   WALLPAPER_TEXT.soft,
                   WALLPAPER_FLOAT_SHADOW,
                 )}
@@ -371,7 +371,7 @@ export function SlashCommandMenu({
             {item.isCommand && item.hasArgs ? (
               <span
                 aria-hidden="true"
-                className="shrink-0 text-[11px] text-white/35"
+                className="shrink-0 text-xs-tight text-white/35"
               >
                 ⇥
               </span>

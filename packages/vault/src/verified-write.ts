@@ -36,8 +36,10 @@ async function serializeVaultKeyWrite<T>(
     writeQueues.set(vault, queue);
   }
 
+  // Queue entries are normalized below and cannot reject; direct chaining
+  // preserves per-key ordering.
   const previous = queue.get(key) ?? Promise.resolve();
-  const current = previous.catch(() => {}).then(operation);
+  const current = previous.then(operation);
   const settled = current.then(
     () => {},
     () => {},

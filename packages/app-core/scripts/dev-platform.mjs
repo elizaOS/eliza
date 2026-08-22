@@ -81,9 +81,13 @@ import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import {
   isSpawnedProcessGroupAlive,
   signalSpawnedProcessGroup,
-  signalSpawnedProcessTree,
 } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
+import {
+  claimMacApplicationAtPath,
+  inspectMacApplicationsAtPath,
+  stopMacApplication,
+} from "./lib/macos-launch-services-lifecycle.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
@@ -658,6 +662,11 @@ async function warmApiRoutes(port) {
 const children = [];
 // Human names for shutdown logging; keyed weakly so tracking stays an array.
 const childNames = new WeakMap();
+// Exact path/PID/launch identity for the LaunchServices fallback we started.
+let launchServicesAppAuthority = null;
+// Covers the complete inspect -> open -> claim sequence. Shutdown awaits this
+// before deciding whether an exact native app needs termination.
+let launchServicesOwnershipPromise = Promise.resolve(null);
 // Same bounded window as dev-ui.mjs (#18435): covers the longest bounded
 // child-side teardown (Discord 10 s drain + 2 s reconcile) with margin.
 const SHUTDOWN_DRAIN_WINDOW_MS = resolveShutdownDrainWindowMs(process.env);
@@ -1096,34 +1105,61 @@ async function launch() {
       }
     };
     const triggerOpen = (reason) => {
-      if (scheduledOpen) return;
+      if (scheduledOpen || shuttingDown) return;
       scheduledOpen = true;
-      const macAppPath = resolveDevMacAppPath();
-      if (!macAppPath) {
-        console.log(
-          "[eliza] LaunchServices auto-open skipped — no .app bundle found in dev build dir",
-        );
-        return;
-      }
-      try {
-        const opener = spawn("open", [macAppPath], {
-          stdio: "ignore",
-          detached: true,
-        });
-        opener.unref();
-        opener.on("error", (err) => {
+      launchServicesOwnershipPromise = (async () => {
+        const macAppPath = resolveDevMacAppPath();
+        if (!macAppPath) {
           console.log(
-            `[eliza] LaunchServices auto-open failed: ${err.message}`,
+            "[eliza] LaunchServices auto-open skipped — no .app bundle found in dev build dir",
           );
-        });
-        console.log(
-          `[eliza] LaunchServices auto-open (${reason}): open ${path.basename(macAppPath)}`,
-        );
-      } catch (err) {
-        console.log(
-          `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+          return null;
+        }
+        try {
+          const canonicalAppPath = realpathSync(macAppPath);
+          const baseline = await inspectMacApplicationsAtPath(canonicalAppPath);
+          if (!baseline.ok) {
+            console.log(
+              `[eliza] LaunchServices ownership preflight failed: ${baseline.error}`,
+            );
+            return null;
+          }
+          // A signal may have arrived during the bounded JXA preflight. Never
+          // create a new native process once supervisor teardown has started.
+          if (shuttingDown) return null;
+          const opener = pushChild(
+            "launchservices-open",
+            "open",
+            ["-W", canonicalAppPath],
+            electrobunDir,
+          );
+          opener.on("error", (err) => {
+            console.log(
+              `[eliza] LaunchServices auto-open failed: ${err.message}`,
+            );
+          });
+          console.log(
+            `[eliza] LaunchServices auto-open (${reason}): open -W ${path.basename(macAppPath)}`,
+          );
+          const claimed = await claimMacApplicationAtPath(
+            canonicalAppPath,
+            baseline.applications,
+          );
+          if (claimed.ok) {
+            launchServicesAppAuthority = claimed.authority;
+            return claimed.authority;
+          } else {
+            console.log(
+              `[eliza] LaunchServices ownership not claimed: ${claimed.error}`,
+            );
+          }
+        } catch (err) {
+          console.log(
+            `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return null;
+        }
+      })();
     };
 
     // Watch for the screenshot server port — if it comes up on its own, the
@@ -1158,7 +1194,7 @@ async function launch() {
         }
       }
       if (Date.now() - startedAt >= fallbackDeadlineMs) {
-        triggerOpen("fallback after 45s with no screenshot server");
+        void triggerOpen("fallback after 45s with no screenshot server");
         return;
       }
       setTimeout(checkAndFallback, 3000);
@@ -1193,32 +1229,39 @@ function shutdownDesktopDev({
   // the window is escalated (loudly, per child), and a bounded kill grace
   // keeps exit from racing the escalation. Already-exited children are
   // skipped inside the drain, preserving the no-stale-tree-signal behavior.
-  void drainSpawnedChildren({
-    children: children.map((child, index) => ({
-      name: childNames.get(child) ?? `child-${index + 1}`,
-      child,
-    })),
-    drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
-    // Every pushChild service is detached into its own process group. Signal
-    // that exact group so a GUI launcher cannot orphan its Bun descendant by
-    // exiting before the supervisor's bounded drain finishes.
-    signalTree: signalSpawnedProcessGroup,
-    log: (line) => console.log(line),
-    warn: (line) => console.error(line),
-  }).then(() => {
-    // ChildProcess `exit` only proves the tracked CLI parent exited. Electrobun
-    // may have already forked a native launcher into the same dedicated group;
-    // never let that surviving app/pill outlive the dev session.
-    for (const child of children) {
-      if (isSpawnedProcessGroupAlive(child)) {
-        console.error(
-          `[eliza] ${childNames.get(child) ?? "child"} process group survived shutdown — forcing final cleanup.`,
-        );
-        signalSpawnedProcessGroup(child, "SIGKILL");
-      }
-    }
-    process.exit(exitCode);
-  });
+  const stopLaunchServicesApp = launchServicesOwnershipPromise.then(
+    (claimedAuthority) => {
+      const authority = claimedAuthority ?? launchServicesAppAuthority;
+      if (!authority) return;
+      return stopMacApplication(authority).then((result) => {
+        for (const attempt of [result.graceful, result.forced]) {
+          if (!attempt.ok) {
+            console.error(
+              `[eliza] LaunchServices app shutdown failed: ${attempt.error}`,
+            );
+          }
+        }
+      });
+    },
+  );
+
+  void stopLaunchServicesApp
+    .then(() =>
+      drainSpawnedChildren({
+        children: children.map((child, index) => ({
+          name: childNames.get(child) ?? `child-${index + 1}`,
+          child,
+        })),
+        drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
+        signalTree: signalSpawnedProcessGroup,
+        isTargetAlive: isSpawnedProcessGroupAlive,
+        log: (line) => console.log(line),
+        warn: (line) => console.error(line),
+      }),
+    )
+    .then(() => {
+      process.exit(exitCode);
+    });
 }
 
 function cleanup() {
@@ -1242,7 +1285,7 @@ if (process.platform !== "win32") {
 launch().catch((err) => {
   console.error("[eliza] dev-platform failed:", err);
   for (const child of children) {
-    signalSpawnedProcessTree(child, "SIGKILL");
+    signalSpawnedProcessGroup(child, "SIGKILL");
   }
   process.exit(1);
 });

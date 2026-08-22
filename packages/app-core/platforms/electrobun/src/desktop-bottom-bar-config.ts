@@ -162,6 +162,10 @@ export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
 export const HOVER_BOTTOM_BAR_WIDTH = 600;
 export const HOVER_BOTTOM_BAR_HEIGHT = 64;
 
+/** Exact native frame for the shared chat composer's input-only state. */
+export const INPUT_BOTTOM_BAR_WIDTH = 600;
+export const INPUT_BOTTOM_BAR_HEIGHT = 64;
+
 /** Input-width host tall enough for the portaled composer actions menu. */
 export const INPUT_MENU_BOTTOM_BAR_HEIGHT = 320;
 
@@ -329,13 +333,13 @@ export function computeBottomBarSurfaceFrame(
   }
   if (state === "INPUT") {
     return computeBottomBarFrame(workArea, {
-      width: HOVER_BOTTOM_BAR_WIDTH,
-      height: HOVER_BOTTOM_BAR_HEIGHT,
+      width: INPUT_BOTTOM_BAR_WIDTH,
+      height: INPUT_BOTTOM_BAR_HEIGHT,
     });
   }
   if (state === "INPUT_MENU") {
     return computeBottomBarFrame(workArea, {
-      width: HOVER_BOTTOM_BAR_WIDTH,
+      width: INPUT_BOTTOM_BAR_WIDTH,
       height: INPUT_MENU_BOTTOM_BAR_HEIGHT,
     });
   }

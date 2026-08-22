@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import {
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import { streamElizaConversation } from "../../../../../shared/src/lib/voice-session/eliza-sse-bridge";
 import { createLocalRuntimeConversationAuthorization } from "../lib/local-runtime-conversation-authorization";
 import {
@@ -50,6 +54,8 @@ describe("local runtime conversation fetch", () => {
           "X-Eliza-User-Id": "user-a",
           "X-Eliza-Voice-Trace-Id": "trace-a",
           "X-Eliza-Trace-Id": "trace-a",
+          [LOCAL_VOICE_RUNTIME_AGENT_HEADER]: "spoofed-agent",
+          [LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER]: "spoofed-conversation",
           Cookie: "session=cloud-secret",
           "X-Future-Cloud-Secret": "must-not-cross-loopback",
         },
@@ -90,6 +96,10 @@ describe("local runtime conversation fetch", () => {
     expect(headers.has("X-Future-Cloud-Secret")).toBe(false);
     expect(headers.get("X-Eliza-Voice-Trace-Id")).toBe("trace-a");
     expect(headers.get("X-Eliza-Trace-Id")).toBe("trace-a");
+    expect(headers.get(LOCAL_VOICE_RUNTIME_AGENT_HEADER)).toBe(SCOPE.agentId);
+    expect(headers.get(LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER)).toBe(
+      SCOPE.conversationId,
+    );
     expect(headers.get("Accept")).toBe("text/event-stream");
   });
 

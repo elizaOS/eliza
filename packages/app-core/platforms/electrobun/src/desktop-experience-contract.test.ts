@@ -123,6 +123,7 @@ describe("desktop experience contract — startup", () => {
     expect(presentation.mode).toBe("default");
     expect(presentation.transparent).toBe(false);
     expect(presentation.nativeShadow).toBe(true);
+    expect(presentation.nativeChromeInteractive).toBe(true);
   });
 
   it("resolves kiosk presentation when requested", () => {

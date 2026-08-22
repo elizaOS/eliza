@@ -160,6 +160,7 @@ import {
   resolveUiTheme,
   savePersistedActiveServer,
 } from "@elizaos/ui/state/persistence";
+import { getPushToTalkAccelerator } from "@elizaos/ui/state/push-to-talk-hotkey";
 import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
 import {
   initStartupTrace,
@@ -241,7 +242,10 @@ import {
   removeUrlParameter,
 } from "./runtime-chooser-override";
 import { registerViewServiceWorker } from "./sw-registration";
-import { isElizaCloudSharedHost } from "./url-trust-policy";
+import {
+  isElizaCloudSharedHost,
+  isTrustedCloudOnlyApiBaseUrl,
+} from "./url-trust-policy";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 // Set by vite.config.ts `define`. `true` for the web/desktop bundle, `false`
@@ -2466,7 +2470,7 @@ async function initializeDesktopShell(): Promise<void> {
     ipcChannel: "desktop:registerShortcut",
     params: {
       id: "push-to-talk",
-      accelerator: "CommandOrControl+Shift+Space",
+      accelerator: getPushToTalkAccelerator(),
     },
   });
   if (pushToTalkRegistration?.success !== true) {
@@ -2823,11 +2827,11 @@ function mountReactApp(): void {
             <PhoneCompanionApp />
           </ShellViewAgentSurface>
         ) : detachedShell ? (
-          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-bg">
             <DetachedShellRoot route={windowShellRoute} />
           </div>
         ) : appWindowSlug ? (
-          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-bg">
             <AppWindowRenderer slug={appWindowSlug} />
           </div>
         ) : (
@@ -2976,6 +2980,9 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
     );
   }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
+  if (isTrustedCloudOnlyApiBaseUrl(parsed, APP_BRANDING.cloudOnly === true)) {
+    return true;
+  }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
@@ -2989,6 +2996,9 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
   if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
+  if (isTrustedCloudOnlyApiBaseUrl(parsed, APP_BRANDING.cloudOnly === true)) {
+    return true;
+  }
   if (usesStrictIosNetworkPolicy()) {
     if (allowsIosSimulatorLoopbackApiBase(parsed)) return true;
     if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {

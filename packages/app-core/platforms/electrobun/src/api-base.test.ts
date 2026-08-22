@@ -277,6 +277,28 @@ describe("resolveDesktopRuntimeModeSignal", () => {
       ),
     ).toBeNull();
   });
+
+  it("returns null with no env var and no deployment", () => {
+    expect(resolveDesktopRuntimeModeSignal({})).toBeNull();
+  });
+
+  it("env var takes priority over persisted deployment", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal(
+        { ELIZA_DESKTOP_RUNTIME_MODE: "cloud" },
+        { runtime: "local", remoteApiBase: null },
+      ),
+    ).toBe("cloud");
+  });
+
+  it("falls through a non-cloud env value to a persisted cloud deployment", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal(
+        { ELIZA_DESKTOP_RUNTIME_MODE: "local" },
+        { runtime: "cloud", remoteApiBase: null },
+      ),
+    ).toBe("cloud");
+  });
 });
 
 describe("end-to-end: persisted cloud target → external mode", () => {

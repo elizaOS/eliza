@@ -11,6 +11,7 @@ export type DetachedSurface =
   | "cloud";
 export type ManagedSurface = DetachedSurface | "workspace" | "settings" | "app";
 export type WorkspacePresentation = "standard" | "content";
+export type ManagedWindowTitleBarStyle = "default" | "hidden" | "hiddenInset";
 
 export interface ManagedWindowSnapshot {
   id: string;
@@ -71,7 +72,7 @@ export interface CreateManagedWindowOptions {
   url: string;
   preload: string;
   frame: ManagedWindowFrame;
-  titleBarStyle: "hidden" | "hiddenInset" | "default";
+  titleBarStyle: ManagedWindowTitleBarStyle;
   transparent: boolean;
 }
 
@@ -142,6 +143,15 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   settings: { x: 180, y: 120, width: 1240, height: 900 },
   app: { x: 180, y: 120, width: 1280, height: 900 },
 };
+
+/** Keep custom macOS chrome confined to the settings window that owns its inset layout. */
+export function resolveManagedWindowTitleBarStyle(
+  surface: ManagedSurface,
+): ManagedWindowTitleBarStyle {
+  return surface === "workspace" || surface === "settings"
+    ? "hiddenInset"
+    : "default";
+}
 
 export function isDetachedSurface(value: string): value is DetachedSurface {
   return (
@@ -669,12 +679,7 @@ export class SurfaceWindowManager {
       url,
       preload,
       frame,
-      // Match the normal macOS workstation presentation: remove the redundant
-      // native title strip while retaining the integrated window controls.
-      titleBarStyle:
-        surface === "workspace" || surface === "settings"
-          ? "hiddenInset"
-          : "default",
+      titleBarStyle: resolveManagedWindowTitleBarStyle(surface),
       transparent: false,
     });
     if (alwaysOnTop) {

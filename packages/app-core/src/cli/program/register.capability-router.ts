@@ -22,7 +22,6 @@ function resolveDefaultAgentApiBase(): string {
 
 export type CapabilityRouterEndpointProvider =
   | "direct"
-  | "e2b"
   | "home-machine"
   | "mobile-companion"
   | "desktop-companion";
@@ -77,7 +76,7 @@ export function registerCapabilityRouterCommand(program: Command) {
     )
     .option(
       "--provider <provider>",
-      "Endpoint provider: direct, e2b, home-machine, mobile-companion, desktop-companion",
+      "Endpoint provider: direct, home-machine, mobile-companion, desktop-companion",
       "direct",
     )
     .option("--id <id>", "Endpoint id for direct/provider connects")
@@ -588,7 +587,6 @@ function normalizeProvider(
   const provider = value ?? "direct";
   if (
     provider === "direct" ||
-    provider === "e2b" ||
     provider === "home-machine" ||
     provider === "mobile-companion" ||
     provider === "desktop-companion"
@@ -596,7 +594,7 @@ function normalizeProvider(
     return provider;
   }
   throw new Error(
-    "provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.",
+    "provider must be one of direct, home-machine, mobile-companion, or desktop-companion.",
   );
 }
 

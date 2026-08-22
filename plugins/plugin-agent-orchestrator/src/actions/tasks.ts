@@ -26,6 +26,7 @@ import {
   ElizaError,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   stringToUuid,
   toWellFormedUnicode,
   unwrapUserMessageText,
@@ -63,6 +64,7 @@ import {
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import {
   type AgentType,
+  createSubscriptionExecutionAuthorization,
   type SessionInfo,
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
@@ -469,6 +471,17 @@ export function spawnOriginKeyFor(
 ): string | undefined {
   const root = spawnRootIdFor(message, content);
   return root ? `${root}\0${agentType}` : undefined;
+}
+
+export function subscriptionAuthorizationForMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+  content: Record<string, unknown>,
+) {
+  if (content.source === MESSAGE_SOURCE_TRIGGER_PROMPT) return undefined;
+  if (content.source === MESSAGE_SOURCE_SUB_AGENT) return undefined;
+  if (message.entityId === runtime.agentId || !message.id) return undefined;
+  return createSubscriptionExecutionAuthorization(message.id, message.entityId);
 }
 
 function pickRoutingString(
@@ -1118,6 +1131,11 @@ async function runCreateLegacy(
             };
       const session = await service.spawnSession({
         agentType,
+        subscriptionExecutionAuthorization: subscriptionAuthorizationForMessage(
+          runtime,
+          message,
+          content,
+        ),
         workdir: sessionWorkdir,
         isolateWorkdir,
         memoryContent,
@@ -2024,6 +2042,11 @@ async function runSpawnAgent(
 
     const session = await service.spawnSession({
       agentType,
+      subscriptionExecutionAuthorization: subscriptionAuthorizationForMessage(
+        runtime,
+        message,
+        content,
+      ),
       workdir: effectiveWorkdir,
       isolateWorkdir,
       initialTask: taskWithRouteHints,

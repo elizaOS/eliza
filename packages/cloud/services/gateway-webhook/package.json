@@ -16,7 +16,7 @@
     "start": "PORT=3002 bun run src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "docker:build": "docker build -t gateway-webhook:local ."
+    "docker:build": "docker build -f Dockerfile -t gateway-webhook:local ../../../.."
   },
   "dependencies": {
     "@elizaos/cloud-services-common": "workspace:*",

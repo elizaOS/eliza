@@ -87,6 +87,86 @@ describe("getMaxOutputTokensOverride entry parsing", () => {
     );
   });
 
+  it("rejects a malformed entry that follows the matching target", () => {
+    // The selector previously returned on the first target match, so a typo
+    // after it was never validated and the same setting threw or passed
+    // depending only on comma order.
+    const runtime = runtimeWith({
+      ANTHROPIC_MAX_OUTPUT_TOKENS: "claude-sonnet-4:8192,claude-opus-4:8192junk",
+    });
+    expect(() => getMaxOutputTokensOverride(runtime, "claude-sonnet-4")).toThrow(
+      expect.objectContaining({
+        code: "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID",
+        context: expect.objectContaining({
+          value: "8192junk",
+          entry: "claude-opus-4:8192junk",
+        }),
+      })
+    );
+  });
+
+  it("rejects a malformed entry that precedes the matching target", () => {
+    const runtime = runtimeWith({
+      ANTHROPIC_MAX_OUTPUT_TOKENS: "claude-opus-4:8192junk,claude-sonnet-4:8192",
+    });
+    expect(() => getMaxOutputTokensOverride(runtime, "claude-sonnet-4")).toThrow(
+      expect.objectContaining({
+        code: "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID",
+        context: expect.objectContaining({
+          value: "8192junk",
+          entry: "claude-opus-4:8192junk",
+        }),
+      })
+    );
+  });
+
+  it("rejects a malformed bare fallback that follows the matching target", () => {
+    const runtime = runtimeWith({
+      ANTHROPIC_MAX_OUTPUT_TOKENS: "claude-sonnet-4:8192,4096junk",
+    });
+    expect(() => getMaxOutputTokensOverride(runtime, "claude-sonnet-4")).toThrow(
+      expect.objectContaining({
+        code: "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID",
+        context: expect.objectContaining({ value: "4096junk", entry: "4096junk" }),
+      })
+    );
+  });
+
+  it("keeps the first matching target entry when the target is duplicated", () => {
+    expect(
+      getMaxOutputTokensOverride(
+        runtimeWith({
+          ANTHROPIC_MAX_OUTPUT_TOKENS: "claude-sonnet-4:8192,claude-sonnet-4:1024",
+        }),
+        "claude-sonnet-4"
+      )
+    ).toBe(8192);
+  });
+
+  it("keeps the last bare entry when the fallback is duplicated", () => {
+    expect(
+      getMaxOutputTokensOverride(
+        runtimeWith({ ANTHROPIC_MAX_OUTPUT_TOKENS: "4096,2048" }),
+        "claude-sonnet-4"
+      )
+    ).toBe(2048);
+  });
+
+  it("prefers the target entry over a bare fallback in either order", () => {
+    expect(
+      getMaxOutputTokensOverride(
+        runtimeWith({ ANTHROPIC_MAX_OUTPUT_TOKENS: "4096,claude-sonnet-4:8192" }),
+        "claude-sonnet-4"
+      )
+    ).toBe(8192);
+    expect(
+      getMaxOutputTokensOverride(
+        runtimeWith({ ANTHROPIC_MAX_OUTPUT_TOKENS: "claude-sonnet-4:8192,4096" }),
+        "claude-sonnet-4"
+      )
+    ).toBe(8192);
+  });
+
   it("still honours a clean per-model cap and a bare fallback", () => {
     expect(
       getMaxOutputTokensOverride(

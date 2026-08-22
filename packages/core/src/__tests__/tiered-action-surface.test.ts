@@ -665,7 +665,7 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
-	it("caps a hot parent's sub-action flood to the turn-relevant children", async () => {
+	it("keeps every registered child of a hot parent callable (#24699)", async () => {
 		// One hot tier-A parent must not expose its whole namespace (observed
 		// live: all 24 MESSAGE_* children on a two-intent turn). The per-parent
 		// child narrow keeps the Stage-1 candidate plus the best query-token
@@ -726,17 +726,83 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).toContain("MESSAGE");
 		expect(toolNames).toContain("MESSAGE_REVIEW_QUEUE");
 		expect(toolNames).toContain("MESSAGE_SEND_REPLY");
-		// Lean when not: the namespace is capped, not fully expanded.
+		// No narrowing: every registered child stays callable. Relevance may
+		// reorder the surface, but a child the planner never sees is a
+		// capability the agent silently cannot use (#24699).
 		const childTools = toolNames.filter((name) =>
 			String(name).startsWith("MESSAGE_"),
 		);
-		expect(childTools.length).toBeLessThanOrEqual(8);
-		expect(toolNames).not.toContain("MESSAGE_OP_9");
-		// Prompt footprint drops with the tool surface: the narrowed-out child
-		// no longer appears in the rendered action section either.
+		expect(childTools.sort()).toEqual(
+			[
+				"MESSAGE_REVIEW_QUEUE",
+				"MESSAGE_SEND_REPLY",
+				...bulkOps.map((action) => action.name),
+			].sort(),
+		);
+		// The rendered action section mirrors the tool surface, so a child that
+		// is callable must also be described — otherwise the planner can invoke
+		// something the prompt never told it about.
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("MESSAGE_REVIEW_QUEUE");
-		expect(prompt).not.toContain("MESSAGE_OP_9");
+		expect(prompt).toContain("MESSAGE_OP_9");
+	});
+
+	it("keeps a denied inline child's metadata out of model context (#24699)", async () => {
+		// The parent keeps inline metadata for every registered child, but this
+		// turn's gate denies one. Its name is not enough to check: the leak this
+		// guards is the denied child's DESCRIPTION reaching retrieval, tiering,
+		// and the rendered action section through the catalog.
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({ FILES: "GUEST" });
+		_resetActionRolePolicyCacheForTests();
+
+		const allowedChild = makeAction({
+			name: "FILES_READ",
+			description: "Read a workspace file that the owner allowed.",
+		});
+		const deniedChild = makeAction({
+			name: "FILES_PURGE",
+			description: "Irreversibly purge every workspace file forever.",
+			roleGate: { minRole: "OWNER" },
+		});
+		const parent = makeAction({
+			name: "FILES",
+			description: "Workspace file management parent action.",
+			subActions: [allowedChild, deniedChild],
+		});
+		const runtime = makeRuntime({
+			actions: [parent, allowedChild],
+			responses: [
+				stage1Response({
+					contexts: ["general"],
+					intents: ["read a workspace file"],
+					candidateActionNames: ["FILES_READ"],
+				}),
+				plannerToolResponse("FILES_READ"),
+				finishEvaluatorResponse("Read the file."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("read the workspace file"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const tools = (
+			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+		)?.tools;
+		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+		expect(toolNames).toContain("FILES_READ");
+		expect(toolNames).not.toContain("FILES_PURGE");
+		// The description is the payload — a denied child must not describe
+		// itself to the model through the catalog either.
+		const prompt = availableActionsSection(runtime);
+		expect(prompt).toContain("FILES_READ");
+		expect(prompt).not.toContain("Irreversibly purge every workspace file");
 	});
 
 	it("omits planner tools that execution would reject for the selected context", async () => {
@@ -805,6 +871,58 @@ describe("v5 tiered action surface", () => {
 				gate: "resolved-to-no-runtime-action",
 			}),
 			"Explicit stage-1 candidate resolved to no runtime action",
+		);
+	});
+
+	it("does not disclose an unauthorized inline child whose normalized name collides", async () => {
+		const allowedChild = makeAction({
+			name: "PRIVATECHILD",
+			description: "Allowed child description.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+		});
+		const deniedChild = makeAction({
+			name: "PRIVATE_CHILD",
+			description: "Private child description must never reach the model.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+			roleGate: { minRole: "OWNER" },
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			description: "Parent action.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+			subActions: [allowedChild, deniedChild],
+		});
+		const runtime = makeRuntime({
+			actions: [parent, allowedChild, deniedChild],
+			responses: [
+				stage1Response({ contexts: ["general"] }),
+				plannerToolResponse("PRIVATECHILD"),
+				finishEvaluatorResponse("Allowed child completed."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("use the safe child"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const modelContext = [
+			availableActionsSection(runtime),
+			plannerUserContent(runtime),
+		].join("\n");
+		// PRIVATECHILD and PRIVATE_CHILD deliberately collide under the lenient
+		// retrieval normalizer but remain distinct native tool identities.
+		expect(plannerToolNames(runtime)).toContain("PRIVATECHILD");
+		expect(plannerToolNames(runtime)).not.toContain("PRIVATE_CHILD");
+		expect(modelContext).toContain("PRIVATECHILD");
+		expect(modelContext).not.toContain("PRIVATE_CHILD");
+		expect(modelContext).not.toContain(
+			"Private child description must never reach the model.",
 		);
 	});
 

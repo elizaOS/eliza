@@ -247,6 +247,53 @@ describe("ChoiceWidget — pick an option", () => {
     expect(screen.getByRole("status").textContent).toMatch(/Ship it/);
   });
 
+  it("dismisses locally via the ✕ without sending anything to the agent", () => {
+    const onChoose = vi.fn();
+    render(
+      <ChoiceWidget
+        id="c1"
+        scope="approve"
+        options={options}
+        onChoose={onChoose}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("choice-dismiss-c1"));
+    // Nothing is sent — declining to decide is not an answer.
+    expect(onChoose).not.toHaveBeenCalled();
+    // The prompt locks: options are disabled and the summary reads Dismissed.
+    expect(
+      (screen.getByTestId("choice-ship") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("status").textContent).toMatch(/Dismissed/);
+    fireEvent.click(screen.getByTestId("choice-ship"));
+    expect(onChoose).not.toHaveBeenCalled();
+  });
+
+  it("hides the dismiss affordance once an option is picked", () => {
+    render(
+      <ChoiceWidget
+        id="c1"
+        scope="approve"
+        options={options}
+        onChoose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("choice-ship"));
+    expect(screen.queryByTestId("choice-dismiss-c1")).toBeNull();
+  });
+
+  it("offers no dismiss on first-run prompts (composer is frozen behind them)", () => {
+    render(
+      <ChoiceWidget
+        id="fr"
+        scope="first-run"
+        options={options}
+        onChoose={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("choice-dismiss-fr")).toBeNull();
+  });
+
   it("renders the cloud-only first-run sign-in CTA as a real clickable button", () => {
     const onChoose = vi.fn();
     render(

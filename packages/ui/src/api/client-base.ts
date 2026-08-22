@@ -79,7 +79,9 @@ import {
   isIosInProcessLocalAgentBase,
 } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { remoteRelayTransportForUrl } from "./remote-relay-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
+import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -1792,6 +1794,8 @@ export class ElizaClient {
       (await androidNativeAgentTransportForUrl(requestUrl)) ??
       (await iosInProcessAgentTransportForUrl(requestUrl)) ??
       (await desktopLocalAgentTransportForUrl(requestUrl)) ??
+      remoteRelayTransportForUrl(requestUrl) ??
+      sshRuntimeTransportForUrl(requestUrl) ??
       desktopHttpTransportForUrl(requestUrl) ??
       nativeCloudHttpTransportForUrl(requestUrl) ??
       this.requestTransport

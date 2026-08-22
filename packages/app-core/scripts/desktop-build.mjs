@@ -30,6 +30,8 @@ import {
   shouldPackageNativeActivityTracker,
   verifyNativeActivityTrackerBinary,
 } from "./lib/native-activity-tracker-packaging.mjs";
+import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
+import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
 import { workspaceRuntimePackageLooksBuilt } from "./lib/workspace-runtime-package.mjs";
@@ -606,6 +608,23 @@ function runElectrobun(commandArgs, options = {}) {
   runPackageBinary("electrobun", commandArgs, options);
 }
 
+function hardenInstalledElectrobunRpc() {
+  const manifestPath = findElectrobunManifestPath(
+    [ELECTROBUN_DIR, APP_DIR, ROOT],
+    fs.existsSync,
+  );
+  if (!manifestPath) {
+    fail("Cannot harden Electrobun RPC: package manifest was not found.");
+  }
+  const changed = hardenElectrobunRpcSockets(path.dirname(manifestPath));
+  for (const sourcePath of changed) {
+    console.log(
+      `[desktop-build] Hardened Electrobun RPC to loopback: ${path.relative(ROOT, sourcePath)}`,
+    );
+  }
+  return changed.length;
+}
+
 function ensureAppDirs() {
   for (const dir of [APP_DIR, ELECTROBUN_DIR]) {
     if (!fs.existsSync(dir)) {
@@ -824,6 +843,34 @@ function findLatestMacAppBundle() {
 
   candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
   return candidates[0].appBundlePath;
+}
+
+function hardenPackagedLinuxArtifacts() {
+  if (process.platform !== "linux") return;
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  const platformDir = path.join(
+    ELECTROBUN_DIR,
+    "build",
+    `${buildEnv || "dev"}-linux-${arch}`,
+  );
+  if (!fs.existsSync(platformDir)) {
+    fail(`Electrobun Linux build output not found: ${platformDir}`);
+  }
+  let artifacts = 0;
+  let changed = 0;
+  for (const entry of fs.readdirSync(platformDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    artifacts++;
+    changed += hardenLinuxArtifactPermissions(
+      path.join(platformDir, entry.name),
+    );
+  }
+  if (artifacts === 0) {
+    fail(`No packaged Linux application found under ${platformDir}`);
+  }
+  console.log(
+    `[desktop-build] Linux artifact permissions hardened: artifacts=${artifacts} changed=${changed}`,
+  );
 }
 
 function hasRootTsdownEntry() {
@@ -1658,6 +1705,7 @@ function mirrorCanonicalToLegacy(name) {
 
 function packageDesktopBuild() {
   ensureAppDirs();
+  hardenInstalledElectrobunRpc();
   const packageArgs = ["build"];
   if (buildEnv) {
     packageArgs.push(`--env=${buildEnv}`);
@@ -1695,6 +1743,24 @@ function packageDesktopBuild() {
       ? `Packaging Electrobun app (env=${buildEnv})`
       : "Packaging Electrobun app",
   });
+
+  // The Electrobun CLI downloads its platform core lazily. If that happened
+  // during the first build, harden the new copy and package once more so the
+  // artifact cannot retain the dependency's wildcard RPC listener.
+  if (hardenInstalledElectrobunRpc() > 0) {
+    console.log(
+      "[desktop-build] Repackaging after hardening the downloaded Electrobun core.",
+    );
+    runElectrobun(packageArgs, {
+      cwd: ELECTROBUN_DIR,
+      env: packageEnv,
+      label: buildEnv
+        ? `Repackaging hardened Electrobun app (env=${buildEnv})`
+        : "Repackaging hardened Electrobun app",
+    });
+  }
+
+  hardenPackagedLinuxArtifacts();
 
   if (process.platform === "darwin") {
     verifyPackagedNativeActivityTrackerBinary(findLatestMacAppBundle());

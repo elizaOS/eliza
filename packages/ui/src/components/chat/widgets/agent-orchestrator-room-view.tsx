@@ -10,7 +10,8 @@
  * fetching container lives in `agent-orchestrator.tsx`.
  */
 import { Bot, CircleUser, Users, Workflow, Wrench } from "lucide-react";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
+import { useAgentElement } from "../../../agent-surface/useAgentElement";
 import type {
   OrchestratorRoomParticipant,
   OrchestratorRoomRoster,
@@ -107,7 +108,7 @@ function ParticipantRow({
       <span className="relative inline-flex shrink-0">
         <Icon
           className={`h-3.5 w-3.5 ${
-            isSubAgent ? (live ? "text-txt" : "text-muted/50") : "text-muted"
+            isSubAgent ? (live ? "text-txt" : "text-muted") : "text-muted"
           }`}
         />
         {isSubAgent ? (
@@ -154,6 +155,37 @@ function ParticipantRow({
         </span>
       ) : null}
     </div>
+  );
+}
+
+function RoomOpenButton({
+  room,
+  onSelectRoom,
+  children,
+}: {
+  room: OrchestratorRoomRoster;
+  onSelectRoom: (taskId: string) => void;
+  children: ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `cockpit-open-room-${room.taskId}`,
+    role: "button",
+    label: `Open ${room.taskTitle}`,
+    group: "cockpit-task-rooms",
+    description: "Open this coding task room",
+  });
+  return (
+    <Button
+      ref={ref}
+      onClick={() => onSelectRoom(room.taskId)}
+      aria-label={room.taskTitle}
+      data-testid="orchestrator-room-open"
+      variant="ghost"
+      className="flex h-auto w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm px-0 py-0 text-left font-normal transition-colors hover:bg-bg-hover"
+      {...agentProps}
+    >
+      {children}
+    </Button>
   );
 }
 
@@ -214,15 +246,9 @@ function RoomCard({
   return (
     <div className="space-y-1.5 p-2" data-testid="orchestrator-room-card">
       {onSelectRoom ? (
-        <Button
-          onClick={() => onSelectRoom(room.taskId)}
-          aria-label={room.taskTitle}
-          data-testid="orchestrator-room-open"
-          variant="ghost"
-          className="flex h-auto w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm px-0 py-0 text-left font-normal transition-colors hover:bg-bg-hover"
-        >
+        <RoomOpenButton room={room} onSelectRoom={onSelectRoom}>
           {header}
-        </Button>
+        </RoomOpenButton>
       ) : (
         <div className="flex items-center gap-1.5">{header}</div>
       )}

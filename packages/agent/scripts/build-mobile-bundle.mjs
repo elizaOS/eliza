@@ -616,12 +616,11 @@ const exactMobileStubPlugin = {
         "@elizaos/plugin-local-inference/runtime/embedding-presets",
         path.join(stubsDir, "embedding-presets.cjs"),
       ],
-      ["e2b", path.join(stubsDir, "null-plugin.cjs")],
     ]);
     build.onResolve(
       {
         filter:
-          /^(?:@elizaos\/plugin-local-inference(?:\/runtime\/embedding-presets)?|e2b)$/,
+          /^@elizaos\/plugin-local-inference(?:\/runtime\/embedding-presets)?$/,
       },
       (args) => {
         return { path: exactStubs.get(args.path), namespace: "file" };
@@ -633,9 +632,9 @@ const exactMobileStubPlugin = {
 const capabilityRouterStubPlugin = {
   name: "eliza-mobile-capability-router-stubs",
   setup(build) {
-    const e2bRouterStub = path.join(stubsDir, "e2b-capability-router.cjs");
-    build.onResolve({ filter: /e2b-capability-router\.ts$/ }, () => ({
-      path: e2bRouterStub,
+    const remoteRunnerStub = path.join(stubsDir, "remote-coding-runner.cjs");
+    build.onResolve({ filter: /remote-coding-runner\.ts$/ }, () => ({
+      path: remoteRunnerStub,
       namespace: "file",
     }));
   },

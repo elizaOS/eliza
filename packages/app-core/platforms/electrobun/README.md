@@ -43,3 +43,13 @@ Startup logs **`[WebGPU Browser] …`** use **`os.release()`**, which reports th
 
 - [Desktop app](https://docs.eliza.ai/apps/desktop) — install, runtime modes, native modules.
 - Agent/bootstrap guards — `src/native/agent.ts` (the separate startup note was never committed).
+
+## Secure remote runtimes
+
+Devices & Runtimes uses main-process RPC boundaries for controller identity,
+relay command signing/decryption, SSH host verification, and runtime bearer
+storage. Controller private JWKs, monotonic session sequences, runtime tokens,
+and pinned SSH fingerprints stay in the operating-system credential store.
+Advanced SSH accepts only an explicit `user@host`, verifies an exact SHA256
+host fingerprint, uses strict `known_hosts`, and never reads or copies a private
+key; it uses the user's SSH agent or an absolute identity-file path in place.

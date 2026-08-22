@@ -8,6 +8,7 @@ import {
   type CreateManagedWindowOptions,
   type ManagedWindowFrame,
   type ManagedWindowLike,
+  resolveManagedWindowTitleBarStyle,
   SurfaceWindowManager,
 } from "./surface-windows";
 
@@ -130,6 +131,13 @@ describe("SurfaceWindowManager app windows", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("confines inset native chrome to settings instead of changing every detached surface", () => {
+    expect(resolveManagedWindowTitleBarStyle("settings")).toBe("hiddenInset");
+    expect(resolveManagedWindowTitleBarStyle("chat")).toBe("default");
+    expect(resolveManagedWindowTitleBarStyle("browser")).toBe("default");
+    expect(resolveManagedWindowTitleBarStyle("app")).toBe("default");
   });
 
   it("builds app-window renderer URLs from local routes without preserving stale renderer hashes", () => {

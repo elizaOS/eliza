@@ -41,7 +41,7 @@ export interface AndroidTrajectoryActionEvent {
   success: boolean;
   /** Bridge error code (only on failure). */
   errorCode?: string;
-  /** Free-form error message; trimmed for log hygiene. */
+  /** Complete free-form error message. */
   errorMessage?: string;
   /** Display-local pixel coords for tap/swipe (optional). */
   x?: number;
@@ -66,8 +66,6 @@ export interface AndroidTrajectoryStepEvent {
   rationale: string;
 }
 
-const MAX_ERROR_MSG = 256;
-
 /**
  * Emit a `computeruse.android.action` log entry. Returns the payload so
  * callers can also forward it elsewhere (e.g. in-memory replay buffer).
@@ -75,19 +73,16 @@ const MAX_ERROR_MSG = 256;
 export function emitAndroidAction(
   event: AndroidTrajectoryActionEvent,
 ): AndroidTrajectoryActionEvent {
-  const trimmed: AndroidTrajectoryActionEvent = { ...event };
-  if (trimmed.errorMessage) {
-    trimmed.errorMessage = trimmed.errorMessage.slice(0, MAX_ERROR_MSG);
-  }
+  const payload: AndroidTrajectoryActionEvent = { ...event };
   logger.info(
     {
       evt: "computeruse.android.action",
       platform: "android" as const,
-      ...trimmed,
+      ...payload,
     },
-    `[computeruse/android] ${trimmed.kind}${trimmed.success ? "" : ` failed (${trimmed.errorCode ?? "?"})`}`,
+    `[computeruse/android] ${payload.kind}${payload.success ? "" : ` failed (${payload.errorCode ?? "?"})`}`,
   );
-  return trimmed;
+  return payload;
 }
 
 /**

@@ -13,6 +13,12 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import {
+  assessReturningInstallPersistence,
+  formatStoragePersistenceFailure,
+  type ReturningInstallStorageSnapshot,
+} from "./packaged-test-contracts";
+import { dismissPermissionPrimingIfShown } from "./packaged-ui-actions";
 import { hasPackagedRendererBootstrapRequests } from "./windows-bootstrap";
 
 type EvalOk<T> = T & { ok: true };
@@ -742,6 +748,18 @@ async function seedReturningInstallState(
   expect(result.ok, result.ok ? undefined : result.error).toBe(true);
 }
 
+async function readReturningInstallStorageSnapshot(
+  harness: PackagedDesktopHarness,
+): Promise<ReturningInstallStorageSnapshot> {
+  return await harness.eval<ReturningInstallStorageSnapshot>(`({
+    origin: window.location.origin || null,
+    firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
+    setupStep: localStorage.getItem("eliza:setup:step"),
+    uiShellMode: localStorage.getItem("eliza:ui-shell-mode"),
+    activeServer: localStorage.getItem("elizaos:active-server"),
+  })`);
+}
+
 async function readMainWindowEffects(harness: PackagedDesktopHarness): Promise<{
   transparent: boolean | null;
   titleBarStyle: string | null;
@@ -812,9 +830,16 @@ async function withPackagedHarness(
     debugPackagedPhase("initial packaged launch ready");
     await seedReturningInstallState(harness, api.baseUrl);
     debugPackagedPhase("seeded returning-install state");
-    const rendererOriginBeforeRelaunch = await harness
-      .eval<string | null>(`window.location.origin || null`)
-      .catch(() => null);
+    const persistenceBeforeRelaunch =
+      await readReturningInstallStorageSnapshot(harness);
+    const seededAssessment = assessReturningInstallPersistence(
+      persistenceBeforeRelaunch,
+      persistenceBeforeRelaunch,
+    );
+    expect(
+      seededAssessment.ok,
+      `Returning-install seed was incomplete before relaunch: ${JSON.stringify(seededAssessment.mismatches)}`,
+    ).toBe(true);
     const requestCountBeforeRelaunch = api.requests.length;
     debugPackagedPhase("starting packaged relaunch");
     await harness.relaunch({
@@ -823,57 +848,25 @@ async function withPackagedHarness(
     });
     debugPackagedPhase("packaged relaunch ready");
 
-    // Verify that localStorage state survived the relaunch. If not, the
-    // startup coordinator will fall back to a fresh-install probe path and
-    // may stall or show the first-run overlay instead of the app shell.
-    const persistenceCheck = await waitForEval<
-      EvalResult<{
-        firstRunComplete: string | null;
-        activeServer: string | null;
-        apiBase: string | null;
-        origin: string | null;
-      }>
-    >(
-      harness,
-      `(() => {
-        try {
-          return {
-            ok: true,
-            firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-            activeServer: localStorage.getItem("elizaos:active-server"),
-            apiBase: ${getApiBaseExpression()} ?? null,
-            origin: window.location.origin || null,
-          };
-        } catch (e) {
-          return {
-            ok: false,
-            error: e instanceof Error ? e.message : String(e),
-          };
-        }
-      })()`,
-      (current) => current.ok,
-      {
-        timeout: process.env.CI ? 120_000 : 90_000,
-        message:
-          "Timed out waiting for renderer localStorage probe after packaged relaunch.",
-      },
+    // A real relaunch must reopen the same isolated partition with the exact
+    // returning-install keys. Re-seeding here would turn a shipping persistence
+    // defect into a green UI assertion, so missing or changed values fail with
+    // the partition/origin diagnostics needed to investigate the product path.
+    const persistenceAfterRelaunch =
+      await readReturningInstallStorageSnapshot(harness);
+    const persistenceAssessment = assessReturningInstallPersistence(
+      persistenceBeforeRelaunch,
+      persistenceAfterRelaunch,
     );
-
-    if (
-      persistenceCheck.ok &&
-      (!persistenceCheck.firstRunComplete || !persistenceCheck.activeServer)
-    ) {
-      console.warn(
-        `[packaged-harness] localStorage was NOT persisted across relaunch.`,
-        `firstRunComplete=${persistenceCheck.firstRunComplete}`,
-        `activeServer=${persistenceCheck.activeServer}`,
-        `apiBase=${persistenceCheck.apiBase}`,
-        `originBefore=${rendererOriginBeforeRelaunch}`,
-        `originAfter=${persistenceCheck.origin}`,
-        `— re-seeding state for this session.`,
+    if (!persistenceAssessment.ok) {
+      throw new Error(
+        formatStoragePersistenceFailure({
+          before: persistenceBeforeRelaunch,
+          after: persistenceAfterRelaunch,
+          partition: harness.partition,
+          stateDir: harness.stateDir,
+        }),
       );
-      // Re-seed when WKWebView did not flush localStorage before process exit.
-      await seedReturningInstallState(harness, api.baseUrl);
     }
     debugPackagedPhase("validated relaunch persistence state");
 
@@ -942,6 +935,8 @@ async function withPackagedHarness(
       },
     );
     debugPackagedPhase("post-relaunch app shell ready");
+    await dismissPermissionPrimingIfShown(harness);
+    debugPackagedPhase("permission priming settled");
 
     try {
       debugPackagedPhase("entering test-specific assertions");
@@ -1035,7 +1030,17 @@ test("packaged desktop summon shortcut follows the platform contract", async ({
   );
 
   await withPackagedHarness(async ({ harness }) => {
-    const initialState = await harness.getState();
+    const initialState = await harness.waitForState(
+      (state) => {
+        const shortcuts = state.shell.shortcuts ?? [];
+        return (
+          shortcuts.some((shortcut) => shortcut.id === "command-palette") &&
+          shortcuts.some((shortcut) => shortcut.id === "chat-overlay")
+        );
+      },
+      "Expected renderer startup to finish registering command-palette and chat-overlay shortcuts.",
+      30_000,
+    );
     expect(initialState.shell.shortcuts ?? []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

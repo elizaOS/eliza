@@ -630,7 +630,7 @@ function AppRunsWidget({
           </div>
           {attentionRuns.length > 0 ? (
             <div className="p-2 text-warn">
-              <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn">
+              <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-warn">
                 <AlertTriangle className="h-3 w-3" />
                 {t("agentorchestrator.recovery", { defaultValue: "Recovery" })}
               </div>

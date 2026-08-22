@@ -9,7 +9,7 @@
  * These tests drive the real route handler with a faithful ledger-backed
  * reservation (the reconcile math is REAL) and assert:
  *  - post-settle DB failure: reconciled exactly once to totalCost, NOT refunded;
- *  - pre-settle provider failure: reconciled once to 0, balance fully restored;
+ *  - pre-settle provider failure (fal answers 5xx, no job): reconciled once to 0;
  *  - clean success: reconciled once to totalCost.
  * Everything else is mocked at the module boundary.
  */
@@ -23,7 +23,8 @@ import * as contentSafetyActual from "@/lib/services/content-safety";
 import * as creditsActual from "@/lib/services/credits";
 import * as generationsActual from "@/lib/services/generations";
 
-const falActual = require("@fal-ai/client") as Record<string, unknown>;
+const falActual = require("@fal-ai/client") as typeof import("@fal-ai/client");
+const { ApiError: FalApiError } = falActual;
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -65,8 +66,10 @@ mock.module("@/lib/services/ai-pricing-definitions", () => ({
   getSupportedVideoModelDefinition: (model: string) =>
     model === MODEL
       ? {
+          modelId: MODEL,
           provider: "fal",
           billingSource: "fal",
+          defaultParameters: { durationSeconds: 8, audio: true },
         }
       : undefined,
   SUPPORTED_VIDEO_MODEL_IDS: [MODEL],
@@ -241,13 +244,18 @@ describe("generate-video — post-settle failure must not refund (#10278)", () =
 });
 
 describe("generate-video — pre-settle failure still refunds", () => {
-  test("provider throws BEFORE settle: refunds and returns provider diagnostics", async () => {
+  test("provider answers 503 BEFORE enqueue: refunds and returns provider diagnostics", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
+    // fal's client raises ApiError only from a real HTTP error response; an
+    // outage status carries no request_id, so no paid job exists to hold for.
     const providerError = Object.assign(
-      new Error("fal upstream 503 api_key=secret-token"),
-      {
+      new FalApiError({
+        message: "fal upstream 503 api_key=secret-token",
         status: 503,
+        body: undefined,
+      }),
+      {
         code: "FAL_UPSTREAM_UNAVAILABLE",
       },
     );

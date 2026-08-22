@@ -1,3 +1,5 @@
+/** Verifies serialized protected writes with exact read-back against mocked and real PGlite vaults. */
+
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
