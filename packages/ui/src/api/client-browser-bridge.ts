@@ -6,6 +6,7 @@
  * plugin-browser route contracts; no transformation happens here.
  */
 import type {
+  BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
   UpdateBrowserBridgeSettingsRequest,
 } from "./browser-contracts";
@@ -71,6 +72,15 @@ export interface BrowserBridgeSessionResponse {
   session: BrowserBridgeSession;
 }
 
+export interface BrowserBridgeCompanionsResponse {
+  companions: BrowserBridgeCompanionStatus[];
+}
+
+export interface BrowserBridgeCompanionResetResponse {
+  companion: BrowserBridgeCompanionStatus;
+  resetAt: string;
+}
+
 declare module "./client-base" {
   interface ElizaClient {
     listBrowserBridgeSessions(): Promise<BrowserBridgeSessionsResponse>;
@@ -82,6 +92,10 @@ declare module "./client-base" {
       id: string,
       confirmed: boolean,
     ): Promise<BrowserBridgeSessionResponse>;
+    listBrowserBridgeCompanions(): Promise<BrowserBridgeCompanionsResponse>;
+    resetBrowserBridgeCompanionRevocation(
+      id: string,
+    ): Promise<BrowserBridgeCompanionResetResponse>;
   }
 }
 
@@ -125,5 +139,23 @@ ElizaClient.prototype.confirmBrowserBridgeSession = async function (
       method: "POST",
       body: JSON.stringify({ confirmed }),
     },
+  );
+};
+
+ElizaClient.prototype.listBrowserBridgeCompanions = async function (
+  this: ElizaClient,
+): Promise<BrowserBridgeCompanionsResponse> {
+  return this.fetch<BrowserBridgeCompanionsResponse>(
+    "/api/browser-bridge/companions",
+  );
+};
+
+ElizaClient.prototype.resetBrowserBridgeCompanionRevocation = async function (
+  this: ElizaClient,
+  id: string,
+): Promise<BrowserBridgeCompanionResetResponse> {
+  return this.fetch<BrowserBridgeCompanionResetResponse>(
+    `/api/browser-bridge/companions/${encodeURIComponent(id)}/reset-revocation`,
+    { method: "POST" },
   );
 };

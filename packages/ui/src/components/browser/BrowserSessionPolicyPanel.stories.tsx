@@ -4,7 +4,10 @@
  * each backed by a deterministic in-memory transport fake.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import type { BrowserBridgeSettings } from "../../api/browser-contracts";
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+} from "../../api/browser-contracts";
 import type { BrowserBridgeSession } from "../../api/client-browser-bridge";
 import type { BrowserSessionPolicyApi } from "./BrowserSessionPolicyPanel";
 import { BrowserSessionPolicyPanel } from "./BrowserSessionPolicyPanel";
@@ -51,7 +54,10 @@ function makeSession(
   };
 }
 
-function staticApi(sessions: BrowserBridgeSession[]): BrowserSessionPolicyApi {
+function staticApi(
+  sessions: BrowserBridgeSession[],
+  companions: BrowserBridgeCompanionStatus[] = [],
+): BrowserSessionPolicyApi {
   let settings = { ...SETTINGS };
   const state = sessions.map((s) => ({ ...s }));
   return {
@@ -71,6 +77,22 @@ function staticApi(sessions: BrowserBridgeSession[]): BrowserSessionPolicyApi {
       existing.status = confirmed ? "queued" : "cancelled";
       return { session: { ...existing } };
     },
+    async listBrowserBridgeCompanions() {
+      return { companions };
+    },
+    async resetBrowserBridgeCompanionRevocation(id) {
+      const companion = companions.find((candidate) => candidate.id === id);
+      if (!companion) throw new Error(`Browser companion not found: ${id}`);
+      return {
+        companion: {
+          ...companion,
+          connectionState: "disconnected",
+          pairingTokenExpiresAt: null,
+          pairingTokenRevokedAt: null,
+        },
+        resetAt: "2026-08-20T12:00:00.000Z",
+      };
+    },
   };
 }
 
@@ -85,6 +107,12 @@ const failingApi: BrowserSessionPolicyApi = {
     throw new Error("bridge offline");
   },
   async confirmBrowserBridgeSession() {
+    throw new Error("bridge offline");
+  },
+  async listBrowserBridgeCompanions() {
+    throw new Error("bridge offline");
+  },
+  async resetBrowserBridgeCompanionRevocation() {
     throw new Error("bridge offline");
   },
 };
@@ -103,6 +131,41 @@ export const Empty: Story = {
 
 export const LoadError: Story = {
   args: { api: failingApi },
+};
+
+export const RevokedRecovery: Story = {
+  args: {
+    api: staticApi(
+      [],
+      [
+        {
+          id: "c-revoked",
+          agentId: "agent-1",
+          browser: "chrome",
+          profileId: "default",
+          profileLabel: "Default",
+          label: "Chrome",
+          extensionVersion: "1.2.3",
+          connectionState: "disconnected",
+          permissions: {
+            tabs: true,
+            scripting: true,
+            activeTab: true,
+            allOrigins: false,
+            grantedOrigins: [],
+            incognitoEnabled: false,
+          },
+          lastSeenAt: "2026-08-20T11:30:00.000Z",
+          pairedAt: "2026-08-20T10:00:00.000Z",
+          pairingTokenExpiresAt: null,
+          pairingTokenRevokedAt: "2026-08-20T11:40:00.000Z",
+          metadata: {},
+          createdAt: "2026-08-20T10:00:00.000Z",
+          updatedAt: "2026-08-20T11:40:00.000Z",
+        },
+      ],
+    ),
+  },
 };
 
 export const AwaitingTakeover: Story = {

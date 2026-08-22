@@ -7931,30 +7931,14 @@ export class LifeOpsRepository {
           WHERE agent_id = ${sqlQuote(args.agentId)}
             AND owner_entity_id = ${sqlQuote(args.ownerEntityId)}
             AND browser = ${sqlQuote(args.companion.browser)}
-            AND profile_id = ${sqlQuote(args.companion.profileId)}
           RETURNING revoked_at`,
       );
       if (deleted.length === 0) return false;
-      const otherProfileRevocations = await executeRawSqlTx(
-        tx,
-        `SELECT 1
-           FROM app_lifeops.life_browser_companion_revocations
-          WHERE agent_id = ${sqlQuote(args.agentId)}
-            AND owner_entity_id = ${sqlQuote(args.ownerEntityId)}
-            AND browser = ${sqlQuote(args.companion.browser)}
-            AND profile_id <> ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)}
-          LIMIT 1`,
-      );
-      if (otherProfileRevocations.length === 0) {
-        await executeRawSqlTx(
-          tx,
-          `DELETE FROM app_lifeops.life_browser_companion_revocations
-            WHERE agent_id = ${sqlQuote(args.agentId)}
-              AND owner_entity_id = ${sqlQuote(args.ownerEntityId)}
-              AND browser = ${sqlQuote(args.companion.browser)}
-              AND profile_id = ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)}`,
-        );
-      }
+      // A wildcard tombstone deliberately makes revocation browser-wide so a
+      // reinstall cannot evade it with a new profile identifier. Reset must
+      // therefore clear that browser's exact and wildcard rows atomically;
+      // reporting a per-profile success while the wildcard survives would
+      // leave the requested profile unusable.
       await executeRawSqlTx(
         tx,
         `UPDATE ${companionsTable}
@@ -7965,7 +7949,7 @@ export class LifeOpsRepository {
                 connection_state = 'disconnected',
                 updated_at = ${sqlQuote(args.resetAt)}
           WHERE agent_id = ${sqlQuote(args.agentId)}
-            AND id = ${sqlQuote(args.companion.id)}`,
+            AND browser = ${sqlQuote(args.companion.browser)}`,
       );
       return true;
     });
