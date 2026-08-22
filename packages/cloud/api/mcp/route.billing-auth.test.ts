@@ -104,7 +104,7 @@ describe("configured platform MCP billing cancellation authority", () => {
     ]);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([
+    expect((await response.json()) as unknown).toEqual([
       expect.objectContaining({
         id: "list",
         error: expect.objectContaining({ code: -32000 }),
