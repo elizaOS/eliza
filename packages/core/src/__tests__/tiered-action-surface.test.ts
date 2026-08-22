@@ -874,9 +874,9 @@ describe("v5 tiered action surface", () => {
 		);
 	});
 
-	it("does not disclose an unauthorized inline child through tools or prompt metadata", async () => {
+	it("does not disclose an unauthorized inline child whose normalized name collides", async () => {
 		const allowedChild = makeAction({
-			name: "SAFE_CHILD",
+			name: "PRIVATECHILD",
 			description: "Allowed child description.",
 			contexts: ["general" as AgentContext],
 			contextGate: { anyOf: ["general"] },
@@ -899,7 +899,7 @@ describe("v5 tiered action surface", () => {
 			actions: [parent, allowedChild, deniedChild],
 			responses: [
 				stage1Response({ contexts: ["general"] }),
-				plannerToolResponse("SAFE_CHILD"),
+				plannerToolResponse("PRIVATECHILD"),
 				finishEvaluatorResponse("Allowed child completed."),
 			],
 		});
@@ -915,9 +915,11 @@ describe("v5 tiered action surface", () => {
 			availableActionsSection(runtime),
 			plannerUserContent(runtime),
 		].join("\n");
-		expect(plannerToolNames(runtime)).toContain("SAFE_CHILD");
+		// PRIVATECHILD and PRIVATE_CHILD deliberately collide under the lenient
+		// retrieval normalizer but remain distinct native tool identities.
+		expect(plannerToolNames(runtime)).toContain("PRIVATECHILD");
 		expect(plannerToolNames(runtime)).not.toContain("PRIVATE_CHILD");
-		expect(modelContext).toContain("SAFE_CHILD");
+		expect(modelContext).toContain("PRIVATECHILD");
 		expect(modelContext).not.toContain("PRIVATE_CHILD");
 		expect(modelContext).not.toContain(
 			"Private child description must never reach the model.",
