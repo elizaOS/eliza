@@ -1155,9 +1155,15 @@ export async function handleViewsRoutes(
     // Clear the active-view context on close instead; the next real navigation
     // re-stamps it.
     const isCloseNavigation = action === "close" || action === "close-all";
-    if (isCloseNavigation) {
-      clearCurrentViewState();
-    } else {
+    // Caller-owned delivery is private renderer state. Recording it in the
+    // process-global current-view/provider context would leak one client's
+    // deep link to other clients and leave ghost state when its socket is stale.
+    // The targeted frame or completed action is the only commit edge for it.
+    const commitCurrentViewState = (committedViewPath: string | null) => {
+      if (isCloseNavigation) {
+        clearCurrentViewState();
+        return;
+      }
       const now = new Date().toISOString();
       const source = reportedSource;
       // Stamp `switchedAt` only when the view actually changes; a re-navigate to
@@ -1169,7 +1175,7 @@ export async function handleViewsRoutes(
         : (currentViewState?.switchedAt ?? now);
       currentViewState = {
         viewId: id,
-        viewPath,
+        viewPath: committedViewPath,
         viewLabel,
         viewType: resolvedViewType,
         ...(action ? { action } : {}),
@@ -1186,7 +1192,7 @@ export async function handleViewsRoutes(
         viewId: id,
         viewLabel,
         viewType: resolvedViewType,
-        viewPath,
+        viewPath: committedViewPath,
         // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
         ...(switchedAt ? { switchedAt } : {}),
         ...(source ? { source } : {}),
@@ -1201,7 +1207,7 @@ export async function handleViewsRoutes(
             source: `view-navigate:${source}`,
             viewId: id,
             viewLabel,
-            viewPath,
+            viewPath: committedViewPath,
             viewType: resolvedViewType,
             previousViewId,
             initiatedBy: source,
@@ -1220,6 +1226,15 @@ export async function handleViewsRoutes(
             );
           });
       }
+    };
+    const committedViewPath = callerOwnedDelivery
+      ? (entry?.path ?? null)
+      : viewPath;
+    // completed-action has a caller-scoped terminal fallback, so sanitized
+    // canonical state can commit immediately. Voice/originating-client has no
+    // fallback and commits only after its targeted renderer accepts delivery.
+    if (body?.delivery !== "originating-client") {
+      commitCurrentViewState(committedViewPath);
     }
 
     // Realtime voice returns navigation through its own control channel. App
@@ -1234,6 +1249,7 @@ export async function handleViewsRoutes(
       ? normalizeCompletedActionHandoffId(body?.completedActionHandoffId)
       : undefined;
     let completedActionDelivered = false;
+    let originatingClientDelivered = false;
     if (
       reportedSource !== "user" &&
       (!callerOwnedDelivery || shouldTargetCompletedAction)
@@ -1284,9 +1300,17 @@ export async function handleViewsRoutes(
           );
           return true;
         }
+        originatingClientDelivered =
+          !shouldTargetCompletedAction &&
+          typeof delivered === "number" &&
+          delivered > 0;
       } else {
         ctx.broadcastWs?.(frame);
       }
+    }
+
+    if (body?.delivery === "originating-client" && originatingClientDelivered) {
+      commitCurrentViewState(committedViewPath);
     }
 
     json(res, {

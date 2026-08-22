@@ -22,6 +22,7 @@ import {
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   compareMemoryIds,
+  compareTasksForQuery,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -70,6 +71,7 @@ import {
   validateDocumentDirectGrantEntityIds,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
+  validateTaskQueryPagination,
   type World,
   withinCreatedAtWindow,
 } from "@elizaos/core";
@@ -371,6 +373,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private ready = false;
   private readonly agentId: UUID;
   private documentMutationTail: Promise<void> = Promise.resolve();
+  private taskMutationTail: Promise<void> = Promise.resolve();
 
   constructor(storage: IStorage, agentId: UUID) {
     super();
@@ -1969,26 +1972,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async getTasks(params: {
     roomId?: UUID;
+    worldId?: UUID;
     tags?: string[];
     entityId?: UUID;
     agentIds: UUID[];
     limit?: number;
     offset?: number;
   }): Promise<Task[]> {
+    validateTaskQueryPagination(params);
+    if (params.agentIds.length === 0) return [];
     const agentSet = new Set(params.agentIds);
     let tasks = await this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => {
       const taskAgentId = (t as Task & { agentId?: UUID }).agentId;
-      if (agentSet.size > 0 && taskAgentId !== undefined && !agentSet.has(taskAgentId)) {
-        return false;
-      }
+      if (taskAgentId === undefined || !agentSet.has(taskAgentId)) return false;
       if (params.roomId && t.roomId !== params.roomId) return false;
+      if (params.worldId && t.worldId !== params.worldId) return false;
       if (params.entityId && t.entityId !== params.entityId) return false;
       if (params.tags && params.tags.length > 0) {
         const tags = t.tags ?? [];
-        if (!params.tags.some((tag) => tags.includes(tag))) return false;
+        if (!params.tags.every((tag) => tags.includes(tag))) return false;
       }
       return true;
     });
+    tasks.sort(compareTasksForQuery);
     const offset = params.offset ?? 0;
     if (offset > 0) tasks = tasks.slice(offset);
     if (params.limit !== undefined) tasks = tasks.slice(0, params.limit);
@@ -2016,6 +2022,26 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (task) tasks.push(task);
     }
     return tasks;
+  }
+
+  async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+    const operation = async () => {
+      const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
+      if (
+        !existing?.tags?.includes("queue") ||
+        (existing.metadata?.status != null && existing.metadata.status !== "pending")
+      ) {
+        return false;
+      }
+      await this.storage.set(COLLECTIONS.TASKS, id, { ...existing, ...task, id });
+      return true;
+    };
+    const run = this.taskMutationTail.then(operation, operation);
+    this.taskMutationTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
   }
 
   async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {

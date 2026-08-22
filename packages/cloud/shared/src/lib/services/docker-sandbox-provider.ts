@@ -89,7 +89,10 @@ import type {
   SandboxProvider,
   SandboxReplacementCleanupLocator,
 } from "./sandbox-provider-types";
-import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
+import {
+  assertContainerBackedExecutionTier,
+  SandboxReplacementCleanupUnresolvedError,
+} from "./sandbox-provider-types";
 import {
   ensureStewardTenant,
   resolveStewardTenantCredentials,
@@ -1341,6 +1344,7 @@ export class DockerSandboxProvider implements SandboxProvider {
    * and then retry the full flow.
    */
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
+    assertContainerBackedExecutionTier(config.executionTier);
     const MAX_ATTEMPTS = 3;
     let lastError: Error | undefined;
     // This is the last caller-visible boundary before remote placement. Stored

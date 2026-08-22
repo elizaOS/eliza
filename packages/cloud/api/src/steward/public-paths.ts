@@ -28,8 +28,8 @@ export function isThinStewardPublicPath(pathname: string): boolean {
 }
 
 /**
- * Login-critical pre-auth Steward email mutations (Magic Link) that must not
- * wait on full-app bootstrap either.
+ * Login-critical pre-auth Steward email mutations (Magic Link and passkey
+ * fallback) that must not wait on full-app bootstrap either.
  *
  * Every one of these is a serial, user-blocking leg of the email sign-in
  * flow, and each was paying the monolithic bootstrap as multi-second cold
@@ -42,8 +42,12 @@ export function isThinStewardPublicPath(pathname: string): boolean {
  * - POST /steward/auth/email/code/verify — fires on six-digit-code submit;
  *   gates login completion.
  * - POST /steward/auth/email/status — the companion-code 3s status poll.
+ * - POST /steward/auth/email/otp/send — sends the six-digit fallback code
+ *   when the typed account has no passkey.
+ * - POST /steward/auth/email/otp/verify — verifies that code before passkey
+ *   enrollment begins.
  *
- * All three are pre-auth by design: the full app applies no additional
+ * All five are pre-auth by design: the full app applies no additional
  * protection to them — `authMiddleware` and the cookie-mutation CSRF guard
  * both pass every non-`/api/` path straight through — so the thin shell's
  * replicated stack (CORS, secure headers, Redis fail-closed guard, global IP
@@ -62,13 +66,32 @@ export function isThinStewardEmailAuthPath(pathname: string): boolean {
   return (
     normalized === "/steward/auth/email/send" ||
     normalized === "/steward/auth/email/code/verify" ||
-    normalized === "/steward/auth/email/status"
+    normalized === "/steward/auth/email/status" ||
+    normalized === "/steward/auth/email/otp/send" ||
+    normalized === "/steward/auth/email/otp/verify"
+  );
+}
+
+/**
+ * The one pre-auth passkey mutation needed before WebAuthn starts.
+ *
+ * Login options decides whether the typed account has a credential. Unknown
+ * or no-passkey accounts receive Steward's generic 404 and immediately fall
+ * back to the email OTP paths above. Registration options and both WebAuthn
+ * verification endpoints deliberately stay on the full app.
+ */
+export function isThinStewardPasskeyLoginOptionsPath(
+  pathname: string,
+): boolean {
+  return (
+    removeTrailingSlashes(pathname) === "/steward/auth/passkey/login/options"
   );
 }
 
 /**
  * Method-aware eligibility for the thin Steward shell: read-only for the
- * public discovery paths, POST (+ preflight) for the login email mutations.
+ * public discovery paths, POST (+ preflight) for the exact pre-auth login
+ * mutations.
  */
 export function isThinStewardPath(method: string, pathname: string): boolean {
   const upper = method.toUpperCase();
@@ -76,11 +99,16 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
     return isThinStewardPublicPath(pathname);
   }
   if (upper === "POST") {
-    return isThinStewardEmailAuthPath(pathname);
+    return (
+      isThinStewardEmailAuthPath(pathname) ||
+      isThinStewardPasskeyLoginOptionsPath(pathname)
+    );
   }
   if (upper === "OPTIONS") {
     return (
-      isThinStewardPublicPath(pathname) || isThinStewardEmailAuthPath(pathname)
+      isThinStewardPublicPath(pathname) ||
+      isThinStewardEmailAuthPath(pathname) ||
+      isThinStewardPasskeyLoginOptionsPath(pathname)
     );
   }
   return false;

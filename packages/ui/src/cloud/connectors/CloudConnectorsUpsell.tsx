@@ -125,7 +125,7 @@ function CloudConnectorsUpsell(): React.JSX.Element {
             "settings.cloudConnectorsUpsell.localModeDescription",
             {
               defaultValue:
-                "You can keep using local Discord, Telegram, Slack, iMessage, Signal, and WhatsApp connectors without Cloud.",
+                "You can keep using local Discord, Telegram, Slack, iMessage, and WhatsApp connectors without Cloud.",
             },
           )}
         />

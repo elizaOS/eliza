@@ -6,6 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 const migrationUrl = new URL("./migrations/0295_phone_message_payload_jsonb.sql", import.meta.url);
 const journalUrl = new URL("./migrations/meta/_journal.json", import.meta.url);
 const migrationSource = await Bun.file(migrationUrl).text();
+const MIGRATION_TAG = "0295_phone_message_payload_jsonb";
 const ORGANIZATION_ID = "61111111-1111-4111-8111-111111111111";
 const OTHER_ORGANIZATION_ID = "63333333-3333-4333-8333-333333333333";
 const PHONE_NUMBER_ID = "62222222-2222-4222-8222-222222222222";
@@ -67,7 +68,7 @@ async function phoneColumnTypes(database: PGlite): Promise<string[]> {
 }
 
 describe("0295 phone message payload JSONB", () => {
-  test("is the unique migration appended after develop history", async () => {
+  test("has one exact journal registration and migration path", async () => {
     const journal = JSON.parse(await Bun.file(journalUrl).text()) as {
       entries: Array<{
         idx: number;
@@ -77,13 +78,22 @@ describe("0295 phone message payload JSONB", () => {
         breakpoints: boolean;
       }>;
     };
-    expect(journal.entries.at(-1)).toEqual({
-      idx: 277,
+    const matchingEntries = journal.entries.filter(({ tag }) => tag === MIGRATION_TAG);
+    if (matchingEntries.length !== 1) {
+      throw new Error(`Expected exactly one ${MIGRATION_TAG} journal entry`);
+    }
+    const migrationEntry = matchingEntries[0]!;
+
+    expect(migrationEntry).toEqual({
+      idx: 278,
       version: "7",
       when: 1793736000001,
-      tag: "0295_phone_message_payload_jsonb",
+      tag: MIGRATION_TAG,
       breakpoints: true,
     });
+    expect(new URL(`./migrations/${migrationEntry.tag}.sql`, import.meta.url).href).toBe(
+      migrationUrl.href,
+    );
     expect(new Set(journal.entries.map(({ idx }) => idx)).size).toBe(journal.entries.length);
     expect(new Set(journal.entries.map(({ tag }) => tag)).size).toBe(journal.entries.length);
   });

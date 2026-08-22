@@ -92,6 +92,42 @@ async function installAuthenticatedPersonalRoutes(
       body: JSON.stringify({ success: true, data: [] }),
     });
   });
+  // Once the personal Shared runtime mounts, current develop boots a bounded
+  // set of agent-scoped home resources. Keep this navigation-ownership test
+  // deterministic instead of letting those unrelated reads escape to the
+  // hosted API and register as request failures.
+  await page.route("**/api/v1/eliza/agents/*/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const conversation = {
+      id: "managed-handoff-conversation",
+      roomId: "managed-handoff-room",
+      title: "Managed handoff",
+      createdAt: "2026-08-21T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    };
+    const body = pathname.endsWith("/api/apps/overlay-presence")
+      ? { ok: true }
+      : pathname.endsWith("/api/conversations")
+        ? route.request().method() === "POST"
+          ? { conversation }
+          : { conversations: [conversation] }
+        : pathname.endsWith(`/api/conversations/${conversation.id}/messages`)
+          ? { messages: [] }
+          : pathname.endsWith(`/api/conversations/${conversation.id}/greeting`)
+            ? { message: null }
+            : pathname.endsWith("/api/views")
+              ? { views: [] }
+              : pathname.endsWith("/api/browser-workspace")
+                ? { mode: "web", tabs: [] }
+                : pathname.endsWith("/music-player/status")
+                  ? { available: false }
+                  : [];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  });
   await page.route("**/api/v1/eliza/personal", async (route) => {
     personalRequests += 1;
     if (personalGate) await personalGate;
@@ -252,7 +288,7 @@ for (const surface of SURFACES) {
       });
 
       await page.goto(`${managedOrigin}${entryPath}`);
-      const heading = page.getByRole("heading", { name: "Sign in to Eliza" });
+      const heading = page.getByRole("heading", { name: "Sign in" });
       await expect(heading).toBeVisible();
       await expect(page.getByText("Taking you to Eliza sign in")).toHaveCount(
         0,

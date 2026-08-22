@@ -1,4 +1,4 @@
-// Boots cloud API src steward embedded Worker infrastructure under Cloudflare runtime constraints.
+/** Proxies the embedded Steward API with signed mutations and bounded public discovery. */
 import type { MiddlewareHandler } from "hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -9,6 +9,12 @@ const REQUEST_TTL_SECONDS = 60;
 // packages/cloud/shared/src/lib/auth/steward-client.ts. Inlined so this module
 // (and the thin login path that loads it) does not pull the JWT/jose graph.
 const STEWARD_AUTH_UPSTREAM_TIMEOUT_MS = 25_000;
+const MAX_PROVIDERS_BODY_BYTES = 64 * 1024;
+const MAX_PROVIDERS_JSON_DEPTH = 16;
+const MAX_PROVIDERS_CONTAINER_ENTRIES = 256;
+const MAX_PROVIDERS_JSON_NODES = 2_048;
+const MAX_PROVIDERS_CACHE_ENTRIES = 8;
+const DANGEROUS_JSON_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
 function bytesToHex(bytes: Uint8Array): string {
   let out = "";
@@ -153,20 +159,275 @@ function resolveStewardUpstream(
   return null;
 }
 
-type ProvidersBody = {
-  ok?: boolean;
-  data?: {
-    passkey?: boolean;
-    email?: boolean;
-    siwe?: boolean;
-    siws?: boolean;
-    google?: boolean;
-    discord?: boolean;
-    github?: boolean;
-    oauth?: string[];
-    [key: string]: unknown;
-  };
+type ProvidersCaptcha = {
+  enabled?: boolean;
+  provider?: "turnstile" | "hcaptcha";
+  siteKey?: string;
+  requiredFor?: Array<"email_otp" | "sms_otp">;
+  [key: string]: unknown;
 };
+
+type ProvidersData = {
+  passkey: boolean;
+  email: boolean;
+  sms?: boolean;
+  whatsapp?: boolean;
+  totp?: boolean;
+  siwe: boolean;
+  siws: boolean;
+  google: boolean;
+  discord: boolean;
+  github: boolean;
+  twitter: boolean;
+  telegram?: boolean;
+  farcaster?: boolean;
+  linkedin?: boolean;
+  spotify?: boolean;
+  twitch?: boolean;
+  instagram?: boolean;
+  line?: boolean;
+  jwt?: boolean;
+  oidc?: string[];
+  captcha?: ProvidersCaptcha;
+  oauth: string[];
+  disabled?: string[];
+  [key: string]: unknown;
+};
+
+const REQUIRED_PROVIDER_BOOLEAN_FIELDS = [
+  "passkey",
+  "email",
+  "siwe",
+  "siws",
+  "google",
+  "discord",
+  "github",
+  "twitter",
+] as const;
+
+const OPTIONAL_PROVIDER_BOOLEAN_FIELDS = [
+  "sms",
+  "whatsapp",
+  "totp",
+  "telegram",
+  "farcaster",
+  "linkedin",
+  "spotify",
+  "twitch",
+  "instagram",
+  "line",
+  "jwt",
+] as const;
+
+const OPTIONAL_PROVIDER_STRING_ARRAY_FIELDS = ["oidc", "disabled"] as const;
+const CAPTCHA_PROVIDERS = new Set(["turnstile", "hcaptcha"]);
+const CAPTCHA_REQUIRED_FOR = new Set(["email_otp", "sms_otp"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
+}
+
+async function readBoundedBody(response: Response): Promise<string | null> {
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_PROVIDERS_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function parseProvidersJson(text: string): unknown {
+  let position = 0;
+  let nodes = 0;
+  const skipWhitespace = () => {
+    while (/\s/.test(text[position] ?? "")) position += 1;
+  };
+  const parseString = (): string => {
+    if (text[position] !== '"') throw new Error("expected JSON string");
+    const start = position++;
+    while (position < text.length) {
+      if (text[position] === "\\") {
+        position += 2;
+        continue;
+      }
+      if (text[position++] === '"') {
+        return JSON.parse(text.slice(start, position)) as string;
+      }
+    }
+    throw new Error("unterminated JSON string");
+  };
+  const parseValue = (depth: number): void => {
+    nodes += 1;
+    if (nodes > MAX_PROVIDERS_JSON_NODES || depth > MAX_PROVIDERS_JSON_DEPTH) {
+      throw new Error("provider JSON complexity exceeded");
+    }
+    skipWhitespace();
+    if (text[position] === "{") {
+      position += 1;
+      skipWhitespace();
+      const keys = new Set<string>();
+      let entries = 0;
+      if (text[position] === "}") {
+        position += 1;
+        return;
+      }
+      while (true) {
+        const key = parseString();
+        if (keys.has(key) || DANGEROUS_JSON_KEYS.has(key)) {
+          throw new Error("unsafe or duplicate provider JSON key");
+        }
+        keys.add(key);
+        entries += 1;
+        if (entries > MAX_PROVIDERS_CONTAINER_ENTRIES) {
+          throw new Error("provider object too large");
+        }
+        skipWhitespace();
+        if (text[position++] !== ":") throw new Error("expected colon");
+        parseValue(depth + 1);
+        skipWhitespace();
+        const separator = text[position++];
+        if (separator === "}") return;
+        if (separator !== ",") throw new Error("expected object separator");
+        skipWhitespace();
+      }
+    }
+    if (text[position] === "[") {
+      position += 1;
+      skipWhitespace();
+      let entries = 0;
+      if (text[position] === "]") {
+        position += 1;
+        return;
+      }
+      while (true) {
+        entries += 1;
+        if (entries > MAX_PROVIDERS_CONTAINER_ENTRIES) {
+          throw new Error("provider array too large");
+        }
+        parseValue(depth + 1);
+        skipWhitespace();
+        const separator = text[position++];
+        if (separator === "]") return;
+        if (separator !== ",") throw new Error("expected array separator");
+      }
+    }
+    if (text[position] === '"') {
+      parseString();
+      return;
+    }
+    const start = position;
+    while (position < text.length && !/[\s,\]}]/.test(text[position]))
+      position += 1;
+    JSON.parse(text.slice(start, position));
+  };
+  parseValue(0);
+  skipWhitespace();
+  if (position !== text.length) throw new Error("trailing JSON data");
+  return JSON.parse(text) as unknown;
+}
+
+function isValidCaptcha(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (Object.hasOwn(value, "enabled") && typeof value.enabled !== "boolean") {
+    return false;
+  }
+  if (
+    Object.hasOwn(value, "provider") &&
+    (typeof value.provider !== "string" ||
+      !CAPTCHA_PROVIDERS.has(value.provider))
+  ) {
+    return false;
+  }
+  if (Object.hasOwn(value, "siteKey") && typeof value.siteKey !== "string") {
+    return false;
+  }
+  if (Object.hasOwn(value, "requiredFor")) {
+    if (!isStringArray(value.requiredFor)) return false;
+    if (!value.requiredFor.every((entry) => CAPTCHA_REQUIRED_FOR.has(entry))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isProvidersData(value: unknown): value is ProvidersData {
+  if (!isRecord(value)) return false;
+  if (
+    !REQUIRED_PROVIDER_BOOLEAN_FIELDS.every(
+      (field) =>
+        Object.hasOwn(value, field) && typeof value[field] === "boolean",
+    )
+  ) {
+    return false;
+  }
+  if (!Object.hasOwn(value, "oauth") || !isStringArray(value.oauth)) {
+    return false;
+  }
+  if (
+    !OPTIONAL_PROVIDER_BOOLEAN_FIELDS.every(
+      (field) =>
+        !Object.hasOwn(value, field) || typeof value[field] === "boolean",
+    )
+  ) {
+    return false;
+  }
+  if (
+    !OPTIONAL_PROVIDER_STRING_ARRAY_FIELDS.every(
+      (field) => !Object.hasOwn(value, field) || isStringArray(value[field]),
+    )
+  ) {
+    return false;
+  }
+  return !Object.hasOwn(value, "captcha") || isValidCaptcha(value.captcha);
+}
+
+function invalidProvidersResponse(): Response {
+  return Response.json(
+    {
+      success: false,
+      error: "steward_upstream_invalid_response",
+      code: "steward_upstream_invalid_response",
+      message: "Steward providers response is malformed",
+    },
+    {
+      status: 502,
+      headers: { "cache-control": "no-store" },
+    },
+  );
+}
+
+function asHeadResponse(response: Response): Response {
+  return new Response(null, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 function hasOAuthCreds(
   env: AppEnv["Bindings"],
@@ -215,10 +476,24 @@ type ProvidersCacheEntry = {
   deployCommit: string | null;
 };
 
-let providersResponseCache: ProvidersCacheEntry | null = null;
+const providersResponseCache = new Map<string, ProvidersCacheEntry>();
+const providersInflight = new Map<string, Promise<Response>>();
 
-function providersCacheKey(env: AppEnv["Bindings"]): string | null {
-  return env.ELIZA_DEPLOY_COMMIT?.trim() || null;
+async function providersCacheKey(
+  env: AppEnv["Bindings"],
+  requestUrl: URL,
+): Promise<string> {
+  const upstream = resolveStewardUpstream(env, requestUrl);
+  return sha256TextHex(
+    JSON.stringify({
+      upstream,
+      deployCommit: env.ELIZA_DEPLOY_COMMIT?.trim() || null,
+      tenantId: env.STEWARD_TENANT_ID?.trim() || null,
+      google: hasOAuthCreds(env, "google"),
+      discord: hasOAuthCreds(env, "discord"),
+      github: hasOAuthCreds(env, "github"),
+    }),
+  );
 }
 
 /**
@@ -232,12 +507,11 @@ export function providersCacheControlForAgeMs(ageMs: number): string {
   return `public, max-age=${maxAgeSec}`;
 }
 
-function readProvidersCache(env: AppEnv["Bindings"]): Response | null {
-  const entry = providersResponseCache;
+function readProvidersCache(key: string): Response | null {
+  const entry = providersResponseCache.get(key);
   if (!entry) return null;
   const now = Date.now();
   if (entry.expiresAt <= now) return null;
-  if (entry.deployCommit !== providersCacheKey(env)) return null;
   const ageMs = now - entry.fetchedAt;
   if (ageMs >= PROVIDERS_CACHE_TTL_MS) return null;
   return new Response(entry.body.slice(0), {
@@ -253,7 +527,7 @@ function readProvidersCache(env: AppEnv["Bindings"]): Response | null {
 
 async function writeProvidersCache(
   response: Response,
-  env: AppEnv["Bindings"],
+  key: string,
 ): Promise<Response> {
   if (!response.ok) return response;
   const contentType = response.headers.get("content-type") || "";
@@ -261,14 +535,23 @@ async function writeProvidersCache(
 
   const body = await response.clone().arrayBuffer();
   const fetchedAt = Date.now();
-  providersResponseCache = {
+  if (
+    !providersResponseCache.has(key) &&
+    providersResponseCache.size >= MAX_PROVIDERS_CACHE_ENTRIES
+  ) {
+    const oldest = [...providersResponseCache.entries()].sort(
+      ([, left], [, right]) => left.fetchedAt - right.fetchedAt,
+    )[0]?.[0];
+    if (oldest) providersResponseCache.delete(oldest);
+  }
+  providersResponseCache.set(key, {
     body,
     status: response.status,
     contentType,
     fetchedAt,
     expiresAt: fetchedAt + PROVIDERS_CACHE_TTL_MS,
-    deployCommit: providersCacheKey(env),
-  };
+    deployCommit: key,
+  });
 
   const headers = new Headers(response.headers);
   headers.set("cache-control", providersCacheControlForAgeMs(0));
@@ -282,14 +565,14 @@ async function writeProvidersCache(
 
 /** Test helper — clears the isolate providers cache between cases. */
 export function resetProvidersResponseCacheForTests(): void {
-  providersResponseCache = null;
+  providersResponseCache.clear();
+  providersInflight.clear();
 }
 
 /** Test helper — force the current isolate entry past its expiry. */
 export function expireProvidersResponseCacheForTests(): void {
-  if (providersResponseCache) {
-    providersResponseCache.expiresAt = Date.now() - 1;
-  }
+  for (const entry of providersResponseCache.values())
+    entry.expiresAt = Date.now() - 1;
 }
 
 /**
@@ -297,9 +580,10 @@ export function expireProvidersResponseCacheForTests(): void {
  * (positive = age the entry as if that many ms already elapsed).
  */
 export function ageProvidersResponseCacheForTests(deltaMs: number): void {
-  if (!providersResponseCache) return;
-  providersResponseCache.fetchedAt -= deltaMs;
-  providersResponseCache.expiresAt -= deltaMs;
+  for (const entry of providersResponseCache.values()) {
+    entry.fetchedAt -= deltaMs;
+    entry.expiresAt -= deltaMs;
+  }
 }
 
 /**
@@ -312,20 +596,43 @@ async function patchProvidersResponse(
   upstream: Response,
   env: AppEnv["Bindings"],
 ): Promise<Response> {
-  if (!upstream.ok) return upstream;
-  const contentType = upstream.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) return upstream;
-
-  let parsed: ProvidersBody;
-  try {
-    parsed = (await upstream.clone().json()) as ProvidersBody;
-  } catch {
-    return upstream;
+  if (!upstream.ok) return invalidProvidersResponse();
+  if (upstream.status !== 200) return invalidProvidersResponse();
+  const contentType = upstream.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (contentType !== "application/json" && !contentType?.endsWith("+json")) {
+    return invalidProvidersResponse();
   }
-  if (!parsed?.data) return upstream;
 
-  const oauth = new Set<string>(parsed.data.oauth ?? []);
-  const patched: ProvidersBody["data"] = { ...parsed.data };
+  let parsed: unknown;
+  try {
+    const text = await readBoundedBody(upstream);
+    if (text === null) return invalidProvidersResponse();
+    parsed = parseProvidersJson(text);
+  } catch {
+    return invalidProvidersResponse();
+  }
+  if (!isRecord(parsed)) return invalidProvidersResponse();
+  if (
+    parsed.ok !== true ||
+    Object.hasOwn(parsed, "error") ||
+    (Object.hasOwn(parsed, "success") && parsed.success !== true)
+  ) {
+    return invalidProvidersResponse();
+  }
+
+  const hasNestedData = !isProvidersData(parsed);
+  if (hasNestedData && !Object.hasOwn(parsed, "data")) {
+    return invalidProvidersResponse();
+  }
+  const providerData = hasNestedData ? parsed.data : parsed;
+  if (!isProvidersData(providerData)) return invalidProvidersResponse();
+
+  const oauth = new Set<string>(providerData.oauth);
+  const patched: ProvidersData = { ...providerData };
 
   for (const provider of ["google", "discord", "github"] as const) {
     if (!patched[provider] && hasOAuthCreds(env, provider)) {
@@ -335,24 +642,34 @@ async function patchProvidersResponse(
   }
   patched.oauth = [...oauth];
 
-  return Response.json(
-    { ...parsed, data: patched },
-    {
-      status: upstream.status,
-      headers: upstream.headers,
-    },
-  );
+  const body = hasNestedData
+    ? { ...parsed, data: patched }
+    : { ...parsed, ...patched };
+  return Response.json(body, {
+    status: upstream.status,
+    headers: { "content-type": "application/json; charset=UTF-8" },
+  });
 }
 
 export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const url = new URL(c.req.url);
-  if (c.req.method === "GET" && isPublicStewardTenantConfigPath(url.pathname)) {
-    return c.json({ ok: true, data: PUBLIC_STEWARD_TENANT_CONFIG });
+  const requestMethod = c.req.method.toUpperCase();
+  const isReadMethod = requestMethod === "GET" || requestMethod === "HEAD";
+  const isProvidersRequest = isReadMethod && isAuthProvidersPath(url.pathname);
+  const providerCacheKey = isProvidersRequest
+    ? await providersCacheKey(c.env, url)
+    : null;
+
+  if (isReadMethod && isPublicStewardTenantConfigPath(url.pathname)) {
+    const response = c.json({ ok: true, data: PUBLIC_STEWARD_TENANT_CONFIG });
+    return requestMethod === "HEAD" ? asHeadResponse(response) : response;
   }
 
-  if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
-    const cached = readProvidersCache(c.env);
-    if (cached) return cached;
+  if (providerCacheKey) {
+    const cached = readProvidersCache(providerCacheKey);
+    if (cached) {
+      return requestMethod === "HEAD" ? asHeadResponse(cached) : cached;
+    }
   }
 
   const upstream = resolveStewardUpstream(c.env, url);
@@ -379,7 +696,11 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // the SPA. Without this, /auth/email/send (Magic Link) returns
   // `Request expiry header required` — see Steward
   // packages/api/src/middleware/{request-expiry,authorization-signature}.ts.
-  const method = c.req.method.toUpperCase();
+  // A HEAD discovery request must be validated against the same representation
+  // as GET. Fetch GET upstream, cache only the validated body, then strip the
+  // downstream body below; an upstream HEAD has no body to validate.
+  const method =
+    requestMethod === "HEAD" && isProvidersRequest ? "GET" : requestMethod;
   const isMutating = MUTATING_METHODS.has(method);
   const rawSecret = c.env.STEWARD_REQUEST_SIGNING_SECRET;
   const signingSecret =
@@ -408,6 +729,21 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // Strip the host header that Workers carries from the inbound request — the
   // upstream fetch sets its own.
   headers.delete("host");
+  if (isProvidersRequest) {
+    for (const name of [
+      "authorization",
+      "cookie",
+      "x-api-key",
+      "x-steward-key",
+      "x-steward-platform-key",
+      "x-steward-signer-id",
+      "x-steward-signer-secret",
+      "x-steward-key-quorum-id",
+      "x-steward-key-quorum-credentials",
+    ]) {
+      headers.delete(name);
+    }
+  }
 
   // Forward the real inbound origin so Steward's origin-gated auth checks pass.
   // Steward's SIWE/SIWS `GET /auth/nonce` rejects a request that carries
@@ -460,6 +796,45 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
     headers.set("x-steward-signature", `v1=${signature}`);
   }
 
+  if (isProvidersRequest && providerCacheKey) {
+    const existing = providersInflight.get(providerCacheKey);
+    if (existing) {
+      const shared = (await existing).clone();
+      return requestMethod === "HEAD" ? asHeadResponse(shared) : shared;
+    }
+    const load = (async () => {
+      let response: Response;
+      try {
+        response = await fetch(upstreamUrl.toString(), init);
+      } catch (error) {
+        logger.error("[embedded-steward] upstream transport failure", {
+          message: error instanceof Error ? error.message : String(error),
+          path: url.pathname,
+        });
+        return Response.json(
+          {
+            success: false,
+            error: "steward_upstream_unavailable",
+            code: "steward_upstream_unavailable",
+            message: "Steward upstream unavailable",
+          },
+          { status: 502, headers: { "cache-control": "no-store" } },
+        );
+      }
+      const patched = await patchProvidersResponse(response, c.env);
+      return writeProvidersCache(patched, providerCacheKey);
+    })();
+    providersInflight.set(providerCacheKey, load);
+    try {
+      const loaded = (await load).clone();
+      return requestMethod === "HEAD" ? asHeadResponse(loaded) : loaded;
+    } finally {
+      if (providersInflight.get(providerCacheKey) === load) {
+        providersInflight.delete(providerCacheKey);
+      }
+    }
+  }
+
   let response: Response;
   try {
     response = await fetch(upstreamUrl.toString(), init);
@@ -477,10 +852,6 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       },
       502,
     );
-  }
-  if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
-    const patched = await patchProvidersResponse(response, c.env);
-    return writeProvidersCache(patched, c.env);
   }
   return response;
 };

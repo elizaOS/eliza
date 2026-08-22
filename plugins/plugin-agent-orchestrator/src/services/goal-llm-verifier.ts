@@ -291,6 +291,10 @@ export interface GoalVerificationResult {
   missing: string[];
   /** Raw model response text, kept for the audit log and for tests. */
   rawResponse: string;
+  /** True when verification itself could not produce a verdict. Callers must
+   *  retry/escalate infrastructure without charging the worker's correction
+   *  budget. */
+  inconclusive: boolean;
 }
 
 const EMPTY_CRITERIA_SUMMARY =
@@ -353,6 +357,7 @@ interface ParsedJudgeResponse {
   passed: boolean;
   summary: string;
   missing: string[];
+  inconclusive: boolean;
 }
 
 function findFirstJsonObject(raw: string): string | null {
@@ -381,6 +386,7 @@ export function parseJudgeResponse(
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
       missing: [...acceptanceCriteria],
+      inconclusive: true,
     };
   }
   let parsed: unknown;
@@ -393,6 +399,7 @@ export function parseJudgeResponse(
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
       missing: [...acceptanceCriteria],
+      inconclusive: true,
     };
   }
   if (parsed === null || typeof parsed !== "object") {
@@ -400,17 +407,24 @@ export function parseJudgeResponse(
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
       missing: [...acceptanceCriteria],
+      inconclusive: true,
     };
   }
   const record = parsed as Record<string, unknown>;
   const passedRaw = record.passed;
   const summaryRaw = record.summary;
   const missingRaw = record.missing;
-  const missing = Array.isArray(missingRaw)
-    ? missingRaw
-        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-        .filter((entry) => entry.length > 0)
-    : [];
+  if (typeof passedRaw !== "boolean" || !Array.isArray(missingRaw)) {
+    return {
+      passed: false,
+      summary: MALFORMED_RESPONSE_SUMMARY,
+      missing: [...acceptanceCriteria],
+      inconclusive: true,
+    };
+  }
+  const missing = missingRaw
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0);
   // Enforce the schema invariant: missing non-empty ⇒ passed false.
   const passed = passedRaw === true && missing.length === 0;
   const summary =
@@ -419,7 +433,7 @@ export function parseJudgeResponse(
       : passed
         ? "All acceptance criteria confirmed by verifier."
         : "Verifier did not confirm every acceptance criterion.";
-  return { passed, summary, missing };
+  return { passed, summary, missing, inconclusive: false };
 }
 
 /**
@@ -441,6 +455,7 @@ export async function verifyGoalCompletion(
       summary: EMPTY_CRITERIA_SUMMARY,
       missing: [],
       rawResponse: "",
+      inconclusive: false,
     };
   }
   if (input.completionEvidence.trim().length === 0) {
@@ -449,6 +464,7 @@ export async function verifyGoalCompletion(
       summary: EMPTY_EVIDENCE_SUMMARY,
       missing: [...input.acceptanceCriteria],
       rawResponse: "",
+      inconclusive: false,
     };
   }
   const prompt = buildVerificationPrompt(input);
@@ -462,13 +478,15 @@ export async function verifyGoalCompletion(
     raw = typeof result === "string" ? result : String(result);
   } catch (err) {
     // error-policy:J1 boundary translation — a failed verifier model call
-    // becomes a structured fail verdict naming the error, never a fake pass.
+    // becomes an explicit inconclusive verdict naming the error, never a fake
+    // pass or a worker-attributed proof failure.
     const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,
       summary: `Verifier model call failed: ${toWellFormedUnicode(detail)}`,
       missing: [...input.acceptanceCriteria],
       rawResponse: "",
+      inconclusive: true,
     };
   }
   // Record the grill model boundary (prompt + verdict) so the scenario

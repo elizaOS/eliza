@@ -13,7 +13,7 @@
  *    the returned authorization URL.
  *  - `config` — `local-config` modes render the plugin's env-var form (bot
  *    tokens, API keys).
- *  - `local`  — `local-setup` modes (Signal QR/daemon, iMessage chat.db,
+ *  - `local`  — `local-setup` modes (WhatsApp QR, iMessage chat.db,
  *    Discord desktop IPC) render the env form plus the mode's guidance text.
  *
  * Kept DOM-free so the mode projection unit-tests without React.

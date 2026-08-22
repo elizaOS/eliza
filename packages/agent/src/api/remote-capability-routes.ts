@@ -1,7 +1,7 @@
 /**
  * Mounts the remote-capability router API behind the authenticated gate. POST
  * /api/capability-router/connect validates and connects a remote capability
- * endpoint (direct, or an e2b / home-machine / mobile- / desktop-companion
+ * endpoint (direct, or a home-machine / mobile- / desktop-companion
  * provider) or provisions a cloud sandbox, syncs the resulting remote plugins
  * into the runtime, and persists endpoint config, per-endpoint module
  * allowlists, trust policies, and a bounded trust-audit trail to the config env
@@ -42,7 +42,6 @@ import {
 import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
 import {
   desktopCompanionCapabilityEndpointProvider,
-  e2bCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
   type UrlRemoteCapabilityEndpointProviderOptions,
@@ -99,7 +98,6 @@ type DirectEndpointBody = {
 
 type EndpointProviderMode =
   | "direct"
-  | "e2b"
   | "home-machine"
   | "mobile-companion"
   | "desktop-companion";
@@ -772,7 +770,6 @@ function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
   const provider = requireNonEmptyString(value, "provider");
   if (
     provider === "direct" ||
-    provider === "e2b" ||
     provider === "home-machine" ||
     provider === "mobile-companion" ||
     provider === "desktop-companion"
@@ -780,7 +777,7 @@ function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
     return provider;
   }
   throw new Error(
-    `provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.`,
+    `provider must be one of direct, home-machine, mobile-companion, or desktop-companion.`,
   );
 }
 
@@ -790,8 +787,6 @@ function getEndpointProvider(
   switch (providerMode) {
     case "direct":
       return directRemoteCapabilityEndpointProvider() as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
-    case "e2b":
-      return e2bCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
     case "home-machine":
       return homeMachineCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
     case "mobile-companion":

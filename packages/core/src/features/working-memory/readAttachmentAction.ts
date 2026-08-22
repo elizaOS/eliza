@@ -1173,6 +1173,7 @@ export const readAttachmentAction: Action = {
 						notProcessed: record.attachment.notProcessed,
 					})),
 					readView: pagedRecords[0]?.readView,
+					readViews: pagedRecords.map((record) => record.readView),
 					clipboard: projectClipboardResult(clipboardResult),
 					suppressActionResultClipboard: clipboardResult.requested,
 				},
@@ -1181,6 +1182,7 @@ export const readAttachmentAction: Action = {
 					action: "read",
 					attachmentIds: pagedRecords.map((record) => record.attachment.id),
 					readView: pagedRecords[0]?.readView,
+					readViews: pagedRecords.map((record) => record.readView),
 				},
 			};
 		} catch (error) {

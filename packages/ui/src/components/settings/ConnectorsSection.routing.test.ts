@@ -13,7 +13,7 @@ import { shouldRenderConnectorConfigForm } from "./ConnectorsSection";
  * Locks the Settings → Connectors mode-routing contract: the generic env-var
  * config form must surface for `local-config` modes (Discord bot token, etc.)
  * WITHOUT cannibalising the dedicated setup surfaces that `local-setup` modes
- * still need (iMessage Full-Disk-Access status, Signal/WhatsApp QR pairing,
+ * still need (iMessage Full-Disk-Access status, WhatsApp QR pairing,
  * Discord/Telegram desktop panels). Regression guard for the
  * "gate on parameters.length" bug that hid those panels.
  */
@@ -42,7 +42,6 @@ describe("ConnectorsSection mode routing", () => {
   it("keeps dedicated setup panels for local-setup modes (the regression)", () => {
     for (const [connectorId, modeId, expectedSetupId] of [
       ["imessage", "direct", "imessage"],
-      ["signal", "qr", "signal"],
       ["whatsapp", "qr", "whatsapp"],
       ["discord", "local", "discordlocal"],
       ["telegram", "account", "telegramaccount"],

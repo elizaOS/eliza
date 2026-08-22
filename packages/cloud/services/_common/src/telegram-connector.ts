@@ -19,6 +19,7 @@ export interface TelegramConnectorLogger {
 
 export interface TelegramConnectorConfig {
   botToken?: string;
+  botUsername?: string;
   webhookSecret?: string;
 }
 
@@ -32,6 +33,10 @@ export interface TelegramConnectorEvent {
   senderName?: string;
   text: string;
   isCommand: boolean;
+  groupInvocation?: "mention" | "command" | "reply" | "ambient";
+  groupActorRole?: "creator" | "administrator" | "member" | "unknown";
+  membershipChange?: "joined" | "removed";
+  replyToMessageId?: string;
   providerSentAtMs?: number;
   voiceNote?: {
     fileId: string;
@@ -49,6 +54,10 @@ export interface TelegramDeliveryReceipt {
 export interface TelegramReplyDeliveryHooks {
   prepare(chunks: readonly string[]): Promise<void>;
   shouldSend(chunkIndex: number, chunk: string): Promise<boolean>;
+  deliveredProviderMessageId?(
+    chunkIndex: number,
+    chunk: string,
+  ): Promise<string | null>;
   accepted(
     chunkIndex: number,
     chunk: string,
@@ -65,7 +74,7 @@ export interface TelegramResolvedVoiceNote {
   durationSeconds: number;
 }
 
-interface TelegramMessage {
+export interface TelegramMessage {
   message_id: number;
   date?: number;
   from?: {
@@ -77,6 +86,20 @@ interface TelegramMessage {
   chat: { id: number; type: string };
   text?: string;
   caption?: string;
+  entities?: Array<{
+    type: string;
+    offset: number;
+    length: number;
+  }>;
+  caption_entities?: Array<{
+    type: string;
+    offset: number;
+    length: number;
+  }>;
+  reply_to_message?: {
+    message_id?: number;
+    from?: { is_bot?: boolean; username?: string };
+  };
   voice?: {
     file_id: string;
     duration: number;
@@ -88,6 +111,85 @@ interface TelegramMessage {
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+  my_chat_member?: {
+    date?: number;
+    from?: { id: number; first_name?: string; username?: string };
+    chat: { id: number; type: string };
+    new_chat_member?: { status?: string };
+  };
+}
+
+export interface TelegramGroupPolicy {
+  /** Username returned by Bot API getMe, without the leading @. */
+  botUsername: string;
+  /** Opt-in for privacy-disabled/admin bots that should see ambient traffic. */
+  allowAmbient?: boolean;
+}
+
+function normalizedTelegramUsername(value: string): string {
+  return value.trim().replace(/^@/, "").toLowerCase();
+}
+
+function entityText(
+  text: string,
+  entity: { offset: number; length: number },
+): string {
+  return text.slice(entity.offset, entity.offset + entity.length);
+}
+
+/**
+ * Default group policy: respond only to a command delivered to the bot, an
+ * explicit @mention of this bot, or a reply to one of its messages. Ambient
+ * replies require an explicit opt-in even if Telegram privacy mode is off.
+ */
+export function classifyTelegramGroupInvocation(
+  message: TelegramMessage,
+  text: string,
+  policy: TelegramGroupPolicy,
+): TelegramConnectorEvent["groupInvocation"] | null {
+  const botUsername = normalizedTelegramUsername(policy.botUsername);
+  if (!botUsername) return null;
+  if (
+    message.reply_to_message?.from?.is_bot &&
+    normalizedTelegramUsername(message.reply_to_message.from.username ?? "") ===
+      botUsername
+  ) {
+    return "reply";
+  }
+  const entities = message.text ? message.entities : message.caption_entities;
+  for (const entity of entities ?? []) {
+    if (
+      !Number.isInteger(entity.offset) ||
+      !Number.isInteger(entity.length) ||
+      entity.offset < 0 ||
+      entity.length <= 0 ||
+      entity.offset + entity.length > text.length
+    ) {
+      continue;
+    }
+    const value = entityText(text, entity);
+    if (
+      entity.type === "mention" &&
+      normalizedTelegramUsername(value) === botUsername
+    ) {
+      return "mention";
+    }
+    if (entity.type === "bot_command") {
+      const target = value.match(/@([a-z0-9_]{5,32})$/i)?.[1];
+      if (!target || normalizedTelegramUsername(target) === botUsername) {
+        return "command";
+      }
+    }
+  }
+  return policy.allowAmbient ? "ambient" : null;
+}
+
+export function isTelegramGroupInvocation(
+  message: TelegramMessage,
+  text: string,
+  policy: TelegramGroupPolicy,
+): boolean {
+  return classifyTelegramGroupInvocation(message, text, policy) !== null;
 }
 
 export class TelegramApiTransportError extends Error {
@@ -136,6 +238,7 @@ function exceedsTelegramVoiceSizeLimit(size: number): boolean {
 export function parseTelegramWebhook(
   rawBody: string,
   logger?: TelegramConnectorLogger,
+  groupPolicy?: TelegramGroupPolicy,
 ): TelegramConnectorEvent | null {
   let update: TelegramUpdate;
   try {
@@ -146,12 +249,56 @@ export function parseTelegramWebhook(
     return null;
   }
 
+  const membership = update.my_chat_member;
+  if (
+    membership &&
+    (membership.chat.type === "group" || membership.chat.type === "supergroup")
+  ) {
+    const status = membership.new_chat_member?.status;
+    const membershipChange =
+      status === "member" || status === "administrator"
+        ? "joined"
+        : status === "left" || status === "kicked"
+          ? "removed"
+          : null;
+    if (!membershipChange) return null;
+    return {
+      platform: "telegram",
+      messageId: String(update.update_id),
+      platformRecordId: String(update.update_id),
+      chatId: String(membership.chat.id),
+      chatType: membership.chat.type,
+      senderId: String(membership.from?.id ?? membership.chat.id),
+      senderName: membership.from?.first_name,
+      text: "",
+      isCommand: false,
+      membershipChange,
+      ...(typeof membership.date === "number" &&
+      Number.isInteger(membership.date) &&
+      membership.date > 0
+        ? { providerSentAtMs: membership.date * 1_000 }
+        : {}),
+      rawPayload: update,
+    };
+  }
+
   const message = update.message;
-  if (message?.chat.type !== "private") return null;
+  if (!message) return null;
+  const isPrivate = message.chat.type === "private";
+  const isGroup =
+    message.chat.type === "group" || message.chat.type === "supergroup";
+  if (!isPrivate && !isGroup) return null;
   const text = message.text || message.caption || "";
   const voice = message.voice;
   if (!text && !voice) return null;
   if (message.from?.is_bot) return null;
+  const groupInvocation =
+    isGroup && groupPolicy
+      ? classifyTelegramGroupInvocation(message, text, groupPolicy)
+      : null;
+  if (isGroup && !groupInvocation) {
+    return null;
+  }
 
   if (
     voice &&
@@ -180,6 +327,10 @@ export function parseTelegramWebhook(
     senderName: message.from?.first_name,
     text,
     isCommand: text.startsWith("/"),
+    ...(groupInvocation ? { groupInvocation } : {}),
+    ...(Number.isInteger(message.reply_to_message?.message_id)
+      ? { replyToMessageId: String(message.reply_to_message?.message_id) }
+      : {}),
     ...(typeof message.date === "number" &&
     Number.isInteger(message.date) &&
     message.date > 0
@@ -265,6 +416,50 @@ async function telegramApi<T>(
     );
   }
   return data.result as T;
+}
+
+const telegramBotUsernameCache = new Map<string, Promise<string>>();
+
+/** Resolve this credential's public username without exposing the token. */
+export async function resolveTelegramBotUsername(
+  config: TelegramConnectorConfig,
+): Promise<string> {
+  const configured = config.botUsername?.trim().replace(/^@/, "");
+  if (configured) return configured;
+  const botToken = config.botToken;
+  if (!botToken) return "";
+  let pending = telegramBotUsernameCache.get(botToken);
+  if (!pending) {
+    pending = telegramApi<{ username?: unknown }>(botToken, "getMe")
+      .then((me) => (typeof me.username === "string" ? me.username.trim() : ""))
+      .catch((error) => {
+        telegramBotUsernameCache.delete(botToken);
+        throw error;
+      });
+    telegramBotUsernameCache.set(botToken, pending);
+  }
+  return pending;
+}
+
+/** Verify the sender's current group authority using Telegram's Bot API. */
+export async function resolveTelegramGroupActorRole(
+  config: TelegramConnectorConfig,
+  chatId: string,
+  userId: string,
+): Promise<"creator" | "administrator" | "member" | "unknown"> {
+  if (!config.botToken) return "unknown";
+  const member = await telegramApi<{ status?: unknown }>(
+    config.botToken,
+    "getChatMember",
+    { chat_id: chatId, user_id: userId },
+  );
+  return member.status === "creator"
+    ? "creator"
+    : member.status === "administrator"
+      ? "administrator"
+      : member.status === "member" || member.status === "restricted"
+        ? "member"
+        : "unknown";
 }
 
 function assertValidTelegramChunkLength(maxLength: number): void {
@@ -353,6 +548,11 @@ export async function sendTelegramReply(
         deliveryHooks &&
         !(await deliveryHooks.shouldSend(chunkIndex, chunk))
       ) {
+        const priorProviderMessageId =
+          await deliveryHooks.deliveredProviderMessageId?.(chunkIndex, chunk);
+        if (priorProviderMessageId) {
+          providerMessageIds.push(priorProviderMessageId);
+        }
         break;
       }
       try {

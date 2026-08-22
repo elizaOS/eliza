@@ -7,7 +7,7 @@
  * Environment variables always override persisted values.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -109,6 +109,19 @@ function readCredentialsFile():
   }
 }
 
+function fsyncMetadataDirectory(directory: string): void {
+  if (process.platform === "win32") return;
+  const descriptor = fs.openSync(
+    directory,
+    fs.constants.O_RDONLY | (fs.constants.O_DIRECTORY ?? 0),
+  );
+  try {
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
 function writeCredentialsMetadata(
   credentials: PersistedStewardCredentials | StewardCredentialsMetadata,
 ): void {
@@ -126,7 +139,31 @@ function writeCredentialsMetadata(
   if (credentials.tenantId) data.tenantId = credentials.tenantId;
   if (credentials.agentId) data.agentId = credentials.agentId;
 
-  fs.writeFileSync(credPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+  // Write to a private temporary file and rename into place so an interrupted
+  // process can never leave a truncated steward-credentials.json behind: the
+  // loader treats unparseable metadata as "steward not configured", silently
+  // discarding the saved setup. Mirrors writeMetaStore() in account-pool.ts.
+  const tmp = `${credPath}.${process.pid}.${randomUUID()}.tmp`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(
+      tmp,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        (fs.constants.O_NOFOLLOW ?? 0),
+      0o600,
+    );
+    fs.writeFileSync(descriptor, JSON.stringify(data, null, 2), "utf-8");
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(tmp, credPath);
+    fsyncMetadataDirectory(dir);
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    fs.rmSync(tmp, { force: true });
+  }
 }
 
 async function readStewardSecret(
@@ -143,14 +180,84 @@ async function writeStewardSecret(
   vaultId: string,
   field: StewardCredentialSecretField,
   value: string,
+  clearEmpty = false,
 ): Promise<void> {
   const trimmed = value.trim();
-  if (!trimmed) return;
+  if (!trimmed) {
+    if (!clearEmpty) return;
+    const removed = await store.delete(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (!removed.ok) {
+      throw new Error(
+        `secure store rejected clearing ${field}: ${removed.message ?? removed.reason}`,
+      );
+    }
+    const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (verified.ok || verified.reason !== "not_found") {
+      throw new Error(`secure store could not verify clearing ${field}`);
+    }
+    return;
+  }
   const result = await store.set(vaultId, STEWARD_SECRET_KINDS[field], trimmed);
   if (!result.ok) {
     throw new Error(
       `secure store rejected ${field}: ${result.message ?? result.reason}`,
     );
+  }
+  const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+  if (!verified.ok || verified.value.trim() !== trimmed) {
+    throw new Error(
+      `secure store could not verify ${field}; plaintext credentials were retained for recovery`,
+    );
+  }
+}
+
+async function snapshotStewardSecrets(
+  store: PlatformSecureStore,
+  vaultId: string,
+): Promise<Map<StewardCredentialSecretField, string | null>> {
+  const snapshot = new Map<StewardCredentialSecretField, string | null>();
+  for (const field of Object.keys(
+    STEWARD_SECRET_KINDS,
+  ) as StewardCredentialSecretField[]) {
+    const result = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (result.ok) {
+      snapshot.set(field, result.value);
+    } else if (result.reason === "not_found") {
+      snapshot.set(field, null);
+    } else {
+      throw new Error(`secure store could not snapshot ${field}`);
+    }
+  }
+  return snapshot;
+}
+
+async function restoreStewardSecrets(
+  store: PlatformSecureStore,
+  vaultId: string,
+  snapshot: ReadonlyMap<StewardCredentialSecretField, string | null>,
+  attempted: readonly StewardCredentialSecretField[],
+): Promise<void> {
+  for (const field of [...attempted].reverse()) {
+    const previous = snapshot.get(field) ?? null;
+    if (previous === null) {
+      const removed = await store.delete(vaultId, STEWARD_SECRET_KINDS[field]);
+      if (!removed.ok) throw new Error(`rollback could not clear ${field}`);
+      const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+      if (verified.ok || verified.reason !== "not_found") {
+        throw new Error(`rollback could not verify clearing ${field}`);
+      }
+      continue;
+    }
+    const restored = await store.set(
+      vaultId,
+      STEWARD_SECRET_KINDS[field],
+      previous,
+    );
+    if (!restored.ok) throw new Error(`rollback could not restore ${field}`);
+    const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (!verified.ok || verified.value !== previous) {
+      throw new Error(`rollback could not verify restoring ${field}`);
+    }
   }
 }
 
@@ -227,7 +334,9 @@ export async function loadStewardCredentials(
   }
 
   if (hasLegacySecrets) {
-    writeCredentialsMetadata(parsed);
+    throw new Error(
+      "platform secure store is unavailable; plaintext Steward credentials were retained for recovery",
+    );
   }
 
   const apiUrl = parsed.apiUrl || null;
@@ -254,17 +363,40 @@ export async function saveStewardCredentials(
   options: StewardCredentialPersistenceOptions = {},
 ): Promise<void> {
   const store = createStewardSecureStore(options);
-  if (await store.isAvailable()) {
-    const vaultId = deriveStewardVaultId();
-    await Promise.all(
-      (Object.keys(STEWARD_SECRET_KINDS) as StewardCredentialSecretField[]).map(
-        (field) =>
-          writeStewardSecret(store, vaultId, field, credentials[field]),
-      ),
+  if (!(await store.isAvailable())) {
+    throw new Error(
+      "platform secure store is unavailable; Steward credentials were not persisted",
     );
   }
-
-  writeCredentialsMetadata(credentials);
+  const vaultId = deriveStewardVaultId();
+  const snapshot = await snapshotStewardSecrets(store, vaultId);
+  const attempted: StewardCredentialSecretField[] = [];
+  try {
+    for (const field of Object.keys(
+      STEWARD_SECRET_KINDS,
+    ) as StewardCredentialSecretField[]) {
+      attempted.push(field);
+      await writeStewardSecret(store, vaultId, field, credentials[field], true);
+    }
+    writeCredentialsMetadata(credentials);
+  } catch (cause) {
+    try {
+      await restoreStewardSecrets(store, vaultId, snapshot, attempted);
+    } catch (rollbackCause) {
+      // error-policy:J2 report both failures without including credential data.
+      throw new Error(
+        `Steward credential save failed and rollback was incomplete: ${rollbackCause instanceof Error ? rollbackCause.message : String(rollbackCause)}`,
+        { cause },
+      );
+    }
+    // error-policy:J2 preserve the original secure-store or metadata failure.
+    throw new Error(
+      "Steward credential save failed; prior values were restored",
+      {
+        cause,
+      },
+    );
+  }
 }
 
 /**

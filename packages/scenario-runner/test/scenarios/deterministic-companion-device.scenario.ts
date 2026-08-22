@@ -6,7 +6,9 @@
  * credential leaves the process.
  */
 import type { AgentRuntime } from "@elizaos/core";
+import companionPlugin from "@elizaos/plugin-companion";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { CompanionService } from "../../../../plugins/plugin-companion/src/service.ts";
 
 const PAIRING_TOKEN = "companion-scenario-token";
 const SET_MOOD = "SET_COMPANION_MOOD";
@@ -46,6 +48,10 @@ function successfulAction(
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "deterministic-companion-device",
   title: "Companion device actions cross the authenticated WebSocket bridge",
   domain: "companion",
@@ -53,14 +59,13 @@ export default scenario({
   description:
     "Loads the production companion plugin, completes the device handshake, changes mood, and reads status through a loopback protocol peer.",
 
-  requires: { plugins: ["@elizaos/plugin-companion"] },
   isolation: "per-scenario",
 
   seed: [
     {
       type: "custom",
       name: "start authenticated companion protocol peer",
-      apply: (ctx) => {
+      apply: async (ctx) => {
         deviceServer?.stop(true);
         receivedFrames.length = 0;
         let mood = "idle";
@@ -137,6 +142,7 @@ export default scenario({
         runtime.setSetting("COMPANION_PONG_TIMEOUT_MS", "1000");
         runtime.setSetting("COMPANION_COMMAND_TIMEOUT_MS", "2000");
         runtime.setSetting("COMPANION_RECONNECT_DELAY_MS", "60000");
+        await runtime.registerPlugin(companionPlugin);
       },
     },
   ],
@@ -161,7 +167,7 @@ export default scenario({
       name: "set the companion mood",
       actionName: SET_MOOD,
       text: "Show a curious mood.",
-      options: { mood: "curious" },
+      options: { parameters: { mood: "curious" } },
       assertTurn: (turn) => {
         const result = successfulAction(turn, SET_MOOD);
         if (!result?.success) {

@@ -40,7 +40,10 @@ export const SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED =
 export const SCHEDULED_TASK_RUNNER_WAIT_STOPPED =
   "SCHEDULED_TASK_RUNNER_WAIT_STOPPED";
 
-const DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS = 30_000;
+// Deferred plugin registration can legitimately trail runtime initialization
+// on a cold, plugin-heavy boot. Keep the observed boot allowance in the
+// scheduling owner so every consumer shares one readiness contract.
+const DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS = 120_000;
 const DEFAULT_RUNNER_REGISTRATION_POLL_MS = 250;
 
 export interface WaitForScheduledTaskRunnerServiceOptions {
@@ -54,10 +57,30 @@ function runnerWaitStopped(
   runtime: IAgentRuntime,
   signal?: AbortSignal,
 ): boolean {
+  const lifecycle =
+    typeof runtime.getLifecycleState === "function"
+      ? runtime.getLifecycleState()
+      : undefined;
   return (
     signal?.aborted === true ||
-    (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+    (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true ||
+    lifecycle === "failed" ||
+    lifecycle === "stopping" ||
+    lifecycle === "stopped"
   );
+}
+
+function runnerWaitSignal(
+  runtime: IAgentRuntime,
+  ownerSignal?: AbortSignal,
+): AbortSignal | undefined {
+  const runtimeSignal =
+    typeof runtime.getStopSignal === "function"
+      ? runtime.getStopSignal()
+      : undefined;
+  if (!ownerSignal) return runtimeSignal;
+  if (!runtimeSignal) return ownerSignal;
+  return AbortSignal.any([runtimeSignal, ownerSignal]);
 }
 
 function runnerWaitStoppedError(serviceType: string): ElizaError {
@@ -149,12 +172,6 @@ export async function waitForScheduledTaskRunnerService(
   runtime: IAgentRuntime,
   options: WaitForScheduledTaskRunnerServiceOptions = {},
 ): Promise<ScheduledTaskRunnerService> {
-  await waitForPromise(runtime.initPromise, options.signal);
-
-  const serviceType = ScheduledTaskRunnerService.serviceType;
-  if (runnerWaitStopped(runtime, options.signal)) {
-    throwRunnerWaitStopped(serviceType);
-  }
   const timeoutMs = requireDuration(
     options.registrationTimeoutMs,
     DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS,
@@ -167,10 +184,19 @@ export async function waitForScheduledTaskRunnerService(
     "registrationPollMs",
     false,
   );
-  const deadline = Date.now() + timeoutMs;
+  const signal = runnerWaitSignal(runtime, options.signal);
+  await waitForPromise(runtime.initPromise, signal);
+
+  const serviceType = ScheduledTaskRunnerService.serviceType;
+  if (runnerWaitStopped(runtime, signal)) {
+    throwRunnerWaitStopped(serviceType);
+  }
+  // Startup readiness is elapsed-time based; wall-clock corrections must not
+  // shorten the registration allowance or keep a dependent service hung.
+  const deadline = performance.now() + timeoutMs;
 
   while (!runtime.hasService(serviceType)) {
-    if (runnerWaitStopped(runtime, options.signal)) {
+    if (runnerWaitStopped(runtime, signal)) {
       throwRunnerWaitStopped(serviceType);
     }
     const status = runtime.getServiceRegistrationStatus(serviceType);
@@ -181,7 +207,7 @@ export async function waitForScheduledTaskRunnerService(
       });
     }
 
-    const remainingMs = deadline - Date.now();
+    const remainingMs = deadline - performance.now();
     if (remainingMs <= 0) {
       throw new ElizaError(
         "Scheduled task runner was not registered before the startup deadline",
@@ -191,16 +217,16 @@ export async function waitForScheduledTaskRunnerService(
         },
       );
     }
-    await waitForPoll(Math.min(pollMs, remainingMs), options.signal);
+    await waitForPoll(Math.min(pollMs, remainingMs), signal);
   }
 
-  if (runnerWaitStopped(runtime, options.signal)) {
+  if (runnerWaitStopped(runtime, signal)) {
     throwRunnerWaitStopped(serviceType);
   }
 
   return (await waitForPromise(
     runtime.getServiceLoadPromise(serviceType),
-    options.signal,
+    signal,
   )) as ScheduledTaskRunnerService;
 }
 

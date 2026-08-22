@@ -24,6 +24,7 @@ const removedCompactionModules = [
 ];
 
 const removedPromptCapCloneTests = [
+	"packages/agent/src/runtime/trajectory-internals.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/actions/role.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/experience/evaluators/experience-items.surrogate.test.ts",
@@ -40,11 +41,23 @@ const removedPromptCapCloneTests = [
 ];
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
+	],
+	"packages/core/src/runtime/message-handler.ts": [
+		/normalizeStringHints/,
+		/candidateActionNames[\s\S]{0,100}\b12\b/,
+		/intents[\s\S]{0,100}\b8\b/,
+	],
+	"packages/core/src/security/pii-context-pack.ts": [
+		/DEFAULT_MAX_FRAGMENTS/,
+		/fragments\.slice\(/,
+		/resolved\.slice\(/,
+		/toWellFormedUnicode\(contextPack\)/,
 	],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
@@ -87,10 +100,30 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/sorted\s*\.slice\(0,\s*8\)/,
 		/room\.id\.slice\(0,\s*8\)/,
 	],
+	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
+		/truncateWellFormed/,
+		/text\s*=\s*text\.slice\(/,
+	],
+	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
+	"packages/core/src/generated/action-docs.ts": [/"c0a8012e"/],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,
 		/capBytes\?:/,
+	],
+	"packages/agent/src/providers/media-provider.ts": [
+		/max_tokens:\s*options\.maxTokens\s*\?\?\s*1024/,
+		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
+		/num_predict:\s*this\.maxTokens/,
+	],
+	"packages/core/src/runtime/action-retrieval.ts": [
+		/results\.slice\(0,\s*limit\)/,
+		/COMPRESS_MODE_TOP_K_CAP/,
+	],
+	"packages/core/src/runtime/action-tiering.ts": [
+		/tierAParents\.splice\(/,
+		/tierBParents\.splice\(/,
+		/children[^\n]*\.slice\(0,/,
 	],
 	"plugins/plugin-coding-tools/src/actions/summaries.ts": [
 		/compactSummaryText/,
@@ -131,6 +164,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-agent-orchestrator/src/services/model-gateway-lease.ts": [
 		/truncateWellFormed/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/skill-recommender.ts": [
+		/recommendations\.slice\(/,
+		/\.slice\(0,\s*max\)/,
+		/description\.replace\(\/\\s\+\/g/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/trajectory-feedback.ts": [
+		/ordered\.slice\(/,
+		/\.catch\(\(\)\s*=>\s*null\)/,
+		/insights\.push\(match\[1\]\.trim\(\)\)/,
+		/\{20,200\}/,
 	],
 	"plugins/plugin-agent-orchestrator/src/services/acp-service.ts": [
 		/wellFormed\.length\s*>\s*500/,
@@ -228,7 +272,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
 		/EVIDENCE_TEXT_CHAR_CAP/,
 	],
-	"packages/agent/src/api/chat-routes.ts": [/\.slice\(-50\)/],
+	"packages/agent/src/api/chat-routes.ts": [
+		/\.slice\(-50\)/,
+		/maxTokens:\s*260/,
+	],
+	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
 		/MAX_CONTEXT_CHARS/,
@@ -255,12 +303,29 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
 	],
+	"packages/agent/src/runtime/trajectory-internals.ts": [
+		/maxTokens:\s*512/,
+		/truncateField/,
+		/truncateRecord/,
+		/\[\^\\n\]\{1,1024\}/,
+		/\[\^"\]\{1,1024\}/,
+		/\[\^"\]\{20,200\}/,
+		/insights\.push\([^)]*\.trim\(\)\)/,
+		/(?:return|const\s+safeResponse\s*=)[^;\n]*toWellFormedUnicode\((?:response|script|value)\)/,
+	],
 	"packages/scenario-runner/src/executor.ts": [
 		/serialized\.slice\(/,
 		/stringifyForJudge\([^,\n]+,\s*\d/,
 	],
 	"packages/app-core/src/services/account-pool-broker.ts": [
 		/trimmed\.slice\(0,\s*128\)/,
+	],
+	"packages/app-core/test/helpers/trajectory-harness.ts": [
+		/truncateText/,
+		/safeStringify/,
+		/formatMarkdownPayload/,
+		/v\.text\.slice\(/,
+		/state\.text\.slice\(/,
 	],
 	"plugins/plugin-computeruse/src/platform/browser.ts": [
 		/html\.slice\(0,\s*5000\)/,

@@ -395,6 +395,9 @@ export function projectActionResultForClipboard(
 		...(result.modelReplyRequired !== undefined
 			? { modelReplyRequired: result.modelReplyRequired }
 			: {}),
+		...(result.modelReplyFallback !== undefined
+			? { modelReplyFallback: result.modelReplyFallback }
+			: {}),
 		...(result.continueChain !== undefined
 			? { continueChain: result.continueChain }
 			: {}),
@@ -440,6 +443,9 @@ function projectSettledResultForObserver(
 			: {}),
 		...(projected.modelReplyRequired !== undefined
 			? { modelReplyRequired: projected.modelReplyRequired }
+			: {}),
+		...(projected.modelReplyFallback !== undefined
+			? { modelReplyFallback: projected.modelReplyFallback }
 			: {}),
 		...(projected.continueChain !== undefined
 			? { continueChain: projected.continueChain }
@@ -1084,6 +1090,7 @@ function actionResultToStreamingResult(
 				: result.values,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
+		modelReplyFallback: result.modelReplyFallback,
 		continueChain: result.continueChain,
 	};
 	return actionResultToContentRecord(streamingResult, redactDiagnosticText);

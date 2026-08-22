@@ -1,7 +1,8 @@
 /**
  * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
  * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
- * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, Kimi Code,
+ * or Grok Build),
  * speaks ACP over the native transport, tracks per-session state and emits the
  * session events the SubAgentRouter and task store consume, and cancels or tears
  * sessions down on stop or process shutdown.
@@ -20,7 +21,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -43,9 +44,14 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { isAndroidMobile } from "@elizaos/shared";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  isAndroidMobile,
+  isCodingAgentBackend,
+} from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
-import { NativeAcpClient } from "./acp-native-transport.js";
+import { NativeAcpClient, splitCommandLine } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
@@ -86,10 +92,6 @@ import {
   resolveLeaseBroker,
 } from "./model-gateway-lease.js";
 import {
-  buildOpencodeAcpEnv,
-  resolveVendoredOpencodeAcpCommand,
-} from "./opencode-config.js";
-import {
   createOwnedArtifactRecord,
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
   type OrchestratorOwnedArtifact,
@@ -118,6 +120,15 @@ import {
   isSubagentStdoutLoggingEnabled,
   subagentStdoutLogPath,
 } from "./subagent-stdout-log.js";
+import {
+  assertSubscriptionCodingAdapterReady,
+  classifySubscriptionRuntimeFailure,
+  isSubscriptionCodingAdapter,
+  probeSubscriptionCodingAdapter,
+  SUBSCRIPTION_CODING_ADAPTERS,
+  stripSubscriptionApiEnvironment,
+  subscriptionCodingAdapterCommand,
+} from "./subscription-coding-adapters.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   type AcpCapacity,
@@ -137,6 +148,8 @@ import {
   type SessionStore,
   type SpawnOptions,
   type SpawnResult,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
@@ -354,10 +367,45 @@ function findGitBinaryForAcp(): string {
 function findExecutableOnPath(name: string): string | undefined {
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
+    const candidates = new Set([join(dir, name)]);
+    if (process.platform === "win32") {
+      for (const extension of (process.env.PATHEXT ?? ".EXE;.CMD;.BAT")
+        .split(";")
+        .map((value) => value.trim())
+        .filter(Boolean)) {
+        candidates.add(join(dir, `${name}${extension.toLowerCase()}`));
+        candidates.add(join(dir, `${name}${extension.toUpperCase()}`));
+      }
+    }
+    for (const candidate of candidates) {
+      try {
+        if (!statSync(candidate).isFile()) continue;
+        accessSync(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // error-policy:J3 PATH entries that are missing or non-executable are
+        // explicit preflight misses; continue looking for a runnable candidate.
+      }
+    }
   }
   return undefined;
+}
+
+function quoteCommandPart(value: string): string {
+  return /\s/u.test(value) ? JSON.stringify(value) : value;
+}
+
+/**
+ * Anchor relative executable paths before a session changes cwd. Bare commands
+ * deliberately remain PATH-resolved by the child process.
+ */
+function anchorRelativeCommandLine(commandLine: string): string {
+  const { command, args } = splitCommandLine(commandLine);
+  if (!command || (!command.includes("/") && !command.includes("\\"))) {
+    return commandLine;
+  }
+  const executable = resolve(command);
+  return [executable, ...args].map(quoteCommandPart).join(" ");
 }
 
 export function normalizeClaudeAcpModelId(
@@ -802,7 +850,7 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
+const DEFAULT_AGENTS: readonly AgentType[] = CODING_AGENT_BACKENDS;
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -942,7 +990,23 @@ export class AcpService extends Service {
     this.workspaceRegistry = getSharedWorkspaceRegistry((level, msg, ctx) =>
       this.log(level, msg, ctx),
     );
-    this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
+    const configuredCli = this.setting("ELIZA_ACP_CLI") ?? "acpx";
+    const parsedCli = splitCommandLine(configuredCli);
+    // A zero-argument value must normalize to the PARSED token, not the raw
+    // literal: the availability walker and missingCliMessage() both parse
+    // (quote-stripping) while spawn() consumes this.cliPath verbatim and gets
+    // no shell. Keeping the raw literal let a quoted single token such as
+    // `"acpx"` report installed and then ENOENT at spawn time (#24684).
+    // Only a token that actually looks like a path is resolved to an absolute
+    // path; a bare command name stays bare so PATH lookup still works. An
+    // empty parsed command is preserved verbatim so it is rejected as
+    // unavailable instead of becoming a PATH lookup of the empty string.
+    this.cliPath =
+      parsedCli.args.length === 0 && parsedCli.command !== ""
+        ? parsedCli.command.includes("/") || parsedCli.command.includes("\\")
+          ? resolve(parsedCli.command)
+          : parsedCli.command
+        : configuredCli;
     this.transportMode =
       normalizeTransportMode(
         this.setting("ELIZA_ACP_TRANSPORT") ?? this.setting("ACPX_TRANSPORT"),
@@ -1824,11 +1888,11 @@ export class AcpService extends Service {
 
   // The acpx transport persists session state as `<acpxSessionId>.json` under
   // <stateRoot>/sessions. The old probe checked `<acpxSessionId>.stream.ndjson`
-  // which NEVER exists for opencode/native sessions (verified: 0 such files on
-  // disk, only ses_*.json) — a permanent false-negative that made every healthy
+  // which does not exist for native sessions (only ses_*.json is persisted) —
+  // a permanent false-negative that made every healthy
   // session look "state lost", triggering a runaway "spawn a fresh sub-agent"
   // respawn cascade AND spuriously throwing on the first real prompt to any
-  // opencode session. Probe the artifact the transport actually writes.
+  // ACP session. Probe the artifact the transport actually writes.
   private acpxSessionStateFile(acpxSessionId: string): string {
     return join(this.acpxStateRoot(), "sessions", `${acpxSessionId}.json`);
   }
@@ -1854,10 +1918,42 @@ export class AcpService extends Service {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
-    this.assertTransportAvailable(id);
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
+    const subscriptionExecutionAuthorization =
+      subscriptionExecutionAuthorizationFromMetadata(
+        opts.subscriptionExecutionAuthorization
+          ? {
+              [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+                opts.subscriptionExecutionAuthorization,
+            }
+          : undefined,
+      );
+    if (isSubscriptionCodingAdapter(agentType)) {
+      const preflightEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        ...opts.customCredentials,
+        ...opts.env,
+      };
+      const homeKey =
+        SUBSCRIPTION_CODING_ADAPTERS[agentType].homeEnvironmentKey;
+      const configuredHome = this.setting(homeKey);
+      if (configuredHome) preflightEnv[homeKey] = configuredHome;
+      // Probe the exact environment the child will receive. In particular,
+      // caller-supplied Kimi model credentials and Grok auth-source overrides
+      // are removed before both preflight and spawn, so a passing account can
+      // never differ from the account the subprocess resolves.
+      stripSubscriptionApiEnvironment(agentType, preflightEnv);
+      assertSubscriptionCodingAdapterReady(agentType, {
+        command: this.nativeAgentCommand(agentType),
+        env: preflightEnv,
+        executionMode: subscriptionExecutionAuthorization?.mode,
+        model: opts.model,
+        transportMode: this.transportMode,
+      });
+    }
+    this.assertTransportAvailable(id);
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     // Orchestrated spawns (via tasks.ts → resolveSpawnWorkdir) always pass
     // opts.workdir, which already applies route/convention/explicit resolution
@@ -2040,9 +2136,11 @@ export class AcpService extends Service {
       // child. Fail-closed refusals (credit-gate / strict no-broker / strict mint
       // failure) throw here; undo the reserved slot so a refused spawn leaves no
       // orphan session record. No-op when gateway mode / lease broker are off.
-      await this.mintModelLease(id, agentType, opts.timeoutMs, {
-        rollbackSessionOnFailure: true,
-      });
+      if (!isSubscriptionCodingAdapter(agentType)) {
+        await this.mintModelLease(id, agentType, opts.timeoutMs, {
+          rollbackSessionOnFailure: true,
+        });
+      }
 
       // App-build tasks lose the parent's deploy contract at the spawn boundary.
       // Re-attach it ONCE here, before the transport branch, so BOTH the native
@@ -2364,7 +2462,17 @@ export class AcpService extends Service {
     // session's selected-account credentials (the native transport keeps the
     // spawn-time client, which already has them) and the per-session git index
     // env that keeps same-repo sessions from sharing one mutable index file.
-    const promptCredentials = await this.accountCredentialsForSession(session);
+    let promptCredentials: Record<string, string> | undefined;
+    try {
+      promptCredentials = await this.accountCredentialsForSession(session);
+    } catch (err) {
+      // error-policy:J1 The CLI prompt boundary persists the typed account
+      // failure before propagating it; no subprocess may inherit ambient
+      // credentials after a session's pinned account pool is exhausted.
+      const message = errorMessage(err);
+      await this.recordAccountCredentialFailure(session, err, message);
+      throw err;
+    }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
       ...(this.gitIndexEnvForSession(session) ?? {}),
@@ -2815,12 +2923,44 @@ export class AcpService extends Service {
   }
 
   async getAvailableAgents(): Promise<AvailableAgentInfo[]> {
-    return DEFAULT_AGENTS.map((agentType) => ({
-      adapter: agentType,
-      agentType,
-      installed: true,
-      auth: { status: "unknown" },
-    }));
+    return DEFAULT_AGENTS.map((agentType) => {
+      const normalized = normalizeTaskAgentAdapter(agentType) ?? agentType;
+      if (!isSubscriptionCodingAdapter(normalized)) {
+        const command = this.agentCommandAvailability(agentType);
+        return {
+          adapter: agentType,
+          agentType,
+          installed: command.available,
+          ...(command.reason ? { unavailableReason: command.reason } : {}),
+          auth: { status: "unknown" },
+        };
+      }
+      const descriptor = SUBSCRIPTION_CODING_ADAPTERS[normalized];
+      const probeEnv: NodeJS.ProcessEnv = { ...process.env };
+      const homeKey = descriptor.homeEnvironmentKey;
+      const configuredHome = this.setting(homeKey);
+      if (configuredHome) probeEnv[homeKey] = configuredHome;
+      const probe = probeSubscriptionCodingAdapter(normalized, {
+        command: this.nativeAgentCommand(normalized),
+        env: probeEnv,
+        transportMode: this.transportMode,
+      });
+      return {
+        adapter: normalized,
+        agentType: normalized,
+        installed: probe.installed,
+        ...(!probe.spawnable ? { unavailableReason: probe.detail } : {}),
+        docsUrl: descriptor.docsUrl,
+        billingSource: descriptor.billingSource,
+        executionPolicy: {
+          requiresUserAttended: descriptor.requiresUserAttended,
+        },
+        auth: {
+          status: probe.authenticated ? "authenticated" : "unauthenticated",
+          detail: probe.detail,
+        },
+      };
+    });
   }
 
   async checkAvailableAgents(types?: string[]): Promise<AvailableAgentInfo[]> {
@@ -2902,12 +3042,6 @@ export class AcpService extends Service {
       args.push("--timeout", String(timeoutMs / 1000));
     if (opts.model) args.push("--model", opts.model);
     return args;
-  }
-
-  private opencodeAgentCommand(): string | undefined {
-    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
-    if (configured) return configured;
-    return resolveVendoredOpencodeAcpCommand();
   }
 
   private codexAcpSandboxMode(): CodexSandboxMode | undefined {
@@ -3103,16 +3237,21 @@ export class AcpService extends Service {
       // set above before the store writes that can throw here. Idempotent when
       // the failure happened before the set.
       this.nativeClients.delete(id);
-      const message = errorMessage(err);
+      const normalizedAgentType =
+        normalizeTaskAgentAdapter(session.agentType) ?? session.agentType;
+      const failure = isSubscriptionCodingAdapter(normalizedAgentType)
+        ? (classifySubscriptionRuntimeFailure(normalizedAgentType, err) ?? err)
+        : err;
+      const message = errorMessage(failure);
       await this.store.updateStatus(id, "errored", message);
       this.emitSessionEvent(id, "error", {
         message,
         ...this.authFailureFields(message, session.agentType),
       });
-      if (err instanceof ElizaError) throw err;
+      if (failure instanceof ElizaError) throw failure;
       throw new ElizaError(message, {
         code: "ACP_NATIVE_SESSION_SPAWN_FAILED",
-        cause: err,
+        cause: failure,
         context: { sessionId: id, agentType: session.agentType },
       });
     }
@@ -3539,10 +3678,20 @@ export class AcpService extends Service {
       };
     }
 
+    const normalizedAgentType =
+      normalizeTaskAgentAdapter(session.agentType) ?? session.agentType;
+    let reconnectLease: ModelGatewayLease | undefined;
     try {
-      await this.mintModelLease(session.id, session.agentType, opts.timeoutMs, {
-        rollbackSessionOnFailure: false,
-      });
+      if (!isSubscriptionCodingAdapter(normalizedAgentType)) {
+        reconnectLease = await this.mintModelLease(
+          session.id,
+          session.agentType,
+          opts.timeoutMs,
+          {
+            rollbackSessionOnFailure: false,
+          },
+        );
+      }
     } catch (err) {
       // error-policy:J2 context-adding rethrow — reconnect lease refusal must
       // persist on the existing session before the caller observes the failure.
@@ -3554,7 +3703,22 @@ export class AcpService extends Service {
       });
       throw err;
     }
-    const promptCredentials = await this.accountCredentialsForSession(session);
+    let promptCredentials: Record<string, string> | undefined;
+    try {
+      promptCredentials = await this.accountCredentialsForSession(session);
+    } catch (err) {
+      // error-policy:J1 A reconnect minted a short-lived model lease before it
+      // could re-resolve the pinned account. Persist and type the refusal, then
+      // revoke that lease before any native client can inherit ambient auth.
+      const message = errorMessage(err);
+      await this.revokeModelLease(
+        session.id,
+        "native_reconnect:account_exhausted",
+        reconnectLease?.leaseId,
+      );
+      await this.recordAccountCredentialFailure(session, err, message, true);
+      throw err;
+    }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
       ...(this.gitIndexEnvForSession(session) ?? {}),
@@ -3606,32 +3770,104 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "opencode") {
-      const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
+    if (isSubscriptionCodingAdapter(normalizedAgentType)) {
+      const descriptor = SUBSCRIPTION_CODING_ADAPTERS[normalizedAgentType];
+      return subscriptionCodingAdapterCommand(
+        normalizedAgentType,
+        this.setting(descriptor.commandSetting),
+      );
     }
-    if (normalizedAgentType === "codex") return this.codexAgentCommand();
-    const override = this.setting(
-      `ELIZA_${String(normalizedAgentType)
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "_")}_ACP_COMMAND`,
+    if (!isCodingAgentBackend(normalizedAgentType)) {
+      throw new ElizaError(
+        `No verified ACP backend is registered for ${String(normalizedAgentType)}`,
+        {
+          code: "ACP_BACKEND_UNAVAILABLE",
+          context: { agentType: String(normalizedAgentType) },
+        },
+      );
+    }
+    const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[normalizedAgentType];
+    if (preflight.commandResolution === "managed-codex") {
+      return this.codexAgentCommand();
+    }
+    const configured = this.setting(preflight.commandConfigKey);
+    return anchorRelativeCommandLine(
+      configured?.trim() || preflight.defaultCommand,
     );
-    if (override?.trim()) return override.trim();
-    if (normalizedAgentType === "claude")
-      return (
-        this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
-        "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
-      );
-    // The elizaOS CLI has no ACP mode; the separately installed eliza-code ACP
-    // server is the native adapter for this agent type.
-    if (normalizedAgentType === "elizaos")
-      return (
-        this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
-        findExecutableOnPath("eliza-code-acp") ??
-        "eliza-code-acp"
-      );
-    return String(normalizedAgentType);
+  }
+
+  private agentCommandAvailability(agentType: AgentType): {
+    available: boolean;
+    reason?: string;
+  } {
+    let commandLines: string[];
+    try {
+      if (this.transportMode === "native") {
+        commandLines = [this.nativeAgentCommand(agentType)];
+      } else {
+        const adapter = this.legacyAcpxAdapter(agentType);
+        commandLines = [
+          this.cliPath,
+          // pi/claude/codex are acpx registry selectors, not host binaries.
+          // Only the elizaOS `--agent <command>` route names a second process
+          // the host must be able to execute.
+          ...(adapter.command && adapter.args[0] === "--agent"
+            ? [adapter.command]
+            : []),
+        ];
+      }
+    } catch (error) {
+      // error-policy:J4 invalid adapter configuration is an explicit
+      // unavailable inventory row; one bad row must not hide the rest.
+      return { available: false, reason: errorMessage(error) };
+    }
+    for (const commandLine of commandLines) {
+      const { command, args } = splitCommandLine(commandLine);
+      if (!command) {
+        return {
+          available: false,
+          reason: "No executable command is configured.",
+        };
+      }
+      if (
+        this.transportMode === "cli" &&
+        commandLine === this.cliPath &&
+        args.length > 0
+      ) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_ACP_CLI must name one executable path; command arguments are not supported.",
+        };
+      }
+      if (command.includes("/") || command.includes("\\")) {
+        try {
+          const commandPath = resolve(command);
+          if (!statSync(commandPath).isFile()) {
+            return {
+              available: false,
+              reason: `Configured command is not a file: ${command}`,
+            };
+          }
+          accessSync(commandPath, constants.X_OK);
+          continue;
+        } catch {
+          // error-policy:J3 configured command paths fail closed when absent or
+          // non-executable; the preflight row reports installed=false.
+          return {
+            available: false,
+            reason: `Configured command is missing or not executable: ${command}`,
+          };
+        }
+      }
+      if (!findExecutableOnPath(command)) {
+        return {
+          available: false,
+          reason: `Command is not available on PATH: ${command}`,
+        };
+      }
+    }
+    return { available: true };
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {
@@ -3648,10 +3884,34 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
-    return ["--agent", command, ...args];
+    return [...this.legacyAcpxAdapter(agentType).args, ...args];
+  }
+
+  /** Resolve only acpx adapters whose invocation contract is known here. */
+  private legacyAcpxAdapter(agentType: AgentType): {
+    args: readonly string[];
+    command?: string;
+  } {
+    const normalized = normalizeTaskAgentAdapter(agentType) ?? agentType;
+    switch (normalized) {
+      case "pi-agent":
+        return { args: ["pi"], command: "pi" };
+      case "claude":
+      case "codex":
+        return { args: [normalized], command: normalized };
+      case "elizaos": {
+        const command = this.nativeAgentCommand(normalized);
+        return { args: ["--agent", command], command };
+      }
+      default:
+        throw new ElizaError(
+          `No verified legacy acpx adapter is registered for ${String(normalized)}`,
+          {
+            code: "ACP_LEGACY_ADAPTER_UNAVAILABLE",
+            context: { agentType: String(normalized) },
+          },
+        );
+    }
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -4032,8 +4292,8 @@ export class AcpService extends Service {
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
       // agent_thought_chunk: the model's reasoning / chain-of-thought streams
-      // in the SAME payload shape as agent_message_chunk (opencode emits it for
-      // `reasoning` parts). Forward the text as a dedicated `reasoning` event so
+      // in the same payload shape as agent_message_chunk. Forward the text as a
+      // dedicated `reasoning` event so
       // the UI can surface it, but do NOT add it to finalText/appendOutput:
       // reasoning is not the deliverable response, and folding it into the turn
       // text would corrupt the task_complete summary and tool-output capture.
@@ -4044,8 +4304,8 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
-      // plan: opencode emits the agent's checklist/plan list as a `plan` update with
-      // entries [{content, status, priority}] (driven by its todowrite tool).
+      // Some ACP adapters emit checklist entries as a `plan` update with
+      // entries [{content, status, priority}].
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
       // can drive the plan/checklist dock. Validated at this boundary (raw -> typed);
       // an adapter that never emits a plan simply does not enter this branch.
@@ -4261,30 +4521,93 @@ export class AcpService extends Service {
     event: SessionEventName,
     data: unknown,
   ): void {
+    this.emitSessionEventInternal(sessionId, event, data, true);
+  }
+
+  private emitSessionEventInternal(
+    sessionId: string,
+    event: SessionEventName,
+    data: unknown,
+    revokeTerminalLease: boolean,
+  ): void {
     this.recordEventTrail(sessionId, event, data);
     const turn = this.promptTurns.get(sessionId);
     for (const callback of [...this.sessionCallbacks]) {
       try {
-        callback(sessionId, event, data, turn?.sessionSnapshot, turn?.id);
+        const result = callback(
+          sessionId,
+          event,
+          data,
+          turn?.sessionSnapshot,
+          turn?.id,
+        );
+        void Promise.resolve(result).catch((err) => {
+          // error-policy:J7 isolate a rejecting subscriber so the remaining
+          // session callbacks still run; warn and surface the diagnostic.
+          this.log("warn", "async session event callback failed", {
+            sessionId,
+            event,
+            error: errorMessage(err),
+          });
+          try {
+            this.runtime.reportError("AcpService.emitSessionEvent", err, {
+              sessionId,
+              event,
+            });
+          } catch {
+            // error-policy:J7 reporting failure cannot create an unhandled rejection.
+          }
+        });
       } catch (err) {
         // error-policy:J7 isolate a throwing subscriber so the remaining session
-        // callbacks still run; the failure is warn-logged.
+        // callbacks still run; warn and surface the diagnostic.
         this.log("warn", "session event callback failed", {
           sessionId,
           event,
           error: errorMessage(err),
         });
+        try {
+          this.runtime.reportError("AcpService.emitSessionEvent", err, {
+            sessionId,
+            event,
+          });
+        } catch {
+          // error-policy:J7 reporting failure cannot replace event delivery.
+        }
       }
     }
     // A terminal event means the task ended (completion via a stop/close,
     // failure, or timeout/cancel). Revoke the session's model lease so a leaked
     // child env is dead the moment its task ends. Fire-and-forget: this sync
     // emitter is called from deep transport paths; revocation is idempotent.
-    if (LEASE_REVOKE_EVENTS.has(event)) {
+    if (revokeTerminalLease && LEASE_REVOKE_EVENTS.has(event)) {
       void this.revokeModelLease(sessionId, `event:${event}`);
       void this.store.get(sessionId).then((session) => {
         if (session) void this.removeOwnedGitIndex(session);
       });
+    }
+  }
+
+  /** Await every durable consumer before an account identity may reach a child process. */
+  private async emitAccountSwitched(
+    session: SessionInfo,
+    meta: CodingAccountMeta,
+  ): Promise<void> {
+    const data = {
+      providerId: meta.providerId,
+      accountId: meta.accountId,
+      label: meta.label,
+    };
+    this.recordEventTrail(session.id, "account_switched", data);
+    const turn = this.promptTurns.get(session.id);
+    for (const callback of [...this.sessionCallbacks]) {
+      await callback(
+        session.id,
+        "account_switched",
+        data,
+        turn?.sessionSnapshot,
+        turn?.id,
+      );
     }
   }
 
@@ -4427,8 +4750,8 @@ export class AcpService extends Service {
    * needs-reauth / disabled / token resolve failed) does this deliberately
    * fail over to a fresh pick — and then re-stamps the session so every
    * account-keyed consumer follows the credential actually injected. Returns
-   * undefined when the session has no linked account and no account is
-   * available.
+   * undefined only when the session never had a linked account. A
+   * stamped session with no remaining compatible account fails closed.
    */
   private async accountCredentialsForSession(
     session: SessionInfo,
@@ -4448,7 +4771,26 @@ export class AcpService extends Service {
       sessionKey: session.id,
       exclude: [meta.accountId],
     });
-    if (!failover) return undefined;
+    if (!failover) {
+      // This session was explicitly stamped to a linked account. Returning no
+      // credential patch here would make buildEnv() fall back to ambient host
+      // API keys or CLI homes, silently changing account and billing authority
+      // on a follow-up prompt or reconnect while receipts remain pinned to the
+      // exhausted account.
+      throw new ElizaError(
+        "The coding session's pinned account is unavailable and no compatible failover remains",
+        {
+          code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+          context: {
+            sessionId: session.id,
+            agentType: session.agentType,
+            providerId: meta.providerId,
+            accountId: meta.accountId,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
     this.log("warn", "coding account failed over on follow-up prompt", {
       sessionId: session.id,
       previous: meta.accountId,
@@ -4472,25 +4814,15 @@ export class AcpService extends Service {
     meta: CodingAccountMeta,
   ): Promise<void> {
     const metadata = { ...(session.metadata ?? {}), account: meta };
+    // Durable session and task/billing consumers must agree before credentials
+    // for the new account can reach a child process. A partial re-key is a
+    // wrong-account billing defect, not a diagnostics-only degradation.
+    await this.emitAccountSwitched(session, meta);
+    // Persist the session pin last. If this write fails, the old pin causes the
+    // next attempt to replay the idempotent consumer re-key instead of silently
+    // treating a half-restamped account as complete.
+    await this.store.update(session.id, { metadata });
     session.metadata = metadata;
-    try {
-      await this.store.update(session.id, { metadata });
-    } catch (err) {
-      // error-policy:J7 the failover credential is already resolved and must
-      // reach the subprocess; a failed durable re-stamp only degrades the NEXT
-      // prompt's pin back to the stale account, so warn instead of failing the
-      // prompt.
-      this.log("warn", "failed to persist failover account on session", {
-        sessionId: session.id,
-        accountId: meta.accountId,
-        error: errorMessage(err),
-      });
-    }
-    this.emitSessionEvent(session.id, "account_switched", {
-      providerId: meta.providerId,
-      accountId: meta.accountId,
-      label: meta.label,
-    });
   }
 
   private buildEnv(
@@ -4556,7 +4888,6 @@ export class AcpService extends Service {
       if (agentType === "claude" && normalizedModel) {
         env.ANTHROPIC_MODEL = normalizedModel;
       }
-      if (agentType === "opencode") env.OPENCODE_MODEL = model;
     } else if (agentType === "claude") {
       // No per-spawn model: fall back to the app-configured claude coding
       // model (what POST /api/models/config writes). Config-env read, so a
@@ -4655,18 +4986,6 @@ export class AcpService extends Service {
         );
       }
     }
-    if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
-      Object.assign(env, opencode.env);
-      if (opencode.config) {
-        this.log("info", "OpenCode ACP provider configured", {
-          provider: opencode.config.providerLabel,
-          model: opencode.config.model,
-          smallModel: opencode.config.smallModel,
-          vendored: Boolean(opencode.vendoredShimDir),
-        });
-      }
-    }
     // Per-spawn git identity: pin an explicit author/committer for every agent
     // commit so the child never inherits the operator's personal `~/.gitconfig`
     // user.name/email (a provenance leak, and on a fresh box git refuses to
@@ -4689,7 +5008,11 @@ export class AcpService extends Service {
     // Gateway mode runs LAST so no earlier merge step (host forwarding,
     // customCredentials, spawn extras, account selection) can reintroduce a
     // raw provider key into the child env. Never log the token.
-    const gateway = resolveModelGatewayConfig();
+    const normalizedAgentTypeForGateway =
+      normalizeTaskAgentAdapter(agentType) ?? agentType;
+    const gateway = isSubscriptionCodingAdapter(normalizedAgentTypeForGateway)
+      ? null
+      : resolveModelGatewayConfig();
     if (gateway) {
       // Prefer this session's per-spawn lease token over the static gateway
       // token; the lease is scoped + short-lived + revocable (#11536 E2
@@ -4732,6 +5055,38 @@ export class AcpService extends Service {
         sessionId: childSessionId,
       });
     }
+    const normalizedAgentType =
+      normalizeTaskAgentAdapter(agentType) ?? agentType;
+    if (isSubscriptionCodingAdapter(normalizedAgentType)) {
+      const descriptor = SUBSCRIPTION_CODING_ADAPTERS[normalizedAgentType];
+      const configuredHome = this.setting(descriptor.homeEnvironmentKey);
+      if (configuredHome) {
+        // The same runtime-scoped home used by the preflight must win at the
+        // subprocess boundary. Otherwise a caller or shared host environment
+        // can pass the probe for account A but execute as account B.
+        env[descriptor.homeEnvironmentKey] = configuredHome;
+      }
+      if (normalizedAgentType === "grok") {
+        // Current Grok supports this as a live, non-overridable auth clamp. It
+        // disables env, auth.json, and per-model API-key precedence so an OAuth
+        // preflight cannot silently execute as pay-as-you-go API billing.
+        env.GROK_DISABLE_API_KEY_AUTH = "1";
+      }
+      const removed = stripSubscriptionApiEnvironment(normalizedAgentType, env);
+      if (removed.length > 0) {
+        this.log(
+          "debug",
+          "stripped direct API configuration from subscription coding-agent environment",
+          {
+            agentType: normalizedAgentType,
+            removedKeys: removed,
+            billingSource:
+              SUBSCRIPTION_CODING_ADAPTERS[normalizedAgentType].billingSource
+                .kind,
+          },
+        );
+      }
+    }
     return env;
   }
 
@@ -4746,7 +5101,7 @@ export class AcpService extends Service {
     agentType: AgentType,
     timeoutMs: number | undefined,
     options: { rollbackSessionOnFailure: boolean },
-  ): Promise<void> {
+  ): Promise<ModelGatewayLease | undefined> {
     const ttlMs = timeoutMs ?? this.sessionTimeoutMs ?? DEFAULT_LEASE_TTL_MS;
     let outcome: Awaited<ReturnType<typeof mintSpawnLease>>;
     try {
@@ -4780,7 +5135,9 @@ export class AcpService extends Service {
         leaseId: outcome.lease.leaseId,
         expiresAt: new Date(outcome.lease.expiresAt).toISOString(),
       });
+      return outcome.lease;
     }
+    return undefined;
   }
 
   /**
@@ -4792,9 +5149,11 @@ export class AcpService extends Service {
   private async revokeModelLease(
     sessionId: string,
     reason: string,
+    expectedLeaseId?: string,
   ): Promise<void> {
     const lease = this.modelLeases.get(sessionId);
     if (!lease) return;
+    if (expectedLeaseId && lease.leaseId !== expectedLeaseId) return;
     this.modelLeases.delete(sessionId);
     const gateway = resolveModelGatewayConfig();
     const broker = gateway ? resolveLeaseBroker(gateway) : null;
@@ -4860,6 +5219,82 @@ export class AcpService extends Service {
     return expired && isClaudeBareToken
       ? { failureKind: "auth", authReason: "token_expired" }
       : { failureKind: "auth" };
+  }
+
+  /** Preserve typed account failures instead of reclassifying only their prose. */
+  private accountCredentialFailureFields(
+    error: unknown,
+    message: string,
+    agentType: AgentType,
+  ): Record<string, string> {
+    const fields: Record<string, string> = {
+      ...this.authFailureFields(message, agentType),
+    };
+    if (!(error instanceof ElizaError)) return fields;
+    fields.code = error.code;
+    if (error.code === "CODING_ACCOUNT_SESSION_EXHAUSTED") {
+      fields.failureKind = "account_exhausted";
+    }
+    return fields;
+  }
+
+  /** Best-effort diagnostics must never replace the typed account authority failure. */
+  private async recordAccountCredentialFailure(
+    session: SessionInfo,
+    error: unknown,
+    message: string,
+    leaseAlreadyHandled = false,
+  ): Promise<void> {
+    try {
+      await this.store.updateStatus(session.id, "errored", message);
+    } catch (persistError) {
+      // error-policy:J7 diagnostics persistence must not replace the primary
+      // typed account authority failure; warn and report it separately.
+      this.log("warn", "failed to persist coding account exhaustion", {
+        sessionId: session.id,
+        error: errorMessage(persistError),
+      });
+      try {
+        this.runtime.reportError(
+          "AcpService.persistAccountCredentialFailure",
+          persistError,
+          { sessionId: session.id },
+        );
+      } catch {
+        // error-policy:J7 reporting failure cannot replace the primary typed error.
+      }
+    }
+    try {
+      this.emitSessionEventInternal(
+        session.id,
+        "error",
+        {
+          message,
+          ...this.accountCredentialFailureFields(
+            error,
+            message,
+            session.agentType,
+          ),
+        },
+        !leaseAlreadyHandled,
+      );
+    } catch (eventError) {
+      // error-policy:J7 diagnostic event delivery must not replace the primary
+      // typed account authority failure; warn and report it separately.
+      this.log("warn", "failed to emit coding account exhaustion", {
+        sessionId: session.id,
+        error: errorMessage(eventError),
+      });
+      try {
+        this.runtime.reportError(
+          "AcpService.emitAccountCredentialFailure",
+          eventError,
+          { sessionId: session.id },
+        );
+      } catch {
+        // error-policy:J7 reporting failure cannot replace the primary typed error.
+      }
+    }
   }
 
   private classifyExitError(code: number | null, stderr: string): string {
@@ -5067,6 +5502,16 @@ export class AcpService extends Service {
   }
 
   private missingCliMessage(): string | undefined {
+    const parsed = splitCommandLine(this.cliPath);
+    if (parsed.args.length > 0) {
+      return "ELIZA_ACP_CLI must name one executable path; command arguments are not supported.";
+    }
+    // An empty or whitespace-only value must fail closed here rather than
+    // reaching spawn() as a PATH lookup of the empty string (#24684). The
+    // availability walker already rejects this with the same wording.
+    if (parsed.command === "") {
+      return "No executable command is configured.";
+    }
     if (!this.cliPath.includes("/") || existsSync(this.cliPath)) {
       return undefined;
     }

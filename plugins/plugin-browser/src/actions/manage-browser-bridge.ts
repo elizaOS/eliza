@@ -282,7 +282,7 @@ async function runRefresh(runtime: IAgentRuntime): Promise<ActionResult> {
     };
   }
   settings = await service.getBrowserSettings();
-  companions = (await service.listBrowserCompanions()).slice(0, 25);
+  companions = await service.listBrowserCompanions();
   const connected = companions.length > 0;
   const text = [
     "Refreshed Agent Browser Bridge settings.",

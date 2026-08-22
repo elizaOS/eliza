@@ -216,6 +216,7 @@ async function capturedFixture(directory: string): Promise<AgentBackupCaptureV3A
   let captured: AgentBackupCaptureV3Artifacts | undefined;
   await runAgentBackupCaptureV2Pipeline({
     request,
+    runtimePrincipalSha256: "3".repeat(64),
     executionToken: CAPTURE_EXECUTION,
     authority,
     openCapture: () => captureFrames(),
@@ -408,6 +409,7 @@ describe("capture-v3 publication source", () => {
           activationGeneration: ACTIVATION_GENERATION,
           lifecycleRevision: "42",
           ...deriveAgentBackupCaptureV3SpoolAuthorityDigests({ request, authority }),
+          runtimePrincipalSha256: "3".repeat(64),
         },
         terminalErrorCode: "BACKUP_CAPTURE_V2_TERMINAL",
       });
@@ -471,6 +473,141 @@ describe("capture-v3 publication source", () => {
         execution: { ownerId: ownedClaim.ownerId, generation: ownedClaim.generation },
       });
       await source.close();
+    } finally {
+      await fs.promises.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("stops the cleanup janitor after abort during its first await without starting another action", async () => {
+    const directory = await stateDirectory();
+    const controller = new AbortController();
+    const reason = new Error("shutdown during spool discovery");
+    const actions: string[] = [];
+    let releaseDiscovery!: () => void;
+    let markDiscoveryStarted!: () => void;
+    const discoveryStarted = new Promise<void>((resolve) => {
+      markDiscoveryStarted = resolve;
+    });
+    const discoveryRelease = new Promise<void>((resolve) => {
+      releaseDiscovery = resolve;
+    });
+    try {
+      const janitor = createAgentBackupCaptureV3SpoolCleanupJanitor(
+        { spool: spoolConfig(directory), batchSize: 4 },
+        {
+          async listDurableOperations() {
+            actions.push("list-durable");
+            markDiscoveryStarted();
+            await discoveryRelease;
+            return [];
+          },
+          async listCandidates() {
+            actions.push("list-candidates");
+            return [];
+          },
+          async authorize() {
+            actions.push("authorize-protected");
+            throw new Error("aborted janitor must not authorize protected cleanup");
+          },
+          async authorizeTerminal() {
+            actions.push("authorize-terminal");
+            throw new Error("aborted janitor must not authorize terminal cleanup");
+          },
+          async deriveAuthority() {
+            actions.push("derive-authority");
+            throw new Error("aborted janitor must not derive another authority");
+          },
+          async openExisting() {
+            actions.push("open-cleanup");
+            return undefined;
+          },
+        },
+      );
+
+      const cycle = janitor.runCycle(controller.signal);
+      await discoveryStarted;
+      controller.abort(reason);
+      releaseDiscovery();
+
+      await expect(cycle).rejects.toBe(reason);
+      expect(actions).toEqual(["list-durable"]);
+      expect(await fs.promises.readdir(directory)).toEqual([]);
+    } finally {
+      await fs.promises.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("propagates abort during cleanup without starting a catch-path close", async () => {
+    const directory = await stateDirectory();
+    const controller = new AbortController();
+    const reason = new Error("shutdown during spool cleanup");
+    let releaseCleanup!: () => void;
+    let markCleanupStarted!: () => void;
+    const cleanupStarted = new Promise<void>((resolve) => {
+      markCleanupStarted = resolve;
+    });
+    const cleanupRelease = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    let cleanupCalls = 0;
+    let closeCalls = 0;
+    try {
+      const artifacts = await capturedFixture(directory);
+      const protectedBackup = {
+        ...claim(artifacts).backup,
+        catalog_state: "protected" as const,
+        catalog_lease_owner: null,
+        catalog_lease_generation: null,
+        catalog_lease_expires_at: null,
+        secondary_verified_at: new Date(NOW_MS),
+      };
+      const protectedAuthority =
+        await deriveAgentBackupCaptureV3SpoolAuthorityFromCatalogBackup(protectedBackup);
+      const janitor = createAgentBackupCaptureV3SpoolCleanupJanitor(
+        { spool: spoolConfig(directory), batchSize: 1 },
+        {
+          now: () => NOW_MS,
+          executionToken: () => RETRY_EXECUTION,
+          listDurableOperations: async () => [
+            {
+              operationId: protectedAuthority.operationId,
+              requestSha256: protectedAuthority.requestSha256,
+              authoritySha256: protectedAuthority.authoritySha256,
+              phase: "published",
+              recordCaptured: true,
+            },
+          ],
+          listCandidates: async () => [protectedBackup],
+          authorize: async () => protectedBackup,
+          openExisting: async () =>
+            ({
+              operationId: protectedAuthority.operationId,
+              phase: "published",
+              recordCaptured: true,
+              async cleanup() {
+                cleanupCalls += 1;
+                markCleanupStarted();
+                await cleanupRelease;
+                return { operationId: protectedAuthority.operationId, status: "pending" };
+              },
+              async close() {
+                closeCalls += 1;
+              },
+            }) as unknown as AgentBackupCaptureV3Spool,
+        },
+      );
+
+      const cycle = janitor.runCycle(controller.signal);
+      await cleanupStarted;
+      controller.abort(reason);
+      releaseCleanup();
+
+      await expect(cycle).rejects.toBe(reason);
+      expect(cleanupCalls).toBe(1);
+      expect(closeCalls).toBe(0);
+      expect(
+        await fs.promises.readdir(path.join(directory, "agent-backup-capture-v3-cleanup-outbox")),
+      ).toContain(`${OPERATION_ID}.json`);
     } finally {
       await fs.promises.rm(directory, { recursive: true, force: true });
     }
@@ -558,6 +695,7 @@ describe("capture-v3 publication source", () => {
     const directory = await stateDirectory();
     const pipelineInput = {
       request,
+      runtimePrincipalSha256: "3".repeat(64),
       authority,
       spool: spoolConfig(directory),
       keyBundle: new KmsAeadOperationKeyBundleProvider(
@@ -597,6 +735,7 @@ describe("capture-v3 publication source", () => {
         activationGeneration: ACTIVATION_GENERATION,
         lifecycleRevision: "42",
         ...deriveAgentBackupCaptureV3SpoolAuthorityDigests({ request, authority }),
+        runtimePrincipalSha256: "3".repeat(64),
       };
       const terminalBackup = {
         id: BACKUP_ID,

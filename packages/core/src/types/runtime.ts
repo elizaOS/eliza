@@ -7,6 +7,7 @@
  */
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
+import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -381,6 +382,13 @@ export interface MessageConnector {
 	description?: string;
 	contexts: AgentContext[];
 	metadata?: Metadata;
+	/** Resolve the negotiated interaction contract for this exact account/target. */
+	resolveInteractionProfile?: (
+		target: TargetInfo,
+		context: MessageConnectorQueryContext,
+	) =>
+		| Promise<ConnectorInteractionCapabilityProfile>
+		| ConnectorInteractionCapabilityProfile;
 	resolveTargets?: (
 		query: string,
 		context: MessageConnectorQueryContext,
@@ -570,6 +578,15 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	/** When true, TaskService does not start a timer; host drives via runDueTasks(). WHY: no long-lived process in serverless. */
 	serverless?: boolean;
 	initPromise: Promise<void>;
+	/** Optional lifecycle capability for cancellable deferred startup. */
+	getLifecycleState?():
+		| "initializing"
+		| "running"
+		| "failed"
+		| "stopping"
+		| "stopped";
+	/** Optional signal that aborts when terminal runtime shutdown is requested. */
+	getStopSignal?(): AbortSignal;
 	messageService: IMessageService | null;
 	providers: Provider[];
 	actions: Action[];
@@ -1329,6 +1346,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 
 	createTask(task: Task): Promise<UUID>;
 	getTask(id: UUID): Promise<Task | null>;
+	updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean>;
 	updateTask(id: UUID, task: Partial<Task>): Promise<void>;
 	deleteTask(id: UUID): Promise<void>;
 

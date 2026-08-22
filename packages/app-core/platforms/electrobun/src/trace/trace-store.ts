@@ -63,7 +63,7 @@ function readPositiveIntEnv(
   if (!raw) return fallback;
   // parseInt stops at the first non-digit, so "2junk" would yield 2 and shrink
   // a retention limit to a fraction of its default. Require full decimal.
-  if (!/^\d+$/.test(raw)) return fallback;
+  if (!/^\+?\d+$/.test(raw)) return fallback;
   const parsed = Number(raw);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

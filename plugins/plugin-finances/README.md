@@ -13,8 +13,10 @@ Owner-facing finance dashboard for elizaOS: balance summary, transactions, and r
 **View**
 - `finances` — `FinancesView` at `/finances` with balance summary, transactions, and recurring charges. Bundle: `dist/views/bundle.js`.
 
-**Schema** — `pgSchema("app_finances")` (`financesDbSchema`) with five tables:
+**Schema** — `pgSchema("app_finances")` (`financesDbSchema`) with six tables:
 - `lifePaymentSources` (`life_payment_sources`) — payment source records per agent.
+- `lifePaymentSourceIdentities` (`life_payment_source_identities`) — normalized,
+  unique provider connection claims that serialize concurrent Link completion.
 - `lifePaymentTransactions` (`life_payment_transactions`) — transactions; amounts stored as `amount_usd` (real), not minor units, to preserve the original LifeOps schema during the non-destructive copy migration.
 - `lifeSubscriptionAudits` (`life_subscription_audits`) — subscription audit runs.
 - `lifeSubscriptionCandidates` (`life_subscription_candidates`) — detected subscription candidates.

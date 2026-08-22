@@ -37,7 +37,7 @@ Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` a
 | `cursor_hide` | Hide the cursor overlay |
 | `autofill_login` | Fill saved credentials into a browser tab (vault-gated; requires `domain`) |
 
-**MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report paired companions and settings). Owner-only.
+**MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report the complete paired-companion inventory, exact count, and settings). Owner-only.
 
 ### Browser targets
 

@@ -32,7 +32,6 @@ export type HookMappingConfig = {
     | "discord"
     | "googlechat"
     | "slack"
-    | "signal"
     | "imessage"
     | "msteams";
   to?: string;

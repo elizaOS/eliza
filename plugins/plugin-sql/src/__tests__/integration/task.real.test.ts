@@ -3,9 +3,10 @@
  * Postgres, if `POSTGRES_URL` is set) adapter via `createIsolatedTestDatabase`
  * — no mocks.
  */
-import { ChannelType, type Entity, type Room, type Task, type UUID } from "@elizaos/core";
+import { ChannelType, type Entity, logger, type Room, type Task, type UUID } from "@elizaos/core";
+import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { taskTable } from "../../schema";
@@ -79,6 +80,7 @@ describe("Task Integration Tests", () => {
         name: "Test Task",
         description: "A test task",
         tags: ["a", "b"],
+        dueAt: 1_900_000_005_000n,
         metadata: { status: "pending" },
       };
 
@@ -89,6 +91,36 @@ describe("Task Integration Tests", () => {
       expect(retrieved).not.toBeNull();
       expect(retrieved?.id).toBe(taskId);
       expect(retrieved?.agentId).toBe(testAgentId);
+      expect(retrieved?.entityId).toBe(testEntityId);
+      expect(retrieved?.dueAt).toBe(1_900_000_005_000);
+      expect(retrieved?.metadata).toMatchObject({
+        status: "pending",
+        scheduledAt: "2030-03-17T17:46:45.000Z",
+      });
+      await expect(
+        adapter.getTasks({ entityId: testEntityId, agentIds: [testAgentId] })
+      ).resolves.toEqual([expect.objectContaining({ id: taskId, entityId: testEntityId })]);
+      await expect(
+        adapter.getTasks({ entityId: uuidv4() as UUID, agentIds: [testAgentId] })
+      ).resolves.toEqual([]);
+      await expect(adapter.getTasks({ agentIds: [] })).resolves.toEqual([]);
+      await expect(adapter.getTasks({ agentIds: [uuidv4() as UUID] })).resolves.toEqual([]);
+      await expect(adapter.getTasks({ agentIds: [testAgentId], limit: -1 })).rejects.toThrow(
+        /non-negative safe integer/u
+      );
+      await expect(adapter.getTasks({ agentIds: [testAgentId], offset: 0.5 })).rejects.toThrow(
+        /non-negative safe integer/u
+      );
+      await expect(
+        adapter.createTask({
+          ...task,
+          id: uuidv4() as UUID,
+          dueAt: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+        })
+      ).rejects.toThrow("safe integer millisecond timestamp");
+      await expect(
+        adapter.createTask({ ...task, id: uuidv4() as UUID, dueAt: Number.NaN })
+      ).rejects.toThrow("safe integer millisecond timestamp");
     });
 
     it("returns agentId from task lookup APIs", async () => {
@@ -107,7 +139,7 @@ describe("Task Integration Tests", () => {
 
       const byId = await adapter.getTask(taskId);
       const byName = await adapter.getTasksByName("Drain Task");
-      const byQuery = await adapter.getTasks({ tags: ["queue"] });
+      const byQuery = await adapter.getTasks({ tags: ["queue"], agentIds: [testAgentId] });
 
       expect(byId?.agentId).toBe(testAgentId);
       expect(byName).toHaveLength(1);
@@ -125,18 +157,167 @@ describe("Task Integration Tests", () => {
         name: "Original Task",
         description: "Original description",
         tags: ["a"],
-        metadata: { status: "pending" },
+        metadata: { status: "pending", affinityKey: "preserved" },
       };
       await adapter.createTask(originalTask);
 
+      await adapter.updateTask(taskId, { dueAt: 1_900_000_009_000 });
+      await expect(adapter.getTask(taskId)).resolves.toMatchObject({
+        dueAt: 1_900_000_009_000,
+        metadata: {
+          status: "pending",
+          affinityKey: "preserved",
+          scheduledAt: "2030-03-17T17:46:49.000Z",
+        },
+      });
+
+      await adapter.updateTask(taskId, { dueAt: null });
+      await expect(adapter.getTask(taskId)).resolves.toMatchObject({
+        dueAt: undefined,
+        metadata: { status: "pending", affinityKey: "preserved" },
+      });
+
       await adapter.updateTask(taskId, {
         description: "Updated Description",
+        dueAt: 1_900_000_010_000,
         metadata: { status: "completed" },
       });
 
       const retrieved = await adapter.getTask(taskId);
       expect(retrieved?.description).toBe("Updated Description");
-      expect(retrieved?.metadata).toEqual({ status: "completed" });
+      expect(retrieved?.dueAt).toBe(1_900_000_010_000);
+      expect(retrieved?.metadata).toEqual({
+        status: "completed",
+        scheduledAt: "2030-03-17T17:46:50.000Z",
+      });
+    });
+
+    it("does not retry malformed persisted task timing", async () => {
+      const taskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: taskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Malformed timing",
+        metadata: {},
+      });
+      await (adapter.getDatabase() as DrizzleDatabase)
+        .update(taskTable)
+        .set({ metadata: { scheduledAt: "not-a-date" } });
+
+      const warn = vi.spyOn(logger, "warn");
+      try {
+        await expect(adapter.getTask(taskId)).rejects.toThrow("ISO-8601");
+        expect(warn).not.toHaveBeenCalledWith(
+          expect.objectContaining({ src: "plugin:sql" }),
+          "Database operation failed, retrying"
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("allows exactly one pending-task lifecycle transition", async () => {
+      const taskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: taskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Contended Task",
+        tags: ["queue", "follow-up"],
+        metadata: { status: "pending" },
+      });
+
+      const [completed, claimed] = await Promise.all([
+        adapter.updatePendingTask(taskId, {
+          tags: ["follow-up"],
+          metadata: { status: "completed" },
+        }),
+        adapter.updatePendingTask(taskId, {
+          tags: ["follow-up"],
+          metadata: { status: "executing" },
+        }),
+      ]);
+
+      expect([completed, claimed].filter(Boolean)).toHaveLength(1);
+      const stored = await adapter.getTask(taskId);
+      expect(stored?.tags).not.toContain("queue");
+      expect(["completed", "executing"]).toContain(stored?.metadata?.status);
+    });
+
+    it("atomically composes concurrent due-time patches with metadata replacement and clear", async () => {
+      const taskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: taskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Concurrent timing",
+        metadata: { owner: "old", preserved: true },
+      });
+
+      await Promise.all([
+        adapter.updateTask(taskId, { dueAt: 1_900_000_011_000 }),
+        adapter.updateTask(taskId, { metadata: { owner: "replacement" } }),
+      ]);
+      const replaced = await adapter.getTask(taskId);
+      expect(replaced?.metadata?.owner).toBe("replacement");
+      expect(replaced?.metadata).not.toHaveProperty("preserved");
+      expect([undefined, 1_900_000_011_000]).toContain(replaced?.dueAt);
+
+      await adapter.updateTask(taskId, {
+        dueAt: 1_900_000_012_000,
+        metadata: { owner: "stable" },
+      });
+      await Promise.all([
+        adapter.updateTask(taskId, { dueAt: 1_900_000_013_000 }),
+        adapter.updateTask(taskId, { dueAt: null }),
+      ]);
+      const raced = await adapter.getTask(taskId);
+      expect(raced?.metadata?.owner).toBe("stable");
+      expect([undefined, 1_900_000_013_000]).toContain(raced?.dueAt);
+    });
+
+    it("returns only tasks authorized by the requested agent set", async () => {
+      const secondAgentId = uuidv4() as UUID;
+      const existingAgent = await adapter.getAgent(testAgentId);
+      if (!existingAgent) throw new Error("test agent must exist");
+      await adapter.createAgent({
+        ...existingAgent,
+        id: secondAgentId,
+        name: "Second task authority",
+      });
+      const firstTaskId = uuidv4() as UUID;
+      const secondTaskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: firstTaskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "First authority",
+        metadata: {},
+      });
+      await (adapter.getDatabase() as DrizzleDatabase).insert(taskTable).values({
+        id: secondTaskId,
+        agentId: secondAgentId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Second authority",
+        metadata: {},
+      });
+
+      await expect(adapter.getTasks({ agentIds: [testAgentId, secondAgentId] })).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: firstTaskId, agentId: testAgentId }),
+          expect.objectContaining({ id: secondTaskId, agentId: secondAgentId }),
+        ])
+      );
+      const firstOnly = await adapter.getTasks({ agentIds: [testAgentId] });
+      expect(firstOnly.map((task) => task.id)).toContain(firstTaskId);
+      expect(firstOnly.map((task) => task.id)).not.toContain(secondTaskId);
     });
 
     it("should delete a task", async () => {
@@ -180,7 +361,7 @@ describe("Task Integration Tests", () => {
       ]);
 
       const task1: Task = {
-        id: uuidv4() as UUID,
+        id: "30000000-0000-0000-0000-000000000011" as UUID,
         roomId: roomId1,
         worldId: testWorldId,
         entityId: testEntityId,
@@ -192,7 +373,7 @@ describe("Task Integration Tests", () => {
       await adapter.createTask(task1);
 
       const task2: Task = {
-        id: uuidv4() as UUID,
+        id: "30000000-0000-0000-0000-000000000010" as UUID,
         roomId: roomId1,
         worldId: testWorldId,
         entityId: testEntityId,
@@ -214,13 +395,43 @@ describe("Task Integration Tests", () => {
         metadata: {},
       };
       await adapter.createTask(task3);
+      const db = adapter.getDatabase() as DrizzleDatabase;
+      await db
+        .update(taskTable)
+        .set({ createdAt: new Date("2030-01-01T00:00:01.000Z") })
+        .where(eq(taskTable.id, task1.id as UUID));
+      await db
+        .update(taskTable)
+        .set({ createdAt: new Date("2030-01-01T00:00:01.000Z") })
+        .where(eq(taskTable.id, task2.id as UUID));
+      await db
+        .update(taskTable)
+        .set({ createdAt: new Date("2030-01-01T00:00:02.000Z") })
+        .where(eq(taskTable.id, task3.id as UUID));
 
       const filteredTasks = await adapter.getTasks({
         roomId: roomId1,
         tags: ["urgent"],
+        agentIds: [testAgentId],
       });
       expect(filteredTasks.length).toBe(1);
       expect(filteredTasks[0].id).toBe(task1.id as UUID);
+      await expect(
+        adapter.getTasks({
+          roomId: roomId1,
+          worldId: testWorldId,
+          entityId: testEntityId,
+          tags: ["a"],
+          agentIds: [testAgentId],
+        })
+      ).resolves.toHaveLength(2);
+      await expect(
+        adapter.getTasks({ worldId: uuidv4() as UUID, agentIds: [testAgentId] })
+      ).resolves.toEqual([]);
+      const firstPage = await adapter.getTasks({ agentIds: [testAgentId], limit: 1 });
+      const secondPage = await adapter.getTasks({ agentIds: [testAgentId], limit: 1, offset: 1 });
+      expect(firstPage).toMatchObject([{ id: task2.id }]);
+      expect(secondPage).toMatchObject([{ id: task1.id }]);
     });
   });
 });

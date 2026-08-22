@@ -2,10 +2,9 @@
  * Skill recommender — suggests relevant skills for a task description.
  *
  * Two-pass strategy:
- *  1. Cheap keyword/category match against installed skill metadata. Returns
- *     up to 10 candidate slugs sorted by overlap score.
- *  2. Optional LLM scoring pass over the surviving candidates that returns a
- *     small JSON scores array. Skipped when any keyword
+ *  1. Cheap keyword/category match against every installed skill's metadata.
+ *  2. Optional LLM scoring pass over the complete candidate inventory that
+ *     returns a JSON scores array. Skipped when any keyword
  *     match already scores ≥ 0.9 (no need to spend a model call) or when the
  *     runtime model is unavailable.
  *
@@ -105,7 +104,7 @@ export interface RecommendSkillsOptions {
     language?: string;
     framework?: string;
   };
-  /** Maximum number of recommendations to return. Defaults to 5. */
+  /** @deprecated Retained for source compatibility; recommendations are complete. */
   max?: number;
   /**
    * Force-disable the LLM scoring pass. Defaults to false; when omitted the
@@ -293,22 +292,21 @@ function withForcedCloudAppSkills(
   recommendations: RecommendedSkill[],
   candidates: SkillCandidate[],
   taskText: string,
-  max: number,
 ): RecommendedSkill[] {
   if (!enabled || !shouldForceCloudAppSkill(taskText)) {
-    return recommendations.slice(0, max);
+    return recommendations;
   }
 
   const forced = buildForcedCloudAppSkills(candidates);
   if (forced.length === 0) {
-    return recommendations.slice(0, max);
+    return recommendations;
   }
   const forcedSlugs = new Set(forced.map((rec) => rec.slug));
 
   return [
     ...forced,
     ...recommendations.filter((rec) => !forcedSlugs.has(rec.slug)),
-  ].slice(0, max);
+  ];
 }
 
 function buildLlmScoringPrompt(
@@ -316,19 +314,11 @@ function buildLlmScoringPrompt(
   taskKind: string | undefined,
   candidates: Array<{ slug: string; name: string; description: string }>,
 ): string {
-  const skillBlock = candidates.flatMap((skill, idx) => [
-    `  ${idx + 1}:`,
-    `    slug: ${skill.slug}`,
-    `    name: ${skill.name}`,
-    `    description: ${skill.description.replace(/\s+/g, " ").trim()}`,
-  ]);
   return [
     "task: score_candidate_skills",
-    "taskDescription: |",
-    ...taskText.split("\n").map((line) => `  ${line}`),
-    `taskKind: ${taskKind ?? "unknown"}`,
-    `candidates[${candidates.length}]:`,
-    ...skillBlock,
+    `taskDescriptionJson: ${JSON.stringify(taskText)}`,
+    `taskKindJson: ${JSON.stringify(taskKind ?? "unknown")}`,
+    `candidatesJson: ${JSON.stringify(candidates)}`,
     "scoring:",
     "  irrelevant: 0",
     "  perfectFit: 1",
@@ -419,7 +409,9 @@ function parseLlmScores(raw: string): LlmScoreEntry[] {
 /**
  * Recommend skills relevant to a task.
  *
- * Always returns the top `max` (default 5) candidates ranked by score.
+ * Returns every eligible candidate ranked by score. The legacy `max` option is
+ * ignored so callers cannot silently turn the installed skill inventory into
+ * incomplete model or spawn context.
  * Returns an empty array if no skills are eligible/enabled.
  */
 export async function recommendSkillsForTask(
@@ -427,9 +419,6 @@ export async function recommendSkillsForTask(
   opts: RecommendSkillsOptions,
 ): Promise<RecommendedSkill[]> {
   const log = getLogger(runtime);
-  const max = opts.max ?? Number.POSITIVE_INFINITY;
-  if (max <= 0) return [];
-
   const service = runtime.getService("AGENT_SKILLS_SERVICE") as
     | (Service & SkillsServiceShape)
     | undefined;
@@ -473,17 +462,20 @@ export async function recommendSkillsForTask(
       const score = applyContextBoost(baseScore, candidate, contextTokens);
       return { candidate, score };
     })
-    .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  if (scoredCandidates.length === 0) {
+  if (scoredCandidates.every((entry) => entry.score === 0)) {
     log.debug(`${LOG_PREFIX} no keyword overlap for task; skipping LLM pass`);
     return withForcedCloudAppSkills(
       forceCloudAppSkills,
-      [],
+      scoredCandidates.map(({ candidate }) => ({
+        slug: candidate.slug,
+        name: candidate.name,
+        score: 0,
+        reason: buildKeywordReason(candidate, taskTokens),
+      })),
       candidates,
       opts.taskText,
-      max,
     );
   }
 
@@ -506,7 +498,6 @@ export async function recommendSkillsForTask(
       fastPathRecommendations,
       candidates,
       opts.taskText,
-      max,
     );
   }
 
@@ -517,11 +508,10 @@ export async function recommendSkillsForTask(
       fastPathRecommendations,
       candidates,
       opts.taskText,
-      max,
     );
   }
 
-  // Pass 2: LLM scoring over surviving candidates.
+  // Pass 2: LLM scoring over the complete eligible inventory.
   const llmCandidates = scoredCandidates.map(({ candidate }) => ({
     slug: candidate.slug,
     name: candidate.name,
@@ -555,7 +545,6 @@ export async function recommendSkillsForTask(
       fastPathRecommendations,
       candidates,
       opts.taskText,
-      max,
     );
   }
 
@@ -596,14 +585,13 @@ export async function recommendSkillsForTask(
     }
   }
 
-  const finalRecommendations = Array.from(dedupedBySlug.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, max);
+  const finalRecommendations = Array.from(dedupedBySlug.values()).sort(
+    (a, b) => b.score - a.score,
+  );
   return withForcedCloudAppSkills(
     forceCloudAppSkills,
     finalRecommendations,
     candidates,
     opts.taskText,
-    max,
   );
 }

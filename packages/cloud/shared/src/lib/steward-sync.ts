@@ -23,6 +23,7 @@ import {
   usersRepository,
 } from "../db/repositories/users";
 import type { RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
+import { isValidStewardTelegramId } from "./auth/steward-client";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { discordService } from "./services/discord";
@@ -239,6 +240,8 @@ export interface StewardSyncParams {
   name?: string;
   /** Phone independently verified against the current Steward bearer. */
   verifiedPhone?: string;
+  /** Telegram sender id carried by a verified Telegram-authenticated Steward JWT. */
+  verifiedTelegramId?: string;
   /** Opaque account-bound continuation delivered only inside a Telegram DM. */
   telegramContinuation?: string;
   /** Strongly ordered personal-history coordinator supplied by the Worker auth boundary. */
@@ -426,8 +429,15 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   const verifiedPhone = params.verifiedPhone
     ? normalizePhoneNumber(params.verifiedPhone)
     : undefined;
+  const verifiedTelegramId = params.verifiedTelegramId?.trim();
   if (verifiedPhone && !isValidE164(verifiedPhone)) {
     throw new StewardPhoneAccountConflictError("invalid_phone");
+  }
+  if (verifiedTelegramId && !isValidStewardTelegramId(verifiedTelegramId)) {
+    throw new StewardTelegramAccountClaimError("invalid_verified_telegram_id");
+  }
+  if (verifiedTelegramId && params.telegramContinuation) {
+    throw new StewardTelegramAccountClaimError("ambiguous_telegram_authority");
   }
   // Chain-aware, NOT a blanket lowercase: folding a base58 key produces a string
   // that is not the user's wallet, matches no existing row, and is then stored
@@ -450,6 +460,37 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   }
 
   let claimedTelegramUser: UserWithOrganization | undefined;
+
+  // A Telegram-authenticated Steward JWT is already proof of the exact sender
+  // id. Resolve that sender through the same locked personal-account primitive
+  // used by inbound DMs, then promote the resulting synthetic subject. This
+  // ordering makes both browser-first and DM-first arrivals converge on one
+  // user/organization: neither path can insert a second row while the shared
+  // `telegram_personal_account:<id>` transaction lock is held.
+  if (verifiedTelegramId) {
+    const personal = await usersRepository.findOrCreateMessagingPersonalAccount({
+      platform: "telegram",
+      telegramId: verifiedTelegramId,
+      displayName: name,
+      organizationName: `${name}'s Workspace`,
+      organizationSlug: `tg-${verifiedTelegramId}-${Date.now().toString(36)}${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+    });
+    const promotion = await usersRepository.promoteTelegramPersonalAccountToSteward({
+      telegramId: verifiedTelegramId,
+      stewardUserId,
+      expectedUserId: personal.user.id,
+      expectedOrganizationId: personal.organization.id,
+    });
+    if (promotion.status !== "promoted" && promotion.status !== "already_promoted") {
+      throw new StewardTelegramAccountClaimError(promotion.status);
+    }
+    claimedTelegramUser = {
+      ...promotion.user,
+      organization: promotion.organization,
+    };
+  }
 
   // Once the database merge commits, the authenticated Steward subject is the
   // durable retry authority. A repeated phone claim narrows that authority but

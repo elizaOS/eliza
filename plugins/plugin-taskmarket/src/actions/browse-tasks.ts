@@ -17,6 +17,7 @@ import {
 
 interface BrowseOptions extends HandlerOptions {
   limit?: number;
+  cursor?: string;
   mode?: TaskmarketMode;
   sort?: TaskmarketSort;
   minRewardBaseUnits?: string;
@@ -38,7 +39,7 @@ function readBrowseOptions(options?: HandlerOptions): BrowseOptions {
 function describeTask(
   task: Awaited<ReturnType<TaskmarketClient["listTasks"]>>["tasks"][number],
 ): string {
-  return `- ${task.netRewardUsdc} USDC net | ${task.mode} | expires ${task.expiryTime} | ${task.id}\n  ${task.description}`;
+  return JSON.stringify(task);
 }
 
 export function createBrowseTaskmarketTasksAction(
@@ -58,9 +59,16 @@ export function createBrowseTaskmarketTasksAction(
     parameters: [
       {
         name: "limit",
-        description: "Number of tasks from 1 to 50.",
+        description: "Number of tasks from 1 to 50; defaults to 50.",
         required: false,
         schema: { type: "number", minimum: 1, maximum: 50 },
+      },
+      {
+        name: "cursor",
+        description:
+          "Opaque nextCursor from a prior result page. Pass it unchanged to continue.",
+        required: false,
+        schema: { type: "string", minLength: 1 },
       },
       {
         name: "mode",
@@ -105,14 +113,18 @@ export function createBrowseTaskmarketTasksAction(
         const filters = readBrowseOptions(options);
         const page = await createClient().listTasks({
           limit: filters.limit,
+          cursor: filters.cursor,
           mode: filters.mode,
           sort: filters.sort,
           minRewardBaseUnits: filters.minRewardBaseUnits,
           deadlineHours: filters.deadlineHours,
         });
-        const text = page.tasks.length
+        const taskText = page.tasks.length
           ? `Open Taskmarket tasks (${page.tasks.length}):\n${page.tasks.map(describeTask).join("\n")}`
           : "No open Taskmarket tasks matched those filters.";
+        const text = page.hasMore
+          ? `${taskText}\nMore tasks are available. Continue with cursor=${JSON.stringify(page.nextCursor)}.`
+          : taskText;
         await callback?.({
           text,
           source: message.content.source,

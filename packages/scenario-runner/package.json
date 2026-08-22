@@ -91,6 +91,7 @@
     "@elizaos/plugin-cli-inference": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
+    "@elizaos/plugin-companion": "workspace:*",
     "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
     "@elizaos/plugin-health": "workspace:*",
@@ -103,6 +104,7 @@
     "@elizaos/plugin-video": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "ws": "^8.21.3",
     "@elizaos/auth": "workspace:*"
   },

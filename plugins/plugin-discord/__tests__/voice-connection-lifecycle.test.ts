@@ -127,6 +127,8 @@ describe("VoiceManager voice-connection lifecycle", () => {
 		// `error` is not asserted: each still-pending `entersState` loser from
 		// `Promise.race` holds one of its own until its 20s deadline.
 		expect(connection.listenerCount("stateChange")).toBe(1);
+		expect(connection.receiver.speaking.listenerCount("start")).toBe(1);
+		expect(connection.receiver.speaking.listenerCount("end")).toBe(1);
 
 		closeWithoutReconnect(connection);
 		await afterReconnectProbe();

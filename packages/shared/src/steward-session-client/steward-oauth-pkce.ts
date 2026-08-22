@@ -14,7 +14,12 @@
 
 import { trimEndCharacters } from "../utils/string-boundaries.js";
 
-export type StewardOAuthProvider = "google" | "discord" | "github" | "twitter";
+export type StewardOAuthProvider =
+  | "google"
+  | "discord"
+  | "github"
+  | "twitter"
+  | "apple";
 
 const STEWARD_PKCE_VERIFIER_STORAGE_KEY = "steward.oauth.pkce.verifier";
 const STEWARD_PKCE_VERIFIER_TTL_MS = 10 * 60 * 1000;

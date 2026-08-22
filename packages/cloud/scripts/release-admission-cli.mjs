@@ -25,6 +25,7 @@ const result = decideReleaseAdmission({
   targetEnvironment: args.environment,
   ref: args.ref,
   force: args.force === "true",
+  runDeployedRendererStaging: args["run-deployed-renderer-staging"] === "true",
   runId: args["run-id"],
   latestEligibleRunId: args["latest-eligible-run-id"],
 });

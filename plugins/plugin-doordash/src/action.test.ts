@@ -191,6 +191,11 @@ describe("DoorDash checkout safety", () => {
 
     expect(result.values).toMatchObject({
       providerBlocked: true,
+      liveViewUrl,
+      appBrowserPath:
+        "/browser?browse=https%3A%2F%2Fwww.doordash.com%2Fconsumer%2Flogin",
+      appDeepLink:
+        "elizaos://browser?browse=https%3A%2F%2Fwww.doordash.com%2Fconsumer%2Flogin",
       nativeAppDeepLink:
         "elizaos://browser?browse=https%3A%2F%2Fwww.doordash.com%2Fconsumer%2Flogin",
     });

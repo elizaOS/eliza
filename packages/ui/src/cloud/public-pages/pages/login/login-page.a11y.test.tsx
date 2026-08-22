@@ -97,7 +97,7 @@ describe("LoginPage accessibility", () => {
 
     expect(document.querySelectorAll("main")).toHaveLength(1);
     expect(
-      screen.getByRole("heading", { level: 1, name: "Sign in to Eliza" }),
+      screen.getByRole("heading", { level: 1, name: "Sign in" }),
     ).toBeTruthy();
 
     const terms = screen.getByRole("link", { name: "Terms" });

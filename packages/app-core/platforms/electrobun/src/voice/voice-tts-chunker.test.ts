@@ -113,4 +113,18 @@ describe("voice TTS chunking config from env", () => {
 
     expect(config.maxChars).toBe(120);
   });
+
+  it("keeps an explicit leading plus and rejects one past the safe range", () => {
+    // `parseInt` accepted "+120"; rejecting it would be a regression.
+    expect(
+      getVoiceTtsChunkingConfigFromEnv({
+        ELIZA_VOICE_TTS_CHUNK_MAX_CHARS: "+120",
+      }).maxChars,
+    ).toBe(120);
+    expect(
+      getVoiceTtsChunkingConfigFromEnv({
+        ELIZA_VOICE_TTS_CHUNK_MAX_CHARS: "9007199254740993",
+      }).maxChars,
+    ).toBe(getDefaultVoiceTtsChunkingConfig().maxChars);
+  });
 });

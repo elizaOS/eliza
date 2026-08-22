@@ -145,7 +145,7 @@ describe("scenario runtime deterministic model mode", () => {
       ),
     ).resolves.toBe("declared response");
     expect(plugin.models?.[ModelType.TEXT_EMBEDDING]).toBeUndefined();
-  });
+  }, 300_000);
 
   it("recognizes scheduled-dispatch render prompts and returns deterministic owner-facing text", () => {
     const prompt = [

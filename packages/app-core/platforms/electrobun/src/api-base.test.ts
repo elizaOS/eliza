@@ -7,6 +7,7 @@ import {
   DESKTOP_LOCAL_AGENT_IPC_BASE,
   type PersistedDeployment,
   resolveCloudHostedAgentApiBase,
+  resolveDesktopRuntimeModeSignal,
   resolveDesktopRuntimeModeWithDeployment,
   resolveInitialApiBase,
   resolveLocalAgentIpcMode,
@@ -242,6 +243,60 @@ describe("readPersistedDeployment — eliza.json reader", () => {
   it("returns null for malformed JSON (fail-safe)", () => {
     const file = writeConfig("{ not valid json ");
     expect(readPersistedDeployment({ ELIZA_CONFIG_PATH: file })).toBeNull();
+  });
+});
+
+describe("resolveDesktopRuntimeModeSignal", () => {
+  it("returns cloud for the explicit runtime-mode flag", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal({ ELIZA_DESKTOP_RUNTIME_MODE: "cloud" }),
+    ).toBe("cloud");
+  });
+
+  it("returns cloud for the cloud-only flag", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }),
+    ).toBe("cloud");
+  });
+
+  it("returns cloud for a persisted cloud deployment", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal(
+        {},
+        { runtime: "cloud", remoteApiBase: null },
+      ),
+    ).toBe("cloud");
+  });
+
+  it("does not infer cloud from a local deployment", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal(
+        {},
+        { runtime: "local", remoteApiBase: null },
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null with no env var and no deployment", () => {
+    expect(resolveDesktopRuntimeModeSignal({})).toBeNull();
+  });
+
+  it("env var takes priority over persisted deployment", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal(
+        { ELIZA_DESKTOP_RUNTIME_MODE: "cloud" },
+        { runtime: "local", remoteApiBase: null },
+      ),
+    ).toBe("cloud");
+  });
+
+  it("falls through a non-cloud env value to a persisted cloud deployment", () => {
+    expect(
+      resolveDesktopRuntimeModeSignal(
+        { ELIZA_DESKTOP_RUNTIME_MODE: "local" },
+        { runtime: "cloud", remoteApiBase: null },
+      ),
+    ).toBe("cloud");
   });
 });
 

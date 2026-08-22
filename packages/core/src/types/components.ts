@@ -1021,9 +1021,12 @@ export interface ActionResult {
 	 * incomplete planner scope retain the normal evaluator path.
 	 *
 	 * Use for UI effects whose wording must remain model-owned (for example,
-	 * navigation). Do not pair it with canned `userFacingText`.
+	 * navigation). Do not pair it with canned `userFacingText`; use the narrowly
+	 * vetted `modelReplyFallback` only for provider-outage recovery.
 	 */
 	modelReplyRequired?: boolean;
+	/** Safe action-owned prose used only if required model synthesis is unavailable. */
+	modelReplyFallback?: string;
 
 	/**
 	 * Explicit chain-control override. `false` aborts the remaining planner queue

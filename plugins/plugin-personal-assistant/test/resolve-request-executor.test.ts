@@ -1370,4 +1370,20 @@ describe("RESOLVE_REQUEST ambiguous-target chips (#14733)", () => {
     expect(docMocks.reject.mock.calls[0]?.[0]).toBe(second.id);
     expect(texts.join(" ")).toContain("Rejected");
   });
+
+  it("offers every ambiguous pending request instead of hiding choices after five", () => {
+    const [template] = pendingPair();
+    const pending = Array.from({ length: 8 }, (_, index) => ({
+      ...template,
+      id: `approval-${index + 1}`,
+      reason: `Decision ${index + 1}`,
+    }));
+
+    const choice = buildResolveRequestChoice("approve", pending);
+
+    expect(choice.options).toHaveLength(8);
+    expect(choice.options.map((option) => option.value)).toEqual(
+      pending.map((request) => `approve ${request.id}`),
+    );
+  });
 });

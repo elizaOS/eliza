@@ -22,5 +22,7 @@ The default endpoint is `https://api.taskmarket.dev`. Results include gross and 
 
 The plugin sends only the selected list filters to Taskmarket. It does not send
 conversation text, agent memories, wallet material, or credentials. Remote
-responses are capped at 512 KiB and planner-visible strings are normalized and
-length-bounded before the action renders them.
+responses above 512 KiB are rejected before parsing. Accepted task fields are
+preserved completely; native JSON escaping keeps multi-line remote text from
+forging the surrounding result format. Pages expose `nextCursor`, which the
+action accepts unchanged for lossless continuation.

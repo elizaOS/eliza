@@ -1,6 +1,6 @@
 /**
  * Unit tests for the cockpit mode → providerPolicy lowering (cockpit-modes):
- * that each of the four modes resolves to the right provider source, model, and
+ * that each mode resolves to the right provider source, model, and
  * create-task input. Pure functions, no DOM or network.
  */
 import { toWellFormedUnicode } from "@elizaos/core";
@@ -16,16 +16,13 @@ import {
 
 describe("cockpit-modes lowering", () => {
   describe("cockpitModeProviderSource", () => {
-    it("eliza-cloud + opencode source from eliza-cloud; subscription/experimental from the vendor", () => {
+    it("eliza-cloud sources from eliza-cloud; subscription/experimental from the vendor", () => {
       expect(
         cockpitModeProviderSource({
           mode: "eliza-cloud",
           agentType: "elizaos",
           tier: "small",
         }),
-      ).toBe("eliza-cloud");
-      expect(
-        cockpitModeProviderSource({ mode: "opencode", agentType: "opencode" }),
       ).toBe("eliza-cloud");
       expect(
         cockpitModeProviderSource({
@@ -62,9 +59,6 @@ describe("cockpit-modes lowering", () => {
           tier: "large",
         }),
       ).toBe("gemma-4-31b");
-      expect(
-        cockpitModeModel({ mode: "opencode", agentType: "opencode" }),
-      ).toBeUndefined();
       expect(
         cockpitModeModel({
           mode: "subscription",
@@ -119,13 +113,13 @@ describe("cockpit-modes lowering", () => {
         buildCockpitCreateTaskInput({
           goal: "do a thing",
           title: "Custom Title",
-          mode: { mode: "opencode", agentType: "opencode" },
+          mode: { mode: "subscription", agentType: "codex" },
         }).title,
       ).toBe("Custom Title");
       const long = "x".repeat(120);
       const t = buildCockpitCreateTaskInput({
         goal: long,
-        mode: { mode: "opencode", agentType: "opencode" },
+        mode: { mode: "subscription", agentType: "codex" },
       }).title;
       expect(t.length).toBeLessThanOrEqual(80);
       expect(t.endsWith("…")).toBe(true);
@@ -166,7 +160,7 @@ describe("deriveTitle surrogate safety via buildCockpitCreateTaskInput", () => {
     if (typeof w.isWellFormed === "function") return w.isWellFormed();
     return toWellFormedUnicode(s) === s;
   };
-  const mode = { mode: "opencode" as const, agentType: "opencode" as const };
+  const mode = { mode: "subscription" as const, agentType: "codex" as const };
 
   it("backs off when truncation would split a surrogate pair (a*79+🦊 at 80)", () => {
     const goal = `${"a".repeat(79)}🦊${"b".repeat(20)}`;

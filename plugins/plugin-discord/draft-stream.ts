@@ -68,7 +68,7 @@ export function createDraftStreamController(
 	let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 	let started = false;
 	let done = false;
-	const activeSnapshots = new Set<Promise<boolean>>();
+	const activeSnapshots = new Set<Promise<unknown>>();
 
 	const clearThrottle = () => {
 		if (throttleTimer) {
@@ -161,17 +161,20 @@ export function createDraftStreamController(
 		}
 	};
 
-	const sendTrackedSnapshot = (
-		text: string,
-		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
-	): Promise<boolean> => {
-		const snapshot = sendSnapshot(text, components);
+	const trackActiveSnapshot = <T>(snapshot: Promise<T>): Promise<T> => {
 		activeSnapshots.add(snapshot);
 		void snapshot.then(
 			() => activeSnapshots.delete(snapshot),
 			() => activeSnapshots.delete(snapshot),
 		);
 		return snapshot;
+	};
+
+	const sendTrackedSnapshot = (
+		text: string,
+		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+	): Promise<boolean> => {
+		return trackActiveSnapshot(sendSnapshot(text, components));
 	};
 
 	const waitForActiveSnapshots = async (): Promise<void> => {
@@ -307,19 +310,24 @@ export function createDraftStreamController(
 			}
 			try {
 				const isLastChunk = remaining.length === 0;
-				const overflowMessage = await channel.send({
-					content: chunk,
-					...(isLastChunk && components && components.length > 0
-						? { components }
-						: {}),
-					...(draftReplyToMessageId && draftReplyToMode === "all"
-						? {
-								reply: { messageReference: draftReplyToMessageId },
-							}
-						: {}),
-				});
-				lastSentMessage = overflowMessage;
-				sentMessages.push(overflowMessage);
+				await trackActiveSnapshot(
+					channel
+						.send({
+							content: chunk,
+							...(isLastChunk && components && components.length > 0
+								? { components }
+								: {}),
+							...(draftReplyToMessageId && draftReplyToMode === "all"
+								? {
+										reply: { messageReference: draftReplyToMessageId },
+									}
+								: {}),
+						})
+						.then((overflowMessage) => {
+							lastSentMessage = overflowMessage;
+							sentMessages.push(overflowMessage);
+						}),
+				);
 			} catch (error) {
 				warn(
 					`draft-stream: overflow send failed: ${error instanceof Error ? error.message : String(error)}`,

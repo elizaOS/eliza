@@ -18,10 +18,11 @@
  *   `process.env` — in a multi-tenant process that would leak a host secret into
  *   every agent; hosts fold dotenv into the constructor `settings` map instead.
  * - Embedding width is pinned to whichever TEXT_EMBEDDING provider answered the
- *   boot dimension probe; a later embedding from a different provider can emit a
- *   width the SQL adapter silently drops (#8769). If every provider fails the
- *   probe, `initialize()` catches `EmbeddingDimensionProbeError` non-fatally and
- *   disables embedding generation instead of crashing boot.
+ *   boot dimension probe, including TEXT_EMBEDDING_BATCH; a later embedding from
+ *   a different provider can emit a width the SQL adapter silently drops (#8769).
+ *   If every provider fails the probe, `initialize()` catches
+ *   `EmbeddingDimensionProbeError` non-fatally and disables embedding generation
+ *   instead of crashing boot.
  * - Without a database adapter, `initialize()` falls back to the in-memory
  *   adapter only when `ALLOW_NO_DATABASE` is set.
  */
@@ -34,7 +35,10 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
-import { validateQueryEntitiesPagination } from "./database";
+import {
+	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
+} from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
@@ -1420,6 +1424,10 @@ export class AgentRuntime implements IAgentRuntime {
 	private stopped = false;
 	/** Set permanently at the first stop request, before any drain can yield. */
 	private stopRequested = false;
+	/** Records an initialization attempt that released waiters by failing. */
+	private initializationFailed = false;
+	/** Typed cancellation boundary for deferred plugin/service startup. */
+	private readonly stopController = new AbortController();
 	/** The active stop attempt; concurrent callers await the same teardown. */
 	private stopPromise: Promise<void> | null = null;
 
@@ -2605,6 +2613,9 @@ export class AgentRuntime implements IAgentRuntime {
 		this.stopPromise = stopAttempt;
 		if (!this.stopRequested) {
 			this.stopRequested = true;
+			this.stopController.abort(
+				new DOMException("Runtime stop requested", "AbortError"),
+			);
 			// Freeze connector/service ingress before the first shutdown await. Without
 			// this phase, a gateway delivery can begin a new turn while the runtime is
 			// already waiting for its room-owner drain, behind the eventual service-stop
@@ -2884,9 +2895,11 @@ export class AgentRuntime implements IAgentRuntime {
 		/** Allow running without a persistent database adapter (benchmarks/tests). */
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
+		this.initializationFailed = false;
 		try {
 			await this._initializeCore(options);
 		} catch (err) {
+			this.initializationFailed = true;
 			// error-policy:J2 Release initialization waiters before preserving
 			// the original initialization failure for the caller.
 			// Always resolve initPromise so eager service starts and stop()
@@ -5857,6 +5870,23 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
 
+	getLifecycleState():
+		| "initializing"
+		| "running"
+		| "failed"
+		| "stopping"
+		| "stopped" {
+		if (this.stopRequested) {
+			return this.stopped && this.stopPromise === null ? "stopped" : "stopping";
+		}
+		if (this.initializationFailed) return "failed";
+		return this.initResolver ? "initializing" : "running";
+	}
+
+	getStopSignal(): AbortSignal {
+		return this.stopController.signal;
+	}
+
 	/**
 	 * Get service health information
 	 * @returns Object containing service health status
@@ -6275,7 +6305,20 @@ export class AgentRuntime implements IAgentRuntime {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined {
-		const resolvedModel = this.resolveModelRegistration(modelType);
+		const requestedModelKey = String(modelType);
+		// Keep capability probes aligned with useModel dispatch: once the
+		// embedding dimension probe pins a provider, another provider's BATCH
+		// handler is not usable because it may emit a different vector width.
+		const requestedProvider =
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
+			this.pinnedEmbeddingProvider !== undefined
+				? this.pinnedEmbeddingProvider
+				: undefined;
+		const resolvedModel = this.resolveModelRegistration(
+			requestedModelKey,
+			requestedProvider,
+		);
 		if (!resolvedModel) {
 			return undefined;
 		}
@@ -6620,17 +6663,19 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		// TEXT_EMBEDDING calls without an explicit provider are pinned to the
-		// provider that answered the dimension probe: the vector column was sized
-		// from its output, so serving an embedding call from any other
-		// registration (including via rate-limit failover) can emit a
-		// different-width vector that the SQL adapter silently drops (#8769).
-		// Pinning also disables mid-call provider failover for embeddings — an
-		// embedding either comes from the provider the column was sized for, or
-		// the call fails loudly. An explicit provider argument still wins.
+		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
+		// provider are pinned to the provider that answered the dimension probe:
+		// the vector column was sized from its output, so serving an embedding
+		// call from any other registration (including a higher-priority BATCH
+		// handler, or via rate-limit failover) can emit a different-width vector
+		// that the SQL adapter silently drops (#8769). Pinning also disables
+		// mid-call provider failover for embeddings — an embedding either comes
+		// from the provider the column was sized for, or the call fails loudly.
+		// An explicit provider argument still wins.
 		const requestedProvider =
 			provider === undefined &&
-			requestedModelKey === ModelType.TEXT_EMBEDDING &&
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
 			this.pinnedEmbeddingProvider !== undefined
 				? this.pinnedEmbeddingProvider
 				: provider;
@@ -11782,9 +11827,13 @@ ${section_end}`;
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
+		limit?: number;
+		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		return this.adapter.getTasks({ ...params, agentIds: [this.agentId] });
 	}
 	async getTasksByName(name: string): Promise<Task[]> {
@@ -11830,6 +11879,17 @@ ${section_end}`;
 	async getTask(id: UUID): Promise<Task | null> {
 		const tasks = await this.adapter.getTasksByIds([id]);
 		return tasks[0] ?? null;
+	}
+
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const updated =
+			(await this.adapter.updatePendingTask?.call(this.adapter, id, task)) ??
+			false;
+		if (updated) {
+			this._markLocalTasksDirty();
+			this._notifyCompanionTasksDirty();
+		}
+		return updated;
 	}
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {

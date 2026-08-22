@@ -4,6 +4,8 @@
  * covers context serialization and recent-action rendering, not a replica of
  * a private helper.
  */
+
+import { createHash } from "node:crypto";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { renderGroundedActionReply } from "./grounded-action-reply.ts";
@@ -27,6 +29,7 @@ function isWellFormed(value: string): boolean {
 async function capturePrompt(options: {
   context?: Record<string, unknown>;
   state?: State;
+  projectionEnabled?: boolean;
 }): Promise<string> {
   let prompt = "";
   const runtime = {
@@ -35,6 +38,7 @@ async function capturePrompt(options: {
       return "Done.";
     }),
     getMemories: vi.fn(async () => []),
+    getSetting: vi.fn(() => options.projectionEnabled ?? false),
     character: { name: "TestAgent" },
   } as unknown as IAgentRuntime;
 
@@ -103,5 +107,43 @@ describe("grounded reply prompt Unicode preservation", () => {
 
     expect(contextLine).toContain("🦊");
     expect(isWellFormed(contextLine ?? "")).toBe(true);
+  });
+
+  it("keeps a recoverable reference but removes its page from the model prompt", async () => {
+    const page = `LATE_PAGE_CANARY_${"x".repeat(20_000)}`;
+    const state = {
+      data: {
+        actionResults: [
+          {
+            success: true,
+            text: page,
+            data: { actionName: "FILE", rawBody: page },
+            promptData: {
+              actionName: "FILE",
+              readView: {
+                reference: {
+                  kind: "file",
+                  ref: "opaque-file",
+                  revision: "r1",
+                },
+                slice: {
+                  range: { unit: "byte", start: 0, end: 10, total: 20 },
+                  hasPrevious: false,
+                  hasMore: true,
+                  nextOffset: 10,
+                  revision: "r1",
+                  completeness: "partial-recoverable",
+                  sliceSha256: createHash("sha256").update(page).digest("hex"),
+                },
+              },
+            },
+          },
+        ],
+      },
+    } as unknown as State;
+
+    const prompt = await capturePrompt({ state, projectionEnabled: true });
+    expect(prompt).toContain("opaque-file");
+    expect(prompt).not.toContain("LATE_PAGE_CANARY");
   });
 });

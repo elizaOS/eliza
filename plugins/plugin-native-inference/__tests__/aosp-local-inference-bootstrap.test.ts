@@ -779,6 +779,45 @@ describe("aospAsrAssetsPresent (TRANSCRIPTION registration gate)", () => {
 });
 
 describe("resolveAospGenerateTokenBudget", () => {
+  it("ignores a prefix-parsed output-token cap instead of applying it", () => {
+    // parseInt("384junk") is 384, so a typo silently capped generation at 384
+    // tokens; readEnvInt must fall back to the documented 256 default instead.
+    expect(
+      resolveAospGenerateTokenBudget({
+        requestedMaxTokens: 1024,
+        nCtx: 4096,
+        nBatch: 64,
+        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: "384junk" },
+      }).envCap,
+    ).toBe(256);
+    // A signed value was accepted by parseInt and must stay accepted.
+    expect(
+      resolveAospGenerateTokenBudget({
+        requestedMaxTokens: 1024,
+        nCtx: 4096,
+        nBatch: 64,
+        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: "+384" },
+      }).envCap,
+    ).toBe(384);
+  });
+
+  it("preserves the signed integer boundary contract through the output budget", () => {
+    const resolveCap = (raw: string) =>
+      resolveAospGenerateTokenBudget({
+        requestedMaxTokens: Number.MAX_SAFE_INTEGER,
+        nCtx: Number.MAX_SAFE_INTEGER,
+        nBatch: 1,
+        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: raw },
+      }).envCap;
+
+    expect(resolveCap("0")).toBeNull();
+    expect(resolveCap("-1")).toBe(256);
+    expect(resolveCap(`+${Number.MAX_SAFE_INTEGER}`)).toBe(
+      Math.floor((Number.MAX_SAFE_INTEGER - 1) / 2),
+    );
+    expect(resolveCap(String(Number.MAX_SAFE_INTEGER + 1))).toBe(256);
+  });
+
   it("caps oversized caller budgets with the Android debug env cap", () => {
     expect(
       resolveAospGenerateTokenBudget({
@@ -854,6 +893,30 @@ describe("AOSP embedding gate", () => {
       disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024" }),
     ).toHaveLength(1024);
   });
+
+  it("ignores a prefix-parsed embedding dimension instead of sizing the vector from it", () => {
+    // parseInt("1024junk") is 1024, so a typo silently produced a vector of a
+    // width the operator never configured — and the width must match the SQL
+    // column, so this is not a cosmetic difference.
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024junk" }),
+    ).toHaveLength(384);
+    expect(
+      disabledAospEmbeddingVector({
+        LOCAL_EMBEDDING_DIMENSIONS: "9007199254740993",
+      }),
+    ).toHaveLength(384);
+    // A signed value was accepted by parseInt and must stay accepted.
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "+1024" }),
+    ).toHaveLength(1024);
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "0" }),
+    ).toHaveLength(384);
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "-1" }),
+    ).toHaveLength(384);
+  });
 });
 
 describe("AOSP TEXT_TO_SPEECH backend selection", () => {
@@ -911,6 +974,46 @@ describe("buildAospLoadModelArgs", () => {
         k: "q8_0",
         v: "f16",
       },
+    });
+  });
+
+  it("validates the complete chat context integer at the production load boundary", () => {
+    const contextSize = (raw: string) =>
+      withEnv({ ELIZA_LLAMA_N_CTX: raw }, () =>
+        buildAospLoadModelArgs("chat", "/models/chat.gguf"),
+      ).contextSize;
+
+    expect(contextSize("4097junk")).toBe(4096);
+    expect(contextSize("+4097")).toBe(4097);
+    expect(contextSize("0")).toBe(4096);
+    expect(contextSize("-1")).toBe(4096);
+    expect(contextSize(String(Number.MAX_SAFE_INTEGER))).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+    expect(contextSize(String(Number.MAX_SAFE_INTEGER + 1))).toBe(4096);
+  });
+
+  it("validates GPU layers while preserving zero and the legacy GPU fallback", () => {
+    const load = (raw: string) =>
+      withEnv(
+        {
+          ELIZA_LLAMA_N_GPU_LAYERS: raw,
+          ELIZA_AOSP_LLAMA_USE_GPU: "true",
+        },
+        () => buildAospLoadModelArgs("chat", "/models/chat.gguf"),
+      );
+
+    expect(load("7junk")).toMatchObject({ gpuLayers: 99, useGpu: true });
+    expect(load("-1")).toMatchObject({ gpuLayers: 99, useGpu: true });
+    expect(load("+7")).toMatchObject({ gpuLayers: 7, useGpu: true });
+    expect(load("0")).toMatchObject({ gpuLayers: 0, useGpu: false });
+    expect(load(String(Number.MAX_SAFE_INTEGER))).toMatchObject({
+      gpuLayers: Number.MAX_SAFE_INTEGER,
+      useGpu: true,
+    });
+    expect(load(String(Number.MAX_SAFE_INTEGER + 1))).toMatchObject({
+      gpuLayers: 99,
+      useGpu: true,
     });
   });
 

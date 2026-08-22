@@ -103,9 +103,8 @@ function readStringWithinLimit(
 }
 
 function readNonNegativeInteger(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  const integer = Math.trunc(value);
-  return integer >= 0 ? integer : null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
+  return value >= 0 ? value : null;
 }
 
 function readOccurredAt(value: unknown): string | null {
@@ -143,8 +142,16 @@ export function parseComposerBody(
   const draftLength = readNonNegativeInteger(body.draftLength);
   if (draftLength === null || draftLength > MAX_DRAFT_LENGTH) return null;
 
-  const idleForMs = readNonNegativeInteger(body.idleForMs);
-  if (activity === "typing_paused" && idleForMs === null) return null;
+  const idleForMs =
+    body.idleForMs === undefined
+      ? undefined
+      : readNonNegativeInteger(body.idleForMs);
+  if (
+    idleForMs === null ||
+    (activity === "typing_paused" && idleForMs === undefined)
+  ) {
+    return null;
+  }
 
   const reason =
     body.reason === "cleared" ||
@@ -169,7 +176,7 @@ export function parseComposerBody(
     surface,
     draftLength,
     ...(conversationId ? { conversationId } : {}),
-    ...(idleForMs !== null ? { idleForMs } : {}),
+    ...(idleForMs !== undefined ? { idleForMs } : {}),
     ...(reason ? { reason } : {}),
     occurredAt,
   };

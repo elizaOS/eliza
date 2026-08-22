@@ -1,6 +1,7 @@
 /**
- * Exercises the native R2 generation contract inside genuine Workerd: an
- * immutable conditional write, strongly consistent HEAD/GET, and delete.
+ * Exercises genuine Workerd contracts through Miniflare: native R2 generation
+ * semantics and delivery of an early response after cancelling an unfinished
+ * inbound streaming request body. This does not exercise Hono or module mocks.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Miniflare } from "miniflare";
@@ -18,6 +19,13 @@ describe("native storage R2 contract in Workerd", () => {
           contents: `
             export default {
               async fetch(request, env) {
+                if (new URL(request.url).pathname === "/reject-unbounded-upload") {
+                  if (request.body === null) {
+                    return new Response("missing request body", { status: 500 });
+                  }
+                  await request.body.cancel();
+                  return new Response("length required", { status: 411 });
+                }
                 const key = "__eliza_storage_authority/v2/org/test/object/1";
                 if (request.method === "PUT") {
                   const digest = request.headers.get("x-content-sha256");
@@ -82,4 +90,64 @@ describe("native storage R2 contract in Workerd", () => {
       (await miniflare.dispatchFetch("https://storage.test/")).status,
     ).toBe(404);
   });
+
+  test("flushes 411 after cancelling an unfinished streaming upload", async () => {
+    let uploadFinished = false;
+    let releaseUpload: (() => void) | undefined;
+    const uploadRelease = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("partial upload"));
+      },
+      async pull(controller) {
+        await uploadRelease;
+        controller.close();
+        uploadFinished = true;
+      },
+    });
+
+    const timeout = Symbol("timeout");
+    const withinDeadline = async <T>(
+      promise: Promise<T>,
+      milliseconds = 5_000,
+    ) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<typeof timeout>((resolve) => {
+        timeoutId = setTimeout(() => resolve(timeout), milliseconds);
+      });
+      try {
+        return await Promise.race([promise, deadline]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+    const response = miniflare.dispatchFetch(
+      "https://storage.test/reject-unbounded-upload",
+      { method: "PUT", body },
+    );
+    try {
+      const result = await withinDeadline(response);
+
+      expect(result).not.toBe(timeout);
+      if (result === timeout) return;
+      expect(result.status).toBe(411);
+      expect(await result.text()).toBe("length required");
+      expect(uploadFinished).toBe(false);
+
+      // Miniflare does not currently forward Workerd's body cancellation to
+      // the host ReadableStream cancel hook. The observable transport proof is
+      // therefore the completed 411 while this producer is still unfinished.
+    } finally {
+      releaseUpload?.();
+      await withinDeadline(
+        response.then(
+          () => undefined,
+          () => undefined,
+        ),
+        1_000,
+      );
+    }
+  }, 10_000);
 });

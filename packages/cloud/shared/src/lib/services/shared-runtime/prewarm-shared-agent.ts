@@ -183,7 +183,7 @@ export async function prewarmSharedAgentTurnCaches(
 export async function prewarmPersonalSharedAgentTurnCaches(
   agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
   namespace: RuntimeDurableObjectNamespace,
-  options: { warmConversation?: boolean } = {},
+  options: { warmConversation?: boolean; conversationId?: string } = {},
 ): Promise<void> {
   const legs: PrewarmLeg[] = [
     {
@@ -194,7 +194,7 @@ export async function prewarmPersonalSharedAgentTurnCaches(
   if (options.warmConversation !== false) {
     legs.push({
       leg: "conversation-object",
-      run: coordinateSharedConversationPrewarm(agent.id, agent.id, {
+      run: coordinateSharedConversationPrewarm(agent.id, options.conversationId ?? agent.id, {
         namespace,
         startEmpty: true,
       }),

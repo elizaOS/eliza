@@ -6,6 +6,7 @@
  */
 import type {
 	ActionRowBuilder,
+	Message as DiscordMessage,
 	MessageActionRowComponentBuilder,
 	TextChannel,
 } from "discord.js";
@@ -129,6 +130,43 @@ describe("draft-stream finalize components (#14527)", () => {
 		expect(deletions).toEqual(["late-snapshot"]);
 		expect(controller.isDone()).toBe(true);
 		vi.useRealTimers();
+	});
+
+	it("deletes an overflow snapshot whose send settles during discard", async () => {
+		let sendCount = 0;
+		let resolveOverflow!: (message: DiscordMessage) => void;
+		const deletions: string[] = [];
+		const message = (id: string) =>
+			({
+				id,
+				delete: async () => {
+					deletions.push(id);
+				},
+			}) as DiscordMessage;
+		const channel = {
+			send: () => {
+				sendCount += 1;
+				if (sendCount === 1) {
+					return Promise.resolve(message("first-chunk"));
+				}
+				return new Promise<DiscordMessage>((resolve) => {
+					resolveOverflow = resolve;
+				});
+			},
+		} as unknown as TextChannel;
+		const controller = createDraftStreamController({ maxChars: 24 });
+		await controller.start(channel);
+
+		const finalize = controller.finalize(
+			"First chunk is complete. Second chunk is still being delivered.",
+		);
+		await vi.waitFor(() => expect(sendCount).toBe(2));
+		const discard = controller.discard();
+		resolveOverflow(message("overflow-chunk"));
+
+		await Promise.all([finalize, discard]);
+		expect(deletions).toEqual(["overflow-chunk", "first-chunk"]);
+		expect(controller.isDone()).toBe(true);
 	});
 
 	it("attaches components to the finalized message", async () => {

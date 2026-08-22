@@ -14,6 +14,16 @@ describe("shouldRestoreAgentsListAfterAppLaunch", () => {
     ).toBe(true);
   });
 
+  it("restores when an app populates an explicitly empty agents.list", () => {
+    expect(
+      shouldRestoreAgentsListAfterAppLaunch([], [{ name: "Sample Explorer" }]),
+    ).toBe(true);
+  });
+
+  it("does not restore when an explicitly empty agents.list stays empty", () => {
+    expect(shouldRestoreAgentsListAfterAppLaunch([], [])).toBe(false);
+  });
+
   it("restores when an app replaces the user's existing first agent", () => {
     expect(
       shouldRestoreAgentsListAfterAppLaunch(

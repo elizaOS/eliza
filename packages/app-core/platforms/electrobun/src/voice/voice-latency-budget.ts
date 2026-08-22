@@ -157,8 +157,9 @@ function readPositiveInt(
   const raw = env[key]?.trim();
   if (!raw) return fallback;
   // parseInt stops at the first non-digit, so "250junk" would yield 250 and be
-  // treated as a deliberate budget. Require the whole value to be decimal.
-  if (!/^\d+$/.test(raw)) return fallback;
+  // treated as a deliberate budget. Require the whole value to be decimal; the optional leading plus is
+  // kept because `parseInt` accepted it.
+  if (!/^\+?\d+$/.test(raw)) return fallback;
   const parsed = Number(raw);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

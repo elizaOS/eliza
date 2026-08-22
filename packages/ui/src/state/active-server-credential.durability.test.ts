@@ -16,6 +16,13 @@ vi.mock("./agent-profiles", () => ({
 }));
 
 vi.mock("./persistence", () => ({
+  createPersistedActiveServer: vi.fn((args) => ({
+    id: `remote:${args.apiBase}`,
+    kind: "remote",
+    label: "Test runtime",
+    apiBase: args.apiBase,
+    accessToken: args.accessToken,
+  })),
   loadPersistedActiveServer: mocks.loadPersistedActiveServer,
   savePersistedActiveServer: mocks.savePersistedActiveServer,
 }));

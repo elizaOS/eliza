@@ -368,7 +368,7 @@ export const coreActionsSpec = {
 				{
 					name: "source",
 					description:
-						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1006,7 +1006,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					examples: ["c0a8012e"],
+					examples: ["aabbccdd-1111-2222-3333-444455556666"],
 					descriptionCompressed: "Pending task id.",
 				},
 				{
@@ -1989,7 +1989,7 @@ export const allActionsSpec = {
 				{
 					name: "source",
 					description:
-						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2627,7 +2627,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					examples: ["c0a8012e"],
+					examples: ["aabbccdd-1111-2222-3333-444455556666"],
 					descriptionCompressed: "Pending task id.",
 				},
 				{

@@ -1,5 +1,5 @@
 /**
- * Verifies the shared Signal/WhatsApp QR pairing surface uses the connector
+ * Verifies the shared WhatsApp QR pairing surface uses the connector
  * detail action-row contract in deterministic idle and connected states.
  */
 // @vitest-environment jsdom
@@ -16,21 +16,21 @@ vi.mock("../../state", () => ({
 import { ConnectorQrPairingOverlay } from "./ConnectorQrPairingOverlay";
 
 const baseProps = {
-  connectorName: "Signal",
+  connectorName: "WhatsApp",
   qrDataUrl: null,
   phoneNumber: null,
   error: null,
   onStartPairing: vi.fn(),
   onStopPairing: vi.fn(),
   onDisconnect: vi.fn(),
-  idleDescription: "Pair Signal from Signal Desktop.",
-  connectLabel: "Connect Signal",
+  idleDescription: "Pair WhatsApp from your phone.",
+  connectLabel: "Connect WhatsApp",
   tryAgainLabel: "Try again",
   timeoutMessage: "Pairing timed out.",
   defaultErrorMessage: "Pairing failed.",
-  qrAlt: "Signal QR code",
+  qrAlt: "WhatsApp QR code",
   generatingLabel: "Generating QR…",
-  scanTitle: "Scan with Signal Desktop",
+  scanTitle: "Scan with WhatsApp",
   steps: [],
 };
 
@@ -43,12 +43,12 @@ describe("ConnectorQrPairingOverlay", () => {
   it("renders idle copy on the left and the primary connect action on the right", () => {
     render(<ConnectorQrPairingOverlay {...baseProps} status="idle" />);
 
-    const button = screen.getByRole("button", { name: "Connect Signal" });
+    const button = screen.getByRole("button", { name: "Connect WhatsApp" });
     const actionRail = button.parentElement;
 
     expect(button.className).toContain("bg-accent");
     expect(actionRail?.previousElementSibling?.textContent).toContain(
-      "Pair Signal from Signal Desktop.",
+      "Pair WhatsApp from your phone.",
     );
 
     fireEvent.click(button);

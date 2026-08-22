@@ -8,6 +8,7 @@
  */
 import {
 	ContentType,
+	ElizaError,
 	fetchRemoteMedia,
 	type IAgentRuntime,
 	type IMessageService,
@@ -19,6 +20,7 @@ import {
 	ModelType,
 	type ReplyToMode,
 	type SsrfPolicy,
+	toWellFormedUnicode,
 	trimTokens,
 	truncateWellFormed,
 } from "@elizaos/core";
@@ -664,7 +666,7 @@ export async function sendMessageInChunks(
 		for (let i = 0; i < messages.length; i++) {
 			const message = messages[i];
 			if (
-				message.trim().length > 0 ||
+				message.length > 0 ||
 				(i === messages.length - 1 && files && files.length > 0) ||
 				(i === messages.length - 1 && components && components.length > 0)
 			) {
@@ -672,7 +674,7 @@ export async function sendMessageInChunks(
 					return sentMessages;
 				}
 				const options: MessageSendOptions = {
-					content: message.trim(),
+					content: message,
 				};
 				if (fence) {
 					options.nonce = fence.nonceForChunk(i);
@@ -741,7 +743,7 @@ export async function sendMessageInChunks(
 	}
 
 	const attemptedSend =
-		content.trim().length > 0 ||
+		content.length > 0 ||
 		(files && files.length > 0) ||
 		(components && components.length > 0);
 	if (attemptedSend && sentMessages.length === 0) {
@@ -790,11 +792,27 @@ export async function smartSplitMessage(
 	content: string,
 	maxLength: number = MAX_MESSAGE_LENGTH,
 ): Promise<string[]> {
+	if (!Number.isSafeInteger(maxLength) || maxLength < 1) {
+		throw new ElizaError(
+			"Discord message chunk limit must be a positive safe integer",
+			{
+				code: "DISCORD_CHUNK_LIMIT_INVALID",
+				context: { maxLength },
+				severity: "fatal",
+			},
+		);
+	}
+	if (toWellFormedUnicode(content) !== content) {
+		throw new ElizaError("Discord message content contains invalid Unicode", {
+			code: "DISCORD_CONTENT_INVALID_UNICODE",
+			severity: "fatal",
+		});
+	}
 	if (content.length <= maxLength) {
-		return [content];
+		return content ? [content] : [];
 	}
 
-	const estimatedChunks = Math.ceil(content.length / (maxLength - 100));
+	const estimatedChunks = Math.ceil(content.length / maxLength);
 
 	try {
 		runtime.logger.debug(
@@ -817,27 +835,34 @@ Return format:
 
 		const parsed = parseJsonArrayFromText(response);
 		if (Array.isArray(parsed)) {
-			const validChunks = parsed.filter(
-				(chunk: unknown): chunk is string =>
-					typeof chunk === "string" &&
-					chunk.trim().length > 0 &&
-					chunk.length <= maxLength,
-			);
+			// Accept the model projection only as a whole. Whitespace is content too:
+			// reflowing it can change code, tables, quoted text, or intentional layout.
+			const allValid =
+				parsed.length > 0 &&
+				parsed.every(
+					(chunk: unknown): chunk is string =>
+						typeof chunk === "string" &&
+						chunk.length > 0 &&
+						chunk.length <= maxLength &&
+						toWellFormedUnicode(chunk) === chunk,
+				) &&
+				parsed.join("") === content;
 
-			if (validChunks.length > 0) {
-				return validChunks;
+			if (allValid) {
+				return parsed;
 			}
 
 			runtime.logger.debug(
-				"Smart split returned empty or invalid chunks, falling back to simple split",
+				"Smart split returned empty, oversized, or rewritten chunks, falling back to simple split",
 			);
 		}
 	} catch (error) {
+		// error-policy:J4 Model-assisted splitting is optional; the complete
+		// content remains available to the deterministic lossless path.
 		runtime.logger.debug(
 			`Smart split failed, falling back to simple split: ${error}`,
 		);
 	}
-
 	return splitMessage(content, maxLength);
 }
 
@@ -845,60 +870,58 @@ export function splitMessage(
 	content: string,
 	maxLength: number = MAX_MESSAGE_LENGTH,
 ): string[] {
-	if (!content || content.length <= maxLength) {
-		return content ? [content] : [];
+	if (!Number.isSafeInteger(maxLength) || maxLength < 1) {
+		throw new ElizaError(
+			"Discord message chunk limit must be a positive safe integer",
+			{
+				code: "DISCORD_CHUNK_LIMIT_INVALID",
+				context: { maxLength },
+				severity: "fatal",
+			},
+		);
+	}
+
+	if (toWellFormedUnicode(content) !== content) {
+		throw new ElizaError("Discord message content contains invalid Unicode", {
+			code: "DISCORD_CONTENT_INVALID_UNICODE",
+			severity: "fatal",
+		});
+	}
+
+	let remaining = content;
+	if (!remaining) {
+		return [];
+	}
+	if (remaining.length <= maxLength) {
+		return [remaining];
 	}
 
 	const messages: string[] = [];
-	let currentMessage = "";
-
-	const rawLines = content.split("\n");
-	const lines = rawLines.flatMap((line) => {
-		const chunks: string[] = [];
-		while (line.length > maxLength) {
-			let splitIdx = maxLength;
-			const lastSpace = line.lastIndexOf(" ", maxLength);
-
-			if (lastSpace > maxLength * 0.7) {
-				splitIdx = lastSpace;
-			} else if (lastSpace > maxLength * 0.3) {
-				splitIdx = lastSpace;
-			}
-
-			// A raw slice() can land between the two UTF-16 code units of a
-			// surrogate pair (most emoji), leaving a lone surrogate at the
-			// chunk boundary that corrupts the character in the delivered
-			// message. truncateWellFormed backs the cut off by one unit
-			// instead.
-			const head = truncateWellFormed(line, splitIdx);
-			if (head.length === 0) {
-				throw new RangeError(
-					"Discord message chunk limit made no UTF-16 progress",
-				);
-			}
-			chunks.push(head);
-			line = line.slice(head.length).trimStart();
+	while (remaining.length > 0) {
+		if (remaining.length <= maxLength) {
+			messages.push(remaining);
+			break;
 		}
-		chunks.push(line);
-		return chunks;
-	});
 
-	for (const line of lines) {
-		if (currentMessage.length + line.length + 1 > maxLength) {
-			if (currentMessage.trim().length > 0) {
-				messages.push(currentMessage.trim());
-			}
-			currentMessage = "";
+		const window = truncateWellFormed(remaining, maxLength);
+		if (window.length === 0) {
+			throw new ElizaError(
+				"Discord message chunk limit cannot hold the next Unicode character",
+				{
+					code: "DISCORD_CHUNK_LIMIT_TOO_SMALL",
+					context: { maxLength },
+					severity: "fatal",
+				},
+			);
 		}
-		currentMessage += `${line}\n`;
-	}
 
-	if (currentMessage.trim().length > 0) {
-		messages.push(currentMessage.trim());
-	}
-
-	if (messages.length === 0 && content.length > 0) {
-		messages.push(" ");
+		const boundary = Math.max(
+			window.lastIndexOf("\n"),
+			window.lastIndexOf(" "),
+		);
+		const cut = boundary > 0 ? boundary + 1 : window.length;
+		messages.push(remaining.slice(0, cut));
+		remaining = remaining.slice(cut);
 	}
 
 	return messages;

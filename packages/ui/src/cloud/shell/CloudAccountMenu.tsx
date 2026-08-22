@@ -6,6 +6,7 @@
 
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +15,6 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { useCloudT } from "./CloudI18nProvider";
-import { clearStaleStewardSession } from "./StewardProviderShared";
 
 export interface CloudAccountMenuProps {
   email: string | null;
@@ -36,8 +36,21 @@ export function CloudAccountMenu({
       await onSignOut();
       return;
     }
-    await clearStaleStewardSession();
-    navigate("/login", { replace: true });
+    try {
+      const { signOutFromSsoBridgedHost } = await import(
+        "../sso-bridge/sso-bridge"
+      );
+      await signOutFromSsoBridgedHost();
+      navigate("/login", { replace: true });
+    } catch {
+      // error-policy:J4 a failed canonical teardown stays on the authenticated
+      // surface and gives the user a retry instead of claiming sign-out.
+      toast.error(
+        t("cloud.userMenu.signOutFailed", {
+          defaultValue: "Could not sign out safely. Please try again.",
+        }),
+      );
+    }
   };
 
   return (
@@ -64,8 +77,8 @@ export function CloudAccountMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          className="text-red-400 focus:text-red-300"
-          onSelect={signOut}
+          className="text-red-400"
+          onSelect={() => void signOut()}
         >
           <LogOut className="mr-2 h-3.5 w-3.5" aria-hidden />
           {t("cloud.userMenu.signOut", { defaultValue: "Sign out" })}

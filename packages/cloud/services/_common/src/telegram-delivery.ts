@@ -19,6 +19,10 @@ export interface TelegramDeliveryLedger {
     chunkIndex: number,
     chunkDigest: string,
   ): Promise<TelegramDeliveryState | null>;
+  readChunkProviderMessageId(
+    chunkIndex: number,
+    chunkDigest: string,
+  ): Promise<string | null>;
   claimChunk(chunkIndex: number, chunkDigest: string): Promise<boolean>;
   releaseChunk(chunkIndex: number, chunkDigest: string): Promise<void>;
   markChunkDelivered(
@@ -32,6 +36,10 @@ export interface TelegramDeliveryLedger {
 export interface TelegramDeliveryHooks {
   prepare(chunks: readonly string[]): Promise<void>;
   shouldSend(chunkIndex: number, chunk: string): Promise<boolean>;
+  deliveredProviderMessageId(
+    chunkIndex: number,
+    chunk: string,
+  ): Promise<string | null>;
   accepted(
     chunkIndex: number,
     chunk: string,
@@ -109,6 +117,9 @@ export async function executeTelegramDelivery(
       }
       activeChunk = { index, digest };
       return true;
+    },
+    async deliveredProviderMessageId(index) {
+      return ledger.readChunkProviderMessageId(index, requireChunk(index));
     },
     async accepted(index, _chunk, providerMessageId) {
       const digest = requireChunk(index);

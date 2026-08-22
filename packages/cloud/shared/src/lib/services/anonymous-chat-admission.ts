@@ -75,9 +75,16 @@ export type AnonymousChatLeaseResolution =
     }
   | {
       kind: "limited";
-      reason: "message_limit" | "hourly_limit";
+      reason: "message_limit";
       remaining: number;
       limit: number;
+    }
+  | {
+      kind: "limited";
+      reason: "hourly_limit";
+      remaining: number;
+      limit: number;
+      retryAfter: number;
     }
   | { kind: "warming" }
   | { kind: "rejected" }
@@ -201,6 +208,16 @@ function parseSnapshot(value: unknown): AnonymousChatGateSnapshot | null {
     hourlyResetAtMs: snapshot.hourlyResetAtMs,
     lastMessageAtMs: snapshot.lastMessageAtMs,
   };
+}
+
+function positiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function positiveCanonicalInteger(value: string | null): number | null {
+  if (!value || !/^[1-9]\d*$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 async function hydrateGate(stub: RuntimeDurableObjectStub, sessionToken: string): Promise<void> {
@@ -351,8 +368,9 @@ export async function reserveAnonymousChatSlot(
     return { kind: "rejected" };
   }
   if (response.status === 429) {
+    const retryAfterHeader = positiveCanonicalInteger(response.headers.get("Retry-After"));
     if (
-      (body.reason === "message_limit" || body.reason === "hourly_limit") &&
+      body.reason === "message_limit" &&
       typeof body.remaining === "number" &&
       typeof body.limit === "number"
     ) {
@@ -361,6 +379,22 @@ export async function reserveAnonymousChatSlot(
         reason: body.reason,
         remaining: body.remaining,
         limit: body.limit,
+      };
+    }
+    if (
+      body.reason === "hourly_limit" &&
+      typeof body.remaining === "number" &&
+      typeof body.limit === "number" &&
+      positiveSafeInteger(body.retryAfter) &&
+      retryAfterHeader !== null &&
+      retryAfterHeader === body.retryAfter
+    ) {
+      return {
+        kind: "limited",
+        reason: body.reason,
+        remaining: body.remaining,
+        limit: body.limit,
+        retryAfter: body.retryAfter,
       };
     }
     return { kind: "unavailable" };

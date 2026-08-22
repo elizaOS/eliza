@@ -188,14 +188,48 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			document("query", "unrelated query"),
 		);
 		expect(result.text).toContain(PINNED_DOCUMENT_TRUNCATION_MARKER);
-		expect(result.text).not.toContain("X".repeat(100));
+		expect(result.text).toContain("X".repeat(100));
+		expect(result.text).toContain(`reference document:${oversized.id}`);
 		expect(result.data?.pinnedDocumentsTruncated).toBe(true);
-		expect(result.data?.pinnedDocumentIds).toEqual([]);
+		expect(result.data?.pinnedDocumentIds).toEqual([oversized.id]);
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ tokenBudget: 8_000 }),
 			expect.stringContaining("explicitly truncated"),
 		);
 		warn.mockRestore();
+	});
+
+	it("keeps fair pinned excerpts and wrappers inside the declared budget", () => {
+		const documents = Array.from({ length: 25 }, (_, index) =>
+			document(`${index}-${"title".repeat(80)}`, "X".repeat(40_000), true),
+		);
+		const rendered = renderPinnedDocuments(documents, 8_000);
+		expect(rendered.truncated).toBe(true);
+		expect(rendered.includedIds).toHaveLength(25);
+		expect(rendered.text.length).toBeLessThanOrEqual(32_000);
+		for (const item of documents) {
+			expect(rendered.text).toContain(`reference document:${item.id}`);
+		}
+	});
+
+	it("preserves complete pinned titles and rejects identity-only overflow", () => {
+		const longTitle = `critical-${"owner-authored-title-".repeat(20)}`;
+		const rendered = renderPinnedDocuments(
+			[document(longTitle, "complete source", true)],
+			8_000,
+		);
+		expect(rendered.text).toContain(longTitle);
+
+		expect(() =>
+			renderPinnedDocuments(
+				[document(`critical-${"X".repeat(40_000)}`, "source", true)],
+				8_000,
+			),
+		).toThrowError(
+			expect.objectContaining({
+				code: "PINNED_DOCUMENT_IDENTITY_BUDGET_EXCEEDED",
+			}),
+		);
 	});
 
 	it("rejects repeating pagination cursors when listing pinned documents", async () => {

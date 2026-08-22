@@ -10,6 +10,7 @@ import {
 	drainRoomPostDeliveryTasks,
 	pendingPostDeliveryTaskCount,
 	pendingRoomPostDeliveryTaskCount,
+	postDeliveryTaskQuarantineReason,
 	trackPostDeliveryTask,
 } from "./post-delivery-task-tracker.ts";
 
@@ -55,6 +56,133 @@ describe("post-delivery task tracker", () => {
 			expect.objectContaining({ label: "broken" }),
 		);
 		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+	});
+
+	it("does not quarantine an idle runtime for a pre-aborted drain", async () => {
+		const runtime = runtimeStub();
+		const controller = new AbortController();
+		controller.abort(new Error("owner no longer needs to wait"));
+
+		await expect(
+			drainPostDeliveryTasks(runtime, { signal: controller.signal }),
+		).resolves.toBe(0);
+		expect(postDeliveryTaskQuarantineReason(runtime)).toBeUndefined();
+
+		const reused = trackPostDeliveryTask(
+			runtime,
+			"reuse-after-idle-abort",
+			async () => undefined,
+		);
+		await expect(drainPostDeliveryTasks(runtime)).resolves.toBe(1);
+		await reused;
+		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+	});
+
+	it("cancels cooperative work and quarantines uncooperative work", async () => {
+		const runtime = runtimeStub();
+		const privateAbortReason = "private abort reason must not escape";
+		let cooperativeAborted = false;
+		let releaseUncooperative!: () => void;
+		const cooperative = trackPostDeliveryTask(
+			runtime,
+			"cooperative",
+			async (signal) => {
+				await new Promise<void>((_resolve, reject) => {
+					signal.addEventListener(
+						"abort",
+						() => {
+							cooperativeAborted = true;
+							reject(signal.reason);
+						},
+						{ once: true },
+					);
+				});
+			},
+		);
+		const uncooperative = trackPostDeliveryTask(
+			runtime,
+			"uncooperative",
+			async () => {
+				await new Promise<void>((resolve) => {
+					releaseUncooperative = resolve;
+				});
+			},
+		);
+		const controller = new AbortController();
+		const draining = drainPostDeliveryTasks(runtime, {
+			signal: controller.signal,
+		});
+		await Promise.resolve();
+		controller.abort(new Error(privateAbortReason));
+
+		let drainError: unknown;
+		try {
+			await draining;
+		} catch (error) {
+			drainError = error;
+		}
+		expect(drainError).toMatchObject({
+			code: "POST_DELIVERY_DRAIN_CANCELLED",
+			context: { reason: "post-delivery drain was cancelled" },
+		});
+		expect(cooperativeAborted).toBe(true);
+		await cooperative;
+		expect(postDeliveryTaskQuarantineReason(runtime)).toBe(
+			"post-delivery drain was cancelled",
+		);
+		expect(String(drainError)).not.toContain(privateAbortReason);
+		expect(
+			runtime.reportError.mock.calls.some((call) =>
+				call.some((value) => String(value).includes(privateAbortReason)),
+			),
+		).toBe(false);
+		expect(pendingPostDeliveryTaskCount(runtime)).toBe(1);
+		await expect(drainPostDeliveryTasks(runtime)).rejects.toMatchObject({
+			code: "POST_DELIVERY_DRAIN_CANCELLED",
+		});
+		expect(() =>
+			trackPostDeliveryTask(runtime, "late", async () => undefined),
+		).toThrowError(
+			expect.objectContaining({ code: "POST_DELIVERY_RUNTIME_QUARANTINED" }),
+		);
+		releaseUncooperative();
+		await uncooperative;
+		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+	});
+
+	it("retains quarantine membership when cancellation has an empty message", async () => {
+		const runtime = runtimeStub();
+		let releaseUncooperative!: () => void;
+		const uncooperative = trackPostDeliveryTask(
+			runtime,
+			"empty-message-uncooperative",
+			async () =>
+				new Promise<void>((resolve) => {
+					releaseUncooperative = resolve;
+				}),
+		);
+		const controller = new AbortController();
+		const draining = drainPostDeliveryTasks(runtime, {
+			signal: controller.signal,
+		});
+		await Promise.resolve();
+		controller.abort(new Error());
+
+		await expect(draining).rejects.toMatchObject({
+			code: "POST_DELIVERY_DRAIN_CANCELLED",
+			context: { reason: "post-delivery drain was cancelled" },
+		});
+		expect(postDeliveryTaskQuarantineReason(runtime)).toBe(
+			"post-delivery drain was cancelled",
+		);
+		expect(() =>
+			trackPostDeliveryTask(runtime, "late", async () => undefined),
+		).toThrowError(
+			expect.objectContaining({ code: "POST_DELIVERY_RUNTIME_QUARANTINED" }),
+		);
+
+		releaseUncooperative();
+		await uncooperative;
 	});
 
 	it("treats unclassified room work as state-bearing and drains it before ownership ends", async () => {
