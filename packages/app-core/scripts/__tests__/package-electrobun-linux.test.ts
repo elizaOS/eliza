@@ -21,6 +21,7 @@ import {
   findElectrobunLauncher,
   renderLinuxLauncherWrapper,
   resolveLinuxPackageFormats,
+  stageAppImageMetadata,
   stagePackageRoot,
   withStagingCleanup,
 } from "../package-electrobun-linux.mjs";
@@ -228,6 +229,50 @@ describe("direct Debian payload hardening", () => {
     expect(findElectrobunLauncher(buildDir)).toBe(
       path.join(binDir, "launcher"),
     );
+  });
+
+  it("stages AppImage metadata and normalized export modes", () => {
+    const appDir = tempDir();
+    const desktopDir = path.join(appDir, "usr/share/applications");
+    mkdirSync(desktopDir, { recursive: true });
+    writeFileSync(
+      path.join(desktopDir, "eliza.desktop"),
+      "[Desktop Entry]\nExec=eliza\n",
+      { mode: 0o664 },
+    );
+
+    stageAppImageMetadata(appDir);
+
+    const appRun = path.join(appDir, "AppRun");
+    const desktop = path.join(appDir, "ai.elizaos.eliza.desktop");
+    const icon = path.join(appDir, "eliza.png");
+    const metainfo = path.join(
+      appDir,
+      "usr/share/metainfo/ai.elizaos.eliza.appdata.xml",
+    );
+    expect(readFileSync(appRun, "utf8")).toBe(
+      [
+        "#!/usr/bin/env sh",
+        'HERE="$(dirname "$(readlink -f "$0")")"',
+        `exec "$HERE"/'opt/eliza/bin/launcher' "$@"`,
+        "",
+      ].join("\n"),
+    );
+    expect(readFileSync(metainfo, "utf8")).toContain(
+      '<launchable type="desktop-id">ai.elizaos.eliza.desktop</launchable>',
+    );
+    expect(statSync(appRun).mode & 0o777).toBe(0o755);
+    expect(statSync(desktop).mode & 0o777).toBe(0o644);
+    expect(
+      existsSync(path.join(appDir, "usr/share/applications/eliza.desktop")),
+    ).toBe(false);
+    expect(
+      statSync(
+        path.join(appDir, "usr/share/applications/ai.elizaos.eliza.desktop"),
+      ).mode & 0o777,
+    ).toBe(0o644);
+    expect(statSync(icon).mode & 0o777).toBe(0o644);
+    expect(statSync(metainfo).mode & 0o777).toBe(0o644);
   });
 
   it.runIf(hasDpkgDeb)(

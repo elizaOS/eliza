@@ -15,6 +15,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -169,7 +170,7 @@ function writeDesktopFile(dest, execName = namespace) {
       `Exec=${execName}`,
       `Icon=${namespace}`,
       "Terminal=false",
-      "Categories=Utility;Network;",
+      "Categories=Network;",
       "",
     ].join("\n"),
     { mode: 0o644 },
@@ -185,6 +186,81 @@ function posixShellQuote(value) {
 
 export function renderLinuxLauncherWrapper(absoluteExecutable) {
   return `#!/usr/bin/env sh\nexec ${posixShellQuote(absoluteExecutable)} "$@"\n`;
+}
+
+function escapeXml(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+export function stageAppImageMetadata(
+  appDir,
+  relativeExecutable = "bin/launcher",
+) {
+  const appStreamId = `ai.elizaos.${namespace}`;
+  const appImageDesktopId = `${appStreamId}.desktop`;
+  const stagedDesktopPath = path.join(
+    appDir,
+    `usr/share/applications/${namespace}.desktop`,
+  );
+  const installedDesktopPath = path.join(
+    appDir,
+    `usr/share/applications/${appImageDesktopId}`,
+  );
+  const desktopPath = path.join(appDir, appImageDesktopId);
+  renameSync(stagedDesktopPath, installedDesktopPath);
+  chmodSync(installedDesktopPath, 0o644);
+  copyFileSync(installedDesktopPath, desktopPath);
+  chmodSync(desktopPath, 0o644);
+
+  if (existsSync(iconPath)) {
+    const appImageIcon = path.join(appDir, `${namespace}.png`);
+    copyFileSync(iconPath, appImageIcon);
+    chmodSync(appImageIcon, 0o644);
+  }
+
+  const metainfoDir = path.join(appDir, "usr/share/metainfo");
+  mkdirSync(metainfoDir, { recursive: true });
+  const metainfoPath = path.join(metainfoDir, `${appStreamId}.appdata.xml`);
+  writeFileSync(
+    metainfoPath,
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<component type="desktop-application">',
+      `  <id>${appStreamId}</id>`,
+      `  <name>${escapeXml(displayName)}</name>`,
+      `  <summary>Your ${escapeXml(displayName)}, everywhere</summary>`,
+      "  <metadata_license>CC0-1.0</metadata_license>",
+      "  <project_license>MIT</project_license>",
+      '  <developer id="ai.elizaos"><name>elizaOS</name></developer>',
+      `  <launchable type="desktop-id">${appImageDesktopId}</launchable>`,
+      "  <description>",
+      `    <p>The ${escapeXml(displayName)} desktop app brings chat, account setup, connected devices, and remote runtimes together in one native Linux experience.</p>`,
+      "  </description>",
+      '  <url type="homepage">https://elizaos.ai</url>',
+      '  <url type="bugtracker">https://github.com/elizaOS/eliza/issues</url>',
+      '  <content_rating type="oars-1.1" />',
+      "</component>",
+      "",
+    ].join("\n"),
+    { mode: 0o644 },
+  );
+  writeFileSync(
+    path.join(appDir, "AppRun"),
+    [
+      "#!/usr/bin/env sh",
+      'HERE="$(dirname "$(readlink -f "$0")")"',
+      `exec "$HERE"/${posixShellQuote(
+        path.posix.join(optDir, relativeExecutable.split(path.sep).join("/")),
+      )} "$@"`,
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
 }
 
 export function debArchiveBuildArgs(packageRoot, outputPath) {
@@ -237,6 +313,7 @@ export async function stagePackageRoot(buildDir, destRoot) {
       0o644,
     );
   }
+  return relativeExecutable;
 }
 
 async function buildDeb(buildDir) {
@@ -323,18 +400,8 @@ async function buildRpm(buildDir) {
 async function buildAppImage(buildDir) {
   const appDir = path.join(os.tmpdir(), `${displayName}.AppDir-${process.pid}`);
   return withStagingCleanup(appDir, async () => {
-    await stagePackageRoot(buildDir, appDir);
-    copyFileSync(
-      path.join(appDir, `usr/share/applications/${namespace}.desktop`),
-      path.join(appDir, `${namespace}.desktop`),
-    );
-    if (existsSync(iconPath))
-      copyFileSync(iconPath, path.join(appDir, `${namespace}.png`));
-    writeFileSync(
-      path.join(appDir, "AppRun"),
-      `#!/usr/bin/env sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/${namespace}" "$@"\n`,
-      { mode: 0o755 },
-    );
+    const relativeExecutable = await stagePackageRoot(buildDir, appDir);
+    stageAppImageMetadata(appDir, relativeExecutable);
 
     const tool = path.join(os.tmpdir(), "appimagetool-x86_64.AppImage");
     if (!existsSync(tool)) {
