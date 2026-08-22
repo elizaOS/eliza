@@ -1088,13 +1088,7 @@ export class FamilyCommunicationsRuntimeService extends Service {
       runtime.getServiceLoadPromise(
         FAMILY_COMMUNICATIONS_SPEAKER_VERIFIER_SERVICE,
       ),
-      // 120s window: heavy boots on the live box (cold caches, many
-      // workspace plugins) register the deferred runner after the default 30s
-      // and this service failed for the whole process lifetime (live
-      // 2026-08-19, 2 of ~15 boots).
-      waitForScheduledTaskRunnerService(runtime, {
-        registrationTimeoutMs: 120_000,
-      }),
+      waitForScheduledTaskRunnerService(runtime),
     ]);
     const service = new FamilyCommunicationsRuntimeService(runtime);
     await service.family.initialize();

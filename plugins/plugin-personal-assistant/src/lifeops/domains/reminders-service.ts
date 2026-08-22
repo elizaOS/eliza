@@ -18,6 +18,7 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import {
+  ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
@@ -151,10 +152,7 @@ import {
   type ProcessDueScheduledTasksResult,
   processDueScheduledTasks,
 } from "../scheduled-task/scheduler.js";
-import {
-  getScheduledTaskRunner,
-  ScheduledTaskRunnerService,
-} from "../scheduled-task/service.js";
+import { getScheduledTaskRunner } from "../scheduled-task/service.js";
 import { isMissingLifeOpsRelationError } from "../scheduler-task.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
@@ -362,6 +360,8 @@ type ReminderAttemptLifecycle = "plan" | "escalation";
 export type LifeOpsScheduledWorkSubsystemFailure = {
   subsystem: string;
   error: string;
+  /** Stable machine-readable cause when the boundary threw an ElizaError. */
+  code?: string;
 };
 
 type RuntimeOwnerContactResolution = {
@@ -5633,6 +5633,7 @@ export class RemindersDomain {
         subsystemFailures.push({
           subsystem,
           error: error instanceof Error ? error.message : String(error),
+          ...(error instanceof ElizaError ? { code: error.code } : {}),
         });
         return fallback;
       }
@@ -5822,26 +5823,17 @@ export class RemindersDomain {
       pendingPrompts: [],
       errors: [],
     };
-    // Boot-order race, not a wiring bug: the first tick(s) can run before the
-    // deferred plugin-scheduling registration lands (~2s). Skip quietly; the
-    // next tick has the runner. A genuinely missing plugin still surfaces via
-    // getScheduledTaskRunner's throw on every later tick's direct callers.
-    const runnerRegistered =
-      this.ctx.runtime.getService(ScheduledTaskRunnerService.serviceType) !==
-      null;
-    const scheduledTaskResult = runnerRegistered
-      ? await runSubsystem("scheduled_tasks", scheduledTaskFallback, () =>
-          processDueScheduledTasks({
-            runtime: this.ctx.runtime,
-            agentId: this.ctx.agentId(),
-            now,
-            limit: scheduledTaskLimit,
-          }),
-        )
-      : (logger.debug(
-          "[RemindersDomain] scheduled-task runner not registered yet; skipping scheduled_tasks this tick",
-        ),
-        scheduledTaskFallback);
+    const scheduledTaskResult = await runSubsystem(
+      "scheduled_tasks",
+      scheduledTaskFallback,
+      () =>
+        processDueScheduledTasks({
+          runtime: this.ctx.runtime,
+          agentId: this.ctx.agentId(),
+          now,
+          limit: scheduledTaskLimit,
+        }),
+    );
     await runSubsystem("sleep_cycle_checkins", undefined, () =>
       this.processSleepCycleCheckins({
         now,

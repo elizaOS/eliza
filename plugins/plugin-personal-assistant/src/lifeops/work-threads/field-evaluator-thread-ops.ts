@@ -364,40 +364,6 @@ async function threadOpsHandle(
     debug.push(
       `abort: room=${roomId || "<none>"} aborted=${aborted ? "yes" : "no"} reason=${reason}`,
     );
-    // A cancel aimed at DURABLE work ("cancel all your running coding tasks")
-    // needs the planner: cancelling durable tasks/agents is a TASKS operation,
-    // and ack-and-stop killed exactly the leg that would run it — the user
-    // got "Stopped" while every durable task kept running (live 2026-08-18).
-    // Keep the in-flight-turn abort above, but route this turn to the planner
-    // with the tasks surface instead of preempting.
-    const messageText =
-      typeof ctx.message.content?.text === "string"
-        ? ctx.message.content.text
-        : "";
-    if (/\b(?:tasks?|(?:sub[- ]?)?agents?|jobs?)\b/i.test(messageText)) {
-      debug.push(
-        "abort targets durable work: routing to planner for TASKS cancel",
-      );
-      return {
-        mutateResult: (result) => {
-          result.shouldRespond = "RESPOND";
-          if (!Array.isArray(result.candidateActionNames)) {
-            result.candidateActionNames = [];
-          }
-          for (const name of ["TASKS", "TASKS_CANCEL"]) {
-            if (!result.candidateActionNames.includes(name)) {
-              result.candidateActionNames.push(name);
-            }
-          }
-          if (!Array.isArray(result.contexts)) result.contexts = [];
-          result.contexts = result.contexts.filter((c) => c !== "simple");
-          if (!result.contexts.includes("code")) {
-            result.contexts = [...result.contexts, "code"];
-          }
-        },
-        debug,
-      };
-    }
     // Stage a short ack reply. The preempt below ensures we skip planner.
     return {
       mutateResult: (result) => {
