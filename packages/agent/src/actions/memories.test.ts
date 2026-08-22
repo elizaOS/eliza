@@ -59,21 +59,45 @@ function makeRuntime(options?: {
       roomId?: UUID;
       entityId?: UUID;
       limit?: number;
+      cursor?: { createdAt: number; id: UUID };
     }) => {
       assertUuidOrThrowLikeDrizzle(params.roomId, "roomId");
       assertUuidOrThrowLikeDrizzle(params.entityId, "entityId");
-      const matching = rows
+      let matching = rows
         .filter((row) => row.tableName === params.tableName)
         .filter((row) => !params.roomId || row.memory.roomId === params.roomId)
         .filter(
           (row) => !params.entityId || row.memory.entityId === params.entityId,
         )
-        .map((row) => row.memory);
-      // The SQL adapter returns at most `limit` rows, newest first. Ignoring
-      // the cap here would hide the windowed read that MEMORY op:search does.
+        .map((row) => row.memory)
+        .sort(
+          (left, right) =>
+            (right.createdAt ?? 0) - (left.createdAt ?? 0) ||
+            String(right.id).localeCompare(String(left.id)),
+        );
+      if (params.cursor) {
+        matching = matching.filter((memory) => {
+          const createdAt = memory.createdAt ?? 0;
+          if (createdAt !== params.cursor?.createdAt) {
+            return createdAt < (params.cursor?.createdAt ?? 0);
+          }
+          return String(memory.id) < String(params.cursor.id);
+        });
+      }
       if (params.limit == null) return matching;
-      return matching.slice(-params.limit).reverse();
+      return matching.slice(0, params.limit);
     },
+    countMemories: async (params: {
+      tableName?: string;
+      roomId?: UUID;
+      agentId?: UUID;
+    }) =>
+      rows
+        .filter((row) => row.tableName === (params.tableName ?? "messages"))
+        .filter((row) => !params.roomId || row.memory.roomId === params.roomId)
+        .filter(
+          (row) => !params.agentId || row.memory.agentId === params.agentId,
+        ).length,
     getMemoryById: async (memoryId: UUID) => {
       assertUuidOrThrowLikeDrizzle(memoryId, "id");
       return rows.find((row) => row.memory.id === memoryId)?.memory ?? null;
@@ -570,14 +594,8 @@ describe("MEMORY op:delete by query", () => {
   });
 });
 
-describe("MEMORY op:search windowed-read disclosure", () => {
-  // op:search reads only the most recent max(limit*2, 200) rows per memory
-  // table and filters that window in memory, so its surviving count is a
-  // count of matches INSIDE the window. Printing it as "(total: N)" made
-  // "what do you remember about my sister?" answer "Found 0 memory item(s)
-  // (total: 0)" — read as "nothing is stored about her" — when the fact was
-  // simply older than the 200-row window.
-  it("does not call a windowed match count a total when the window filled up", async () => {
+describe("MEMORY op:search complete traversal", () => {
+  it("finds a matching fact older than the former 200-row window", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "my sister is named vega", entityId: USER_ID });
     for (let i = 0; i < 250; i++) {
@@ -590,22 +608,15 @@ describe("MEMORY op:search windowed-read disclosure", () => {
     });
 
     const text = String(result.text ?? "");
-    expect(text).not.toContain("total:");
-    expect(text).toContain("older rows were NOT scanned");
-    expect(text).toContain("not a total");
-    expect(text).toContain("facts");
+    expect(text).toContain("my sister is named vega");
+    expect(text).toContain("Scanned all 251 stored row(s)");
     expect(result.values).toMatchObject({
-      matchedInWindow: 0,
-      scanWindowSaturated: true,
+      totalMatches: 1,
+      scanned: 251,
     });
   });
 
-  // The boundary between the two cases above. A table holding EXACTLY the
-  // window size fills it without hiding anything, so it is indistinguishable
-  // from a truncated one by row count alone. Saturation is measured by reading
-  // one row past the window; inferring it from a full page would tell this
-  // reader that older rows went unscanned when there are none.
-  it("does not claim rows were cut when the table exactly fills the window", async () => {
+  it("reports a complete empty result when every row was considered", async () => {
     const { runtime, rows } = makeRuntime();
     // perTable = max(limit * 2, 200); the default limit is 50, so 200.
     for (let i = 0; i < 200; i++) {
@@ -618,24 +629,9 @@ describe("MEMORY op:search windowed-read disclosure", () => {
     });
 
     const text = String(result.text ?? "");
-    expect(text).not.toContain("older rows were NOT scanned");
-    expect(text).toContain("every stored row in the scanned tables");
-    expect(result.values).toMatchObject({ scanWindowSaturated: false });
-  });
-
-  it("states that every stored row was inside the window when nothing was cut", async () => {
-    const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "the user plays guitar", entityId: USER_ID });
-
-    const result = await runAction(runtime, makeMessage(), {
-      action: "search",
-      query: "unicycle",
-    });
-
-    const text = String(result.text ?? "");
-    expect(text).toContain("every stored row in the scanned tables");
-    expect(text).not.toContain("older rows were NOT scanned");
-    expect(result.values).toMatchObject({ scanWindowSaturated: false });
+    expect(text).toContain("Showing all 0 match(es)");
+    expect(text).toContain("Scanned all 200 stored row(s)");
+    expect(result.values).toMatchObject({ totalMatches: 0, scanned: 200 });
   });
 
   it("reports every rendered match when no result cap applies", async () => {
@@ -655,7 +651,84 @@ describe("MEMORY op:search windowed-read disclosure", () => {
     expect(text.split("\n").filter((l) => l.startsWith("- ["))).toHaveLength(
       30,
     );
-    expect(result.values).toMatchObject({ rendered: 30, matchedInWindow: 30 });
+    expect(result.values).toMatchObject({ rendered: 30, totalMatches: 30 });
+  });
+
+  it("rejects a repeated full page instead of returning partial memories", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 500; i++) {
+      seedFact(rows, { text: `memory ${i}`, entityId: USER_ID });
+    }
+    const firstPage = await runtime.getMemories({
+      tableName: "facts",
+      limit: 500,
+    });
+    runtime.getMemories = async ({ tableName }) =>
+      tableName === "facts" ? firstPage : [];
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "memory",
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_TRAVERSAL_REPEATED_ROW",
+    );
+  });
+
+  it("rejects an inventory that changes between traversal passes", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "stable memory", entityId: USER_ID });
+    const originalCount = runtime.countMemories.bind(runtime);
+    let factsCountCalls = 0;
+    runtime.countMemories = async (params) => {
+      const count = await originalCount(params);
+      if (params.tableName !== "facts") return count;
+      factsCountCalls += 1;
+      return factsCountCalls === 1 ? count : count + 1;
+    };
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "stable",
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_TRAVERSAL_INVENTORY_CHANGED",
+    );
+  });
+
+  it("rejects content mutation between complete traversal passes", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "stable memory", entityId: USER_ID });
+    const originalGetMemories = runtime.getMemories.bind(runtime);
+    let factsCalls = 0;
+    runtime.getMemories = async (params) => {
+      const memories = await originalGetMemories(params);
+      if (params.tableName !== "facts") return memories;
+      factsCalls += 1;
+      return factsCalls === 2
+        ? memories.map((memory) => ({
+            ...memory,
+            content: { ...memory.content, text: "changed memory" },
+          }))
+        : memories;
+    };
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "stable",
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_TRAVERSAL_INVENTORY_CHANGED",
+    );
   });
 });
 
@@ -708,7 +781,7 @@ describe("MEMORY routing aliases", () => {
 });
 
 describe("MEMORY op:search rendered text", () => {
-  it("preserves the complete text of each windowed hit", async () => {
+  it("preserves the complete text of each hit", async () => {
     const { runtime, rows } = makeRuntime();
     const head = "CORRECTION (2026-08-18): the user's earlier claim was ";
     const operative =
@@ -729,7 +802,7 @@ describe("MEMORY op:search rendered text", () => {
     expect(result.promptData).toMatchObject({
       actionName: "MEMORY",
       op: "search",
-      matchedInWindow: 1,
+      totalMatches: 1,
       rendered: 1,
     });
     expect(result.promptData).not.toHaveProperty("memories");
