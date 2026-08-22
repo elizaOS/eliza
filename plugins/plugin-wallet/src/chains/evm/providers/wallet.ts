@@ -25,6 +25,7 @@ import type {
   Address,
   Chain,
   HttpTransport,
+  HttpTransportConfig,
   PrivateKeyAccount,
   PublicClient,
   TestClient,
@@ -72,6 +73,67 @@ function headersWithoutAuthorization(headersInit?: HeadersInit): Headers {
 
 /** Viem aborts the underlying HTTP request when this network deadline expires. */
 const WALLET_RPC_FETCH_TIMEOUT_MS = 4000;
+
+function walletHttpTransport(url: string, config: HttpTransportConfig = {}): HttpTransport {
+  const base = http(url, config);
+  const protectedTransport: HttpTransport = (transportConfig) => {
+    const transport = base(transportConfig);
+    const protectedRequest: typeof transport.request = async (request, options) => {
+      try {
+        return await transport.request(request, options);
+      } catch (error) {
+        // error-policy:J1 raw signed transactions are secret-bearing request
+        // bytes, so this public wallet boundary emits a typed stable failure
+        // without retaining the unsafe viem cause or request-body metadata.
+        if (request.method === "eth_sendRawTransaction") {
+          throw sanitizeRawTransactionSubmissionError(error);
+        }
+        throw error;
+      }
+    };
+    return {
+      ...transport,
+      config: { ...transport.config, request: protectedRequest },
+      request: protectedRequest,
+    };
+  };
+  return protectedTransport;
+}
+
+function sanitizeRawTransactionSubmissionError(error: unknown): EVMError {
+  const messages: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth += 1) {
+    messages.push(current.message);
+    current = current.cause;
+  }
+  const diagnostic = messages.join("\n");
+  if (diagnostic.includes("Insufficient funds for transaction value")) {
+    return new EVMError(
+      EVMErrorCode.INSUFFICIENT_FUNDS,
+      "Insufficient funds for transaction value"
+    );
+  }
+  if (diagnostic.includes("Expected non-empty, even-length raw transaction bytes")) {
+    return new EVMError(
+      EVMErrorCode.INVALID_PARAMS,
+      "Expected non-empty, even-length raw transaction bytes"
+    );
+  }
+  if (diagnostic.includes("Invalid signed transaction encoding")) {
+    return new EVMError(EVMErrorCode.INVALID_PARAMS, "Invalid signed transaction encoding");
+  }
+  if (diagnostic.includes("Invalid signed transaction signature")) {
+    return new EVMError(EVMErrorCode.INVALID_PARAMS, "Invalid signed transaction signature");
+  }
+  if (diagnostic.includes("Wrong chain ID")) {
+    return new EVMError(EVMErrorCode.INVALID_PARAMS, "Wrong chain ID");
+  }
+  if (diagnostic.includes("Invalid nonce:")) {
+    return new EVMError(EVMErrorCode.INVALID_PARAMS, "Invalid transaction nonce");
+  }
+  return new EVMError(EVMErrorCode.NETWORK_ERROR, "Raw transaction submission failed");
+}
 
 function isRetryableManagedRpcStatus(status: number): boolean {
   return (
@@ -292,13 +354,13 @@ export class WalletProvider {
         fallbackRpcUrl &&
         this._cloudRpcDisabled.has(chainName)
       ) {
-        return http(fallbackRpcUrl, {
+        return walletHttpTransport(fallbackRpcUrl, {
           timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
           retryCount: 0,
         });
       }
 
-      return http(managedRpc.rpcUrl, {
+      return walletHttpTransport(managedRpc.rpcUrl, {
         timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
         retryCount: 0,
         fetchFn:
@@ -351,12 +413,12 @@ export class WalletProvider {
 
     const customRpc = chain.rpcUrls.custom;
     if (customRpc) {
-      return http(customRpc.http[0], {
+      return walletHttpTransport(customRpc.http[0], {
         timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
         retryCount: 0,
       });
     }
-    return http(chain.rpcUrls.default.http[0], {
+    return walletHttpTransport(chain.rpcUrls.default.http[0], {
       timeout: WALLET_RPC_FETCH_TIMEOUT_MS,
       retryCount: 0,
     });

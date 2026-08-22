@@ -321,6 +321,8 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
   test("bounds request admission and never reflects raw transactions or credentials", async () => {
     const bearerToken = "BOUNDARY_BEARER_SECRET_7f92";
     const mock = await startMock({}, bearerToken);
+    const account = privateKeyToAccount(generatePrivateKey());
+    const walletClient = providerFor(mock.url, account, bearerToken).getWalletClient("base");
     const rpc = (
       body: BodyInit,
       headers: Record<string, string> = { "content-type": "application/json" }
@@ -376,6 +378,18 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
     expect(invalidTransactionBody).toContain("Invalid signed transaction encoding");
     expect(invalidTransactionBody).not.toContain(distinctiveRaw);
     expect(invalidTransactionBody).not.toContain(bearerToken);
+
+    let clientFailure = "";
+    try {
+      await walletClient.sendRawTransaction({
+        serializedTransaction: distinctiveRaw as `0x02${string}`,
+      });
+    } catch (error) {
+      clientFailure = error instanceof Error ? error.message : String(error);
+    }
+    expect(clientFailure).toContain("Invalid signed transaction encoding");
+    expect(clientFailure).not.toContain(distinctiveRaw);
+    expect(clientFailure).not.toContain(bearerToken);
 
     const serializedReadback = JSON.stringify(mock.store.readback());
     expect(mock.store.readback().transactions).toEqual([]);

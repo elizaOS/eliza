@@ -99,6 +99,9 @@ HTTP transports at the resettable Base simulator exported by
 balance, nonce, and call reads; ephemeral local signing and raw submission;
 deduplication; deterministic mining/time; effect-backed and reverted receipts;
 reorg rollback/re-inclusion; faults; reset isolation; and redacted readback.
+`WalletProvider` also translates raw-transaction submission failures into
+stable typed EVM errors so viem cannot include signed request bytes or provider
+credentials in public error messages.
 It does not claim contract execution, gas accounting, multichain coverage, or a
 real-provider transaction.
 
