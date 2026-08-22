@@ -36,13 +36,21 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 function parsePositiveInteger(value: unknown, fallback: number): number {
-	const parsed = Number.parseInt(String(value ?? ""), 10);
-	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+	// `Number.parseInt` stops at the first non-digit, so "2junk" parsed to a
+	// finite, positive 2 and was accepted as a deliberate setting instead of
+	// falling back. Require the whole trimmed value to be decimal.
+	const text = String(value ?? "").trim();
+	const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function parseNonNegativeInteger(value: unknown, fallback: number): number {
-	const parsed = Number.parseInt(String(value ?? ""), 10);
-	return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+	// `Number.parseInt` stops at the first non-digit, so "2junk" parsed to a
+	// finite, non-negative 2 and was accepted as a deliberate setting instead of
+	// falling back. Require the whole trimmed value to be decimal.
+	const text = String(value ?? "").trim();
+	const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+	return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function normalizeOptionalUuid(value: unknown): UUID | undefined {
