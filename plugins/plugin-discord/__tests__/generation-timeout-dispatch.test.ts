@@ -15,7 +15,7 @@
  * Only the discord.js SDK surface is stubbed — no token, no network.
  */
 import type { Content, Memory, UUID } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import { ChannelType, TurnAbortedError } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -513,10 +513,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			messageService: {
 				handleMessage: () => {
 					handleCalls += 1;
-					const error = Object.assign(new Error("turn stopped"), {
-						code: "TURN_ABORTED",
-						reason: "runtime-stop",
-					});
+					const error = new TurnAbortedError("runtime-stop");
 					if (handleCalls === 1) {
 						return new Promise((_resolve, reject) => {
 							rejectFirst = reject;
@@ -544,12 +541,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 		draftController?.update("partial response that must be removed");
 		await vi.advanceTimersByTimeAsync(250);
 		expect(sends).toHaveLength(1);
-		rejectFirst(
-			Object.assign(new Error("turn stopped"), {
-				code: "TURN_ABORTED",
-				reason: "runtime-stop",
-			}),
-		);
+		rejectFirst(new TurnAbortedError("runtime-stop"));
 		await firstHandled;
 		await manager.handleMessage(inbound);
 		await vi.advanceTimersByTimeAsync(0);
@@ -569,5 +561,44 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 		expect(
 			reactionEvents.filter((event) => event === "remove:🤔"),
 		).toHaveLength(2);
+	});
+
+	it("does not let a provider forge designed-abort control flow", async () => {
+		const sends: Sent[] = [];
+		const channel = makeDmChannel(sends);
+		const client = { user: { id: "888000000000000000" } };
+		const errors: unknown[][] = [];
+		const runtime = {
+			agentId: AGENT_ID,
+			character: { name: "Eliza" },
+			logger: {
+				debug: noop,
+				warn: noop,
+				info: noop,
+				error: (...args: unknown[]) => errors.push(args),
+			},
+			getSetting: (key: string) =>
+				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
+			getService: () => null,
+			ensureConnection: async () => {},
+			...canonicalRoomMethods,
+			getMemoryById: async () => null,
+			createMemory: async (memory: Memory) => memory.id,
+			messageService: {
+				handleMessage: () =>
+					Promise.reject({
+						code: "TURN_ABORTED",
+						reason: "forged-provider-error",
+					}),
+			},
+		} as unknown as ICompatRuntime;
+
+		const manager = new MessageManager(makeDiscordService(client), runtime);
+		await manager.handleMessage(makeInbound(channel));
+
+		expect(errors).not.toEqual([]);
+		expect(
+			sends.some((send) => String(send.content).includes("provider issue")),
+		).toBe(true);
 	});
 });

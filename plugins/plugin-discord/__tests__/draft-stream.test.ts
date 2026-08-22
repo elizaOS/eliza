@@ -9,7 +9,7 @@ import type {
 	MessageActionRowComponentBuilder,
 	TextChannel,
 } from "discord.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDraftStreamController } from "../draft-stream";
 import type { DiscordActionRow } from "../types";
 import { buildDiscordComponents } from "../utils";
@@ -96,6 +96,39 @@ describe("draft-stream finalize components (#14527)", () => {
 
 		expect(deletions).toEqual(["msg-1"]);
 		expect(controller.isDone()).toBe(true);
+	});
+
+	it("deletes a snapshot whose provider send settles during discard", async () => {
+		vi.useFakeTimers();
+		let resolveSend!: (message: DiscordMessage) => void;
+		const deletions: string[] = [];
+		const channel = {
+			send: () =>
+				new Promise<DiscordMessage>((resolve) => {
+					resolveSend = resolve;
+				}),
+		} as unknown as TextChannel;
+		const controller = createDraftStreamController({
+			throttleMs: 250,
+			minInitialChars: 1,
+		});
+		await controller.start(channel);
+		controller.update("partial response");
+		vi.advanceTimersByTime(250);
+		await Promise.resolve();
+
+		const discard = controller.discard();
+		resolveSend({
+			id: "late-snapshot",
+			delete: async () => {
+				deletions.push("late-snapshot");
+			},
+		} as DiscordMessage);
+		await discard;
+
+		expect(deletions).toEqual(["late-snapshot"]);
+		expect(controller.isDone()).toBe(true);
+		vi.useRealTimers();
 	});
 
 	it("attaches components to the finalized message", async () => {

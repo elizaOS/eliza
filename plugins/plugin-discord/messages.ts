@@ -26,6 +26,7 @@ import {
 	type Service,
 	ServiceType,
 	stringToUuid,
+	TurnAbortedError,
 	type UUID,
 } from "@elizaos/core";
 import {
@@ -648,14 +649,8 @@ export interface AbortableTimeoutResult {
  * aborts are control flow, not provider failures, and must not emit retry text.
  */
 export function designedTurnAbortReason(error: unknown): string | null {
-	if (
-		typeof error === "object" &&
-		error !== null &&
-		(error as { code?: unknown }).code === "TURN_ABORTED" &&
-		typeof (error as { reason?: unknown }).reason === "string" &&
-		(error as { reason: string }).reason.trim().length > 0
-	) {
-		return (error as { reason: string }).reason;
+	if (error instanceof TurnAbortedError && error.reason.trim().length > 0) {
+		return error.reason;
 	}
 	return null;
 }
@@ -2992,7 +2987,6 @@ export class MessageManager {
 							"designed-turn-abort",
 						);
 					}
-					turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
 					this.runtime.logger.info(
 						{
 							src: "plugin:discord",
@@ -3010,6 +3004,14 @@ export class MessageManager {
 								message.id,
 								inboundMemoryId,
 							);
+					}
+					// A designed abort is terminal only once the inbound message is
+					// durable. If generation was cancelled before ingress persisted,
+					// leave the durable turn DISPATCHED and release the local admission
+					// slot so a gateway redelivery / crash sweep can retry without data
+					// loss. Marking REPLIED first made that retry impossible.
+					if (inboundMemoryCommitted) {
+						turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
 					}
 					return;
 				}

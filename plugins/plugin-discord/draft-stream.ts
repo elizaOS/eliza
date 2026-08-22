@@ -68,6 +68,7 @@ export function createDraftStreamController(
 	let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 	let started = false;
 	let done = false;
+	const activeSnapshots = new Set<Promise<boolean>>();
 
 	const clearThrottle = () => {
 		if (throttleTimer) {
@@ -160,12 +161,31 @@ export function createDraftStreamController(
 		}
 	};
 
+	const sendTrackedSnapshot = (
+		text: string,
+		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+	): Promise<boolean> => {
+		const snapshot = sendSnapshot(text, components);
+		activeSnapshots.add(snapshot);
+		void snapshot.then(
+			() => activeSnapshots.delete(snapshot),
+			() => activeSnapshots.delete(snapshot),
+		);
+		return snapshot;
+	};
+
+	const waitForActiveSnapshots = async (): Promise<void> => {
+		while (activeSnapshots.size > 0) {
+			await Promise.allSettled([...activeSnapshots]);
+		}
+	};
+
 	const flush = async (): Promise<void> => {
 		clearThrottle();
 		if (pendingText !== null) {
 			const text = pendingText;
 			pendingText = null;
-			await sendSnapshot(text);
+			await sendTrackedSnapshot(text);
 		}
 	};
 
@@ -231,7 +251,10 @@ export function createDraftStreamController(
 		}
 
 		if (trimmed.length <= maxChars) {
-			await sendSnapshot(trimmed, components);
+			await sendTrackedSnapshot(trimmed, components);
+			if (done) {
+				return sentMessages;
+			}
 			done = true;
 			log("draft-stream: finalized (single message)");
 			return sentMessages;
@@ -257,9 +280,15 @@ export function createDraftStreamController(
 		const firstChunk = firstHead.trimEnd();
 		let remaining = trimmed.slice(firstHead.length).trimStart();
 
-		await sendSnapshot(firstChunk);
+		await sendTrackedSnapshot(firstChunk);
+		if (done) {
+			return sentMessages;
+		}
 
 		while (remaining.length > 0 && channel) {
+			if (done) {
+				break;
+			}
 			const nextBreak = findBreakPoint(
 				remaining,
 				maxChars,
@@ -337,6 +366,7 @@ export function createDraftStreamController(
 		done = true;
 		clearThrottle();
 		pendingText = null;
+		await waitForActiveSnapshots();
 		for (const message of [...sentMessages].reverse()) {
 			try {
 				await message.delete();

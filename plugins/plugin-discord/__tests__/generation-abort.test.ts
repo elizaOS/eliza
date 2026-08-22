@@ -18,6 +18,7 @@
  * Each test states whether it reproduces the pre-fix bug (RED against the old
  * race-without-abort behavior).
  */
+import { TurnAbortedError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	designedTurnAbortReason,
@@ -241,15 +242,18 @@ describe("runGenerationWithAbortableTimeout", () => {
 
 describe("designedTurnAbortReason", () => {
 	it("requires core's TURN_ABORTED code and explicit reason", () => {
-		const aborted = Object.assign(
-			new Error("Turn aborted: user requested to stop"),
-			{ code: "TURN_ABORTED", reason: "user-requested" },
-		);
+		const aborted = new TurnAbortedError("user-requested");
 		expect(designedTurnAbortReason(aborted)).toBe("user-requested");
-		expect(
-			designedTurnAbortReason({ code: "TURN_ABORTED", reason: "runtime-stop" }),
-		).toBe("runtime-stop");
+		expect(designedTurnAbortReason(new TurnAbortedError("runtime-stop"))).toBe(
+			"runtime-stop",
+		);
 		expect(designedTurnAbortReason({ code: "TURN_ABORTED" })).toBeNull();
+		expect(
+			designedTurnAbortReason({
+				code: "TURN_ABORTED",
+				reason: "forged-provider-error",
+			}),
+		).toBeNull();
 		expect(
 			designedTurnAbortReason(new Error("Turn aborted: anything")),
 		).toBeNull();
