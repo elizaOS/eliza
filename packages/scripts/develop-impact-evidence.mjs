@@ -343,13 +343,168 @@ function inputRows(paths, tracked) {
   });
 }
 
-function collectLocalUses(source) {
+function stripYamlComment(line, label) {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  let escaped = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (doubleQuoted && escaped) {
+      escaped = false;
+      continue;
+    }
+    if (doubleQuoted && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (!doubleQuoted && character === "'") {
+      if (singleQuoted && line[index + 1] === "'") {
+        index += 1;
+        continue;
+      }
+      singleQuoted = !singleQuoted;
+      continue;
+    }
+    if (!singleQuoted && character === '"') {
+      doubleQuoted = !doubleQuoted;
+      continue;
+    }
+    if (!singleQuoted && !doubleQuoted && character === "#") {
+      return line.slice(0, index);
+    }
+  }
+  if (singleQuoted || doubleQuoted || escaped) {
+    throw new Error(`${label}: invalid unterminated YAML scalar`);
+  }
+  return line;
+}
+
+function quotedYamlMask(line) {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  let escaped = false;
+  let masked = "";
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (doubleQuoted && escaped) {
+      escaped = false;
+      masked += " ";
+      continue;
+    }
+    if (doubleQuoted && character === "\\") {
+      escaped = true;
+      masked += " ";
+      continue;
+    }
+    if (!doubleQuoted && character === "'") {
+      if (singleQuoted && line[index + 1] === "'") {
+        masked += "  ";
+        index += 1;
+        continue;
+      }
+      singleQuoted = !singleQuoted;
+      masked += character;
+      continue;
+    }
+    if (!singleQuoted && character === '"') {
+      doubleQuoted = !doubleQuoted;
+      masked += character;
+      continue;
+    }
+    masked += singleQuoted || doubleQuoted ? " " : character;
+  }
+  return masked;
+}
+
+function usesReferencesFromLine(line, label) {
   const references = [];
-  const expression =
-    /^\s*(?:-\s*)?uses\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))\s*(?:#.*)?$/gm;
-  for (const match of source.matchAll(expression)) {
-    const reference = match[1] ?? match[2] ?? match[3];
-    if (reference.startsWith("./")) references.push(reference);
+  const mask = quotedYamlMask(line);
+  const property = /\buses\s*:\s*/g;
+  for (const match of mask.matchAll(property)) {
+    const keyStart = match.index;
+    if (!/(?:^|[\s{[,])(?:-\s*)?$/.test(mask.slice(0, keyStart))) continue;
+    const valueStart = keyStart + match[0].length;
+    const quote = line[valueStart];
+    let reference;
+    if (quote === '"' || quote === "'") {
+      let end = valueStart + 1;
+      for (; end < line.length; end += 1) {
+        if (quote === '"' && line[end] === "\\") {
+          end += 1;
+          continue;
+        }
+        if (quote === "'" && line[end] === "'" && line[end + 1] === "'") {
+          end += 1;
+          continue;
+        }
+        if (line[end] === quote) break;
+      }
+      if (end >= line.length) {
+        throw new Error(`${label}: invalid quoted uses value`);
+      }
+      reference = line.slice(valueStart + 1, end);
+    } else {
+      const remainder = line.slice(valueStart);
+      reference = remainder.split(/[\s,}\]]/, 1)[0];
+    }
+    if (reference?.startsWith("./")) references.push(reference);
+  }
+  return references;
+}
+
+function parseAutomationSource(source, label, requiredRootKey) {
+  if (source.includes("\t")) {
+    throw new Error(`${label}: invalid YAML tab indentation`);
+  }
+  const references = [];
+  let requiredRootFound = false;
+  const lines = source.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
+    const line = stripYamlComment(rawLine, label);
+    if (!line.trim() || /^\s*(?:---|\.\.\.)\s*$/.test(line)) continue;
+    const property = /^( *)(?:-\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(
+      line,
+    );
+    if (!property) continue;
+    const [, whitespace, key, rawValue] = property;
+    const propertyIndent = whitespace.length;
+    const value = rawValue.trim();
+    if (propertyIndent === 0 && key === requiredRootKey) {
+      requiredRootFound = true;
+    }
+    if (/^[>|][+-]?[0-9]*$/.test(value)) {
+      const content = [];
+      let nextIndex = index + 1;
+      for (; nextIndex < lines.length; nextIndex += 1) {
+        const candidate = lines[nextIndex];
+        const candidateIndent = candidate.match(/^ */)?.[0].length ?? 0;
+        if (candidate.trim() && candidateIndent <= propertyIndent) break;
+        content.push(candidate);
+      }
+      if (key === "uses") {
+        const nonEmpty = content.filter((candidate) => candidate.trim());
+        const contentIndent =
+          nonEmpty.length === 0
+            ? propertyIndent + 1
+            : Math.min(
+                ...nonEmpty.map(
+                  (candidate) => candidate.match(/^ */)?.[0].length ?? 0,
+                ),
+              );
+        const scalar = content
+          .map((candidate) => candidate.slice(contentIndent))
+          .join(value.startsWith(">") ? " " : "\n")
+          .trim();
+        if (scalar.startsWith("./")) references.push(scalar);
+      }
+      index = nextIndex - 1;
+      continue;
+    }
+    references.push(...usesReferencesFromLine(line, label));
+  }
+  if (!requiredRootFound) {
+    throw new Error(`${label}: must declare top-level ${requiredRootKey}`);
   }
   return references;
 }
@@ -397,6 +552,7 @@ function resolveLocalTarget(reference, tracked, label) {
       );
     }
     const source = requireTrackedSource(tracked, target, label);
+    parseAutomationSource(source, target, "jobs");
     return { descriptor: target, inputPaths: [target], source };
   }
 
@@ -410,6 +566,7 @@ function resolveLocalTarget(reference, tracked, label) {
   }
   const descriptor = candidates[0];
   const source = requireTrackedSource(tracked, descriptor, label);
+  parseAutomationSource(source, descriptor, "runs");
   const prefix = `${target}/`;
   const inputPaths = [...tracked.keys()]
     .filter((relativePath) => relativePath.startsWith(prefix))
@@ -442,7 +599,14 @@ function localDependencyClosure(surface, tracked) {
     }
     if (visited.has(descriptor)) return;
     visiting.add(descriptor);
-    for (const reference of collectLocalUses(source)) {
+    const requiredRootKey = descriptor.startsWith(".github/actions/")
+      ? "runs"
+      : "jobs";
+    for (const reference of parseAutomationSource(
+      source,
+      descriptor,
+      requiredRootKey,
+    )) {
       const target = resolveLocalTarget(reference, tracked, descriptor);
       for (const inputPath of target.inputPaths) inputs.add(inputPath);
       visit(target.descriptor, target.source);

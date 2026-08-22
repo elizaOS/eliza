@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   computeExpectedManifest,
@@ -137,19 +138,34 @@ function digest(expected: ReturnType<typeof manifest>, id: string) {
 
 describe("Develop Full impact graph", () => {
   test("planner entrypoint remains dependency-free before workspace install", () => {
-    const source = readFileSync(
-      fileURLToPath(new URL("../develop-impact-evidence.mjs", import.meta.url)),
-      "utf8",
+    const entry = fileURLToPath(
+      new URL("../develop-impact-evidence.mjs", import.meta.url),
     );
-    const imports = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map(
-      (match) => match[1],
-    );
-    expect(
-      imports.every(
-        (specifier) =>
+    const visited = new Set<string>();
+    const visit = (file: string) => {
+      if (visited.has(file)) return;
+      visited.add(file);
+      const source = readFileSync(file, "utf8");
+      expect(source).not.toContain("createRequire");
+      const imports = [
+        ...source.matchAll(
+          /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']([^"']+)["']/g,
+        ),
+      ].map((match) => match[1]);
+      for (const specifier of imports) {
+        expect(
           specifier.startsWith("node:") || specifier.startsWith("./"),
-      ),
-    ).toBe(true);
+        ).toBe(true);
+        if (!specifier.startsWith("./")) continue;
+        visit(path.resolve(path.dirname(file), specifier));
+      }
+    };
+    visit(entry);
+    expect([...visited].map((file) => path.basename(file)).sort()).toEqual([
+      "develop-impact-evidence.mjs",
+      "repository-file-integrity.mjs",
+      "workspaces.mjs",
+    ]);
   });
 
   test("binds a leaf to its complete transitive workspace input closure", () => {
@@ -326,6 +342,65 @@ describe("Develop Full impact graph", () => {
     expect(changed.unknownPaths).toEqual([]);
   });
 
+  test("discovers flow-style workflow and composite-action dependencies", () => {
+    const flowGraph = graph();
+    flowGraph.surfaces[1].workflow = ".github/workflows/reusable.yml";
+    flowGraph.surfaces[1].inputs.push(".github/actions/**");
+    const flowRoot =
+      "jobs:\n  call: { uses: ./.github/workflows/reusable.yml }\n  test:\n    steps: [{ uses: ./.github/actions/flow }]\n";
+    const flowInputs = {
+      "leaf.yml": flowRoot,
+      ".github/workflows/reusable.yml": "jobs: { test: { steps: [] } }\n",
+      ".github/actions/flow/action.yml":
+        "runs: { using: composite, steps: [{ run: echo ok, shell: bash }] }\n",
+      ".github/actions/flow/run.mjs": "flow-v1",
+    };
+    const baseline = manifest([], {
+      graph: flowGraph,
+      tracked: tracked(flowInputs),
+    });
+    const workflowChanged = manifest([".github/workflows/reusable.yml"], {
+      graph: flowGraph,
+      tracked: tracked({
+        ...flowInputs,
+        ".github/workflows/reusable.yml":
+          "jobs: { test: { steps: [{ run: echo changed }] } }\n",
+      }),
+    });
+    const actionChanged = manifest([".github/actions/flow/run.mjs"], {
+      graph: flowGraph,
+      tracked: tracked({
+        ...flowInputs,
+        ".github/actions/flow/run.mjs": "flow-v2",
+      }),
+    });
+    expect(digest(workflowChanged, "leaf")).not.toBe(digest(baseline, "leaf"));
+    expect(digest(actionChanged, "leaf")).not.toBe(digest(baseline, "leaf"));
+  });
+
+  test("discovers folded local uses scalars", () => {
+    const foldedGraph = graph();
+    foldedGraph.surfaces[1].workflow = ".github/workflows/reusable.yml";
+    const inputs = {
+      "leaf.yml":
+        "jobs:\n  call:\n    uses: >-\n      ./.github/workflows/reusable.yml\n",
+      ".github/workflows/reusable.yml": "jobs: { test: { steps: [] } }\n",
+    };
+    const baseline = manifest([], {
+      graph: foldedGraph,
+      tracked: tracked(inputs),
+    });
+    const changed = manifest([".github/workflows/reusable.yml"], {
+      graph: foldedGraph,
+      tracked: tracked({
+        ...inputs,
+        ".github/workflows/reusable.yml":
+          "jobs: { test: { steps: [{ run: echo changed }] } }\n",
+      }),
+    });
+    expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
+  });
+
   test("fails closed for missing, invalid, and cyclic local uses targets", () => {
     const missing = tracked({
       "leaf.yml": "jobs:\n  test:\n    uses: ./.github/workflows/missing.yml\n",
@@ -342,6 +417,32 @@ describe("Develop Full impact graph", () => {
       /outside .github\/workflows/,
     );
 
+    const missingWorkflowContract = tracked({
+      "leaf.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/not-a-workflow.yml\n",
+      ".github/workflows/not-a-workflow.yml": "name: missing jobs\n",
+    });
+    expect(() => manifest([], { tracked: missingWorkflowContract })).toThrow(
+      /must declare top-level jobs/,
+    );
+
+    const missingActionContract = tracked({
+      "leaf.yml":
+        "jobs:\n  test:\n    steps:\n      - uses: ./.github/actions/not-an-action\n",
+      ".github/actions/not-an-action/action.yml": "name: missing runs\n",
+    });
+    expect(() => manifest([], { tracked: missingActionContract })).toThrow(
+      /must declare top-level runs/,
+    );
+
+    const malformed = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: './.github/workflows/open.yml\n",
+      ".github/workflows/open.yml": "jobs: {}\n",
+    });
+    expect(() => manifest([], { tracked: malformed })).toThrow(
+      /unterminated YAML scalar/,
+    );
+
     const cyclic = tracked({
       "leaf.yml": "jobs:\n  test:\n    uses: ./.github/workflows/first.yml\n",
       ".github/workflows/first.yml":
@@ -350,6 +451,19 @@ describe("Develop Full impact graph", () => {
         "jobs:\n  test:\n    uses: ./.github/workflows/first.yml\n",
     });
     expect(() => manifest([], { tracked: cyclic })).toThrow(/dependency cycle/);
+  });
+
+  test("does not execute uses-like text inside YAML block scalars", () => {
+    const expected = manifest([], {
+      tracked: tracked({
+        "leaf.yml":
+          "jobs:\n  test:\n    steps:\n      - run: |\n          uses: ./.github/workflows/not-real.yml\n          echo done\n",
+      }),
+    });
+    expect(expected.unknownPaths).toEqual([]);
+    expect(expected.surfaces.some((surface) => surface.id === "leaf")).toBe(
+      true,
+    );
   });
 
   test("binds persistently unowned inputs into every immutable cache key", () => {
