@@ -62,6 +62,13 @@ mock.module("../../db/repositories/users", () => ({
 mock.module("./steward-platform-users", () => ({
   deactivateStewardPlatformUser: deactivateSteward,
   deleteStewardPlatformUser: deleteSteward,
+  getStewardApiUrl: () => {
+    throw new Error("getStewardApiUrl is outside this test path");
+  },
+  getStewardPlatformKey: () => {
+    throw new Error("getStewardPlatformKey is outside this test path");
+  },
+  isStewardPlatformConfigured: () => false,
 }));
 mock.module("./user-sessions", () => ({
   userSessionsService: { endAllUserSessions: mock(async () => undefined) },

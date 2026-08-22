@@ -51,6 +51,9 @@ const findByIdInOrganization = mock(async () => linkedCharacter);
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   PRE_DELETE_BACKUP_RETENTION_MS: 0,
   agentSandboxesRepository: { findByIdAndOrg },
+  hydrateAgentSandboxBackup: async () => {
+    throw new Error("hydrateAgentSandboxBackup is outside this test path");
+  },
   prepareAgentBackupInsertData: mock(),
 }));
 mock.module("@/db/repositories/characters", () => ({
