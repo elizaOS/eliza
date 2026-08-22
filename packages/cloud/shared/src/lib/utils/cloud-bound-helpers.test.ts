@@ -206,6 +206,54 @@ describe("shared-utils deadline helpers", () => {
     expect(signal?.aborted).toBe(false);
   });
 
+  it("buffers only the bytes that arrived, not the whole byte ceiling", async () => {
+    const payload = new TextEncoder().encode('{"ok":true}');
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(payload.slice(0, 4));
+              controller.enqueue(payload.slice(4));
+              controller.close();
+            },
+          }),
+        ),
+    ) as typeof fetch;
+
+    // A ceiling this large cannot be pre-reserved: an up-front
+    // `new Uint8Array(maxResponseBytes)` slab would fail to allocate here.
+    const response = await ownedBoundedFetch("https://example.com", undefined, {
+      maxResponseBytes: Number.MAX_SAFE_INTEGER,
+      timeoutMs: 100,
+    });
+    expect(response.headers.get("content-length")).toBe(String(payload.byteLength));
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
+  it("reassembles multi-chunk bodies losslessly in arrival order", async () => {
+    const parts = ["alpha", "beta", "gamma"].map((part) => new TextEncoder().encode(part));
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const part of parts) controller.enqueue(part);
+              controller.enqueue(new Uint8Array(0));
+              controller.close();
+            },
+          }),
+        ),
+    ) as typeof fetch;
+
+    const response = await ownedBoundedFetch("https://example.com", undefined, {
+      maxResponseBytes: 1_024,
+      timeoutMs: 100,
+    });
+    expect(await response.text()).toBe("alphabetagamma");
+    expect(response.headers.get("content-length")).toBe("14");
+  });
+
   it("returns a typed size error even when body cancellation rejects", async () => {
     globalThis.fetch = mock(
       async () =>
