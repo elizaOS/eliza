@@ -7,6 +7,7 @@
  * at the top and in each row.
  */
 
+import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import {
   Circle,
   Pause,
@@ -39,11 +40,10 @@ import {
 } from "../../../ui/status-badge.helpers";
 import { currentCloudManagementToken } from "../cloud-management-auth";
 import {
-  CloudSettingsButton,
-  CloudSettingsRow,
+  NuphyRow,
   SettingsGroup,
   SettingsStack,
-} from "../settings-primitives";
+} from "../nuphy-settings-primitives";
 
 /** Maximum length accepted for a (new or edited) cloud agent name. */
 const AGENT_NAME_MAX_LENGTH = 60;
@@ -605,7 +605,7 @@ export function AgentSection() {
       >
         {activeAgent ? (
           <>
-            <CloudSettingsRow
+            <NuphyRow
               label={
                 <span className="flex items-center gap-2">
                   <Circle
@@ -629,10 +629,10 @@ export function AgentSection() {
               }
             />
             {otherAgents.length > 0 ? (
-              <CloudSettingsRow
+              <NuphyRow
                 label={`${otherAgents.length} other ${otherAgents.length === 1 ? "agent" : "agents"} available`}
                 control={
-                  <CloudSettingsButton
+                  <NuphyButton
                     variant="secondary"
                     size="sm"
                     disabled={Boolean(busyId)}
@@ -640,13 +640,13 @@ export function AgentSection() {
                     title={`Switch to ${otherAgents[0].agent_name || otherAgents[0].agent_id}`}
                   >
                     Switch
-                  </CloudSettingsButton>
+                  </NuphyButton>
                 }
               />
             ) : null}
           </>
         ) : (
-          <CloudSettingsRow label="No active cloud agent on this device." />
+          <NuphyRow label="No active cloud agent on this device." />
         )}
       </SettingsGroup>
 
@@ -655,11 +655,11 @@ export function AgentSection() {
         title="Your Cloud Agents"
         footer="Create, rename, start, pause, or delete cloud agents."
       >
-        <CloudSettingsRow
+        <NuphyRow
           label="Refresh"
           description="Reload the agent list from Eliza Cloud."
           control={
-            <CloudSettingsButton
+            <NuphyButton
               variant="ghost"
               size="sm"
               aria-label="Refresh agents"
@@ -668,20 +668,20 @@ export function AgentSection() {
               }}
             >
               <RefreshCw className="h-4 w-4" aria-hidden />
-            </CloudSettingsButton>
+            </NuphyButton>
           }
         />
         {loading ? (
-          <CloudSettingsRow
+          <NuphyRow
             label="Loading agents…"
             data-testid="cloud-agents-loading"
           />
         ) : loadError ? (
-          <CloudSettingsRow
+          <NuphyRow
             label={loadError}
             data-testid="cloud-agents-error"
             control={
-              <CloudSettingsButton
+              <NuphyButton
                 variant="secondary"
                 size="sm"
                 data-testid="cloud-agents-error-retry"
@@ -691,11 +691,11 @@ export function AgentSection() {
               >
                 <RefreshCw className="mr-1 h-4 w-4" aria-hidden />
                 Try again
-              </CloudSettingsButton>
+              </NuphyButton>
             }
           />
         ) : agents.length === 0 ? (
-          <CloudSettingsRow
+          <NuphyRow
             label="No cloud agents yet"
             description="Create one to get started."
             data-testid="cloud-agents-empty"
@@ -712,7 +712,7 @@ export function AgentSection() {
             const errorMessage = errored ? agent.error_message?.trim() : null;
             const detailsOpen = detailsId === agent.agent_id;
             return (
-              <CloudSettingsRow
+              <NuphyRow
                 key={agent.agent_id}
                 data-testid={`cloud-agent-row-${agent.agent_id}`}
                 label={
@@ -757,17 +757,17 @@ export function AgentSection() {
                 control={
                   <span className="flex items-center gap-1">
                     {isActive ? null : (
-                      <CloudSettingsButton
+                      <NuphyButton
                         variant="secondary"
                         size="sm"
                         disabled={busy}
                         onClick={() => void switchTo(agent)}
                       >
                         {waking ? "Waking…" : busy ? "Switching…" : "Use"}
-                      </CloudSettingsButton>
+                      </NuphyButton>
                     )}
                     {canSuspend ? (
-                      <CloudSettingsButton
+                      <NuphyButton
                         variant="ghost"
                         size="sm"
                         disabled={busy}
@@ -776,10 +776,10 @@ export function AgentSection() {
                         onClick={() => void suspendAgent(agent)}
                       >
                         <Pause className="h-4 w-4" aria-hidden />
-                      </CloudSettingsButton>
+                      </NuphyButton>
                     ) : null}
                     {canResume ? (
-                      <CloudSettingsButton
+                      <NuphyButton
                         variant="ghost"
                         size="sm"
                         disabled={busy}
@@ -788,9 +788,9 @@ export function AgentSection() {
                         onClick={() => void resumeAgent(agent)}
                       >
                         <Play className="h-4 w-4" aria-hidden />
-                      </CloudSettingsButton>
+                      </NuphyButton>
                     ) : null}
-                    <CloudSettingsButton
+                    <NuphyButton
                       variant="ghost"
                       size="sm"
                       disabled={busy}
@@ -799,8 +799,8 @@ export function AgentSection() {
                       onClick={() => openDetails(agent)}
                     >
                       <Pencil className="h-4 w-4" aria-hidden />
-                    </CloudSettingsButton>
-                    <CloudSettingsButton
+                    </NuphyButton>
+                    <NuphyButton
                       variant="ghost"
                       size="sm"
                       disabled={busy || isActive}
@@ -809,7 +809,7 @@ export function AgentSection() {
                       onClick={() => deleteAgent(agent)}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
-                    </CloudSettingsButton>
+                    </NuphyButton>
                   </span>
                 }
                 below={
@@ -853,22 +853,22 @@ export function AgentSection() {
                         </dd>
                       </dl>
                       <div className="flex items-center gap-2">
-                        <CloudSettingsButton
+                        <NuphyButton
                           variant="primary"
                           size="sm"
                           disabled={busy}
                           onClick={() => void saveRename(agent)}
                         >
                           {busy ? "Saving…" : "Save"}
-                        </CloudSettingsButton>
-                        <CloudSettingsButton
+                        </NuphyButton>
+                        <NuphyButton
                           variant="ghost"
                           size="sm"
                           disabled={busy}
                           onClick={() => setDetailsId(null)}
                         >
                           Cancel
-                        </CloudSettingsButton>
+                        </NuphyButton>
                       </div>
                     </div>
                   ) : null
@@ -880,12 +880,11 @@ export function AgentSection() {
 
         {/* Create new agent — inline form toggled by the + New Agent button. */}
         {showCreate ? (
-          <CloudSettingsRow
+          <NuphyRow
             label="New agent"
             description={`Agent name (e.g. ${appName})`}
-            className="min-w-0"
-            below={
-              <div className="flex min-w-0 items-center gap-2 pt-3">
+            control={
+              <span className="flex items-center gap-2">
                 <Input
                   value={newName}
                   onChange={(e) => {
@@ -893,13 +892,13 @@ export function AgentSection() {
                     setCreateError(null);
                   }}
                   placeholder={`Agent name (e.g. ${appName})`}
-                  className="min-w-0 flex-1"
+                  className="flex-1"
                   maxLength={AGENT_NAME_MAX_LENGTH}
                   disabled={creating}
                   aria-label="New agent name"
                   autoFocus
                 />
-                <CloudSettingsButton
+                <NuphyButton
                   variant="primary"
                   size="sm"
                   disabled={creating}
@@ -909,8 +908,8 @@ export function AgentSection() {
                 >
                   <Plus className="mr-1 h-4 w-4" aria-hidden />
                   {creating ? "Creating…" : "Create"}
-                </CloudSettingsButton>
-                <CloudSettingsButton
+                </NuphyButton>
+                <NuphyButton
                   variant="ghost"
                   size="sm"
                   disabled={creating}
@@ -921,28 +920,28 @@ export function AgentSection() {
                   }}
                 >
                   Cancel
-                </CloudSettingsButton>
-              </div>
+                </NuphyButton>
+              </span>
             }
           />
         ) : (
-          <CloudSettingsRow
+          <NuphyRow
             label="New agent"
             description="Create a new cloud agent."
             control={
-              <CloudSettingsButton
+              <NuphyButton
                 variant="secondary"
                 size="sm"
                 onClick={() => setShowCreate(true)}
               >
                 <Plus className="mr-1 h-4 w-4" aria-hidden />
                 New Agent
-              </CloudSettingsButton>
+              </NuphyButton>
             }
           />
         )}
         {createError ? (
-          <CloudSettingsRow
+          <NuphyRow
             label={createError}
             data-testid="cloud-agent-create-error"
           />

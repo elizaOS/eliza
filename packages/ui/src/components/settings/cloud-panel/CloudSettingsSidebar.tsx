@@ -2,7 +2,7 @@
  * Sidebar for the cloud settings panel.
  *
  * Renders grouped section items with an account footer pinned to the bottom.
- * Uses elizaOS UI design tokens for the macOS settings aesthetic.
+ * Uses NuPhy UI design tokens for the macOS settings aesthetic.
  */
 import { Check, ChevronUp, Circle } from "lucide-react";
 import { useState } from "react";
@@ -112,7 +112,7 @@ function SectionItem({
       className={cn(
         "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
         active
-          ? "bg-[var(--accent)] font-medium text-[var(--accent-foreground)]"
+          ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
           : "text-[var(--muted-foreground)] hover:bg-[var(--fill)] hover:text-[var(--foreground)]",
       )}
     >
@@ -120,13 +120,13 @@ function SectionItem({
         className={cn(
           "h-4 w-4 shrink-0",
           active
-            ? "text-[var(--accent-foreground)]"
+            ? "text-[var(--foreground)]"
             : "text-[var(--muted-foreground)]",
         )}
       />
       <span className="truncate">{section.label}</span>
       {active && (
-        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--accent-foreground)]" />
+        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--foreground)]" />
       )}
     </button>
   );
@@ -144,12 +144,9 @@ export function CloudSettingsSidebar({
   return (
     <nav
       aria-label="Settings sections"
-      className="flex h-full w-60 shrink-0 flex-col bg-[var(--surface)] pb-20 pt-8 min-[1000px]:pb-0"
+      className="flex h-full w-60 shrink-0 flex-col bg-[var(--surface)] pt-8"
     >
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        <h1 className="mb-5 px-2.5 text-xl font-semibold tracking-tight text-[var(--foreground)]">
-          Settings
-        </h1>
         {CLOUD_PANEL_GROUPS.map((group) => {
           const sections = grouped[group.id];
           if (!sections?.length) return null;

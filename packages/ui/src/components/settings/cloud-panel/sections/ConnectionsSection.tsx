@@ -3,7 +3,7 @@
  *
  * Consolidated view of the cloud-hosted connectors (grouped by category) plus
  * configured MCP servers. Each connector's Connect/Disconnect flow is handled
- * inline through elizaOS-styled modals — token-credential connectors show a form,
+ * inline through NuPhy-styled modals — token-credential connectors show a form,
  * OAuth-redirect connectors initiate the redirect, and destructive actions
  * confirm before executing. MCP servers are created/removed through a modal
  * form that posts to the real `/api/v1/mcps` CRUD routes.
@@ -13,6 +13,7 @@
  * to reconcile.
  */
 
+import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
@@ -26,15 +27,14 @@ import {
 } from "../cloud-connector-contracts";
 import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
-  CloudSettingsButton,
-  CloudSettingsFormField,
-  CloudSettingsModal,
-  CloudSettingsRow,
-  CloudSettingsTextInput,
   DestructiveSecondaryButton,
+  NuphyFormField,
+  NuphyModal,
+  NuphyRow,
+  NuphyTextInput,
   SettingsGroup,
   SettingsStack,
-} from "../settings-primitives";
+} from "../nuphy-settings-primitives";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -101,7 +101,7 @@ function ConnectorRow({
   });
 
   return (
-    <CloudSettingsRow
+    <NuphyRow
       label={connector.name}
       description={
         state.loading ? "Checking status…" : (state.error ?? state.statusText)
@@ -117,17 +117,17 @@ function ConnectorRow({
             Disconnect
           </DestructiveSecondaryButton>
         ) : state.error ? (
-          <CloudSettingsButton variant="secondary" size="sm" disabled>
+          <NuphyButton variant="secondary" size="sm" disabled>
             Unavailable
-          </CloudSettingsButton>
+          </NuphyButton>
         ) : (
-          <CloudSettingsButton
+          <NuphyButton
             variant="secondary"
             size="sm"
             onClick={() => onConnect(connector)}
           >
             Connect
-          </CloudSettingsButton>
+          </NuphyButton>
         )
       }
     />
@@ -236,7 +236,7 @@ function ConnectModal({
   };
 
   return (
-    <CloudSettingsModal
+    <NuphyModal
       open={connector !== null}
       title={`Connect ${connector.name}`}
       description={
@@ -253,10 +253,10 @@ function ConnectModal({
             <span />
           )}
           <div className="flex gap-2">
-            <CloudSettingsButton variant="ghost" size="sm" onClick={onClose}>
+            <NuphyButton variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </CloudSettingsButton>
-            <CloudSettingsButton
+            </NuphyButton>
+            <NuphyButton
               variant="primary"
               size="sm"
               disabled={busy}
@@ -272,7 +272,7 @@ function ConnectModal({
               ) : (
                 "Connect"
               )}
-            </CloudSettingsButton>
+            </NuphyButton>
           </div>
         </div>
       }
@@ -280,13 +280,13 @@ function ConnectModal({
       {connector.authMode === "token" && connector.fields ? (
         <div className="space-y-4">
           {connector.fields.map((field) => (
-            <CloudSettingsFormField
+            <NuphyFormField
               key={field.key}
               label={field.label}
               description={field.description}
               htmlFor={`field-${field.key}`}
             >
-              <CloudSettingsTextInput
+              <NuphyTextInput
                 id={`field-${field.key}`}
                 type={field.type ?? "text"}
                 value={fieldValues[field.key] ?? ""}
@@ -297,7 +297,7 @@ function ConnectModal({
                 disabled={busy}
                 autoComplete="off"
               />
-            </CloudSettingsFormField>
+            </NuphyFormField>
           ))}
         </div>
       ) : (
@@ -306,7 +306,7 @@ function ConnectModal({
           page. After authorizing, you'll return here automatically.
         </p>
       )}
-    </CloudSettingsModal>
+    </NuphyModal>
   );
 }
 
@@ -325,7 +325,7 @@ function DisconnectDialog({
   const [error, setError] = useState<string | null>(null);
   if (!connector) return null;
   return (
-    <CloudSettingsModal
+    <NuphyModal
       open={connector !== null}
       title={`Disconnect ${connector.name}?`}
       onClose={onClose}
@@ -340,15 +340,15 @@ function DisconnectDialog({
             <span />
           )}
           <div className="flex gap-2">
-            <CloudSettingsButton
+            <NuphyButton
               variant="ghost"
               size="sm"
               disabled={busy}
               onClick={onClose}
             >
               Cancel
-            </CloudSettingsButton>
-            <CloudSettingsButton
+            </NuphyButton>
+            <NuphyButton
               variant="destructive"
               size="sm"
               disabled={busy}
@@ -373,7 +373,7 @@ function DisconnectDialog({
             >
               {" "}
               {busy ? "Disconnecting…" : "Disconnect"}{" "}
-            </CloudSettingsButton>
+            </NuphyButton>
           </div>
         </div>
       }
@@ -382,7 +382,7 @@ function DisconnectDialog({
         This will remove the {connector.name} connection from your agent. You
         can reconnect later.
       </p>
-    </CloudSettingsModal>
+    </NuphyModal>
   );
 }
 
@@ -446,7 +446,7 @@ function McpAddModal({
   };
 
   return (
-    <CloudSettingsModal
+    <NuphyModal
       open={open}
       title="Add MCP Server"
       description="Configure a new Model Context Protocol server for this agent."
@@ -459,10 +459,10 @@ function McpAddModal({
             <span />
           )}
           <div className="flex gap-2">
-            <CloudSettingsButton variant="ghost" size="sm" onClick={onClose}>
+            <NuphyButton variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </CloudSettingsButton>
-            <CloudSettingsButton
+            </NuphyButton>
+            <NuphyButton
               variant="primary"
               size="sm"
               disabled={busy}
@@ -476,58 +476,58 @@ function McpAddModal({
               ) : (
                 "Add server"
               )}
-            </CloudSettingsButton>
+            </NuphyButton>
           </div>
         </div>
       }
     >
       <div className="space-y-4">
-        <CloudSettingsFormField label="Name" htmlFor="mcp-name">
-          <CloudSettingsTextInput
+        <NuphyFormField label="Name" htmlFor="mcp-name">
+          <NuphyTextInput
             id="mcp-name"
             value={name}
             onChange={setName}
             placeholder="My MCP Server"
             disabled={busy}
           />
-        </CloudSettingsFormField>
-        <CloudSettingsFormField
+        </NuphyFormField>
+        <NuphyFormField
           label="Slug"
           description="URL-safe identifier. Auto-generated from name if left blank."
           htmlFor="mcp-slug"
         >
-          <CloudSettingsTextInput
+          <NuphyTextInput
             id="mcp-slug"
             value={slug}
             onChange={setSlug}
             placeholder="my-mcp-server"
             disabled={busy}
           />
-        </CloudSettingsFormField>
-        <CloudSettingsFormField
+        </NuphyFormField>
+        <NuphyFormField
           label="Endpoint URL"
           description="The MCP server's HTTP/SSE endpoint."
           htmlFor="mcp-url"
         >
-          <CloudSettingsTextInput
+          <NuphyTextInput
             id="mcp-url"
             value={endpointUrl}
             onChange={setEndpointUrl}
             placeholder="https://my-mcp-server.example.com/sse"
             disabled={busy}
           />
-        </CloudSettingsFormField>
-        <CloudSettingsFormField label="Description" htmlFor="mcp-desc">
-          <CloudSettingsTextInput
+        </NuphyFormField>
+        <NuphyFormField label="Description" htmlFor="mcp-desc">
+          <NuphyTextInput
             id="mcp-desc"
             value={description}
             onChange={setDescription}
             placeholder="What does this MCP server provide?"
             disabled={busy}
           />
-        </CloudSettingsFormField>
+        </NuphyFormField>
       </div>
-    </CloudSettingsModal>
+    </NuphyModal>
   );
 }
 
@@ -546,7 +546,7 @@ function McpRemoveDialog({
   const [error, setError] = useState<string | null>(null);
   if (!mcp) return null;
   return (
-    <CloudSettingsModal
+    <NuphyModal
       open={mcp !== null}
       title={`Remove ${mcp.name}?`}
       onClose={onClose}
@@ -561,15 +561,15 @@ function McpRemoveDialog({
             <span />
           )}
           <div className="flex gap-2">
-            <CloudSettingsButton
+            <NuphyButton
               variant="ghost"
               size="sm"
               disabled={busy}
               onClick={onClose}
             >
               Cancel
-            </CloudSettingsButton>
-            <CloudSettingsButton
+            </NuphyButton>
+            <NuphyButton
               variant="destructive"
               size="sm"
               disabled={busy}
@@ -594,7 +594,7 @@ function McpRemoveDialog({
             >
               {" "}
               {busy ? "Removing…" : "Remove"}{" "}
-            </CloudSettingsButton>
+            </NuphyButton>
           </div>
         </div>
       }
@@ -603,7 +603,7 @@ function McpRemoveDialog({
         This will remove the MCP server from your agent. You can add it again
         later.
       </p>
-    </CloudSettingsModal>
+    </NuphyModal>
   );
 }
 
@@ -657,7 +657,7 @@ function McpRow({
   onRemove: (mcp: McpEntry) => void;
 }) {
   return (
-    <CloudSettingsRow
+    <NuphyRow
       label={mcp.name}
       description={mcp.statusText}
       control={
@@ -709,7 +709,7 @@ function CloudDisconnectedEmpty() {
       title="Connections"
       footer="Connect to Eliza Cloud to manage channels."
     >
-      <CloudSettingsRow label="No cloud connection" />
+      <NuphyRow label="No cloud connection" />
     </SettingsGroup>
   );
 }
@@ -842,26 +842,26 @@ export function ConnectionsSection() {
         title="MCP Servers"
         footer="Model Context Protocol servers extend the agent with tools and data sources."
       >
-        <CloudSettingsRow
+        <NuphyRow
           label="Add MCP Server"
           description="Configure a new MCP server for this agent."
           control={
-            <CloudSettingsButton
+            <NuphyButton
               variant="secondary"
               size="sm"
               onClick={() => setMcpAddOpen(true)}
             >
               <Plus aria-hidden />
               Add
-            </CloudSettingsButton>
+            </NuphyButton>
           }
         />
         {mcpError ? (
-          <CloudSettingsRow
+          <NuphyRow
             label="MCP servers unavailable"
             description={mcpError}
             control={
-              <CloudSettingsButton
+              <NuphyButton
                 variant="secondary"
                 size="sm"
                 onClick={() => {
@@ -871,13 +871,13 @@ export function ConnectionsSection() {
                 }}
               >
                 Retry
-              </CloudSettingsButton>
+              </NuphyButton>
             }
           />
         ) : mcpLoading ? (
-          <CloudSettingsRow label="Loading MCP servers…" />
+          <NuphyRow label="Loading MCP servers…" />
         ) : mcpServers.length === 0 ? (
-          <CloudSettingsRow
+          <NuphyRow
             label="No MCP servers"
             description="Add an MCP server to extend your agent with tools."
           />
