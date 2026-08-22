@@ -88,7 +88,7 @@ describe("TrajectoriesService", () => {
 		await service.stop();
 	});
 
-	it("persists LLM calls with complete JSON-safe payloads", async () => {
+	it("persists complete JSON-safe model request and response payloads", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000010";
 		const stepId = "00000000-0000-4000-8000-000000000011";
 		const runtimeSecret = "SYNTH-CORE-DB-RUNTIME-SECRET-1111";
@@ -130,6 +130,10 @@ describe("TrajectoriesService", () => {
 			},
 		};
 		circular.self = circular;
+		let deepArgs: Record<string, unknown> = { final: "FINAL-DEPTH-CANARY" };
+		for (let depth = 30; depth >= 1; depth -= 1) {
+			deepArgs = { child: deepArgs };
+		}
 
 		service.logLlmCall({
 			stepId,
@@ -146,16 +150,25 @@ describe("TrajectoriesService", () => {
 				{
 					role: "assistant",
 					content: `--token=${flagCanary} ${runtimeSecret} ${"m".repeat(120_000)}`,
-					circular,
 				},
 			],
-			tools: { circular },
+			tools: [
+				{
+					name: "CANARY_TOOL",
+					description: "complete schema",
+					parameters: {
+						type: "object",
+						properties: { target: { type: "string" } },
+					},
+				},
+			],
 			toolCalls: [
 				{
 					id: "call-1",
 					name: "CANARY_TOOL",
 					args: {
 						target: `https://user:${uriCanary}@synthetic.invalid/`,
+						deep: deepArgs,
 					},
 				},
 			],
@@ -576,7 +589,7 @@ describe("TrajectoriesService", () => {
 		expect(afterOverflow[0].reward).toBe(0);
 		expect(afterOverflow[0].done).toBe(false);
 		expect(Array.isArray(afterOverflow[0].providerAccesses)).toBe(true);
-		// No call is dropped, so no truncation counter is minted.
+		// No call or tool is dropped, so no truncation counter is minted.
 		expect(afterOverflow[0].llmCalls).toHaveLength(2);
 		expect(afterOverflow[0].llmCalls[1].tools).toHaveLength(bigTools.length);
 		expect(afterOverflow[0].metadata?.truncatedLlmCalls).toBeUndefined();

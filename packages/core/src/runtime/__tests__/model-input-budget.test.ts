@@ -316,4 +316,63 @@ describe("buildModelInputBudget", () => {
 			);
 		});
 	});
+
+	describe("conservative final-wire estimation", () => {
+		it("uses the complete UTF-8 byte length for multilingual and emoji input", () => {
+			const content = "漢字🙂é";
+			const budget = buildModelInputBudget({
+				messages: [{ role: "user", content }],
+				estimationMode: "utf8-upper-bound",
+				contextWindowTokens: 100_000,
+				reserveTokens: 0,
+			});
+			const serialized = JSON.stringify([{ role: "user", content }]);
+			expect(budget.estimatedInputTokens).toBe(
+				new TextEncoder().encode(serialized).byteLength,
+			);
+			expect(budget.estimationMode).toBe("utf8-upper-bound");
+		});
+
+		it("includes every supported final request field and tool JSON", () => {
+			const base = buildModelInputBudget({
+				messages: [{ role: "user", content: "message-canary" }],
+				estimationMode: "utf8-upper-bound",
+				contextWindowTokens: 100_000,
+				reserveTokens: 0,
+			});
+			const complete = buildModelInputBudget({
+				messages: [{ role: "user", content: "message-canary" }],
+				tools: [
+					{ name: "tool-canary", description: "tool-description-canary" },
+				],
+				system: "system-canary",
+				prompt: "prompt-canary",
+				input: "input-canary",
+				responseSchema: { title: "schema-canary" },
+				responseFormat: { type: "format-canary" },
+				grammar: "grammar-canary",
+				responseSkeleton: "skeleton-canary",
+				prefill: "prefill-canary",
+				estimationMode: "utf8-upper-bound",
+				contextWindowTokens: 100_000,
+				reserveTokens: 0,
+			});
+			expect(complete.estimatedInputTokens).toBeGreaterThan(
+				base.estimatedInputTokens,
+			);
+		});
+
+		it("rejects cyclic request data with a typed serialization error", () => {
+			const cyclic: Record<string, unknown> = { value: "cycle-canary" };
+			cyclic.self = cyclic;
+			expect(() =>
+				buildModelInputBudget({
+					responseSchema: cyclic,
+					estimationMode: "utf8-upper-bound",
+				}),
+			).toThrowError(
+				expect.objectContaining({ code: "MODEL_INPUT_SERIALIZATION_FAILED" }),
+			);
+		});
+	});
 });

@@ -5,6 +5,7 @@
  * canned strings, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
+import { ElizaError } from "../../errors";
 import { evaluatorTemplate } from "../../prompts/evaluator";
 import {
 	type ChatMessage,
@@ -1610,8 +1611,13 @@ describe("provider-owned evaluator output boundaries", () => {
 						},
 						request,
 					);
+					if (completedCalls === 1) {
+						throw new ElizaError("final request exceeds context", {
+							code: "MODEL_INPUT_OVER_BUDGET",
+						});
+					}
 					completedCalls++;
-					return completedCalls === 1 ? truncatedEnvelope : completeEnvelope;
+					return truncatedEnvelope;
 				},
 			);
 			const reportError = vi.fn();
@@ -1643,13 +1649,13 @@ describe("provider-owned evaluator output boundaries", () => {
 					recorder: captureRecorder(stages),
 					trajectoryId: "trajectory-evaluator-input-budget",
 				}),
-			).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+			).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
 			expect(useModel).toHaveBeenCalledTimes(1);
 			expect(completedCalls).toBe(0);
 			expect(stages).toHaveLength(1);
 			expect(stages[0]?.model?.response).toContain(
-				"EVALUATOR_INPUT_OVER_BUDGET",
+				"MODEL_INPUT_OVER_BUDGET",
 			);
 			expect(reportError).not.toHaveBeenCalled();
 		} finally {
