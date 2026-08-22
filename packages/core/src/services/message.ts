@@ -90,6 +90,7 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
+import { isProgressiveContentProjectionEnabled } from "../runtime/content-projection-policy";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -161,6 +162,7 @@ import {
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
 } from "../runtime/planner-loop";
+import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,
@@ -7715,7 +7717,7 @@ export async function runShortcutGate(args: {
 		};
 	}
 	const resultState = actionResult
-		? withActionResultsForPrompt(args.state, [actionResult])
+		? withActionResultsForPrompt(args.state, [actionResult], args.runtime)
 		: args.state;
 	const shortcutActionResults = actionResult ? [actionResult] : [];
 	const shortcutReplyDecision = evaluatePlannedReplyEgress({
@@ -9785,7 +9787,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 		const finalPlannerState =
 			actionResults.length > 0
-				? withActionResultsForPrompt(plannerState, actionResults)
+				? withActionResultsForPrompt(plannerState, actionResults, args.runtime)
 				: plannerState;
 		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
 		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
@@ -12199,12 +12201,18 @@ async function rewriteActionCallbackInCharacter(args: {
 export function withActionResultsForPrompt(
 	state: State,
 	actionResults: ActionResult[],
+	runtime?: IAgentRuntime,
 ): State {
+	const promptActionResults = isProgressiveContentProjectionEnabled(runtime)
+		? renderActionResultsForModel(actionResults, {
+				omitRecoverableText: true,
+			}).text
+		: formatActionResultsForPrompt(actionResults);
 	return {
 		...state,
 		values: {
 			...state.values,
-			actionResults: formatActionResultsForPrompt(actionResults),
+			actionResults: promptActionResults,
 		},
 		data: {
 			...state.data,

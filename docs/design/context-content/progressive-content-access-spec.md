@@ -1,6 +1,6 @@
 # Progressive content access specification
 
-Status: experimental implementation candidate; projection is opt-in
+Status: experimental implementation candidate; projection is opt-in; M4 follow-up under review
 
 Date: 2026-08-21
 
@@ -138,6 +138,8 @@ Budgets are computed after final serialization, including JSON, line-number gutt
 
 The current experimental implementation applies this policy to native trajectory planner/evaluator rendering. Legacy prompt builders that serialize `ActionResult` values directly must migrate to the same final-request projector before the feature can be described as central across all model-facing paths or enabled by default.
 
+The M4 follow-up uses `renderActionResultsForModel` as the migration bridge for legacy prompt builders. When the rollout flag is enabled, ActionState, post-turn evaluation, reflection, message-state injection, and grounded action replies apply the same `promptData`-over-`data` rule and omit only validated recoverable pages. The legacy display formatter remains the disabled-rollout compatibility path. Native planner requests reject an over-budget post-projection request explicitly. Per-provider planner failover rerendering and tokenizer-backed final-wire counts remain rollout gates; the runtime must not truncate an opaque prompt after typed ActionResults have been serialized.
+
 ### 6.2 Per-result and aggregate policy
 
 - Apply a per-result inline budget.
@@ -224,6 +226,8 @@ interface CompactionContentManifest {
 ```
 
 The runtime derives this from the access ledger and actual mutations. It is schema-validated, redacted, size-bounded, and authorization-covered. Recoverability must not depend on prose mentioning every reference.
+
+The M4 follow-up introduces the versioned strict schema and a deterministic trajectory-derived snapshot across active and archived steps. The snapshot rejects unknown fields, native paths, revision conflicts, excessive references/ranges/processes, and oversized serialized manifests. It does not grant access, extend retention, restore removed automatic compaction, or claim restart durability. Room-scoped capture, persistence in existing session-summary metadata, reauthorization, and fresh-process readback remain required before compaction continuity is complete.
 
 ## 9. Security and failure semantics
 

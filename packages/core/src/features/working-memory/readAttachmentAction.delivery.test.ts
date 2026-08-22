@@ -304,6 +304,9 @@ describe("ATTACHMENT read delivery selection", () => {
 		);
 		expect(calls[0]?.prompt).toContain("SECOND-");
 		expect(JSON.stringify(result?.promptData)).not.toContain("SECOND-");
+		expect(
+			(result?.promptData as { readViews?: unknown[] } | undefined)?.readViews,
+		).toHaveLength(1);
 	});
 
 	it("rejects a stale attachment revision before answer generation or delivery", async () => {
