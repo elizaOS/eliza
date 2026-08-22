@@ -8,6 +8,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import companionPlugin from "@elizaos/plugin-companion";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { CompanionService } from "../../../../plugins/plugin-companion/src/service.ts";
 
 const PAIRING_TOKEN = "companion-scenario-token";
 const SET_MOOD = "SET_COMPANION_MOOD";
