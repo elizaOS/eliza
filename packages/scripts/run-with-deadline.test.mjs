@@ -411,7 +411,7 @@ test("preserves high-bit Windows process exit codes", {
   assert.equal(wrapped.status, direct.status, wrapped.stderr);
 });
 
-test("preserves a completed Windows leader status after draining descendants", {
+test("preserves normal Windows descendant lifetime after leader completion", {
   timeout: 15_000,
   skip: process.platform !== "win32" ? "Windows Job Object contract" : false,
 }, () => {
@@ -423,7 +423,6 @@ test("preserves a completed Windows leader status after draining descendants", {
   const descendant = path.join(root, "descendant.mjs");
   const child = path.join(root, "child.mjs");
   let descendantPid;
-  let descendantGone = false;
   writeFileSync(
     descendant,
     `import { writeFileSync } from "node:fs";
@@ -455,18 +454,15 @@ const ready = setInterval(() => {
     assert.equal(result.status, 9, `${result.stdout}\n${result.stderr}`);
     descendantPid = readPidIfPresent(descendantPidFile);
     assert.ok(descendantPid, "descendant did not report its PID");
-    descendantGone = isWindowsFixtureGone(descendantPid, descendant);
     assert.equal(
-      descendantGone,
-      true,
-      `descendant PID ${descendantPid} survived normal leader completion`,
+      probeWindowsFixture(descendantPid, descendant),
+      "fixture",
+      `descendant PID ${descendantPid} was reaped after normal leader completion`,
     );
   } finally {
     descendantPid ??= readPidIfPresent(descendantPidFile);
     try {
-      if (!descendantGone) {
-        cleanupWindowsFixtures([[descendantPid, descendant]]);
-      }
+      cleanupWindowsFixtures([[descendantPid, descendant]]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
