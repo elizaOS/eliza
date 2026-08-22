@@ -114,6 +114,7 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import {
+  isContainerBackedExecutionTier,
   type SandboxDeletionStopOutcome,
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
@@ -422,6 +423,19 @@ export type ProvisionResult =
        */
       retryable?: boolean;
     };
+
+function rejectNonContainerBackedProvision(
+  rec: AgentSandbox,
+): Extract<ProvisionResult, { success: false }> | undefined {
+  if (isContainerBackedExecutionTier(rec.execution_tier)) {
+    return undefined;
+  }
+  return {
+    success: false,
+    sandboxRecord: rec,
+    error: "Sandbox provisioning requires an explicit container-backed execution tier",
+  };
+}
 
 /**
  * Restore-source override for `provision()`. `from-backup` restores a specific
@@ -3069,6 +3083,8 @@ export class ElizaSandboxService {
   ): Promise<ProvisionResult> {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    const initialTierRejection = rejectNonContainerBackedProvision(rec);
+    if (initialTierRejection) return initialTierRejection;
     if (rec.claimed_at && rec.warm_claim_credential_state === "failed") {
       const retryPreparation = await this.retireFailedWarmClaimForRetry(agentId, orgId);
       if (!retryPreparation.success) {
@@ -3080,6 +3096,8 @@ export class ElizaSandboxService {
       }
       rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const retryTierRejection = rejectNonContainerBackedProvision(rec);
+      if (retryTierRejection) return retryTierRejection;
     }
     if (this.getReplacementCleanupLocator(rec)) {
       try {
@@ -3098,6 +3116,8 @@ export class ElizaSandboxService {
       }
       rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const cleanupTierRejection = rejectNonContainerBackedProvision(rec);
+      if (cleanupTierRejection) return cleanupTierRejection;
     }
 
     const previousStatus = rec.status;
@@ -3248,6 +3268,7 @@ export class ElizaSandboxService {
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
+            executionTier: rec.execution_tier,
             environmentVars: applyRemoteDockerRuntimeMode({
               ...callerEnv,
               ...dbEnv,
@@ -8740,6 +8761,16 @@ export class ElizaSandboxService {
         reprovisioned: false,
         error: "Agent not found",
       };
+    const tierRejection = rejectNonContainerBackedProvision(rec);
+    if (tierRejection) {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: tierRejection.error,
+      };
+    }
+
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
 
@@ -9435,6 +9466,7 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
+      executionTier: agent.execution_tier,
       // Re-apply the cloud-managed inference defaults on top of the stored env so
       // an agent provisioned BEFORE the embedding-dimension / model pins landed
       // heals on upgrade instead of freezing a stale config (e.g. 1536-d cloud
@@ -9948,6 +9980,7 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
+      executionTier: agent.execution_tier,
       environmentVars: applyRemoteDockerRuntimeMode({
         ...rollbackEnv,
         ...applyManagedAgentInferenceEnvDefaults(rollbackEnv),
