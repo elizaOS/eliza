@@ -150,6 +150,7 @@ export async function inspectSqlIdentityMigration(
           ? inArray(authOwnerBindingTable.id, ownerBindingIds)
           : eq(authOwnerBindingTable.instanceId, instanceId as string);
     const bindings = await db.select().from(authOwnerBindingTable).where(ownerBindingScope);
+    const bindingsById = new Map(bindings.map((binding) => [binding.id, binding]));
     for (const binding of bindings) {
       sources.auth_owner_bindings += 1;
       const matchingAccounts = accounts.filter((account) => account.ownerBindingId === binding.id);
@@ -157,9 +158,44 @@ export async function inspectSqlIdentityMigration(
         (account) =>
           account.deletedAt === null &&
           account.status === "connected" &&
-          account.provider.trim().toLowerCase() === binding.connector.trim().toLowerCase()
+          account.provider.trim().toLowerCase() === binding.connector.trim().toLowerCase() &&
+          account.externalId === binding.externalId &&
+          binding.verifiedAt > 0 &&
+          (!instanceId || binding.instanceId === instanceId)
       );
       const validAccount = validAccounts.length === 1 ? validAccounts[0] : null;
+      const reasons: string[] = [];
+      if (instanceId && binding.instanceId !== instanceId)
+        reasons.push("owner_binding_wrong_instance");
+      if (binding.verifiedAt <= 0) reasons.push("owner_binding_unverified");
+      if (matchingAccounts.length === 0) {
+        reasons.push("orphan_owner_binding_has_no_connector_account");
+      } else {
+        if (
+          matchingAccounts.every(
+            (account) => account.deletedAt !== null || account.status !== "connected"
+          )
+        ) {
+          reasons.push("owner_binding_connector_account_disconnected");
+        }
+        if (
+          matchingAccounts.some(
+            (account) =>
+              account.provider.trim().toLowerCase() !== binding.connector.trim().toLowerCase()
+          )
+        ) {
+          reasons.push("owner_binding_connector_mismatch");
+        }
+        if (matchingAccounts.some((account) => account.externalId !== binding.externalId)) {
+          reasons.push("owner_binding_external_subject_mismatch");
+        }
+      }
+      if (validAccounts.length > 1) {
+        reasons.push("owner_binding_has_multiple_matching_connected_accounts");
+      }
+      if (validAccount) {
+        reasons.push("verified_binding_has_no_canonical_owner_principal_mapping");
+      }
       rows.push({
         source: "auth_owner_bindings",
         sourceId: binding.id,
@@ -168,15 +204,28 @@ export async function inspectSqlIdentityMigration(
         connectorAccountReference: validAccount?.id ?? null,
         externalSubjectReference: binding.externalId,
         disposition: validAccount ? "needs_principal_projection" : "conflict",
-        reasons: validAccount
-          ? ["verified_binding_has_no_canonical_owner_principal_mapping"]
-          : validAccounts.length > 1
-            ? ["owner_binding_has_multiple_matching_connected_accounts"]
-            : matchingAccounts.length === 0
-              ? ["orphan_owner_binding_has_no_connector_account"]
-              : ["owner_binding_has_no_matching_connected_account"],
+        reasons: reasons.length > 0 ? reasons : ["owner_binding_has_no_matching_connected_account"],
         metadata: { instanceId: binding.instanceId, verifiedAt: binding.verifiedAt },
       });
+    }
+    for (const row of rows) {
+      if (row.source !== "connector_accounts") continue;
+      const ownerBindingId =
+        typeof row.metadata.ownerBindingId === "string" ? row.metadata.ownerBindingId : null;
+      if (!ownerBindingId) continue;
+      const binding = bindingsById.get(ownerBindingId);
+      if (!binding) {
+        row.disposition = "conflict";
+        row.reasons = [...row.reasons, "connector_account_owner_binding_missing"];
+      } else if (
+        binding.instanceId !== instanceId ||
+        binding.externalId !== row.externalSubjectReference ||
+        binding.connector.trim().toLowerCase() !== row.connectorId ||
+        binding.verifiedAt <= 0
+      ) {
+        row.disposition = "conflict";
+        row.reasons = [...row.reasons, "connector_account_owner_binding_invalid"];
+      }
     }
   }
   if (!instanceId) {

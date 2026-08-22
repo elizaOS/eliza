@@ -153,32 +153,43 @@ export const identityClaimJournalTable = pgTable(
       table.resultingVersion
     ),
     index("identity_claim_journal_agent_created_idx").on(table.agentId, table.createdAt),
+    // Claim/principal identifiers remain immutable payload, not restrictive
+    // FKs: the agent is the lifecycle boundary and must be deletable atomically.
     foreignKey({
       name: "fk_identity_claim_journal_agent",
       columns: [table.agentId],
       foreignColumns: [agentTable.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "fk_identity_claim_journal_claim",
-      columns: [table.claimId, table.agentId],
-      foreignColumns: [identityClaimTable.id, identityClaimTable.agentId],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "fk_identity_claim_journal_principal",
-      columns: [table.principalEntityId, table.agentId],
-      foreignColumns: [entityTable.id, entityTable.agentId],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "fk_identity_claim_journal_actor",
-      columns: [table.actorPrincipalId, table.agentId],
-      foreignColumns: [entityTable.id, entityTable.agentId],
-    }).onDelete("restrict"),
+    }).onDelete("cascade"),
     check(
       "identity_claim_journal_event_check",
       sql`${table.eventKind} IN ('observed', 'refreshed', 'verified', 'disputed', 'revoked')`
     ),
     check(
       "identity_claim_journal_version_check",
+      sql`${table.resultingVersion} > 0 AND (${table.priorVersion} IS NULL OR ${table.priorVersion} > 0)`
+    ),
+  ]
+);
+
+/**
+ * Unlinkable lifecycle receipts retained after tenant deletion. They have no
+ * tenant, principal, subject, claim, free-text, or JSON columns by design.
+ */
+export const identityClaimRetentionLedgerTable = pgTable(
+  "identity_claim_retention_ledger",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`).notNull(),
+    eventKind: text("event_kind").notNull(),
+    priorVersion: bigint("prior_version", { mode: "number" }),
+    resultingVersion: bigint("resulting_version", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    check(
+      "identity_claim_retention_ledger_event_check",
+      sql`${table.eventKind} IN ('observed', 'refreshed', 'verified', 'disputed', 'revoked')`
+    ),
+    check(
+      "identity_claim_retention_ledger_version_check",
       sql`${table.resultingVersion} > 0 AND (${table.priorVersion} IS NULL OR ${table.priorVersion} > 0)`
     ),
   ]

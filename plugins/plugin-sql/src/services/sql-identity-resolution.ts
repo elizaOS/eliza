@@ -42,10 +42,7 @@ import {
 import { sha256 } from "@noble/hashes/sha2.js";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { authOwnerBindingTable } from "../schema/authOwnerBinding";
-import {
-  connectorAccountAuditEventsTable,
-  connectorAccountsTable,
-} from "../schema/connectorAccounts";
+import { connectorAccountsTable } from "../schema/connectorAccounts";
 import { entityTable } from "../schema/entity";
 import {
   identityAuthorityStateTable,
@@ -77,7 +74,6 @@ type RedirectRow = typeof identityCanonicalRedirectTable.$inferSelect;
 type ClaimRow = typeof identityClaimTable.$inferSelect;
 type PersonLinkAttestationRow = typeof identityPersonLinkAttestationTable.$inferSelect;
 type ClaimJournalRow = typeof identityClaimJournalTable.$inferSelect;
-type IdentityTx = Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0];
 type VersionedIdentityClaim = IdentityClaim & { version: number };
 
 function fail(code: string, message: string, context: Record<string, unknown> = {}): never {
@@ -425,66 +421,6 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     return row ? mapClaim(row) : null;
   }
 
-  private async assertMutationPrincipals(
-    tx: IdentityTx,
-    agentId: UUID,
-    principalIds: readonly UUID[]
-  ): Promise<void> {
-    const uniqueIds = [...new Set(principalIds)];
-    const principals = await tx
-      .select({ id: entityTable.id })
-      .from(entityTable)
-      .where(and(eq(entityTable.agentId, agentId), inArray(entityTable.id, uniqueIds)));
-    if (principals.length !== uniqueIds.length) {
-      fail("IDENTITY_PRINCIPAL_NOT_FOUND", "Every claim principal and actor must exist.");
-    }
-  }
-
-  private async replayClaimMutation(
-    tx: IdentityTx,
-    agentId: UUID,
-    idempotencyKey: string,
-    requestDigest: string
-  ): Promise<IdentityClaim | null> {
-    const [existing] = await tx
-      .select()
-      .from(identityClaimJournalTable)
-      .where(
-        and(
-          eq(identityClaimJournalTable.agentId, agentId),
-          eq(identityClaimJournalTable.idempotencyKey, idempotencyKey)
-        )
-      )
-      .limit(1);
-    if (!existing) return null;
-    if (existing.requestDigest !== requestDigest) {
-      fail("IDENTITY_IDEMPOTENCY_CONFLICT", "Claim idempotency key was reused.");
-    }
-    return mapClaimJournal(existing).afterClaim;
-  }
-
-  private async lockClaimMutation(
-    tx: IdentityTx,
-    agentId: UUID,
-    idempotencyKey: string,
-    requestDigest: string
-  ): Promise<IdentityClaim | null> {
-    await tx.insert(identityAuthorityStateTable).values({ agentId }).onConflictDoNothing();
-    await tx
-      .select({ agentId: identityAuthorityStateTable.agentId })
-      .from(identityAuthorityStateTable)
-      .where(eq(identityAuthorityStateTable.agentId, agentId))
-      .for("update");
-    return this.replayClaimMutation(tx, agentId, idempotencyKey, requestDigest);
-  }
-
-  private async advanceGeneration(tx: IdentityTx, agentId: UUID, now: Date): Promise<void> {
-    await tx
-      .update(identityAuthorityStateTable)
-      .set({ generation: sql`${identityAuthorityStateTable.generation} + 1`, updatedAt: now })
-      .where(eq(identityAuthorityStateTable.agentId, agentId));
-  }
-
   async observeClaim(request: ObserveIdentityClaimRequest): Promise<IdentityClaim> {
     this.assertAgent(request.agentId);
     const requestValue = {
@@ -521,258 +457,13 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     ) {
       fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim observation input is invalid.");
     }
-    return this.db.transaction(async (tx) => {
-      const replay = await this.lockClaimMutation(
-        tx,
-        request.agentId,
-        request.idempotencyKey,
-        request.requestDigest
-      );
-      if (replay) return replay;
-      await this.assertMutationPrincipals(tx, request.agentId, [
-        request.principalEntityId,
-        request.actorPrincipalId,
-      ]);
-      const [account] = await tx
-        .select()
-        .from(connectorAccountsTable)
-        .where(
-          and(
-            eq(connectorAccountsTable.id, request.scope.connectorAccountId),
-            eq(connectorAccountsTable.agentId, request.agentId),
-            eq(connectorAccountsTable.provider, request.scope.connectorId)
-          )
-        )
-        .limit(1);
-      if (!account || account.deletedAt !== null || account.status !== "connected") {
-        fail(
-          "IDENTITY_CONNECTOR_ACCOUNT_UNAVAILABLE",
-          "Claim observation requires a matching connected account."
-        );
-      }
-      const [existing] = await tx
-        .select()
-        .from(identityClaimTable)
-        .where(
-          and(
-            eq(identityClaimTable.agentId, request.agentId),
-            eq(identityClaimTable.namespace, request.scope.namespace),
-            eq(identityClaimTable.connectorId, request.scope.connectorId),
-            eq(identityClaimTable.connectorAccountId, request.scope.connectorAccountId),
-            eq(identityClaimTable.externalSubjectId, request.scope.externalSubjectId),
-            inArray(identityClaimTable.status, ["active", "disputed"])
-          )
-        )
-        .for("update")
-        .limit(1);
-      if (existing && existing.principalEntityId !== request.principalEntityId) {
-        fail(
-          "IDENTITY_CLAIM_CONFLICT",
-          "The scoped subject is already attached to another principal."
-        );
-      }
-      if (existing?.status === "disputed") {
-        fail(
-          "IDENTITY_CLAIM_TRANSITION_INVALID",
-          "A disputed scoped subject requires explicit resolution before re-observation."
-        );
-      }
-      const now = new Date();
-      let prior: IdentityClaim | null = null;
-      let after: VersionedIdentityClaim;
-      let eventKind: IdentityClaimEventKind;
-      if (existing) {
-        prior = mapClaim(existing);
-        const [updated] = await tx
-          .update(identityClaimTable)
-          .set({
-            handle: request.handle,
-            displayName: request.displayName,
-            confidence: Math.max(existing.confidence, request.confidence),
-            verification:
-              existing.verification === "unverified" ? "observed" : existing.verification,
-            provenance: toDbObject(request.provenance),
-            evidence: toDbObject(request.evidence),
-            lastSeenAt: existing.lastSeenAt > observedAt ? existing.lastSeenAt : observedAt,
-            version: existing.version + 1,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(identityClaimTable.id, existing.id),
-              eq(identityClaimTable.agentId, request.agentId),
-              eq(identityClaimTable.version, existing.version)
-            )
-          )
-          .returning();
-        if (!updated) fail("IDENTITY_CLAIM_VERSION_CONFLICT", "Claim changed concurrently.");
-        after = mapClaim(updated);
-        eventKind = "refreshed";
-      } else {
-        const [inserted] = await tx
-          .insert(identityClaimTable)
-          .values({
-            agentId: request.agentId,
-            principalEntityId: request.principalEntityId,
-            namespace: request.scope.namespace,
-            connectorId: request.scope.connectorId,
-            connectorAccountId: request.scope.connectorAccountId,
-            externalSubjectId: request.scope.externalSubjectId,
-            handle: request.handle,
-            displayName: request.displayName,
-            verification: "observed",
-            status: "active",
-            confidence: request.confidence,
-            version: 1,
-            provenance: toDbObject(request.provenance),
-            evidence: toDbObject(request.evidence),
-            firstSeenAt: observedAt,
-            lastSeenAt: observedAt,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .onConflictDoNothing()
-          .returning();
-        if (!inserted) {
-          fail("IDENTITY_CLAIM_CONFLICT", "The scoped subject was claimed concurrently.");
-        }
-        after = mapClaim(inserted);
-        eventKind = "observed";
-      }
-      await tx.insert(identityClaimJournalTable).values({
-        agentId: request.agentId,
-        claimId: after.id,
-        principalEntityId: after.principalEntityId,
-        eventKind,
-        priorVersion: prior?.version ?? null,
-        resultingVersion: after.version,
-        actorPrincipalId: request.actorPrincipalId,
-        idempotencyKey: request.idempotencyKey,
-        requestDigest: request.requestDigest,
-        reason: request.reason,
-        provenance: toDbObject(request.provenance),
-        evidence: toDbObject(request.evidence),
-        beforeClaim: prior ? toDbObject(prior) : null,
-        afterClaim: toDbObject(after),
-        createdAt: now,
-      });
-      await this.advanceGeneration(tx, request.agentId, now);
-      return after;
-    });
-  }
-
-  private async establishVerificationAuthority(
-    tx: IdentityTx,
-    request: VerifyIdentityClaimRequest,
-    claim: ClaimRow
-  ): Promise<{ kind: "connector_assertion" | "operator_migration"; id: string }> {
-    const [claimAccount] = await tx
-      .select()
-      .from(connectorAccountsTable)
-      .where(
-        and(
-          eq(connectorAccountsTable.id, claim.connectorAccountId),
-          eq(connectorAccountsTable.agentId, request.agentId),
-          eq(connectorAccountsTable.provider, claim.connectorId)
-        )
-      )
-      .limit(1);
-    if (!claimAccount || claimAccount.deletedAt !== null || claimAccount.status !== "connected") {
-      fail(
-        "IDENTITY_VERIFIER_AUTHORITY_INVALID",
-        "Trusted verification requires the claim connector account to remain connected."
-      );
-    }
-
-    if (request.authority.kind === "connector_assertion") {
-      const [event] = await tx
-        .select()
-        .from(connectorAccountAuditEventsTable)
-        .where(
-          and(
-            eq(connectorAccountAuditEventsTable.id, request.authority.auditEventId),
-            eq(connectorAccountAuditEventsTable.agentId, request.agentId),
-            eq(connectorAccountAuditEventsTable.accountId, claim.connectorAccountId),
-            eq(connectorAccountAuditEventsTable.provider, claim.connectorId),
-            eq(connectorAccountAuditEventsTable.action, "identity_subject_authenticated"),
-            eq(connectorAccountAuditEventsTable.outcome, "success")
-          )
-        )
-        .limit(1);
-      const metadata = event ? asJsonObject(event.metadata, "connectorAudit.metadata") : null;
-      if (
-        !event ||
-        event.actorId !== claim.externalSubjectId ||
-        metadata?.namespace !== claim.namespace ||
-        metadata?.externalSubjectId !== claim.externalSubjectId ||
-        metadata?.principalEntityId !== claim.principalEntityId ||
-        request.actorPrincipalId !== claim.principalEntityId
-      ) {
-        fail(
-          "IDENTITY_VERIFIER_AUTHORITY_INVALID",
-          "Connector assertion is not authenticated for this scoped subject."
-        );
-      }
-      return { kind: "connector_assertion", id: event.id };
-    }
-
-    const instanceSetting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
-    const instanceId = typeof instanceSetting === "string" ? instanceSetting.trim() : "";
-    if (instanceId.length === 0 || request.authority.ownerBindingId.trim().length === 0) {
-      fail(
-        "IDENTITY_VERIFIER_AUTHORITY_INVALID",
-        "Operator migration requires an authenticated owner binding."
-      );
-    }
-    const [binding] = await tx
-      .select()
-      .from(authOwnerBindingTable)
-      .where(eq(authOwnerBindingTable.id, request.authority.ownerBindingId))
-      .limit(1);
-    const [ownerClaim] = await tx
-      .select()
-      .from(identityClaimTable)
-      .where(
-        and(
-          eq(identityClaimTable.agentId, request.agentId),
-          eq(identityClaimTable.principalEntityId, request.actorPrincipalId),
-          eq(identityClaimTable.verification, "owner_bound"),
-          eq(identityClaimTable.status, "active"),
-          eq(identityClaimTable.ownerBindingId, request.authority.ownerBindingId)
-        )
-      )
-      .limit(1);
-    const [ownerAccount] = ownerClaim
-      ? await tx
-          .select()
-          .from(connectorAccountsTable)
-          .where(
-            and(
-              eq(connectorAccountsTable.id, ownerClaim.connectorAccountId),
-              eq(connectorAccountsTable.agentId, request.agentId),
-              eq(connectorAccountsTable.ownerBindingId, request.authority.ownerBindingId)
-            )
-          )
-          .limit(1)
-      : [];
-    if (
-      !binding ||
-      !ownerClaim ||
-      !ownerAccount ||
-      ownerAccount.deletedAt !== null ||
-      ownerAccount.status !== "connected" ||
-      ownerAccount.provider !== ownerClaim.connectorId ||
-      binding.connector !== ownerClaim.connectorId ||
-      binding.externalId !== ownerClaim.externalSubjectId ||
-      binding.instanceId !== instanceId ||
-      binding.verifiedAt <= 0
-    ) {
-      fail(
-        "IDENTITY_VERIFIER_AUTHORITY_INVALID",
-        "Operator migration is not authorized by a live owner binding."
-      );
-    }
-    return { kind: "operator_migration", id: binding.id };
+    // A connected transport account is not authority to bind an arbitrary
+    // subject to a principal. Observation stays dormant until a connector
+    // producer can present a capability-bound, tenant-scoped receipt.
+    fail(
+      "IDENTITY_CLAIM_OBSERVATION_AUTHORITY_UNAVAILABLE",
+      "Identity claim observation requires a trusted connector producer."
+    );
   }
 
   private async transitionClaim(
@@ -780,6 +471,10 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     eventKind: "verified" | "disputed" | "revoked"
   ): Promise<IdentityClaim> {
     this.assertAgent(request.agentId);
+    const suppliedAuthority = (request as unknown as { authority?: unknown }).authority;
+    if (suppliedAuthority !== undefined) {
+      fail("IDENTITY_CLAIM_INPUT_INVALID", "Caller-supplied claim authority is not accepted.");
+    }
     const operation =
       `${eventKind === "verified" ? "verify" : eventKind === "disputed" ? "dispute" : "revoke"}-claim` as const;
     const requestValue: JsonObject = {
@@ -793,7 +488,6 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       evidence: request.evidence,
       ...(eventKind === "verified"
         ? {
-            authority: (request as VerifyIdentityClaimRequest).authority,
             verifiedAt: (request as VerifyIdentityClaimRequest).verifiedAt,
           }
         : {}),
@@ -802,136 +496,26 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
         : {}),
     };
     assertRequestDigest(request.requestDigest, operation, requestValue);
-    const authority =
-      eventKind === "verified" ? (request as VerifyIdentityClaimRequest).authority : null;
     if (
       !Number.isInteger(request.expectedVersion) ||
       request.expectedVersion < 1 ||
       typeof request.idempotencyKey !== "string" ||
       request.idempotencyKey.trim().length === 0 ||
       typeof request.reason !== "string" ||
-      request.reason.trim().length === 0 ||
-      (eventKind === "verified" &&
-        (!authority ||
-          !["connector_assertion", "operator_migration"].includes(authority.kind) ||
-          (authority.kind === "connector_assertion" &&
-            (typeof authority.auditEventId !== "string" ||
-              authority.auditEventId.trim().length === 0)) ||
-          (authority.kind === "operator_migration" &&
-            (typeof authority.ownerBindingId !== "string" ||
-              authority.ownerBindingId.trim().length === 0))))
+      request.reason.trim().length === 0
     ) {
       fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition input is invalid.");
     }
-    return this.db.transaction(async (tx) => {
-      const replay = await this.lockClaimMutation(
-        tx,
-        request.agentId,
-        request.idempotencyKey,
-        request.requestDigest
+    if (eventKind === "verified") {
+      fail(
+        "IDENTITY_VERIFICATION_AUTHORITY_UNAVAILABLE",
+        "No capability-bound identity verification producer is registered."
       );
-      if (replay) return replay;
-      await this.assertMutationPrincipals(tx, request.agentId, [request.actorPrincipalId]);
-      const [row] = await tx
-        .select()
-        .from(identityClaimTable)
-        .where(
-          and(
-            eq(identityClaimTable.id, request.claimId),
-            eq(identityClaimTable.agentId, request.agentId)
-          )
-        )
-        .for("update")
-        .limit(1);
-      if (!row) fail("IDENTITY_CLAIM_NOT_FOUND", "Claim was not found.");
-      if (row.version !== request.expectedVersion) {
-        fail("IDENTITY_CLAIM_VERSION_CONFLICT", "Claim changed concurrently.");
-      }
-      if (eventKind === "verified" && row.status !== "active") {
-        fail("IDENTITY_CLAIM_TRANSITION_INVALID", "Only an active claim can be verified.");
-      }
-      if (eventKind === "disputed" && row.status !== "active") {
-        fail("IDENTITY_CLAIM_TRANSITION_INVALID", "Only an active claim can be disputed.");
-      }
-      if (eventKind === "revoked" && row.status !== "active" && row.status !== "disputed") {
-        fail(
-          "IDENTITY_CLAIM_TRANSITION_INVALID",
-          "Claim cannot be revoked from its current state."
-        );
-      }
-      const verificationAuthority =
-        eventKind === "verified"
-          ? await this.establishVerificationAuthority(
-              tx,
-              request as VerifyIdentityClaimRequest,
-              row
-            )
-          : null;
-      const now = new Date();
-      const verifiedAt =
-        eventKind === "verified"
-          ? new Date((request as VerifyIdentityClaimRequest).verifiedAt)
-          : row.verifiedAt;
-      const revokedAt =
-        eventKind === "revoked"
-          ? new Date((request as RevokeIdentityClaimRequest).revokedAt)
-          : row.revokedAt;
-      if (
-        (eventKind === "verified" && !Number.isFinite(verifiedAt?.getTime())) ||
-        (eventKind === "revoked" && !Number.isFinite(revokedAt?.getTime()))
-      ) {
-        fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition timestamp is invalid.");
-      }
-      const before = mapClaim(row);
-      const [updated] = await tx
-        .update(identityClaimTable)
-        .set({
-          verification: eventKind === "verified" ? "verified" : row.verification,
-          status:
-            eventKind === "disputed"
-              ? "disputed"
-              : eventKind === "revoked"
-                ? "revoked"
-                : row.status,
-          verifiedAt,
-          revokedAt,
-          verificationAuthorityKind: verificationAuthority?.kind ?? row.verificationAuthorityKind,
-          verificationAuthorityId: verificationAuthority?.id ?? row.verificationAuthorityId,
-          provenance: toDbObject(request.provenance),
-          evidence: toDbObject(request.evidence),
-          version: row.version + 1,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(identityClaimTable.id, request.claimId),
-            eq(identityClaimTable.agentId, request.agentId),
-            eq(identityClaimTable.version, request.expectedVersion)
-          )
-        )
-        .returning();
-      if (!updated) fail("IDENTITY_CLAIM_VERSION_CONFLICT", "Claim changed concurrently.");
-      const after = mapClaim(updated);
-      await tx.insert(identityClaimJournalTable).values({
-        agentId: request.agentId,
-        claimId: request.claimId,
-        principalEntityId: after.principalEntityId,
-        eventKind,
-        priorVersion: before.version,
-        resultingVersion: after.version,
-        actorPrincipalId: request.actorPrincipalId,
-        idempotencyKey: request.idempotencyKey,
-        requestDigest: request.requestDigest,
-        reason: request.reason,
-        provenance: toDbObject(request.provenance),
-        evidence: toDbObject(request.evidence),
-        beforeClaim: toDbObject(before),
-        afterClaim: toDbObject(after),
-        createdAt: now,
-      });
-      await this.advanceGeneration(tx, request.agentId, now);
-      return after;
-    });
+    }
+    fail(
+      "IDENTITY_ADMIN_AUTHORITY_UNAVAILABLE",
+      "No authenticated identity administration producer is registered."
+    );
   }
 
   async verifyClaim(request: VerifyIdentityClaimRequest): Promise<IdentityClaim> {
@@ -1117,92 +701,10 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       );
     }
 
-    if (!claim.verificationAuthorityKind || !claim.verificationAuthorityId) return false;
-    if (claim.verificationAuthorityKind === "connector_assertion") {
-      const [event] = await this.db
-        .select()
-        .from(connectorAccountAuditEventsTable)
-        .where(
-          and(
-            eq(connectorAccountAuditEventsTable.id, claim.verificationAuthorityId as UUID),
-            eq(connectorAccountAuditEventsTable.agentId, agentId),
-            eq(connectorAccountAuditEventsTable.accountId, claim.connectorAccountId),
-            eq(connectorAccountAuditEventsTable.provider, claim.connectorId),
-            eq(connectorAccountAuditEventsTable.action, "identity_subject_authenticated"),
-            eq(connectorAccountAuditEventsTable.outcome, "success")
-          )
-        )
-        .limit(1);
-      const metadata = event ? asJsonObject(event.metadata, "connectorAudit.metadata") : null;
-      return Boolean(
-        event &&
-          event.actorId === claim.externalSubjectId &&
-          metadata?.namespace === claim.namespace &&
-          metadata?.externalSubjectId === claim.externalSubjectId &&
-          metadata?.principalEntityId === claim.principalEntityId
-      );
-    }
-
-    if (claim.verificationAuthorityKind !== "operator_migration" || instanceId.length === 0) {
-      return false;
-    }
-    const [journal] = await this.db
-      .select({ actorPrincipalId: identityClaimJournalTable.actorPrincipalId })
-      .from(identityClaimJournalTable)
-      .where(
-        and(
-          eq(identityClaimJournalTable.agentId, agentId),
-          eq(identityClaimJournalTable.claimId, claim.id),
-          eq(identityClaimJournalTable.eventKind, "verified")
-        )
-      )
-      .orderBy(desc(identityClaimJournalTable.createdAt))
-      .limit(1);
-    const [binding] = await this.db
-      .select()
-      .from(authOwnerBindingTable)
-      .where(eq(authOwnerBindingTable.id, claim.verificationAuthorityId))
-      .limit(1);
-    const [ownerClaim] = journal
-      ? await this.db
-          .select()
-          .from(identityClaimTable)
-          .where(
-            and(
-              eq(identityClaimTable.agentId, agentId),
-              eq(identityClaimTable.principalEntityId, journal.actorPrincipalId),
-              eq(identityClaimTable.verification, "owner_bound"),
-              eq(identityClaimTable.status, "active"),
-              eq(identityClaimTable.ownerBindingId, claim.verificationAuthorityId)
-            )
-          )
-          .limit(1)
-      : [];
-    const [ownerAccount] = ownerClaim
-      ? await this.db
-          .select()
-          .from(connectorAccountsTable)
-          .where(
-            and(
-              eq(connectorAccountsTable.id, ownerClaim.connectorAccountId),
-              eq(connectorAccountsTable.agentId, agentId),
-              eq(connectorAccountsTable.ownerBindingId, claim.verificationAuthorityId)
-            )
-          )
-          .limit(1)
-      : [];
-    return Boolean(
-      binding &&
-        ownerClaim &&
-        ownerAccount &&
-        ownerAccount.deletedAt === null &&
-        ownerAccount.status === "connected" &&
-        ownerAccount.provider === ownerClaim.connectorId &&
-        binding.connector === ownerClaim.connectorId &&
-        binding.externalId === ownerClaim.externalSubjectId &&
-        binding.instanceId === instanceId &&
-        binding.verifiedAt > 0
-    );
+    // Mutable database rows and caller-supplied JSON are not verification
+    // capabilities. Ordinary verified claims therefore remain unavailable to
+    // delivery until a connector-owned producer and receipt verifier land.
+    return false;
   }
 
   async evaluateOwnerBinding(

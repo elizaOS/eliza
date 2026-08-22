@@ -32,7 +32,12 @@ export async function applyIdentityClaimJournalGuard(db: DrizzleDatabase): Promi
     LANGUAGE plpgsql
     AS $$
     BEGIN
-      RAISE EXCEPTION 'identity_claim_journal is append-only'
+      IF TG_TABLE_NAME = 'identity_claim_journal'
+         AND TG_OP = 'DELETE'
+         AND NOT EXISTS (SELECT 1 FROM agents WHERE id = OLD.agent_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION '% is append-only', TG_TABLE_NAME
         USING ERRCODE = '55000';
     END;
     $$
@@ -43,6 +48,43 @@ export async function applyIdentityClaimJournalGuard(db: DrizzleDatabase): Promi
   await db.execute(sql`
     CREATE TRIGGER identity_claim_journal_append_only
     BEFORE UPDATE OR DELETE ON identity_claim_journal
+    FOR EACH ROW EXECUTE FUNCTION reject_identity_claim_journal_mutation()
+  `);
+  await db.execute(sql`
+    CREATE OR REPLACE FUNCTION retain_identity_claim_journal_evidence()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      INSERT INTO identity_claim_retention_ledger (
+        event_kind,
+        prior_version,
+        resulting_version
+      )
+      SELECT
+        j.event_kind,
+        j.prior_version,
+        j.resulting_version
+      FROM identity_claim_journal j
+      WHERE j.agent_id = OLD.id;
+      RETURN OLD;
+    END;
+    $$
+  `);
+  await db.execute(
+    sql`DROP TRIGGER IF EXISTS identity_claim_journal_retention_on_agent_delete ON agents`
+  );
+  await db.execute(sql`
+    CREATE TRIGGER identity_claim_journal_retention_on_agent_delete
+    BEFORE DELETE ON agents
+    FOR EACH ROW EXECUTE FUNCTION retain_identity_claim_journal_evidence()
+  `);
+  await db.execute(
+    sql`DROP TRIGGER IF EXISTS identity_claim_retention_ledger_append_only ON identity_claim_retention_ledger`
+  );
+  await db.execute(sql`
+    CREATE TRIGGER identity_claim_retention_ledger_append_only
+    BEFORE UPDATE OR DELETE ON identity_claim_retention_ledger
     FOR EACH ROW EXECUTE FUNCTION reject_identity_claim_journal_mutation()
   `);
   return true;

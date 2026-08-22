@@ -297,34 +297,7 @@ export const identityClaimJournalSchema: SchemaTable = {
 			tableTo: "agents",
 			columnsFrom: ["agent_id"],
 			columnsTo: ["id"],
-			onDelete: "restrict",
-			schemaTo: "",
-		},
-		fk_identity_claim_journal_claim: {
-			name: "fk_identity_claim_journal_claim",
-			tableFrom: "identity_claim_journal",
-			tableTo: "identity_claims",
-			columnsFrom: ["claim_id", "agent_id"],
-			columnsTo: ["id", "agent_id"],
-			onDelete: "restrict",
-			schemaTo: "",
-		},
-		fk_identity_claim_journal_principal: {
-			name: "fk_identity_claim_journal_principal",
-			tableFrom: "identity_claim_journal",
-			tableTo: "entities",
-			columnsFrom: ["principal_entity_id", "agent_id"],
-			columnsTo: ["id", "agent_id"],
-			onDelete: "restrict",
-			schemaTo: "",
-		},
-		fk_identity_claim_journal_actor: {
-			name: "fk_identity_claim_journal_actor",
-			tableFrom: "identity_claim_journal",
-			tableTo: "entities",
-			columnsFrom: ["actor_principal_id", "agent_id"],
-			columnsTo: ["id", "agent_id"],
-			onDelete: "restrict",
+			onDelete: "cascade",
 			schemaTo: "",
 		},
 	},
@@ -343,6 +316,43 @@ export const identityClaimJournalSchema: SchemaTable = {
 		},
 		identity_claim_journal_version_check: {
 			name: "identity_claim_journal_version_check",
+			value:
+				"resulting_version > 0 AND (prior_version IS NULL OR prior_version > 0)",
+		},
+	},
+};
+
+export const identityClaimRetentionLedgerSchema: SchemaTable = {
+	name: "identity_claim_retention_ledger",
+	schema: "",
+	columns: {
+		id: {
+			name: "id",
+			type: "uuid",
+			primaryKey: true,
+			notNull: true,
+			default: "gen_random_uuid()",
+		},
+		event_kind: { name: "event_kind", type: "text", notNull: true },
+		prior_version: { name: "prior_version", type: "bigint" },
+		resulting_version: {
+			name: "resulting_version",
+			type: "bigint",
+			notNull: true,
+		},
+	},
+	indexes: {},
+	foreignKeys: {},
+	compositePrimaryKeys: {},
+	uniqueConstraints: {},
+	checkConstraints: {
+		identity_claim_retention_ledger_event_check: {
+			name: "identity_claim_retention_ledger_event_check",
+			value:
+				"event_kind IN ('observed', 'refreshed', 'verified', 'disputed', 'revoked')",
+		},
+		identity_claim_retention_ledger_version_check: {
+			name: "identity_claim_retention_ledger_version_check",
 			value:
 				"resulting_version > 0 AND (prior_version IS NULL OR prior_version > 0)",
 		},

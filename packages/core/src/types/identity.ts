@@ -133,31 +133,26 @@ export interface ObserveIdentityClaimRequest extends IdentityClaimMutationBase {
 	observedAt: string;
 }
 
-export type IdentityClaimVerifierAuthority =
-	| {
-			kind: "connector_assertion";
-			auditEventId: UUID;
-	  }
-	| {
-			kind: "operator_migration";
-			ownerBindingId: string;
-	  };
-
 export interface VerifyIdentityClaimRequest extends IdentityClaimMutationBase {
 	claimId: UUID;
 	expectedVersion: number;
-	authority: IdentityClaimVerifierAuthority;
+	/** Reserved for a future opaque receipt from a trusted producer. */
+	authority?: never;
 	verifiedAt: string;
 }
 
 export interface DisputeIdentityClaimRequest extends IdentityClaimMutationBase {
 	claimId: UUID;
 	expectedVersion: number;
+	/** Reserved for a future authenticated administrative receipt. */
+	authority?: never;
 }
 
 export interface RevokeIdentityClaimRequest extends IdentityClaimMutationBase {
 	claimId: UUID;
 	expectedVersion: number;
+	/** Reserved for a future authenticated administrative receipt. */
+	authority?: never;
 	revokedAt: string;
 }
 

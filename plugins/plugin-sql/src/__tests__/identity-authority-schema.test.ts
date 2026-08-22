@@ -8,6 +8,7 @@ import {
   identityAuthorityStateTable,
   identityCanonicalRedirectTable,
   identityClaimJournalTable,
+  identityClaimRetentionLedgerTable,
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
@@ -46,23 +47,34 @@ describe("canonical identity authority schema", () => {
     );
   });
 
-  it("keeps an immutable, tenant-bound claim lifecycle journal", () => {
+  it("keeps a tenant journal that only cascades through its agent", () => {
     const config = getTableConfig(identityClaimJournalTable);
     expect(config.name).toBe("identity_claim_journal");
     expect(config.uniqueConstraints.map((constraint) => constraint.name)).toContain(
       "identity_claim_journal_idempotency_unique"
     );
-    expect(config.foreignKeys).toHaveLength(4);
+    expect(config.foreignKeys).toHaveLength(1);
     expect(
       config.foreignKeys.find((key) => key.getName() === "fk_identity_claim_journal_agent")
         ?.onDelete
-    ).toBe("restrict");
+    ).toBe("cascade");
     expect(config.checks.map((constraint) => constraint.name)).toEqual(
       expect.arrayContaining([
         "identity_claim_journal_event_check",
         "identity_claim_journal_version_check",
       ])
     );
+  });
+
+  it("retains only unlinkable lifecycle receipt fields", () => {
+    const config = getTableConfig(identityClaimRetentionLedgerTable);
+    expect(config.foreignKeys).toHaveLength(0);
+    expect(config.columns.map((column) => column.name)).toEqual([
+      "id",
+      "event_kind",
+      "prior_version",
+      "resulting_version",
+    ]);
   });
 
   it("retains merge and split plans with lineage and before-state", () => {
