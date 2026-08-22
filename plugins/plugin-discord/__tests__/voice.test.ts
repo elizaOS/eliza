@@ -209,4 +209,58 @@ describe("VoiceManager", () => {
 			);
 		});
 	});
+
+	it("wires speaking start/end once when two joins share a connection", async () => {
+		const connection = makeConnection();
+		voiceModule.joinVoiceChannel.mockReturnValue(connection);
+		voiceModule.entersState.mockResolvedValue(connection);
+		const manager = new VoiceManager(
+			{ accountId: "test", client: new EventEmitter() as never },
+			makeRuntime() as unknown as ICompatRuntime,
+		);
+		const channel = makeChannel();
+
+		await Promise.all([
+			manager.joinChannel(channel as never),
+			manager.joinChannel(channel as never),
+		]);
+
+		expect(connection.receiver.speaking.listenerCount("start")).toBe(1);
+		expect(connection.receiver.speaking.listenerCount("end")).toBe(1);
+	});
+
+	it("does not resubscribe a member on a second speaking start", async () => {
+		const receiveStream = new PassThrough();
+		const connection = makeConnection(receiveStream);
+		voiceModule.joinVoiceChannel.mockReturnValue(connection);
+		voiceModule.entersState.mockResolvedValue(connection);
+
+		const client = new EventEmitter() as EventEmitter & {
+			user?: { id: string };
+		};
+		client.user = { id: "bot-1" };
+		const member = {
+			displayName: "Owner",
+			guild: { id: "guild-1" },
+			id: "user-1",
+			user: { bot: false, displayName: "Owner", username: "owner" },
+		};
+		const channel = makeChannel(member);
+		const manager = new VoiceManager(
+			{ accountId: "test", client: client as never },
+			makeRuntime() as unknown as ICompatRuntime,
+		);
+
+		await manager.joinChannel(channel as never);
+		connection.receiver.speaking.emit("start", "user-1");
+		await vi.waitFor(() => {
+			expect(connection.receiver.subscribe).toHaveBeenCalledTimes(1);
+		});
+
+		connection.receiver.speaking.emit("start", "user-1");
+		await new Promise((resolve) => setImmediate(resolve));
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(connection.receiver.subscribe).toHaveBeenCalledTimes(1);
+	});
 });
