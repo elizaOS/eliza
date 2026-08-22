@@ -38,7 +38,8 @@ invariants; the range-diff must not be misrepresented as blob identity.
   users; it is no longer developer-only.
 - Cloud migrations remain one contiguous suffix:
   `0305_secure_remote_hosts.sql`, `0306_secure_remote_command_relay.sql`, and
-  `0307_remote_host_managed_network.sql`. The unpublished c151 migration block
+  `0308_remote_host_managed_network.sql`. Upstream owns
+  `0307_twilio_outbound_call_audit.sql`; the unpublished c151 migration block
   was not stacked or replayed under duplicate names.
 - The merged secure pairing/session/relay model remains authoritative for
   device, owner, session, key, target, capability, expiry, replay, and durable
@@ -71,7 +72,9 @@ The exact publication head must pass:
    integration, and Electrobun typecheck.
 3. Cloud remote API tests, shared repository/Headscale/PGlite tests, and both
    Cloud typechecks.
-4. Disposable real PostgreSQL composition of migrations 0305-0307.
+4. Disposable real PostgreSQL composition of migrations 0305-0308, including
+   the upstream 0307 migration between the Devices relay and managed-network
+   suffix.
 5. Production story build plus responsive interaction at 380x844 and
    1440x1000 with no horizontal overflow and 44-point actions.
 6. An exact-head unsigned iOS Simulator build whose cloud-only attestation

@@ -208,7 +208,8 @@ beforeAll(async () => {
     "0275_remote_sessions_first_class_expiry",
     "0305_secure_remote_hosts",
     "0306_secure_remote_command_relay",
-    "0307_remote_host_managed_network",
+    "0307_twilio_outbound_call_audit",
+    "0308_remote_host_managed_network",
   ]) {
     await applyMigration(migration);
   }

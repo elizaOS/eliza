@@ -20,9 +20,10 @@ app, or native port 50001.
 
 1. Confirm the deployment source equals the draft-PR head and capture health,
    migration-tail, PostgreSQL backup/rollback marker, and service identifiers.
-2. Apply the complete locked migration chain; verify 0305, 0306, and 0307 are
-   present exactly once and the controller, host, relay, start-fence, managed-
-   network, and cleanup constraints exist.
+2. Apply the complete locked migration chain; verify Devices migrations 0305,
+   0306, and 0308 plus upstream Twilio migration 0307 are each present exactly
+   once, and the controller, host, relay, start-fence, managed-network, and
+   cleanup constraints exist.
 3. Create and clean up one Headscale pre-auth key and node. Exercise database-
    success/Headscale-failure, client-disconnect, missing-key/node, repeated
    revoke, and service-restart compensation. Confirm no secret key is stored.
@@ -77,4 +78,3 @@ Keep separate rows for local unit/integration tests, browser interaction,
 Simulator, physical phone, second Mac, VPS, isolated PostgreSQL, real
 Headscale, hosted CI/security, signing, review, and production. A passing row in
 one class never fills another.
-
