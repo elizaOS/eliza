@@ -116,6 +116,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
 		/num_predict:\s*this\.maxTokens/,
 	],
+	"packages/core/src/runtime/action-retrieval.ts": [
+		/results\.slice\(0,\s*limit\)/,
+		/COMPRESS_MODE_TOP_K_CAP/,
+	],
+	"packages/core/src/runtime/action-tiering.ts": [
+		/tierAParents\.splice\(/,
+		/tierBParents\.splice\(/,
+		/children[^\n]*\.slice\(0,/,
+	],
 	"plugins/plugin-coding-tools/src/actions/summaries.ts": [
 		/compactSummaryText/,
 		/truncateWellFormed/,

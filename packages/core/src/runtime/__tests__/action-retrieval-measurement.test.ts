@@ -1,8 +1,8 @@
 /**
  * Instrumentation surface of retrieveActions: measurement mode exposes
  * per-stage scores (exact/regex/keyword/bm25/embedding/contextMatch), the fused
- * reciprocal-rank-fusion topK, and honors tierOverrides (topK cap, per-stage
- * weights) without altering the primary results returned when it is off. Runs
+ * reciprocal-rank-fusion ordering, and honors tierOverrides stage weights
+ * without altering the primary results returned when it is off. Runs
  * against a deterministic in-memory action catalog — no model or embeddings.
  */
 import { describe, expect, it } from "vitest";
@@ -169,7 +169,7 @@ describe("action-retrieval measurement mode", () => {
 		expect(calendarEntry).toBeDefined();
 	});
 
-	it("applies tierOverrides.topK to limit results", () => {
+	it("ignores the retired tierOverrides.topK availability cap", () => {
 		const catalog = buildActionCatalog(actions);
 		const wide = retrieveActions({
 			catalog,
@@ -180,11 +180,7 @@ describe("action-retrieval measurement mode", () => {
 			messageText: "play music",
 			tierOverrides: { topK: 2 },
 		});
-		expect(capped.results.length).toBe(2);
-		// Top-2 by score from the unlimited call must match the capped top-2.
-		expect(capped.results.map((r) => r.name)).toEqual(
-			wide.results.slice(0, 2).map((r) => r.name),
-		);
+		expect(capped.results).toEqual(wide.results);
 	});
 
 	it("applies tierOverrides.stageWeights to RRF fusion", () => {

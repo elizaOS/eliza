@@ -2,7 +2,7 @@
  * Multi-stage action retrieval for the planner: scores catalog parents by
  * exact-hint, candidate-regex, keyword, BM25, embedding tie-breaker, and
  * context-match signals, then fuses the per-stage rankings with reciprocal-rank
- * fusion into a tier-sized candidate set.
+ * fusion into a complete relevance-ranked catalog.
  */
 import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
 import { logger } from "../logger";
@@ -30,6 +30,7 @@ export type RetrieveActionsInput = {
 	candidateActions?: string[];
 	parentActionHints?: string[];
 	embedding?: ActionEmbeddingTieBreaker;
+	/** @deprecated Retrieval ranks every parent; it never limits availability. */
 	limit?: number;
 	/**
 	 * The messageHandler-selected contexts for this turn. Used as a *weight*
@@ -52,6 +53,7 @@ export type RetrieveActionsInput = {
 	 * harness from `RETRIEVAL_DEFAULTS_BY_TIER`.
 	 */
 	tierOverrides?: {
+		/** @deprecated Retrieval ranks every parent; it never caps the catalog. */
 		topK?: number;
 		stageWeights?: Partial<Record<RetrievalStageName, number>>;
 	};
@@ -118,11 +120,9 @@ const RRF_K = 60;
  */
 const RETRIEVAL_TIER_DEFAULTS: Record<
 	"small" | "mid" | "large" | "frontier",
-	{ topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
+	{ stageWeights: Partial<Record<RetrievalStageName, number>> }
 > = {
 	small: {
-		// measured: K=5 saturates (W6-G2 Pareto 2026-05-11; heuristic was 5)
-		topK: 5,
 		stageWeights: {
 			exact: 1.5,
 			regex: 1.3,
@@ -133,8 +133,6 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	mid: {
-		// measured: K=5 saturates at 0.98 recall (heuristic was 8)
-		topK: 6,
 		stageWeights: {
 			exact: 1.4,
 			regex: 1.2,
@@ -145,8 +143,6 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	large: {
-		// measured: K=5 saturates at 0.98 recall (heuristic was 12)
-		topK: 8,
 		stageWeights: {
 			exact: 1.2,
 			regex: 1.1,
@@ -157,8 +153,6 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	frontier: {
-		// measured: K=5 saturates at 0.98 recall (heuristic was 20)
-		topK: 12,
 		stageWeights: {
 			exact: 1,
 			regex: 1,
@@ -170,10 +164,6 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 	},
 };
 
-// Cerebras "compress" mode caps top-K at 8 regardless of tier default.
-// When `ELIZA_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
-// tighter token budget on the available-actions block.
-const COMPRESS_MODE_TOP_K_CAP = 8;
 // A candidate name can hint MORE than one parent when the phrasing is genuinely
 // ambiguous between surfaces. "OPEN_APP" can mean the apps *page* (VIEWS) or
 // launching the application itself (APP) — hint both and let the planner
@@ -480,32 +470,20 @@ const VIEW_OPERATION_TOKENS = new Set([
 ]);
 
 function resolveTierOverridesFromEnv():
-	| { topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
+	| { stageWeights: Partial<Record<RetrievalStageName, number>> }
 	| undefined {
 	const raw =
 		typeof process !== "undefined" ? process.env.MODEL_TIER?.trim() : undefined;
-	const compress =
-		typeof process !== "undefined" && process.env.ELIZA_PROMPT_COMPRESS === "1";
 	if (
 		raw !== "small" &&
 		raw !== "mid" &&
 		raw !== "large" &&
 		raw !== "frontier"
 	) {
-		if (compress) {
-			return {
-				topK: COMPRESS_MODE_TOP_K_CAP,
-				stageWeights: {},
-			};
-		}
 		return undefined;
 	}
 	const entry = RETRIEVAL_TIER_DEFAULTS[raw];
-	const topK = compress
-		? Math.min(entry.topK, COMPRESS_MODE_TOP_K_CAP)
-		: entry.topK;
 	return {
-		topK,
 		stageWeights: { ...entry.stageWeights },
 	};
 }
@@ -776,16 +754,8 @@ export function retrieveActions(
 		);
 	});
 
-	const effectiveLimit =
-		effectiveOverrides?.topK ??
-		(Number.isFinite(input.limit) ? input.limit : undefined);
-	const limit = Number.isFinite(effectiveLimit)
-		? Math.max(0, effectiveLimit ?? 0)
-		: 0;
-	const limited = limit > 0 ? results.slice(0, limit) : results;
-
-	for (let index = 0; index < limited.length; index += 1) {
-		limited[index].rank = index + 1;
+	for (let index = 0; index < results.length; index += 1) {
+		results[index].rank = index + 1;
 	}
 
 	let measurement: RetrievalMeasurement | undefined;
@@ -834,7 +804,7 @@ export function retrieveActions(
 	}
 
 	return {
-		results: limited,
+		results,
 		warnings: input.catalog.warnings,
 		query: {
 			text: queryText,
@@ -1184,13 +1154,6 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 	if (looksLikeSettingsPermissionCandidateAction(normalized)) {
 		return ["SETTINGS"];
 	}
-	// Coding/repo-shaped names route to the TASKS umbrella before the view
-	// heuristics get a chance to claim them: git-surface tokens plus a view
-	// operation (CODE_PR_CREATE, UPDATE_REPO_README) otherwise read as a
-	// "generated capability" and misroute repo work to the views catalog.
-	if (looksLikeCodingCandidateAction(normalized)) {
-		return ["TASKS"];
-	}
 	const aliases: string[] = [];
 	if (looksLikeViewCandidateAction(normalized)) {
 		aliases.push("VIEWS");
@@ -1296,29 +1259,6 @@ function looksLikeSettingsPermissionCandidateAction(
 		tokens.has("ACCESS") &&
 		hasAnyToken(tokens, SETTINGS_PERMISSION_NAMESPACE_TOKENS);
 	return namesAPermission || namesAScopedAccess;
-}
-
-// Git-surface vocabulary. CODE is included but guarded against QR_CODE-style
-// names; generic verbs (PULL, MERGE, CREATE) are deliberately absent — bare
-// verbs collide with contact/view inventions (MERGE_CONTACTS) and only the
-// surface nouns are unambiguous.
-const CODING_SURFACE_TOKENS = new Set([
-	"CODE",
-	"CODING",
-	"REPO",
-	"REPOSITORY",
-	"GIT",
-	"GITHUB",
-	"PR",
-	"COMMIT",
-	"BRANCH",
-]);
-
-function looksLikeCodingCandidateAction(normalizedActionName: string): boolean {
-	if (!normalizedActionName) return false;
-	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
-	if (tokens.has("QR")) return false;
-	return hasAnyToken(tokens, CODING_SURFACE_TOKENS);
 }
 
 function looksLikeViewCandidateAction(normalizedActionName: string): boolean {
