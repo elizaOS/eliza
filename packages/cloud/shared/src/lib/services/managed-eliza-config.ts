@@ -258,7 +258,8 @@ export async function prepareManagedElizaBaseEnvironment(
   const existingEnv = { ...(params.existingEnv ?? {}) };
   const localDockerDirectInference =
     process.env.ELIZA_LOCAL_DOCKER_PROVIDER === "1" &&
-    existingEnv.ELIZAOS_CLOUD_ENABLED?.trim().toLowerCase() === "false";
+    (existingEnv.ELIZAOS_CLOUD_ENABLED?.trim().toLowerCase() === "false" ||
+      process.env.ELIZAOS_CLOUD_ENABLED?.trim().toLowerCase() === "false");
   // DATABASE_URL / ELIZA_MANAGED_DATABASE_URL are managed reserved keys
   // (RESERVED_MANAGED_ELIZA_ENV_KEYS); the sandbox layer
   // (computeManagedAgentDbEnv in eliza-sandbox.ts) is the SOLE authority on the
@@ -312,6 +313,12 @@ export async function prepareManagedElizaBaseEnvironment(
       // model routing so acceptance can pin a real provider directly while
       // retaining the real Cloud session, org, authz, DB, and lifecycle paths.
       ELIZAOS_CLOUD_ENABLED: localDockerDirectInference ? "false" : "true",
+      // plugin-elizacloud auto-enables whenever its managed API key exists and
+      // otherwise wins text routing by priority even with ENABLED=false. Make
+      // the local direct-provider opt-out explicit; production remains Cloud.
+      ELIZAOS_CLOUD_USE_INFERENCE: localDockerDirectInference
+        ? "false"
+        : (existingEnv.ELIZAOS_CLOUD_USE_INFERENCE ?? "true"),
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
       // Cloud-managed inference defaults: by default pin embeddings to the
       // elizacloud Worker base (whose POST /embeddings serves 1536-dim

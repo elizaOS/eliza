@@ -203,6 +203,12 @@ export const elizaOSCloudPlugin: Plugin = {
     ELIZAOS_CLOUD_API_KEY: env.ELIZAOS_CLOUD_API_KEY ?? null,
     ELIZAOS_CLOUD_BASE_URL: env.ELIZAOS_CLOUD_BASE_URL ?? null,
     ELIZAOS_CLOUD_ENABLED: env.ELIZAOS_CLOUD_ENABLED ?? null,
+    // Host-owned routing arbitration must be hydrated into runtime settings.
+    // registerTextInferenceModels/registerCloudEmbeddingModels read through
+    // runtime.getSetting(), whose plugin-config layer otherwise hides these
+    // process values and silently restores Cloud priority routing.
+    ELIZAOS_CLOUD_USE_INFERENCE: env.ELIZAOS_CLOUD_USE_INFERENCE ?? null,
+    ELIZAOS_CLOUD_USE_EMBEDDINGS: env.ELIZAOS_CLOUD_USE_EMBEDDINGS ?? null,
     // Text models
     ELIZAOS_CLOUD_NANO_MODEL: env.ELIZAOS_CLOUD_NANO_MODEL ?? null,
     ELIZAOS_CLOUD_MEDIUM_MODEL: env.ELIZAOS_CLOUD_MEDIUM_MODEL ?? null,
