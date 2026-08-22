@@ -31,7 +31,6 @@
 // per-session Git wrapper.
 // biome-ignore assist/source/organizeImports: dependency evaluation order is the credential boundary.
 import { consumeWarmClaimToken } from "./acp-bootstrap.js";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import {
@@ -45,6 +44,7 @@ import {
 } from "@elizaos/plugin-coding-tools";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { publishParsedReply } from "./acp-response.js";
+import { AcpActivePromptRegistry } from "./acp-active-prompts.js";
 import {
   type AcpToolCallUpdate,
   toolCallUpdateFromAction,
@@ -77,12 +77,7 @@ let identity: SessionIdentity | null = null;
 // The prompt whose turn is running. Every ACP session shares one inner room,
 // so completed actions are attributed by the prompt window, not the room —
 // the orchestrator drives one prompt per process at a time (busy-claim).
-interface ActivePrompt {
-  sessionId: string;
-  publish: (update: AcpToolCallUpdate) => Promise<unknown>;
-}
-const activePrompt = new AsyncLocalStorage<ActivePrompt>();
-const activePromptControllers = new Map<string, AbortController>();
+const activePrompts = new AcpActivePromptRegistry<AcpToolCallUpdate>();
 const warmSessionClaim = new AcpWarmSessionClaim(consumeWarmClaimToken());
 
 async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
@@ -156,7 +151,7 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       runtime.registerEvent(
         EventType.ACTION_COMPLETED,
         async (payload: ActionEventPayload) => {
-          const target = activePrompt.getStore();
+          const target = activePrompts.current();
           if (!target) return;
           const update = toolCallUpdateFromAction(
             target.sessionId,
@@ -381,25 +376,16 @@ const _connection = new AgentSideConnection(
         sessionId: params.sessionId,
         publish: (update) => conn.sessionUpdate(update),
       };
-      const abortController = new AbortController();
-      activePromptControllers.set(params.sessionId, abortController);
       let response: string;
-      try {
-        response = await activePrompt.run(promptContext, () =>
-          getAgentClient().sendMessage({
-            room,
-            text,
-            identity,
-            source: "acp",
-            abortSignal: abortController.signal,
-          }),
-        );
-      } finally {
-        if (activePromptControllers.get(params.sessionId) === abortController) {
-          activePromptControllers.delete(params.sessionId);
-        }
-      }
-      if (abortController.signal.aborted) return { stopReason: "cancelled" };
+      response = await activePrompts.run(promptContext, (abortSignal) =>
+        getAgentClient().sendMessage({
+          room,
+          text,
+          identity,
+          source: "acp",
+          abortSignal,
+        }),
+      );
       await publishParsedReply(params.sessionId, response, (update) =>
         conn.sessionUpdate(update),
       );
@@ -408,7 +394,7 @@ const _connection = new AgentSideConnection(
     },
     async cancel(params: { sessionId?: string }) {
       const sessionId = params?.sessionId;
-      if (sessionId) activePromptControllers.get(sessionId)?.abort();
+      if (sessionId) activePrompts.cancel(sessionId);
     },
     // The elizaOS orchestrator's native ACP transport sends `session/close` on
     // teardown. It IS a standard ACP method (schema.AGENT_METHODS.session_close),
