@@ -20,8 +20,6 @@ import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
  * Similar to the knowledge provider but focused on agent learnings
  */
 const spec = requireProviderSpec("experienceProvider");
-const MAX_RELEVANT_EXPERIENCES = 7;
-
 export const experienceProvider: Provider = {
 	name: spec.name,
 	description:
@@ -73,7 +71,7 @@ export const experienceProvider: Provider = {
 						experience,
 					]),
 				).values(),
-			].slice(0, MAX_RELEVANT_EXPERIENCES);
+			];
 
 			if (relevantExperiences.length === 0) {
 				return { text: "", data: {}, values: {} };

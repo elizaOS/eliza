@@ -21,7 +21,6 @@ import {
   buildAccessContext,
   embedRecallQuery,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
@@ -77,8 +76,6 @@ export function maybeAugmentChatMessageWithLanguage(
 // ---------------------------------------------------------------------------
 
 const CHAT_DOCUMENTS_THRESHOLD = 0.2;
-const CHAT_DOCUMENTS_LIMIT = 4;
-const CHAT_DOCUMENTS_SNIPPET_MAX_CHARS = 700;
 
 // Keyword search max-normalizes BM25 within each result set, so the BEST
 // positive match is always similarity 1.0 even when the lexical overlap is a
@@ -408,9 +405,9 @@ export async function maybeAugmentChatMessageWithDocuments(
     // recall belongs to the DOCUMENTS provider, where it composes in parallel
     // with the rest of the selected context instead of serially delaying chat.
     const keywordMatches = await loadMatchesAcrossScopes(userPrompt);
-    relevantMatches = selectRelevantMatches(keywordMatches)
-      .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
-      .slice(0, CHAT_DOCUMENTS_LIMIT);
+    relevantMatches = selectRelevantMatches(keywordMatches).sort(
+      (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
+    );
   } catch (error) {
     if (options.signal?.aborted) {
       throw options.signal.reason ?? error;
@@ -441,15 +438,11 @@ export async function maybeAugmentChatMessageWithDocuments(
             ? metadata.title.trim()
             : `source-${index + 1}`;
       const text = toWellFormedUnicode((match.content.text ?? "").trim());
-      const snippet =
-        text.length > CHAT_DOCUMENTS_SNIPPET_MAX_CHARS
-          ? `${truncateWellFormed(text, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS - 3)}...`
-          : text;
       return [
         `<source title=${JSON.stringify(title)} similarity=${JSON.stringify(
           (match.similarity ?? 0).toFixed(3),
         )}>`,
-        snippet,
+        text,
         "</source>",
       ].join("\n");
     })

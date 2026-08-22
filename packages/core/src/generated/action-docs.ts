@@ -368,7 +368,7 @@ export const coreActionsSpec = {
 				{
 					name: "source",
 					description:
-						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1989,7 +1989,7 @@ export const allActionsSpec = {
 				{
 					name: "source",
 					description:
-						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
@@ -3370,23 +3370,6 @@ export const allActionsSpec = {
 			],
 			similes: ["/backend"],
 			descriptionCompressed: "Show or set the default coding backend",
-		},
-		{
-			name: "COMPACT_COMMAND",
-			description: "Compact conversation history",
-			parameters: [
-				{
-					name: "instructions",
-					description: "Optional compaction instructions",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional compaction instructions",
-				},
-			],
-			similes: ["/compact"],
-			descriptionCompressed: "Compact convo history",
 		},
 		{
 			name: "CONTEXT_COMMAND",

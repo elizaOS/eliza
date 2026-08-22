@@ -205,15 +205,11 @@ export async function runFactsAndRelationshipsStage(
 		};
 	}
 
-	const candidateEntityNames = candidateRelationships.flatMap((rel) => [
-		rel.subject,
-		rel.object,
-	]);
 	const [similarFacts, existingRelationships, roomEntities] = await Promise.all(
 		[
 			searchSimilarFacts(runtime, message, candidateFacts),
 			fetchExistingRelationships(runtime, message),
-			fetchRoomEntities(runtime, message, candidateEntityNames),
+			fetchRoomEntities(runtime, message),
 		],
 	);
 
@@ -361,16 +357,6 @@ type RoomEntityRef = {
 	names: string[];
 };
 
-// Hard cap on how many room entities we ground into the validation prompt.
-// `getEntityDetails` returns EVERY room participant (it does not apply the
-// display cap `formatEntities` uses), so a busy Discord/Slack room could
-// otherwise flood the `room_entities:` block with hundreds/thousands of lines
-// and blow up TEXT_LARGE latency/context before a single candidate is
-// validated. We only need enough to resolve the candidate relationship
-// subject/object names to their room UUIDs, so we prioritize name-matched
-// participants and fill any remaining slots up to this bound.
-const MAX_GROUNDING_ROOM_ENTITIES = 12;
-
 /**
  * Fetch the room's participant entities directly for facts-stage grounding.
  *
@@ -385,17 +371,11 @@ const MAX_GROUNDING_ROOM_ENTITIES = 12;
  * grounding (`room_entities:` prompt block + persist-time name->UUID
  * resolution) works regardless of provider execution order. The stage only runs
  * on fact-bearing turns, and getEntityDetails is per-runtime cached, so the
- * added read is bounded; we additionally cap the grounding set (see
- * MAX_GROUNDING_ROOM_ENTITIES) so a large room can't flood the prompt.
- *
- * `candidateNames` are the subject/object strings from the candidate
- * relationships; entities whose names match one of them are prioritized so the
- * bounded set keeps the ones the model actually needs to resolve.
+ * added read includes the complete retained room membership.
  */
 async function fetchRoomEntities(
 	runtime: IAgentRuntime,
 	message: Memory,
-	candidateNames: readonly string[],
 ): Promise<RoomEntityRef[]> {
 	const roomId = message.roomId;
 	if (!roomId) return [];
@@ -416,7 +396,7 @@ async function fetchRoomEntities(
 				return { ...(id ? { id } : {}), names };
 			})
 			.filter((entity): entity is RoomEntityRef => entity !== null);
-		return boundGroundingEntities(refs, candidateNames);
+		return refs;
 	} catch (error) {
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — failing to load
 		// room entities disables name->UUID grounding for this turn (relationship
@@ -429,35 +409,6 @@ async function fetchRoomEntities(
 		});
 		return [];
 	}
-}
-
-/**
- * Bound the room-entity grounding set to MAX_GROUNDING_ROOM_ENTITIES,
- * prioritizing entities whose names match a candidate relationship
- * subject/object (those are the ones the model needs to resolve to a UUID),
- * then filling any remaining slots with other participants for context. Keeps
- * the `room_entities:` prompt block small in busy rooms without dropping the
- * entities that actually matter for this turn.
- */
-function boundGroundingEntities(
-	refs: readonly RoomEntityRef[],
-	candidateNames: readonly string[],
-): RoomEntityRef[] {
-	if (refs.length <= MAX_GROUNDING_ROOM_ENTITIES) return [...refs];
-	const wanted = new Set(
-		candidateNames
-			.map((name) => normalizeForComparison(name))
-			.filter((name) => name.length > 0),
-	);
-	const matched: RoomEntityRef[] = [];
-	const rest: RoomEntityRef[] = [];
-	for (const ref of refs) {
-		const isMatch = ref.names.some((name) =>
-			wanted.has(normalizeForComparison(name)),
-		);
-		(isMatch ? matched : rest).push(ref);
-	}
-	return [...matched, ...rest].slice(0, MAX_GROUNDING_ROOM_ENTITIES);
 }
 
 function formatRoomEntityRef(entity: RoomEntityRef): string {
@@ -487,14 +438,12 @@ async function searchSimilarFacts(
 		const results = await runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
-			count: 80,
 			unique: false,
 		});
 		if (!Array.isArray(results)) return [];
 		return scoreFactKeywordRelevance(candidateFacts.join("\n"), results)
 			.filter((entry) => entry.relevance > 0)
 			.sort((left, right) => right.relevance - left.relevance)
-			.slice(0, 8)
 			.map((entry) => entry.memory);
 	} catch (error) {
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — failing to load
@@ -521,7 +470,6 @@ async function fetchExistingRelationships(
 	try {
 		const results = await runtime.getRelationships({
 			entityIds,
-			limit: 16,
 		});
 		return Array.isArray(results) ? results : [];
 	} catch (error) {
@@ -804,7 +752,7 @@ function filterCandidateFacts(
 		seen.add(key);
 		out.push(sanitized);
 	}
-	return out.slice(0, 12);
+	return out;
 }
 
 function filterCandidateRelationships(
@@ -822,7 +770,7 @@ function filterCandidateRelationships(
 		seen.add(key);
 		out.push(normalized);
 	}
-	return out.slice(0, 12);
+	return out;
 }
 
 function normalizeRelationshipForPersistence(

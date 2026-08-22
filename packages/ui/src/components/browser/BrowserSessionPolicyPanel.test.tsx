@@ -17,6 +17,10 @@ import type { BrowserBridgeSession } from "../../api/client-browser-bridge";
 import type { BrowserSessionPolicyApi } from "./BrowserSessionPolicyPanel";
 import { BrowserSessionPolicyPanel } from "./BrowserSessionPolicyPanel";
 
+const TEST_NOW_MS = Date.now();
+const minutesBeforeTest = (minutes: number) =>
+  new Date(TEST_NOW_MS - minutes * 60_000).toISOString();
+
 const NOW_SETTINGS: BrowserBridgeSettings = {
   enabled: true,
   trackingMode: "active_tabs",
@@ -29,7 +33,7 @@ const NOW_SETTINGS: BrowserBridgeSettings = {
   maxRememberedTabs: 8,
   pauseUntil: null,
   metadata: {},
-  updatedAt: "2026-08-20T11:00:00.000Z",
+  updatedAt: minutesBeforeTest(10),
 };
 
 function makeSession(
@@ -52,8 +56,8 @@ function makeSession(
     awaitingConfirmationForActionId: null,
     result: {},
     metadata: {},
-    createdAt: "2026-08-20T10:00:00.000Z",
-    updatedAt: "2026-08-20T11:30:00.000Z",
+    createdAt: minutesBeforeTest(10),
+    updatedAt: minutesBeforeTest(1),
     finishedAt: null,
     ...overrides,
   };
@@ -86,7 +90,7 @@ function makeFakeApi(
       state.settings = {
         ...state.settings,
         ...request,
-        updatedAt: "2026-08-20T11:45:00.000Z",
+        updatedAt: minutesBeforeTest(0),
       } as BrowserBridgeSettings;
       return { settings: { ...state.settings } };
     },
@@ -112,6 +116,17 @@ describe("BrowserSessionPolicyPanel", () => {
     await waitFor(() =>
       expect(screen.getByTestId("browser-session-policy-empty")).toBeTruthy(),
     );
+  });
+
+  it("can omit the redundant empty card inside an already-empty workspace", async () => {
+    const { api } = makeFakeApi([]);
+    const { container } = render(
+      <BrowserSessionPolicyPanel api={api} hideWhenEmpty />,
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("browser-session-policy-loading")).toBeNull(),
+    );
+    expect(container.innerHTML).toBe("");
   });
 
   it("shows a distinct error state with retry when loading fails", async () => {
@@ -234,7 +249,7 @@ describe("BrowserSessionPolicyPanel", () => {
       makeSession({
         id: "s-receipt",
         status: "done",
-        finishedAt: "2026-08-20T11:40:00.000Z",
+        finishedAt: minutesBeforeTest(1),
         actions: [
           {
             id: "a-submit",

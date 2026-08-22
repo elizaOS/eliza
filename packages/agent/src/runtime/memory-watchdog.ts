@@ -128,9 +128,17 @@ export function createMemoryWatchdog(
   let triggered = false;
   let timer: ReturnType<typeof setInterval> | null = null;
 
+  const rearmAfterRestartFailure = (error: unknown, reason: string): void => {
+    triggered = false;
+    deps.log.warn(
+      { error, reason },
+      "[MemoryWatchdog] clean restart request failed; watchdog re-armed",
+    );
+  };
+
   const tick = (): boolean => {
-    // One-shot: once a restart is requested, stop sampling/acting. The supervisor
-    // owns what happens next; re-requesting would spam the handler.
+    // A pending or successful restart request is one-shot. Failure re-arms this
+    // latch so an unsafe process can try the supervisor again on a later tick.
     if (triggered) return false;
 
     const rss = deps.readRssBytes();
@@ -150,7 +158,19 @@ export function createMemoryWatchdog(
     deps.log.warn(
       `[MemoryWatchdog] ${reason} — requesting clean restart via supervisor`,
     );
-    void deps.requestRestart(reason);
+    try {
+      void Promise.resolve(deps.requestRestart(reason)).catch(
+        (error: unknown) => {
+          // error-policy:J7 the rejected restart request is observed here so the
+          // watchdog can keep protecting a process that remains over threshold.
+          rearmAfterRestartFailure(error, reason);
+        },
+      );
+    } catch (error) {
+      // error-policy:J7 a synchronous handler failure must not kill the watchdog
+      // timer or permanently suppress later clean-restart attempts.
+      rearmAfterRestartFailure(error, reason);
+    }
     return true;
   };
 

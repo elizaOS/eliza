@@ -105,7 +105,7 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { default: app } = await import("./route");
+const { default: app, findCheckoutSessionForOrder } = await import("./route");
 
 function request(idempotencyKey?: string): Request {
   return new Request("https://api.example.test/", {
@@ -117,6 +117,33 @@ function request(idempotencyKey?: string): Request {
     body: JSON.stringify({ creditPackId: PACK_ID }),
   });
 }
+
+test("bounds endlessly advancing reconciliation cursors by one operation deadline", async () => {
+  let clock = 0;
+  const list = mock(async () => {
+    clock += 5_000;
+    return {
+      data: [{ id: `cs_unique_${clock}` }],
+      has_more: true,
+    };
+  });
+  const stripe = { checkout: { sessions: { list } } } as never;
+
+  await expect(
+    findCheckoutSessionForOrder(
+      stripe,
+      {
+        id: "30000000-0000-4000-8000-000000000001",
+        stripe_customer_id: "cus_a",
+        updated_at: new Date("2026-08-21T00:00:00.000Z"),
+      },
+      () => clock,
+    ),
+  ).rejects.toThrow(
+    "Stripe Checkout reconciliation exceeded its operation deadline",
+  );
+  expect(list).toHaveBeenCalledTimes(2);
+});
 
 beforeEach(() => {
   getCreditPackById.mockClear();

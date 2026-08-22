@@ -9,8 +9,6 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
   type Metadata,
-  toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   GoogleDriveFile,
@@ -495,11 +493,7 @@ export function lifeOpsGmailMessageFromGoogle(args: {
     replyTo: message.replyTo?.email ?? null,
     to: (message.to ?? []).map((item: GoogleEmailAddress) => item.email),
     cc: (message.cc ?? []).map((item: GoogleEmailAddress) => item.email),
-    snippet:
-      message.snippet ??
-      (message.bodyText
-        ? truncateWellFormed(toWellFormedUnicode(message.bodyText), 240)
-        : ""),
+    snippet: message.snippet ?? message.bodyText ?? "",
     receivedAt,
     isUnread: labels.includes("UNREAD"),
     isImportant: labels.includes("IMPORTANT"),

@@ -1,17 +1,12 @@
 /**
- * Regression for form restore response truncation surrogate safety (4000).
+ * Verifies form restore responses preserve complete Unicode-safe content.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
-const RESTORE_RESPONSE_MAX_CHARS = 4_000;
-
-function truncateRestoreResponse(text: string): string {
-  const wellFormed = toWellFormedUnicode(text);
-  return wellFormed.length <= RESTORE_RESPONSE_MAX_CHARS
-    ? wellFormed
-    : `${truncateWellFormed(wellFormed, RESTORE_RESPONSE_MAX_CHARS)}\n\n[truncated restored form summary]`;
+function normalizeRestoreResponse(text: string): string {
+  return toWellFormedUnicode(text);
 }
 
 function isWellFormed(v: string): boolean {
@@ -32,34 +27,34 @@ function isWellFormed(v: string): boolean {
   return true;
 }
 
-describe("form restore response truncateRestoreResponse well-formed", () => {
-  it("keeps surrogate pair intact at 4000-char boundary", () => {
+describe("form restore response normalization", () => {
+  it("preserves content across the former 4000-character boundary", () => {
     const fox = String.fromCharCode(0xd83e, 0xdd8a);
-    const input = `${"a".repeat(RESTORE_RESPONSE_MAX_CHARS - 1)}${fox}${"b".repeat(50)}`;
-    const out = truncateRestoreResponse(input);
+    const input = `${"a".repeat(3_999)}${fox}${"b".repeat(50)}`;
+    const out = normalizeRestoreResponse(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.includes("[truncated restored form summary]")).toBe(true);
-    expect(out).not.toContain("\uD83E");
+    expect(out).toBe(input);
   });
 
   it("preserves fitting emoji under limit", () => {
     const fox = String.fromCharCode(0xd83e, 0xdd8a);
     const input = `${"a".repeat(3000)}${fox}`;
-    const out = truncateRestoreResponse(input);
+    const out = normalizeRestoreResponse(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe(input);
   });
 
-  it("sanitizes lone surrogate before truncation", () => {
+  it("sanitizes a lone surrogate without dropping the tail", () => {
     const lone = `form ${String.fromCharCode(0xd800)} ${"a".repeat(5000)}`;
-    const out = truncateRestoreResponse(lone);
+    const out = normalizeRestoreResponse(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("\uFFFD")).toBe(true);
+    expect(out.endsWith("a".repeat(5000))).toBe(true);
   });
 
-  it("sanitizes lone surrogate without truncation when fitting", () => {
+  it("sanitizes a fitting lone surrogate", () => {
     const lone = `form ${String.fromCharCode(0xd800)} ok`;
-    const out = truncateRestoreResponse(lone);
+    const out = normalizeRestoreResponse(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe("form \uFFFD ok");
   });

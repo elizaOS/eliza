@@ -1,6 +1,6 @@
 /**
- * Authenticates Blooio webhook fan-in and maps stable one-to-one message
- * deliveries onto the gateway's deduplicated chat contract.
+ * Authenticates Blooio webhook fan-in and preserves the provider's stable chat
+ * and participant identities across one-to-one and group deliveries.
  */
 import crypto from "node:crypto";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
+const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
 
 export class BlooioApiResponseError extends Error {
   constructor(
@@ -31,9 +32,11 @@ const BlooioV2WebhookEventSchema = z.object({
   external_id: z.string().nullish(),
   internal_id: z.string().nullish(),
   sender: z.string().trim().min(1).nullish(),
+  chat_id: z.string().trim().min(1).nullish(),
   channel_id: z.string().trim().min(1).nullish(),
   channel_type: z.string().trim().min(1).nullish(),
   text: z.string().nullish(),
+  reply_to_message_id: z.string().trim().min(1).nullish(),
   attachments: z.array(BlooioAttachmentSchema).nullish(),
   protocol: z.string().nullish(),
   is_group: z.boolean().nullish(),
@@ -45,7 +48,7 @@ const BlooioV4MessageSchema = z
   .object({
     id: z.string().trim().min(1).nullish(),
     message_id: z.string().trim().min(1).nullish(),
-    chat_id: z.string().nullish(),
+    chat_id: z.string().trim().min(1).nullish(),
     channel_id: z.string().trim().min(1).nullish(),
     channel_type: z.string().trim().min(1).nullish(),
     sender: z.string().trim().min(1).nullish(),
@@ -55,6 +58,7 @@ const BlooioV4MessageSchema = z
       .object({ identifier: z.string().trim().min(1).nullish() })
       .nullish(),
     text: z.string().nullish(),
+    reply_to_message_id: z.string().trim().min(1).nullish(),
     attachments: z.array(BlooioAttachmentSchema).nullish(),
     protocol: z.string().nullish(),
     is_group: z.boolean().nullish(),
@@ -86,9 +90,11 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
     external_id: sender,
     internal_id: message.recipient ?? message.channel_address,
     sender,
+    chat_id: message.chat_id,
     channel_id: message.channel_id,
     channel_type: message.channel_type,
     text: message.text,
+    reply_to_message_id: message.reply_to_message_id,
     attachments: message.attachments,
     protocol: message.protocol,
     is_group: message.is_group ?? message.group != null,
@@ -152,14 +158,23 @@ async function sendBlooioMessage(
     "Idempotency-Key": `gw-reply-${event.messageId}`,
   };
 
+  // A provider chat id is the only safe reply target for a group and is also
+  // the strongest thread-affinity signal for a v4 one-to-one delivery. The
+  // chat already owns its channel and participants, so v4 explicitly forbids
+  // supplying `from` or `to` on this endpoint.
+  const hasProviderChatId =
+    event.chatId !== event.senderId || /^chat_/i.test(event.chatId);
+  const url = hasProviderChatId
+    ? `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/messages`
+    : BLOOIO_V4_MESSAGES_URL;
   const from = event.channelId ?? config.fromNumber;
-  const body: { to: string; text: string; from?: string } = {
-    to: event.senderId,
-    text,
-  };
-  if (from) body.from = from;
+  const body: { text: string; to?: string; from?: string } = { text };
+  if (!hasProviderChatId) {
+    body.to = event.senderId;
+    if (from) body.from = from;
+  }
 
-  const response = await fetch(BLOOIO_V4_MESSAGES_URL, {
+  const response = await fetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -219,7 +234,16 @@ async function verifySignature(
     const signaturePart = parts.find((p) => p.startsWith("v1="));
     if (!timestampPart || !signaturePart) return false;
 
-    const timestamp = parseInt(timestampPart.substring(2), 10);
+    // Validate the timestamp before comparing it. `parseInt` returns NaN for a
+    // malformed `t=` value, and every comparison against NaN is false — so the
+    // replay-window check below would not reject, it would silently fall
+    // through. `parseInt` also accepts a numeric prefix ("1234567890abc"), which
+    // is not the value the sender signed.
+    const rawTimestamp = timestampPart.substring(2);
+    const timestamp = /^\d+$/.test(rawTimestamp)
+      ? Number(rawTimestamp)
+      : Number.NaN;
+    if (!Number.isSafeInteger(timestamp)) return false;
     const expectedSignature = signaturePart.substring(3);
 
     const now = Math.floor(Date.now() / 1000);
@@ -298,7 +322,6 @@ export const blooioAdapter: PlatformAdapter = {
     }
 
     if (event.event !== "message.received") return null;
-    if (event.is_group) return null;
 
     // Blooio documents message_id as the stable identifier for message
     // deliveries. internal_id is the receiving number and external_id is the
@@ -331,7 +354,8 @@ export const blooioAdapter: PlatformAdapter = {
     return {
       platform: "blooio",
       messageId: event.message_id,
-      chatId: event.sender,
+      chatId: event.chat_id ?? event.sender,
+      chatType: event.is_group ? "group" : "private",
       channelId: event.channel_id ?? undefined,
       channelType: event.channel_type ?? undefined,
       protocol: event.protocol ?? undefined,
@@ -340,6 +364,7 @@ export const blooioAdapter: PlatformAdapter = {
         mediaUrls.length > 0 && !text
           ? `[media: ${mediaUrls.join(", ")}]`
           : text,
+      replyToMessageId: event.reply_to_message_id ?? undefined,
       providerSentAtMs: providerSentAtMs(event),
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
       rawPayload: data,
@@ -368,18 +393,67 @@ export const blooioAdapter: PlatformAdapter = {
   ): Promise<void> {
     if (!config.apiKey) return;
     try {
-      const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.senderId)}/read`;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
       };
-      if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
-
-      await fetch(url, { method: "POST", headers });
+      if (/^chat_/i.test(event.chatId)) {
+        const chatBase = `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}`;
+        const [read, typing] = await Promise.all([
+          fetch(`${chatBase}/read`, { method: "POST", headers }),
+          fetch(`${chatBase}/typing`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ state: "started" }),
+          }),
+        ]);
+        if (!read.ok || !typing.ok) {
+          throw new BlooioApiResponseError(
+            !read.ok ? read.status : typing.status,
+            "Blooio chat feedback was rejected",
+          );
+        }
+      } else {
+        const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/read`;
+        if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
+        const response = await fetch(url, { method: "POST", headers });
+        if (!response.ok) {
+          throw new BlooioApiResponseError(
+            response.status,
+            "Blooio read receipt was rejected",
+          );
+        }
+      }
     } catch (error) {
       // error-policy:J4 typing is a non-critical UX affordance; a failed
       // indicator is observable but must not fail message delivery.
       logger.warn("Blooio typing indicator failed", {
+        error: error instanceof Error ? error.message : String(error),
+        messageId: event.messageId,
+      });
+    }
+  },
+
+  async stopTypingIndicator(config, event): Promise<void> {
+    if (!config.apiKey || !/^chat_/i.test(event.chatId)) return;
+    try {
+      const response = await fetch(
+        `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/typing`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${config.apiKey}` },
+        },
+      );
+      if (!response.ok) {
+        throw new BlooioApiResponseError(
+          response.status,
+          "Blooio stop-typing request was rejected",
+        );
+      }
+    } catch (error) {
+      // error-policy:J4 typing cleanup is presentation-only and cannot change
+      // the already-resolved model or egress result.
+      logger.warn("Blooio stop typing failed", {
         error: error instanceof Error ? error.message : String(error),
         messageId: event.messageId,
       });

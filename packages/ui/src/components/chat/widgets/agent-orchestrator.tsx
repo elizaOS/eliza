@@ -1,9 +1,9 @@
 /**
- * Chat-sidebar widgets for the `agent-orchestrator` plugin (Apps / Tasks /
- * Activity). This file lives in `@elizaos/app-core` (not in
+ * Chat-sidebar widgets for the `agent-orchestrator` plugin (app runs, coding
+ * accounts, and activity). This file lives in `@elizaos/ui` (not in
  * `@elizaos/plugin-agent-orchestrator`) because the widget depends on app-core
  * internals that the runtime plugin does not own and does not re-export:
- * the app-core API client, `AppRunSummary` / `ActivityEvent` types, the
+ * the host API client, `AppRunSummary` / `ActivityEvent` types, the
  * `useApp` store, `TranslateFn`, `getRunAttentionReasons`, and the widget
  * registry contract (`ChatSidebarWidgetDefinition` / `ChatSidebarWidgetProps`
  * and the `EmptyWidgetState` / `WidgetSection` primitives).
@@ -67,7 +67,6 @@ import {
   fallbackTranslate,
   OrchestratorAccountsView,
 } from "./agent-orchestrator-accounts-view";
-import { OrchestratorRoomView } from "./agent-orchestrator-room-view";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
@@ -820,49 +819,6 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
   );
 }
 
-/**
- * The live room swarm: every active coding-task room and the orchestrator +
- * sub-agents working inside it. A room-scoped sibling to the accounts widget:
- * accounts answers "who's connected and how much have they spent", rooms answers
- * "which agents are live in which task right now and what is each doing".
- */
-function OrchestratorRoomWidget(_props: ChatSidebarWidgetProps) {
-  const { t: appT } = useAppSelectorShallow((s) => ({ t: s.t }));
-  const t = appT ?? fallbackTranslate;
-  // Auth gate (#11084): same as the accounts widget — no polling before auth.
-  const authenticated = useIsAuthenticated();
-  const [rooms, setRooms] = useState<OrchestratorRoomRosterOverview | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    if (!authenticated) return;
-    try {
-      const next = await client.getOrchestratorRooms();
-      setRooms(next);
-    } catch {
-      // error-policy:J4 poll — leave the last good roster in place on a
-      // transient failure; the next tick refreshes.
-    } finally {
-      setLoading(false);
-    }
-  }, [authenticated]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  // Same visibility-gated cadence as the accounts widget so a backgrounded
-  // window stops polling the orchestrator API.
-  useIntervalWhenDocumentVisible(() => void refresh(), 15_000);
-
-  if (loading) return null;
-  if ((rooms?.rooms?.length ?? 0) === 0) return null;
-
-  return <OrchestratorRoomView rooms={rooms} t={t} />;
-}
-
 export const AGENT_ORCHESTRATOR_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] =
   [
     {
@@ -878,13 +834,6 @@ export const AGENT_ORCHESTRATOR_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] =
       order: 250,
       defaultEnabled: true,
       Component: OrchestratorAccountsWidget,
-    },
-    {
-      id: "agent-orchestrator.rooms",
-      pluginId: "agent-orchestrator",
-      order: 275,
-      defaultEnabled: true,
-      Component: OrchestratorRoomWidget,
     },
     {
       id: "agent-orchestrator.activity",

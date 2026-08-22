@@ -32,7 +32,6 @@ import { parseArgs } from "node:util";
 
 const PLAN_SCHEMA_VERSION = 1 as const;
 const STRIPE_PAGE_LIMIT = 100;
-const MAX_STRIPE_PAGES = 10_000;
 const MIN_CREDIT_AMOUNT_CENTS = 100;
 const MAX_CREDIT_AMOUNT_CENTS = 100_000;
 const MAX_CHARGE_AMOUNT_CENTS = 1_120_000;
@@ -410,7 +409,7 @@ export async function listPaymentIntentsForCutover(
   const seen = new Set<string>();
   let startingAfter: string | undefined;
 
-  for (let pageNumber = 1; pageNumber <= MAX_STRIPE_PAGES; pageNumber += 1) {
+  while (true) {
     const page = await stripe.paymentIntents.list({
       created: { gte, lte },
       limit: STRIPE_PAGE_LIMIT,
@@ -453,9 +452,6 @@ export async function listPaymentIntentsForCutover(
       );
     startingAfter = last.id;
   }
-  throw new RangeError(
-    `Stripe PaymentIntent inventory exceeded ${MAX_STRIPE_PAGES} pages`,
-  );
 }
 
 function classifyLegacyPayment(

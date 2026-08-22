@@ -69,6 +69,30 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     expect(persisted?.lastAccessedAt?.toISOString()).toBe(lastAccessedAt.toISOString());
   });
 
+  it("names the long-term room with the complete entity UUID", async () => {
+    const agentId = uuidv4() as UUID;
+    const entityId = uuidv4() as UUID;
+    const { runtime, cleanup } = await createTestDatabase(agentId);
+    cleanups.push(cleanup);
+    await runtime.createEntities([
+      { id: entityId, agentId, names: ["Test Entity"], metadata: {} } as Entity,
+    ]);
+    const service = new AdvancedMemoryStorageService();
+    await service.initialize(runtime);
+    const ensureRoomExists = vi.spyOn(runtime, "ensureRoomExists");
+
+    await service.storeLongTermMemory({
+      agentId,
+      entityId,
+      category: "semantic",
+      content: "Remember the complete room identity",
+    });
+
+    expect(ensureRoomExists).toHaveBeenCalledWith(
+      expect.objectContaining({ name: `Advanced Memory ${entityId}` })
+    );
+  });
+
   it("replaces the creation access timestamp with an explicit older value", async () => {
     const agentId = uuidv4() as UUID;
     const entityId = uuidv4() as UUID;

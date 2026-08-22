@@ -142,7 +142,7 @@ export async function exchangeDropboxAuthorizationCode(
     const body = await response.text();
     throw new ElizaError(`Dropbox token exchange failed with ${response.status}.`, {
       code: "DROPBOX_OAUTH_TOKEN_EXCHANGE_FAILED",
-      context: { status: response.status, body: body.slice(0, 500) },
+      context: { status: response.status, body },
       severity: "fatal",
     });
   }

@@ -1,24 +1,17 @@
-/** Exercises the global trajectory JSON budget against adversarial shared graphs. */
+/** Exercises lossless trajectory JSON normalization for large prompt evidence. */
 
 import { describe, expect, it } from "vitest";
 import { sanitizeTrajectoryJsonObject } from "./trajectory-json";
 
 describe("trajectory JSON normalization", () => {
-	it("bounds shared-DAG expansion by nodes and serialized bytes", () => {
-		let shared: Record<string, unknown> = { leaf: "value" };
-		for (let depth = 0; depth < 30; depth += 1) {
-			shared = { left: shared, right: shared };
-		}
-
-		const startedAt = performance.now();
-		const sanitized = sanitizeTrajectoryJsonObject({ shared });
-		const elapsedMs = performance.now() - startedAt;
-		const serialized = JSON.stringify(sanitized);
-
-		expect(elapsedMs).toBeLessThan(1_000);
-		expect(new TextEncoder().encode(serialized).byteLength).toBeLessThanOrEqual(
-			1024 * 1024,
+	it("preserves strings and collections beyond the former capture limits", () => {
+		const prompt = `${"p".repeat(1_100_000)}🦊tail`;
+		const messages = Array.from(
+			{ length: 300 },
+			(_, index) => `message-${index}`,
 		);
-		expect(serialized).toContain('"reason":"global_budget"');
+		const sanitized = sanitizeTrajectoryJsonObject({ prompt, messages });
+		expect(sanitized?.prompt).toBe(prompt);
+		expect(sanitized?.messages).toEqual(messages);
 	});
 });

@@ -25,8 +25,6 @@ export interface FfiEotScorerOptions {
 	ffi: ElizaInferenceFfi;
 	/** Resolves the live inference context handle (the loaded text bundle). */
 	getContext: () => ElizaInferenceContextHandle;
-	/** Max prompt tokens kept (tail-truncated). LiveKit's recipe uses 128. */
-	maxHistoryTokens?: number;
 	/** Model label for telemetry. */
 	modelLabel?: string;
 }
@@ -47,14 +45,12 @@ export interface FfiEotScoreResult {
 export class FfiEotScorer {
 	private readonly ffi: ElizaInferenceFfi;
 	private readonly getContext: () => ElizaInferenceContextHandle;
-	private readonly maxHistoryTokens: number;
 	readonly modelLabel: string;
 	private tokenContract: ResolvedEotTokenContract | null = null;
 
 	constructor(options: FfiEotScorerOptions) {
 		this.ffi = options.ffi;
 		this.getContext = options.getContext;
-		this.maxHistoryTokens = options.maxHistoryTokens ?? 128;
 		this.modelLabel = options.modelLabel ?? "eliza-1-fused-eot";
 	}
 
@@ -104,11 +100,7 @@ export class FfiEotScorer {
 			addSpecial: false,
 			parseSpecial: true,
 		});
-		const tokens =
-			all.length > this.maxHistoryTokens
-				? all.slice(all.length - this.maxHistoryTokens)
-				: all;
-		if (tokens.length === 0) {
+		if (all.length === 0) {
 			return {
 				probability: 0.5,
 				latencyMs: performance.now() - start,
@@ -117,7 +109,7 @@ export class FfiEotScorer {
 		}
 		const { targetProb } = eotScore({
 			ctx,
-			tokens,
+			tokens: all,
 			targetTokenId: tokenContract.closingTokenId,
 		});
 		const probability = Number.isFinite(targetProb)
@@ -126,7 +118,7 @@ export class FfiEotScorer {
 		return {
 			probability,
 			latencyMs: performance.now() - start,
-			promptTokens: tokens.length,
+			promptTokens: all.length,
 		};
 	}
 }

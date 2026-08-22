@@ -962,7 +962,7 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
-  it("relays the head of a long pure-prose deliverable instead of destroying it (#11605)", async () => {
+  it("relays a complete long pure-prose deliverable (#11605)", async () => {
     const acp = makeAcpStub({
       agentType: "codex",
       workdir: "/tmp/wd",
@@ -987,13 +987,11 @@ describe("SwarmCoordinatorService", () => {
     const summary = fired.mock.calls[0][0].tasks[0].completionSummary;
     expect(summary).not.toBe(`[output elided — ${prose.length} chars]`);
     expect(summary.startsWith("Step: migrate the users table")).toBe(true);
-    // Marker records the post-strip length (strip trims trailing whitespace).
-    expect(summary).toMatch(/… \[output truncated — \d+ chars total\]$/);
-    expect(summary.length).toBeLessThanOrEqual(2000);
+    expect(summary).toBe(prose.trim());
     await coordinator.stop();
   });
 
-  it("posts the validated verdict plus the deliverable head when finalText exceeds the relay cap (#11605)", async () => {
+  it("posts the complete validated deliverable when finalText is long (#11605)", async () => {
     const acp = makeAcpStub({
       agentType: "codex",
       workdir: "/tmp/wd",
@@ -1034,7 +1032,7 @@ describe("SwarmCoordinatorService", () => {
     expect(summary).not.toContain("App verification passed.");
     expect(summary).toContain("Built the demo app end to end.");
     expect(summary).not.toContain("[output elided");
-    expect(summary.length).toBeLessThanOrEqual(2000);
+    expect(summary).toBe(longFinal.trim());
     await coordinator.stop();
   });
 

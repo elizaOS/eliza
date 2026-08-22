@@ -1,10 +1,6 @@
 /**
- * Stage-1 prompt tiering: unaddressed group-channel turns get the compact
- * triage instruction block (compact template + compact context catalog +
- * compressed field docs) while addressed/DM/uncertain turns keep the full
- * rule block. Drives the real `runV5MessageRuntimeStage1` with a
- * deterministic runtime and asserts on the exact system prompt the model
- * receives, including the footprint drop on the compact tier.
+ * Stage-1 prompt rendering: every channel and addressing state receives the
+ * complete canonical instruction block, context catalog, and field docs.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -26,16 +22,8 @@ import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
-/** Unique substrings that identify which template tier rendered. */
 const FULL_TEMPLATE_MARKER = "Domain routing (when context is available):";
-const GROUP_TRIAGE_MARKER = "does not address you directly";
-const DIRECT_MESSAGE_MARKER = "direct/private rules:";
-/** Full vs compressed shouldRespond field docs. */
 const FULL_SHOULD_RESPOND_DOCS = "DM usually RESPOND unless explicit stop.";
-const COMPACT_SHOULD_RESPOND_DOCS =
-	"RESPOND if asked, active in the conversation, or able to usefully add to substantive ambient chatter";
-const SHARED_SHOULD_RESPOND_SCHEMA_DOCS =
-	"ambient chatter with real substance you can usefully add to";
 
 const LONG_CONTEXT_DESCRIPTION =
 	"Helpdesk operations of any kind: any imperative ('open a ticket', " +
@@ -235,7 +223,7 @@ describe("isUnaddressedTextGroupTurn", () => {
 	});
 });
 
-describe("Stage-1 prompt tiering", () => {
+describe("Stage-1 complete prompt rendering", () => {
 	it("keeps the production and compatibility shouldRespond schemas aligned", () => {
 		expect(shouldRespondFieldEvaluator.schema.description).toBe(
 			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
@@ -245,40 +233,27 @@ describe("Stage-1 prompt tiering", () => {
 		);
 	});
 
-	it("renders the compact triage block for an unaddressed group message", async () => {
+	it("renders the full block for an unaddressed group message", async () => {
 		const { systemContent, outcome } = await renderedSystemPrompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "IGNORE" }),
 		);
 
-		expect(systemContent).toContain(GROUP_TRIAGE_MARKER);
-		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);
-		// Compact context catalog: compressed hint instead of the full description.
-		expect(systemContent).toContain(
-			"- helpdesk [label=Helpdesk]: Support tickets: open, escalate, check status",
-		);
-		expect(systemContent).not.toContain(LONG_CONTEXT_DESCRIPTION);
-		// Compressed field docs replace the full slices.
-		expect(systemContent).toContain(COMPACT_SHOULD_RESPOND_DOCS);
-		expect(systemContent).toContain(SHARED_SHOULD_RESPOND_SCHEMA_DOCS);
-		expect(systemContent).toContain(
-			"IGNORE content-free reactions, feeds, or others' conversation",
-		);
-		expect(systemContent).not.toContain(
-			"RESPOND if asked/active conversation; IGNORE if not yours",
-		);
-		expect(systemContent).not.toContain(FULL_SHOULD_RESPOND_DOCS);
+		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
+		expect(systemContent).toContain(FULL_SHOULD_RESPOND_DOCS);
 		// The envelope still parses and routes: IGNORE ends the turn.
 		expect(outcome.kind).toBe("terminal");
 	});
 
-	it("still produces a full non-terminal result when the compact tier decides RESPOND", async () => {
+	it("produces a non-terminal result with the full block when group triage decides RESPOND", async () => {
 		const { systemContent, outcome, runtime } = await renderedSystemPrompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "RESPOND", replyText: "Hello." }),
 		);
 
-		expect(systemContent).toContain(GROUP_TRIAGE_MARKER);
+		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 		expect(outcome.kind).not.toBe("terminal");
 	});
@@ -292,7 +267,6 @@ describe("Stage-1 prompt tiering", () => {
 		);
 
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 		// Full context catalog with complete descriptions.
 		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
 		expect(systemContent).toContain(FULL_SHOULD_RESPOND_DOCS);
@@ -316,7 +290,6 @@ describe("Stage-1 prompt tiering", () => {
 			}),
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 		expect(systemContent).toContain(
 			"Read, create, update, delete, search, and list sticky notes.",
 		);
@@ -326,44 +299,33 @@ describe("Stage-1 prompt tiering", () => {
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
 		const { systemContent } = await renderedSystemPrompt(makeMessage());
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 	});
 
-	it("keeps the direct-message template on DM channels", async () => {
+	it("keeps the full canonical template on DM channels", async () => {
 		const { systemContent } = await renderedSystemPrompt(
 			makeMessage({ channelType: String(ChannelType.DM) }),
 		);
-		expect(systemContent).toContain(DIRECT_MESSAGE_MARKER);
-		expect(systemContent).toContain('candidateActionNames=["VIEWS"]');
+		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
 		expect(systemContent).toContain(
-			"Never claim the view opened before VIEWS succeeds.",
+			"UI navigation and native-device operations -> VIEWS",
 		);
 		expect(systemContent).toContain(
-			'Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]',
+			"Owner goals/habits/routines/todos/reminders are never simple",
 		);
-		expect(systemContent).toContain('candidateActionNames=["CALENDAR"]');
-		expect(systemContent).toContain(
-			"goals -> tasks + OWNER_GOALS, todos -> tasks + OWNER_TODOS, reminders -> tasks + OWNER_REMINDERS, alarms -> tasks + OWNER_ALARMS, habits/routines -> tasks + OWNER_ROUTINES",
-		);
-		expect(systemContent).toContain("never work threads and never VIEWS");
-		expect(systemContent).toContain(
-			"Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar events -> CALENDAR.",
-		);
-		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
-		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);
+		expect(systemContent).toContain("calendar-event reads/writes -> CALENDAR");
 	});
 
-	it("renders the full rule block when ELIZA_STAGE1_GROUP_TRIAGE opts out", async () => {
+	it("ignores the retired compact-tier setting and renders the full rule block", async () => {
 		const { systemContent } = await renderedSystemPrompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 			stage1Response({ shouldRespond: "IGNORE" }),
 			{ ELIZA_STAGE1_GROUP_TRIAGE: "0" },
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
-		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 	});
 
-	it("drops the Stage-1 prompt footprint by >10KB on the compact tier", async () => {
+	it("keeps addressed and unaddressed group instruction footprints identical", async () => {
 		const unaddressed = await renderedSystemPrompt(
 			makeMessage({ channelType: String(ChannelType.GROUP) }),
 		);
@@ -374,8 +336,6 @@ describe("Stage-1 prompt tiering", () => {
 			}),
 		);
 
-		const savings =
-			addressed.systemContent.length - unaddressed.systemContent.length;
-		expect(savings).toBeGreaterThan(10_000);
+		expect(unaddressed.systemContent).toBe(addressed.systemContent);
 	});
 });

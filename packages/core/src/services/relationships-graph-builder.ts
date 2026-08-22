@@ -331,7 +331,6 @@ const KNOWN_PLATFORM_KEYS = [
 	"lens",
 	"nostr",
 	"warpcast",
-	"signal",
 	"email",
 	"phone",
 	"website",
@@ -344,8 +343,6 @@ const GENERIC_RELATIONSHIP_TAGS = new Set([
 	"updated",
 ]);
 const USER_PERSONALITY_PREFERENCES_TABLE = "user_personality_preferences";
-const USER_PERSONALITY_PREFERENCES_LIMIT = 10;
-const PERSON_RELEVANT_MEMORIES_LIMIT = 24;
 
 function asString(value: unknown): string | null {
 	return asNonEmptyString(value) ?? null;
@@ -728,7 +725,6 @@ function extractContactIdentityHandles(
 		lens: ["lens"],
 		nostr: ["nostr"],
 		warpcast: ["warpcast"],
-		signal: ["signal"],
 	};
 
 	for (const [platform, prefixes] of Object.entries(platformFieldPrefixes)) {
@@ -996,7 +992,6 @@ async function collectWorkspaceEntityIds(
 	if (entityIds.size > 0) {
 		const relationships = await runtime.getRelationships({
 			entityIds: Array.from(entityIds),
-			limit: 10000,
 		});
 		for (const relationship of relationships) {
 			if (relationship.sourceEntityId !== runtime.agentId) {
@@ -1161,7 +1156,6 @@ async function countFacts(
 			const facts = await runtime.getMemories({
 				tableName: "facts",
 				entityId,
-				limit: 500,
 			});
 			counts.set(entityId, facts.length);
 		}),
@@ -1464,7 +1458,6 @@ async function buildConversationEdgeMap(
 				const messages = await runtime.getMemories({
 					tableName: "messages",
 					roomId: room.id,
-					limit: 80,
 				});
 				if (messages.length < 2) {
 					return;
@@ -1889,7 +1882,6 @@ async function buildFacts(
 			const memories = await runtime.getMemories({
 				tableName: "facts",
 				entityId,
-				limit: 100,
 			});
 			for (const memory of memories) {
 				const metadata = asRecord(memory.metadata) ?? {};
@@ -1966,7 +1958,6 @@ async function buildRecentConversations(
 				const messages = await runtime.getMemories({
 					tableName: "messages",
 					roomId,
-					limit: 6,
 				});
 				if (messages.length === 0) {
 					return null;
@@ -1975,7 +1966,7 @@ async function buildRecentConversations(
 					(left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
 				);
 				const snippetMessages = await Promise.all(
-					sortedMessages.slice(-3).map(async (message) => ({
+					sortedMessages.map(async (message) => ({
 						id: message.id ?? `${roomId}:${message.createdAt ?? 0}`,
 						entityId: message.entityId,
 						speaker: await resolveSpeaker(message.entityId),
@@ -2007,8 +1998,7 @@ async function buildRecentConversations(
 				? Date.parse(left.lastActivityAt)
 				: 0;
 			return rightTime - leftTime;
-		})
-		.slice(0, 5);
+		});
 }
 
 async function buildRelevantMemories(
@@ -2021,16 +2011,11 @@ async function buildRelevantMemories(
 		return [];
 	}
 
-	const limitPerEntity = Math.max(
-		6,
-		Math.ceil(PERSON_RELEVANT_MEMORIES_LIMIT / memberEntityIds.length),
-	);
 	const batches = await Promise.all(
 		memberEntityIds.map((entityId) =>
 			runtime.getMemories({
 				tableName: "messages",
 				entityId,
-				limit: limitPerEntity,
 				orderBy: "createdAt",
 				orderDirection: "desc",
 			}),
@@ -2081,8 +2066,7 @@ async function buildRelevantMemories(
 			const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
 			const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
 			return rightTime - leftTime;
-		})
-		.slice(0, PERSON_RELEVANT_MEMORIES_LIMIT);
+		});
 }
 
 async function buildUserPersonalityPreferences(
@@ -2099,7 +2083,6 @@ async function buildUserPersonalityPreferences(
 				tableName: USER_PERSONALITY_PREFERENCES_TABLE,
 				entityId,
 				roomId: runtime.agentId,
-				limit: USER_PERSONALITY_PREFERENCES_LIMIT,
 				orderBy: "createdAt",
 				orderDirection: "desc",
 			}),
@@ -2181,9 +2164,7 @@ async function buildGraphModel(
 	);
 
 	const relationships =
-		entityIds.length > 0
-			? await runtime.getRelationships({ entityIds, limit: 10000 })
-			: [];
+		entityIds.length > 0 ? await runtime.getRelationships({ entityIds }) : [];
 	const factCounts = await countFacts(runtime, entityIds);
 	const clustersList = buildClusters(
 		entityIds,

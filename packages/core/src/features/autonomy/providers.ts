@@ -12,11 +12,9 @@ import type {
 	State,
 } from "../../types";
 import { stringToUuid } from "../../utils";
-import { truncateWellFormed } from "../../utils/well-formed";
+import { toWellFormedUnicode } from "../../utils/well-formed";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
-const MAX_ADMIN_HISTORY_MESSAGES = 10;
-const MAX_ADMIN_MESSAGE_LENGTH = 280;
 const MAX_AUTONOMY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -92,11 +90,7 @@ export const adminChatProvider: Provider = {
 			const sortedMessages = adminMessages.sort(
 				(a, b) => (a.createdAt || 0) - (b.createdAt || 0),
 			);
-			const historyStart =
-				sortedMessages.length > MAX_ADMIN_HISTORY_MESSAGES
-					? sortedMessages.length - MAX_ADMIN_HISTORY_MESSAGES
-					: 0;
-			const historyMessages = sortedMessages.slice(historyStart);
+			const historyMessages = sortedMessages;
 			const conversationHistory = historyMessages
 				.map((msg) => {
 					const isFromAdmin = msg.entityId === adminUUID;
@@ -108,10 +102,7 @@ export const adminChatProvider: Provider = {
 							? "Agent"
 							: "Other";
 					const rawText = msg.content.text || "[No text content]";
-					const text =
-						rawText.length > MAX_ADMIN_MESSAGE_LENGTH
-							? `${truncateWellFormed(rawText, MAX_ADMIN_MESSAGE_LENGTH)}...`
-							: rawText;
+					const text = toWellFormedUnicode(rawText);
 					const timestamp = new Date(msg.createdAt || 0).toLocaleTimeString();
 
 					return `${timestamp} ${sender}: ${text}`;
@@ -131,7 +122,7 @@ export const adminChatProvider: Provider = {
 			const lastAdminMessageText = lastAdminMessage?.content.text || "";
 			const adminMoodContext =
 				recentAdminMessages.length > 0
-					? `Last admin message: "${truncateWellFormed(lastAdminMessageText, MAX_ADMIN_MESSAGE_LENGTH) || "N/A"}"`
+					? `Last admin message: "${toWellFormedUnicode(lastAdminMessageText) || "N/A"}"`
 					: "No recent admin messages";
 			const now = Date.now();
 
@@ -142,10 +133,7 @@ export const adminChatProvider: Provider = {
 					messageCount: adminMessages.length,
 					adminUserId,
 					recentMessageCount: recentAdminMessages.length,
-					lastAdminMessage: lastAdminMessageText.slice(
-						0,
-						MAX_ADMIN_MESSAGE_LENGTH,
-					),
+					lastAdminMessage: toWellFormedUnicode(lastAdminMessageText),
 					conversationActive: adminMessages.some(
 						(m) => now - (m.createdAt || 0) < 3600000,
 					),

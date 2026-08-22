@@ -134,8 +134,8 @@ plugins/plugin-cli-inference/
 
 ## GenerateTextParams -> CLI mapping (HARD REQ: forward BOTH system AND messages/prompt)
 
-- **claude:** `[claude, -p <flattened body>, --system-prompt <params.system FULL REPLACE>, --exclude-dynamic-system-prompt-sections, --output-format text, --model <ELIZA_CLI_CLAUDE_MODEL || claude-opus-4-8>]`, stdin `/dev/null`, cwd = isolated empty tmpdir, env = `filterEnv(process.env)`.
-- **codex:** `[codex, exec, -m <ELIZA_CLI_CODEX_MODEL || gpt-5.5>, -s read-only, --skip-git-repo-check, -C <cwd>, --color never, --json, <system folded on top of flattened body>]`.
+- **claude:** `[claude, -p, --system-prompt-file <isolated complete system file>, --output-format text, --model <ELIZA_CLI_CLAUDE_MODEL || claude-opus-4-8>]`, with the complete body streamed from an isolated stdin file so OS argv limits cannot shorten or reject it.
+- **codex:** `[codex, exec, -m <ELIZA_CLI_CODEX_MODEL || gpt-5.5>, -s read-only, --skip-git-repo-check, -C <cwd>, --color never, --json, -]`, with the complete system-plus-body prompt streamed from an isolated stdin file.
 
 `prompt-flatten` re-routes system/developer roles to the system slot and flattens user/assistant/tool turns into the body; messages are NEVER dropped (would strip skills/memory/recent-convo/grammar).
 
@@ -175,7 +175,7 @@ bun run --cwd plugins/plugin-cli-inference build
 
 - **Node-only.** `index.browser.ts` is a stub; the real handlers use `node:child_process`.
 - **Isolated cwd per call.** Created with `mkdtemp` under `tmpdir()`, validated by `resolveSafeCwd`, removed in a `finally`. Keeps the CLI out of real projects (suppresses Claude Code repo-context identity).
-- **`/dev/null` stdin is REQUIRED** — without it the CLI waits ~3s for stdin.
+- **Prompt files are ephemeral and private.** Cold CLI prompts are written mode `0600` inside the per-call isolated temp directory, streamed through stdin (and `--system-prompt-file` for Claude), and removed in `finally` with the directory.
 - **sandbox.ts is the canonical copy** of the `SAFE_ENV_KEYS` allowlist and `SENSITIVE_ENV_RE` redaction pattern for spawned CLI subprocesses.
 - **Multi-account pool auth + rotation (SDK backends only).** The `claude-sdk` / `codex-sdk` chat brain consults the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge accessor from `@elizaos/core` (in `src/account-rotation.ts`) POOL-FIRST: the FIRST warm-session auth selects a healthy pooled account and materializes its subprocess-only SDK env (`CLAUDE_CODE_OAUTH_TOKEN` / per-account `CODEX_HOME`), so an app-connected subscription is used immediately — the ambient `~/.claude` / `CLAUDE_CODE_OAUTH_TOKEN` credential is only the fallback when the pool is empty or selection fails. On a subscription-limit throw it then rotates to the next healthy pooled account before falling to provider failover — see issue #11180. Rotation evicts the warm session so it re-auths as the new account and retries transparently without mutating the parent `process.env`. Only rate-limit-class errors rotate; non-limit errors rethrow straight to failover. Default ON when a pool is present; opt out with `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION=0`. The COLD `claude --print` / `codex exec` CLIs still own one on-disk cred set (pool auth is SDK-only; the bare-CLI shim is issue #11180 Gap B).
 - See the root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and ESM requirements.

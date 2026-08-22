@@ -8,8 +8,6 @@ import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type { CacheWrapper, GetCacheTimedOptions } from "../types/shared";
 import { formatJsonScalar, formatJsonTable } from "../utils";
 
-const MARKET_ROW_LIMIT = 12;
-
 type MarketTokenSnapshot = {
   symbol?: string;
   priceUsd: number;
@@ -161,11 +159,8 @@ export const marketProvider: Provider = {
         });
       }
 
-      const boundedRows = rows.slice(0, MARKET_ROW_LIMIT);
       const data = {
-        tokens: Object.fromEntries(
-          Object.entries(result).slice(0, MARKET_ROW_LIMIT),
-        ),
+        tokens: result,
       };
 
       const values = {};
@@ -173,7 +168,7 @@ export const marketProvider: Provider = {
       const text = [
         "birdeye_market_data:",
         "  status: ok",
-        formatJsonTable("  tokens", boundedRows, [
+        formatJsonTable("  tokens", rows, [
           "chain",
           "address",
           "symbol",

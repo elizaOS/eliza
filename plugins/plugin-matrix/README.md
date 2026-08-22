@@ -57,6 +57,10 @@ Matrix messaging is exposed through the canonical message connector. Use `source
 
 There are no registered `Provider` objects. Room context is surfaced through the connector's `getChatContext` and `listRooms` hooks.
 
+Target resolution, recent-target discovery, room listing, and roomless reads
+consider every joined Matrix room; the connector does not silently drop rooms
+past a fixed count.
+
 ## Events
 
 The service emits these events via `runtime.emitEvent`:

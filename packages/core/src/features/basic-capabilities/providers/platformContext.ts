@@ -47,16 +47,6 @@ function emptyResult(data: Record<string, ProviderValue>): ProviderResult {
 }
 
 const PLATFORM_CONTEXTS: AgentContext[] = ["social", "phone", "connectors"];
-const MAX_CONNECTOR_CONTEXTS = 8;
-// Lower bound on what we ship per connector — RECENT_MESSAGES provider
-// already renders the canonical conversation history. PLATFORM_CHAT_CONTEXT
-// adds a per-connector view of the same conversation (so the model can
-// see e.g. that the same room is bridged across Discord and Telegram).
-// Five messages is enough to disambiguate the connector source without
-// re-shipping the full history twice. Kept low because two-connector rooms
-// (e.g. Discord default account + Discord stealth account) double-count and
-// would otherwise push ~130K extra characters into the prompt.
-const MAX_RECENT_MESSAGES = 5;
 const PLATFORM_OUTPUT_GUIDANCE: Record<string, string[]> = {
 	discord: [
 		"Format replies for Discord: avoid markdown tables; prefer short bullets or plain lines.",
@@ -280,9 +270,7 @@ function normalizeChatContext(
 		label: context.label,
 		summary: context.summary,
 		target: toProviderValue(context.target),
-		recentMessages: (context.recentMessages ?? [])
-			.slice(-MAX_RECENT_MESSAGES)
-			.map(normalizeRecentMessage),
+		recentMessages: (context.recentMessages ?? []).map(normalizeRecentMessage),
 		metadata: toProviderValue(context.metadata),
 	});
 }
@@ -340,7 +328,7 @@ export const platformChatContextProvider: Provider = {
 			connectors,
 			source,
 			activeContexts,
-		).slice(0, MAX_CONNECTOR_CONTEXTS);
+		);
 		if (relevantConnectors.length === 0) {
 			return emptyResult({
 				connectorCount: connectors.length,
@@ -463,7 +451,7 @@ export const platformUserContextProvider: Provider = {
 			connectors,
 			source,
 			activeContexts,
-		).slice(0, MAX_CONNECTOR_CONTEXTS);
+		);
 		if (relevantConnectors.length === 0) {
 			return emptyResult({
 				connectorCount: connectors.length,

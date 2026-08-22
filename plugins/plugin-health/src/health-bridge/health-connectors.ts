@@ -21,7 +21,7 @@ import {
 } from "./health-records.js";
 
 const HEALTH_CONNECTOR_TIMEOUT_MS = 15_000;
-const MAX_PAGINATION_PAGES = 5;
+const HEALTH_CONNECTOR_SYNC_TIMEOUT_MS = 60_000;
 
 export class HealthConnectorApiError extends Error {
   constructor(
@@ -709,25 +709,48 @@ async function fetchOuraCollection(args: {
   token: StoredHealthConnectorToken;
   path: string;
   query: Record<string, string>;
+  deadlineAt: number;
 }): Promise<Record<string, unknown>[]> {
   const items: Record<string, unknown>[] = [];
+  const seenTokens = new Set<string>();
   let nextToken: string | null = null;
-  for (let page = 0; page < MAX_PAGINATION_PAGES; page += 1) {
+  for (;;) {
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Oura pagination exceeded the sync deadline",
+      );
+    }
     const json = await fetchHealthJson({
       token: args.token,
       path: args.path,
       query: { ...args.query, next_token: nextToken },
     });
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Oura pagination exceeded the sync deadline",
+      );
+    }
     items.push(...getArray(json, "data"));
     nextToken = getText(json, "next_token");
-    if (!nextToken) {
-      break;
+    if (!nextToken) break;
+    if (seenTokens.has(nextToken)) {
+      throw new HealthConnectorApiError(
+        502,
+        args.token.provider,
+        "Oura pagination repeated a next_token",
+      );
     }
+    seenTokens.add(nextToken);
   }
   return items;
 }
 
 async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
   const startDatetime = `${args.startDate}T00:00:00Z`;
   const endDatetime = `${args.endDate}T23:59:59Z`;
   const [
@@ -746,26 +769,31 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       token: args.token,
       path: "/v2/usercollection/daily_activity",
       query: { start_date: args.startDate, end_date: args.endDate },
+      deadlineAt,
     }),
     fetchOuraCollection({
       token: args.token,
       path: "/v2/usercollection/daily_readiness",
       query: { start_date: args.startDate, end_date: args.endDate },
+      deadlineAt,
     }),
     fetchOuraCollection({
       token: args.token,
       path: "/v2/usercollection/sleep",
       query: { start_date: args.startDate, end_date: args.endDate },
+      deadlineAt,
     }),
     fetchOuraCollection({
       token: args.token,
       path: "/v2/usercollection/heartrate",
       query: { start_datetime: startDatetime, end_datetime: endDatetime },
+      deadlineAt,
     }),
     fetchOuraCollection({
       token: args.token,
       path: "/v2/usercollection/workout",
       query: { start_date: args.startDate, end_date: args.endDate },
+      deadlineAt,
     }),
   ]);
   const samples: LifeOpsHealthMetricSample[] = [];

@@ -1,10 +1,11 @@
 /**
- * SQL-backed canonical identity authority. Merge and split serialize through
- * the per-agent generation row and commit journal, confirmation consumption,
- * and versioned redirects in one transaction. Source entities and claims are
- * immutable inputs; consumer projections follow redirects and repair later.
+ * SQL-backed canonical identity authority. Authenticated person-link evidence,
+ * merge, and split serialize through the per-agent generation row. Attestation
+ * evidence is append-only; merges use confirmation consumption and versioned
+ * redirects so source principals remain intact.
  */
 import {
+  type AttestIdentityPersonLinkRequest,
   type CommitIdentityMergeRequest,
   ElizaError,
   type IAgentRuntime,
@@ -18,6 +19,8 @@ import {
   type IdentityJournalPage,
   type IdentityMergeConfirmation,
   type IdentityMergePlan,
+  type IdentityPersonLinkAttestation,
+  type IdentityPersonLinkVerification,
   IdentityResolutionService,
   type JsonObject,
   type MergeJournal,
@@ -26,6 +29,7 @@ import {
   type Service,
   type SplitIdentityRequest,
   type UUID,
+  type VerifyIdentityPersonLinkRequest,
 } from "@elizaos/core";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -38,6 +42,7 @@ import {
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
+  identityPersonLinkAttestationTable,
 } from "../schema/identityAuthority";
 import { type DrizzleDatabase, getDb } from "../types";
 
@@ -57,6 +62,7 @@ const PENDING_CONSUMERS = Object.freeze([
 type JournalRow = typeof identityMergeJournalTable.$inferSelect;
 type RedirectRow = typeof identityCanonicalRedirectTable.$inferSelect;
 type ClaimRow = typeof identityClaimTable.$inferSelect;
+type PersonLinkAttestationRow = typeof identityPersonLinkAttestationTable.$inferSelect;
 
 function fail(code: string, message: string, context: Record<string, unknown> = {}): never {
   throw new ElizaError(message, { code, context, severity: "fatal" });
@@ -105,6 +111,27 @@ export function computeIdentityRequestDigest(
   return digest(`elizaos:identity:${operation}:v1`, canonicalizeIdentityRequest(operation, value));
 }
 
+function normalizePersonLinkPair(left: UUID, right: UUID): readonly [UUID, UUID] {
+  if (left === right) {
+    fail("IDENTITY_PERSON_LINK_INPUT_INVALID", "Person-link principals must be distinct.");
+  }
+  return left < right ? [left, right] : [right, left];
+}
+
+export function computeIdentityPersonLinkRequestDigest(
+  value: Omit<AttestIdentityPersonLinkRequest, "requestDigest">
+): string {
+  const [leftPrincipalId, rightPrincipalId] = normalizePersonLinkPair(
+    value.leftPrincipalId,
+    value.rightPrincipalId
+  );
+  return digest("elizaos:identity:person-link-attestation:v1", {
+    ...value,
+    leftPrincipalId,
+    rightPrincipalId,
+  });
+}
+
 function assertRequestDigest(
   actual: string,
   operation: Parameters<typeof computeIdentityRequestDigest>[0],
@@ -119,6 +146,26 @@ function assertRequestDigest(
       }
     );
   }
+}
+
+function mapPersonLinkAttestation(row: PersonLinkAttestationRow): IdentityPersonLinkAttestation {
+  return {
+    contractVersion: IDENTITY_AUTHORITY_CONTRACT_VERSION,
+    id: row.id as UUID,
+    agentId: row.agentId as UUID,
+    leftPrincipalId: row.leftPrincipalId as UUID,
+    rightPrincipalId: row.rightPrincipalId as UUID,
+    actorPrincipalId: row.actorPrincipalId as UUID,
+    actorRole: row.actorRole as IdentityPersonLinkAttestation["actorRole"],
+    authority: "authenticated_private_route",
+    transport: row.transport as IdentityPersonLinkAttestation["transport"],
+    reason: row.reason,
+    idempotencyKey: row.idempotencyKey,
+    requestDigest: row.requestDigest,
+    expectedGeneration: row.expectedGeneration,
+    committedGeneration: row.committedGeneration,
+    createdAt: iso(row.createdAt),
+  };
 }
 
 function newId(): UUID {
@@ -464,6 +511,212 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       generation: cluster.generation,
       reason: "verified_owner_binding",
     };
+  }
+
+  async attestPersonLink(
+    request: AttestIdentityPersonLinkRequest
+  ): Promise<IdentityPersonLinkAttestation> {
+    this.assertAgent(request.agentId);
+    const [leftPrincipalId, rightPrincipalId] = normalizePersonLinkPair(
+      request.leftPrincipalId,
+      request.rightPrincipalId
+    );
+    const reason = request.reason.trim();
+    const idempotencyKey = request.idempotencyKey.trim();
+    if (
+      !Number.isSafeInteger(request.expectedGeneration) ||
+      request.expectedGeneration < 0 ||
+      reason.length === 0 ||
+      reason.length > 500 ||
+      idempotencyKey.length === 0 ||
+      idempotencyKey.length > 200 ||
+      (request.actorRole !== "OWNER" && request.actorRole !== "ADMIN") ||
+      request.authority !== "authenticated_private_route" ||
+      (request.transport !== "http" && request.transport !== "in_process")
+    ) {
+      fail("IDENTITY_PERSON_LINK_INPUT_INVALID", "Person-link attestation input is invalid.");
+    }
+    const digestInput: Omit<AttestIdentityPersonLinkRequest, "requestDigest"> = {
+      agentId: request.agentId,
+      leftPrincipalId,
+      rightPrincipalId,
+      actorPrincipalId: request.actorPrincipalId,
+      actorRole: request.actorRole,
+      authority: request.authority,
+      transport: request.transport,
+      reason,
+      idempotencyKey,
+      expectedGeneration: request.expectedGeneration,
+    };
+    const expectedDigest = computeIdentityPersonLinkRequestDigest(digestInput);
+    if (request.requestDigest !== expectedDigest) {
+      fail(
+        "IDENTITY_REQUEST_DIGEST_MISMATCH",
+        "Person-link attestation digest does not match the request."
+      );
+    }
+
+    return this.db.transaction(async (tx) => {
+      await tx
+        .insert(identityAuthorityStateTable)
+        .values({ agentId: request.agentId })
+        .onConflictDoNothing();
+      const [state] = await tx
+        .select()
+        .from(identityAuthorityStateTable)
+        .where(eq(identityAuthorityStateTable.agentId, request.agentId))
+        .for("update")
+        .limit(1);
+      if (!state) return fail("IDENTITY_STATE_MISSING", "Identity authority state is missing.");
+
+      const [existing] = await tx
+        .select()
+        .from(identityPersonLinkAttestationTable)
+        .where(
+          and(
+            eq(identityPersonLinkAttestationTable.agentId, request.agentId),
+            eq(identityPersonLinkAttestationTable.idempotencyKey, idempotencyKey)
+          )
+        )
+        .limit(1);
+      if (existing) {
+        if (existing.requestDigest !== expectedDigest) {
+          fail(
+            "IDENTITY_IDEMPOTENCY_CONFLICT",
+            "Person-link attestation key was reused for another request."
+          );
+        }
+        return mapPersonLinkAttestation(existing);
+      }
+      if (state.generation !== request.expectedGeneration) {
+        fail("IDENTITY_GENERATION_CONFLICT", "Identity graph changed before attestation.");
+      }
+
+      const requiredPrincipalIds = [
+        ...new Set([leftPrincipalId, rightPrincipalId, request.actorPrincipalId]),
+      ];
+      const principals = await tx
+        .select({ id: entityTable.id })
+        .from(entityTable)
+        .where(
+          and(
+            eq(entityTable.agentId, request.agentId),
+            inArray(entityTable.id, requiredPrincipalIds)
+          )
+        );
+      if (new Set(principals.map((row) => row.id)).size !== requiredPrincipalIds.length) {
+        fail(
+          "IDENTITY_PRINCIPAL_NOT_FOUND",
+          "Both person-link principals and the authenticated actor must exist."
+        );
+      }
+      const redirects = await tx
+        .select()
+        .from(identityCanonicalRedirectTable)
+        .where(
+          and(
+            eq(identityCanonicalRedirectTable.agentId, request.agentId),
+            eq(identityCanonicalRedirectTable.status, "active")
+          )
+        );
+      if (
+        follow(leftPrincipalId, redirects).canonical ===
+        follow(rightPrincipalId, redirects).canonical
+      ) {
+        fail(
+          "IDENTITY_PERSON_LINK_ALREADY_CANONICAL",
+          "Person-link principals already resolve to one canonical principal."
+        );
+      }
+
+      const now = new Date();
+      const bumped = await tx
+        .update(identityAuthorityStateTable)
+        .set({
+          generation: sql`${identityAuthorityStateTable.generation} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(identityAuthorityStateTable.agentId, request.agentId),
+            eq(identityAuthorityStateTable.generation, request.expectedGeneration)
+          )
+        )
+        .returning();
+      if (!bumped[0]) {
+        fail("IDENTITY_GENERATION_CONFLICT", "Identity graph changed before attestation.");
+      }
+      const [inserted] = await tx
+        .insert(identityPersonLinkAttestationTable)
+        .values({
+          id: newId(),
+          agentId: request.agentId,
+          leftPrincipalId,
+          rightPrincipalId,
+          actorPrincipalId: request.actorPrincipalId,
+          actorRole: request.actorRole,
+          authority: request.authority,
+          transport: request.transport,
+          reason,
+          idempotencyKey,
+          requestDigest: expectedDigest,
+          expectedGeneration: request.expectedGeneration,
+          committedGeneration: bumped[0].generation,
+          createdAt: now,
+        })
+        .returning();
+      if (!inserted) {
+        fail("IDENTITY_PERSON_LINK_COMMIT_FAILED", "Person-link attestation did not commit.");
+      }
+      return mapPersonLinkAttestation(inserted);
+    });
+  }
+
+  async verifyPersonLink(
+    request: VerifyIdentityPersonLinkRequest
+  ): Promise<IdentityPersonLinkVerification> {
+    this.assertAgent(request.agentId);
+    if (!Number.isSafeInteger(request.expectedGeneration) || request.expectedGeneration < 0) {
+      fail("IDENTITY_PERSON_LINK_INPUT_INVALID", "Verification generation is invalid.");
+    }
+    const [leftPrincipalId, rightPrincipalId] = normalizePersonLinkPair(
+      request.leftPrincipalId,
+      request.rightPrincipalId
+    );
+    return this.db.transaction(async (tx) => {
+      const [state] = await tx
+        .select()
+        .from(identityAuthorityStateTable)
+        .where(eq(identityAuthorityStateTable.agentId, request.agentId))
+        .for("update")
+        .limit(1);
+      const generation = state?.generation ?? 0;
+      if (generation !== request.expectedGeneration) {
+        fail("IDENTITY_GENERATION_CONFLICT", "Identity graph changed before verification.");
+      }
+      const [attestation] = await tx
+        .select()
+        .from(identityPersonLinkAttestationTable)
+        .where(
+          and(
+            eq(identityPersonLinkAttestationTable.agentId, request.agentId),
+            eq(identityPersonLinkAttestationTable.leftPrincipalId, leftPrincipalId),
+            eq(identityPersonLinkAttestationTable.rightPrincipalId, rightPrincipalId)
+          )
+        )
+        .orderBy(
+          desc(identityPersonLinkAttestationTable.createdAt),
+          desc(identityPersonLinkAttestationTable.id)
+        )
+        .limit(1);
+      return attestation
+        ? {
+            decision: "attested",
+            generation,
+            attestation: mapPersonLinkAttestation(attestation),
+          }
+        : { decision: "not_attested", generation, reason: "no_attestation" };
+    });
   }
 
   async proposeMerge(request: ProposeIdentityMergeRequest): Promise<IdentityMergePlan> {

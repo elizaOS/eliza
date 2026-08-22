@@ -509,14 +509,13 @@ const optionalPluginStubs = {
   "@elizaos/plugin-browser": path.join(stubsDir, "null-plugin.cjs"),
   // Server-side connectors that app-lifeops dynamically imports inside
   // its service mixins. Mobile never reaches the runtime path that
-  // calls `import("@elizaos/plugin-whatsapp")` or `plugin-signal`, but
+  // calls `import("@elizaos/plugin-whatsapp")`, but
   // Bun's bundler still has to resolve them statically. The plugins
   // are workspace-only deps on app-lifeops and aren't in
   // packages/agent's resolution scope, so stub them out here. Trying to
   // bundle the real packages also drags Baileys / libsignal native
   // bindings into the mobile bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-signal": path.join(stubsDir, "null-plugin.cjs"),
   // Desktop/server-only optional integrations. The mobile agent does not host
   // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
   // imports both optional modules lazily. Resolve them to the shared no-op
@@ -1778,7 +1777,6 @@ const polyfillLines = [
 // Always-on: the few hand-curated overrides that need specific shapes.
 polyfillLines.push("var default10 = () => globalThis.crypto.randomUUID();");
 polyfillLines.push("var applyWhatsAppQrOverride3 = () => {};");
-polyfillLines.push("var applySignalQrOverride3 = () => {};");
 polyfillLines.push(
   "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
     "  static serviceType = 'AUTONOMY';\n" +
@@ -1787,10 +1785,7 @@ polyfillLines.push(
     "};",
 );
 const SKIP_DEFAULTS = new Set(["default10"]);
-const SKIP_APPLIES = new Set([
-  "applyWhatsAppQrOverride3",
-  "applySignalQrOverride3",
-]);
+const SKIP_APPLIES = new Set(["applyWhatsAppQrOverride3"]);
 const SKIP_SERVICES = new Set(["AutonomyService2"]);
 for (const name of renames.undeclaredDefaults) {
   if (SKIP_DEFAULTS.has(name)) continue;

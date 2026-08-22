@@ -303,7 +303,13 @@ describe("InboxRepository", () => {
 
       const repo2 = new InboxRepository(env.runtime);
       await repo2.getRecentAutoReplies(Number.NaN);
-      expect(limitOf(env.calls[1]?.sql ?? "")).toBe("5");
+      expect(limitOf(env.calls[1]?.sql ?? "")).toBe("50");
+    });
+
+    it("does not cap recent auto-replies when no limit is provided", async () => {
+      const repo = new InboxRepository(env.runtime);
+      await repo.getRecentAutoReplies();
+      expect(limitOf(env.calls[0]?.sql ?? "")).toBeUndefined();
     });
   });
 

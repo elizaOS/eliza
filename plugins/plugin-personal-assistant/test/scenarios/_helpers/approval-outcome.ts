@@ -32,7 +32,6 @@ const EXTERNAL_SEND_CHANNELS = new Set([
   "email",
   "telegram",
   "discord",
-  "signal",
   "slack",
   "sms",
   "imessage",
