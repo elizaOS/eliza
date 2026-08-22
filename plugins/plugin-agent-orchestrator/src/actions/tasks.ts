@@ -4,6 +4,10 @@
  * runners enforce access, routing, lifecycle, and session-event invariants.
  */
 
+import {
+  FOLLOW_UP_SHAPE_RE,
+  NEW_DELIVERABLE_RE,
+} from "../services/ask-shapes.js";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import {
@@ -1033,16 +1037,6 @@ async function runPromptAndClose(
     }
   }
 }
-
-/** "also …", "add … to it", "make it …": an instruction about work already
- *  under way, not a new deliverable. */
-const FOLLOW_UP_SHAPE_RE =
-  /^\s*(?:oh\s+|and\s+)?(?:also|plus|btw|additionally)\b|\b(?:to|on|in|for|into)\s+(?:it|that|the\s+(?:page|app|site|script))\b|\bmake\s+it\b|\bit\s+(?:too|as\s+well)\b/i;
-
-/** "make me a page …", "another script …": a new deliverable, even when the
- *  sentence also says "on it" / "make it". */
-const NEW_DELIVERABLE_RE =
-  /\b(?:make|build|create|write|spin\s+up)\s+(?:me\s+)?(?:a|an|another|new|two|three|\d+)\b[^.!?\n]{0,40}\b(?:pages?|apps?|sites?|scripts?|games?|tools?|widgets?)\b/i;
 
 export function looksLikeFollowUpToInFlightWork(text: string): boolean {
   return FOLLOW_UP_SHAPE_RE.test(text) && !NEW_DELIVERABLE_RE.test(text);
@@ -4237,13 +4231,21 @@ async function runSend(
           // re-execute it verbatim — "Write a python script…" re-wrote the
           // existing file (tripping the read-first guard) when the user only
           // asked to run it again (live 2026-08-21).
-          task: continuesPrior
-            ? `${textInput}
+          task:
+            relation === "follow_up"
+              ? `${textInput}
 
 Context: this continues a FINISHED task whose deliverable already exists in the workdir. The original task was: ${priorTask}
 Build on the existing files; do not recreate them.`
-            : textInput,
-          ...(continuesPrior && target.session.workdir
+              : relation === "related"
+                ? `${textInput}
+
+Context: a NEW deliverable related to an earlier finished task (${priorTask}). Build it fresh here.`
+                : textInput,
+          // Only a follow-up lands in the predecessor's workdir; a related
+          // new deliverable resolves its own (the predecessor's route
+          // checkout is not where a new script belongs).
+          ...(relation === "follow_up" && target.session.workdir
             ? { workdir: target.session.workdir }
             : {}),
         },
