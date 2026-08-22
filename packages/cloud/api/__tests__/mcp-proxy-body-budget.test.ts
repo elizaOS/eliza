@@ -2,9 +2,12 @@
  * Exercises the MCP proxy's bounded body reader against declared, streamed,
  * fragmented, malformed, and teardown-failure inputs using real web streams.
  */
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
+  __mcpProxyHopTestHooks,
   type BudgetedBodySource,
+  createMcpProxyHopDeadline,
+  McpProxyHopDeadlineError,
   readBodyTextWithinBudget,
 } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 
@@ -101,7 +104,10 @@ describe("readBodyTextWithinBudget", () => {
       bytes: 8_193,
       reason: "fragmentation-budget",
     });
-    expect(pulls).toBe(8_193);
+    // The 8,193rd non-empty chunk trips the ceiling. Cancel may pull once
+    // more while it still owns the reader; it must not keep amplifying.
+    expect(pulls).toBeGreaterThanOrEqual(8_193);
+    expect(pulls).toBeLessThan(8_200);
   });
 
   test("reports cancellation failure and still releases the lock", async () => {
@@ -137,5 +143,184 @@ describe("readBodyTextWithinBudget", () => {
     );
     const nextReader = body.getReader();
     nextReader.releaseLock();
+  });
+
+  test("never-settling cancel does not delay the budget result and keeps the lock", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2]));
+      },
+      cancel() {
+        return new Promise(() => {
+          /* never settles */
+        });
+      },
+    });
+
+    const started = Date.now();
+    const result = await readBodyTextWithinBudget(source(body), 1);
+    expect(Date.now() - started).toBeLessThan(50);
+    expect(result).toEqual({ ok: false, bytes: 2, reason: "byte-budget" });
+    expect(() => body.getReader()).toThrow();
+  });
+
+  test("rejecting cancel does not replace the budget result", async () => {
+    const cancelFailures = mock();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2]));
+      },
+      cancel() {
+        return Promise.reject(new Error("cancel failed"));
+      },
+    });
+
+    const result = await readBodyTextWithinBudget(source(body), 1, {
+      onCancelFailure: cancelFailures,
+    });
+    expect(result).toEqual({ ok: false, bytes: 2, reason: "byte-budget" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cancelFailures).toHaveBeenCalledWith(
+      "streamed-budget",
+      expect.objectContaining({ message: "cancel failed" }),
+    );
+  });
+
+  test("rejects a hanging body when the hop signal aborts", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        /* never enqueue */
+      },
+    });
+    const controller = new AbortController();
+    const resultPromise = readBodyTextWithinBudget(source(body), 100, {
+      signal: controller.signal,
+    });
+    queueMicrotask(() => {
+      controller.abort(
+        new DOMException("MCP proxy hop deadline exceeded", "TimeoutError"),
+      );
+    });
+    const hung = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("reader ignored hop abort")), 80);
+    });
+    expect(await Promise.race([resultPromise, hung])).toEqual({
+      ok: false,
+      bytes: 0,
+      reason: "deadline",
+    });
+  });
+
+  test("a live hop signal does not alter a below-budget decode", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"ok":true}'));
+        controller.close();
+      },
+    });
+    const controller = new AbortController();
+    expect(
+      await readBodyTextWithinBudget(source(body), 100, {
+        signal: controller.signal,
+      }),
+    ).toEqual({ ok: true, text: '{"ok":true}' });
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  test("already-aborted hop refuses without pulling the body", async () => {
+    let pulled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        pulled = true;
+      },
+    });
+    const controller = new AbortController();
+    controller.abort(new McpProxyHopDeadlineError(1));
+    expect(
+      await readBodyTextWithinBudget(
+        source(body, { "content-length": "5" }),
+        10,
+        { signal: controller.signal },
+      ),
+    ).toEqual({ ok: false, bytes: 5, reason: "deadline" });
+    expect(pulled).toBe(false);
+  });
+
+  test("null-body source.text hang returns deadline without replacing a later throw", async () => {
+    const hanging: BudgetedBodySource = {
+      headers: new Headers(),
+      body: null,
+      text: () =>
+        new Promise(() => {
+          /* never settles */
+        }),
+    };
+    const controller = new AbortController();
+    const resultPromise = readBodyTextWithinBudget(hanging, 100, {
+      signal: controller.signal,
+    });
+    queueMicrotask(() => {
+      controller.abort(new McpProxyHopDeadlineError(1));
+    });
+    expect(await resultPromise).toEqual({
+      ok: false,
+      bytes: 0,
+      reason: "deadline",
+    });
+  });
+
+  test("composed caller abort fails a hanging read as deadline", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        /* never enqueue */
+      },
+    });
+    const caller = new AbortController();
+    const hop = createMcpProxyHopDeadline(caller.signal);
+    const resultPromise = readBodyTextWithinBudget(source(body), 100, {
+      signal: hop.signal,
+    });
+    queueMicrotask(() => {
+      caller.abort(new Error("caller canceled"));
+    });
+    expect(await resultPromise).toEqual({
+      ok: false,
+      bytes: 0,
+      reason: "deadline",
+    });
+    hop.clear();
+  });
+});
+
+describe("createMcpProxyHopDeadline", () => {
+  afterEach(() => {
+    __mcpProxyHopTestHooks.resetHopTimeoutMs();
+  });
+
+  test("clear() prevents the timer from aborting a completed hop", async () => {
+    __mcpProxyHopTestHooks.setHopTimeoutMs(20);
+    const hop = createMcpProxyHopDeadline();
+    hop.clear();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(hop.signal.aborted).toBe(false);
+  });
+
+  test("fires a typed deadline error after the configured timeout", async () => {
+    __mcpProxyHopTestHooks.setHopTimeoutMs(20);
+    const hop = createMcpProxyHopDeadline();
+    await new Promise((resolve) => {
+      hop.signal.addEventListener("abort", resolve, { once: true });
+    });
+    expect(hop.signal.reason).toBeInstanceOf(McpProxyHopDeadlineError);
+    hop.clear();
+  });
+
+  test("an already-aborted caller is returned without starting a timer", async () => {
+    const caller = new AbortController();
+    caller.abort(new Error("caller"));
+    const hop = createMcpProxyHopDeadline(caller.signal);
+    expect(hop.signal.aborted).toBe(true);
+    expect(hop.signal).toBe(caller.signal);
+    hop.clear();
   });
 });

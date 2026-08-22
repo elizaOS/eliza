@@ -8,8 +8,9 @@
  * called on each failure branch and NOT on success. Red on develop tip (only
  * the non-ok branch refunded); green after the fix.
  */
-import { beforeEach, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { __mcpProxyHopTestHooks } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 
 // mock.module is process-global — spread the real auth module so only
 // requireUserOrApiKeyWithOrg is overridden (mirrors agent-mcp-billing.test.ts).
@@ -101,6 +102,10 @@ beforeEach(() => {
   );
   safeFetch.mockReset();
   containersGetById.mockReset();
+});
+
+afterEach(() => {
+  __mcpProxyHopTestHooks.resetHopTimeoutMs();
 });
 
 test("unreachable upstream (502) refunds the upfront debit (#11637)", async () => {
@@ -240,6 +245,147 @@ test("declared oversized upstream body returns 502 and refunds exact receipt", a
     expect.objectContaining({
       amount: 0.05,
       metadata: expect.objectContaining({ reason: "mcp_response_too_large" }),
+    }),
+  );
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
+test("headers-resolve body-never-resolves returns 504, refunds exact receipt, and skips usage", async () => {
+  __mcpProxyHopTestHooks.setHopTimeoutMs(25);
+  safeFetch.mockImplementation((_url: string, init?: RequestInit) => {
+    void init;
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        /* never enqueue */
+      },
+    });
+    return Promise.resolve(
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  });
+  const res = await post();
+  expect(res.status).toBe(504);
+  const timedOut = (await res.json()) as { error: string };
+  expect(timedOut).toEqual({ error: "MCP endpoint timed out" });
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({
+        reason: "upstream_deadline_exceeded",
+      }),
+    }),
+  );
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
+test("streamed oversized upstream body returns 502 and refunds exact receipt", async () => {
+  const first = new Uint8Array(5_000_000);
+  const overflow = new Uint8Array(2);
+  first.fill(97);
+  overflow.fill(98);
+  safeFetch.mockResolvedValue(
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(first);
+          controller.enqueue(overflow);
+          controller.close();
+        },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    ),
+  );
+  const res = await post();
+  expect(res.status).toBe(502);
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({ reason: "mcp_response_too_large" }),
+    }),
+  );
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
+test("container hop headers-resolve body-never-resolves returns 504 and refunds", async () => {
+  __mcpProxyHopTestHooks.setHopTimeoutMs(25);
+  getById.mockResolvedValue({
+    id: "test-mcp",
+    name: "Container MCP",
+    status: "live",
+    credits_per_request: "5",
+    endpoint_type: "container",
+    container_id: "c1",
+    organization_id: "org1",
+  });
+  containersGetById.mockResolvedValue({
+    load_balancer_url: "http://container.internal",
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    void input;
+    void init;
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        /* never enqueue */
+      },
+    });
+    return Promise.resolve(
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }) as typeof fetch;
+  try {
+    const res = await post();
+    expect(res.status).toBe(504);
+    expect(refundCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 0.05,
+        metadata: expect.objectContaining({
+          reason: "upstream_deadline_exceeded",
+        }),
+      }),
+    );
+    expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+    expect(safeFetch).not.toHaveBeenCalled();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("headers-never-resolve fetch abort refunds exact receipt and skips usage", async () => {
+  __mcpProxyHopTestHooks.setHopTimeoutMs(25);
+  safeFetch.mockImplementation((_url: string, init?: RequestInit) => {
+    return new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal?.aborted) {
+        reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      signal?.addEventListener(
+        "abort",
+        () => {
+          reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+        },
+        { once: true },
+      );
+    });
+  });
+  const res = await post();
+  expect(res.status).toBe(504);
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({
+        reason: "upstream_deadline_exceeded",
+      }),
     }),
   );
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
