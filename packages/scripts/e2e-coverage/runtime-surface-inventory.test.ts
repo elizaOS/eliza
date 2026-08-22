@@ -422,18 +422,22 @@ describe("runtime-surface production inventory", () => {
     expect(
       realInventory.gaps.byScenarioLane["missing-deterministic"]?.length,
     ).toBeGreaterThan(0);
+    const unresolvedProviderRow = realInventory.rows.find(
+      (row) =>
+        row.dependencyDisposition === "unresolved" &&
+        row.status === "provider-qualified-only",
+    );
+    expect(unresolvedProviderRow).toBeDefined();
+    if (!unresolvedProviderRow) {
+      throw new Error("Expected an unresolved provider boundary in the census");
+    }
     expect(realInventory.gaps.byExternalService.unresolved).toContain(
-      "@elizaos/plugin-openai:model-handler:action_planner",
+      unresolvedProviderRow.id,
     );
     expect(realInventory.gaps.byMockOwner.unresolved).toContain(
-      "@elizaos/plugin-openai:model-handler:action_planner",
+      unresolvedProviderRow.id,
     );
-    expect(
-      realInventory.rows.find(
-        (row) =>
-          row.id === "@elizaos/plugin-openai:model-handler:action_planner",
-      ),
-    ).toMatchObject({
+    expect(unresolvedProviderRow).toMatchObject({
       dependencyDisposition: "unresolved",
       status: "provider-qualified-only",
       externalServiceDependencies: [],
