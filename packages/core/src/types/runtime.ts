@@ -29,7 +29,14 @@ import type {
 	Provider,
 	StreamChunkCallback,
 } from "./components";
-import type { IDatabaseAdapter, LogBody, PatchOp } from "./database";
+import type {
+	IDatabaseAdapter,
+	LogBody,
+	PatchOp,
+	RoomMembershipEvidence,
+	RoomMembershipEvidenceUpdate,
+	RoomMembershipEvidenceUpdateResult,
+} from "./database";
 import type {
 	Component,
 	Entity,
@@ -1304,6 +1311,10 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		worldId,
 	}: Room): Promise<UUID>;
 	addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+	updateRoomMembershipEvidence(
+		update: RoomMembershipEvidenceUpdate,
+	): Promise<RoomMembershipEvidenceUpdateResult>;
+	getCurrentRoomMemberships(entityId: UUID): Promise<RoomMembershipEvidence[]>;
 	getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 	getParticipantUserState(
 		roomId: UUID,

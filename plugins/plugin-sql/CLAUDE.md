@@ -139,6 +139,7 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 - **Vector dimensions are active-width scoped.** `ensureEmbeddingDimension(n)` selects the current vector column, and runtime boot calls `clearEmbeddingsOutsideActiveDimension()` to delete vectors in other dimension columns and queue those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.
 - **RLS is PostgreSQL-only.** PGlite does not support Row Level Security. The `ENABLE_DATA_ISOLATION` path is silently skipped on PGlite.
 - **Document entitlements are query-time authority.** Document list, lookup, and fragment queries authorize the parent before constructing results. Current room IDs satisfy the parent's single room entitlement; validated `directGrantEntityIds` provide read-only access outside the room, except for `agent-private` documents. Never materialize per-member document grants or move these predicates after pagination/ranking.
+- **Membership evidence is distinct from participant presence.** The participant row stores a generation-fenced observation. Only fresh `member` evidence or `runtime:local` structural evidence is returned by `getCurrentRoomMemberships`; stale, absent, negative, indeterminate, unsupported, and unavailable observations fail closed while remaining inspectable. Document reads and mutations intersect supplied room ids with this evidence inside their SQL transaction.
 - **Tests live under `src/__tests__/`** and run via vitest configured in `src/vitest.config.ts`.
 
 ## Verification

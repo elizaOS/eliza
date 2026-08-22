@@ -257,6 +257,9 @@ import {
 	type ResolvedPipelineHook,
 	type ResponseSkeleton,
 	type Room,
+	type RoomMembershipEvidence,
+	type RoomMembershipEvidenceUpdate,
+	type RoomMembershipEvidenceUpdateResult,
 	type Route,
 	type RuntimeEventStorage,
 	type RuntimeSettings,
@@ -4757,6 +4760,20 @@ export class AgentRuntime implements IAgentRuntime {
 		const ids = await this.adapter.createRoomParticipants([entityId], roomId);
 		this.invalidateTurnEntityDetails();
 		return ids.length > 0;
+	}
+
+	async updateRoomMembershipEvidence(
+		update: RoomMembershipEvidenceUpdate,
+	): Promise<RoomMembershipEvidenceUpdateResult> {
+		const result = await this.adapter.updateRoomMembershipEvidence(update);
+		this.invalidateTurnEntityDetails();
+		return result;
+	}
+
+	async getCurrentRoomMemberships(
+		entityId: UUID,
+	): Promise<RoomMembershipEvidence[]> {
+		return this.adapter.getCurrentRoomMemberships(entityId);
 	}
 
 	async createRoomParticipants(

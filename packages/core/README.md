@@ -14,6 +14,12 @@ or by a current room ADMIN for global and user-private documents. Every grantee
 must be an entity in the current agent tenant. Invalid or duplicate grant arrays
 fail closed.
 
+Room membership is evidence-backed. A participant association alone grants
+nothing; only a fresh generation-fenced `member` observation contributes its
+room to document authorization. Explicit leave, indeterminate, unsupported,
+unavailable, missing, and expired evidence suspend room access while preserving
+the association and observation for reconciliation.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.

@@ -79,6 +79,19 @@ describe("document list query (real SQL parity)", () => {
     ]);
     await adapter.addParticipant(REQUESTER_ID, roomId);
     await adapter.addParticipant(OTHER_ENTITY_ID, roomId);
+    const observedAt = Date.now();
+    const membership = await adapter.updateRoomMembershipEvidence({
+      evidence: {
+        entityId: REQUESTER_ID,
+        roomId,
+        source: "runtime:local",
+        state: "member",
+        observedAt,
+        generation: 1,
+      },
+      expectedGeneration: null,
+    });
+    if (membership.status !== "updated") throw new Error("SQL membership seed failed");
   }, 120_000);
 
   afterAll(async () => {
@@ -125,12 +138,41 @@ describe("document list query (real SQL parity)", () => {
   async function seedInMemory(documents: Memory[]): Promise<InMemoryDatabaseAdapter> {
     const inMemory = new InMemoryDatabaseAdapter();
     await inMemory.initialize();
+    await inMemory.createRoomParticipants([REQUESTER_ID], roomId);
+    const membership = await inMemory.updateRoomMembershipEvidence({
+      evidence: {
+        entityId: REQUESTER_ID,
+        roomId,
+        source: "runtime:local",
+        state: "member",
+        observedAt: Date.now(),
+        generation: 1,
+      },
+      expectedGeneration: null,
+    });
+    if (membership.status !== "updated") {
+      throw new Error("in-memory membership seed failed");
+    }
     await inMemory.createMemories(documents.map((memory) => ({ memory, tableName: "documents" })));
     return inMemory;
   }
 
   const ids = (memories: Memory[]): UUID[] =>
     memories.map((memory) => memory.id).filter((id): id is UUID => typeof id === "string");
+
+  it("rejects caller-supplied room ids without current stored evidence", async () => {
+    await seedSql([document(99)]);
+    await expect(
+      adapter.queryDocuments({
+        agentId,
+        requesterEntityId: OTHER_ENTITY_ID,
+        requesterRoomIds: [roomId],
+        requesterRole: "USER",
+        limit: 10,
+        offset: 0,
+      })
+    ).resolves.toMatchObject({ documents: [], totalVisible: 0 });
+  });
 
   it("keeps entityId as isolation context instead of a row predicate", async () => {
     const documents = [document(1), document(2, { entityId: OTHER_ENTITY_ID })];

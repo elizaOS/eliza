@@ -39,6 +39,7 @@ import {
   type DocumentMutationResult,
   type DocumentRangeReadParams,
   type DocumentRangeReadResult,
+  type DocumentRequesterContext,
   type DocumentRevisionReplaceParams,
   decryptedCharacter,
   documentMutationSnapshotMatches,
@@ -76,6 +77,10 @@ import {
   type PatchOp,
   type Relationship,
   type Room,
+  type RoomMembershipEvidence,
+  type RoomMembershipEvidenceState,
+  type RoomMembershipEvidenceUpdate,
+  type RoomMembershipEvidenceUpdateResult,
   type RunStatus,
   type SetConnectorAccountCredentialRefParams,
   type Task,
@@ -88,6 +93,9 @@ import {
   validateDocumentRequesterContext,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
+  validateRoomMembershipEvidence,
+  validateRoomMembershipEvidenceSuccessor,
+  validateRoomMembershipEvidenceUpdate,
   type World,
 } from "@elizaos/core";
 import { sanitizeJsonObject } from "./sanitize-json";
@@ -388,6 +396,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -460,6 +469,45 @@ type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
 type AgentKnowledge = NonNullable<Agent["knowledge"]>;
 type MemoryRow = typeof memoryTable.$inferSelect;
+type ParticipantRow = typeof participantTable.$inferSelect;
+
+function membershipEvidenceFromRow(row: ParticipantRow): RoomMembershipEvidence | null {
+  const evidenceFields = [
+    row.membershipState,
+    row.membershipSource,
+    row.membershipObservedAt,
+    row.membershipExpiresAt,
+    row.membershipCursor,
+    row.membershipGeneration,
+  ];
+  if (evidenceFields.every((field) => field === null)) return null;
+  if (
+    row.entityId === null ||
+    row.roomId === null ||
+    row.membershipState === null ||
+    row.membershipSource === null ||
+    row.membershipObservedAt === null ||
+    row.membershipGeneration === null
+  ) {
+    throw new ElizaError("Stored room membership evidence is incomplete", {
+      code: "ROOM_MEMBERSHIP_EVIDENCE_INVALID",
+      context: { participantId: row.id },
+      severity: "fatal",
+    });
+  }
+  const evidence = {
+    entityId: row.entityId as UUID,
+    roomId: row.roomId as UUID,
+    state: row.membershipState as RoomMembershipEvidenceState,
+    source: row.membershipSource,
+    observedAt: row.membershipObservedAt.getTime(),
+    generation: row.membershipGeneration,
+    ...(row.membershipExpiresAt ? { expiresAt: row.membershipExpiresAt.getTime() } : {}),
+    ...(row.membershipCursor ? { cursor: row.membershipCursor } : {}),
+  };
+  validateRoomMembershipEvidence(evidence);
+  return evidence;
+}
 
 function memoryFromRow(row: MemoryRow, embedding?: number[], similarity?: number): Memory {
   return {
@@ -1821,6 +1869,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
     const entityContext = hasGlobalVisibility ? params.agentId : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const visibleConditions: SQL[] = [
         eq(memoryTable.type, "documents"),
         eq(memoryTable.agentId, params.agentId),
@@ -2168,6 +2217,35 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  private async bindCurrentDocumentRooms<T extends DocumentRequesterContext>(
+    tx: DrizzleDatabase,
+    params: T
+  ): Promise<T> {
+    if (documentRoleHasGlobalVisibility(params.requesterRole)) return params;
+    if (params.requesterRoomIds.length === 0) return params;
+    const now = Date.now();
+    const rows = await tx
+      .select({ roomId: participantTable.roomId })
+      .from(participantTable)
+      .where(
+        and(
+          eq(participantTable.agentId, params.agentId),
+          eq(participantTable.entityId, params.requesterEntityId),
+          inArray(participantTable.roomId, params.requesterRoomIds),
+          eq(participantTable.membershipState, "member"),
+          lte(participantTable.membershipObservedAt, new Date(now + 5 * 60 * 1_000)),
+          or(
+            eq(participantTable.membershipSource, "runtime:local"),
+            gt(participantTable.membershipExpiresAt, new Date(now))
+          )
+        )
+      );
+    return {
+      ...params,
+      requesterRoomIds: rows.map(({ roomId }) => roomId as UUID),
+    };
+  }
+
   private documentReadConditions(
     params: DocumentGetQueryParams | DocumentCompareAndSwapParams | DocumentDeleteParams
   ): SQL[] {
@@ -2210,6 +2288,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2240,6 +2319,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const linePattern = "([^\\r\\n]*(?:\\r\\n|\\r|\\n)|[^\\r\\n]+$)";
       const units =
         params.unit === "line"
@@ -2325,6 +2405,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const parent = alias(memoryTable, "document_parent");
       const fragment = alias(memoryTable, "document_fragment");
       const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
@@ -2437,6 +2518,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2475,6 +2557,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     validateDocumentRequesterContext(params);
     const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
     return this.withEntityContext(params.agentId, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2532,6 +2615,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2628,6 +2712,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
+      params = await this.bindCurrentDocumentRooms(tx, params);
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -6877,6 +6962,100 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
     }
     return ids;
+  }
+
+  async updateRoomMembershipEvidence(
+    update: RoomMembershipEvidenceUpdate
+  ): Promise<RoomMembershipEvidenceUpdateResult> {
+    validateRoomMembershipEvidenceUpdate(update);
+    const { evidence, expectedGeneration } = update;
+    return this.withEntityContext(evidence.entityId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(participantTable)
+        .where(
+          and(
+            eq(participantTable.agentId, this.agentId),
+            eq(participantTable.entityId, evidence.entityId),
+            eq(participantTable.roomId, evidence.roomId)
+          )
+        )
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found", current: null } as const;
+      const current = membershipEvidenceFromRow(row);
+      if ((current?.generation ?? null) !== expectedGeneration) {
+        return { status: "conflict", current } as const;
+      }
+      validateRoomMembershipEvidenceSuccessor(current, evidence);
+      const generationFence =
+        expectedGeneration === null
+          ? isNull(participantTable.membershipGeneration)
+          : eq(participantTable.membershipGeneration, expectedGeneration);
+      const updated = await tx
+        .update(participantTable)
+        .set({
+          membershipState: evidence.state,
+          membershipSource: evidence.source,
+          membershipObservedAt: new Date(evidence.observedAt),
+          membershipExpiresAt:
+            evidence.expiresAt === undefined ? null : new Date(evidence.expiresAt),
+          membershipCursor: evidence.cursor ?? null,
+          membershipGeneration: evidence.generation,
+        })
+        .where(
+          and(
+            eq(participantTable.id, row.id),
+            eq(participantTable.agentId, this.agentId),
+            generationFence
+          )
+        )
+        .returning();
+      if (updated.length === 0) {
+        const [winner] = await tx
+          .select()
+          .from(participantTable)
+          .where(eq(participantTable.id, row.id))
+          .limit(1);
+        return {
+          status: "conflict",
+          current: winner ? membershipEvidenceFromRow(winner) : null,
+        } as const;
+      }
+      return { status: "updated", evidence } as const;
+    });
+  }
+
+  async getCurrentRoomMemberships(entityId: UUID): Promise<RoomMembershipEvidence[]> {
+    return this.withEntityContext(entityId, async (tx) => {
+      const now = Date.now();
+      const rows = await tx
+        .select()
+        .from(participantTable)
+        .where(
+          and(
+            eq(participantTable.agentId, this.agentId),
+            eq(participantTable.entityId, entityId),
+            eq(participantTable.membershipState, "member"),
+            lte(participantTable.membershipObservedAt, new Date(now + 5 * 60 * 1_000)),
+            or(
+              eq(participantTable.membershipSource, "runtime:local"),
+              gt(participantTable.membershipExpiresAt, new Date(now))
+            )
+          )
+        );
+      return rows.map((row) => {
+        const evidence = membershipEvidenceFromRow(row);
+        if (!evidence) {
+          throw new ElizaError("Current membership row is structurally incomplete", {
+            code: "ROOM_MEMBERSHIP_EVIDENCE_INVALID",
+            context: { participantId: row.id, entityId, agentId: this.agentId },
+            severity: "fatal",
+          });
+        }
+        return evidence;
+      });
+    });
   }
 
   async deleteParticipants(

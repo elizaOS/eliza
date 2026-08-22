@@ -76,10 +76,76 @@ function memory(
   };
 }
 
+async function grantCurrentRoom(adapter: InMemoryDatabaseAdapter, roomId: UUID): Promise<void> {
+  await adapter.createRoomParticipants([REQUESTER_ID], roomId);
+  const result = await adapter.updateRoomMembershipEvidence({
+    evidence: {
+      entityId: REQUESTER_ID,
+      roomId,
+      source: "runtime:local",
+      state: "member",
+      observedAt: Date.now(),
+      generation: 1,
+    },
+    expectedGeneration: null,
+  });
+  if (result.status !== "updated") throw new Error("room membership seed failed");
+}
+
 describe("InMemoryDatabaseAdapter document list capability", () => {
+  it("rejects caller-supplied room ids without current membership evidence", async () => {
+    const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
+    await adapter.initialize();
+    const document = memory(98, ROOM_A);
+    await adapter.createMemories([{ memory: document, tableName: "documents" }]);
+
+    await expect(
+      adapter.queryDocuments({
+        agentId: AGENT_ID,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [ROOM_A],
+        requesterRole: "USER",
+        limit: 10,
+        offset: 0,
+      })
+    ).resolves.toMatchObject({ documents: [], totalVisible: 0 });
+  });
+
+  it("orders membership revocation before a subsequently queued document read", async () => {
+    const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
+    await adapter.initialize();
+    await grantCurrentRoom(adapter, ROOM_A);
+    const document = memory(97, ROOM_A);
+    await adapter.createMemories([{ memory: document, tableName: "documents" }]);
+
+    const revoke = adapter.updateRoomMembershipEvidence({
+      evidence: {
+        entityId: REQUESTER_ID,
+        roomId: ROOM_A,
+        source: "runtime:local",
+        state: "nonmember",
+        observedAt: Date.now(),
+        generation: 2,
+      },
+      expectedGeneration: 1,
+    });
+    const read = adapter.queryDocuments({
+      agentId: AGENT_ID,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [ROOM_A],
+      requesterRole: "USER",
+      limit: 10,
+      offset: 0,
+    });
+
+    await expect(revoke).resolves.toMatchObject({ status: "updated" });
+    await expect(read).resolves.toMatchObject({ documents: [], totalVisible: 0 });
+  });
+
   it("enforces direct-grant replacement inside the ephemeral adapter lock", async () => {
     const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
     await adapter.initialize();
+    await grantCurrentRoom(adapter, ROOM_A);
     const granteeId = "50000000-0000-0000-0000-000000000099" as UUID;
     await adapter.createEntities([
       { id: granteeId, agentId: AGENT_ID, names: ["Grantee"] } as Entity,
@@ -120,6 +186,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
   it("preserves document metadata and excludes mixed table types by room", async () => {
     const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
     await adapter.initialize();
+    await grantCurrentRoom(adapter, ROOM_A);
     const roomADocument = memory(1, ROOM_A);
     const roomBDocument = memory(2, ROOM_B);
     const fragment = memory(3, ROOM_A, {
@@ -225,6 +292,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
   it("uses parent authorization for fragments and fails closed on malformed documents", async () => {
     const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
     await adapter.initialize();
+    await grantCurrentRoom(adapter, ROOM_A);
     const embedding = Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0));
     const visibleParent = memory(1, ROOM_A, {
       scope: "user-private",
@@ -315,6 +383,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
   it("rejects stale update and delete snapshots after ownership changes", async () => {
     const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
     await adapter.initialize();
+    await grantCurrentRoom(adapter, ROOM_A);
     const original = memory(1, ROOM_A, {
       scope: "user-private",
       scopedToEntityId: REQUESTER_ID,

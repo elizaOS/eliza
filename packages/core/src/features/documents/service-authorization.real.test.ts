@@ -47,6 +47,23 @@ let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
 let failEmbedding = false;
 
+async function seedMembership(entityId: UUID): Promise<void> {
+	const observedAt = Date.now();
+	const result = await runtime.updateRoomMembershipEvidence({
+		evidence: {
+			entityId,
+			roomId: ROOM_ID,
+			source: "transport:test",
+			state: "member",
+			observedAt,
+			expiresAt: observedAt + 60 * 60 * 1_000,
+			generation: 1,
+		},
+		expectedGeneration: null,
+	});
+	if (result.status !== "updated") throw new Error("membership seed failed");
+}
+
 function message(): Memory {
 	return {
 		id: "f4300000-0000-4000-8000-000000000006" as UUID,
@@ -134,6 +151,7 @@ beforeAll(async () => {
 		source: "test",
 		type: ChannelType.DM,
 	});
+	await seedMembership(USER_ID);
 	await runtime.ensureConnection({
 		entityId: ADMIN_ID,
 		roomId: ROOM_ID,
@@ -144,6 +162,7 @@ beforeAll(async () => {
 		source: "test",
 		type: ChannelType.DM,
 	});
+	await seedMembership(ADMIN_ID);
 	await runtime.adapter.createEntities([
 		{ id: GRANTEE_ID, agentId: runtime.agentId, names: ["Direct grantee"] },
 	]);
@@ -157,6 +176,7 @@ beforeAll(async () => {
 		source: "test",
 		type: ChannelType.DM,
 	});
+	await seedMembership(OTHER_USER_ID);
 	await runtime.ensureWorldExists({
 		id: WORLD_ID,
 		name: "Document authorization",
@@ -610,7 +630,7 @@ describe("DocumentService requester authorization", () => {
 			);
 		const membershipReads = vi.spyOn(
 			runtime.adapter,
-			"getRoomsForParticipants",
+			"getCurrentRoomMemberships",
 		);
 		const request = message();
 		const accessContext = {

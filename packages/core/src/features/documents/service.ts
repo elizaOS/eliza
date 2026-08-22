@@ -226,12 +226,12 @@ export async function resolveDocumentRequesterFromAccessContext(
 		return { entityId: accessContext.requesterEntityId, roomIds: [], role };
 	}
 	try {
-		const roomIds = await runtime.getRoomsForParticipants([
+		const memberships = await runtime.getCurrentRoomMemberships(
 			accessContext.requesterEntityId,
-		]);
+		);
 		return {
 			entityId: accessContext.requesterEntityId,
-			roomIds: [...new Set(roomIds)],
+			roomIds: [...new Set(memberships.map((membership) => membership.roomId))],
 			role,
 		};
 	} catch (cause) {
@@ -256,10 +256,12 @@ export async function resolveDocumentRequester(
 		return { ...requester, roomIds: [] };
 	}
 	try {
-		const roomIds = await runtime.getRoomsForParticipants([requester.entityId]);
+		const memberships = await runtime.getCurrentRoomMemberships(
+			requester.entityId,
+		);
 		return {
 			...requester,
-			roomIds: [...new Set(roomIds)],
+			roomIds: [...new Set(memberships.map((membership) => membership.roomId))],
 		};
 	} catch (cause) {
 		// error-policy:J2 Preserve room-resolution context and fail the read.

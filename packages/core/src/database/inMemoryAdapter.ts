@@ -44,6 +44,7 @@ import type {
 	DocumentMutationResult,
 	DocumentRangeReadParams,
 	DocumentRangeReadResult,
+	DocumentRequesterContext,
 	DocumentRevisionReplaceParams,
 	EntitiesForRoomsResult,
 	Entity,
@@ -73,6 +74,9 @@ import type {
 	PatchOp,
 	Relationship,
 	Room,
+	RoomMembershipEvidence,
+	RoomMembershipEvidenceUpdate,
+	RoomMembershipEvidenceUpdateResult,
 	SetConnectorAccountCredentialRefParams,
 	Task,
 	UpdateOAuthFlowStateParams,
@@ -94,12 +98,18 @@ import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
 	documentMutationSnapshotMatches,
+	documentRoleHasGlobalVisibility,
 	isDocumentVisibleToRequester,
 	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
 	validateDocumentDirectGrantEntityIds,
 	validateDocumentRevisionReplacement,
 } from "./document-list-query";
+import {
+	isCurrentRoomMembershipEvidence,
+	validateRoomMembershipEvidenceSuccessor,
+	validateRoomMembershipEvidenceUpdate,
+} from "./room-membership-evidence";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
@@ -289,6 +299,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private cache = new Map<string, string>();
 
 	private participantsByRoom = new Map<string, Set<string>>();
+	private roomMembershipEvidence = new Map<string, RoomMembershipEvidence>();
 	private roomsByParticipant = new Map<string, Set<string>>();
 	private participantUserState = new Map<string, "FOLLOWED" | "MUTED" | null>();
 
@@ -835,6 +846,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult> {
+		params = await this.bindCurrentDocumentRooms(params);
 		const documents = Array.from(this.memoriesByRoom.entries())
 			.filter(([key]) => key.startsWith("documents:"))
 			.flatMap(([, memories]) => memories);
@@ -842,6 +854,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
+		params = await this.bindCurrentDocumentRooms(params);
 		const memory = this.memoriesById.get(String(params.documentId));
 		if (
 			!memory ||
@@ -897,6 +910,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]> {
+		params = await this.bindCurrentDocumentRooms(params);
 		const fragments = queryDocumentFragmentsInMemory(
 			Array.from(this.memoriesById.values()),
 			params,
@@ -927,6 +941,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
 	): Promise<DocumentMutationResult> {
+		params = await this.bindCurrentDocumentRooms(params);
 		const existing = this.memoriesById.get(String(params.documentId));
 		if (!existing || existing.agentId !== params.agentId) {
 			return { status: "not_found" };
@@ -949,6 +964,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async updateDocumentDirectGrants(
 		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult> {
+		params = await this.bindCurrentDocumentRooms(params);
 		const directGrantEntityIds = validateDocumentDirectGrantEntityIds(
 			params.directGrantEntityIds,
 		);
@@ -990,6 +1006,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,
 	): Promise<DocumentMutationResult> {
+		params = await this.bindCurrentDocumentRooms(params);
 		validateDocumentRevisionReplacement(params);
 		const existing = this.memoriesById.get(String(params.documentId));
 		if (!existing || existing.agentId !== params.agentId) {
@@ -1054,6 +1071,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async deleteDocumentWithSnapshot(
 		params: DocumentDeleteParams,
 	): Promise<DocumentMutationResult> {
+		params = await this.bindCurrentDocumentRooms(params);
 		const existing = this.memoriesById.get(String(params.documentId));
 		if (!existing || existing.agentId !== params.agentId) {
 			return { status: "not_found" };
@@ -1075,6 +1093,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			.map((memory) => memory.id as UUID);
 		await this.deleteMemories([...fragmentIds, params.documentId]);
 		return { status: "deleted", document: existing };
+	}
+
+	private async bindCurrentDocumentRooms<T extends DocumentRequesterContext>(
+		params: T,
+	): Promise<T> {
+		if (documentRoleHasGlobalVisibility(params.requesterRole)) return params;
+		const requested = new Set(params.requesterRoomIds);
+		const evidence = await this.getCurrentRoomMemberships(
+			params.requesterEntityId,
+		);
+		return {
+			...params,
+			requesterRoomIds: evidence
+				.map(({ roomId }) => roomId)
+				.filter((roomId) => requested.has(roomId)),
+		};
 	}
 
 	async getMemories(params: {
@@ -1689,6 +1723,44 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return ids;
 	}
 
+	async updateRoomMembershipEvidence(
+		update: RoomMembershipEvidenceUpdate,
+	): Promise<RoomMembershipEvidenceUpdateResult> {
+		validateRoomMembershipEvidenceUpdate(update);
+		const { entityId, roomId } = update.evidence;
+		const participant = this.participantsByRoom
+			.get(String(roomId))
+			?.has(String(entityId));
+		if (!participant) return { status: "not_found", current: null };
+		const key = `${String(roomId)}:${String(entityId)}`;
+		const current = this.roomMembershipEvidence.get(key) ?? null;
+		if ((current?.generation ?? null) !== update.expectedGeneration) {
+			return { status: "conflict", current };
+		}
+		validateRoomMembershipEvidenceSuccessor(current, update.evidence);
+		const evidence = structuredClone(update.evidence);
+		this.roomMembershipEvidence.set(key, evidence);
+		return { status: "updated", evidence: structuredClone(evidence) };
+	}
+
+	async getCurrentRoomMemberships(
+		entityId: UUID,
+	): Promise<RoomMembershipEvidence[]> {
+		const rooms = this.roomsByParticipant.get(String(entityId));
+		if (!rooms) return [];
+		const now = Date.now();
+		const current: RoomMembershipEvidence[] = [];
+		for (const roomId of rooms) {
+			const evidence = this.roomMembershipEvidence.get(
+				`${roomId}:${String(entityId)}`,
+			);
+			if (evidence && isCurrentRoomMembershipEvidence(evidence, now)) {
+				current.push(structuredClone(evidence));
+			}
+		}
+		return current;
+	}
+
 	// Batch participant methods
 	async deleteParticipants(
 		participants: Array<{ entityId: UUID; roomId: UUID }>,
@@ -1708,6 +1780,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				if (rooms.size === 0) this.roomsByParticipant.delete(entityKey);
 			}
 			this.participantUserState.delete(`${roomKey}:${entityKey}`);
+			this.roomMembershipEvidence.delete(`${roomKey}:${entityKey}`);
 		}
 		return true;
 	}
