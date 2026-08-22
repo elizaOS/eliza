@@ -241,6 +241,11 @@ export function buildAutoVerifyCorrection(
     "",
     ...closing,
     "",
+    // Integrity clause on every stage: the pressure to "prove" a criterion
+    // must never become pressure to fake it (live 2026-08-22: a missing
+    // config file was replaced by a hand-written one and "1.2.3" shipped).
+    "Integrity: never manufacture the inputs, fixtures, files, data, or endpoints the task says to read, fetch, or operate on, and never quietly change the task to something easier to satisfy a criterion. If the real input does not exist or cannot be reached from here, say so explicitly and stop — an honest blocker is the correct report; a faked pass is a failure.",
+    "",
     buildEvidenceChecklist(missing, caps),
   ];
   return lines.join("\n");
@@ -349,6 +354,7 @@ export function buildVerificationPrompt(input: GoalVerificationInput): string {
     "- If the evidence is silent on a criterion, or only describes intent / future work, that criterion FAILS.",
     "- If the evidence contains a failure marker (a non-zero exit, a failing/red test line, an error/traceback, a loopback-only URL where a public one is required) relevant to a criterion, that criterion FAILS.",
     "- Do not give the benefit of the doubt. When in doubt, mark it missing.",
+    "- A criterion satisfied by inputs the sub-agent MANUFACTURED ITSELF FAILS: if the evidence shows it created or wrote the very file, config, dataset, or endpoint the task said to READ / FETCH / USE (or rewrote the program to consume a stand-in it made), the output is fabricated — mark the output criterion missing and say so in the summary.",
     "",
     "Respond with a SINGLE JSON object and nothing else. Do not wrap it in ```. Schema:",
     '{ "passed": <true|false>, "summary": "<one sentence under 200 chars>", "missing": ["<criterion text that was NOT proven>", ...] }',

@@ -110,6 +110,7 @@ import {
   getCuratedCodingMemoryService,
   renderInjectedCodingNotes,
 } from "./curated-coding-memory.js";
+import { detectFabricatedInput } from "./fabricated-input.js";
 import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
@@ -4753,6 +4754,40 @@ export class OrchestratorTaskService extends Service {
       if (doc.task.status !== "validating") return;
       const attempts = num(doc.task.metadata?.autoVerifyAttempts);
       const parse = parseCompletionEnvelope(rawCompletion);
+
+      // A manufactured input is never a pass and never coached further: the
+      // only honest outcome is to tell the user the real input is not here.
+      const sessionLedgerEvents = doc.events.filter(
+        (event) => event.sessionId === sessionId,
+      );
+      const fabricated = detectFabricatedInput(
+        `${doc.task.goal}\n${doc.task.originalRequest ?? ""}`,
+        [...extractWriteLedger(sessionLedgerEvents).verified],
+        this.extractToolSignals(sessionLedgerEvents)
+          .map((signal) => signal.source)
+          .filter((source): source is string => typeof source === "string"),
+      );
+      if (fabricated) {
+        const summary = `The sub-agent manufactured the input it was asked to read (wrote ${basename(fabricated.wrote)} itself) instead of reading ${fabricated.target}, which does not exist here.`;
+        this.log("warn", "fabricated input detected; parking", {
+          taskId,
+          sessionId,
+          ...fabricated,
+        });
+        await this.reEngageOrEscalate({
+          taskId,
+          sessionId,
+          correction: "",
+          eventType: "auto_verify_failed",
+          verifier: "fabricated-input-ledger",
+          summary,
+          missing: doc.task.acceptanceCriteria.filter((criterion) =>
+            /\b(?:output|result)\b/i.test(criterion),
+          ),
+          attempt: MAX_AUTO_VERIFY_ATTEMPTS,
+        });
+        return;
+      }
 
       // 0. Deterministic residuals gate — BEFORE the criteria check and any
       // model spend, so even a criteria-free task with a git workspace cannot
