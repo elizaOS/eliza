@@ -5446,36 +5446,12 @@
     {
       "id": "whatsapp",
       "name": "Whatsapp",
-      "description": "A plugin for integrating WhatsApp Cloud API with applications, enabling messaging capabilities and webhook handling.",
+      "description": "Direct WhatsApp messaging through the bundled in-process Baileys library and QR pairing.",
       "npmName": "@elizaos/plugin-whatsapp",
       "version": "2.0.0-beta.0",
       "source": "bundled",
       "tags": ["whatsapp", "connector", "social", "social-chat", "messaging"],
       "config": {
-        "WHATSAPP_ACCESS_TOKEN": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "Access Token",
-          "help": "Access token for WhatsApp Cloud API (required for cloudapi auth)",
-          "advanced": false
-        },
-        "WHATSAPP_PHONE_NUMBER_ID": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Phone Number Id",
-          "help": "Phone number ID for WhatsApp Cloud API (required for cloudapi auth)",
-          "advanced": false
-        },
-        "WHATSAPP_AUTH_METHOD": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Auth Method",
-          "help": "Authentication method: cloudapi or baileys",
-          "advanced": false
-        },
         "WHATSAPP_AUTH_DIR": {
           "type": "file-path",
           "required": false,
@@ -5490,31 +5466,6 @@
           "sensitive": false,
           "label": "Print Qr",
           "help": "Print QR code in terminal when using Baileys auth",
-          "advanced": false
-        },
-        "WHATSAPP_WEBHOOK_VERIFY_TOKEN": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "Webhook Verify Token",
-          "help": "Webhook verification token",
-          "advanced": false
-        },
-        "WHATSAPP_BUSINESS_ACCOUNT_ID": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Business Account Id",
-          "help": "Business account ID",
-          "advanced": false,
-          "min": 0
-        },
-        "WHATSAPP_API_VERSION": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Api Version",
-          "help": "API version string",
           "advanced": false
         },
         "WHATSAPP_DM_POLICY": {
@@ -5553,9 +5504,12 @@
       "shortIds": [],
       "kind": "connector",
       "subtype": "messaging",
-      "auth": {
-        "kind": "token",
-        "credentialKeys": ["WHATSAPP_ACCESS_TOKEN"]
+      "accounts": {
+        "agent": {
+          "supported": true,
+          "authKind": "qr",
+          "credentialKeys": []
+        }
       }
     },
     {

@@ -336,33 +336,6 @@ export const CONNECTIONS = [
     },
   },
   {
-    id: "whatsapp",
-    label: "WhatsApp (Cloud API)",
-    category: "messaging",
-    kind: "token",
-    obtain:
-      "https://developers.facebook.com/apps — WhatsApp Cloud API access token",
-    fields: [
-      {
-        key: "WHATSAPP_TOKEN",
-        label: "Access token",
-        secret: true,
-        required: true,
-      },
-      {
-        key: "WHATSAPP_PHONE_NUMBER_ID",
-        label: "Phone number ID",
-        secret: false,
-        required: true,
-      },
-    ],
-    verify: {
-      kind: "http",
-      url: "https://graph.facebook.com/v19.0/{{WHATSAPP_PHONE_NUMBER_ID}}",
-      headers: { Authorization: "Bearer {{WHATSAPP_TOKEN}}" },
-    },
-  },
-  {
     id: "x",
     label: "X (Twitter)",
     category: "messaging",

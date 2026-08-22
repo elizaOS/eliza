@@ -579,35 +579,18 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     });
   });
 
-  it("does not send WhatsApp through env credentials", async () => {
-    const previousAccessToken = process.env.ELIZA_WHATSAPP_ACCESS_TOKEN;
-    const previousPhoneNumberId = process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID;
-    process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "stale-token";
-    process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "stale-phone-number-id";
+  it("does not send WhatsApp without a paired runtime service", async () => {
     const service = serviceWithConnectorGrants({});
 
-    try {
-      await expect(
-        service.sendWhatsAppMessage({
-          to: "+15550000001",
-          text: "hello",
-        }),
-      ).rejects.toMatchObject({
-        status: 503,
-        message: expect.stringContaining("@elizaos/plugin-whatsapp"),
-      });
-    } finally {
-      if (previousAccessToken === undefined) {
-        delete process.env.ELIZA_WHATSAPP_ACCESS_TOKEN;
-      } else {
-        process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = previousAccessToken;
-      }
-      if (previousPhoneNumberId === undefined) {
-        delete process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID;
-      } else {
-        process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = previousPhoneNumberId;
-      }
-    }
+    await expect(
+      service.sendWhatsAppMessage({
+        to: "+15550000001",
+        text: "hello",
+      }),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("@elizaos/plugin-whatsapp"),
+    });
   });
 
   it("delegates WhatsApp sends to the runtime service", async () => {

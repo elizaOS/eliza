@@ -1,9 +1,8 @@
 /**
  * Outbound media coverage for the WhatsApp connector (#8876): agent attachments
  * ship as native WhatsApp media messages via sendMediaMessage, including turns
- * that carry attachments with empty text. Both transports (Cloud API + Baileys)
- * build their payload from the same WhatsAppMessage media type, so one path
- * covers both. Mocked runtime — runs offline.
+ * that carry attachments with empty text through the direct Baileys seam.
+ * Mocked runtime — runs offline.
  */
 import type { IAgentRuntime, Media, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -40,7 +39,7 @@ const known = {
 function mockService() {
   return {
     connected: true,
-    config: { transport: "cloudapi" },
+    config: { authDir: "/tmp/whatsapp-test" },
     sendMessage: vi.fn(async () => ({ messages: [{ id: "wamid.1" }] })),
     sendMediaMessage: vi.fn(async () => undefined),
     listKnownTargets: vi.fn(() => [known]),

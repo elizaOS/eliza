@@ -1,11 +1,11 @@
 /**
  * WhatsAppConnectorService — the core send/receive engine for the WhatsApp
- * connector. On start it resolves per-account transport config, constructs the
- * Cloud API or Baileys client for each enabled account via ClientFactory, and
+ * connector. On start it resolves per-account configuration, constructs an
+ * in-process Baileys client for each enabled account, and
  * registers itself with the runtime's message connector registry (capabilities
  * send/read/search messages, reactions, contact resolution, chat/user context).
  *
- * Inbound: webhook events and Baileys socket messages are normalized, deduped
+ * Inbound: Baileys socket messages are normalized and deduped
  * into stable memory ids (createUniqueUuid keyed on chat + message id), and
  * routed through `runtime.messageService`. Replies are only generated when
  * auto-reply is enabled or the message connector protocol invokes the send
@@ -36,10 +36,8 @@ import {
   listWhatsAppAccountIds,
   normalizeAccountId as normalizeWhatsAppAccountId,
   resolveDefaultWhatsAppAccountId,
-  resolveWhatsAppAccount,
   resolveWhatsAppAccountConfig,
 } from "./accounts";
-import { WhatsAppClient } from "./client";
 import { BaileysClient } from "./clients/baileys-client";
 import {
   completeClaim,
@@ -53,47 +51,26 @@ import {
   isWhatsAppGroupJid,
   isWhatsAppUserTarget,
   normalizeBaileysSendTarget,
-  normalizeCloudApiSendTarget,
   normalizeWhatsAppTarget,
   resolveWhatsAppSystemLocation,
 } from "./normalize";
 import type {
   BaileysConfig,
-  CloudAPIConfig,
   ConnectionStatus,
   NormalizedMessage,
-  WhatsAppIncomingMessage,
   WhatsAppMediaMessage,
   WhatsAppMessageResponse,
-  WhatsAppWebhookEvent,
 } from "./types";
-import { timingSafeEqualSecretString } from "./webhook-auth";
 
-type RuntimeServiceConfig =
-  | {
-      accountId: string;
-      name?: string;
-      transport: "baileys";
-      authDir: string;
-      dmPolicy?: "open" | "allowlist" | "pairing" | "disabled";
-      groupPolicy?: "open" | "allowlist" | "disabled";
-      allowFrom?: string[];
-      groupAllowFrom?: string[];
-    }
-  | {
-      accountId: string;
-      name?: string;
-      transport: "cloudapi";
-      accessToken: string;
-      phoneNumberId: string;
-      businessAccountId?: string;
-      webhookVerifyToken?: string;
-      apiVersion?: string;
-      dmPolicy?: "open" | "allowlist" | "pairing" | "disabled";
-      groupPolicy?: "open" | "allowlist" | "disabled";
-      allowFrom?: string[];
-      groupAllowFrom?: string[];
-    };
+type RuntimeServiceConfig = {
+  accountId: string;
+  name?: string;
+  authDir: string;
+  dmPolicy?: "open" | "allowlist" | "pairing" | "disabled";
+  groupPolicy?: "open" | "allowlist" | "disabled";
+  allowFrom?: string[];
+  groupAllowFrom?: string[];
+};
 
 function readStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
   const value = runtime.getSetting(key);
@@ -142,25 +119,7 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   if (authDir) {
     return {
       accountId: DEFAULT_ACCOUNT_ID,
-      transport: "baileys",
       authDir,
-      dmPolicy,
-      groupPolicy,
-      allowFrom,
-      groupAllowFrom,
-    };
-  }
-
-  const accessToken = readStringSetting(runtime, "WHATSAPP_ACCESS_TOKEN");
-  const phoneNumberId = readStringSetting(runtime, "WHATSAPP_PHONE_NUMBER_ID");
-  if (accessToken && phoneNumberId) {
-    return {
-      accountId: DEFAULT_ACCOUNT_ID,
-      transport: "cloudapi",
-      accessToken,
-      phoneNumberId,
-      webhookVerifyToken: readStringSetting(runtime, "WHATSAPP_WEBHOOK_VERIFY_TOKEN"),
-      apiVersion: readStringSetting(runtime, "WHATSAPP_API_VERSION"),
       dmPolicy,
       groupPolicy,
       allowFrom,
@@ -179,74 +138,25 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
     const normalizedAccountId = normalizeWhatsAppAccountId(accountId);
     const accountConfig = resolveWhatsAppAccountConfig(runtime, normalizedAccountId);
     const authDir = accountConfig.authDir?.trim();
-    const transport = accountConfig.transport ?? (authDir ? "baileys" : "cloudapi");
-
-    if (transport === "baileys" && authDir) {
+    if (authDir) {
       configs.push({
         accountId: normalizedAccountId,
         name: accountConfig.name?.trim() || undefined,
-        transport: "baileys",
         authDir,
         dmPolicy: accountConfig.dmPolicy,
         groupPolicy: accountConfig.groupPolicy,
         allowFrom: accountConfig.allowFrom?.map(String),
         groupAllowFrom: accountConfig.groupAllowFrom?.map(String),
       });
-      continue;
-    }
-
-    const cloud = resolveWhatsAppAccount(runtime, normalizedAccountId);
-    if (cloud.enabled && cloud.configured) {
-      configs.push({
-        accountId: normalizedAccountId,
-        name: cloud.name,
-        transport: "cloudapi",
-        accessToken: cloud.accessToken,
-        phoneNumberId: cloud.phoneNumberId,
-        businessAccountId: cloud.businessAccountId,
-        webhookVerifyToken: cloud.config.webhookVerifyToken,
-        apiVersion: cloud.config.apiVersion,
-        dmPolicy: cloud.config.dmPolicy,
-        groupPolicy: cloud.config.groupPolicy,
-        allowFrom: cloud.config.allowFrom?.map(String),
-        groupAllowFrom: cloud.config.groupAllowFrom?.map(String),
-      });
     }
   }
 
   if (configs.length > 0) {
-    assertUniqueCloudApiPhoneNumberIds(configs);
     return configs;
   }
 
   const legacy = resolveRuntimeConfig(runtime);
   return legacy ? [legacy] : [];
-}
-
-/**
- * Rejects startup when two or more Cloud API accounts share the same
- * `phoneNumberId`. A duplicate would let an inbound webhook (which is scoped by
- * `metadata.phone_number_id`) resolve to the wrong account, cross-pollinating
- * credentials, rooms, and identity. Throws before any client connects.
- */
-function assertUniqueCloudApiPhoneNumberIds(configs: RuntimeServiceConfig[]): void {
-  const seen = new Map<string, string>();
-  for (const config of configs) {
-    if (config.transport !== "cloudapi") {
-      continue;
-    }
-    const phoneId = config.phoneNumberId.trim();
-    if (!phoneId) {
-      continue;
-    }
-    const existingAccountId = seen.get(phoneId);
-    if (existingAccountId !== undefined && existingAccountId !== config.accountId) {
-      throw new Error(
-        `WhatsApp Cloud API accounts "${existingAccountId}" and "${config.accountId}" share the same phone_number_id "${phoneId}"; each Cloud API account must resolve to one canonical phone number`
-      );
-    }
-    seen.set(phoneId, config.accountId);
-  }
 }
 
 function toTimestampMs(value: number | string | undefined): number {
@@ -520,73 +430,6 @@ async function resolveWhatsAppSendTarget(
   return null;
 }
 
-function extractWebhookText(message: WhatsAppIncomingMessage): string {
-  if (typeof message.text?.body === "string" && message.text.body.trim()) {
-    return message.text.body.trim();
-  }
-
-  if (
-    typeof message.interactive?.button_reply?.title === "string" &&
-    message.interactive.button_reply.title.trim()
-  ) {
-    return message.interactive.button_reply.title.trim();
-  }
-
-  if (
-    typeof message.interactive?.list_reply?.title === "string" &&
-    message.interactive.list_reply.title.trim()
-  ) {
-    return message.interactive.list_reply.title.trim();
-  }
-
-  if (
-    typeof message.interactive?.nfm_reply?.body === "string" &&
-    message.interactive.nfm_reply.body.trim()
-  ) {
-    return message.interactive.nfm_reply.body.trim();
-  }
-
-  if (typeof message.image?.caption === "string" && message.image.caption.trim()) {
-    return message.image.caption.trim();
-  }
-
-  if (typeof message.video?.caption === "string" && message.video.caption.trim()) {
-    return message.video.caption.trim();
-  }
-
-  if (typeof message.document?.caption === "string" && message.document.caption.trim()) {
-    return message.document.caption.trim();
-  }
-
-  if (message.reaction?.emoji) {
-    return `Reaction: ${message.reaction.emoji}`;
-  }
-
-  if (message.location) {
-    const { latitude, longitude } = message.location;
-    return `Location: ${latitude}, ${longitude}`;
-  }
-
-  return "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function asRecordArray(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function isWebhookMessage(value: unknown): value is WhatsAppIncomingMessage {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return Boolean(
-    typeof value.from === "string" && value.from.trim() && typeof value.id === "string"
-  );
-}
-
 export class WhatsAppConnectorService extends Service {
   static serviceType = "whatsapp";
   protected declare runtime: IAgentRuntime;
@@ -597,17 +440,16 @@ export class WhatsAppConnectorService extends Service {
   public phoneNumber: string | null = null;
 
   private defaultAccountId = DEFAULT_ACCOUNT_ID;
-  private clients: Map<string, BaileysClient | WhatsAppClient> = new Map();
+  private clients: Map<string, BaileysClient> = new Map();
   private configs: Map<string, RuntimeServiceConfig> = new Map();
   private phoneNumbers: Map<string, string> = new Map();
-  private client: BaileysClient | WhatsAppClient | null = null;
+  private client: BaileysClient | null = null;
   config: RuntimeServiceConfig | undefined = undefined;
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
 
   /**
    * In-process inbound delivery guard for concurrent redelivery within one
-   * process lifetime. Meta redelivers a webhook when it does not see a 200
-   * quickly, and a single webhook batch can repeat a message id. This set
+   * process lifetime. A socket reconnect can redeliver a message. This set
    * is the fast path — it collapses concurrent redelivery before any side
    * effect fires. The durable staged claim in `processIncomingMessage`
    * (`inbound-claim.ts`) covers restarts and multi-host scenarios. Bounded:
@@ -626,7 +468,7 @@ export class WhatsAppConnectorService extends Service {
     return normalizeWhatsAppAccountId(accountId ?? this.defaultAccountId);
   }
 
-  private getClientForAccount(accountId?: string | null): BaileysClient | WhatsAppClient | null {
+  private getClientForAccount(accountId?: string | null): BaileysClient | null {
     const normalizedAccountId = this.resolveAccountId(accountId);
     return (
       this.clients.get(normalizedAccountId) ??
@@ -734,11 +576,11 @@ export class WhatsAppConnectorService extends Service {
         supportedTargetKinds: ["phone", "contact", "user", "group", "room"],
         contexts: ["phone", "social", "connectors"],
         description:
-          "Send, read, search, and react in WhatsApp conversations through Cloud API or Baileys using phone numbers, JIDs, known contacts, or group ids.",
+          "Send, read, search, and react in WhatsApp conversations through the in-process Baileys transport using phone numbers, JIDs, known contacts, or group ids.",
         metadata: {
           aliases: ["whatsapp", "wa"],
           accountId: connectorAccountId,
-          transport: config?.transport ?? service.config?.transport ?? "unconfigured",
+          transport: config ? "baileys" : "unconfigured",
           connected: service.connected,
         },
         sendHandler: async (
@@ -790,9 +632,7 @@ export class WhatsAppConnectorService extends Service {
           }
 
           // Agent-generated attachments ride as native WhatsApp media messages
-          // (#8876). Both transports (Cloud API by-link + Baileys) build their
-          // payload from the same WhatsAppMessage media type, so one call works
-          // for either. Each is isolated so one failure never drops the rest.
+          // (#8876). Each attachment is isolated so one failure never drops the rest.
           for (const media of attachments) {
             try {
               await service.sendMediaMessage(resolved.accountId, resolved.chatId, media);
@@ -861,7 +701,7 @@ export class WhatsAppConnectorService extends Service {
               senderId: known?.senderId,
               lastMessageAt: known?.lastMessageAt,
               connected: service.connected,
-              transport: resolvedConfig?.transport,
+              transport: resolvedConfig ? "baileys" : "unconfigured",
             },
           };
         },
@@ -903,19 +743,11 @@ export class WhatsAppConnectorService extends Service {
     }
 
     for (const config of configs) {
-      const client =
-        config.transport === "baileys"
-          ? new BaileysClient({
-              authMethod: "baileys",
-              authDir: config.authDir,
-              printQRInTerminal: false,
-            } satisfies BaileysConfig)
-          : new WhatsAppClient({
-              accessToken: config.accessToken,
-              phoneNumberId: config.phoneNumberId,
-              webhookVerifyToken: config.webhookVerifyToken,
-              apiVersion: config.apiVersion,
-            } satisfies CloudAPIConfig);
+      const client = new BaileysClient({
+        authMethod: "baileys",
+        authDir: config.authDir,
+        printQRInTerminal: false,
+      } satisfies BaileysConfig);
 
       this.configs.set(config.accountId, config);
       this.clients.set(config.accountId, client);
@@ -926,10 +758,6 @@ export class WhatsAppConnectorService extends Service {
 
       this.bindClientEvents(client, config.accountId);
       await client.start();
-
-      if (config.transport === "cloudapi") {
-        this.connected = true;
-      }
     }
   }
 
@@ -946,126 +774,12 @@ export class WhatsAppConnectorService extends Service {
     this.phoneNumber = null;
   }
 
-  async handleWebhook(event: WhatsAppWebhookEvent): Promise<void> {
-    for (const entry of asRecordArray((event as Partial<WhatsAppWebhookEvent> | null)?.entry)) {
-      for (const change of asRecordArray(entry.changes)) {
-        if (!isRecord(change.value)) {
-          continue;
-        }
-        const value = change.value;
-        const metadata = isRecord(value.metadata) ? value.metadata : {};
-        const phoneNumberId =
-          typeof metadata.phone_number_id === "string" ? metadata.phone_number_id : undefined;
-        const accountId = this.resolveWebhookAccountId(phoneNumberId);
-
-        // Fail closed: when Cloud API accounts are configured, a webhook whose
-        // phone_number_id does not match any of them is rejected before any
-        // side effect. This prevents cross-account misattribution — an unknown
-        // or cross-account sender must never inherit the default account's
-        // credentials, rooms, or identity. display_phone_number is only trusted
-        // once the webhook has been bound to a known account.
-        if (accountId === null) {
-          this.runtime.logger.warn(
-            {
-              src: "plugin:whatsapp",
-              agentId: this.runtime.agentId,
-              phoneNumberId: phoneNumberId ?? null,
-            },
-            "WhatsApp webhook phone_number_id does not match any configured Cloud API account; dropping webhook to prevent cross-account misattribution"
-          );
-          continue;
-        }
-
-        if (typeof metadata.display_phone_number === "string") {
-          this.phoneNumbers.set(accountId, metadata.display_phone_number);
-          if (accountId === this.defaultAccountId) {
-            this.phoneNumber = metadata.display_phone_number;
-          }
-        }
-
-        for (const message of asRecordArray(value.messages)) {
-          if (!isWebhookMessage(message)) {
-            continue;
-          }
-          await this.handleIncomingWebhookMessage(message, accountId);
-        }
-      }
-    }
-  }
-
-  verifyWebhook(mode: string, token: string, challenge: string, accountId?: string): string | null {
-    const configs = accountId
-      ? [this.getConfigForAccount(accountId)].filter((config): config is RuntimeServiceConfig =>
-          Boolean(config)
-        )
-      : Array.from(this.configs.values());
-    const expectedTokens =
-      configs.length > 0
-        ? configs
-            .filter((config) => config.transport === "cloudapi")
-            .map((config) => config.webhookVerifyToken)
-        : [
-            this.config?.transport === "cloudapi"
-              ? this.config.webhookVerifyToken
-              : readStringSetting(this.runtime, "WHATSAPP_WEBHOOK_VERIFY_TOKEN"),
-          ];
-
-    if (
-      mode === "subscribe" &&
-      challenge &&
-      expectedTokens.some(
-        (expectedToken) => expectedToken && timingSafeEqualSecretString(token, expectedToken)
-      )
-    ) {
-      return challenge;
-    }
-
-    return null;
-  }
-
-  /**
-   * Resolves a webhook's account from its `metadata.phone_number_id`.
-   *
-   * Fail-closed: when at least one Cloud API account is configured, a webhook
-   * whose phone_number_id matches none of them returns `null` so `handleWebhook`
-   * can drop it before side effects. Only the single-account, env-only, or
-   * Baileys-only deployments (where the webhook carries no scoping id) fall back
-   * to the default account — and only when that default is the sole possibility.
-   */
-  private resolveWebhookAccountId(phoneNumberId?: string | null): string | null {
-    const normalizedPhoneNumberId =
-      typeof phoneNumberId === "string" && phoneNumberId.trim() ? phoneNumberId.trim() : undefined;
-
-    if (normalizedPhoneNumberId) {
-      for (const [accountId, config] of this.configs) {
-        if (config.transport === "cloudapi" && config.phoneNumberId === normalizedPhoneNumberId) {
-          return accountId;
-        }
-      }
-    }
-
-    // No Cloud API accounts are configured at all (Baileys-only, or the service
-    // is unconfigured). The webhook cannot be account-scoped, so the default is
-    // the only resolution. This path is not reached for real Cloud API traffic.
-    const hasCloudApiAccount = Array.from(this.configs.values()).some(
-      (config) => config.transport === "cloudapi"
-    );
-    if (!hasCloudApiAccount) {
-      return this.defaultAccountId;
-    }
-
-    // Cloud API account(s) are configured but the webhook's phone_number_id did
-    // not match any of them (or was missing). Fail closed rather than inherit
-    // the default account.
-    return null;
-  }
-
-  private bindClientEvents(client: BaileysClient | WhatsAppClient, accountId: string): void {
+  private bindClientEvents(client: BaileysClient, accountId: string): void {
     client.on("connection", (status: ConnectionStatus) => {
       if (status === "open") {
         this.connected = true;
       }
-      if (status === "open" && client instanceof BaileysClient) {
+      if (status === "open") {
         const nextPhone = client.getPhoneNumber();
         const normalizedPhone = (nextPhone && normalizeWhatsAppTarget(nextPhone)) ?? nextPhone;
         if (normalizedPhone) {
@@ -1077,9 +791,7 @@ export class WhatsAppConnectorService extends Service {
       }
       if (status === "close") {
         this.phoneNumbers.delete(accountId);
-        this.connected =
-          this.phoneNumbers.size > 0 ||
-          Array.from(this.configs.values()).some((config) => config.transport === "cloudapi");
+        this.connected = this.phoneNumbers.size > 0;
         if (accountId === this.defaultAccountId) {
           this.phoneNumber = null;
         }
@@ -1088,15 +800,13 @@ export class WhatsAppConnectorService extends Service {
 
     client.on("ready", () => {
       this.connected = true;
-      if (client instanceof BaileysClient) {
-        const nextPhone = client.getPhoneNumber();
-        const normalizedPhone = (nextPhone && normalizeWhatsAppTarget(nextPhone)) ?? nextPhone;
-        if (normalizedPhone) {
-          this.phoneNumbers.set(accountId, normalizedPhone);
-        }
-        if (accountId === this.defaultAccountId) {
-          this.phoneNumber = normalizedPhone;
-        }
+      const nextPhone = client.getPhoneNumber();
+      const normalizedPhone = (nextPhone && normalizeWhatsAppTarget(nextPhone)) ?? nextPhone;
+      if (normalizedPhone) {
+        this.phoneNumbers.set(accountId, normalizedPhone);
+      }
+      if (accountId === this.defaultAccountId) {
+        this.phoneNumber = normalizedPhone;
       }
     });
 
@@ -1150,28 +860,6 @@ export class WhatsAppConnectorService extends Service {
     });
   }
 
-  private async handleIncomingWebhookMessage(
-    message: WhatsAppIncomingMessage,
-    accountId = this.defaultAccountId
-  ): Promise<void> {
-    const text = extractWebhookText(message);
-    if (!text) {
-      return;
-    }
-
-    const normalizedSender = normalizeWhatsAppTarget(message.from) ?? message.from;
-
-    await this.processIncomingMessage({
-      chatId: normalizedSender,
-      senderId: normalizedSender,
-      text,
-      externalMessageId: message.id,
-      replyToExternalMessageId: message.context?.id,
-      createdAt: toTimestampMs(message.timestamp),
-      accountId,
-    });
-  }
-
   private async processIncomingMessage(params: {
     accountId: string;
     chatId: string;
@@ -1190,8 +878,7 @@ export class WhatsAppConnectorService extends Service {
     const isGroup = isWhatsAppGroupJid(params.chatId);
     const normalizedSender = normalizeWhatsAppTarget(params.senderId) ?? params.senderId;
 
-    // Delivery idempotency: Meta redelivers a webhook when it does not see a
-    // 200 quickly, and a single batch can repeat a message id. Guard three
+    // Delivery idempotency: socket reconnects can redeliver messages. Guard three
     // layers, all before ensureConnection / room / reply side effects:
     //   1. in-process set — fast path for concurrent redelivery within one
     //      process, cleared once the turn completes;
@@ -1539,10 +1226,7 @@ export class WhatsAppConnectorService extends Service {
 
     const response = await client.sendMessage({
       type: "text",
-      to:
-        config.transport === "baileys"
-          ? normalizeBaileysSendTarget(chatId)
-          : normalizeCloudApiSendTarget(chatId),
+      to: normalizeBaileysSendTarget(chatId),
       content: text,
       replyToMessageId,
     });
@@ -1578,10 +1262,8 @@ export class WhatsAppConnectorService extends Service {
   }
 
   /**
-   * Send an agent attachment as a native WhatsApp media message (#8876). Works
-   * across both transports: the Cloud-API client and the Baileys client each
-   * build their own payload from the shared `WhatsAppMessage` media type, both
-   * keyed on a media URL (`link`).
+   * Sends an agent attachment as a native WhatsApp media message (#8876).
+   * Baileys fetches the media URL while constructing its native payload.
    */
   async sendMediaMessage(
     accountId: string | null | undefined,
@@ -1743,10 +1425,7 @@ export class WhatsAppConnectorService extends Service {
 
     await client.sendMessage({
       type: "reaction",
-      to:
-        config.transport === "baileys"
-          ? normalizeBaileysSendTarget(chatId)
-          : normalizeCloudApiSendTarget(chatId),
+      to: normalizeBaileysSendTarget(chatId),
       content: {
         messageId: params.messageId,
         emoji: params.remove ? "" : params.emoji || "👍",

@@ -6,12 +6,10 @@
  * `@elizaos/core/connectors/account-manager`.
  *
  * Source of truth for accounts is character settings (`character.settings.whatsapp`)
- * plus env-var fallbacks (WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, ...).
+ * plus the `WHATSAPP_AUTH_DIR` fallback.
  * Single-account env-only deployments still surface as a `default` account.
  *
- * WhatsApp Business Cloud API uses long-lived access tokens, not OAuth from
- * the bot's perspective. Pairing happens out of band when the user provisions
- * a phone_number_id in Meta Business Manager.
+ * Authentication is direct QR pairing through the in-process Baileys library.
  */
 
 import type {
@@ -43,7 +41,7 @@ function accessGateForAccount(account: ResolvedWhatsAppAccount): string {
 }
 
 function roleForAccount(_account: ResolvedWhatsAppAccount): "OWNER" | "AGENT" {
-  // WhatsApp Business API tokens act as the agent's own identity (the bot).
+  // The paired WhatsApp session acts as the agent's own identity.
   return "AGENT";
 }
 
@@ -57,14 +55,11 @@ function toConnectorAccount(account: ResolvedWhatsAppAccount): ConnectorAccount 
     purpose: purposeForAccount(account),
     accessGate: accessGateForAccount(account),
     status: account.enabled && account.configured ? "connected" : "disabled",
-    externalId: account.phoneNumberId || undefined,
-    displayHandle: account.phoneNumberId || undefined,
+    externalId: account.accountId,
     createdAt: now,
     updatedAt: now,
     metadata: {
-      tokenSource: account.tokenSource,
-      phoneNumberId: account.phoneNumberId,
-      businessAccountId: account.businessAccountId ?? null,
+      transport: "baileys",
       dmPolicy: account.config.dmPolicy ?? "pairing",
       groupPolicy: account.config.groupPolicy ?? "allowlist",
     },
@@ -103,10 +98,8 @@ export function createWhatsAppConnectorAccountProvider(
       return { ...patch, provider: WHATSAPP_PROVIDER_ID };
     },
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
-      // Persistent credentials live in character settings / env, so this
-      // provider cannot delete them through ConnectorAccountManager state.
+      // Session deletion is owned by the authenticated disconnect route.
     },
-    // WhatsApp Cloud API: provisioning is via Meta Business Manager. Baileys
-    // uses QR pairing handled separately in `pairing-service.ts`. No OAuth.
+    // QR pairing is handled by `pairing-service.ts`; there is no external OAuth app.
   };
 }

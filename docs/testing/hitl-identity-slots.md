@@ -37,7 +37,6 @@ separate account provisioning instead of by env key names.
 | `discord.user-oauth` | discord | user-oauth | single/slotless | n/a | n/a | DISCORD_CLIENT_ID<br>DISCORD_CLIENT_SECRET | n/a |
 | `slack.bot` | slack | bot | single/slotless | n/a | n/a | SLACK_BOT_TOKEN<br>SLACK_APP_TOKEN | n/a |
 | `slack.user-token` | slack | user-client | single/slotless | n/a | n/a | SLACK_USER_TOKEN | n/a |
-| `whatsapp.cloud-api` | whatsapp | api-key | single/slotless | n/a | n/a | ELIZA_WHATSAPP_ACCESS_TOKEN<br>ELIZA_WHATSAPP_PHONE_NUMBER_ID | ELIZA_WHATSAPP_* and bare WHATSAPP_* spellings are write-aliased by the dashboard; either satisfies the probe. |
 | `imessage.macos` | imessage | local-bridge | single/slotless | n/a | n/a | n/a | n/a |
 | `imessage.bluebubbles` | imessage | local-bridge | single/slotless | n/a | n/a | BLUEBUBBLES_SERVER_URL<br>BLUEBUBBLES_PASSWORD | An installed-but-stopped server is 'available' (row shows, probe reports connection refused with the start hint); the password lives in the server's config.db. |
 | `x.oauth1-user` | x | user-oauth | single/slotless | n/a | n/a | TWITTER_API_KEY<br>TWITTER_API_SECRET_KEY<br>TWITTER_ACCESS_TOKEN<br>TWITTER_ACCESS_TOKEN_SECRET | n/a |
