@@ -29,6 +29,9 @@ app.get("/", async (c) => {
     });
     return c.json(status);
   } catch (error) {
+    if (error instanceof AccountDeletionConflictError) {
+      return c.json({ error: error.message, code: error.code }, 409);
+    }
     // error-policy:J1 The HTTP boundary translates service failures into a structured response.
     return failureResponse(c, error);
   }
