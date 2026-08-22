@@ -291,8 +291,14 @@ export interface DocumentFragmentMemoryMetadata
 	sourceByteEnd?: number;
 	sourceLineStart?: number;
 	sourceLineEnd?: number;
+	/** True only when this segment edge is also an exact logical-line edge. */
+	sourceLineStartBoundary?: boolean;
+	sourceLineEndBoundary?: boolean;
 	sourceFragmentStart?: number;
 	sourceFragmentEnd?: number;
+	/** True only when this segment edge is also an exact paragraph-fragment edge. */
+	sourceFragmentStartBoundary?: boolean;
+	sourceFragmentEndBoundary?: boolean;
 	source?: string;
 	documentTitle?: string;
 	timestamp?: number;

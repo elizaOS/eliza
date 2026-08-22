@@ -952,35 +952,39 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					: "Fragment";
 		const startKey = `source${coordinateName}Start`;
 		const endKey = `source${coordinateName}End`;
-		const sourceSegments = Array.from(this.memoriesById.values())
-			.filter((candidate) => {
-				const candidateMetadata = (candidate.metadata ?? {}) as Record<
-					string,
-					unknown
-				>;
-				const start = candidateMetadata[startKey];
-				const end = candidateMetadata[endKey];
-				return (
-					candidate.agentId === params.agentId &&
-					candidateMetadata.type === MemoryType.FRAGMENT &&
-					candidateMetadata.fragmentRole === "source-segment" &&
-					candidateMetadata.documentId === params.documentId &&
-					candidateMetadata.sourceSegmentVersion === 1 &&
-					candidateMetadata.documentRevision === parent.documentRevision &&
-					(parent.revisionAttemptId === undefined ||
-						candidateMetadata.revisionAttemptId === parent.revisionAttemptId) &&
-					typeof start === "number" &&
-					typeof end === "number" &&
-					end > params.offset &&
-					start < requestedEnd
+		const sourceSegments: Memory[] = [];
+		for (const candidate of this.memoriesById.values()) {
+			const candidateMetadata = (candidate.metadata ?? {}) as Record<
+				string,
+				unknown
+			>;
+			const start = candidateMetadata[startKey];
+			const end = candidateMetadata[endKey];
+			if (
+				candidate.agentId === params.agentId &&
+				candidateMetadata.type === MemoryType.FRAGMENT &&
+				candidateMetadata.fragmentRole === "source-segment" &&
+				candidateMetadata.documentId === params.documentId &&
+				candidateMetadata.sourceSegmentVersion === 1 &&
+				candidateMetadata.documentRevision === parent.documentRevision &&
+				(parent.revisionAttemptId === undefined ||
+					candidateMetadata.revisionAttemptId === parent.revisionAttemptId) &&
+				typeof start === "number" &&
+				typeof end === "number" &&
+				end > params.offset &&
+				start < requestedEnd
+			) {
+				sourceSegments.push(candidate);
+				sourceSegments.sort(
+					(left, right) =>
+						Number((left.metadata as Record<string, unknown>)?.position) -
+						Number((right.metadata as Record<string, unknown>)?.position),
 				);
-			})
-			.sort(
-				(left, right) =>
-					Number((left.metadata as Record<string, unknown>)?.position) -
-					Number((right.metadata as Record<string, unknown>)?.position),
-			)
-			.slice(0, DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS);
+				if (sourceSegments.length > DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS) {
+					sourceSegments.pop();
+				}
+			}
+		}
 		return readDocumentSourceProjection({
 			segments: sourceSegments,
 			params,

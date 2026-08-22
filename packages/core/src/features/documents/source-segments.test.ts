@@ -252,6 +252,48 @@ describe("canonical document source segments", () => {
 			expect.objectContaining({ code: "DOCUMENT_SOURCE_CORRUPT" }),
 		);
 	});
+
+	it("rejects a surviving giant-line prefix instead of fabricating completeness", () => {
+		const projected = projection(
+			`${"g".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES * 6)}\n`,
+		);
+		const metadata = requireDocumentSourceReadMetadata(
+			projected.parent.metadata as unknown as Record<string, unknown>,
+			DOCUMENT_ID,
+		);
+		expect(() =>
+			readDocumentSourceProjection({
+				segments: projected.segments.slice(0, 3),
+				params: { unit: "line", offset: 0, limit: 1 },
+				parent: metadata,
+				documentId: DOCUMENT_ID,
+				sourceQueryCount: 2,
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "DOCUMENT_SOURCE_CORRUPT" }),
+		);
+	});
+
+	it("rejects a giant-line continuation when its leading segment is missing", () => {
+		const projected = projection(
+			`${"g".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES * 6)}\n`,
+		);
+		const metadata = requireDocumentSourceReadMetadata(
+			projected.parent.metadata as unknown as Record<string, unknown>,
+			DOCUMENT_ID,
+		);
+		expect(() =>
+			readDocumentSourceProjection({
+				segments: projected.segments.slice(1, 6),
+				params: { unit: "line", offset: 0, limit: 1 },
+				parent: metadata,
+				documentId: DOCUMENT_ID,
+				sourceQueryCount: 2,
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "DOCUMENT_SOURCE_CORRUPT" }),
+		);
+	});
 });
 
 describe("in-memory document source adapter", () => {

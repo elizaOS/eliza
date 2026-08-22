@@ -117,6 +117,11 @@ export function buildDocumentSourceProjection(args: {
 		const end = safeUtf8End(bytes, start);
 		const line = intersectingUnitRange(lineRanges, start, end);
 		const fragment = intersectingUnitRange(fragmentRanges, start, end);
+		const lineStartBoundary = lineRanges[line.start]?.start === start;
+		const lineEndBoundary = lineRanges[line.end - 1]?.end === end;
+		const fragmentStartBoundary =
+			fragmentRanges[fragment.start]?.start === start;
+		const fragmentEndBoundary = fragmentRanges[fragment.end - 1]?.end === end;
 		const metadata: DocumentFragmentMemoryMetadata = {
 			...args.documentMetadata,
 			type: MemoryType.FRAGMENT,
@@ -131,8 +136,12 @@ export function buildDocumentSourceProjection(args: {
 			sourceByteEnd: end,
 			sourceLineStart: line.start,
 			sourceLineEnd: line.end,
+			sourceLineStartBoundary: lineStartBoundary,
+			sourceLineEndBoundary: lineEndBoundary,
 			sourceFragmentStart: fragment.start,
 			sourceFragmentEnd: fragment.end,
+			sourceFragmentStartBoundary: fragmentStartBoundary,
+			sourceFragmentEndBoundary: fragmentEndBoundary,
 			timestamp: Date.now(),
 		};
 		segments.push({
@@ -429,6 +438,20 @@ export function readDocumentSourceProjection(args: {
 		const firstMetadata = (first.metadata ?? {}) as Record<string, unknown>;
 		const firstUnit =
 			sourceCoordinate(firstMetadata, unit, "Start") ?? args.params.offset;
+		const boundaryPrefix = unit === "line" ? "sourceLine" : "sourceFragment";
+		if (
+			firstUnit === args.params.offset &&
+			firstMetadata[`${boundaryPrefix}StartBoundary`] !== true
+		) {
+			throw new ElizaError("Document source unit prefix is missing", {
+				code: "DOCUMENT_SOURCE_CORRUPT",
+				context: {
+					documentId: args.documentId,
+					unit,
+					offset: args.params.offset,
+				},
+			});
+		}
 		const units = sourceUnits(first.content.text ?? "", unit);
 		const skipped = units.slice(0, args.params.offset - firstUnit).join("");
 		const firstByte = safeNumber(firstMetadata.sourceByteStart) ?? 0;
@@ -455,6 +478,31 @@ export function readDocumentSourceProjection(args: {
 				"Start",
 			) ?? args.params.offset)
 		: args.params.offset;
+	const firstMetadata = (rows[0]?.metadata ?? {}) as Record<string, unknown>;
+	const lastMetadata = (rows.at(-1)?.metadata ?? {}) as Record<string, unknown>;
+	const lastUnit = rows.length
+		? sourceCoordinate(lastMetadata, unit, "End")
+		: args.params.offset;
+	const boundaryPrefix = unit === "line" ? "sourceLine" : "sourceFragment";
+	if (
+		rows.length > 0 &&
+		((firstUnit === args.params.offset &&
+			firstMetadata[`${boundaryPrefix}StartBoundary`] !== true) ||
+			lastUnit === null ||
+			lastUnit < requestedEnd ||
+			(lastUnit === requestedEnd &&
+				lastMetadata[`${boundaryPrefix}EndBoundary`] !== true))
+	) {
+		throw new ElizaError("Document source unit range is incomplete", {
+			code: "DOCUMENT_SOURCE_CORRUPT",
+			context: {
+				documentId: args.documentId,
+				unit,
+				offset: args.params.offset,
+				requestedEnd,
+			},
+		});
+	}
 	const units = sourceUnits(
 		rows.map((row) => row.content.text ?? "").join(""),
 		unit,
