@@ -32,11 +32,14 @@ import codingToolsPlugin, {
 } from "../src/index.ts";
 
 const EXPECTED_ACTIONS = [
+  "EDIT",
   "FILE",
+  "READ",
   "SHELL",
   "WEB_FETCH",
   "WEB_SEARCH",
   "WORKTREE",
+  "WRITE",
 ];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
@@ -49,9 +52,6 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
   it("does not register legacy leaf actions as planner-facing actions", () => {
     const names = new Set((codingToolsPlugin.actions ?? []).map((a) => a.name));
     for (const legacyName of [
-      "READ",
-      "WRITE",
-      "EDIT",
       "BASH",
       "GREP",
       "GLOB",

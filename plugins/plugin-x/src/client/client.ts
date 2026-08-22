@@ -49,6 +49,7 @@ import {
   searchProfiles,
   searchQuotedTweets,
   searchTweets,
+  searchTweetsPage,
 } from "./search";
 
 import {
@@ -330,27 +331,17 @@ export class Client {
     query: string,
     maxTweets: number,
     searchMode: SearchMode,
-    _cursor?: string,
+    cursor?: string,
   ): Promise<QueryTweetsResponse> {
-    return this.withAuthenticatedSession(async () => {
-      const tweets: Tweet[] = [];
-      const generator = searchTweets(
+    return this.withAuthenticatedSession(() =>
+      searchTweetsPage(
         query,
         maxTweets,
         searchMode,
         this.requireAuth(),
-      );
-
-      for await (const tweet of generator) {
-        tweets.push(tweet);
-      }
-
-      return {
-        tweets,
-        // v2 API doesn't provide cursor-based pagination for search
-        next: undefined,
-      };
-    });
+        cursor,
+      ),
+    );
   }
 
   /**
