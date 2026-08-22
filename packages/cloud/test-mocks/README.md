@@ -76,6 +76,16 @@ Implements the subset of the Hetzner Cloud API that the autoscaler client in
 
 State is kept in memory and resets when the process exits.
 
+## WeChat proxy mock
+
+`startWechatProxyMock()` from `@elizaos/cloud-test-mocks/wechat` starts a
+resettable loopback HTTP implementation of the proxy protocol consumed by the
+production WeChat connector. Seed accounts and contacts, point `ProxyClient`
+at the returned URL, then inspect `snapshot()` for authenticated requests,
+webhook registrations, and outbound text/image effects. `deliverWebhook()`
+drives the real authenticated callback server; `enqueueFault()` covers rate
+limits, malformed responses, and latency without replacing client methods.
+
 ### Run standalone
 
 ```bash

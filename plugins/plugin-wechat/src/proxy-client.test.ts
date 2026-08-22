@@ -1,9 +1,10 @@
 /**
  * Coverage for `retryDelayMs`'s RFC 7231 Retry-After parsing (delay-seconds
- * and HTTP-date forms) and its exponential-backoff fallback.
+ * and HTTP-date forms), its exponential-backoff fallback, and the production
+ * client's fail-closed transport configuration.
  */
 import { describe, expect, it } from "vitest";
-import { retryDelayMs } from "./proxy-client";
+import { ProxyClient, retryDelayMs } from "./proxy-client";
 
 describe("retryDelayMs", () => {
   it("parses delay-seconds form", () => {
@@ -51,6 +52,53 @@ describe("retryDelayMs", () => {
     expect(retryDelayMs("999999999999999999999999", 0)).toBe(2_147_483_647);
     expect(retryDelayMs("Fri, 31 Dec 9999 23:59:59 GMT", 0)).toBe(
       2_147_483_647,
+    );
+  });
+});
+
+describe("ProxyClient transport policy", () => {
+  const account = {
+    id: "main",
+    apiKey: "secret",
+    proxyUrl: "https://proxy.example.test",
+    deviceType: "ipad" as const,
+    webhookPort: 18790,
+  };
+
+  it.each([
+    "https://proxy.example.test",
+    "http://127.0.0.1:4567",
+    "http://[::1]:4567",
+  ])(
+    "accepts secure production or literal loopback simulator URL %s",
+    (proxyUrl) => {
+      expect(() => new ProxyClient({ ...account, proxyUrl })).not.toThrow();
+    },
+  );
+
+  it.each([
+    "http://localhost:4567",
+    "http://192.168.1.10:4567",
+    "http://proxy.example.test",
+  ])("rejects non-literal insecure proxy URL %s", (proxyUrl) => {
+    expect(() => new ProxyClient({ ...account, proxyUrl })).toThrow(
+      "proxyUrl must use https://",
+    );
+  });
+
+  it("rejects embedded credentials and invalid request budgets", () => {
+    expect(
+      () =>
+        new ProxyClient({
+          ...account,
+          proxyUrl: "https://username:password@proxy.example.test",
+        }),
+    ).toThrow("must not include credentials");
+    expect(() => new ProxyClient(account, { requestTimeoutMs: 0 })).toThrow(
+      "requestTimeoutMs must be a positive integer",
+    );
+    expect(() => new ProxyClient(account, { retryBaseDelayMs: 1.5 })).toThrow(
+      "retryBaseDelayMs must be a positive integer",
     );
   });
 });

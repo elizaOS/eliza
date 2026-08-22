@@ -28,7 +28,7 @@ npx elizaos plugins add @elizaos/plugin-wechat
 | Env Var | Required | Description |
 |---|---|---|
 | `WECHAT_API_KEY` | Yes | Proxy service API key |
-| `WECHAT_PROXY_URL` | Yes | Base URL of the WeChat proxy (`https://` only) |
+| `WECHAT_PROXY_URL` | Yes | Base URL of the WeChat proxy (`https://`; literal loopback HTTP is reserved for local protocol simulators) |
 | `ELIZA_WECHAT_WEBHOOK_PORT` | No | Webhook listener port (default: `18790`) |
 
 ### Character config block (recommended)
@@ -92,4 +92,3 @@ npx elizaos plugins add @elizaos/plugin-wechat
   owner account over WeChat therefore extends full OWNER trust to the proxy
   operator — a forged POST naming the owner's wxid produces OWNER-role turns.
   Only pair owners over WeChat with a proxy you control.
-

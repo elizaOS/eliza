@@ -120,8 +120,12 @@ mapping to `WECHAT_TYPE_MAP` in `src/callback-server.ts`.
 
 ## Conventions / Gotchas
 
-- **Proxy-only.** There is no direct WeChat API access. All calls go through an
-  HTTPS proxy service. The proxy URL must be `https://` with no embedded creds.
+- **Proxy-only.** There is no direct WeChat API access. All calls go through a
+  proxy service. Production proxy URLs must be `https://` with no embedded creds;
+  literal loopback `http://127.0.0.1`/`http://[::1]` is allowed for local protocol simulators.
+- **Bounded client requests.** `ProxyClientOptions` can narrow the default 30-second
+  request timeout and retry delay and can carry a lifecycle `AbortSignal`. External
+  cancellation stops retries immediately; normal transport failures remain bounded to three attempts.
 - **Login flow.** On first start (or after session expiry), `WechatChannel`
   polls for QR-code login. `displayQRUrl` prints the URL; the user must scan it
   via the WeChat mobile app within `loginTimeoutMs` (default 5 min).

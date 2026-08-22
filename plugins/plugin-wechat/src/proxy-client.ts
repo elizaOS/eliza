@@ -14,17 +14,38 @@ const SUCCESS = 1000;
 const LOGIN_NEEDED = 1001;
 const REQUEST_TIMEOUT_MS = 30_000;
 
+export interface ProxyClientOptions {
+  requestTimeoutMs?: number;
+  retryBaseDelayMs?: number;
+  signal?: AbortSignal;
+}
+
 export class ProxyClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly accountId: string;
   private readonly deviceType: string;
+  private readonly requestTimeoutMs: number;
+  private readonly retryBaseDelayMs: number;
+  private readonly signal?: AbortSignal;
 
-  constructor(account: ResolvedWechatAccount) {
+  constructor(
+    account: ResolvedWechatAccount,
+    options: ProxyClientOptions = {},
+  ) {
     this.apiKey = account.apiKey;
     this.baseUrl = normalizeProxyUrl(account.proxyUrl);
     this.accountId = account.id;
     this.deviceType = account.deviceType ?? "ipad";
+    this.requestTimeoutMs = requirePositiveInteger(
+      options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS,
+      "requestTimeoutMs",
+    );
+    this.retryBaseDelayMs = requirePositiveInteger(
+      options.retryBaseDelayMs ?? 1000,
+      "retryBaseDelayMs",
+    );
+    this.signal = options.signal;
   }
 
   private async request<T>(
@@ -42,18 +63,29 @@ export class ProxyClient {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        if (this.signal?.aborted) {
+          throw this.signal.reason ?? new Error("WeChat proxy request aborted");
+        }
+        const timeoutSignal = AbortSignal.timeout(this.requestTimeoutMs);
+        const signal = this.signal
+          ? AbortSignal.any([this.signal, timeoutSignal])
+          : timeoutSignal;
         const res = await fetch(url, {
           method: "POST",
           headers,
           body: body ? JSON.stringify(body) : undefined,
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          signal,
         });
 
         if (res.status === 429) {
-          const delay = retryDelayMs(res.headers.get("Retry-After"), attempt);
+          const delay = retryDelayMs(
+            res.headers.get("Retry-After"),
+            attempt,
+            this.retryBaseDelayMs,
+          );
           // Consume the response body to release the connection
           await res.text().catch(() => {});
-          await sleep(delay);
+          await sleep(delay, this.signal);
           continue;
         }
 
@@ -61,8 +93,11 @@ export class ProxyClient {
         return json;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        const delay = Math.min(1000 * 2 ** attempt, 8000);
-        await sleep(delay);
+        if (this.signal?.aborted) {
+          throw this.signal.reason ?? lastError;
+        }
+        const delay = Math.min(this.retryBaseDelayMs * 2 ** attempt, 8000);
+        await sleep(delay, this.signal);
       }
     }
 
@@ -168,8 +203,23 @@ export class LoginExpiredError extends Error {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(
+      signal.reason ?? new Error("WeChat proxy request aborted"),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error("WeChat proxy request aborted"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 const MAX_BACKOFF_MS = 8000;
@@ -189,8 +239,9 @@ const HTTP_DATE_PATTERN =
 export function retryDelayMs(
   retryAfterHeader: string | null,
   attempt: number,
+  baseDelayMs = 1000,
 ): number {
-  const fallback = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
+  const fallback = Math.min(baseDelayMs * 2 ** attempt, MAX_BACKOFF_MS);
   if (!retryAfterHeader) return fallback;
 
   const value = retryAfterHeader.trim();
@@ -212,14 +263,26 @@ export function retryDelayMs(
 
 function normalizeProxyUrl(proxyUrl: string): string {
   const parsed = new URL(proxyUrl);
-  if (parsed.protocol !== "https:") {
-    throw new Error("[wechat] proxyUrl must use https://");
+  const isLoopbackHttp =
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]");
+  if (parsed.protocol !== "https:" && !isLoopbackHttp) {
+    throw new Error(
+      "[wechat] proxyUrl must use https:// (loopback http:// is allowed for local protocol simulators)",
+    );
   }
   if (parsed.username || parsed.password) {
     throw new Error("[wechat] proxyUrl must not include credentials");
   }
   parsed.hash = "";
   return parsed.toString().replace(/\/$/, "");
+}
+
+function requirePositiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`[wechat] ${name} must be a positive integer`);
+  }
+  return value;
 }
 
 function requireData<T>(response: ProxyApiResponse<T>, action: string): T {

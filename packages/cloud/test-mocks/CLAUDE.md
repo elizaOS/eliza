@@ -25,6 +25,9 @@ exits.
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
 - `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
   Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
+- `src/wechat/` (export `./wechat`) — resettable WeChat proxy simulator for the
+  production connector client. It owns seeded accounts, contacts, webhook registrations,
+  outbound-message readback, protocol faults, request observations, and inbound webhook delivery.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
@@ -89,6 +92,9 @@ teardown.
   (default 8791), `HOST`, `CONTROL_PLANE_TICK_MS`, `HCLOUD_API_BASE_URL`.
 - **Mockoon files are stateless** read-only fixtures — they do not share state
   with the Hono mocks; use the Hono mocks when behavior depends on prior writes.
+- **WeChat is loopback-only.** `startWechatProxyMock()` returns an `http://127.0.0.1`
+  URL accepted by the production client only for literal loopback hosts. Authentication,
+  device/account headers, outbound effects, and webhook registration still cross real HTTP.
 
 ## Managed provider contract suites
 

@@ -9,6 +9,7 @@
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
     "./steward": "./src/steward/index.ts",
+    "./wechat": "./src/wechat/index.ts",
     "./provider-contract": "./src/provider-contract/index.ts"
   },
   "bin": {
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
+    "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "*"
