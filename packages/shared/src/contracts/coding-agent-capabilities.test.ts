@@ -121,7 +121,7 @@ describe("coding-agent capability mapping", () => {
         /^(oauth|direct-api-key|coding-plan-key|external-cli|unavailable)$/,
       );
       expect(descriptor.billingMode).toMatch(
-        /^(subscription-coding-plan|subscription-coding-cli|usage)$/,
+        /^(subscription-coding-plan|subscription-coding-cli|usage|api-payg|api-credits-or-byok)$/,
       );
       expect(typeof descriptor.enrollmentSupport).toBe("boolean");
       expect(typeof descriptor.inferenceSupport).toBe("boolean");
@@ -152,6 +152,21 @@ describe("coding-agent capability mapping", () => {
         spawnSupport: false,
       });
     }
+  });
+
+  it("preserves direct billing semantics for OpenRouter and xAI", () => {
+    expect(CODING_PROVIDER_DESCRIPTORS["openrouter-api"]).toMatchObject({
+      accountKind: "api-key",
+      billingMode: "api-credits-or-byok",
+      backend: "opencode",
+      spawnSupport: true,
+    });
+    expect(CODING_PROVIDER_DESCRIPTORS["xai-api"]).toMatchObject({
+      accountKind: "api-key",
+      billingMode: "api-payg",
+      backend: "opencode",
+      spawnSupport: true,
+    });
   });
 
   it("rejects provider-to-backend ambiguity and descriptor drift", () => {

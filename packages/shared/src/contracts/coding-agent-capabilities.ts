@@ -30,7 +30,9 @@ export type CodingProviderAuthMode =
 export type CodingProviderBillingMode =
   | "subscription-coding-plan"
   | "subscription-coding-cli"
-  | "usage";
+  | "usage"
+  | "api-payg"
+  | "api-credits-or-byok";
 export type CodingProviderSubscriptionAuthMode =
   | "oauth"
   | "external-cli"
@@ -292,6 +294,26 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     true,
     null,
     "Cerebras API keys can serve model inference, but no supported coding-agent spawn backend consumes them.",
+  ),
+  "openrouter-api": descriptor(
+    "openrouter-api",
+    "api-key",
+    "direct-api-key",
+    "api-credits-or-byok",
+    true,
+    true,
+    null,
+    "OpenRouter API keys can serve model inference, but no supported coding-agent spawn backend consumes them.",
+  ),
+  "xai-api": descriptor(
+    "xai-api",
+    "api-key",
+    "direct-api-key",
+    "api-payg",
+    true,
+    true,
+    null,
+    "xAI API keys can serve model inference, but no supported coding-agent spawn backend consumes them.",
   ),
 } as const satisfies Readonly<
   Record<LinkedAccountProviderId, CodingProviderDescriptor>

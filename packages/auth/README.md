@@ -19,3 +19,14 @@ without a dependency cycle. It depends only on `@elizaos/core`, `@elizaos/shared
 - `types` — shared account/provider types and id constants.
 
 Import subpaths directly, e.g. `import { saveAccount } from "@elizaos/auth/account-storage"`.
+
+## OpenRouter and xAI accounts
+
+OpenRouter credits/BYOK and xAI API PAYG are distinct direct-account products:
+their canonical account IDs are `openrouter-api` and `xai-api`, with
+`OPENROUTER_API_KEY` and `XAI_API_KEY` as deployment-only aliases. Adding or
+repairing either account performs a bounded authenticated `/models` preflight
+before the encrypted record becomes selectable. Pooled keys remain in account
+authority and are released only to the selected coding subprocess; they are not
+copied into the parent process environment. Grok subscription login is a
+separate product and must not be represented as an xAI API key.
