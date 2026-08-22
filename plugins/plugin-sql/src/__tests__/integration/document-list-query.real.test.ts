@@ -26,6 +26,7 @@ import { createIsolatedTestDatabase } from "../test-helpers";
 
 const REQUESTER_ID = "10000000-0000-0000-0000-000000000001" as UUID;
 const OTHER_ENTITY_ID = "10000000-0000-0000-0000-000000000002" as UUID;
+const DIRECT_GRANTEE_ID = "10000000-0000-0000-0000-000000000003" as UUID;
 const postgresIt = process.env.POSTGRES_URL ? it : it.skip;
 
 describe("document list query (real SQL parity)", () => {
@@ -69,6 +70,11 @@ describe("document list query (real SQL parity)", () => {
         id: OTHER_ENTITY_ID,
         agentId,
         names: ["Other"],
+      } as Entity,
+      {
+        id: DIRECT_GRANTEE_ID,
+        agentId,
+        names: ["Direct grantee"],
       } as Entity,
     ]);
     await adapter.addParticipant(REQUESTER_ID, roomId);
@@ -838,6 +844,83 @@ describe("document list query (real SQL parity)", () => {
       })
     ).resolves.toEqual({ status: "conflict" });
     await expect(adapter.getMemoryById(original.id!)).resolves.not.toBeNull();
+  });
+
+  it("atomically replaces direct grants under owner and current-room-admin authority", async () => {
+    const global = document(41, { metadata: { documentRevision: 0 } });
+    const ownerPrivate = document(42, {
+      metadata: { scope: "owner-private", documentRevision: 0 },
+    });
+    await seedSql([global, ownerPrivate]);
+    const ownerContext = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [] as UUID[],
+      requesterRole: "OWNER" as const,
+    };
+    const adminContext = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "ADMIN" as const,
+    };
+    const globalSnapshot = readDocumentMutationSnapshot(global)!;
+
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...adminContext,
+        documentId: global.id!,
+        expected: globalSnapshot,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      })
+    ).resolves.toMatchObject({
+      status: "updated",
+      document: { metadata: { directGrantEntityIds: [DIRECT_GRANTEE_ID] } },
+    });
+    await expect(
+      adapter.getDocument({
+        agentId,
+        documentId: global.id!,
+        requesterEntityId: DIRECT_GRANTEE_ID,
+        requesterRoomIds: [],
+        requesterRole: "USER",
+      })
+    ).resolves.toMatchObject({ id: global.id });
+
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...adminContext,
+        documentId: ownerPrivate.id!,
+        expected: readDocumentMutationSnapshot(ownerPrivate)!,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      })
+    ).resolves.toEqual({ status: "forbidden" });
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...ownerContext,
+        documentId: ownerPrivate.id!,
+        expected: readDocumentMutationSnapshot(ownerPrivate)!,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      })
+    ).resolves.toMatchObject({ status: "updated" });
+
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...adminContext,
+        documentId: global.id!,
+        expected: globalSnapshot,
+        directGrantEntityIds: [],
+      })
+    ).resolves.toEqual({ status: "conflict" });
+    const currentGlobal = await adapter.getMemoryById(global.id!);
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...ownerContext,
+        documentId: global.id!,
+        expected: readDocumentMutationSnapshot(currentGlobal!)!,
+        directGrantEntityIds: ["10000000-0000-0000-0000-000000000099" as UUID],
+      })
+    ).resolves.toEqual({ status: "not_found" });
   });
 
   it("rolls back a complete revision when a staged fragment cannot be inserted", async () => {

@@ -140,6 +140,14 @@ export interface DocumentCompareAndSwapParams extends DocumentRequesterContext {
 	replacement: Memory;
 }
 
+/** Atomic replacement of a document's explicit entity read grants. */
+export interface DocumentDirectGrantUpdateParams
+	extends DocumentRequesterContext {
+	documentId: UUID;
+	expected: DocumentMutationSnapshot;
+	directGrantEntityIds: UUID[];
+}
+
 /**
  * Atomic replacement of a document parent and its complete fragment revision.
  * Replacement fragment IDs must be fresh; adapters reject IDs from the
@@ -1117,13 +1125,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	}): Promise<Memory[]>;
 
 	/**
-	 * Required native document-store contract. Version 3 covers canonical
+	 * Required native document-store contract. Version 4 covers canonical
 	 * visibility for list/lookup/search plus atomic revision replacement. Adapter
 	 * authors migrating from version 2 must implement all six methods; there is
 	 * deliberately no bounded compatibility scan because it cannot preserve
 	 * authorization, counts, or pagination guarantees.
 	 */
-	readonly documentListQueryCapability: 3;
+	readonly documentListQueryCapability: 4;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
@@ -1133,6 +1141,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<Memory[]>;
 	compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+	updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult>;
 	replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,

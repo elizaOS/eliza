@@ -24,6 +24,7 @@ import type {
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
 	DocumentDeleteParams,
+	DocumentDirectGrantUpdateParams,
 	DocumentFragmentQueryParams,
 	DocumentGetQueryParams,
 	DocumentListQueryParams,
@@ -116,9 +117,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 {
 	/**
 	 * Exact document-store contract implemented by every first-class adapter.
-	 * Version 3 adds atomic parent-and-fragment revision replacement.
+	 * Version 4 adds storage-enforced direct-grant replacement.
 	 */
-	abstract readonly documentListQueryCapability: 3;
+	abstract readonly documentListQueryCapability: 4;
 
 	abstract queryDocuments(
 		params: DocumentListQueryParams,
@@ -132,6 +133,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	abstract compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+
+	abstract updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult>;
 
 	abstract replaceDocumentRevision(

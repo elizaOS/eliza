@@ -36,6 +36,7 @@ import type {
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
 	DocumentDeleteParams,
+	DocumentDirectGrantUpdateParams,
 	DocumentFragmentQueryParams,
 	DocumentGetQueryParams,
 	DocumentListQueryParams,
@@ -86,12 +87,14 @@ import {
 	redactConnectorJsonAudit,
 } from "./connector-json";
 import {
+	canRequesterManageDocumentDirectGrants,
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
+	validateDocumentDirectGrantEntityIds,
 	validateDocumentRevisionReplacement,
 } from "./document-list-query";
 
@@ -877,6 +880,47 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			: { status: "conflict" };
 	}
 
+	async updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
+	): Promise<DocumentMutationResult> {
+		const directGrantEntityIds = validateDocumentDirectGrantEntityIds(
+			params.directGrantEntityIds,
+		);
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!canRequesterManageDocumentDirectGrants(existing, params)) {
+			return { status: "forbidden" };
+		}
+		for (const entityId of directGrantEntityIds) {
+			const entity = this.entities.get(String(entityId));
+			if (!entity || entity.agentId !== params.agentId) {
+				return { status: "not_found" };
+			}
+		}
+		const metadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
+		if (directGrantEntityIds.length > 0) {
+			metadata.directGrantEntityIds = directGrantEntityIds;
+		} else {
+			delete metadata.directGrantEntityIds;
+		}
+		await this.updateMemories([
+			{
+				...existing,
+				id: params.documentId,
+				metadata: metadata as Memory["metadata"],
+			},
+		]);
+		const updated = this.memoriesById.get(String(params.documentId));
+		return updated
+			? { status: "updated", document: updated }
+			: { status: "conflict" };
+	}
+
 	async replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,
 	): Promise<DocumentMutationResult> {
@@ -1006,9 +1050,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
 		}
-		if (params.entityId) {
-			all = all.filter((memory) => memory.entityId === params.entityId);
-		}
+		// `entityId` selects the SQL/RLS isolation context; it is not a memory-row
+		// predicate. Process-local storage has no RLS session to establish, so the
+		// agent boundary above is the matching isolation behavior.
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);
 		}

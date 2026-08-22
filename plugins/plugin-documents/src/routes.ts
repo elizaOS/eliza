@@ -34,6 +34,7 @@ import type {
 import {
   __setDocumentUrlFetchImplForTests,
   actorFromAccessContext,
+  ElizaError,
   fetchDocumentFromUrl,
   isYouTubeUrl,
   normalizeDocumentContentType,
@@ -85,6 +86,19 @@ function isUuidValue(value: unknown): value is UUID {
       value.trim(),
     )
   );
+}
+
+function documentGrantErrorStatus(cause: ElizaError): number {
+  if (
+    cause.code === "DOCUMENT_NOT_FOUND" ||
+    cause.code === "DOCUMENT_GRANT_TARGET_NOT_FOUND"
+  ) {
+    return 404;
+  }
+  if (cause.code === "DOCUMENT_GRANT_MUTATION_FORBIDDEN") return 403;
+  if (cause.code === "DOCUMENT_DIRECT_GRANTS_INVALID") return 400;
+  if (cause.code === "DOCUMENT_GRANT_MUTATION_CONFLICT") return 409;
+  return 500;
 }
 
 type DocumentFilter = SharedDocumentFilter & {
@@ -983,6 +997,96 @@ export async function handleDocumentsRoutes(
   }
 
   const docIdMatch = /^\/api\/documents\/([^/]+)$/.exec(pathname);
+  const docAccessMatch = /^\/api\/documents\/([^/]+)\/access$/.exec(pathname);
+  if (method === "GET" && docAccessMatch) {
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docAccessMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    if (!isUuidValue(decodedDocumentId)) {
+      error(res, "document id must be a valid UUID");
+      return true;
+    }
+    if (!documentsService.getDocumentDirectGrantsWithAccessContext) {
+      error(res, "Canonical document grant authority is unavailable", 503);
+      return true;
+    }
+    try {
+      const directGrantEntityIds =
+        await documentsService.getDocumentDirectGrantsWithAccessContext(
+          decodedDocumentId.trim() as UUID,
+          accessContext,
+        );
+      json(res, {
+        documentId: decodedDocumentId.trim(),
+        directGrantEntityIds,
+      });
+    } catch (cause) {
+      // error-policy:J1 The HTTP boundary translates typed ACL failures without exposing storage details.
+      if (!(cause instanceof ElizaError)) throw cause;
+      error(res, cause.message, documentGrantErrorStatus(cause));
+    }
+    return true;
+  }
+
+  if (method === "PATCH" && docAccessMatch) {
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docAccessMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    if (!isUuidValue(decodedDocumentId)) {
+      error(res, "document id must be a valid UUID");
+      return true;
+    }
+    if (!documentsService.setDocumentDirectGrantsWithAccessContext) {
+      error(res, "Canonical document grant authority is unavailable", 503);
+      return true;
+    }
+    const body = await readJsonBody<{ directGrantEntityIds?: unknown }>(
+      req,
+      res,
+      {
+        maxBytes: 128 * 1024,
+      },
+    );
+    if (!body) return true;
+    if (!Array.isArray(body.directGrantEntityIds)) {
+      error(res, "directGrantEntityIds must be an array of UUIDs");
+      return true;
+    }
+    const requestedGrants: UUID[] = [];
+    for (const value of body.directGrantEntityIds) {
+      if (!isUuidValue(value)) {
+        error(res, "directGrantEntityIds must contain only UUIDs");
+        return true;
+      }
+      requestedGrants.push(value.trim() as UUID);
+    }
+    try {
+      const document =
+        await documentsService.setDocumentDirectGrantsWithAccessContext(
+          decodedDocumentId.trim() as UUID,
+          requestedGrants,
+          accessContext,
+        );
+      const directGrantEntityIds = Array.isArray(
+        document.metadata?.directGrantEntityIds,
+      )
+        ? document.metadata.directGrantEntityIds
+        : [];
+      json(res, { ok: true, documentId: document.id, directGrantEntityIds });
+    } catch (cause) {
+      // error-policy:J1 The HTTP boundary translates typed ACL failures without exposing storage details.
+      if (!(cause instanceof ElizaError)) throw cause;
+      error(res, cause.message, documentGrantErrorStatus(cause));
+    }
+    return true;
+  }
+
   if (method === "GET" && docIdMatch) {
     const decodedDocumentId = decodeMatchedPathComponent(
       ctx,
