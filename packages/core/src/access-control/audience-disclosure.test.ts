@@ -78,7 +78,7 @@ function viewerResolver(
 	return (entityId) =>
 		resolveArtifactDisclosure(
 			disclosureSubjectRecord(subject),
-			{ requesterEntityId: entityId, ...contexts[entityId] },
+			{ requesterEntityId: entityId, role: "USER", ...contexts[entityId] },
 			AGENT,
 		);
 }
