@@ -59,6 +59,37 @@ describe("handleTextEmbedding init + validation", () => {
     expect(requestRaw).not.toHaveBeenCalled();
   });
 
+  it("rejects a prefix-parsed dimension instead of accepting its leading digits", async () => {
+    // `Number.parseInt("1536junk")` is 1536, which then PASSES the allowlist
+    // below — so the existing guard reported the truncated number and let a
+    // malformed setting through as if it were valid.
+    await expect(
+      handleTextEmbedding(makeRuntime("1536junk" as unknown as number), null)
+    ).rejects.toThrow(/Invalid embedding dimension/);
+    expect(requestRaw).not.toHaveBeenCalled();
+  });
+
+  it("rejects a fractional dimension", async () => {
+    await expect(
+      handleTextEmbedding(makeRuntime("1536.9" as unknown as number), null)
+    ).rejects.toThrow(/Invalid embedding dimension/);
+    expect(requestRaw).not.toHaveBeenCalled();
+  });
+
+  it("names the value the operator actually wrote in the error", async () => {
+    // Reporting the truncated 1536 would send them looking for a valid number.
+    await expect(
+      handleTextEmbedding(makeRuntime("1536junk" as unknown as number), null)
+    ).rejects.toThrow(/1536junk/);
+  });
+
+  it("still accepts every allowlisted dimension", async () => {
+    for (const dim of [384, 512, 768, 1024, 1536, 3072]) {
+      const result = await handleTextEmbedding(makeRuntime(dim), null);
+      expect(result).toHaveLength(dim);
+    }
+  });
+
   it("throws on malformed params instead of returning a marker vector", async () => {
     await expect(
       // biome-ignore lint/suspicious/noExplicitAny: deliberately malformed input
