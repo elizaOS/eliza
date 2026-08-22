@@ -129,7 +129,14 @@ function installFetch(): void {
           (!script.includes("s==ARGV[2]") || store.get(key2) === value2) &&
           (!script.includes("g==ARGV[3]") ||
             store.get(generationKey) === generation);
-        if (owned) {
+        // Only honored when the script actually offers the unclaimed-reclaim
+        // branch, so reintroducing it to the Lua fails the containment test.
+        const unclaimed =
+          script.includes("unclaimed") &&
+          !store.has(key1) &&
+          !store.has(key2) &&
+          !store.has(generationKey);
+        if (owned || unclaimed) {
           store.set(key1, value1);
           store.set(key2, value2);
           store.set(generationKey, generation);
@@ -655,7 +662,12 @@ async function startFakeRedis(opts?: {
               store.get(key1) === value1 &&
               store.get(key2) === value2 &&
               store.get(generationKey) === generation;
-            if (owned) {
+            const unclaimed =
+              script.includes("unclaimed") &&
+              !store.has(key1) &&
+              !store.has(key2) &&
+              !store.has(generationKey);
+            if (owned || unclaimed) {
               store.set(key1, value1);
               store.set(key2, value2);
               store.set(generationKey, generation);
