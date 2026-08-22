@@ -3,6 +3,24 @@
  * seed-driven shuffle/sample/pick plus example-name generation, all keyed by a
  * string or number seed so the same seed always yields the same result. Also
  * provides stableStringify — key-order-independent JSON for stable hashing/IDs.
+ *
+ * stableStringify contract + bounds
+ * - Intended for validated plain JSON (plain objects, arrays, primitives, Dates)
+ *   plus the historic undefined/function/symbol dropping handled by
+ *   JSON.stringify. Hosted metadata (entity/metadata, payload, scheduled-task
+ *   digests) is JSON-derived after JSON.parse, so data-only descriptors are the
+ *   expected shape. Map/Set/class instances with no enumerable own string keys
+ *   serialize as {} (same as the pre-bound implementation); accessor getters are
+ *   invoked once via normal property read, preserving historic output.
+ * - Not a hostile-Proxy sandbox: Object.keys / Object.getOwnPropertyDescriptor /
+ *   Object.getPrototypeOf and property reads can invoke Proxy traps before any
+ *   budget check can run. Hosted data is plain JSON, not a trap-bearing Proxy.
+ * - OwnKeys/allocation limitation: Object.keys enumerates and allocates the
+ *   full key list before keys.length can be charged against the node budget.
+ *   A wide object (e.g. 10k keys) will allocate that array even though the walk
+ *   then throws StableStringifyUnboundedError. Bounding before materialization
+ *   would require capping at the JSON/materialization boundary instead of inside
+ *   the walk.
  */
 
 import { ElizaError } from "../errors";
@@ -169,56 +187,78 @@ function sortStableBounded(
 		return value;
 	}
 
-	if (typeof value === "object") {
+	if (Array.isArray(value)) {
 		if (state.seen.has(value as object)) {
 			throw new StableStringifyUnboundedError("cycle", {});
 		}
 		state.seen.add(value as object);
 		try {
-			if (Array.isArray(value)) {
-				let prototype: object | null;
+			// Length is read via descriptor to preserve sparse-hole semantics without
+			// invoking a Proxy get trap for every index via value.length; descriptor
+			// access still invokes the length trap once if value is a Proxy.
+			let lengthDescriptor: PropertyDescriptor | undefined;
+			try {
+				lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+			} catch (error) {
+				throw new StableStringifyUnboundedError(
+					"reflection",
+					{ field: "length" },
+					error,
+				);
+			}
+			if (
+				!lengthDescriptor ||
+				!("value" in lengthDescriptor) ||
+				typeof lengthDescriptor.value !== "number" ||
+				!Number.isSafeInteger(lengthDescriptor.value) ||
+				lengthDescriptor.value < 0
+			) {
+				throw new StableStringifyUnboundedError("reflection", {
+					field: "length",
+				});
+			}
+			const length = lengthDescriptor.value;
+			// Note: we charge for length only after reading it; a Proxy that fakes a
+			// huge length still allocates the loop structure. Hosted data is plain
+			// JSON arrays, not Proxies.
+			if (length > MAX_STABLE_STRINGIFY_NODES - state.nodes) {
+				throw new StableStringifyUnboundedError("nodes", {
+					nodes: state.nodes + length,
+				});
+			}
+			const out: unknown[] = [];
+			for (let index = 0; index < length; index += 1) {
+				// Sparse holes: descriptor missing -> JSON.stringify yields null, same as original value.map hole
+				let descriptor: PropertyDescriptor | undefined;
 				try {
-					prototype = Object.getPrototypeOf(value) as object | null;
-				} catch (error) {
-					throw new StableStringifyUnboundedError("reflection", {}, error);
-				}
-				if (prototype !== Array.prototype && prototype !== null) {
-					throw new StableStringifyUnboundedError("leaf", {
-						type: "non-array-object",
-					});
-				}
-				let lengthDescriptor: PropertyDescriptor | undefined;
-				try {
-					lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+					descriptor = Object.getOwnPropertyDescriptor(value, String(index));
 				} catch (error) {
 					throw new StableStringifyUnboundedError(
 						"reflection",
-						{ field: "length" },
+						{ index },
 						error,
 					);
 				}
-				if (
-					!lengthDescriptor ||
-					!("value" in lengthDescriptor) ||
-					typeof lengthDescriptor.value !== "number" ||
-					!Number.isSafeInteger(lengthDescriptor.value) ||
-					lengthDescriptor.value < 0
-				) {
-					throw new StableStringifyUnboundedError("reflection", {
-						field: "length",
-					});
+				if (!descriptor) {
+					state.nodes += 1;
+					if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
+						throw new StableStringifyUnboundedError("nodes", {
+							nodes: state.nodes,
+						});
+					}
+					out.push(null);
+					continue;
 				}
-				const length = lengthDescriptor.value;
-				if (length > MAX_STABLE_STRINGIFY_NODES - state.nodes) {
-					throw new StableStringifyUnboundedError("nodes", {
-						nodes: state.nodes + length,
-					});
-				}
-				const out: unknown[] = [];
-				for (let index = 0; index < length; index += 1) {
-					let descriptor: PropertyDescriptor | undefined;
+				// Preserve historic accessor behavior: Object.entries/value[i] invokes getter once.
+				// For plain JSON (data descriptors), this is a direct value read; for an
+				// accessor, we intentionally read the getter result once rather than throwing,
+				// to keep byte-for-byte compatibility with the pre-bound implementation.
+				let entry: unknown;
+				if ("value" in descriptor) {
+					entry = descriptor.value;
+				} else {
 					try {
-						descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+						entry = (value as unknown[])[index];
 					} catch (error) {
 						throw new StableStringifyUnboundedError(
 							"reflection",
@@ -226,86 +266,83 @@ function sortStableBounded(
 							error,
 						);
 					}
-					if (!descriptor) {
-						state.nodes += 1;
-						if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
-							throw new StableStringifyUnboundedError("nodes", {
-								nodes: state.nodes,
-							});
-						}
-						out.push(null);
-						continue;
-					}
-					if (!("value" in descriptor)) {
-						throw new StableStringifyUnboundedError("accessor", { index });
-					}
-					out.push(sortStableBounded(descriptor.value, depth + 1, state));
 				}
-				return out;
+				out.push(sortStableBounded(entry, depth + 1, state));
 			}
-
-			let prototype: object | null;
-			try {
-				prototype = Object.getPrototypeOf(value) as object | null;
-			} catch (error) {
-				throw new StableStringifyUnboundedError("reflection", {}, error);
-			}
-			if (prototype !== Object.prototype && prototype !== null) {
-				throw new StableStringifyUnboundedError("leaf", {
-					type: "non-plain-object",
-				});
-			}
-			let keys: readonly PropertyKey[];
-			try {
-				keys = Reflect.ownKeys(value as object);
-			} catch (error) {
-				throw new StableStringifyUnboundedError("reflection", {}, error);
-			}
-			if (keys.length > MAX_STABLE_STRINGIFY_NODES - state.nodes) {
-				throw new StableStringifyUnboundedError("nodes", {
-					nodes: state.nodes + keys.length,
-				});
-			}
-			const sortedKeys = (keys as string[])
-				.filter((k): k is string => typeof k === "string")
-				.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
-			const output: Record<string, unknown> = {};
-			for (const key of sortedKeys) {
-				let descriptor: PropertyDescriptor | undefined;
-				try {
-					descriptor = Object.getOwnPropertyDescriptor(value as object, key);
-				} catch (error) {
-					throw new StableStringifyUnboundedError("reflection", { key }, error);
-				}
-				if (!descriptor?.enumerable) continue;
-				const keyBytes = new TextEncoder().encode(key).byteLength;
-				if (keyBytes > MAX_STABLE_STRINGIFY_STRING_BYTES) {
-					throw new StableStringifyUnboundedError("leaf", { keyBytes });
-				}
-				state.nodes += Math.max(1, Math.ceil(keyBytes / 1024));
-				if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
-					throw new StableStringifyUnboundedError("nodes", {
-						nodes: state.nodes,
-					});
-				}
-				if (!("value" in descriptor)) {
-					throw new StableStringifyUnboundedError("accessor", { key });
-				}
-				const nested = sortStableBounded(descriptor.value, depth + 1, state);
-				Object.defineProperty(output, key, {
-					configurable: true,
-					enumerable: true,
-					value: nested,
-					writable: true,
-				});
-			}
-			return output;
+			return out;
 		} finally {
 			state.seen.delete(value as object);
 		}
 	}
 
-	return value;
+	// Generic object (plain object, class instance, Map/Set etc.)
+	// Preserve historic behavior: enumerate own enumerable string keys and sort.
+	// Maps/Sets have no enumerable string keys, so they serialize as {} — same as pre-bound.
+	// Class instances with enumerable own properties serialize those fields.
+	if (state.seen.has(value as object)) {
+		throw new StableStringifyUnboundedError("cycle", {});
+	}
+	state.seen.add(value as object);
+	try {
+		let keys: string[];
+		try {
+			// Object.keys allocates the full key list before we can charge it — see
+			// header limitation for wide objects. This mirrors the pre-bound
+			// Object.entries allocation.
+			keys = Object.keys(value as Record<string, unknown>);
+		} catch (error) {
+			throw new StableStringifyUnboundedError("reflection", {}, error);
+		}
+		if (keys.length > MAX_STABLE_STRINGIFY_NODES - state.nodes) {
+			throw new StableStringifyUnboundedError("nodes", {
+				nodes: state.nodes + keys.length,
+			});
+		}
+		const sortedKeys = keys.sort((left, right) =>
+			left < right ? -1 : left > right ? 1 : 0,
+		);
+		const output: Record<string, unknown> = {};
+		for (const key of sortedKeys) {
+			let entryValue: unknown;
+			let descriptor: PropertyDescriptor | undefined;
+			try {
+				descriptor = Object.getOwnPropertyDescriptor(value as object, key);
+			} catch (error) {
+				throw new StableStringifyUnboundedError("reflection", { key }, error);
+			}
+			if (descriptor && !descriptor.enumerable) continue;
+			if (descriptor && "value" in descriptor) {
+				entryValue = descriptor.value;
+			} else {
+				// Accessor: invoke getter once to preserve historic output (Object.entries would invoke)
+				try {
+					entryValue = (value as Record<string, unknown>)[key];
+				} catch (error) {
+					throw new StableStringifyUnboundedError("reflection", { key }, error);
+				}
+			}
+			const keyBytes = new TextEncoder().encode(key).byteLength;
+			if (keyBytes > MAX_STABLE_STRINGIFY_STRING_BYTES) {
+				throw new StableStringifyUnboundedError("leaf", { keyBytes });
+			}
+			state.nodes += Math.max(1, Math.ceil(keyBytes / 1024));
+			if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
+				throw new StableStringifyUnboundedError("nodes", {
+					nodes: state.nodes,
+				});
+			}
+			const nested = sortStableBounded(entryValue, depth + 1, state);
+			Object.defineProperty(output, key, {
+				configurable: true,
+				enumerable: true,
+				value: nested,
+				writable: true,
+			});
+		}
+		return output;
+	} finally {
+		state.seen.delete(value as object);
+	}
 }
 
 function sortStable(value: unknown): unknown {
