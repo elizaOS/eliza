@@ -180,10 +180,8 @@ function parseSet(setSql: string): Record<string, string | null> {
 
 interface NotifierSpy {
   notify: ReturnType<typeof vi.fn>;
-  notifyWithoutEviction: ReturnType<typeof vi.fn>;
+  ensureGroupedNotification: ReturnType<typeof vi.fn>;
   markReadByGroupKey: ReturnType<typeof vi.fn>;
-  listIncludingExpired: ReturnType<typeof vi.fn>;
-  remove: ReturnType<typeof vi.fn>;
   notifications: AgentNotification[];
 }
 
@@ -206,15 +204,24 @@ function createNotifierSpy(): NotifierSpy {
   };
   const notifier: NotifierSpy = {
     notify: vi.fn(recordNotification),
-    notifyWithoutEviction: vi.fn(recordNotification),
+    ensureGroupedNotification: vi.fn(
+      async (
+        input: NotificationInput & { groupKey: string },
+        isExact: (notification: AgentNotification) => boolean,
+      ) => {
+        const grouped = notifications.filter(
+          (entry) => entry.groupKey === input.groupKey,
+        );
+        if (grouped.length === 1 && isExact(grouped[0])) return grouped[0];
+        for (let index = notifications.length - 1; index >= 0; index -= 1) {
+          if (notifications[index]?.groupKey === input.groupKey) {
+            notifications.splice(index, 1);
+          }
+        }
+        return recordNotification(input);
+      },
+    ),
     markReadByGroupKey: vi.fn(async () => 1),
-    listIncludingExpired: vi.fn(() => [...notifications]),
-    remove: vi.fn(async (id: string) => {
-      const index = notifications.findIndex((entry) => entry.id === id);
-      if (index < 0) return false;
-      notifications.splice(index, 1);
-      return true;
-    }),
     notifications,
   };
   return notifier;
@@ -429,20 +436,20 @@ describe("ApprovalService", () => {
     const input = messageInput({ idempotencyKey: "approval-notif-reuse" });
 
     const initial = await enqueueWithAwaitedNotification(queue, input);
-    expect(notifier.notifyWithoutEviction).toHaveBeenCalledTimes(1);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(1);
 
     const exactReplay = await enqueueWithAwaitedNotification(queue, input);
     expect(exactReplay).toMatchObject({ reused: true });
     expect(exactReplay.request.id).toBe(initial.request.id);
-    expect(notifier.notifyWithoutEviction).toHaveBeenCalledTimes(1);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(2);
+    expect(notifier.notifications).toHaveLength(1);
 
     notifier.notifications[0] = {
       ...notifier.notifications[0],
       title: "Stale approval projection",
     };
     await enqueueWithAwaitedNotification(queue, input);
-    expect(notifier.remove).toHaveBeenCalledTimes(1);
-    expect(notifier.notifyWithoutEviction).toHaveBeenCalledTimes(2);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(3);
     expect(notifier.notifications).toHaveLength(1);
     expect(notifier.notifications[0]).toMatchObject({
       title: "Approval needed",
@@ -450,10 +457,14 @@ describe("ApprovalService", () => {
       data: { requestId: initial.request.id, kind: input.action },
       readAt: null,
     });
+    expect(notifier.notifications[0]?.data).toEqual({
+      requestId: initial.request.id,
+      kind: input.action,
+    });
 
     notifier.notifications.splice(0);
     await enqueueWithAwaitedNotification(queue, input);
-    expect(notifier.notifyWithoutEviction).toHaveBeenCalledTimes(3);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(4);
     expect(notifier.notifications).toHaveLength(1);
   });
 

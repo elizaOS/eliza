@@ -254,6 +254,79 @@ describe("NotificationService", () => {
 		}
 	});
 
+	it("awaits a rejected in-flight write before ensuring an exact grouped projection", async () => {
+		const input = {
+			title: "Approval needed",
+			category: "approval",
+			priority: "high" as const,
+			groupKey: "approval:race",
+			data: { requestId: "race", kind: "execute_workflow" },
+		};
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let releaseFirst: (() => void) | undefined;
+		const firstBlocked = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let writes = 0;
+		runtime.setCache = async (key, value) => {
+			writes += 1;
+			if (writes === 1) {
+				await firstBlocked;
+				throw new Error("injected pending projection failure");
+			}
+			return originalSetCache(key, value);
+		};
+		try {
+			const pending = service.notify(input);
+			const ensured = service.ensureGroupedNotification(
+				input,
+				(entry) =>
+					entry.title === input.title &&
+					entry.groupKey === input.groupKey &&
+					entry.data?.requestId === "race",
+			);
+			releaseFirst?.();
+			await expect(pending).rejects.toThrow(
+				"injected pending projection failure",
+			);
+			await expect(ensured).resolves.toMatchObject(input);
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored).toHaveLength(1);
+			expect(stored?.[0]).toMatchObject(input);
+			expect(stored?.[0]?.data).toEqual(input.data);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("replaces a stale grouped projection without inheriting coalesced count", async () => {
+		await service.notify({
+			title: "Stale one",
+			groupKey: "approval:stale",
+			data: { requestId: "stale" },
+		});
+		await service.notify({
+			title: "Stale two",
+			groupKey: "approval:stale",
+			data: { requestId: "stale" },
+		});
+		const expected = {
+			title: "Approval needed",
+			groupKey: "approval:stale",
+			data: { requestId: "stale", kind: "execute_workflow" },
+		};
+		const ensured = await service.ensureGroupedNotification(
+			expected,
+			(entry) =>
+				entry.title === expected.title &&
+				JSON.stringify(entry.data) === JSON.stringify(expected.data),
+		);
+		expect(ensured.data).toEqual(expected.data);
+		expect(service.listIncludingExpired()).toHaveLength(1);
+	});
+
 	it("rejects a full inbox without evicting unrelated durable rows", async () => {
 		for (let index = 0; index < 300; index += 1) {
 			await service.notify({ title: `Existing ${index}` });

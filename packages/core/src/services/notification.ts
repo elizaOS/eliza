@@ -363,7 +363,7 @@ export class NotificationService extends Service {
 	 * Create, persist, and broadcast a notification. Returns the stamped record.
 	 */
 	async notify(input: NotificationInput): Promise<AgentNotification> {
-		return this.enqueueWrite(() => this.notifySerialized(input, false));
+		return this.enqueueWrite(() => this.notifySerialized(input, false, true));
 	}
 
 	/**
@@ -373,12 +373,31 @@ export class NotificationService extends Service {
 	async notifyWithoutEviction(
 		input: NotificationInput,
 	): Promise<AgentNotification> {
-		return this.enqueueWrite(() => this.notifySerialized(input, true));
+		return this.enqueueWrite(() => this.notifySerialized(input, true, true));
+	}
+
+	/**
+	 * Verify or replace one grouped projection within the inbox write queue.
+	 * This is the quiescent seam for durable owners that retry after an earlier
+	 * fire-and-forget projection may still be settling.
+	 */
+	async ensureGroupedNotification(
+		input: NotificationInput & { groupKey: string },
+		isExact: (notification: AgentNotification) => boolean,
+	): Promise<AgentNotification> {
+		return this.enqueueWrite(async () => {
+			const grouped = this.notifications.filter(
+				(entry) => entry.groupKey === input.groupKey,
+			);
+			if (grouped.length === 1 && isExact(grouped[0])) return grouped[0];
+			return this.notifySerialized(input, true, false);
+		});
 	}
 
 	private async notifySerialized(
 		input: NotificationInput,
 		rejectWhenFull: boolean,
+		coalesceGroup: boolean,
 	): Promise<AgentNotification> {
 		const previousNotifications = [...this.notifications];
 		const title = input.title?.trim();
@@ -412,7 +431,10 @@ export class NotificationService extends Service {
 				(n) => n.groupKey !== groupKey,
 			);
 		}
-		const data = this.resolveCoalescedData(input.data, superseded);
+		const data = this.resolveCoalescedData(
+			input.data,
+			coalesceGroup ? superseded : undefined,
+		);
 
 		// §C.1 Silent-tier default expiry: a `low` (silent) notification with no
 		// producer-set expiry ages out after 24h so the inbox self-cleans.

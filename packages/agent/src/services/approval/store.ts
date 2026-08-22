@@ -802,8 +802,9 @@ function timestampLiteral(date: Date): string {
 
 interface NotificationEmitter {
   notify: (input: NotificationInput) => Promise<AgentNotification>;
-  notifyWithoutEviction?: (
-    input: NotificationInput,
+  ensureGroupedNotification?: (
+    input: NotificationInput & { groupKey: string },
+    isExact: (notification: AgentNotification) => boolean,
   ) => Promise<AgentNotification>;
   /**
    * §C.5 acted-upon auto-read: mark the notification(s) for a groupKey read
@@ -811,8 +812,6 @@ interface NotificationEmitter {
    * expose it, so callers guard on its presence.
    */
   markReadByGroupKey?: (groupKey: string) => Promise<number>;
-  listIncludingExpired?: () => AgentNotification[];
-  remove?: (id: string) => Promise<boolean>;
 }
 
 function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
@@ -866,54 +865,30 @@ function hasExactApprovalProjection(
 
 function requireProjectionNotifier(
   runtime: IAgentRuntime,
-): Required<
-  Pick<
-    NotificationEmitter,
-    "listIncludingExpired" | "notifyWithoutEviction" | "remove"
-  >
-> {
+): Required<Pick<NotificationEmitter, "ensureGroupedNotification">> {
   const notifier = getNotifier(runtime);
-  if (
-    !notifier ||
-    typeof notifier.listIncludingExpired !== "function" ||
-    typeof notifier.notifyWithoutEviction !== "function" ||
-    typeof notifier.remove !== "function"
-  ) {
+  if (!notifier || typeof notifier.ensureGroupedNotification !== "function") {
     throw new Error(
       "[ApprovalQueue] notification service unavailable for awaited approval projection",
     );
   }
   return notifier as Required<
-    Pick<
-      NotificationEmitter,
-      "listIncludingExpired" | "notifyWithoutEviction" | "remove"
-    >
+    Pick<NotificationEmitter, "ensureGroupedNotification">
   >;
 }
 
 async function ensureApprovalNotification(
-  notifier: Required<
-    Pick<
-      NotificationEmitter,
-      "listIncludingExpired" | "notifyWithoutEviction" | "remove"
-    >
-  >,
+  notifier: Required<Pick<NotificationEmitter, "ensureGroupedNotification">>,
   request: ApprovalRequest,
 ): Promise<void> {
   const expected = approvalNotificationInput(request);
-  const projections = notifier
-    .listIncludingExpired()
-    .filter((entry) => entry.groupKey === expected.groupKey);
-  if (
-    projections.length === 1 &&
-    hasExactApprovalProjection(projections[0], expected)
-  ) {
-    return;
+  if (!expected.groupKey) {
+    throw new Error("[ApprovalQueue] approval projection group is missing");
   }
-  for (const projection of projections) {
-    await notifier.remove(projection.id);
-  }
-  await notifier.notifyWithoutEviction(expected);
+  await notifier.ensureGroupedNotification(
+    { ...expected, groupKey: expected.groupKey },
+    (notification) => hasExactApprovalProjection(notification, expected),
+  );
 }
 
 /**
