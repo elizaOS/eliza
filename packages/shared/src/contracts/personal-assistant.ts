@@ -2116,6 +2116,47 @@ export interface LifeOpsGmailTriageFeed {
   summary: LifeOpsGmailTriageSummary;
 }
 
+export type LifeOpsGmailCursorStatus =
+  | "never_synced"
+  | "seeded"
+  | "incremental"
+  | "resynced";
+
+/** Privacy-minimized Gmail cache and History cursor health for one exact grant. */
+export interface LifeOpsGmailSyncHealth {
+  provider: "google";
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
+  mailbox: "me";
+  state: "disconnected" | "never_synced" | "current" | "resync_required";
+  cursorStatus: LifeOpsGmailCursorStatus;
+  historyCursorPresent: boolean;
+  fullResyncReason: string | null;
+  cachedMessageCount: number;
+  syncedAt: string | null;
+}
+
+export interface PurgeLifeOpsGmailImportedDataRequest {
+  side?: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
+  /** Purges only Eliza's local projection; it never changes the provider mailbox. */
+  confirmAction: boolean;
+}
+
+export interface LifeOpsGmailImportedDataPurgeReceipt {
+  provider: "google";
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
+  deletedMessageCount: number;
+  deletedSpamReviewCount: number;
+  deletedSyncCursor: boolean;
+  providerMutation: false;
+  purgedAt: string;
+}
+
 export interface LifeOpsGmailNeedsResponseSummary {
   totalCount: number;
   unreadCount: number;
