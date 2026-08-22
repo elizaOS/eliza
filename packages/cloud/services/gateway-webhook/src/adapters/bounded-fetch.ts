@@ -17,6 +17,47 @@ export class GatewayProviderFetchError extends Error {
   }
 }
 
+function cancelBodyDetached(
+  body: ReadableStream<Uint8Array> | null,
+  reason: unknown,
+): void {
+  if (!body) return;
+  try {
+    // error-policy:J6 The request has already failed; cancellation is detached
+    // so a hostile stream cannot replace or delay the boundary error.
+    void body.cancel(reason).catch(() => undefined);
+  } catch {
+    // error-policy:J6 A synchronous cancellation failure cannot replace the
+    // already-selected request failure.
+  }
+}
+
+function cancelReaderDetached(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reason: unknown,
+): void {
+  const release = (): void => {
+    try {
+      reader.releaseLock();
+    } catch {
+      // error-policy:J6 Releasing a failed response stream is teardown-only.
+    }
+  };
+  try {
+    // Keep ownership until cancellation settles. Releasing first can race an
+    // in-flight cancel, while awaiting it would let a hostile stream defeat the
+    // request deadline.
+    void reader
+      .cancel(reason)
+      // error-policy:J6 The request failure is already observed by the caller.
+      .catch(() => undefined)
+      .finally(release);
+  } catch {
+    // error-policy:J6 A synchronous cancellation failure is teardown-only.
+    release();
+  }
+}
+
 export async function boundedGatewayFetch(
   fetchImpl: typeof fetch,
   input: RequestInfo | URL,
@@ -38,6 +79,13 @@ export async function boundedGatewayFetch(
     );
   }
 
+  if (init?.signal?.aborted) {
+    throw (
+      init.signal.reason ??
+      new DOMException("Provider request cancelled", "AbortError")
+    );
+  }
+
   const controller = new AbortController();
   let rejectAbort!: (reason: unknown) => void;
   const abortPromise = new Promise<never>((_resolve, reject) => {
@@ -54,7 +102,6 @@ export async function boundedGatewayFetch(
         new DOMException("Provider request cancelled", "AbortError"),
     );
   init?.signal?.addEventListener("abort", onCallerAbort, { once: true });
-  if (init?.signal?.aborted) onCallerAbort();
   const timer = setTimeout(
     () =>
       abort(
@@ -72,12 +119,13 @@ export async function boundedGatewayFetch(
     const rawLength = response.headers.get("content-length");
     if (rawLength !== null) {
       if (!/^\d+$/.test(rawLength) || Number(rawLength) > maxResponseBytes) {
-        await response.body?.cancel();
-        throw new GatewayProviderFetchError(
+        const error = new GatewayProviderFetchError(
           "GATEWAY_RESPONSE_TOO_LARGE",
           "Gateway provider response exceeds the byte limit",
           { maxResponseBytes, contentLength: rawLength },
         );
+        cancelBodyDetached(response.body, error);
+        throw error;
       }
     }
     if (!response.body) return response;
@@ -95,7 +143,8 @@ export async function boundedGatewayFetch(
           "Gateway provider response exceeds the byte limit",
           { maxResponseBytes, receivedBytes },
         );
-        await reader.cancel(error);
+        cancelReaderDetached(reader, error);
+        reader = undefined;
         throw error;
       }
       chunks.push(next.value);
@@ -115,8 +164,8 @@ export async function boundedGatewayFetch(
     clearTimeout(timer);
     init?.signal?.removeEventListener("abort", onCallerAbort);
     if (controller.signal.aborted && reader) {
-      // error-policy:J6 The request already failed; cancellation only releases the response stream.
-      await reader.cancel(controller.signal.reason).catch(() => undefined);
+      cancelReaderDetached(reader, controller.signal.reason);
+      reader = undefined;
     }
     reader?.releaseLock();
   }

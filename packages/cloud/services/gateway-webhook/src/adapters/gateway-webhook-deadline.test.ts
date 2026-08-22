@@ -88,6 +88,20 @@ describe("twilioGatewayFetch deadline", () => {
     expect(capturedSignal?.aborted).toBe(true);
   });
 
+  test("pre-aborted caller fails before provider dispatch", async () => {
+    const caller = new AbortController();
+    caller.abort(new DOMException("cancelled before dispatch", "AbortError"));
+    const fetchMock = mock(async () => new Response());
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      twilioGatewayFetch("https://api.twilio.com/test", {
+        signal: caller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("deadline rejects even when fetch ignores its signal", async () => {
     globalThis.fetch = mock(
       () => new Promise<Response>(() => undefined),
@@ -245,5 +259,47 @@ describe("blooioGatewayFetch deadline", () => {
     ).rejects.toMatchObject({
       code: "GATEWAY_RESPONSE_TOO_LARGE",
     });
+  });
+
+  test("never-settling reader cancellation cannot delay the size error", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array(64 * 1024 + 1));
+            },
+            cancel() {
+              return new Promise<void>(() => undefined);
+            },
+          }),
+        ),
+    ) as unknown as typeof fetch;
+
+    const outcome = await Promise.race([
+      blooioGatewayFetch("https://api.blooio.com/v4/messages").catch(
+        (error: unknown) => error,
+      ),
+      Bun.sleep(50).then(() => "hung"),
+    ]);
+    expect(outcome).toMatchObject({ code: "GATEWAY_RESPONSE_TOO_LARGE" });
+  });
+
+  test("rejecting body cancellation cannot replace the content-length error", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            cancel() {
+              return Promise.reject(new Error("hostile cancel"));
+            },
+          }),
+          { headers: { "content-length": "65537" } },
+        ),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      blooioGatewayFetch("https://api.blooio.com/v4/messages"),
+    ).rejects.toMatchObject({ code: "GATEWAY_RESPONSE_TOO_LARGE" });
   });
 });

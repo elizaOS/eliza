@@ -79,6 +79,20 @@ describe("messageRouterTwilioFetch deadline", () => {
     await expect(promise).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  test("pre-aborted caller fails before Twilio dispatch", async () => {
+    const caller = new AbortController();
+    caller.abort(new DOMException("cancelled before dispatch", "AbortError"));
+    const fetchMock = mock(async () => new Response());
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      messageRouterTwilioFetch("https://api.twilio.com/test", {
+        signal: caller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("deadline rejects when fetch ignores its signal", async () => {
     globalThis.fetch = mock(
       () => new Promise<Response>(() => undefined),
@@ -113,5 +127,29 @@ describe("messageRouterTwilioFetch deadline", () => {
       code: "INVALID_MESSAGE_ROUTER_TWILIO_TIMEOUT",
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("hostile cancellation cannot delay the typed size failure", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array(64 * 1024 + 1));
+            },
+            cancel() {
+              return new Promise<void>(() => undefined);
+            },
+          }),
+        ),
+    ) as unknown as typeof fetch;
+
+    const outcome = await Promise.race([
+      messageRouterTwilioFetch("https://api.twilio.com/test").catch((error: unknown) => error),
+      Bun.sleep(50).then(() => "hung"),
+    ]);
+    expect(outcome).toMatchObject({
+      code: "MESSAGE_ROUTER_TWILIO_RESPONSE_TOO_LARGE",
+    });
   });
 });
