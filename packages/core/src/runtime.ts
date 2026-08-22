@@ -91,6 +91,11 @@ import {
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
 import { stringifyForModel } from "./runtime/json-output";
+import {
+	buildModelInputBudget,
+	DEFAULT_INPUT_RESERVE_TOKENS,
+	withModelInputBudgetProviderOptions,
+} from "./runtime/model-input-budget";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
@@ -348,6 +353,7 @@ import {
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
+import { resolveSetting } from "./utils/resolve-setting";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import {
 	ResponseSkeletonStreamExtractor,
@@ -6432,6 +6438,97 @@ export class AgentRuntime implements IAgentRuntime {
 		return systemPrompt;
 	}
 
+	/** Resolve the concrete provider model id used for final-wire budgeting. */
+	private resolveRegistrationModelName(
+		metadata: ModelRegistrationMetadata | undefined,
+	): string | undefined {
+		if (!metadata) return undefined;
+		if (
+			typeof metadata.displayModel === "string" &&
+			metadata.displayModel.trim()
+		) {
+			return metadata.displayModel.trim();
+		}
+		for (const setting of [
+			...(metadata.displayModelSettings ?? []),
+			metadata.displayModelSetting,
+		]) {
+			if (!setting) continue;
+			const value = resolveSetting(
+				{ getSetting: (key: string) => this.getSetting(key) },
+				setting,
+			);
+			if (value?.trim()) return value.trim();
+		}
+		if (
+			typeof metadata.displayModelDefault === "string" &&
+			metadata.displayModelDefault.trim()
+		) {
+			return metadata.displayModelDefault.trim();
+		}
+		return undefined;
+	}
+
+	/**
+	 * Budget the exact text-generation request after runtime transforms and
+	 * pre-model hooks. UTF-8 bytes are a conservative token upper bound, so the
+	 * runtime can reject before a provider handler without silently rewriting
+	 * any model-facing field.
+	 */
+	private buildFinalModelInputBudget(
+		params: unknown,
+		metadata: ModelRegistrationMetadata | undefined,
+	) {
+		const record = isPlainObject(params)
+			? (params as Record<string, unknown>)
+			: {};
+		const contextWindowTokens =
+			typeof metadata?.contextWindowTokens === "number" &&
+			Number.isFinite(metadata.contextWindowTokens)
+				? Math.max(1, Math.floor(metadata.contextWindowTokens))
+				: undefined;
+		const requestedOutputTokens =
+			typeof record.maxTokens === "number" &&
+			Number.isFinite(record.maxTokens) &&
+			record.maxTokens > 0
+				? Math.floor(record.maxTokens)
+				: 0;
+		const requestedModelName =
+			typeof record.model === "string" && record.model.trim()
+				? record.model.trim()
+				: undefined;
+		return buildModelInputBudget({
+			messages: Array.isArray(record.messages)
+				? (record.messages as GenerateTextParams["messages"])
+				: undefined,
+			promptSegments: Array.isArray(record.promptSegments)
+				? (record.promptSegments as GenerateTextParams["promptSegments"])
+				: undefined,
+			tools: Array.isArray(record.tools)
+				? (record.tools as GenerateTextParams["tools"])
+				: undefined,
+			system: record.system,
+			prompt: record.prompt,
+			input: record.input,
+			responseSchema: record.responseSchema,
+			responseFormat: record.responseFormat,
+			grammar: record.grammar,
+			responseSkeleton: record.responseSkeleton,
+			prefill: record.prefill,
+			modelName:
+				requestedModelName ??
+				(contextWindowTokens === undefined
+					? this.resolveRegistrationModelName(metadata)
+					: undefined),
+			...(contextWindowTokens ? { contextWindowTokens } : {}),
+			reserveTokens: Math.max(
+				DEFAULT_INPUT_RESERVE_TOKENS,
+				requestedOutputTokens,
+			),
+			estimationMode: "utf8-upper-bound",
+		});
+	}
+
 	private getFirstUserPromptFromMessages(
 		messages: unknown,
 	): string | undefined {
@@ -6758,6 +6855,7 @@ export class AgentRuntime implements IAgentRuntime {
 			// live mutable object, not this placeholder.
 			let recordingStateRef: { recorded: boolean } = { recorded: false };
 			let attemptPreparationFailed = false;
+			let inputBudgetRejected = false;
 			let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined;
 
 			try {
@@ -7226,10 +7324,73 @@ export class AgentRuntime implements IAgentRuntime {
 						: null) ||
 					(typeof modelParams === "string" ? modelParams : null);
 
-				// Capture the post-hook params + prompt into the outer scope so the
-				// catch block's failed-attempt trajectory record can see them.
+				// Capture the exact post-hook request before the final budget check so a
+				// typed zero-dispatch rejection records the same complete request.
 				modelParamsRef = modelParams;
 				promptContentRef = promptContent;
+
+				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
+					const finalBudget = this.buildFinalModelInputBudget(
+						modelParams,
+						resolvedModel.metadata,
+					);
+					if (isPlainObject(modelParams)) {
+						const paramsRecord = modelParams as Record<string, unknown>;
+						const providerOptions = isPlainObject(paramsRecord.providerOptions)
+							? (paramsRecord.providerOptions as Record<string, unknown>)
+							: {};
+						const budgetedProviderOptions = withModelInputBudgetProviderOptions(
+							providerOptions,
+							finalBudget,
+						);
+						Object.assign(providerOptions, budgetedProviderOptions);
+						paramsRecord.providerOptions = providerOptions;
+					}
+					if (finalBudget.shouldReject) {
+						const paramsRecord = isPlainObject(modelParams)
+							? (modelParams as Record<string, unknown>)
+							: {};
+						const modelName =
+							typeof paramsRecord.model === "string" &&
+							paramsRecord.model.trim()
+								? paramsRecord.model.trim()
+								: this.resolveRegistrationModelName(resolvedModel.metadata);
+						const error = new ElizaError(
+							"Complete model input exceeds the resolved provider context budget",
+							{
+								code: "MODEL_INPUT_OVER_BUDGET",
+								context: {
+									requestedModelType: String(modelType),
+									resolvedModelType: String(resolvedModelKey),
+									provider: resolvedModel.provider ?? "unknown",
+									modelName: modelName ?? "unknown",
+									estimatedInputTokens: finalBudget.estimatedInputTokens,
+									dispatchThresholdTokens: finalBudget.dispatchThresholdTokens,
+									contextWindowTokens: finalBudget.contextWindowTokens,
+									reserveTokens: finalBudget.reserveTokens,
+									estimationMode: finalBudget.estimationMode,
+									contextWindowSource: finalBudget.resolvedModelKey
+										? "model-lookup"
+										: resolvedModel.metadata?.contextWindowTokens !== undefined
+											? "registration-metadata"
+											: "runtime-default",
+								},
+							},
+						);
+						inputBudgetRejected = true;
+						modelParamsRef = modelParams;
+						await this.recordFailedModelTrajectory({
+							modelType: String(modelType),
+							resolvedModelKey: String(resolvedModelKey),
+							provider: resolvedModel.provider,
+							modelParams,
+							promptContent,
+							error,
+							elapsedTime: Date.now() - preprocessingStartedAt,
+						});
+						throw error;
+					}
+				}
 
 				if (!binaryModels.includes(resolvedModelKey)) {
 					this.logger.trace(
@@ -7737,6 +7898,25 @@ export class AgentRuntime implements IAgentRuntime {
 					streamCallbackResult.error !== error
 				) {
 					throw streamCallbackResult.error;
+				}
+				if (inputBudgetRejected) {
+					recordInferenceSpan(
+						`model-preprocess:${String(modelType)}`,
+						Date.now() - preprocessingStartedAt,
+						{ ...attemptMeta, outcome: "error" },
+					);
+					lastModelError = error;
+					const nextAfterRejection = resolvedModels[resolvedIndex + 1];
+					if (requestedProvider !== undefined || !nextAfterRejection) {
+						throw error;
+					}
+					this.logModelProviderFailover({
+						requestedModelKey,
+						failedModel: resolvedModel,
+						nextModel: nextAfterRejection,
+						error,
+					});
+					continue;
 				}
 				if (attemptPreparationFailed) {
 					recordInferenceSpan(

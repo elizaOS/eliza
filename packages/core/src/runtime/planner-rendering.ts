@@ -136,7 +136,10 @@ export function trajectoryStepsToMessages(
 		if (!step.toolCall || !step.result) {
 			continue;
 		}
-		const toolCallId = stableToolCallId(step);
+		const safeArgs =
+			projectCompleteToolArgsForModel(step.toolCall.params ?? {}, redactText) ??
+			{};
+		const toolCallId = stableToolCallId(step, safeArgs);
 
 		const assistantContent: ChatMessageContentPart[] = [];
 		const thought = redactText((step.thought ?? "").trim());
@@ -147,11 +150,7 @@ export function trajectoryStepsToMessages(
 			type: "tool-call",
 			toolCallId,
 			toolName: step.toolCall.name,
-			input:
-				projectCompleteToolArgsForModel(
-					step.toolCall.params ?? {},
-					redactText,
-				) ?? {},
+			input: safeArgs,
 		});
 		messages.push({
 			role: "assistant",
@@ -195,12 +194,15 @@ export function trajectoryStepsToMessages(
  * calls in the same iteration with different args don't collide and so
  * re-rendering the trajectory produces byte-identical assistant turns.
  */
-function stableToolCallId(step: PlannerStep): string {
+function stableToolCallId(
+	step: PlannerStep,
+	projectedParams: Record<string, unknown>,
+): string {
 	if (step.toolCall?.id) {
 		return step.toolCall.id;
 	}
 	const name = step.toolCall?.name ?? "unknown";
-	const argsDigest = shortArgsDigest(step.toolCall?.params);
+	const argsDigest = shortArgsDigest(projectedParams);
 	return `tc-${step.iteration}-${name}-${argsDigest}`;
 }
 

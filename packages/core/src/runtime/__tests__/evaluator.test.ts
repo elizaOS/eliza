@@ -5,6 +5,7 @@
  * canned strings, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
+import { ElizaError } from "../../errors";
 import { evaluatorTemplate } from "../../prompts/evaluator";
 import {
 	type ChatMessage,
@@ -1637,8 +1638,13 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 						},
 						request,
 					);
+					if (completedCalls === 1) {
+						throw new ElizaError("final request exceeds context", {
+							code: "MODEL_INPUT_OVER_BUDGET",
+						});
+					}
 					completedCalls++;
-					return completedCalls === 1 ? truncatedEnvelope : completeEnvelope;
+					return truncatedEnvelope;
 				},
 			);
 			const reportError = vi.fn();
@@ -1678,12 +1684,10 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 				protocolFailure: true,
 			});
 			expect(stages).toHaveLength(2);
-			expect(stages[1]?.model?.response).toContain(
-				"EVALUATOR_INPUT_OVER_BUDGET",
-			);
+			expect(stages[1]?.model?.response).toContain("MODEL_INPUT_OVER_BUDGET");
 			expect(reportError).toHaveBeenCalledWith(
 				"Evaluator.truncationRetry",
-				expect.objectContaining({ code: "EVALUATOR_INPUT_OVER_BUDGET" }),
+				expect.objectContaining({ code: "MODEL_INPUT_OVER_BUDGET" }),
 				expect.objectContaining({ retryMaxTokens: 4096 }),
 			);
 		} finally {

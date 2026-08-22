@@ -1355,8 +1355,23 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
-	it("rejects a complete oversized input before provider dispatch", async () => {
-		const runtime = { useModel: vi.fn() };
+	it("passes complete oversized input to the authoritative runtime boundary", async () => {
+		const runtime = {
+			useModel: vi.fn(async (modelType: string) =>
+				modelType === ModelType.ACTION_PLANNER
+					? JSON.stringify({
+							thought: "answer directly",
+							messageToUser: "complete",
+							toolCalls: [],
+						})
+					: JSON.stringify({
+							success: true,
+							decision: "FINISH",
+							thought: "complete",
+							messageToUser: "complete",
+						}),
+			),
+		};
 		const oversized = `HEAD_SENTINEL${"x".repeat(40_000)}TAIL_SENTINEL`;
 		const recordedStages: RecordedStage[] = [];
 		const recorder: TrajectoryRecorder = {
@@ -1369,38 +1384,44 @@ describe("v5 planner loop skeleton", () => {
 			list: vi.fn(async () => []),
 		};
 
-		await expect(
-			runPlannerLoop({
-				runtime,
-				recorder,
-				trajectoryId: "trj-over-budget",
-				context: {
-					id: "ctx",
-					events: [
-						{
-							id: "oversized-message",
-							type: "message",
-							message: {
-								role: "user",
-								content: { text: oversized },
-							},
+		await runPlannerLoop({
+			runtime,
+			recorder,
+			trajectoryId: "trj-over-budget",
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "oversized-message",
+						type: "message",
+						message: {
+							role: "user",
+							content: { text: oversized },
 						},
-					],
-				},
-				config: {
-					contextWindowTokens: 2_000,
-					compactionReserveTokens: 200,
-				},
-			}),
-		).rejects.toMatchObject({ code: "PLANNER_INPUT_OVER_BUDGET" });
-		expect(runtime.useModel).not.toHaveBeenCalled();
-		const rejected = recordedStages.find((stage) => stage.kind === "planner");
-		const serialized = JSON.stringify(rejected?.model?.messages);
+					},
+				],
+			},
+			config: {
+				contextWindowTokens: 2_000,
+				compactionReserveTokens: 200,
+			},
+		});
+		expect(runtime.useModel).toHaveBeenCalled();
+		const plannerRequest = runtime.useModel.mock.calls.find(
+			([modelType]) => modelType === ModelType.ACTION_PLANNER,
+		)?.[1];
+		const serialized = JSON.stringify(plannerRequest);
 		expect(serialized).toContain("HEAD_SENTINEL");
 		expect(serialized).toContain("TAIL_SENTINEL");
-		expect(rejected?.model?.response).toContain(
-			"code: PLANNER_INPUT_OVER_BUDGET",
-		);
+		expect(
+			(
+				plannerRequest as {
+					providerOptions?: {
+						eliza?: { modelInputBudget?: { shouldReject?: boolean } };
+					};
+				}
+			).providerOptions?.eliza?.modelInputBudget?.shouldReject,
+		).toBe(true);
 	});
 
 	it("retries premature terminal output when a non-terminal tool call is required", async () => {

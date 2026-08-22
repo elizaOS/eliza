@@ -351,7 +351,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 				trajectory: makeTrajectory([makeStep(1, "small result")]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 		expect(backupHandler).not.toHaveBeenCalled();
 	});
 
@@ -466,7 +466,15 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 
 	it("rejects one over-window result instead of changing it", async () => {
 		const hugeResult = "😀".repeat(2_500_000); // 5,000,000 UTF-16 code units
-		const { runtime, captured } = makeRuntime();
+		const handler = vi.fn(async () => ENVELOPE);
+		const runtime = new AgentRuntime({
+			character: { name: "EvaluatorAgent", bio: "test" } as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "large", 10, {
+			displayModel: "claude-sonnet-5",
+		});
 
 		await expect(
 			runEvaluator({
@@ -475,9 +483,8 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 				trajectory: makeTrajectory([makeStep(1, hugeResult)]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
-		expect(runtime.useModel).not.toHaveBeenCalled();
-		expect(captured).toEqual([]);
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
+		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("preserves every result when the complete request fits", async () => {
@@ -531,11 +538,19 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 });
 
 describe("runEvaluator — bottom-out guard (stable segments alone over budget)", () => {
-	it("fails fast with EVALUATOR_INPUT_OVER_BUDGET instead of calling the provider", async () => {
+	it("fails at the final runtime boundary instead of calling the provider", async () => {
 		// Overflow in the stable prefix makes the complete request impossible to
 		// dispatch, so the evaluator must throw a typed error before useModel.
 		const hugeStablePrompt = "characterization ".repeat(2_000_000);
-		const { runtime } = makeRuntime();
+		const handler = vi.fn(async () => ENVELOPE);
+		const runtime = new AgentRuntime({
+			character: { name: "EvaluatorAgent", bio: "test" } as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "small", 10, {
+			displayModel: "llama3.1-8b",
+		});
 
 		await expect(
 			runEvaluator({
@@ -549,24 +564,26 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 				trajectory: makeTrajectory([makeStep(1, "small result")]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
-		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("records structured-parameter budget failure before making a provider call", async () => {
 		const recorded: Array<{ stage: Record<string, unknown> }> = [];
-		const { runtime } = makeRuntime();
-		const runtimeWithRecorder = {
-			...runtime,
-			getModelRegistrations: () => [
-				{
-					modelType: "RESPONSE_HANDLER",
-					provider: "small",
-					metadata: { displayModel: "llama3.1-8b" },
-				},
-			],
-		};
+		const handler = vi.fn(async () => ENVELOPE);
+		const runtimeWithRecorder = new AgentRuntime({
+			character: { name: "EvaluatorAgent", bio: "test" } as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		runtimeWithRecorder.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			handler,
+			"small",
+			10,
+			{ displayModel: "llama3.1-8b" },
+		);
 		const oversizedParams = { payload: "p".repeat(200_000) };
 		await expect(
 			runEvaluator({
@@ -592,15 +609,15 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 				]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
-		expect(runtimeWithRecorder.useModel).not.toHaveBeenCalled();
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
+		expect(handler).not.toHaveBeenCalled();
 		expect(recorded).toHaveLength(1);
 		expect(recorded[0]?.stage).toMatchObject({
 			kind: "evaluation",
 			evaluation: { protocolFailure: true },
 		});
 		expect(String(recorded[0]?.stage.model?.response)).toContain(
-			"EVALUATOR_INPUT_OVER_BUDGET",
+			"MODEL_INPUT_OVER_BUDGET",
 		);
 	});
 });
@@ -710,7 +727,7 @@ describe("runEvaluator — failover continues past an over-budget mid-chain regi
 				trajectory: makeTrajectory([makeStep(1, "small result")]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
 		expect(smallHandler).not.toHaveBeenCalled();
 		expect(recordedStages).toHaveLength(1);
@@ -721,7 +738,7 @@ describe("runEvaluator — failover continues past an over-budget mid-chain regi
 		};
 		expect(stage.kind).toBe("evaluation");
 		expect(stage.evaluation.protocolFailure).toBe(true);
-		expect(stage.model.response).toContain("EVALUATOR_INPUT_OVER_BUDGET");
+		expect(stage.model.response).toContain("MODEL_INPUT_OVER_BUDGET");
 		// The stage must attribute the failure to the registration that
 		// rejected the input, not the preflight provider selection.
 		expect(stage.model.provider).toBe("small");

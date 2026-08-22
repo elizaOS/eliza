@@ -2610,41 +2610,6 @@ async function callPlanner(params: {
 		modelParams.providerOptions,
 		modelInputBudget,
 	);
-	if (modelInputBudget.shouldReject) {
-		const error = new ElizaError(
-			"Planner model input exceeds the resolved context budget",
-			{
-				code: "PLANNER_INPUT_OVER_BUDGET",
-				context: {
-					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
-					dispatchThresholdTokens: modelInputBudget.dispatchThresholdTokens,
-					contextWindowTokens: modelInputBudget.contextWindowTokens,
-				},
-			},
-		);
-		await recordPlannerStage({
-			runtime: params.runtime,
-			recorder: params.recorder,
-			trajectoryId: params.trajectoryId,
-			parentStageId: params.parentStageId,
-			iteration: params.iteration ?? 1,
-			modelType,
-			provider: params.provider,
-			modelParams,
-			raw: `[planner input budget failure] ${error.message} | code: PLANNER_INPUT_OVER_BUDGET`,
-			parsed: {
-				toolCalls: [],
-				raw: { text: "", code: "PLANNER_INPUT_OVER_BUDGET" },
-			},
-			startedAt,
-			endedAt: Date.now(),
-			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-			prefixHash,
-			logger: params.runtime.logger,
-			providerAttributionState: params.providerAttributionState,
-		});
-		throw error;
-	}
 	const streamingContext = getStreamingContext();
 	const raw = await runWithStreamingContext(
 		streamingContext

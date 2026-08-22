@@ -109,6 +109,19 @@ describe("trajectoryStepsToMessages", () => {
 			expect.objectContaining({ code: "MODEL_TOOL_DATA_CYCLE" }),
 		);
 	});
+
+	it("rejects cyclic generated-id arguments with the same typed error", () => {
+		const cyclic: Record<string, unknown> = { sentinel: "ARG_CYCLE" };
+		cyclic.self = cyclic;
+		const step = stepWithResult(1, "cycle");
+		if (!step.toolCall) throw new Error("missing tool call");
+		delete step.toolCall.id;
+		step.toolCall.params = cyclic;
+
+		expect(() => trajectoryStepsToMessages([step])).toThrowError(
+			expect.objectContaining({ code: "MODEL_TOOL_DATA_CYCLE" }),
+		);
+	});
 });
 
 describe("renderActionResultsForModel", () => {

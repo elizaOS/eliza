@@ -88,7 +88,7 @@ describe("TrajectoriesService", () => {
 		await service.stop();
 	});
 
-	it("persists LLM calls with bounded JSON-safe payloads", async () => {
+	it("persists complete JSON-safe model request and response payloads", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000010";
 		const stepId = "00000000-0000-4000-8000-000000000011";
 		const runtimeSecret = "SYNTH-CORE-DB-RUNTIME-SECRET-1111";
@@ -130,6 +130,10 @@ describe("TrajectoriesService", () => {
 			},
 		};
 		circular.self = circular;
+		let deepArgs: Record<string, unknown> = { final: "FINAL-DEPTH-CANARY" };
+		for (let depth = 30; depth >= 1; depth -= 1) {
+			deepArgs = { child: deepArgs };
+		}
 
 		service.logLlmCall({
 			stepId,
@@ -146,16 +150,25 @@ describe("TrajectoriesService", () => {
 				{
 					role: "assistant",
 					content: `--token=${flagCanary} ${runtimeSecret} ${"m".repeat(120_000)}`,
-					circular,
 				},
 			],
-			tools: { circular },
+			tools: [
+				{
+					name: "CANARY_TOOL",
+					description: "complete schema",
+					parameters: {
+						type: "object",
+						properties: { target: { type: "string" } },
+					},
+				},
+			],
 			toolCalls: [
 				{
 					id: "call-1",
 					name: "CANARY_TOOL",
 					args: {
 						target: `https://user:${uriCanary}@synthetic.invalid/`,
+						deep: deepArgs,
 					},
 				},
 			],
@@ -190,9 +203,11 @@ describe("TrajectoriesService", () => {
 		expect(persistedJson).not.toContain(flagCanary);
 		expect(persistedJson).not.toContain(uriCanary);
 		const call = persisted[0].llmCalls[0];
-		expect(call.messages[0].content).toMatch(/\.{3}\[truncated\]$/);
-		expect(call.tools.circular.self).toBe("[REDACTED]");
-		expect(call.tools.circular.fn).toBe("[Function toolHandler]");
+		expect(call.messages[0].content).toContain("m".repeat(120_000));
+		expect(call.tools[0].name).toBe("CANARY_TOOL");
+		expect(JSON.stringify(call.toolCalls[0].args.deep)).toContain(
+			"FINAL-DEPTH-CANARY",
+		);
 		expect(call.providerMetadata.self).toBe("[REDACTED]");
 		expect(call.providerOrder).toEqual(["CHARACTER"]);
 		expect(call.runId).toBe("run-identity-1");
@@ -572,7 +587,8 @@ describe("TrajectoriesService", () => {
 		expect(afterOverflow[0].reward).toBe(0);
 		expect(afterOverflow[0].done).toBe(false);
 		expect(Array.isArray(afterOverflow[0].providerAccesses)).toBe(true);
-		expect(afterOverflow[0].metadata.truncatedLlmCalls).toBe(1);
+		expect(afterOverflow[0].llmCalls).toHaveLength(2);
+		expect(afterOverflow[0].metadata?.truncatedLlmCalls).toBeUndefined();
 
 		// The row must still accept captures — pre-fix this write was lost to
 		// TRAJECTORY_ROW_INVALID and the trajectory could never terminalize.
@@ -580,10 +596,10 @@ describe("TrajectoriesService", () => {
 		await service.flushWriteQueue(trajectoryId);
 
 		const persisted = JSON.parse(row.steps_json);
-		expect(persisted[0].llmCalls).toHaveLength(2);
+		expect(persisted[0].llmCalls).toHaveLength(3);
 		expect(persisted[0].reward).toBe(0);
 		expect(persisted[0].done).toBe(false);
-		expect(persisted[0].metadata.truncatedLlmCalls).toBe(1);
+		expect(persisted[0].metadata?.truncatedLlmCalls).toBeUndefined();
 	});
 
 	it("reads legacy rows whose steps lost trailing keys to budget truncation", async () => {

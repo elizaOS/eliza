@@ -231,11 +231,22 @@ function projectJsonSchemaDefinitionMap(
 	redactText: ToolDiagnosticTextRedactor,
 	seen: WeakSet<object>,
 	depth: number,
+	complete = false,
 ): unknown {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return projectValue(value, redactText, seen, depth);
+		return complete
+			? projectCompleteModelValue(value, redactText, seen)
+			: projectValue(value, redactText, seen, depth);
 	}
-	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+	if (seen.has(value)) {
+		if (complete) {
+			throw new ElizaError("Model-call schema contains a cycle", {
+				code: "MODEL_TOOL_DATA_CYCLE",
+			});
+		}
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
 		return TOOL_DIAGNOSTIC_MASK;
 	}
 	seen.add(value);
@@ -251,7 +262,13 @@ function projectJsonSchemaDefinitionMap(
 				Array.isArray(propertySchema) &&
 				propertySchema.every((name) => typeof name === "string")
 					? propertySchema
-					: projectJsonSchemaNode(propertySchema, redactText, seen, depth + 1);
+					: projectJsonSchemaNode(
+							propertySchema,
+							redactText,
+							seen,
+							depth + 1,
+							complete,
+						);
 			if (next !== propertySchema) changed = true;
 			projected[propertyName] = next;
 		}
@@ -266,11 +283,22 @@ function projectJsonSchemaNode(
 	redactText: ToolDiagnosticTextRedactor,
 	seen: WeakSet<object>,
 	depth: number,
+	complete = false,
 ): unknown {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return projectValue(value, redactText, seen, depth);
+		return complete
+			? projectCompleteModelValue(value, redactText, seen)
+			: projectValue(value, redactText, seen, depth);
 	}
-	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+	if (seen.has(value)) {
+		if (complete) {
+			throw new ElizaError("Model-call schema contains a cycle", {
+				code: "MODEL_TOOL_DATA_CYCLE",
+			});
+		}
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
 		return TOOL_DIAGNOSTIC_MASK;
 	}
 	seen.add(value);
@@ -285,21 +313,28 @@ function projectJsonSchemaNode(
 					redactText,
 					seen,
 					depth + 1,
+					complete,
 				);
 			} else if (JSON_SCHEMA_SINGLE_SCHEMA_KEYS.has(key)) {
 				if (key === "items" && Array.isArray(entry)) {
 					next = entry.map((item) =>
-						projectJsonSchemaNode(item, redactText, seen, depth + 1),
+						projectJsonSchemaNode(item, redactText, seen, depth + 1, complete),
 					);
 				} else {
-					next = projectJsonSchemaNode(entry, redactText, seen, depth + 1);
+					next = projectJsonSchemaNode(
+						entry,
+						redactText,
+						seen,
+						depth + 1,
+						complete,
+					);
 				}
 			} else if (
 				JSON_SCHEMA_SCHEMA_ARRAY_KEYS.has(key) &&
 				Array.isArray(entry)
 			) {
 				next = entry.map((item) =>
-					projectJsonSchemaNode(item, redactText, seen, depth + 1),
+					projectJsonSchemaNode(item, redactText, seen, depth + 1, complete),
 				);
 			} else if (
 				key === "required" &&
@@ -327,7 +362,9 @@ function projectJsonSchemaNode(
 			} else if (isSensitiveKeyName(key)) {
 				next = TOOL_DIAGNOSTIC_MASK;
 			} else {
-				next = projectValue(entry, redactText, seen, depth + 1);
+				next = complete
+					? projectCompleteModelValue(entry, redactText, seen)
+					: projectValue(entry, redactText, seen, depth + 1);
 			}
 			if (next !== entry) changed = true;
 			projected[key] = next;
@@ -343,9 +380,18 @@ function projectModelToolDefinition(
 	redactText: ToolDiagnosticTextRedactor,
 	seen: WeakSet<object>,
 	depth: number,
+	complete = false,
 ): unknown {
 	if (Array.isArray(value)) {
-		if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+		if (seen.has(value)) {
+			if (complete) {
+				throw new ElizaError("Model-call tool schema contains a cycle", {
+					code: "MODEL_TOOL_DATA_CYCLE",
+				});
+			}
+			return TOOL_DIAGNOSTIC_MASK;
+		}
+		if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
 			return TOOL_DIAGNOSTIC_MASK;
 		}
 		seen.add(value);
@@ -357,6 +403,7 @@ function projectModelToolDefinition(
 					redactText,
 					seen,
 					depth + 1,
+					complete,
 				);
 				if (next !== entry) changed = true;
 				return next;
@@ -367,9 +414,19 @@ function projectModelToolDefinition(
 		}
 	}
 	if (!value || typeof value !== "object") {
-		return projectValue(value, redactText, seen, depth);
+		return complete
+			? projectCompleteModelValue(value, redactText, seen)
+			: projectValue(value, redactText, seen, depth);
 	}
-	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+	if (seen.has(value)) {
+		if (complete) {
+			throw new ElizaError("Model-call tool schema contains a cycle", {
+				code: "MODEL_TOOL_DATA_CYCLE",
+			});
+		}
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	if (!complete && depth >= MAX_TOOL_DIAGNOSTIC_DEPTH) {
 		return TOOL_DIAGNOSTIC_MASK;
 	}
 	seen.add(value);
@@ -379,15 +436,29 @@ function projectModelToolDefinition(
 		for (const [key, entry] of Object.entries(value)) {
 			let next: unknown;
 			if (TOOL_DEFINITION_SCHEMA_KEYS.has(key)) {
-				next = projectJsonSchemaNode(entry, redactText, seen, depth + 1);
+				next = projectJsonSchemaNode(
+					entry,
+					redactText,
+					seen,
+					depth + 1,
+					complete,
+				);
 			} else if (key === "function") {
 				// OpenAI-style definitions nest name/description/parameters below a
 				// `function` object instead of exposing the neutral ToolDefinition.
-				next = projectModelToolDefinition(entry, redactText, seen, depth + 1);
+				next = projectModelToolDefinition(
+					entry,
+					redactText,
+					seen,
+					depth + 1,
+					complete,
+				);
 			} else if (isSensitiveKeyName(key)) {
 				next = TOOL_DIAGNOSTIC_MASK;
 			} else {
-				next = projectValue(entry, redactText, seen, depth + 1);
+				next = complete
+					? projectCompleteModelValue(entry, redactText, seen)
+					: projectValue(entry, redactText, seen, depth + 1);
 			}
 			if (next !== entry) changed = true;
 			projected[key] = next;
@@ -478,6 +549,109 @@ export function projectModelCallDiagnosticValue(
 			if (next === projected) next = { ...projected };
 			next.tools = projectedTools;
 		}
+	}
+	return next;
+}
+
+/**
+ * Protected-trajectory projection for a complete model call. Unlike the log
+ * diagnostic variant, this never replaces deep subtrees; it preserves schema
+ * identifiers, redacts credentials, and rejects cycles explicitly.
+ */
+export function projectCompleteModelCallValue(
+	value: Record<string, unknown>,
+	redactText: ToolDiagnosticTextRedactor,
+): Record<string, unknown> {
+	const projected = projectCompleteToolValueForModel(
+		value,
+		redactText,
+	) as Record<string, unknown>;
+	let next = projected;
+	for (const schemaKey of ["responseSchema", "response_schema"] as const) {
+		if (!(schemaKey in value)) continue;
+		const projectedSchema = projectJsonSchemaNode(
+			value[schemaKey],
+			redactText,
+			new WeakSet<object>(),
+			0,
+			true,
+		);
+		if (projectedSchema !== projected[schemaKey]) {
+			if (next === projected) next = { ...projected };
+			next[schemaKey] = projectedSchema;
+		}
+	}
+	if ("tools" in value) {
+		const projectedTools = projectModelToolDefinition(
+			value.tools,
+			redactText,
+			new WeakSet<object>(),
+			0,
+			true,
+		);
+		if (projectedTools !== projected.tools) {
+			if (next === projected) next = { ...projected };
+			next.tools = projectedTools;
+		}
+	}
+	return next;
+}
+
+/**
+ * Projects a protected trajectory call without treating runtime-only
+ * diagnostics as model input. The request/response fields are complete and
+ * cycle-rejecting; unrelated metadata keeps the bounded diagnostic policy so
+ * an AbortSignal, callback, or adapter cycle cannot erase a valid model call.
+ */
+export function projectProtectedModelCallValue(
+	value: Record<string, unknown>,
+	redactText: ToolDiagnosticTextRedactor,
+): Record<string, unknown> {
+	const diagnostic = projectModelCallDiagnosticValue(value, redactText);
+	let next = diagnostic;
+	const replace = (key: string, projected: unknown): void => {
+		if (projected === diagnostic[key]) return;
+		if (next === diagnostic) next = { ...diagnostic };
+		next[key] = projected;
+	};
+	for (const key of [
+		"systemPrompt",
+		"userPrompt",
+		"prompt",
+		"messages",
+		"toolChoice",
+		"providerOptions",
+		"response",
+		"toolCalls",
+		"reasoning",
+	]) {
+		if (!(key in value)) continue;
+		replace(key, projectCompleteToolValueForModel(value[key], redactText));
+	}
+	for (const schemaKey of ["responseSchema", "response_schema"] as const) {
+		if (!(schemaKey in value)) continue;
+		replace(
+			schemaKey,
+			projectJsonSchemaNode(
+				value[schemaKey],
+				redactText,
+				new WeakSet<object>(),
+				0,
+				true,
+			),
+		);
+	}
+	if ("tools" in value) {
+		replace(
+			"tools",
+			projectModelToolDefinition(
+				value.tools,
+				redactText,
+				new WeakSet<object>(),
+				0,
+				true,
+			),
+		);
 	}
 	return next;
 }
