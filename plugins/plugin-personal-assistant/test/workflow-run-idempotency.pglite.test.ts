@@ -295,6 +295,56 @@ describe("LifeOps workflow-run idempotency storage (real PGlite)", () => {
     );
   });
 
+  it("rejects a marked lookalike index owned by another table", async () => {
+    await pg.exec(`
+      CREATE TABLE app_lifeops.workflow_run_index_decoy (
+        agent_id TEXT NOT NULL,
+        workflow_id TEXT NOT NULL,
+        idempotency_key TEXT
+      );
+      CREATE UNIQUE INDEX idx_life_workflow_runs_idempotency
+        ON app_lifeops.workflow_run_index_decoy
+          (agent_id, workflow_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL;
+      COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
+        IS 'elizaos:life_workflow_runs:idempotency-backfill:v1';
+    `);
+
+    await expect(
+      repository.claimWorkflowRun(
+        runningRun({ id: "unfenced", idempotencyKey: "shared-key" }),
+      ),
+    ).rejects.toThrow(/idempotency_key|column/i);
+
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+
+    const indexes = await pg.query<{
+      indexname: string;
+      tablename: string;
+    }>(`
+      SELECT indexname, tablename
+        FROM pg_indexes
+       WHERE schemaname = 'app_lifeops'
+         AND indexname = 'idx_life_workflow_runs_idempotency'
+    `);
+    expect(indexes.rows).toEqual([
+      {
+        indexname: "idx_life_workflow_runs_idempotency",
+        tablename: "life_workflow_runs",
+      },
+    ]);
+
+    const outcomes = await Promise.all([
+      repository.claimWorkflowRun(
+        runningRun({ id: "winner-a", idempotencyKey: "shared-key" }),
+      ),
+      repository.claimWorkflowRun(
+        runningRun({ id: "winner-b", idempotencyKey: "shared-key" }),
+      ),
+    ]);
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+  });
+
   it("elects one concurrent keyed claimant, scopes keys, and CAS-finalizes only the winner", async () => {
     await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
     const contenders = Array.from({ length: 8 }, (_, index) =>

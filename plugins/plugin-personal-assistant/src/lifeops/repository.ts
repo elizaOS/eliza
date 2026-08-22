@@ -2708,8 +2708,10 @@ export class LifeOpsRepository {
            ON namespace.oid = index_class.relnamespace
          JOIN pg_catalog.pg_index AS index_metadata
            ON index_metadata.indexrelid = index_class.oid
-        WHERE namespace.nspname = 'app_lifeops'
+         WHERE namespace.nspname = 'app_lifeops'
           AND index_class.relname = 'idx_life_workflow_runs_idempotency'
+          AND index_metadata.indrelid =
+                'app_lifeops.life_workflow_runs'::regclass
           AND index_metadata.indisunique
           AND index_metadata.indisvalid
           AND index_metadata.indisready
