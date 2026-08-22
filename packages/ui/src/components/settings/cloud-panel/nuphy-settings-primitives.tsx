@@ -15,7 +15,6 @@ import {
   Button as NuphyButton,
   Input as NuphyInput,
   SettingRow as NuphySettingRow,
-  SettingsGroup as NuphySettingsGroup,
   Slider as NuphySlider,
   Segmented,
   SelectPill,
@@ -25,8 +24,38 @@ import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { cn } from "../../../lib/utils";
 
-// Re-export the group and stack so sections can import everything from here.
-export { NuphySettingsGroup as SettingsGroup };
+interface SettingsGroupProps {
+  children: React.ReactNode;
+  title?: string;
+  footer?: string;
+  className?: string;
+}
+
+/** Groups settings rows with one consistent inset hairline between siblings. */
+export function SettingsGroup({
+  children,
+  title,
+  footer,
+  className,
+}: SettingsGroupProps) {
+  return (
+    <section className={className}>
+      {title ? (
+        <h2 className="mb-3 px-1 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h2>
+      ) : null}
+      <div className="rounded-2xl border border-hairline bg-surface px-5 py-1">
+        <div className="nuphy-settings-group-rows">{children}</div>
+      </div>
+      {footer ? (
+        <p className="mt-2 px-1 text-pretty text-[12px] leading-5 text-muted-foreground">
+          {footer}
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
 export function SettingsStack({
   className,

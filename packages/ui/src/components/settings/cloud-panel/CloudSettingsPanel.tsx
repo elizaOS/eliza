@@ -2,7 +2,7 @@
  * Cloud settings panel — the main shell for the cloud-only desktop settings.
  *
  * Replaces the legacy registry-driven SettingsView for cloud-only builds.
- * Uses the real native titlebar (no HTML window controls) and a NuPhy UI
+ * Uses an invisible top drag strip (no HTML window controls) and a NuPhy UI
  * sidebar + content layout. Responsive: below 700px collapses to a hub list
  * with a back button.
  */
@@ -23,6 +23,17 @@ import {
   groupedCloudPanelSections,
   resolveCloudPanelSection,
 } from "./cloud-panel-sections";
+
+/** Transparent client-area titlebar used to move the detached native window. */
+export function CloudSettingsDragStrip() {
+  return (
+    <div
+      aria-hidden="true"
+      className="nuphy-window-drag-strip"
+      data-window-titlebar="true"
+    />
+  );
+}
 
 function SectionLoading({ label }: { label: string }) {
   return (
@@ -156,6 +167,9 @@ export function CloudSettingsPanel() {
     readCloudPanelHash(),
   );
   const isWide = useMediaQuery("(min-width: 700px)");
+  const [narrowView, setNarrowView] = useState<"hub" | "section">(() =>
+    typeof window !== "undefined" && window.location.hash ? "section" : "hub",
+  );
   const [isDark, setIsDark] = useState(false);
 
   // Sync with URL hash.
@@ -187,6 +201,7 @@ export function CloudSettingsPanel() {
   const handleSelect = (id: string) => {
     const resolved = resolveCloudPanelSection(id);
     setSectionId(resolved);
+    setNarrowView("section");
     navigateCloudPanel(resolved);
   };
 
@@ -195,7 +210,7 @@ export function CloudSettingsPanel() {
 
   // Narrow layout: hub list → back-button subview.
   if (!isWide) {
-    const showHub = sectionId === "" || section === undefined;
+    const showHub = narrowView === "hub";
     return (
       <div
         className={cn(
@@ -203,13 +218,14 @@ export function CloudSettingsPanel() {
           "flex h-full flex-col bg-[var(--canvas)] pt-8",
         )}
       >
+        <CloudSettingsDragStrip />
         {showHub ? (
           <HubList activeSection={sectionId} onSelect={handleSelect} />
         ) : (
           <div className="flex flex-1 flex-col overflow-hidden">
             <button
               type="button"
-              onClick={() => handleSelect("general")}
+              onClick={() => setNarrowView("hub")}
               className="flex items-center gap-1.5 border-b border-[var(--hairline)] px-4 py-2.5 text-sm text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -227,6 +243,7 @@ export function CloudSettingsPanel() {
   // Wide layout: sidebar + content side-by-side.
   return (
     <div className={cn(scopeClass, "flex h-full bg-[var(--canvas)]")}>
+      <CloudSettingsDragStrip />
       <CloudSettingsSidebar activeSection={sectionId} onSelect={handleSelect} />
       <main className="flex-1 overflow-y-auto bg-[var(--canvas)] bg-dotted pt-8">
         <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12">

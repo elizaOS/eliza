@@ -92,9 +92,11 @@ export function normalizeCloudConnectorConnectionState(
 export function useCloudConnectorConnections({
   kind,
   statusPath,
+  refreshVersion = 0,
 }: {
   kind: CloudConnectorStatusKind;
   statusPath: string;
+  refreshVersion?: number;
 }) {
   const [state, setState] = useState<CloudConnectorConnectionState>({
     connected: false,
@@ -104,6 +106,9 @@ export function useCloudConnectorConnections({
   });
 
   const refetch = useCallback(async () => {
+    // Successful connector mutations advance this version so the callback
+    // identity changes and the owning effect reconciles with backend state.
+    void refreshVersion;
     setState((previous) => ({ ...previous, loading: true, error: null }));
     try {
       const response = await api<
@@ -121,7 +126,7 @@ export function useCloudConnectorConnections({
         error: apiErrorMessage(error),
       });
     }
-  }, [kind, statusPath]);
+  }, [kind, refreshVersion, statusPath]);
 
   useEffect(() => {
     void refetch();

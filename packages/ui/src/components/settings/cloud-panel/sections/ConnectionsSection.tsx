@@ -80,10 +80,12 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 
 function ConnectorRow({
   connector,
+  refreshVersion,
   onConnect,
   onDisconnect,
 }: {
   connector: ConnectorConfig;
+  refreshVersion: number;
   onConnect: (connector: ConnectorConfig) => void;
   onDisconnect: (connector: ConnectorConfig) => void;
 }) {
@@ -95,6 +97,7 @@ function ConnectorRow({
           ? "discord"
           : "credential",
     statusPath: connector.statusPath,
+    refreshVersion,
   });
 
   return (
@@ -564,12 +567,14 @@ function ConnectorGroup({
   title,
   connectors,
   footer,
+  refreshVersion,
   onConnect,
   onDisconnect,
 }: {
   title: string;
   connectors: ConnectorConfig[];
   footer: string;
+  refreshVersion: number;
   onConnect: (c: ConnectorConfig) => void;
   onDisconnect: (c: ConnectorConfig) => void;
 }) {
@@ -579,6 +584,7 @@ function ConnectorGroup({
         <ConnectorRow
           key={connector.id}
           connector={connector}
+          refreshVersion={refreshVersion}
           onConnect={onConnect}
           onDisconnect={onDisconnect}
         />
@@ -609,6 +615,7 @@ export function ConnectionsSection() {
   );
   const [disconnectTarget, setDisconnectTarget] =
     useState<ConnectorConfig | null>(null);
+  const [connectorRefreshVersion, setConnectorRefreshVersion] = useState(0);
   const [mcpAddOpen, setMcpAddOpen] = useState(false);
   const [mcpRemoveTarget, setMcpRemoveTarget] = useState<McpEntry | null>(null);
   const {
@@ -652,6 +659,7 @@ export function ConnectionsSection() {
       } else {
         await api(disconnectTarget.disconnectPath, { method: "DELETE" });
       }
+      setConnectorRefreshVersion((version) => version + 1);
     } catch {
       // Error is transient — the row's status refetch will show the real state.
     }
@@ -685,6 +693,7 @@ export function ConnectionsSection() {
       <ConnectorGroup
         title="Messaging"
         connectors={MESSAGING}
+        refreshVersion={connectorRefreshVersion}
         footer="Link Eliza to messaging channels for two-way conversation."
         onConnect={setConnectTarget}
         onDisconnect={setDisconnectTarget}
@@ -692,6 +701,7 @@ export function ConnectionsSection() {
       <ConnectorGroup
         title="Productivity"
         connectors={PRODUCTIVITY}
+        refreshVersion={connectorRefreshVersion}
         footer="Integrate with productivity suites for calendar, mail, and docs."
         onConnect={setConnectTarget}
         onDisconnect={setDisconnectTarget}
@@ -735,9 +745,7 @@ export function ConnectionsSection() {
         onClose={() => setConnectTarget(null)}
         onSuccess={() => {
           setConnectTarget(null);
-          // The ConnectorRow's own status hook will refetch on remount.
-          // Force a remount by toggling the key is unnecessary — each row
-          // polls its own status independently.
+          setConnectorRefreshVersion((version) => version + 1);
         }}
       />
       <DisconnectDialog

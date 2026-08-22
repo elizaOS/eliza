@@ -179,6 +179,19 @@
 .nuphy-scope .focus-visible\:ring-offset-2:focus-visible {
   --tw-ring-offset-width: 2px;
 }
-.nuphy-scope .divide-hairline > :not([hidden]) ~ :not([hidden]) {
-  border-color: var(--hairline);
+.nuphy-scope .nuphy-settings-group-rows > :not([hidden]) + :not([hidden]) {
+  border-top: 1px solid var(--hairline);
+}
+
+/* Detached settings windows are standalone shells, so they do not inherit the
+   main window's whole-body drag fallback. Keep a clear client-area strip above
+   the sidebar and content that Chromium/CEF can hand to the native window. */
+.nuphy-scope .nuphy-window-drag-strip {
+  -webkit-app-region: drag;
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 32px;
 }
