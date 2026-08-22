@@ -84,6 +84,7 @@ import { tierActionResults } from "../runtime/action-tiering";
 import {
 	applyAddressedTo,
 	messageAddressedToOtherParticipant,
+	messageVocativelyAddressesOtherParticipant,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
@@ -477,12 +478,23 @@ function textContainsAgentName(
 		return false;
 	}
 
-	return names.some((name) => {
+	// A multi-word agent name is addressed by any of its distinctive tokens:
+	// "remilio nubilio" answers to "nubilio …" (live 2026-08-22: the full-phrase
+	// match classified "nubilio whats the setting …" as ambient, arming the
+	// engagement gate on a message that literally opens with the agent's name).
+	// Tokens under 4 characters stay excluded — short fragments ("al", "bot")
+	// would match ordinary prose.
+	const candidates = new Set<string>();
+	for (const name of names) {
 		const candidate = name?.trim();
-		if (!candidate) {
-			return false;
+		if (!candidate) continue;
+		candidates.add(candidate);
+		for (const token of candidate.split(/\s+/u)) {
+			if (token.length >= 4) candidates.add(token);
 		}
+	}
 
+	return [...candidates].some((candidate) => {
 		const pattern = new RegExp(
 			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
 			"iu",
@@ -8710,33 +8722,50 @@ export async function runV5MessageRuntimeStage1(args: {
 		// transient failure must NOT convert a normal turn into silence — it
 		// just means "don't suppress", matching the conservative contract and
 		// the fire-and-forget addressee handling above.
+		// Candidate suppression first (corroborated Stage-1 tag, or — when the
+		// tag is empty — the structural vocative check: a message that OPENS by
+		// addressing another participant by name, "hey eliza", is evidence the
+		// gate verifies itself, closing the fail-open interjection path, live
+		// 2026-08-22). The personality reply_gate override is consulted LAST and
+		// only on a positive, so turns with no gating signal never pay the
+		// personality-store lookup.
+		const suppressionCandidate = ambientTurn
+			? await (addressedTo.length > 0
+					? messageAddressedToOtherParticipant({
+							runtime: args.runtime,
+							message: args.message,
+							addressedTo,
+						})
+					: messageVocativelyAddressesOtherParticipant({
+							runtime: args.runtime,
+							message: args.message,
+						})
+				).catch((error) => {
+					// error-policy:J4 an unresolved addressee must not suppress a
+					// response, but the failed room lookup remains observable.
+					// (optional-call: fail-open diagnostics on partial runtimes.)
+					args.runtime.reportError?.(
+						"MessageService.resolveAddressees",
+						error,
+						{
+							roomId: args.message.roomId,
+						},
+					);
+					return false;
+				})
+			: false;
 		const addressedToOtherParticipant =
-			ambientTurn &&
-			addressedTo.length > 0 &&
-			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
-				? await messageAddressedToOtherParticipant({
-						runtime: args.runtime,
-						message: args.message,
-						addressedTo,
-					}).catch((error) => {
-						// error-policy:J4 an unresolved addressee must not suppress a
-						// response, but the failed room lookup remains observable.
-						args.runtime.reportError(
-							"MessageService.resolveAddressees",
-							error,
-							{
-								roomId: args.message.roomId,
-							},
-						);
-						return false;
-					})
-				: false;
+			suppressionCandidate &&
+			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always";
 		if (addressedToOtherParticipant) {
-			args.runtime.logger?.debug?.(
+			// warn, not debug: this gate converts a turn into TOTAL silence, and a
+			// silent non-delivery must be diagnosable from the server log (live
+			// 2026-08-22: four suppressed replies left zero log evidence).
+			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
 					roomId: args.message.roomId,
-					addressedToCount: addressedTo.length,
+					addressedTo,
 				},
 				"[message] Turn addressed to another participant — engagement gate ignores it",
 			);
