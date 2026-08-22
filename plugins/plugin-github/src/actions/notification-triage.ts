@@ -52,10 +52,6 @@ const SUBJECT_TYPE_SCORES: Record<string, number> = {
 
 const NOTIFICATION_TRIAGE_LIMIT = 25;
 const NOTIFICATION_PAGE_SIZE = 50;
-// Bounds the unread-notification traversal against an inbox that never
-// returns a short page (misbehaving server, or a genuinely huge backlog):
-// 20 pages * 50/page is 1000 notifications, generous for a triage pass.
-const NOTIFICATION_MAX_PAGES = 20;
 
 export interface TriagedNotification {
   id: string;
@@ -73,13 +69,13 @@ interface UnreadNotificationFetchResult {
   totalUnreadIsLowerBound: boolean;
 }
 
-/** Fetch bounded unread pages and report when the collected total is partial. */
+/** Fetch every unread page, deduplicating rows shifted by a mutating inbox. */
 export async function fetchAllUnreadNotifications(
   activity: GitHubOctokitClient["activity"],
 ): Promise<UnreadNotificationFetchResult> {
   const notifications: GitHubNotificationSummary[] = [];
   const seenIds = new Set<string>();
-  for (let page = 1; page <= NOTIFICATION_MAX_PAGES; page += 1) {
+  for (let page = 1; ; page += 1) {
     const response = await activity.listNotificationsForAuthenticatedUser({
       all: false,
       per_page: NOTIFICATION_PAGE_SIZE,
@@ -96,11 +92,6 @@ export async function fetchAllUnreadNotifications(
       return { notifications, totalUnreadIsLowerBound: false };
     }
   }
-  logger.warn(
-    { pages: NOTIFICATION_MAX_PAGES, collected: notifications.length },
-    "[GitHub:GITHUB_NOTIFICATION_TRIAGE] unread notifications truncated at page cap",
-  );
-  return { notifications, totalUnreadIsLowerBound: true };
 }
 
 function scoreNotification(params: {

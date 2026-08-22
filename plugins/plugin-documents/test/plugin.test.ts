@@ -19,10 +19,8 @@ describe("documentsPlugin manifest", () => {
     expect("ownerDocumentsAction" in documentExports).toBe(false);
   });
 
-  it("registers document routes and the documents view", () => {
+  it("registers document routes without duplicating the built-in Knowledge view", () => {
     expect(documentsPlugin.routes?.length).toBeGreaterThan(0);
-    expect(documentsPlugin.views?.map((view) => view.id)).toEqual([
-      "documents",
-    ]);
+    expect(documentsPlugin.views).toBeUndefined();
   });
 });

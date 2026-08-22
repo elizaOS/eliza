@@ -94,9 +94,9 @@ bun run verify
 
 ## Provider/model disclosure
 
-Read the exact provider and exact model ID from the active runtime or tool
-configuration. Add the following footer to every issue body, issue comment, PR
-body, PR comment, and GitHub review body written during the contribution:
+Provider/model disclosure is optional. It must never block a contribution or
+cause the agent to request runtime metadata. When concrete values are already
+available and voluntary disclosure is desired, use this footer:
 
 ```text
 AI provider/model: <provider> / <exact-model-id>
@@ -107,17 +107,12 @@ Attribution status: self-reported
 <!-- eliza-computer-attribution:v1 {"provider":"<provider-slug>","model":"<exact-model-id>","client":"<client>","skill_revision":"elizaOS/eliza@<full-commit-sha>:packages/skills/skills/contribute-to-eliza"} -->
 ```
 
-The marker must be valid JSON. Normalize only its provider to the lowercase
-slug; model, client, and skill revision match the visible values exactly. The
-signed lane tag is required immediately before the marker. Do not infer,
-abbreviate, or use placeholders. If identity cannot be established, do not
-post. Never include hidden reasoning, prompts, session identifiers, or secrets.
-Complete issue-template provenance rows once, then append only the signed lane
-and marker at the end. Complete the PR template's stable attribution rows as
-well as appending the footer. Resolve the full skill revision from a checksum-matched
-`PROVENANCE.json`, a clean checkout containing the bundled skill, or the hosted
-skill manifest plus raw-source checksum. A dirty, missing, or mismatched
-provenance source is a stop condition, not permission to guess a revision.
+The marker is valid JSON. Normalize only its provider to the lowercase slug;
+model, client, and skill revision match the visible values exactly. The signed
+lane tag immediately precedes the marker. Do not infer, abbreviate, use
+placeholders, or include hidden reasoning, prompts, session identifiers, or
+secrets. If identity or a checksum-backed skill revision is unavailable, omit
+the footer and continue the contribution.
 
 ## Useful read-only inspection
 

@@ -21,9 +21,6 @@ import {
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 } from "./relevance.ts";
 
-const MAX_REGISTRY_PROVIDER_ITEMS = 25;
-const MAX_REGISTRY_TAGS = 6;
-
 const REGISTRY_PROVIDER_KEYWORDS = buildProviderKeywords(
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 	COMMON_CONNECTOR_KEYWORDS,
@@ -109,14 +106,8 @@ export const registryPluginsProvider: Provider & {
 		}
 
 		const installedPlugins = await pluginManagerService.listInstalledPlugins();
-		const visibleRegistryPlugins = registryPlugins.slice(
-			0,
-			MAX_REGISTRY_PROVIDER_ITEMS,
-		);
-		const visibleInstalledPlugins = installedPlugins.slice(
-			0,
-			MAX_REGISTRY_PROVIDER_ITEMS,
-		);
+		const visibleRegistryPlugins = registryPlugins;
+		const visibleInstalledPlugins = installedPlugins;
 
 		let text = "";
 
@@ -129,7 +120,7 @@ export const registryPluginsProvider: Provider & {
 			for (const plugin of visibleRegistryPlugins) {
 				text += `- **${plugin.name}**: ${plugin.description || "No description"}\n`;
 				if (plugin.tags && plugin.tags.length > 0) {
-					text += `  Tags: ${plugin.tags.slice(0, MAX_REGISTRY_TAGS).join(", ")}\n`;
+					text += `  Tags: ${plugin.tags.join(", ")}\n`;
 				}
 			}
 		}
@@ -148,14 +139,12 @@ export const registryPluginsProvider: Provider & {
 					name: p.name,
 					description: p.description,
 					repository: p.repository,
-					tags: (p.tags || []).slice(0, MAX_REGISTRY_TAGS),
+					tags: p.tags || [],
 					version: p.latestVersion,
 				})),
 				installedPlugins: visibleInstalledPlugins,
 				registryError,
-				truncated:
-					registryPlugins.length > visibleRegistryPlugins.length ||
-					installedPlugins.length > visibleInstalledPlugins.length,
+				truncated: false,
 			},
 			values: {
 				availableCount: registryPlugins.length,

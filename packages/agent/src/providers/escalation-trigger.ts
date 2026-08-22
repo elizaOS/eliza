@@ -40,12 +40,6 @@ interface Trigger {
 /** Hours of owner inactivity before suggesting a check-in. */
 const OWNER_INACTIVE_HOURS = 24;
 
-/** Max rooms to scan when checking owner recency. */
-const MAX_OWNER_ROOMS = 5;
-
-/** Max messages to fetch per room when checking owner recency. */
-const MESSAGES_PER_ROOM = 3;
-
 const URGENCY_ORDER: Record<Urgency, number> = {
   high: 3,
   medium: 2,
@@ -73,13 +67,9 @@ async function findLastOwnerMessageTimestamp(
   const roomIds = await runtime.getRoomsForParticipant(ownerEntityId as UUID);
   if (roomIds.length === 0) return 0;
 
-  // Limit scan breadth
-  const targetRoomIds = roomIds.slice(0, MAX_OWNER_ROOMS) as UUID[];
-
   const memories = await runtime.getMemoriesByRoomIds({
     tableName: "messages",
-    roomIds: targetRoomIds,
-    limit: MESSAGES_PER_ROOM * MAX_OWNER_ROOMS,
+    roomIds: roomIds as UUID[],
   });
 
   let latest = 0;

@@ -5,6 +5,8 @@
  *   GET    /api/lifeops/scheduled-tasks                              list
  *   POST   /api/lifeops/scheduled-tasks                              schedule
  *   POST   /api/lifeops/scheduled-tasks/:id/<verb>                   apply verb
+ *       (`edit` requires a JSON body with at least one field — body-less
+ *       and `{}` both 400; `snooze` requires minutes or untilIso)
  *   GET    /api/lifeops/scheduled-tasks/:id/history                  user-visible history
  *   GET    /api/lifeops/dev/scheduled-tasks/:id/log                  dev log (loopback)
  *   GET    /api/lifeops/dev/scheduling/registries                    spine registry health (loopback)
@@ -395,8 +397,12 @@ async function handleScheduledTasks(
       (req.headers["content-length"] as string | undefined) ?? "0",
       10,
     );
+    const hasTransferEncoding = req.headers["transfer-encoding"] !== undefined;
     let body: Record<string, unknown> = {};
-    if (Number.isFinite(contentLength) && contentLength > 0) {
+    if (
+      (Number.isFinite(contentLength) && contentLength > 0) ||
+      hasTransferEncoding
+    ) {
       const parsed = await readJsonBody<Record<string, unknown>>(req, res);
       if (parsed === null) return true;
       body = parsed;
@@ -523,7 +529,23 @@ async function handleScheduledTasks(
             error(res, "invalid edit payload: request body is required", 400);
             return true;
           }
-          const raw = (body ?? {}) as Record<string, unknown>;
+          const raw = body as Record<string, unknown>;
+          // An explicit `{}` is schema-valid but carries no edit. Letting it
+          // through makes `applyEdit` `Object.assign` an empty patch,
+          // re-persist the row, and append a spurious `edited {keys:[]}`
+          // state-log row — the same durable-no-op #23917 removed for the
+          // body-less case (and what the typed UI client transmits when
+          // `applyScheduledTask(id, "edit")` is called without a payload, since
+          // it sends `JSON.stringify(payload ?? {})`). Reject it with the
+          // sibling 400 instead.
+          if (Object.keys(raw).length === 0) {
+            error(
+              res,
+              "invalid edit payload: request body must include at least one field",
+              400,
+            );
+            return true;
+          }
           // Refuse the read-only keys up front, with the runner's own message
           // and the 409 the boundary already documents for a read-only field.
           // Zod reports neither: `.strict()` skips `__proto__`, and the two

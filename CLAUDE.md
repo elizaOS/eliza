@@ -207,6 +207,40 @@ an application host to reach a core abstraction.
 
 ## Engineering conventions
 
+### Prompt integrity: never discard model context
+
+Prompt construction, provider output, action/tool results, conversation
+history, evaluator input, and model output must remain complete. Never use a
+character/token cap, prefix or suffix slice, item-count limit, rolling buffer,
+summary, compaction, or "most recent" window to make model-facing content fit.
+Large supported contexts are a product capability; silently changing them
+creates non-local reasoning failures that are much harder to diagnose than an
+explicit error.
+
+Training and evaluation have the same invariant: teacher prompts, recorded
+requests/responses, and tokenizer inputs must not be compacted or truncated.
+A trainer with a smaller sequence boundary must reject the complete row before
+training; it must never teach from a prefix or suffix that was not the recorded
+model call.
+
+When an external model, platform, parser, transport, or resource boundary has
+a real hard limit, preserve one of these contracts instead:
+
+- reject before dispatch with a typed, actionable size error and no partial
+  payload;
+- split into lossless, ordered chunks and prove reassembly in tests; or
+- paginate only when the caller explicitly requested that pagination and the
+  model receives the continuation contract.
+
+UI previews, log summaries, cryptographic abbreviations, and protocol fields
+with externally mandated limits may be bounded only when the complete value is
+not later presented as model context. Name these surfaces as previews or
+summaries, never as the underlying value. Any change that introduces a cap or
+uses `truncate`, `slice`, `substring`, `maxChars`, `maxTokens`, or an item limit
+near a prompt/provider/action-result path must include a regression test proving
+that content is either complete, losslessly reassembled, or explicitly
+rejected. Do not reintroduce conversation compaction or `/compact`.
+
 - Use the structured logger in server/runtime code; never use `console` there.
   Prefix human-readable messages with the owning class or subsystem and attach
   structured context to errors.

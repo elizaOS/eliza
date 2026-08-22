@@ -203,7 +203,7 @@ async function doUpdate(
 
 	return {
 		success: true,
-		text: `Updated experience ${experienceId}: ${truncateWellFormed(toWellFormedUnicode(updated.learning), 120)}`,
+		text: `Updated experience ${experienceId}: ${toWellFormedUnicode(updated.learning)}`,
 		values: { experienceId },
 		data: {
 			actionName: EXPERIENCE,
@@ -266,12 +266,9 @@ async function doDelete(
 		);
 	}
 	if (matched.length > 1) {
-		const lines = matched
-			.slice(0, 10)
-			.map(
-				(e) =>
-					`- ${e.id}: ${truncateWellFormed(toWellFormedUnicode(e.learning), 120)}`,
-			);
+		const lines = matched.map(
+			(e) => `- ${e.id}: ${toWellFormedUnicode(e.learning)}`,
+		);
 		return {
 			success: false,
 			text: [
@@ -292,7 +289,7 @@ async function doDelete(
 	}
 	return {
 		success: true,
-		text: `Deleted experience ${target.id}: ${truncateWellFormed(toWellFormedUnicode(target.learning), 120)}`,
+		text: `Deleted experience ${target.id}: ${toWellFormedUnicode(target.learning)}`,
 		values: { experienceId: target.id },
 		data: {
 			actionName: EXPERIENCE,

@@ -65,7 +65,6 @@ interface BrowserAutofillLoginParameters {
 
 const AUTOFILL_SUBACTION = "autofill-login";
 
-const MAX_BROWSER_TAB_SCAN = 100;
 const MAX_FILL_REASON_CHARS = 240;
 
 let cachedVault: Vault | null = null;
@@ -311,9 +310,7 @@ export async function executeBrowserAutofillLogin(
   }
 
   const tabs = await listBrowserWorkspaceTabs();
-  const matchingTab = tabs
-    .slice(0, MAX_BROWSER_TAB_SCAN)
-    .find((t) => tabUrlMatchesDomain(t.url, domain));
+  const matchingTab = tabs.find((t) => tabUrlMatchesDomain(t.url, domain));
   if (!matchingTab) {
     return {
       text: `No open browser tab on ${domain}. Open one with BROWSER (open/navigate) first.`,

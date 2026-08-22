@@ -56,6 +56,6 @@ Follow package-local capture commands for native platforms. Upload screenshots a
 5. Inspect tests for meaningful assertions and missing negative, role, concurrency, and integration cases.
 6. Verify the branch is current with `origin/develop` and checks were run after sync.
 7. Open every attached trajectory, log, screenshot, recording, and domain artifact. Compare it to the acceptance criteria and look for stale builds, hidden errors, clipped states, or mismatched model identity.
-8. Audit the PR template: every evidence row is concrete or carries an allowed specific `N/A` reason, and the PR body plus every contribution comment discloses the exact provider/model.
+8. Audit the PR template: every evidence row is concrete or carries an allowed specific `N/A` reason. Provider/model disclosure is optional; validate it only when the author supplied it.
 9. Separate blocking findings from optional suggestions. Cite the smallest relevant line range and state the consequence plus a verifiable repair.
 10. Require another reviewer for repairs you authored. Never self-approve or self-merge.

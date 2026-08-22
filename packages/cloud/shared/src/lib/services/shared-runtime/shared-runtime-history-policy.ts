@@ -12,52 +12,9 @@ import type {
 } from "../../../db/schemas/shared-runtime-history";
 import { logger } from "../../utils/logger";
 
-export const MAX_HISTORY_MESSAGES = 40;
-export const MAX_PUBLIC_WEB_GROUNDING_QUERY_BYTES = 512;
-export const MAX_PUBLIC_WEB_GROUNDING_RESULT_BYTES = 4_000;
-export const MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES = 6_000;
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
 export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 5 * 60 * 1_000;
 
-const RECENT_CONTEXT_MESSAGES = 24;
-const MEMORY_HINT =
-  /\b(?:remember|my\s+.+\s+is|i\s+(?:like|love|prefer|hate|need|want|am|have)|allerg|birthday|anniversary|favorite|favourite)\b/i;
-const STOP_WORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "are",
-  "at",
-  "be",
-  "did",
-  "do",
-  "for",
-  "from",
-  "had",
-  "have",
-  "how",
-  "i",
-  "in",
-  "is",
-  "it",
-  "me",
-  "my",
-  "of",
-  "on",
-  "that",
-  "the",
-  "this",
-  "to",
-  "was",
-  "we",
-  "what",
-  "when",
-  "where",
-  "which",
-  "who",
-  "with",
-  "you",
-]);
 const GROUNDING_STOP_WORDS = new Set([
   "and",
   "are",
@@ -84,29 +41,9 @@ const GROUNDING_STOP_WORDS = new Set([
 ]);
 const DEICTIC_GROUNDING_FOLLOW_UP =
   /\b(?:it|that|this|those|these|they|them|result|results|source|sources|find|found|finding|findings|corrected|correction)\b/i;
-const encoder = new TextEncoder();
-
 export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
 
-function truncateUtf8(value: string, maxBytes: number): { value: string; truncated: boolean } {
-  const trimmed = value.trim();
-  if (encoder.encode(trimmed).byteLength <= maxBytes) {
-    return { value: trimmed, truncated: false };
-  }
-  let low = 0;
-  let high = trimmed.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (encoder.encode(trimmed.slice(0, middle)).byteLength <= maxBytes) low = middle;
-    else high = middle - 1;
-  }
-  // Binary search indexes UTF-16 code units. Avoid persisting half of an
-  // astral code point when the byte boundary lands after its high surrogate.
-  const boundary = low > 0 && /[\uD800-\uDBFF]/u.test(trimmed[low - 1]) ? low - 1 : low;
-  return { value: trimmed.slice(0, boundary), truncated: true };
-}
-
-/** Rejects malformed provenance and independently bounds every persisted field. */
+/** Rejects malformed provenance while preserving every validated field. */
 export function parseSharedPublicWebGrounding(
   value: unknown,
 ): SharedRuntimePublicGrounding | undefined {
@@ -119,9 +56,9 @@ export function parseSharedPublicWebGrounding(
     Number.isSafeInteger(candidate.observedAt) &&
     candidate.observedAt >= 0
   ) {
-    const query = truncateUtf8(candidate.query, MAX_PUBLIC_WEB_GROUNDING_QUERY_BYTES);
-    return query.value
-      ? { kind: "web_search_unavailable", query: query.value, observedAt: candidate.observedAt }
+    const query = candidate.query.trim();
+    return query
+      ? { kind: "web_search_unavailable", query, observedAt: candidate.observedAt }
       : undefined;
   }
   if (
@@ -136,16 +73,16 @@ export function parseSharedPublicWebGrounding(
   ) {
     return undefined;
   }
-  const query = truncateUtf8(candidate.query, MAX_PUBLIC_WEB_GROUNDING_QUERY_BYTES);
-  const text = truncateUtf8(candidate.text, MAX_PUBLIC_WEB_GROUNDING_RESULT_BYTES);
-  if (!query.value || !text.value) return undefined;
+  const query = candidate.query.trim();
+  const text = candidate.text.trim();
+  if (!query || !text) return undefined;
   return {
     kind: "web_search",
-    query: query.value,
+    query,
     provider: candidate.provider,
-    text: text.value,
+    text,
     observedAt: candidate.observedAt,
-    truncated: candidate.truncated || query.truncated || text.truncated,
+    truncated: candidate.truncated,
   };
 }
 
@@ -155,20 +92,11 @@ export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGroundi
   if (!parsed || parsed.kind !== "web_search") {
     throw new TypeError("Invalid Shared public web grounding");
   }
-  let text = parsed.text;
-  for (;;) {
-    const encoded = JSON.stringify({
-      type: "untrusted_public_web_search_result",
-      instructionPolicy: "data_only",
-      ...parsed,
-      text,
-      truncated: parsed.truncated || text.length < parsed.text.length,
-    });
-    if (encoder.encode(encoded).byteLength <= MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES) {
-      return encoded;
-    }
-    text = truncateUtf8(text, Math.max(0, encoder.encode(text).byteLength - 256)).value;
-  }
+  return JSON.stringify({
+    type: "untrusted_public_web_search_result",
+    instructionPolicy: "data_only",
+    ...parsed,
+  });
 }
 
 /** Extracts only a successful Worker-safe public read for durable follow-up grounding. */
@@ -452,72 +380,17 @@ function messageIdentity(message: SharedRuntimeHistoryMessageLike): string {
   return message.id ?? `${message.role}\u0000${message.createdAt ?? ""}\u0000${message.content}`;
 }
 
-function meaningfulWords(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .match(/[\p{L}\p{N}]+/gu)
-      ?.filter((word) => word.length > 2 && !STOP_WORDS.has(word)) ?? [],
-  );
-}
-
-function relevanceScore(query: Set<string>, message: SharedRuntimeHistoryMessageLike): number {
-  if (query.size === 0) return 0;
-  const grounding = parseSharedPublicWebGrounding(message.grounding);
-  // A grounded reply is recallable by what it says AND by what it searched for:
-  // scoring the union keeps ordinary lexical recall intact while letting a
-  // follow-up phrased like the original query find the reply that answered it.
-  const words = meaningfulWords(
-    message.role === "assistant" && grounding
-      ? `${message.content}\n${grounding.query}`
-      : message.content,
-  );
-  let overlap = 0;
-  for (const word of query) {
-    if (words.has(word)) overlap += 1;
-  }
-  return overlap * (message.role === "user" ? 2 : 1);
-}
-
 /**
- * Selects a bounded model context from an unbounded personal transcript.
- * Recent turns remain contiguous while older user facts and lexical matches
- * bring their adjacent reply along. The complete transcript stays durable and
- * is returned separately for history views and Dedicated cutover.
+ * Returns every valid message in the durable transcript for model context.
+ * Legacy query and limit parameters remain accepted for API compatibility but
+ * never discard conversation content.
  */
 export function selectSharedRuntimeContext<T extends SharedRuntimeHistoryMessageLike>(
   history: T[],
-  queryText: string,
-  limit = MAX_HISTORY_MESSAGES,
+  _queryText: string,
+  _limit = Number.MAX_SAFE_INTEGER,
 ): T[] {
-  const valid = history.filter(isPersistedMessage);
-  if (valid.length <= limit) return valid;
-
-  const recentStart = Math.max(0, valid.length - Math.min(RECENT_CONTEXT_MESSAGES, limit));
-  const selected = new Set<number>();
-  for (let index = recentStart; index < valid.length; index += 1) selected.add(index);
-
-  const query = meaningfulWords(queryText);
-  const older = valid
-    .slice(0, recentStart)
-    .map((message, index) => ({
-      index,
-      score: relevanceScore(query, message) + (MEMORY_HINT.test(message.content) ? 1 : 0),
-    }))
-    .filter((candidate) => candidate.score > 0)
-    .sort((a, b) => b.score - a.score || b.index - a.index);
-
-  for (const candidate of older) {
-    if (selected.size >= limit) break;
-    selected.add(candidate.index);
-    const adjacent =
-      valid[candidate.index].role === "user" ? candidate.index + 1 : candidate.index - 1;
-    if (adjacent >= 0 && adjacent < recentStart && selected.size < limit) {
-      selected.add(adjacent);
-    }
-  }
-
-  return [...selected].sort((a, b) => a - b).map((index) => valid[index]);
+  return history.filter(isPersistedMessage);
 }
 
 function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
@@ -561,7 +434,7 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
 export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistoryMessageLike>(
   current: T[],
   incoming: T[],
-  limit: number,
+  _limit: number,
 ): T[] {
   const merged = new Map<string, T>();
   for (const message of [...current, ...incoming]) {
@@ -569,5 +442,5 @@ export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistory
     const key = messageIdentity(message);
     merged.set(key, chooseMergedMessage(merged.get(key), message));
   }
-  return [...merged.values()].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)).slice(-limit);
+  return [...merged.values()].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 }

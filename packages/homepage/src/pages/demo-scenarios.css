@@ -208,8 +208,7 @@
 .demo-review-step--place .demo-review-step-body,
 .demo-review-step--task-list .demo-review-step-body,
 .demo-review-step--handoff .demo-review-step-body,
-.demo-review-step--itinerary .demo-review-step-body,
-.demo-review-step--heat-plan .demo-review-step-body {
+.demo-review-step--itinerary .demo-review-step-body {
   width: min(82%, 18rem);
   max-width: none;
 }

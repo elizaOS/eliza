@@ -1,26 +1,22 @@
 /**
  * MCP provider: injects a compact summary of connected servers, their status,
  * tools, and resources into agent context each turn. Reads McpService provider
- * data and caps servers/tools/resources per turn to bound prompt size.
+ * data without dropping any discovered server, tool, or resource.
  */
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { McpService } from "./service";
 import type { McpProviderData } from "./types";
 import { MCP_SERVICE_NAME } from "./types";
 
-const MAX_MCP_SERVERS_IN_STATE = 20;
-const MAX_MCP_TOOLS_PER_SERVER = 30;
-const MAX_MCP_RESOURCES_PER_SERVER = 30;
-
 function formatMcpServersForPrompt(mcp: McpProviderData): string {
-  const entries = Object.entries(mcp).slice(0, MAX_MCP_SERVERS_IN_STATE);
+  const entries = Object.entries(mcp);
   if (entries.length === 0) return "No MCP servers are available.";
 
   return [
     `mcpServers[${Object.keys(mcp).length}, showing ${entries.length}]:`,
     ...entries.flatMap(([serverName, server]) => {
-      const tools = Object.keys(server.tools ?? {}).slice(0, MAX_MCP_TOOLS_PER_SERVER);
-      const resources = Object.keys(server.resources ?? {}).slice(0, MAX_MCP_RESOURCES_PER_SERVER);
+      const tools = Object.keys(server.tools ?? {});
+      const resources = Object.keys(server.resources ?? {});
       return [
         `  - name: ${serverName}`,
         `    status: ${server.status}`,
@@ -53,10 +49,7 @@ export const provider: Provider = {
     try {
       const providerData = mcpService.getProviderData();
       const mcp = providerData.values.mcp;
-      const serverEntries = Object.entries(providerData.data.mcp).slice(
-        0,
-        MAX_MCP_SERVERS_IN_STATE
-      );
+      const serverEntries = Object.entries(providerData.data.mcp);
       return {
         values: { mcpServers: formatMcpServersForPrompt(mcp) },
         data: {

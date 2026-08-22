@@ -172,13 +172,13 @@ describe("preference extractor tolerant parsing", () => {
 		}
 	});
 
-	it("caps directive text at 200 chars in code, not on the wire", () => {
+	it("preserves complete directive text", () => {
 		const parsed = mustParse({
 			ops: [{ op: "add_directive", text: "x".repeat(500), confidence: 0.9 }],
 		});
 		const op = parsed.ops[0];
 		expect(op.op).toBe("add_directive");
-		if (op.op === "add_directive") expect(op.text).toHaveLength(200);
+		if (op.op === "add_directive") expect(op.text).toBe("x".repeat(500));
 	});
 
 	it("returns null only when the envelope itself is not { ops: array }", () => {

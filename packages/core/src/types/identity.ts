@@ -270,6 +270,62 @@ export interface IdentityJournalPage {
 	nextCursor: string | null;
 }
 
+export const IDENTITY_PERSON_LINK_ACTOR_ROLES = ["OWNER", "ADMIN"] as const;
+export type IdentityPersonLinkActorRole =
+	(typeof IDENTITY_PERSON_LINK_ACTOR_ROLES)[number];
+
+/** Immutable evidence that an authenticated operator attested two principals are one person. */
+export interface IdentityPersonLinkAttestation {
+	contractVersion: typeof IDENTITY_AUTHORITY_CONTRACT_VERSION;
+	id: UUID;
+	agentId: UUID;
+	leftPrincipalId: UUID;
+	rightPrincipalId: UUID;
+	actorPrincipalId: UUID;
+	actorRole: IdentityPersonLinkActorRole;
+	authority: "authenticated_private_route";
+	transport: "http" | "in_process";
+	reason: string;
+	idempotencyKey: string;
+	requestDigest: string;
+	expectedGeneration: number;
+	committedGeneration: number;
+	createdAt: string;
+}
+
+export interface AttestIdentityPersonLinkRequest {
+	agentId: UUID;
+	leftPrincipalId: UUID;
+	rightPrincipalId: UUID;
+	actorPrincipalId: UUID;
+	actorRole: IdentityPersonLinkActorRole;
+	authority: "authenticated_private_route";
+	transport: "http" | "in_process";
+	reason: string;
+	idempotencyKey: string;
+	requestDigest: string;
+	expectedGeneration: number;
+}
+
+export interface VerifyIdentityPersonLinkRequest {
+	agentId: UUID;
+	leftPrincipalId: UUID;
+	rightPrincipalId: UUID;
+	expectedGeneration: number;
+}
+
+export type IdentityPersonLinkVerification =
+	| {
+			decision: "attested";
+			generation: number;
+			attestation: IdentityPersonLinkAttestation;
+	  }
+	| {
+			decision: "not_attested";
+			generation: number;
+			reason: "no_attestation";
+	  };
+
 /** Single runtime authority for identity reads and reversible mutations. */
 export abstract class IdentityResolutionService extends Service {
 	static override readonly serviceType = ServiceType.IDENTITY_RESOLUTION;
@@ -303,6 +359,12 @@ export abstract class IdentityResolutionService extends Service {
 	abstract evaluateOwnerBinding(
 		request: EvaluateOwnerBindingRequest,
 	): Promise<OwnerBindingEvaluation>;
+	abstract attestPersonLink(
+		request: AttestIdentityPersonLinkRequest,
+	): Promise<IdentityPersonLinkAttestation>;
+	abstract verifyPersonLink(
+		request: VerifyIdentityPersonLinkRequest,
+	): Promise<IdentityPersonLinkVerification>;
 	abstract proposeMerge(
 		request: ProposeIdentityMergeRequest,
 	): Promise<IdentityMergePlan>;

@@ -246,8 +246,8 @@ export function capabilityWallActionResult(
     clientMessageId?: string;
   } = {},
 ) {
-  const originalIntent = context.originalIntent?.trim().slice(0, 4_000) || undefined;
-  const clientMessageId = context.clientMessageId?.trim().slice(0, 128) || undefined;
+  const originalIntent = context.originalIntent?.trim() || undefined;
+  const clientMessageId = context.clientMessageId?.trim() || undefined;
   const handoff: CapabilityHandoffRequest = {
     version: 1,
     kind: "capability_handoff",

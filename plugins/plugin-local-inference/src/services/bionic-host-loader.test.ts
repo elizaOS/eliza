@@ -165,6 +165,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		const out = await loader.generate({
 			prompt: "what is 2+2?",
 			maxTokens: 32,
+			stopSequences: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 		});
 		expect(out).toBe("Two plus two equals four.");
 		// bundleDir derived from the .../text/<model>.gguf layout.
@@ -172,6 +173,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			op: "generate",
 			prompt: "what is 2+2?",
 			maxTokens: 32,
+			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
 			bundleDir: "/data/x/eliza-1/bundle",
 		});
 	});
@@ -186,6 +188,9 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		await loader.loadModel({ modelPath: "/models/flat-model.gguf" });
 		await loader.generate({ prompt: "hi" });
 		expect((seen as { bundleDir?: string } | null)?.bundleDir).toBe("");
+		expect(
+			(seen as { stopSequences?: string[] } | null)?.stopSequences,
+		).toEqual(["<end_of_turn>", "<start_of_turn>", "<endoftext>"]);
 	});
 
 	it("throws when the host returns ok:false", async () => {
@@ -367,6 +372,7 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 			prompt: "what is 2+2?",
 			maxTokens: 20,
 			maxTokensPerStep: 8,
+			stopSequences: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 			onTextChunk: (chunk) => {
 				chunks.push(chunk);
 			},
@@ -378,6 +384,7 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 			prompt: "what is 2+2?",
 			maxTokens: 20,
 			streamStep: 8,
+			stopSequences: ["<end_of_turn>"],
 			bundleDir: "/data/x/eliza-1/bundle",
 		});
 	});

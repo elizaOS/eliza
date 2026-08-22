@@ -36,7 +36,7 @@ import { asUUID, type UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { Service, ServiceType } from "../types/service.ts";
 
-/** Max notifications retained per agent in the inbox (oldest evicted). */
+/** Max notifications retained per agent in the inbox. */
 const MAX_NOTIFICATIONS = 300;
 
 const RECOVERY_BASE_DELAY_MS = 1_000;
@@ -158,6 +158,19 @@ export class NotificationService extends Service {
 
 	/** Newest-last ordered list (mirrors the persisted store). */
 	private notifications: AgentNotification[] = [];
+	private notificationWriteTail: Promise<void> = Promise.resolve();
+
+	/** Serialize every mutation of the shared inbox and its durable snapshot. */
+	private enqueueWrite<T>(write: () => Promise<T>): Promise<T> {
+		const operation = this.notificationWriteTail.then(write, write);
+		// error-policy:J5 the caller observes `operation`; the tail converts either
+		// outcome to completion so a rejected write cannot poison later mutations.
+		this.notificationWriteTail = operation.then(
+			() => undefined,
+			() => undefined,
+		);
+		return operation;
+	}
 
 	/** Resolved cache key (scoped per agent). */
 	private get cacheKey(): string {
@@ -302,22 +315,91 @@ export class NotificationService extends Service {
 			this.cacheKey,
 		);
 		if (Array.isArray(stored)) {
-			const now = Date.now();
 			this.notifications = stored
 				.filter((n) => n && typeof n.id === "string" && n.title)
-				.filter((n) => !isExpired(n, now))
 				.slice(-MAX_NOTIFICATIONS);
 		}
 	}
 
 	private async persist(): Promise<void> {
-		await this.runtime.setCache(this.cacheKey, this.notifications);
+		if (!(await this.runtime.setCache(this.cacheKey, this.notifications))) {
+			throw new Error(
+				"[NotificationService] notification cache persistence was rejected",
+			);
+		}
+	}
+
+	private async reconcilePersistFailure(
+		previous: AgentNotification[],
+	): Promise<void> {
+		const stored = await this.runtime.getCache<AgentNotification[]>(
+			this.cacheKey,
+		);
+		this.notifications = Array.isArray(stored)
+			? stored
+					.filter(
+						(entry) => entry && typeof entry.id === "string" && entry.title,
+					)
+					.slice(-MAX_NOTIFICATIONS)
+			: previous;
+	}
+
+	private async failAfterMutationPersistence(
+		previous: AgentNotification[],
+		cause: unknown,
+	): Promise<never> {
+		try {
+			await this.reconcilePersistFailure(previous);
+		} catch (reconcileCause) {
+			throw new AggregateError(
+				[cause, reconcileCause],
+				"notification persistence and reconciliation failed",
+			);
+		}
+		throw cause;
 	}
 
 	/**
 	 * Create, persist, and broadcast a notification. Returns the stamped record.
 	 */
 	async notify(input: NotificationInput): Promise<AgentNotification> {
+		return this.enqueueWrite(() => this.notifySerialized(input, false, true));
+	}
+
+	/**
+	 * Persist without evicting an unrelated row. Exact import owners use this
+	 * boundary so capacity races fail and compensate instead of losing history.
+	 */
+	async notifyWithoutEviction(
+		input: NotificationInput,
+	): Promise<AgentNotification> {
+		return this.enqueueWrite(() => this.notifySerialized(input, true, true));
+	}
+
+	/**
+	 * Verify or replace one grouped projection within the inbox write queue.
+	 * This is the quiescent seam for durable owners that retry after an earlier
+	 * fire-and-forget projection may still be settling.
+	 */
+	async ensureGroupedNotification(
+		input: NotificationInput & { groupKey: string },
+		isExact: (notification: AgentNotification) => boolean,
+	): Promise<AgentNotification> {
+		return this.enqueueWrite(async () => {
+			const grouped = this.notifications.filter(
+				(entry) => entry.groupKey === input.groupKey,
+			);
+			if (grouped.length === 1 && isExact(grouped[0])) return grouped[0];
+			return this.notifySerialized(input, true, false);
+		});
+	}
+
+	private async notifySerialized(
+		input: NotificationInput,
+		rejectWhenFull: boolean,
+		coalesceGroup: boolean,
+	): Promise<AgentNotification> {
+		const previousNotifications = [...this.notifications];
 		const title = input.title?.trim();
 		if (!title) {
 			throw new Error("[NotificationService] notification.title is required");
@@ -349,7 +431,10 @@ export class NotificationService extends Service {
 				(n) => n.groupKey !== groupKey,
 			);
 		}
-		const data = this.resolveCoalescedData(input.data, superseded);
+		const data = this.resolveCoalescedData(
+			input.data,
+			coalesceGroup ? superseded : undefined,
+		);
 
 		// §C.1 Silent-tier default expiry: a `low` (silent) notification with no
 		// producer-set expiry ages out after 24h so the inbox self-cleans.
@@ -377,15 +462,35 @@ export class NotificationService extends Service {
 			agentId: input.agentId ?? (this.runtime.agentId as UUID),
 		};
 
+		if (rejectWhenFull && this.notifications.length >= MAX_NOTIFICATIONS) {
+			this.notifications = previousNotifications;
+			throw new Error(
+				"[NotificationService] notification inbox capacity is exhausted",
+			);
+		}
 		this.notifications.push(notification);
 		if (this.notifications.length > MAX_NOTIFICATIONS) {
 			this.notifications = this.notifications.slice(-MAX_NOTIFICATIONS);
 		}
 
-		// Fan out live before awaiting the DB write so clients aren't gated on disk.
+		try {
+			await this.persist();
+		} catch (error) {
+			try {
+				await this.reconcilePersistFailure(previousNotifications);
+			} catch (reconcileError) {
+				// error-policy:J2 preserve both the write ambiguity and failed
+				// authoritative reconciliation for the receipt-owning caller.
+				throw new AggregateError(
+					[error, reconcileError],
+					"notification persistence and reconciliation failed",
+				);
+			}
+			throw error;
+		}
+		// Durable inbox state is authoritative. Fan out only after persistence so
+		// a failed write cannot expose a ghost success to live clients.
 		this.broadcast(notification);
-
-		await this.persist();
 		logger.debug(
 			{
 				src: "service:notification",
@@ -411,12 +516,24 @@ export class NotificationService extends Service {
 			notification,
 			unreadCount: this.getUnreadCount(),
 		};
-		bus.emit({
-			runId: notification.id,
-			stream: NOTIFICATION_STREAM,
-			data,
-			agentId: notification.agentId,
-		});
+		try {
+			bus.emit({
+				runId: notification.id,
+				stream: NOTIFICATION_STREAM,
+				data,
+				agentId: notification.agentId,
+			});
+		} catch (error) {
+			// error-policy:J7 durable notification success must not be reversed by
+			// a diagnostic/live-fanout observer failure.
+			this.runtime.reportError("NotificationService.broadcast", error, {
+				notificationId: notification.id,
+			});
+			logger.warn(
+				{ error, notificationId: notification.id },
+				"[NotificationService] live fan-out failed after durable persistence",
+			);
+		}
 	}
 
 	/** List notifications, newest first, with optional filtering. */
@@ -435,6 +552,25 @@ export class NotificationService extends Service {
 			result = result.slice(0, query.limit);
 		}
 		return result;
+	}
+
+	/**
+	 * Enumerate the persisted inbox without applying wall-clock expiry filters.
+	 * Lifecycle owners use this boundary for exact cleanup and residue proofs;
+	 * user-facing inbox reads should continue to call {@link list}.
+	 */
+	listIncludingExpired(): AgentNotification[] {
+		return [...this.notifications].reverse();
+	}
+
+	/** Capacity available after expired rows are pruned by the next write. */
+	getAvailableCapacity(): number {
+		const now = Date.now();
+		return Math.max(
+			0,
+			MAX_NOTIFICATIONS -
+				this.notifications.filter((entry) => !isExpired(entry, now)).length,
+		);
 	}
 
 	getUnreadCount(): number {
@@ -473,12 +609,23 @@ export class NotificationService extends Service {
 
 	/** Mark one notification read. Returns true if it existed and changed. */
 	async markRead(id: string): Promise<boolean> {
+		return this.enqueueWrite(() => this.markReadSerialized(id));
+	}
+
+	private async markReadSerialized(id: string): Promise<boolean> {
 		const notification = this.notifications.find((n) => n.id === id);
 		if (!notification || notification.readAt) {
 			return false;
 		}
-		notification.readAt = Date.now();
-		await this.persist();
+		const previous = this.notifications;
+		this.notifications = this.notifications.map((entry) =>
+			entry.id === id ? { ...entry, readAt: Date.now() } : entry,
+		);
+		try {
+			await this.persist();
+		} catch (error) {
+			return this.failAfterMutationPersistence(previous, error);
+		}
 		return true;
 	}
 
@@ -491,19 +638,30 @@ export class NotificationService extends Service {
 	 * inbox (§C.2): read state styles rows but does not move them.
 	 */
 	async markReadByGroupKey(groupKey: string): Promise<number> {
+		return this.enqueueWrite(() => this.markReadByGroupKeySerialized(groupKey));
+	}
+
+	private async markReadByGroupKeySerialized(
+		groupKey: string,
+	): Promise<number> {
 		if (!groupKey) {
 			return 0;
 		}
 		const now = Date.now();
+		const previous = this.notifications;
 		const changedNotifications: AgentNotification[] = [];
-		for (const n of this.notifications) {
-			if (n.groupKey === groupKey && !n.readAt) {
-				n.readAt = now;
-				changedNotifications.push(n);
-			}
-		}
+		this.notifications = this.notifications.map((entry) => {
+			if (entry.groupKey !== groupKey || entry.readAt) return entry;
+			const changed = { ...entry, readAt: now };
+			changedNotifications.push(changed);
+			return changed;
+		});
 		if (changedNotifications.length > 0) {
-			await this.persist();
+			try {
+				await this.persist();
+			} catch (error) {
+				return this.failAfterMutationPersistence(previous, error);
+			}
 			for (const n of changedNotifications) {
 				// Push a non-interruptive update so open clients clear unread state without
 				// re-toasting/re-alerting the notification that just became read.
@@ -515,35 +673,59 @@ export class NotificationService extends Service {
 
 	/** Mark every notification read. Returns the number changed. */
 	async markAllRead(): Promise<number> {
+		return this.enqueueWrite(() => this.markAllReadSerialized());
+	}
+
+	private async markAllReadSerialized(): Promise<number> {
 		let changed = 0;
 		const now = Date.now();
-		for (const n of this.notifications) {
-			if (!n.readAt) {
-				n.readAt = now;
-				changed++;
-			}
-		}
+		const previous = this.notifications;
+		this.notifications = this.notifications.map((entry) => {
+			if (entry.readAt) return entry;
+			changed++;
+			return { ...entry, readAt: now };
+		});
 		if (changed > 0) {
-			await this.persist();
+			try {
+				await this.persist();
+			} catch (error) {
+				return this.failAfterMutationPersistence(previous, error);
+			}
 		}
 		return changed;
 	}
 
 	/** Remove one notification. Returns true if it existed. */
 	async remove(id: string): Promise<boolean> {
+		return this.enqueueWrite(() => this.removeSerialized(id));
+	}
+
+	private async removeSerialized(id: string): Promise<boolean> {
+		const previous = this.notifications;
 		const before = this.notifications.length;
 		this.notifications = this.notifications.filter((n) => n.id !== id);
 		const removed = this.notifications.length !== before;
 		if (removed) {
-			await this.persist();
+			try {
+				await this.persist();
+			} catch (error) {
+				return this.failAfterMutationPersistence(previous, error);
+			}
 		}
 		return removed;
 	}
 
 	/** Clear the entire inbox. */
 	async clear(): Promise<void> {
-		this.notifications = [];
-		await this.persist();
+		return this.enqueueWrite(async () => {
+			const previous = this.notifications;
+			this.notifications = [];
+			try {
+				await this.persist();
+			} catch (error) {
+				return this.failAfterMutationPersistence(previous, error);
+			}
+		});
 	}
 }
 

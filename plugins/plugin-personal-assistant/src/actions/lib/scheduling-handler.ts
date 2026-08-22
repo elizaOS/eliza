@@ -35,7 +35,6 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
@@ -354,7 +353,7 @@ function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
 }
 
 function cleanBundledCounterparty(value: string): string {
-  return truncateWellFormed(toWellFormedUnicode(value), 1024)
+  return toWellFormedUnicode(value)
     .replace(/^(?:with|for|and|also|maybe|please)\s{1,32}/iu, "")
     .replace(/\s{1,32}(?:at|if|while|during|thanks|please)\b.{0,1024}$/iu, "")
     .replace(/[.?!,;:]+$/u, "")
@@ -364,10 +363,7 @@ function cleanBundledCounterparty(value: string): string {
 export function extractBundledMeetingCounterparties(
   messageText: string,
 ): string[] {
-  const trimmed = truncateWellFormed(
-    toWellFormedUnicode(messageText.trim()),
-    4096,
-  );
+  const trimmed = toWellFormedUnicode(messageText.trim());
   if (trimmed.length === 0) {
     return [];
   }
@@ -385,12 +381,11 @@ export function extractBundledMeetingCounterparties(
       continue;
     }
     const counterparties = raw
-      .slice(0, 2048)
       .split(/\s{0,32}(?:,|&|\band\b)\s{0,32}/iu)
       .map(cleanBundledCounterparty)
       .filter((value) => value.length > 0);
     if (counterparties.length >= 2) {
-      return counterparties.slice(0, 4);
+      return counterparties;
     }
   }
 
@@ -885,7 +880,6 @@ function approvalChannelForDraft(
     case "email":
     case "telegram":
     case "discord":
-    case "signal":
     case "whatsapp":
     case "imessage":
     case "sms":

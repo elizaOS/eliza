@@ -96,6 +96,9 @@ describe("Electrobun Flatpak packaging", () => {
     expect(desktop).toContain("Terminal=false");
     expect(desktop).toContain("Exec=eliza");
     expect(metadata).toContain('type="desktop-application"');
+    expect(metadata).toContain(
+      '<developer id="ai.elizaos"><name>elizaOS</name></developer>',
+    );
     expect(metadata).toContain("https://github.com/elizaOS/eliza/issues");
     expect(icon.width).toBe(512);
     expect(icon.height).toBe(512);

@@ -26,7 +26,6 @@ import {
   ModelType,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 
 type RelationshipsPersonSummary = {
@@ -93,7 +92,6 @@ export const CROSS_CHANNEL_SEARCH_CHANNELS = [
   "discord",
   "imessage",
   "whatsapp",
-  "signal",
   "x",
   "x-dm",
   "calendly",
@@ -189,7 +187,6 @@ const KNOWN_PLATFORM_FOR_CHANNEL: Record<CrossChannelSearchChannel, string> = {
   discord: "discord",
   imessage: "imessage",
   whatsapp: "whatsapp",
-  signal: "signal",
   x: "x",
   "x-dm": "x",
   calendly: "calendly",
@@ -246,8 +243,6 @@ function classifyMemoryChannel(
       return "imessage";
     case "whatsapp":
       return "whatsapp";
-    case "signal":
-      return "signal";
     case "x":
     case "twitter":
       return "x";
@@ -331,17 +326,6 @@ type CrossChannelNativeSearchService = GmailSearchService & {
     chatId?: string;
     limit?: number;
   }) => Promise<IMessageSearchResult[]>;
-  readSignalInbound?: (limit?: number) => Promise<
-    Array<{
-      id: string;
-      threadId?: string | null;
-      roomName?: string | null;
-      speakerName?: string | null;
-      senderNumber?: string | null;
-      createdAt: number;
-      text: string;
-    }>
-  >;
   pullWhatsAppRecent?: (limit?: number) => Promise<{
     count: number;
     messages: Array<{
@@ -435,9 +419,7 @@ async function searchGmail(
       text: msg.snippet,
       citation: {
         platform: "gmail",
-        label:
-          msg.subject ||
-          truncateWellFormed(toWellFormedUnicode(msg.snippet), 80),
+        label: msg.subject || toWellFormedUnicode(msg.snippet),
         url: msg.htmlLink ?? undefined,
       },
     });
@@ -476,9 +458,7 @@ async function searchTelegram(
       continue;
     }
     const sourceRef =
-      msg.id ??
-      msg.dialogId ??
-      truncateWellFormed(toWellFormedUnicode(msg.content), 48);
+      msg.id ?? msg.dialogId ?? toWellFormedUnicode(msg.content);
     hits.push({
       channel: "telegram",
       id: `telegram:${sourceRef}`,
@@ -522,9 +502,7 @@ async function searchDiscord(
       continue;
     }
     const sourceRef =
-      msg.id ??
-      msg.channelId ??
-      truncateWellFormed(toWellFormedUnicode(msg.content), 48);
+      msg.id ?? msg.channelId ?? toWellFormedUnicode(msg.content);
     hits.push({
       channel: "discord",
       id: `discord:${sourceRef}`,
@@ -585,54 +563,6 @@ async function searchIMessages(
     });
   }
   return { hits, unsupported: [] };
-}
-
-async function searchSignal(
-  runtime: IAgentRuntime,
-  query: CrossChannelSearchQuery,
-): Promise<{
-  hits: CrossChannelSearchHit[];
-  unsupported: CrossChannelSearchUnsupported[];
-}> {
-  const lifeOps = getLifeOpsSearchService(runtime);
-  if (!lifeOps || typeof lifeOps.readSignalInbound !== "function") {
-    return {
-      hits: [],
-      unsupported: [
-        {
-          channel: "signal",
-          reason: "Signal passive read is not available on LifeOpsService",
-        },
-      ],
-    };
-  }
-
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const needle = query.query.trim().toLowerCase();
-  const messages = await lifeOps.readSignalInbound(limit + 25);
-  const hits: CrossChannelSearchHit[] = [];
-  for (const msg of messages) {
-    const timestamp = normalizeIsoFromMs(msg.createdAt);
-    if (!withinTimeWindow(timestamp, query.timeWindow)) {
-      continue;
-    }
-    if (needle && !msg.text.toLowerCase().includes(needle)) {
-      continue;
-    }
-    hits.push({
-      channel: "signal",
-      id: `signal:${msg.id}`,
-      sourceRef: msg.id,
-      timestamp,
-      speaker: msg.speakerName ?? msg.senderNumber ?? "unknown",
-      text: msg.text,
-      citation: {
-        platform: "signal",
-        label: msg.roomName ?? msg.threadId ?? "Signal",
-      },
-    });
-  }
-  return { hits: hits.slice(0, limit), unsupported: [] };
 }
 
 async function searchWhatsApp(
@@ -971,10 +901,10 @@ async function memoriesToHits(
       sourceRef: memId,
       timestamp: iso,
       speaker: speakerEntity ?? "unknown",
-      text: truncateWellFormed(toWellFormedUnicode(text), 600),
+      text: toWellFormedUnicode(text),
       citation: {
         platform: KNOWN_PLATFORM_FOR_CHANNEL[channel],
-        label: roomRecord?.name ?? `room:${(roomId ?? "").slice(0, 8)}`,
+        label: roomRecord?.name ?? `room:${roomId ?? ""}`,
       },
     });
   }
@@ -1234,25 +1164,6 @@ export async function runCrossChannelSearch(
           degraded.push({
             channel: "imessage",
             reason: `iMessage search failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          });
-        }
-      })(),
-    );
-  }
-
-  if (isChannelEnabled("signal", channels)) {
-    tasks.push(
-      (async () => {
-        try {
-          const r = await searchSignal(runtime, query);
-          allHits.push(...r.hits);
-          unsupported.push(...r.unsupported);
-        } catch (err) {
-          degraded.push({
-            channel: "signal",
-            reason: `Signal search failed: ${
               err instanceof Error ? err.message : String(err)
             }`,
           });

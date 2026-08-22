@@ -47,6 +47,12 @@ it("keeps the existing iOS custom pod include gates", () => {
   expect(defaultPods.get("ElizaosCapacitorAgent")).toBe(
     "@elizaos/capacitor-agent",
   );
+  expect(defaultPods.get("ElizaosCapacitorBrowserSurface")).toBe(
+    "@elizaos/capacitor-browser-surface",
+  );
+  expect(defaultPods.get("ElizaosCapacitorSecureStore")).toBe(
+    "@elizaos/capacitor-secure-store",
+  );
   expect(defaultPods.has("ElizaosCapacitorBunRuntime")).toBe(false);
   expect(defaultPods.has("ElizaosCapacitorMobileAgentBridge")).toBe(false);
   expect(defaultPods.has("LlamaCpp")).toBe(false);
@@ -64,6 +70,9 @@ it("keeps the existing iOS custom pod include gates", () => {
     "@elizaos/capacitor-bun-runtime",
   );
   expect(appStorePods.get("ElizaBunEngine")).toBe("@elizaos/bun-ios-runtime");
+  expect(appStorePods.get("ElizaosCapacitorSecureStore")).toBe(
+    "@elizaos/capacitor-secure-store",
+  );
   expect(appStorePods.has("ElizaosCapacitorMobileAgentBridge")).toBe(false);
   expect(appStorePods.has("LlamaCpp")).toBe(false);
 

@@ -9,10 +9,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { v5 as uuidv5 } from "uuid";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../utils/well-formed";
+import { toWellFormedUnicode } from "../../utils/well-formed";
 
 /**
  * Return the case-insensitive MIME essence used for routing document content.
@@ -272,33 +269,23 @@ export function generateContentBasedId(
 	content: string,
 	agentId: string,
 	options?: {
-		maxChars?: number;
 		includeFilename?: string;
 		contentType?: string;
 	},
 ): string {
-	const { maxChars = 2000, includeFilename, contentType } = options || {};
+	const { includeFilename, contentType } = options || {};
 
 	let contentForHashing: string;
 
 	if (looksLikeBase64(content)) {
 		const decoded = Buffer.from(content, "base64").toString("utf8");
 		if (decoded.includes("\ufffd") || contentType?.includes("pdf")) {
-			contentForHashing = truncateWellFormed(
-				toWellFormedUnicode(content),
-				maxChars,
-			);
+			contentForHashing = toWellFormedUnicode(content);
 		} else {
-			contentForHashing = truncateWellFormed(
-				toWellFormedUnicode(decoded),
-				maxChars,
-			);
+			contentForHashing = toWellFormedUnicode(decoded);
 		}
 	} else {
-		contentForHashing = truncateWellFormed(
-			toWellFormedUnicode(content),
-			maxChars,
-		);
+		contentForHashing = toWellFormedUnicode(content);
 	}
 
 	contentForHashing = contentForHashing

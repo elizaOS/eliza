@@ -77,6 +77,21 @@ describe("XDmAdapter", () => {
     expect(sent).toEqual({ externalId: "sent-1" });
   });
 
+  it("preserves the complete long direct-message draft preview", async () => {
+    const adapter = new XDmAdapter();
+    const runtime = runtimeWithXService({});
+    const body = `${"x".repeat(200)}🦊${"y".repeat(500)}tail`;
+
+    const draft = await adapter.createDraft(runtime, {
+      to: [{ identifier: "recipient-1" }],
+      body,
+    });
+
+    expect(draft.preview).toBe(body);
+    expect(draft.preview.isWellFormed()).toBe(true);
+    expect(draft.preview.endsWith("tail")).toBe(true);
+  });
+
   it("rejects empty direct-message drafts before encoding them", async () => {
     const sendDirectMessageForAccount = vi.fn();
     const adapter = new XDmAdapter();

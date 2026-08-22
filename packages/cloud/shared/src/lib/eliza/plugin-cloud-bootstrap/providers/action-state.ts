@@ -7,25 +7,15 @@ import {
   type Provider,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import type { NativePlannerActionResult } from "../types";
 
-const ACTION_RESULT_LIMIT = 10;
-const WORKING_MEMORY_LIMIT = 10;
-const ACTION_MEMORY_FETCH_LIMIT = 20;
-const ACTION_MEMORY_LIMIT = 10;
-const FIELD_TEXT_LIMIT = 1000;
-
-export function truncateText(value: string, limit = FIELD_TEXT_LIMIT): string {
-  const wellFormed = toWellFormedUnicode(value);
-  if (wellFormed.length <= limit) return wellFormed;
-  const budget = Math.max(0, limit - 3);
-  return `${truncateWellFormed(wellFormed, budget)}...`;
+export function normalizeText(value: string): string {
+  return toWellFormedUnicode(value);
 }
 
-function stringifyLimited(value: unknown): string {
-  return truncateText(JSON.stringify(value) ?? "");
+function stringifyComplete(value: unknown): string {
+  return normalizeText(JSON.stringify(value) ?? "");
 }
 
 function formatActionResult(result: NativePlannerActionResult, index: number): string {
@@ -33,14 +23,14 @@ function formatActionResult(result: NativePlannerActionResult, index: number): s
   const status = result.success ? "Success" : "Failed";
   const lines = [`**${index + 1}. ${actionName}** - ${status}`];
 
-  if (result.text) lines.push(`   Output: ${truncateText(result.text)}`);
+  if (result.text) lines.push(`   Output: ${normalizeText(result.text)}`);
   if (result.error) {
     const errorStr = result.error instanceof Error ? result.error.message : String(result.error);
-    lines.push(`   Error: ${truncateText(errorStr)}`);
+    lines.push(`   Error: ${normalizeText(errorStr)}`);
   }
   if (result.values && Object.keys(result.values).length > 0) {
     const values = Object.entries(result.values)
-      .map(([key, value]) => `   - ${key}: ${stringifyLimited(value)}`)
+      .map(([key, value]) => `   - ${key}: ${stringifyComplete(value)}`)
       .join("\n");
     lines.push(`   Values:\n${values}`);
   }
@@ -61,13 +51,12 @@ function formatWorkingMemory(workingMemory: Record<string, unknown>): string {
 
   return Object.entries(workingMemory)
     .sort((a, b) => ((b[1] as MemEntry)?.timestamp || 0) - ((a[1] as MemEntry)?.timestamp || 0))
-    .slice(0, WORKING_MEMORY_LIMIT)
     .map(([key, value]) => {
       const v = value as MemEntry;
       if (v.actionName && v.result) {
-        return `**${v.actionName}**: ${truncateText(v.result.text || stringifyLimited(v.result.data))}`;
+        return `**${v.actionName}**: ${normalizeText(v.result.text || stringifyComplete(v.result.data))}`;
       }
-      return `**${key}**: ${stringifyLimited(value)}`;
+      return `**${key}**: ${stringifyComplete(value)}`;
     })
     .join("\n");
 }
@@ -89,7 +78,7 @@ function formatActionMemories(memories: Memory[]): string {
           const actionName = mem.content?.actionName || "Unknown";
           const status = mem.content?.actionStatus || "unknown";
           const planStep = mem.content?.planStep || "";
-          const text = typeof mem.content?.text === "string" ? truncateText(mem.content.text) : "";
+          const text = typeof mem.content?.text === "string" ? normalizeText(mem.content.text) : "";
           let line = `  - ${actionName} (${status})`;
           if (planStep) line += ` [${planStep}]`;
           if (text && text !== `Executed action: ${actionName}`) line += `: ${text}`;
@@ -97,7 +86,7 @@ function formatActionMemories(memories: Memory[]): string {
         })
         .join("\n");
       const thought = sorted[0]?.content?.planThought || "";
-      return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
+      return `**Run ${runId}**${thought ? ` - ${thought}` : ""}\n${runText}`;
     })
     .join("\n\n");
 }
@@ -123,39 +112,33 @@ export const actionStateProvider: Provider = {
     const workingMemory = (state.data?.workingMemory || {}) as Record<string, unknown>;
 
     // Format action results
-    const cappedActionResults = actionResults.slice(0, ACTION_RESULT_LIMIT);
-    const cappedWorkingMemory = Object.fromEntries(
-      Object.entries(workingMemory).slice(0, WORKING_MEMORY_LIMIT),
-    );
+    const completeActionResults = actionResults;
+    const completeWorkingMemory = workingMemory;
     const resultsText =
       actionResults.length > 0
         ? addHeader(
             "# Previous Action Results",
-            cappedActionResults.map(formatActionResult).join("\n\n"),
+            completeActionResults.map(formatActionResult).join("\n\n"),
           )
         : "No previous action results available.";
 
     // Format working memory
     const memoryText =
-      Object.keys(cappedWorkingMemory).length > 0
-        ? addHeader("# Working Memory", formatWorkingMemory(cappedWorkingMemory))
+      Object.keys(completeWorkingMemory).length > 0
+        ? addHeader("# Working Memory", formatWorkingMemory(completeWorkingMemory))
         : "";
 
     let recentActionMemories: Memory[] = [];
     try {
-      const recentMessages = await runtime.getMemories({
+      const recentMessages = await runtime.getMemoriesByRoomIds({
         tableName: "messages",
-        roomId: message.roomId,
-        count: ACTION_MEMORY_FETCH_LIMIT,
-        unique: false,
+        roomIds: [message.roomId],
       });
-      recentActionMemories = recentMessages
-        .filter(
-          (msg) =>
-            (msg.content?.type as string) === "action_result" &&
-            (msg.metadata?.type as string) === "action_result",
-        )
-        .slice(0, ACTION_MEMORY_LIMIT);
+      recentActionMemories = recentMessages.filter(
+        (msg) =>
+          (msg.content?.type as string) === "action_result" &&
+          (msg.metadata?.type as string) === "action_result",
+      );
     } catch (error) {
       logger.warn(
         `[ACTION_STATE] Failed to retrieve action memories for room ${message.roomId} - action history will be incomplete: ${error}`,
@@ -172,8 +155,8 @@ export const actionStateProvider: Provider = {
 
     return {
       data: {
-        actionResults: cappedActionResults,
-        workingMemory: cappedWorkingMemory,
+        actionResults: completeActionResults,
+        workingMemory: completeWorkingMemory,
         recentActionMemories,
       },
       values: {

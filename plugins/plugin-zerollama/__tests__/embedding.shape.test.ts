@@ -1,4 +1,4 @@
-/** Deterministic unit tests for `handleTextEmbedding` with the AI SDK `embed` and provider mocked: init probe, usage emit, truncation, and error paths. */
+/** Deterministic unit tests for `handleTextEmbedding` with the AI SDK `embed` and provider mocked: init probe, usage emit, explicit input rejection, and error paths. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -104,7 +104,7 @@ describe("Ollama embeddings", () => {
     });
   });
 
-  it("truncates oversized embedding input before calling the provider", async () => {
+  it("rejects oversized embedding input before calling the provider", async () => {
     embedMock.mockResolvedValue({
       embedding: [1],
       usage: undefined,
@@ -116,10 +116,10 @@ describe("Ollama embeddings", () => {
     );
     const longText = "x".repeat(5_000);
 
-    await handleTextEmbedding(runtime, { text: longText });
-
-    const callArg = embedMock.mock.calls[0][0] as { value: string };
-    expect(callArg.value).toHaveLength(1_000);
+    await expect(handleTextEmbedding(runtime, { text: longText })).rejects.toThrow(
+      "Embedding input exceeds the provider-safe limit (5000/1000 chars)"
+    );
+    expect(embedMock).not.toHaveBeenCalled();
   });
 
   it("honours OLLAMA_EMBED_MAX_CHARS when set", async () => {
@@ -130,10 +130,10 @@ describe("Ollama embeddings", () => {
     const { runtime } = createRuntime({ OLLAMA_EMBED_MAX_CHARS: "800" });
     const longText = "x".repeat(5_000);
 
-    await handleTextEmbedding(runtime, { text: longText });
-
-    const callArg = embedMock.mock.calls[0][0] as { value: string };
-    expect(callArg.value).toHaveLength(800);
+    await expect(handleTextEmbedding(runtime, { text: longText })).rejects.toThrow(
+      "Embedding input exceeds the provider-safe limit (5000/800 chars)"
+    );
+    expect(embedMock).not.toHaveBeenCalled();
   });
 
   it("throws when the embedding provider fails", async () => {

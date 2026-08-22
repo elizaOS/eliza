@@ -13,7 +13,6 @@ const LIFEOPS_INBOX_CHANNELS = [
   "x_dm",
   "discord",
   "telegram",
-  "signal",
   "imessage",
   "whatsapp",
   "sms",

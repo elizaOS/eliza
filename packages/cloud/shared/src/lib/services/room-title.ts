@@ -53,7 +53,7 @@ export async function generateRoomTitle(roomId: string): Promise<string | null> 
   try {
     const prompt = `Create a brief 3-5 word title summarizing this message topic. Output ONLY the title, no quotes or explanation.
 
-Message: ${text.slice(0, 300)}
+Message: ${text}
 
 Title:`;
 

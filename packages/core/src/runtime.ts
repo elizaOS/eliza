@@ -34,7 +34,10 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
-import { validateQueryEntitiesPagination } from "./database";
+import {
+	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
+} from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
@@ -350,10 +353,7 @@ import {
 	StructuredFieldStreamExtractor,
 } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "./utils/well-formed.js";
+import { toWellFormedUnicode } from "./utils/well-formed.js";
 
 const environmentSettings: RuntimeSettings = {};
 // Whether debug-level logs are emitted, captured once at load (mirrors the
@@ -1423,6 +1423,10 @@ export class AgentRuntime implements IAgentRuntime {
 	private stopped = false;
 	/** Set permanently at the first stop request, before any drain can yield. */
 	private stopRequested = false;
+	/** Records an initialization attempt that released waiters by failing. */
+	private initializationFailed = false;
+	/** Typed cancellation boundary for deferred plugin/service startup. */
+	private readonly stopController = new AbortController();
 	/** The active stop attempt; concurrent callers await the same teardown. */
 	private stopPromise: Promise<void> | null = null;
 
@@ -2608,6 +2612,9 @@ export class AgentRuntime implements IAgentRuntime {
 		this.stopPromise = stopAttempt;
 		if (!this.stopRequested) {
 			this.stopRequested = true;
+			this.stopController.abort(
+				new DOMException("Runtime stop requested", "AbortError"),
+			);
 			// Freeze connector/service ingress before the first shutdown await. Without
 			// this phase, a gateway delivery can begin a new turn while the runtime is
 			// already waiting for its room-owner drain, behind the eventual service-stop
@@ -2887,9 +2894,11 @@ export class AgentRuntime implements IAgentRuntime {
 		/** Allow running without a persistent database adapter (benchmarks/tests). */
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
+		this.initializationFailed = false;
 		try {
 			await this._initializeCore(options);
 		} catch (err) {
+			this.initializationFailed = true;
 			// error-policy:J2 Release initialization waiters before preserving
 			// the original initialization failure for the caller.
 			// Always resolve initPromise so eager service starts and stop()
@@ -5361,9 +5370,7 @@ export class AgentRuntime implements IAgentRuntime {
 						// access row — omit them so readers do not slice a different
 						// string with compose-local offsets.
 						purpose: "compose_state",
-						query: {
-							message: truncateWellFormed(toWellFormedUnicode(userText), 2000),
-						},
+						query: { message: toWellFormedUnicode(userText) },
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -5407,9 +5414,7 @@ export class AgentRuntime implements IAgentRuntime {
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
 						purpose: "compose_state",
-						query: {
-							message: truncateWellFormed(toWellFormedUnicode(userText), 2000),
-						},
+						query: { message: toWellFormedUnicode(userText) },
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -5862,6 +5867,23 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		return this.serviceRegistrationStatus.get(key) || "unknown";
+	}
+
+	getLifecycleState():
+		| "initializing"
+		| "running"
+		| "failed"
+		| "stopping"
+		| "stopped" {
+		if (this.stopRequested) {
+			return this.stopped && this.stopPromise === null ? "stopped" : "stopping";
+		}
+		if (this.initializationFailed) return "failed";
+		return this.initResolver ? "initializing" : "running";
+	}
+
+	getStopSignal(): AbortSignal {
+		return this.stopController.signal;
 	}
 
 	/**
@@ -9311,12 +9333,8 @@ ${section_end}`;
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
 							const wellFormedContent = toWellFormedUnicode(content);
-							const truncated =
-								wellFormedContent.length > 500
-									? `${truncateWellFormed(wellFormedContent, 497)}...`
-									: wellFormedContent;
 							validatedParts.push(
-								stringifyStructuredForPrompt({ [field]: truncated }),
+								stringifyStructuredForPrompt({ [field]: wellFormedContent }),
 							);
 						}
 						if (validatedParts.length > 0) {
@@ -9330,7 +9348,7 @@ ${section_end}`;
 				// Repair reroll: when the extractor didn't produce a targeted retry
 				// context (the common case — contextLevel 2, no streaming extractor,
 				// or no validated fields), feed the model the CONCRETE reason its last
-				// output was rejected + the (redacted, truncated) bad output, so the
+				// output was rejected + the complete redacted bad output, so the
 				// reroll is corrective instead of a blind re-roll of the same prompt.
 				// Goes in the same `_smartRetryContext` field, which is rendered as a
 				// `stable:false` segment (prompt-cache safe) and cleared on
@@ -9344,12 +9362,10 @@ ${section_end}`;
 								? [parseErrorMessage]
 								: [];
 					if (repairIssues.length > 0) {
-						const priorOutput = truncateWellFormed(
-							toWellFormedUnicode(this.redactSecrets(cleanResponse)),
-							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+						const priorOutput = toWellFormedUnicode(
+							this.redactSecrets(cleanResponse),
 						);
 						const issueList = repairIssues
-							.slice(0, 8)
 							.map((issue) => `- ${issue}`)
 							.join("\n");
 						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${
@@ -11795,9 +11811,13 @@ ${section_end}`;
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
+		limit?: number;
+		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		return this.adapter.getTasks({ ...params, agentIds: [this.agentId] });
 	}
 	async getTasksByName(name: string): Promise<Task[]> {
@@ -11843,6 +11863,17 @@ ${section_end}`;
 	async getTask(id: UUID): Promise<Task | null> {
 		const tasks = await this.adapter.getTasksByIds([id]);
 		return tasks[0] ?? null;
+	}
+
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const updated =
+			(await this.adapter.updatePendingTask?.call(this.adapter, id, task)) ??
+			false;
+		if (updated) {
+			this._markLocalTasksDirty();
+			this._notifyCompanionTasksDirty();
+		}
+		return updated;
 	}
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {

@@ -5,16 +5,23 @@
  * for provider prompt caching. Also re-exports the provider cache-plan helpers.
  */
 
+import { ElizaError } from "../errors";
 import {
 	composeToolDiagnosticRedactor,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
+import type { ActionResult } from "../types/components";
+import { isReadView } from "../types/content";
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
-import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
+import { getActionResultActionName } from "../utils/action-results";
 import { stringifyForModel } from "./json-output";
+import {
+	type ContentProjectionBudget,
+	estimateTokensFromChars,
+} from "./model-input-budget";
 import type { PlannerStep, PlannerToolResult } from "./planner-types";
 import {
 	buildProviderCachePlan,
@@ -32,82 +39,97 @@ export interface TrajectoryStepsToMessagesOptions {
 	 * omitted, the shared credential-shape pass still runs.
 	 */
 	redactText?: ToolDiagnosticTextRedactor;
-	/**
-	 * When set, caps each rendered tool-result string to this many characters.
-	 *
-	 * A single pathologically-large tool result (a 30 KB shell output, a
-	 * full file read, a multi-thousand-line grep) can blow the planner's
-	 * compaction budget single-handedly when it lives inside the
-	 * kept-verbatim window after compaction. This cap renders such results
-	 * as `<head> ... [N chars truncated] ... <tail>` so the planner still
-	 * sees the beginning and end of the result (which is where structure
-	 * lives) without paying for the middle.
-	 *
-	 * **The trajectory itself is unchanged** — the raw `PlannerStep.result`
-	 * still carries the full content for archival, recorder, replay, and
-	 * any downstream consumer that wants the unredacted output. Only the
-	 * wire-shape message that goes to the next planner call is truncated.
-	 *
-	 * Default: undefined (no cap).
-	 */
-	maxToolResultChars?: number;
+	/** Final-serialization allowance derived from the active model input budget. */
+	projectionBudget?: ContentProjectionBudget;
+	/** Metadata-only preflight used to compute the final projection allowance. */
+	omitRecoverableText?: boolean;
+	/** Receives redacted aggregate projection counts for the rendered request. */
+	onProjectionStats?: (stats: ToolResultProjectionStats) => void;
+}
+
+export interface ToolResultProjectionStats {
+	resultCount: number;
+	pagesIncluded: number;
+	pagesOmitted: number;
+	omissionReasons: Record<string, number>;
+}
+
+export interface RenderedActionResultsForModel {
+	text: string;
+	stats: ToolResultProjectionStats;
 }
 
 /**
- * Truncate a tool-result string to fit within `maxChars` by keeping a head
- * + tail and stitching in a deterministic marker. Pure function — exported
- * so the evaluator/recorder can mirror the exact rendering rule.
- *
- * Returns the input unchanged when it already fits OR when `maxChars` is
- * unset / non-positive / not finite.
+ * Render legacy ActionResults through the same promptData-over-data and
+ * recoverable-page projection used by native tool messages. This is the
+ * migration bridge for prompt builders that cannot yet carry structured tool
+ * messages; non-model display code should keep using its display formatter.
  */
-export function truncateToolResultText(
-	text: string,
-	maxChars: number | undefined,
-): string {
-	if (
-		typeof maxChars !== "number" ||
-		!Number.isFinite(maxChars) ||
-		maxChars <= 0
-	) {
-		return text;
+export function renderActionResultsForModel(
+	results: readonly ActionResult[],
+	options: {
+		header?: string;
+		projectionBudget?: ContentProjectionBudget;
+		omitRecoverableText?: boolean;
+		redactText?: ToolDiagnosticTextRedactor;
+	} = {},
+): RenderedActionResultsForModel {
+	if (results.length === 0) {
+		return {
+			text: "No action results available.",
+			stats: {
+				resultCount: 0,
+				pagesIncluded: 0,
+				pagesOmitted: 0,
+				omissionReasons: {},
+			},
+		};
 	}
-	if (text.length <= maxChars) {
-		return text;
-	}
-
-	const limit = Math.floor(maxChars);
-	const markerFor = (count: number) => ` [${count} chars truncated] `;
-
-	for (
-		let preserveBudget = limit - markerFor(text.length).length;
-		preserveBudget > 0;
-		preserveBudget--
-	) {
-		const headFloor = preserveBudget >= 20 ? 10 : 1;
-		const tailFloor = preserveBudget >= 20 ? 10 : preserveBudget > 1 ? 1 : 0;
-		const headChars = Math.max(headFloor, Math.floor(preserveBudget * 0.6));
-		const tailChars = Math.max(tailFloor, preserveBudget - headChars);
-		// Surrogate-safe cuts: a plain slice landing mid-emoji leaves a lone
-		// surrogate that strict provider JSON parsers reject (#18025).
-		const head = truncateWellFormed(text, headChars);
-		const tail = tailWellFormed(text, tailChars);
-		// Compute the truncated count from the ACTUAL retained code-unit
-		// lengths, not the requested head/tail lengths — truncateWellFormed
-		// and tailWellFormed back off at surrogate boundaries, so the actual
-		// retained length may be shorter than the request (#18081).
-		const actualPreserved = head.length + tail.length;
-		const truncatedCount = text.length - actualPreserved;
-		if (truncatedCount <= 0) {
-			return truncateWellFormed(text, limit);
-		}
-		const marker = markerFor(truncatedCount);
-		if (actualPreserved + marker.length <= limit) {
-			return `${head}${marker}${tail}`;
-		}
-	}
-
-	return truncateWellFormed(text, limit);
+	const fairResultBudget = options.projectionBudget
+		? Math.min(
+				options.projectionBudget.perResultTokens,
+				Math.floor(options.projectionBudget.aggregateTokens / results.length),
+			)
+		: undefined;
+	let pagesIncluded = 0;
+	let pagesOmitted = 0;
+	const omissionReasons: Record<string, number> = {};
+	const redactText = options.redactText ?? composeToolDiagnosticRedactor();
+	const rendered = results.map((result, index) => {
+		const safeResult = projectToolDiagnosticValue(
+			result,
+			redactText,
+		) as PlannerToolResult;
+		const body = toolMessageContent(safeResult, {
+			...(fairResultBudget === undefined
+				? {}
+				: { maxSerializedTokens: fairResultBudget }),
+			omitRecoverableText: options.omitRecoverableText,
+			onProjection: (observation) => {
+				if (!observation.validatedReadView) return;
+				if (observation.textIncluded) {
+					pagesIncluded++;
+					return;
+				}
+				pagesOmitted++;
+				const reason = observation.omissionReason ?? "unknown";
+				omissionReasons[reason] = (omissionReasons[reason] ?? 0) + 1;
+			},
+		});
+		const status = result.success === false ? "failed" : "succeeded";
+		return `${index + 1}. ${getActionResultActionName(result)} - ${status}\n${JSON.stringify(JSON.parse(body))}`;
+	});
+	return {
+		text: [options.header ?? "# Current Chain Action Results", ...rendered]
+			.filter(Boolean)
+			.join("\n\n"),
+		stats: {
+			resultCount: results.length,
+			pagesIncluded,
+			pagesOmitted,
+			omissionReasons,
+		},
+	};
 }
 
 /**
@@ -135,6 +157,20 @@ export function trajectoryStepsToMessages(
 ): ChatMessage[] {
 	const messages: ChatMessage[] = [];
 	const redactText = options.redactText ?? composeToolDiagnosticRedactor();
+	const resultCount = steps.filter(
+		(step) => step.toolCall && step.result,
+	).length;
+	const fairResultBudget = options.projectionBudget
+		? Math.min(
+				options.projectionBudget.perResultTokens,
+				resultCount === 0
+					? 0
+					: Math.floor(options.projectionBudget.aggregateTokens / resultCount),
+			)
+		: undefined;
+	let pagesIncluded = 0;
+	let pagesOmitted = 0;
+	const omissionReasons: Record<string, number> = {};
 	for (const step of steps) {
 		if (!step.toolCall || !step.result) {
 			continue;
@@ -160,10 +196,22 @@ export function trajectoryStepsToMessages(
 
 		const rawResultText = toolMessageContent(
 			projectToolDiagnosticValue(step.result, redactText) as PlannerToolResult,
-		);
-		const renderedResultText = truncateToolResultText(
-			rawResultText,
-			options.maxToolResultChars,
+			{
+				...(fairResultBudget === undefined
+					? {}
+					: { maxSerializedTokens: fairResultBudget }),
+				omitRecoverableText: options.omitRecoverableText,
+				onProjection: (observation) => {
+					if (!observation.validatedReadView) return;
+					if (observation.textIncluded) {
+						pagesIncluded++;
+						return;
+					}
+					pagesOmitted++;
+					const reason = observation.omissionReason ?? "unknown";
+					omissionReasons[reason] = (omissionReasons[reason] ?? 0) + 1;
+				},
+			},
 		);
 		messages.push({
 			role: "tool",
@@ -172,11 +220,17 @@ export function trajectoryStepsToMessages(
 					type: "tool-result",
 					toolCallId,
 					toolName: step.toolCall.name,
-					output: { type: "text", value: renderedResultText },
+					output: { type: "text", value: rawResultText },
 				},
 			],
 		});
 	}
+	options.onProjectionStats?.({
+		resultCount,
+		pagesIncluded,
+		pagesOmitted,
+		omissionReasons,
+	});
 	return messages;
 }
 
@@ -205,41 +259,159 @@ function shortArgsDigest(params: Record<string, unknown> | undefined): string {
 	return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
 }
 
+/** Serialize one validated, non-duplicating tool-result projection. */
+export function toolMessageContent(
+	result: PlannerToolResult,
+	options: {
+		maxSerializedTokens?: number;
+		omitRecoverableText?: boolean;
+		onProjection?: (observation: ToolResultProjectionObservation) => void;
+	} = {},
+): string {
+	const validatedReadView = hasRecoverableContentLocator(
+		result.promptData ?? result.data,
+	);
+	const projected = projectToolResultForModel(
+		result,
+		options.omitRecoverableText,
+	);
+	const serialized = stringifyForModel(projected);
+	if (
+		options.maxSerializedTokens === undefined ||
+		estimateTokensFromChars(serialized.length) <= options.maxSerializedTokens
+	) {
+		options.onProjection?.({
+			validatedReadView,
+			textIncluded: validatedReadView && projected.text !== undefined,
+			...(validatedReadView && projected.text === undefined
+				? { omissionReason: "model-input-budget" }
+				: {}),
+		});
+		return serialized;
+	}
+
+	if (!validatedReadView) {
+		throw new ElizaError(
+			"Non-recoverable tool result exceeds the model content projection budget",
+			{
+				code: "MODEL_CONTENT_PROJECTION_BUDGET_EXCEEDED",
+				context: {
+					maxSerializedTokens: options.maxSerializedTokens,
+					serializedTokens: estimateTokensFromChars(serialized.length),
+				},
+				severity: "fatal",
+			},
+		);
+	}
+
+	const metadataOnly = projectToolResultForModel(result, true);
+	const metadataSerialized = stringifyForModel(metadataOnly);
+	if (
+		estimateTokensFromChars(metadataSerialized.length) >
+		options.maxSerializedTokens
+	) {
+		throw new ElizaError(
+			"ReadView metadata exceeds the model content projection budget",
+			{
+				code: "MODEL_CONTENT_PROJECTION_BUDGET_EXCEEDED",
+				context: {
+					maxSerializedTokens: options.maxSerializedTokens,
+					serializedTokens: estimateTokensFromChars(metadataSerialized.length),
+				},
+				severity: "fatal",
+			},
+		);
+	}
+	options.onProjection?.({
+		validatedReadView: true,
+		textIncluded: false,
+		omissionReason: "model-input-budget",
+	});
+	return metadataSerialized;
+}
+
+export interface ToolResultProjectionObservation {
+	validatedReadView: boolean;
+	textIncluded: boolean;
+	omissionReason?: "model-input-budget";
+}
+
+function hasRecoverableContentLocator(value: unknown): boolean {
+	const pending: Array<{ value: unknown; depth: number }> = [
+		{ value, depth: 0 },
+	];
+	let visited = 0;
+	while (pending.length > 0 && visited < 100) {
+		const current = pending.pop();
+		if (!current) break;
+		visited++;
+		if (isReadView(current.value)) {
+			return true;
+		}
+		if (
+			current.depth >= 4 ||
+			current.value === null ||
+			typeof current.value !== "object"
+		) {
+			continue;
+		}
+		let children: unknown[];
+		if (Array.isArray(current.value)) {
+			children = current.value;
+		} else {
+			children = [];
+			for (const [key, child] of Object.entries(
+				current.value as Record<string, unknown>,
+			)) {
+				if (key === "readView") {
+					if (isReadView(child)) return true;
+					continue;
+				}
+				children.push(child);
+			}
+		}
+		for (const child of children) {
+			pending.push({ value: child, depth: current.depth + 1 });
+		}
+	}
+	return false;
+}
+
 /**
- * Project a PlannerToolResult to plain-text `tool` message content per OpenAI
- * conventions: prefer `result.text`, fall back to a JSON serialization of
- * `data`/`error` only when no text projection exists. Strict-grammar
- * providers (Cerebras) and Anthropic both prefer text over a JSON blob in
- * the tool turn, and this preserves byte-stability when text is consistent.
- *
- * An action may provide `promptData` when its complete machine payload is not
- * an appropriate model projection. This keeps projection ownership with the
- * action and leaves arbitrary chaining data intact by default.
+ * Produce the sole model-bound shape for a tool result. `promptData` is an
+ * explicit replacement for `data`, never an additional payload. Recoverable
+ * page text may be omitted during budget preflight/fallback while its validated
+ * ReadView remains available for an exact native continuation.
  */
-export function toolMessageContent(result: PlannerToolResult): string {
-	const parts: string[] = [];
-	const hasText =
-		typeof result.text === "string" && result.text.trim().length > 0;
-	if (hasText && typeof result.text === "string") {
-		parts.push(`text: ${result.text.trim()}`);
+export function projectToolResultForModel(
+	result: PlannerToolResult,
+	omitRecoverableText = false,
+): PlannerToolResult & {
+	contentProjection?: { textIncluded: boolean; reason?: string };
+} {
+	const hasReadView = hasRecoverableContentLocator(
+		result.promptData ?? result.data,
+	);
+	const projected = { ...result };
+	if (result.promptData !== undefined) {
+		delete projected.data;
 	}
-	const modelData = result.promptData ?? result.data;
-	if (modelData && Object.keys(modelData).length > 0) {
-		parts.push(`data: ${stringifyForModel(modelData)}`);
+	if (omitRecoverableText && hasReadView && projected.text !== undefined) {
+		delete projected.text;
+		return {
+			...projected,
+			contentProjection: {
+				textIncluded: false,
+				reason: "model-input-budget",
+			},
+		};
 	}
-	if (result.error) {
-		const errMsg =
-			typeof result.error === "string"
-				? result.error
-				: result.error instanceof Error
-					? result.error.message
-					: stringifyForModel(result.error);
-		parts.push(result.success ? `note: ${errMsg}` : `error: ${errMsg}`);
-	}
-	if (parts.length > 0) {
-		return parts.join("\n");
-	}
-	return result.success ? "ok" : "failed";
+	return {
+		...projected,
+		...(hasReadView
+			? { contentProjection: { textIncluded: projected.text !== undefined } }
+			: {}),
+	};
 }
 
 export function cacheProviderOptions(

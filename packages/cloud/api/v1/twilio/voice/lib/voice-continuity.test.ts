@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import {
   callEndedEvent,
   callOpeningClientMessageId,
+  callOpeningGreeting,
   callOpeningPrompt,
   callStartedEvent,
   claimInboundCallOpeningContext,
@@ -15,6 +16,11 @@ import {
 
 describe("voice continuity", () => {
   const now = Date.UTC(2026, 7, 15, 12);
+
+  test("uses an immediate deterministic greeting while the cold path prewarms", () => {
+    expect(callOpeningGreeting(false)).toBe("Hello? Who's this?");
+    expect(callOpeningGreeting(true)).toBe("Hey, what's up?");
+  });
 
   test("describes first contact without inventing history", () => {
     expect(callStartedEvent(false, now - 3 * 60 * 60_000, now)).toContain(

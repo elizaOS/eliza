@@ -173,6 +173,27 @@ describe("Google Chat message connector", () => {
     );
   });
 
+  it("preserves every matching and recent Google Chat space", async () => {
+    const runtimeInstance = runtime();
+    const service = serviceWithState();
+    const spaces = Array.from({ length: 12 }, (_, index) => ({
+      name: `spaces/${index}`,
+      displayName: `Project room ${index}`,
+      type: "ROOM" as const,
+    }));
+    vi.spyOn(service, "getSpaces").mockResolvedValue(spaces);
+
+    GoogleChatService.registerSendHandlers(runtimeInstance, service, "workspace");
+    const registration = vi.mocked(runtimeInstance.registerMessageConnector).mock.calls[0][0];
+    const matches = await registration.resolveTargets?.("project", {
+      runtime: runtimeInstance,
+    });
+    const recent = await registration.listRecentTargets?.({ runtime: runtimeInstance });
+
+    expect(matches?.filter((target) => target.kind === "room")).toHaveLength(12);
+    expect(recent).toHaveLength(12);
+  });
+
   it("registers account-scoped connectors and routes sends through the requested account", async () => {
     const runtimeInstance = runtime({ getSetting: vi.fn() });
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;

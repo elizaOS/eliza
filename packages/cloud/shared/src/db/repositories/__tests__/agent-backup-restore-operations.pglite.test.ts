@@ -27,7 +27,8 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import type { AgentBackupRestorePhase } from "../../schemas/agent-backup-catalog";
 import {
@@ -54,7 +55,7 @@ import {
   failAgentBackupRestoreOperation,
   heartbeatAgentBackupRestoreOperation,
   openAgentBackupRestoreOperation,
-  reserveAgentBackupRestoreTarget,
+  reserveAgentBackupRestoreTarget as reserveAgentBackupRestoreTargetRepository,
 } from "../agent-backup-restore-operations";
 import { dockerNodesRepository } from "../docker-nodes";
 
@@ -78,8 +79,6 @@ const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f010";
 const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f011";
 const OTHER_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f012";
 const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
-const TARGET_NODE_CREATED_AT = new Date("2026-08-19T23:59:59.000Z");
-const TARGET_NODE_ATTESTED_AT = new Date("2026-08-20T00:00:00.000Z");
 let schemaFailure = "";
 let manifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
 
@@ -237,10 +236,8 @@ async function seedTargetNode(
     status?: "healthy" | "degraded" | "offline" | "unknown";
     placementState?: "open" | "cordoned" | "evacuating" | "drained";
     capacityProvisional?: boolean;
-    createdAt?: Date;
-    recordHistory?: boolean;
   } = {},
-): Promise<void> {
+): Promise<typeof dockerNodes.$inferSelect> {
   const [node] = await dbWrite
     .insert(dockerNodes)
     .values({
@@ -259,48 +256,58 @@ async function seedTargetNode(
       node_incarnation:
         input.incarnation === undefined ? TARGET_NODE_INCARNATION : input.incarnation,
       metadata: input.capacityProvisional ? { capacityProvisional: true } : {},
-      created_at: input.createdAt ?? TARGET_NODE_CREATED_AT,
     })
     .returning();
   if (!node) throw new Error("restore target fixture was not inserted");
-  if (node.node_incarnation && input.recordHistory !== false) {
-    await dbWrite.insert(agentNodeIncarnationHistories).values({
-      docker_node_record_id: node.id,
-      node_id: node.node_id,
-      node_incarnation: node.node_incarnation,
-      fleet_kind: node.fleet_kind ?? "robot",
-      infrastructure_provider: node.infrastructure_provider ?? "hetzner",
-      provider_server_id: node.provider_server_id,
-      host_key_fingerprint: node.host_key_fingerprint ?? "SHA256:test-only-host-key",
-      attested_at: TARGET_NODE_ATTESTED_AT,
-    });
+  if (node.node_incarnation !== null && node.current_node_history_id === null) {
+    throw new Error("restore target occurrence trigger did not assign a history id");
   }
+  return node;
 }
 
-async function rearmTargetNodeThroughIncarnation(nextIncarnation: string): Promise<void> {
-  const [originalHistory] = await dbWrite
-    .select()
-    .from(agentNodeIncarnationHistories)
-    .where(eq(agentNodeIncarnationHistories.docker_node_record_id, TARGET_NODE_RECORD_ID));
-  if (!originalHistory) throw new Error("restore target history fixture is missing");
-  await dbWrite
-    .update(dockerNodes)
-    .set({ node_incarnation: nextIncarnation })
-    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
-  await dbWrite.insert(agentNodeIncarnationHistories).values({
-    docker_node_record_id: TARGET_NODE_RECORD_ID,
-    node_id: originalHistory.node_id,
-    node_incarnation: nextIncarnation,
-    fleet_kind: originalHistory.fleet_kind,
-    infrastructure_provider: originalHistory.infrastructure_provider,
-    provider_server_id: originalHistory.provider_server_id,
-    host_key_fingerprint: originalHistory.host_key_fingerprint,
-    attested_at: new Date(originalHistory.attested_at.getTime() + 1_000),
+async function currentTargetNodeHistoryId(nodeRecordId: string): Promise<string> {
+  const [node] = await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.id, nodeRecordId));
+  if (!node?.current_node_history_id) {
+    throw new Error("restore target current occurrence is missing");
+  }
+  return node.current_node_history_id;
+}
+
+type ReserveTargetInput = Parameters<typeof reserveAgentBackupRestoreTargetRepository>[0];
+
+async function reserveAgentBackupRestoreTarget(
+  params: Omit<ReserveTargetInput, "targetNodeHistoryId"> & { targetNodeHistoryId?: string },
+) {
+  return reserveAgentBackupRestoreTargetRepository({
+    ...params,
+    targetNodeHistoryId:
+      params.targetNodeHistoryId ?? (await currentTargetNodeHistoryId(params.targetNodeRecordId)),
   });
-  await dbWrite
-    .update(dockerNodes)
-    .set({ node_incarnation: TARGET_NODE_INCARNATION })
-    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+}
+
+async function rearmTargetNodeThroughIncarnation(nextIncarnation: string): Promise<{
+  initialHistoryId: string;
+  currentHistoryId: string;
+}> {
+  const initialHistoryId = await currentTargetNodeHistoryId(TARGET_NODE_RECORD_ID);
+  const intermediate = await dockerNodesRepository.attestNodeIncarnation({
+    id: TARGET_NODE_RECORD_ID,
+    nodeId: "restore-target-a",
+    expectedIncarnation: TARGET_NODE_INCARNATION,
+    expectedHostKeyFingerprint: "SHA256:test-only-host-key",
+    observedIncarnation: nextIncarnation,
+  });
+  const rearmed = await dockerNodesRepository.attestNodeIncarnation({
+    id: TARGET_NODE_RECORD_ID,
+    nodeId: "restore-target-a",
+    expectedIncarnation: intermediate.node_incarnation,
+    expectedHostKeyFingerprint: "SHA256:test-only-host-key",
+    observedIncarnation: TARGET_NODE_INCARNATION,
+  });
+  if (!rearmed.current_node_history_id) {
+    throw new Error("rearmed restore target occurrence is missing");
+  }
+  return { initialHistoryId, currentHistoryId: rearmed.current_node_history_id };
 }
 
 async function openAndClaim(): Promise<{
@@ -417,6 +424,9 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installAgentNodeOccurrenceTriggerForTests((statement) =>
+      dbWrite.execute(sql.raw(statement)),
+    );
   } catch (error) {
     schemaFailure = error instanceof Error ? error.message : String(error);
   }
@@ -426,8 +436,8 @@ beforeEach(async () => {
   expect(schemaFailure).toBe("");
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
-  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentVaultKeyGenerations);
   await dbWrite.delete(agentBackupCatalogAuthorities);
@@ -542,14 +552,16 @@ describe("restore operation spine", () => {
       if (!reserved || !replay) {
         throw new Error("concurrent reservation did not return one reservation and one replay");
       }
-      expect(reserved.target).toEqual({
+      expect(reserved.target).toMatchObject({
         nodeRecordId: TARGET_NODE_RECORD_ID,
         nodeId: "restore-target-a",
         nodeIncarnation: TARGET_NODE_INCARNATION,
         imageDigest: `sha256:${SHA}`,
       });
+      expect(reserved.target.nodeHistoryId).toMatch(/^[0-9a-f-]{36}$/);
       expect(reserved.operation.expected_node_record_id).toBe(TARGET_NODE_RECORD_ID);
       expect(reserved.operation.expected_node_incarnation).toBe(TARGET_NODE_INCARNATION);
+      expect(reserved.operation.expected_node_history_id).toBe(reserved.target.nodeHistoryId);
       expect(reserved.operation.expected_image_digest).toBe(`sha256:${SHA}`);
       const [node] = await dbWrite.select().from(dockerNodes);
       expect(node?.allocated_count).toBe(1);
@@ -590,6 +602,7 @@ describe("restore operation spine", () => {
       const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
       expect(node?.allocated_count).toBe(0);
       expect(operation?.expected_node_record_id).toBeNull();
+      expect(operation?.expected_node_history_id).toBeNull();
       expect(operation?.expected_node_incarnation).toBeNull();
       expect(operation?.expected_image_digest).toBeNull();
     },
@@ -648,6 +661,7 @@ describe("restore operation spine", () => {
       expect(nodes.find((node) => node.id === OTHER_NODE_RECORD_ID)?.allocated_count).toBe(0);
       const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
       expect(operation?.expected_node_record_id).toBeNull();
+      expect(operation?.expected_node_history_id).toBeNull();
     },
     TIMEOUT,
   );
@@ -699,11 +713,14 @@ describe("restore operation spine", () => {
   );
 
   test(
-    "rejects a target rearmed A-to-B-to-A before reservation without consuming capacity",
+    "rejects stale A1 authority after A-to-B-to-A2 and accepts only the exact current token",
     async () => {
       await seedTargetNode();
       const authority = await openAndClaim();
-      await rearmTargetNodeThroughIncarnation("00000000-0000-4000-8000-00000000f014");
+      const { initialHistoryId, currentHistoryId } = await rearmTargetNodeThroughIncarnation(
+        "00000000-0000-4000-8000-00000000f014",
+      );
+      expect(currentHistoryId).not.toBe(initialHistoryId);
 
       await expect(
         reserveAgentBackupRestoreTarget({
@@ -711,29 +728,31 @@ describe("restore operation spine", () => {
           ownerId: "restore-worker",
           targetNodeRecordId: TARGET_NODE_RECORD_ID,
           targetNodeIncarnation: TARGET_NODE_INCARNATION,
+          targetNodeHistoryId: initialHistoryId,
         }),
-      ).rejects.toThrow("ambiguous multi-incarnation history");
-
-      const [node] = await dbWrite
-        .select()
-        .from(dockerNodes)
-        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      ).rejects.toThrow("node occurrence changed");
       const [operation] = await dbWrite
         .select()
         .from(agentBackupRestoreOperations)
         .where(eq(agentBackupRestoreOperations.id, authority.operationId));
-      expect(node?.allocated_count).toBe(0);
-      expect(operation?.expected_node_record_id).toBeNull();
-      expect(operation?.expected_node_incarnation).toBeNull();
-      expect(operation?.expected_image_digest).toBeNull();
+      expect(operation?.expected_node_history_id).toBeNull();
+
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        targetNodeHistoryId: currentHistoryId,
+      });
+      expect(reserved.target.nodeHistoryId).toBe(currentHistoryId);
     },
     TIMEOUT,
   );
 
   test(
-    "rejects a B inserted after A even when B is backdated before reservation",
+    "ignores unrelated old histories when the exact current occurrence still matches",
     async () => {
-      await seedTargetNode();
+      const node = await seedTargetNode();
       const authority = await openAndClaim();
       await dbWrite.insert(agentNodeIncarnationHistories).values({
         docker_node_record_id: TARGET_NODE_RECORD_ID,
@@ -743,99 +762,55 @@ describe("restore operation spine", () => {
         infrastructure_provider: "hetzner",
         provider_server_id: null,
         host_key_fingerprint: "SHA256:test-only-host-key",
-        attested_at: new Date(TARGET_NODE_ATTESTED_AT.getTime() - 60_000),
+        attested_at: new Date("2000-01-01T00:00:00.000Z"),
       });
-
-      await expect(
-        reserveAgentBackupRestoreTarget({
-          ...authority,
-          ownerId: "restore-worker",
-          targetNodeRecordId: TARGET_NODE_RECORD_ID,
-          targetNodeIncarnation: TARGET_NODE_INCARNATION,
-        }),
-      ).rejects.toThrow("ambiguous multi-incarnation history");
-      const [node] = await dbWrite.select().from(dockerNodes);
-      expect(node?.allocated_count).toBe(0);
+      if (!node.current_node_history_id) throw new Error("initial occurrence is missing");
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        targetNodeHistoryId: node.current_node_history_id,
+      });
+      expect(reserved.target.nodeHistoryId).toBe(node.current_node_history_id);
     },
     TIMEOUT,
   );
 
   test(
-    "fails closed when an older B history predates the current A history",
+    "rejects a stale token after exact-id delete and reinsert",
     async () => {
-      await seedTargetNode();
+      const original = await seedTargetNode();
       const authority = await openAndClaim();
-      await dbWrite.delete(agentNodeIncarnationHistories);
-      await dbWrite.insert(agentNodeIncarnationHistories).values({
-        docker_node_record_id: TARGET_NODE_RECORD_ID,
-        node_id: "restore-target-a",
-        node_incarnation: OTHER_NODE_INCARNATION,
-        fleet_kind: "robot",
-        infrastructure_provider: "hetzner",
-        provider_server_id: null,
-        host_key_fingerprint: "SHA256:test-only-host-key",
-        attested_at: new Date(TARGET_NODE_ATTESTED_AT.getTime() - 60_000),
-      });
-      await dbWrite.insert(agentNodeIncarnationHistories).values({
-        docker_node_record_id: TARGET_NODE_RECORD_ID,
-        node_id: "restore-target-a",
-        node_incarnation: TARGET_NODE_INCARNATION,
-        fleet_kind: "robot",
-        infrastructure_provider: "hetzner",
-        provider_server_id: null,
-        host_key_fingerprint: "SHA256:test-only-host-key",
-        attested_at: TARGET_NODE_ATTESTED_AT,
-      });
-
-      await expect(
-        reserveAgentBackupRestoreTarget({
-          ...authority,
-          ownerId: "restore-worker",
-          targetNodeRecordId: TARGET_NODE_RECORD_ID,
-          targetNodeIncarnation: TARGET_NODE_INCARNATION,
-        }),
-      ).rejects.toThrow("ambiguous multi-incarnation history");
-      const [node] = await dbWrite.select().from(dockerNodes);
-      expect(node?.allocated_count).toBe(0);
-    },
-    TIMEOUT,
-  );
-
-  test(
-    "rejects a fresh-created exact node delete/reinsert as defense in depth",
-    async () => {
-      await seedTargetNode();
-      const authority = await openAndClaim();
+      if (!original.current_node_history_id) throw new Error("initial occurrence is missing");
       await dbWrite.delete(dockerNodes).where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
-      await seedTargetNode({
-        createdAt: new Date(TARGET_NODE_ATTESTED_AT.getTime() + 1_000),
-        recordHistory: false,
-      });
-
+      const replacement = await seedTargetNode();
+      expect(replacement.current_node_history_id).not.toBe(original.current_node_history_id);
       await expect(
         reserveAgentBackupRestoreTarget({
           ...authority,
           ownerId: "restore-worker",
           targetNodeRecordId: TARGET_NODE_RECORD_ID,
           targetNodeIncarnation: TARGET_NODE_INCARNATION,
+          targetNodeHistoryId: original.current_node_history_id,
         }),
-      ).rejects.toThrow("lacks exact immutable node-incarnation history");
-      const [node] = await dbWrite.select().from(dockerNodes);
-      expect(node?.allocated_count).toBe(0);
+      ).rejects.toThrow("node occurrence changed");
     },
     TIMEOUT,
   );
 
   test(
-    "fails while incarnation is NULL and accepts exact host-key CAS re-attestation",
+    "mints a new occurrence for NULL-to-A re-attestation and rejects the old token",
     async () => {
-      await seedTargetNode();
+      const original = await seedTargetNode();
       const authority = await openAndClaim();
+      if (!original.current_node_history_id) throw new Error("initial occurrence is missing");
       const request = {
         ...authority,
         ownerId: "restore-worker",
         targetNodeRecordId: TARGET_NODE_RECORD_ID,
         targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        targetNodeHistoryId: original.current_node_history_id,
       } as const;
       await dockerNodesRepository.invalidateNodeIncarnation({
         id: TARGET_NODE_RECORD_ID,
@@ -855,9 +830,18 @@ describe("restore operation spine", () => {
         observedIncarnation: TARGET_NODE_INCARNATION,
       });
       expect(reattested.id).toBe(TARGET_NODE_RECORD_ID);
-      const reserved = await reserveAgentBackupRestoreTarget(request);
+      if (!reattested.current_node_history_id) throw new Error("re-attested occurrence is missing");
+      expect(reattested.current_node_history_id).not.toBe(original.current_node_history_id);
+      await expect(reserveAgentBackupRestoreTarget(request)).rejects.toThrow(
+        "node occurrence changed",
+      );
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...request,
+        targetNodeHistoryId: reattested.current_node_history_id,
+      });
       expect(reserved.replayed).toBe(false);
       expect(reserved.target.nodeIncarnation).toBe(TARGET_NODE_INCARNATION);
+      expect(reserved.target.nodeHistoryId).toBe(reattested.current_node_history_id);
     },
     TIMEOUT,
   );
@@ -973,7 +957,7 @@ describe("restore operation spine", () => {
       ".from(agentBackupRestoreOperations)",
       ".from(agentBackupRestoreLeases)",
       ".from(dockerNodes)",
-      "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+      "proveExactAgentNodeOccurrenceForLockedNode(",
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(",
     ]);
@@ -1082,6 +1066,20 @@ describe("restore operation spine", () => {
         .where(eq(agentBackupRestoreOperations.id, operation.id));
       expect(stillReserved?.phase).toBe("reserved");
       expect(stillReserved?.expected_node_record_id).toBeNull();
+      expect(stillReserved?.expected_node_history_id).toBeNull();
+      let containerOnlyError: unknown;
+      try {
+        await dbWrite
+          .update(agentBackupRestoreOperations)
+          .set({ expected_container_id: CONTAINER })
+          .where(eq(agentBackupRestoreOperations.id, operation.id))
+          .execute();
+      } catch (error) {
+        containerOnlyError = error;
+      }
+      expect((containerOnlyError as { cause?: { constraint?: string } }).cause?.constraint).toBe(
+        "agent_backup_restore_operations_expected_shape_check",
+      );
 
       await reserveAgentBackupRestoreTarget({
         operationId: operation.id,

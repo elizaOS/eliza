@@ -10,9 +10,6 @@ import type { WindowActionParams, WindowActionResult } from "../types.js";
 import { toComputerUseActionResult } from "./helpers.js";
 import { type ApprovalRelayOptions, withApprovalRelay } from "./progress.js";
 
-const MAX_WINDOW_ROWS = 50;
-const MAX_WINDOW_ROW_BYTES = 120;
-
 function formatWindowResultText(
   params: WindowActionParams,
   result: WindowActionResult,
@@ -48,10 +45,7 @@ export async function handleWindowOp(
     () => service.executeWindowAction(params),
     approvalOptions,
   );
-  const text = formatWindowResultText(params, result).slice(
-    0,
-    MAX_WINDOW_ROWS * MAX_WINDOW_ROW_BYTES,
-  );
+  const text = formatWindowResultText(params, result);
 
   if (callback) {
     await callback({ text });

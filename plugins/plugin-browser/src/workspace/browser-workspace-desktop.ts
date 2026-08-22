@@ -42,7 +42,7 @@ async function assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
 
 async function readErrorBody(response: Response): Promise<string> {
   try {
-    return (await response.text()).trim().slice(0, 240);
+    return (await response.text()).trim();
   } catch {
     return "";
   }
@@ -533,13 +533,11 @@ export function createDesktopBrowserWorkspaceCommandScript(
       document.querySelectorAll(
         "a, button, input, textarea, select, form, [role='button'], [data-testid]"
       )
-    )
-      .slice(0, 40)
-      .map((element) => serialize(element));
+		).map((element) => serialize(element));
   const snapshot = () => ({
     title: document.title,
     url: location.href,
-    bodyText: normalize(document.body?.textContent).slice(0, 800),
+		bodyText: normalize(document.body?.textContent),
     elements: inspect(),
   });
   const setInputValue = (appendMode, target) => {

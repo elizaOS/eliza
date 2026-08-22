@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deslop assistant text — shorten verbose assistant replies and memoryEntries.
+"""Deslop assistant text without shortening substantive reply content.
 
 Rules (applied in order, only to assistant `reply` text and memoryEntries):
 1. Drop "You are a/an ..." leading sentence when response has >=2 sentences.
@@ -9,8 +9,6 @@ Rules (applied in order, only to assistant `reply` text and memoryEntries):
    ends with `?`.
 4. Strip leading interjections "Sure thing!", "Of course!", "Absolutely!",
    "I'd be happy to ...".
-5. Cap at 1200 chars (replies) / 800 chars (memoryEntries) at last sentence
-   boundary that fits.
 
 Operates on native JSON-encoded `expectedResponse` for task_type `reply` only.
 Also strips memoryEntries[*].content on every record (assistant turns).
@@ -66,7 +64,7 @@ def split_sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
-def deslop_text(text: str, *, cap: int) -> tuple[str, list[str]]:
+def deslop_text(text: str) -> tuple[str, list[str]]:
     """Apply deslop rules. Returns (new_text, list_of_rules_fired)."""
     if not isinstance(text, str) or not text.strip():
         return text, []
@@ -95,18 +93,6 @@ def deslop_text(text: str, *, cap: int) -> tuple[str, list[str]]:
         # capitalize the new lead
         if text and text[0].islower():
             text = text[0].upper() + text[1:]
-    # rule 5: cap at sentence boundary
-    if len(text) > cap:
-        truncated = []
-        running = 0
-        for s in split_sentences(text):
-            if running + len(s) + 1 > cap:
-                break
-            truncated.append(s)
-            running += len(s) + 1
-        if truncated:
-            text = " ".join(truncated)
-            fired.append("cap_truncate")
     if not text:
         return original, []  # too aggressive, revert
     return text, fired
@@ -129,7 +115,7 @@ def deslop_payload_reply(payload: str, stats: dict) -> str:
             inner = json.loads(quoted)
         except json.JSONDecodeError:
             return match.group(0)
-        new_inner, fired = deslop_text(inner, cap=1200)
+        new_inner, fired = deslop_text(inner)
         if fired:
             for f in fired:
                 stats[f"reply.{f}"] = stats.get(f"reply.{f}", 0) + 1
@@ -160,7 +146,7 @@ def deslop_record(rec: dict, stats: dict) -> dict:
             c = m.get("content")
             if not isinstance(c, str) or not c:
                 continue
-            new_c, fired = deslop_text(c, cap=800)
+            new_c, fired = deslop_text(c)
             if fired:
                 m["content"] = new_c
                 for f in fired:

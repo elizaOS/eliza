@@ -1425,7 +1425,7 @@ export class CloudBootstrapMessageService implements IMessageService {
           contentType.includes("document")
         ) {
           attachment.description = attachment.text
-            ? `Document content: ${attachment.text.substring(0, 500)}${attachment.text.length > 500 ? "..." : ""}`
+            ? `Document content: ${attachment.text}`
             : `Document: ${label}`;
         } else {
           attachment.description = `Attachment: ${label}`;

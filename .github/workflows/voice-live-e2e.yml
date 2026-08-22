@@ -2,7 +2,7 @@ name: Voice Live E2E
 
 # Provisioned REAL voice lane. The keyless PR lanes stub voice entirely
 # (silent-WAV TTS, shimmed STT transcript), so live service coverage and native
-# component compatibility evidence live in this model-heavy nightly /
+# component compatibility evidence live in this model-heavy
 # workflow_dispatch lane. Product-runtime ASR proof additionally requires the
 # Gemma release-authority job below to pass.
 #
@@ -60,13 +60,9 @@ name: Voice Live E2E
 # the provisioning preflight hard-failing on unprovisioned robots; the
 # self-provisioning above removes that failure class entirely.
 #
-# Runs nightly (offset from app-live-e2e) + on-demand; never on pull_request.
+# Runs on demand; never on pull_request.
 
 on:
-  schedule:
-    # 08:30 UTC daily — after app-live-e2e (07:00) settles, to avoid runner
-    # contention on the shared GPU host.
-    - cron: "30 8 * * *"
   workflow_dispatch:
     inputs:
       run_railway_contract:

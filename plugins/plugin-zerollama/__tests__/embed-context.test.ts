@@ -1,57 +1,33 @@
 /**
- * Surrogate-aware truncation for Ollama embedding inputs. A blind
- * slice(0, maxChars) that lands mid-emoji leaves a lone high surrogate;
- * JSON.stringify emits it as \uD83E and Ollama's strict JSON rejects it.
- * truncateEmbedInput must sanitize lone surrogates and never split pairs
- * for both string and string[] inputs.
+ * Validates that Ollama embedding input is Unicode-safe and either preserved
+ * completely or rejected before a partial value can reach the provider.
  */
 import { describe, expect, it } from "vitest";
-import { truncateEmbedInput } from "../utils/embed-context.ts";
+import { validateEmbedInput } from "../utils/embed-context.ts";
 
-describe("truncateEmbedInput — surrogate-aware truncation", () => {
-  it("keeps UTF-16 surrogate pairs intact at the string boundary", () => {
-    const text = `${"a".repeat(9)}🦊${"b".repeat(100)}`;
-    const truncated = truncateEmbedInput(text, 10) as string;
-    expect(truncated.isWellFormed()).toBe(true);
-    expect(truncated.length).toBeLessThanOrEqual(10);
-    expect(truncated).toBe("a".repeat(9));
-  });
-
-  it("preserves a fitting emoji under the cap", () => {
+describe("validateEmbedInput", () => {
+  it("preserves a complete string within the provider window", () => {
     const text = `${"a".repeat(8)}🦊`;
-    const truncated = truncateEmbedInput(text, 10) as string;
-    expect(truncated).toBe(text);
-    expect(truncated.isWellFormed()).toBe(true);
-    expect(truncated.length).toBe(10);
+    expect(validateEmbedInput(text, 10)).toBe(text);
   });
 
-  it("sanitizes lone surrogates in string input before truncating", () => {
-    const text = "a\ud800bcdef";
-    const truncated = truncateEmbedInput(text, 4) as string;
-    expect(truncated).toBe("a\ufffdbc");
-    expect(truncated.isWellFormed()).toBe(true);
+  it("rejects a string that exceeds the provider window", () => {
+    const text = `${"a".repeat(9)}🦊tail`;
+    expect(() => validateEmbedInput(text, 10)).toThrow(
+      "Embedding input exceeds the provider-safe limit (15/10 chars)"
+    );
   });
 
-  it("sanitizes lone surrogates without truncation when under the cap", () => {
+  it("sanitizes lone surrogates without dropping content", () => {
     const text = "a\ud800bc";
-    const out = truncateEmbedInput(text, 10) as string;
-    expect(out).toBe("a\ufffdbc");
-    expect(out.isWellFormed()).toBe(true);
+    const output = validateEmbedInput(text, 10) as string;
+    expect(output).toBe("a\ufffdbc");
+    expect(output.isWellFormed()).toBe(true);
   });
 
-  it("keeps surrogate pairs intact for string[] inputs", () => {
-    const input = [`${"a".repeat(9)}🦊tail`, "short", "a\ud800bc"];
-    const out = truncateEmbedInput(input, 10) as string[];
-    expect(out[0].isWellFormed()).toBe(true);
-    expect(out[0].length).toBeLessThanOrEqual(10);
-    expect(out[0]).toBe("a".repeat(9));
-    expect(out[1]).toBe("short");
-    expect(out[2]).toBe("a\ufffdbc");
-    expect(out[2].isWellFormed()).toBe(true);
-  });
-
-  it("returns empty string when maxChars is 0", () => {
-    expect(truncateEmbedInput("hello", 0)).toBe("");
-    expect((truncateEmbedInput("hello", 0) as string).isWellFormed()).toBe(true);
+  it("rejects the entire array if any element exceeds the window", () => {
+    expect(() => validateEmbedInput(["short", "x".repeat(11)], 10)).toThrow(
+      "Embedding input exceeds the provider-safe limit (11/10 chars)"
+    );
   });
 });

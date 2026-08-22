@@ -11,6 +11,7 @@ import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  _resetAuthRateLimiter,
   ensureRouteAuthorized,
   ensureRouteMinRole,
   resolveAuthorizedRouteRole,
@@ -162,11 +163,33 @@ function clearEnv() {
 describe("ensureRouteMinRole", () => {
   beforeEach(() => {
     clearEnv();
+    _resetAuthRateLimiter();
     vi.clearAllMocks();
     mocks.verifyCsrfToken.mockReturnValue(true);
   });
 
   afterEach(clearEnv);
+
+  it("does not rate-limit trusted loopback recovery requests", async () => {
+    const failedReq = makeReq({ remoteAddress: "127.0.0.1" });
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await resolveAuthorizedRouteRole(failedReq, {
+        state: { current: null },
+        skipCsrf: true,
+      });
+    }
+
+    const trustedReq = makeReq({
+      remoteAddress: "127.0.0.1",
+      headers: { host: "localhost:2138" },
+    });
+    await expect(
+      resolveAuthorizedRouteRole(trustedReq, {
+        state: { current: null },
+        skipCsrf: true,
+      }),
+    ).resolves.toEqual({ ok: true, role: "OWNER" });
+  });
 
   it("allows an owner browser session to reach OWNER routes", async () => {
     mocks.findActiveSession.mockResolvedValue(makeSession());

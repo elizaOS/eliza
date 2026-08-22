@@ -17,7 +17,6 @@ import type {
 import {
 	getStreamingContext,
 	toWellFormedUnicode,
-	truncateWellFormed,
 	unwrapUserMessageText,
 } from "@elizaos/core";
 import { skillDownloadAbortError } from "../services/skill-package-bytes";
@@ -26,13 +25,8 @@ import { describeSkillReference, extractSlugFromMessage } from "./parse-helpers"
 import { createAgentSkillsActionValidator } from "./validators";
 
 const SKILL_SEARCH_LIMIT = 5;
-const SKILL_INSTALL_TEXT_MAX_CHARS = 3_000;
-
-function truncateInstallSkillText(text: string): string {
-	const wellFormed = toWellFormedUnicode(text);
-	return wellFormed.length <= SKILL_INSTALL_TEXT_MAX_CHARS
-		? wellFormed
-		: `${truncateWellFormed(wellFormed, SKILL_INSTALL_TEXT_MAX_CHARS)}\n\n[truncated install result]`;
+function normalizeInstallSkillText(text: string): string {
+	return toWellFormedUnicode(text);
 }
 
 export const installSkillAction = {
@@ -236,24 +230,24 @@ export const installSkillAction = {
 			resultText += " The skill passed security scanning and is ready to use.";
 		}
 
-		const boundedResultText = truncateInstallSkillText(resultText);
+		const completeResultText = normalizeInstallSkillText(resultText);
 		if (installSignal?.aborted) {
 			return cancellationResult(installSignal.reason, installSlug);
 		}
-		if (callback) await callback({ text: boundedResultText });
+		if (callback) await callback({ text: completeResultText });
 		if (installSignal?.aborted) {
 			return cancellationResult(installSignal.reason, installSlug);
 		}
 
 		return {
 			success: true,
-			text: boundedResultText,
+			text: completeResultText,
 			data: {
 				slug: installSlug,
 				name: bestMatch.displayName,
 				scanStatus: scanStatus ?? "clean",
 				searchLimit: SKILL_SEARCH_LIMIT,
-				outputTruncated: boundedResultText !== resultText,
+				outputTruncated: false,
 			},
 		};
 	},

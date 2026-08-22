@@ -99,7 +99,6 @@ describe("connector plugin-managed account options", () => {
   it("marks account-manager backed connectors as plugin-managed", () => {
     for (const connectorId of [
       "telegram",
-      "signal",
       "google",
       "x",
       "twitter",

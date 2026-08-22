@@ -5,6 +5,7 @@
  * invented zero exit code, and a hung loopback fetch must fail closed.
  */
 
+import { createHash } from "node:crypto";
 import {
   ElizaError,
   type HandlerOptions,
@@ -114,6 +115,238 @@ describe("terminal action effect proof", () => {
           },
         },
       ],
+    });
+  });
+
+  it("projects only a complete attachment ReadView, without duplicated output", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "private output\n" }),
+      ),
+    );
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options(),
+    );
+    const prompt = result?.promptData as Record<string, unknown>;
+    const view = prompt.readView as {
+      reference: { kind: string; ref: string };
+      slice: { completeness: string; sourceSha256?: string };
+    };
+    expect(view.reference.kind).toBe("attachment");
+    expect(view.reference.ref).not.toContain("memory://");
+    expect(view.slice.completeness).toBe("complete");
+    expect(view.slice.sourceSha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(
+      createHash("sha256")
+        .update(result?.text ?? "")
+        .digest("hex"),
+    ).toBe(view.slice.sourceSha256);
+    expect(JSON.stringify(prompt)).not.toContain("private output");
+  });
+
+  it("rejects provider-truncated output before it reaches model-visible data", async () => {
+    const rt = runtime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
+          stdout: "failure tail",
+          truncated: true,
+          exitCode: 7,
+        }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(rt, message(), undefined, options()),
+    ).rejects.toMatchObject({
+      code: "TERMINAL_OUTPUT_INCOMPLETE",
+      context: { acceptance: "accepted" },
+    });
+    expect(rt.createMemory).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["string", "false"],
+  ])("rejects a %s truncated proof before persistence", async (_name, flag) => {
+    const rt = runtime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { truncated: flag }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(rt, message(), undefined, options()),
+    ).rejects.toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: { acceptance: "unknown" },
+    });
+    expect(rt.createMemory).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["data", { truncated: false, timedOut: true }],
+    ["result", { truncated: false, error: "failed" }],
+    ["output", { truncated: false, stdout: "shadow partial" }],
+  ])(
+    "rejects a conflicting nested %s execution proof before persistence",
+    async (key, nested) => {
+      const rt = runtime();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+          terminalResponseForRequest(init, {
+            truncated: false,
+            [key]: nested,
+          }),
+        ),
+      );
+      await expect(
+        terminalAction.handler(rt, message(), undefined, options()),
+      ).rejects.toMatchObject({ code: "TERMINAL_OUTPUT_INCOMPLETE" });
+      expect(rt.createMemory).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects conflicting nested truncation proof before persistence", async () => {
+    const rt = runtime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
+          truncated: false,
+          result: { truncated: true },
+        }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(rt, message(), undefined, options()),
+    ).rejects.toMatchObject({ code: "TERMINAL_OUTPUT_INCOMPLETE" });
+    expect(rt.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("rejects a nested legacy envelope without its own completeness proof", async () => {
+    const rt = runtime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
+          truncated: false,
+          output: { stdout: "shadow output" },
+        }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(rt, message(), undefined, options()),
+    ).rejects.toMatchObject({ code: "TERMINAL_OUTPUT_INCOMPLETE" });
+    expect(rt.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("rejects a response that claims both success and an error", async () => {
+    const rt = runtime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
+          ok: true,
+          error: "provider reported an ambiguous failure",
+        }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(rt, message(), undefined, options()),
+    ).rejects.toMatchObject({ code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN" });
+    expect(rt.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("rejects timeout partials and unsafe controls before persistence", async () => {
+    for (const override of [
+      { timedOut: true, stdout: "partial" },
+      { stdout: "prefix\u0000suffix" },
+      { stdout: "prefix\u202esuffix" },
+      { stdout: "prefix\ufffdsuffix" },
+      { stdout: "\ud800" },
+    ]) {
+      const rt = runtime();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+          terminalResponseForRequest(init, override),
+        ),
+      );
+      await expect(
+        terminalAction.handler(rt, message(), undefined, options()),
+      ).rejects.toBeInstanceOf(ElizaError);
+      expect(rt.createMemory).not.toHaveBeenCalled();
+    }
+  });
+
+  it("preserves ordinary terminal framing and ANSI styling", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
+          stdout: "\u001b[32mok\u001b[0m\n\tindented\r\n",
+        }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(runtime(), message(), undefined, options()),
+    ).resolves.toMatchObject({ success: true });
+  });
+
+  it("enforces the complete-output boundary in UTF-8 bytes", async () => {
+    const exact = "a".repeat(4 * 1024 * 1024);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: exact }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(runtime(), message(), undefined, options()),
+    ).resolves.toMatchObject({ success: true });
+
+    const rt = runtime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: `${exact}你` }),
+      ),
+    );
+    await expect(
+      terminalAction.handler(rt, message(), undefined, options()),
+    ).rejects.toMatchObject({ code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN" });
+    expect(rt.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("does not mint a restart-unsafe reference when attachment persistence fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init),
+      ),
+    );
+    const failingRuntime = runtime();
+    failingRuntime.createMemory = vi.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    const result = await terminalAction.handler(
+      failingRuntime,
+      message(),
+      undefined,
+      options(),
+    );
+    const prompt = result?.promptData as Record<string, unknown>;
+    expect(prompt.readView).toBeUndefined();
+    expect(prompt).toMatchObject({
+      terminal: { outputReferenceAvailable: false },
     });
   });
 
@@ -300,7 +533,7 @@ describe("terminal action effect proof", () => {
     });
   });
 
-  it("keeps action-owned empty, stderr, truncated, and timeout statuses canonical", async () => {
+  it("keeps action-owned empty and stderr statuses canonical", async () => {
     const cases = [
       {
         override: { stdout: "" },
@@ -309,14 +542,6 @@ describe("terminal action effect proof", () => {
       {
         override: { stdout: "partial", stderr: "warning" },
         text: "The command finished successfully with exit code 0.",
-      },
-      {
-        override: { stdout: "partial", truncated: true },
-        text: "The command finished successfully with exit code 0.",
-      },
-      {
-        override: { stdout: "partial", timedOut: true, maxDurationMs: 30_000 },
-        text: "The command timed out after 30000 ms; I can't verify that it completed.",
       },
     ];
 
@@ -460,7 +685,7 @@ describe("terminal action effect proof", () => {
             }),
             {
               status: 200,
-              headers: { "Content-Length": String(2 * 1024 * 1024 + 1) },
+              headers: { "Content-Length": String(25 * 1024 * 1024 + 1) },
             },
           ),
       ),

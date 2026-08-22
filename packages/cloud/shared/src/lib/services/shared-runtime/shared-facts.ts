@@ -21,9 +21,6 @@ import { ElizaError } from "@elizaos/core/edge";
 export const SHARED_FACTS_MEMORY_TYPE = "facts";
 
 export const SHARED_FACTS_MAX_PER_TURN = 5;
-export const SHARED_FACTS_MAX_FACT_CHARS = 240;
-export const SHARED_FACTS_CONTEXT_MAX_FACTS = 12;
-export const SHARED_FACTS_CONTEXT_MAX_CHARS = 1_500;
 
 export const SHARED_FACTS_INVALID_RESPONSE = "SHARED_FACTS_INVALID_RESPONSE";
 
@@ -103,9 +100,8 @@ export function buildSharedFactsExtractionPrompt(input: SharedFactsPromptInput):
  * code block around the array but nothing else: a body without a parseable
  * JSON string array is a typed invalid-response failure (error-policy:J3 at
  * the caller), never silently "no facts". Entries are sanitized to one plain
- * line ({@link sanitizeSharedFact}), clipped to
- * {@link SHARED_FACTS_MAX_FACT_CHARS}, and capped at
- * {@link SHARED_FACTS_MAX_PER_TURN}.
+ * line ({@link sanitizeSharedFact}) and capped at the number requested from the
+ * extraction model.
  */
 export function parseSharedFactsResponse(text: string): string[] {
   const stripped = text.replace(/```(?:json)?/gi, "").trim();
@@ -141,11 +137,6 @@ export function parseSharedFactsResponse(text: string): string[] {
   return (parsed as string[])
     .map((fact) => sanitizeSharedFact(fact))
     .filter((fact) => fact.length > 0)
-    .map((fact) =>
-      fact.length > SHARED_FACTS_MAX_FACT_CHARS
-        ? `${fact.slice(0, SHARED_FACTS_MAX_FACT_CHARS - 1)}…`
-        : fact,
-    )
     .slice(0, SHARED_FACTS_MAX_PER_TURN);
 }
 
@@ -180,24 +171,17 @@ export async function extractSharedTurnFacts(
 
 /**
  * Renders the known-facts provider block for one turn, or null when there is
- * nothing to say. Facts render newest-known-first in the order given, bounded
- * by {@link SHARED_FACTS_CONTEXT_MAX_FACTS} rows and
- * {@link SHARED_FACTS_CONTEXT_MAX_CHARS} characters so accumulated knowledge
- * can never crowd out the persona or the conversation window.
+ * nothing to say. Facts render newest-known-first in the order given without
+ * silently removing older or longer facts.
  */
 export function buildSharedFactsContext(facts: readonly string[]): string | null {
   const renderable = facts
     .map((fact) => sanitizeSharedFact(fact))
-    .filter((fact) => fact.length > 0)
-    .slice(0, SHARED_FACTS_CONTEXT_MAX_FACTS);
+    .filter((fact) => fact.length > 0);
   if (renderable.length === 0) return null;
   let block = FACTS_BLOCK_HEADER;
-  let rendered = 0;
   for (const fact of renderable) {
-    const candidate = `${block}\n- ${fact}`;
-    if (candidate.length > SHARED_FACTS_CONTEXT_MAX_CHARS) break;
-    block = candidate;
-    rendered += 1;
+    block = `${block}\n- ${fact}`;
   }
-  return rendered === 0 ? null : block;
+  return block;
 }

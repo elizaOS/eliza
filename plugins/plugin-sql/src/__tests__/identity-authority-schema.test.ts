@@ -10,6 +10,7 @@ import {
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
+  identityPersonLinkAttestationTable,
 } from "../schema/identityAuthority";
 
 describe("canonical identity authority schema", () => {
@@ -84,6 +85,24 @@ describe("canonical identity authority schema", () => {
       ])
     );
     expect(confirmation.foreignKeys).toHaveLength(3);
+  });
+
+  it("binds immutable person-link evidence to an operator and generation", () => {
+    const config = getTableConfig(identityPersonLinkAttestationTable);
+
+    expect(config.name).toBe("identity_person_link_attestations");
+    expect(config.foreignKeys).toHaveLength(4);
+    expect(config.uniqueConstraints.map((constraint) => constraint.name)).toContain(
+      "identity_person_link_attestation_idempotency_unique"
+    );
+    expect(config.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        "identity_person_link_attestation_order_check",
+        "identity_person_link_attestation_actor_role_check",
+        "identity_person_link_attestation_authority_check",
+        "identity_person_link_attestation_generation_check",
+      ])
+    );
   });
 
   it("keeps versioned redirects and forbids self-canonicalization", () => {

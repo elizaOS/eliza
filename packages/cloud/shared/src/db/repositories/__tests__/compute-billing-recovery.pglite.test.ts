@@ -130,6 +130,7 @@ beforeAll(async () => {
       WHERE status IN ('pending', 'dispatching', 'retry', 'terminal_attention')`),
     );
   } catch (error) {
+    // error-policy:J1 The test-harness boundary records schema setup failure for the mandatory readiness assertion.
     ready = false;
     console.error("[compute-billing-recovery] PGlite schema setup failed", error);
   }
@@ -243,6 +244,71 @@ describe("compute billing recovery", () => {
       billingStatus: "shutdown_pending",
       warningSentAt: now,
     });
+  });
+
+  test("warning commit rejects rows outside live user-owned container authority", async () => {
+    const now = new Date("2026-08-19T04:30:00.000Z");
+    const rejectedAuthorities = [
+      { label: "shared", executionTier: "shared", poolStatus: null, deletedAt: null },
+      {
+        label: "unknown",
+        executionTier: "future-container-tier",
+        poolStatus: null,
+        deletedAt: null,
+      },
+      {
+        label: "warm-pool",
+        executionTier: "dedicated-always",
+        poolStatus: "unclaimed",
+        deletedAt: null,
+      },
+      {
+        label: "soft-deleted",
+        executionTier: "dedicated-always",
+        poolStatus: null,
+        deletedAt: new Date("2026-08-19T04:00:00.000Z"),
+      },
+    ] as const;
+
+    for (const rejected of rejectedAuthorities) {
+      const { org, sandbox } = await seed("0.000000");
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          execution_tier: rejected.executionTier as never,
+          pool_status: rejected.poolStatus,
+          deleted_at: rejected.deletedAt,
+        })
+        .where(eq(agentSandboxes.id, sandbox.id));
+      const authority = await claimBillingRun(now);
+
+      await expect(
+        agentBillingRepository.commitShutdownWarningForRun({
+          ...authority,
+          sandboxId: sandbox.id,
+          organizationId: org.id,
+          agentName: rejected.label,
+          now,
+          shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
+        }),
+      ).resolves.toBe(false);
+
+      const [stored] = await dbWrite
+        .select({
+          billingStatus: agentSandboxes.billing_status,
+          warningSentAt: agentSandboxes.shutdown_warning_sent_at,
+          scheduledShutdownAt: agentSandboxes.scheduled_shutdown_at,
+        })
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, sandbox.id));
+      expect(stored).toEqual({
+        billingStatus: "active",
+        warningSentAt: null,
+        scheduledShutdownAt: null,
+      });
+    }
+
+    expect(await dbWrite.select().from(agentBillingRunItems)).toHaveLength(0);
   });
 
   test("a crash before the warning commit leaves the retry free to redeliver", async () => {

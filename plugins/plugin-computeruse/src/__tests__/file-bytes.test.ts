@@ -23,7 +23,6 @@ import {
   editFile,
   getFileSize,
   MAX_FILE_OP_BYTES,
-  READ_FILE_CHAR_LIMIT,
   readBytes,
   readFile,
   writeBytes,
@@ -153,12 +152,12 @@ describe("binary file ops (read_bytes / write_bytes)", () => {
     expect(w.size).toBe(MAX_FILE_OP_BYTES);
   });
 
-  it("readFile returns at most 10000 chars from a sparse oversized file", async () => {
+  it("readFile returns the complete file within the byte budget", async () => {
     const file = join(dir, "huge.txt");
     writeSparseFile(file, 8 * 1024 * 1024);
     const r = await readFile(file);
     expect(r.success).toBe(true);
-    expect(r.content).toHaveLength(READ_FILE_CHAR_LIMIT);
+    expect(r.content).toHaveLength(8 * 1024 * 1024);
   });
 
   it("treats edit replacement tokens literally", async () => {

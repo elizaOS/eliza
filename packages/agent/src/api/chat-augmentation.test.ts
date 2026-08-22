@@ -238,6 +238,26 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(searchMode).toBe("keyword");
   });
 
+  it("preserves every relevant lexical match beyond the former four-document cap", async () => {
+    const message = makeMessage();
+    (message.content as { text: string }).text = "alpha beta details";
+    const matches = Array.from({ length: 7 }, (_, index) => ({
+      content: { text: `Alpha beta detail ${index + 1}.` },
+      similarity: 1 - index / 100,
+      metadata: { filename: `detail-${index + 1}.txt` },
+    }));
+    const documents = {
+      searchDocuments: vi.fn().mockResolvedValue(matches),
+    };
+    const runtime = makeRuntime(documents);
+
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    for (let index = 1; index <= matches.length; index += 1) {
+      expect(result.content.text).toContain(`Alpha beta detail ${index}.`);
+    }
+  });
+
   it("does not inject an unrelated help FAQ on a workout query (#17028)", async () => {
     // Keyword search max-normalizes BM25 within each result set, so the best
     // positive match reports similarity 1.0 even when the only shared words

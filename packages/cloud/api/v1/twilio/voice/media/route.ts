@@ -58,8 +58,7 @@ import {
 import { verifyTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
   callEndedEvent,
-  callOpeningClientMessageId,
-  callOpeningPrompt,
+  callOpeningGreeting,
   callStartedEvent,
   prewarmAndRecordVoiceCallStart,
 } from "../lib/voice-continuity";
@@ -433,14 +432,10 @@ app.get("/", async (c) => {
       elizaModel: resolveElizaModel(env),
       fetchImpl: elizaFetch,
       prewarmElizaContext: prewarmAndRecordCallStart,
-      openingPrompt: callOpeningPrompt(
-        claims.returningCaller,
-        claims.previousInteractionAt,
-        callContextAt,
-      ),
-      openingClientMessageId: callOpeningClientMessageId(claims.callSid),
-      openingHistoryCutoffAt: callContextAt,
-      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      // Speak immediately while prewarmAndRecordCallStart hydrates runtime,
+      // history, admission, and pricing in parallel. The previous generated
+      // opener serialized a complete model turn ahead of first audio.
+      openingGreeting: callOpeningGreeting(claims.returningCaller),
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>

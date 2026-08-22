@@ -4,21 +4,12 @@
 # cannot carry: CUDA llama-server, the sha256-pinned gpu-vision models,
 # node24/bun/playwright/tesseract/ffmpeg. Pushes
 # ghcr.io/elizaos/certification-gpu:{latest,sha-<short>} via GITHUB_TOKEN —
-# no extra registry secret. Rebuilds are rare (image inputs only), so this
-# triggers on dispatch plus pushes that touch its own inputs, never on PRs.
+# no extra registry secret. Rebuilds are explicit and never run on PRs.
 
 name: certification-image
 
 on:
   workflow_dispatch:
-  push:
-    branches: [develop]
-    paths:
-      - "scripts/vast/Dockerfile.gpu"
-      - "scripts/gpu-vision/setup.mjs"
-      - "scripts/gpu-vision/lib.mjs"
-      - "scripts/gpu-vision/models.lock.json"
-      - ".github/workflows/certification-image.yml"
 
 concurrency:
   group: certification-image-${{ github.ref }}

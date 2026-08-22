@@ -15,8 +15,6 @@ import {
   type Provider,
   type ProviderResult,
   type State,
-  toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import {
   filterInitFilesForSession,
@@ -26,9 +24,6 @@ import {
   type WorkspaceInitFile,
 } from "./workspace.ts";
 
-const DEFAULT_MAX_CHARS = 20_000;
-/** Hard cap on total workspace context to prevent prompt explosion. */
-const MAX_TOTAL_WORKSPACE_CHARS = 100_000;
 const CACHE_TTL_MS = 60_000;
 
 // Per-workspace cache so multi-agent doesn't thrash.
@@ -57,42 +52,15 @@ async function getFiles(dir: string): Promise<WorkspaceInitFile[]> {
 }
 
 /** @internal Exported for testing. */
-export function truncate(content: string, max: number): string {
-  if (max <= 0) return "";
-  const wellFormed = toWellFormedUnicode(content);
-  if (wellFormed.length <= max) return wellFormed;
-  const suffix = `\n\n[... truncated at ${max.toLocaleString()} chars]`;
-  if (max <= suffix.length) return truncateWellFormed(suffix, max);
-  const budget = Math.max(0, max - suffix.length);
-  return `${truncateWellFormed(wellFormed, budget)}${suffix}`;
-}
-
-/** @internal Exported for testing. */
-export function buildContext(
-  files: WorkspaceInitFile[],
-  maxChars: number,
-): string {
+export function buildContext(files: WorkspaceInitFile[]): string {
   const sections: string[] = [];
-  let totalChars = 0;
   for (const f of files) {
     if (f.missing || !f.content?.trim()) continue;
     // Skip files that are still the default boilerplate — they add ~3k of
     // generic template text with zero useful context for the model.
     if (isDefaultBoilerplate(f.name, f.content)) continue;
     const trimmed = f.content.trim();
-    // Per-file truncation
-    const text = truncate(trimmed, maxChars);
-    const tag = text.length > trimmed.length ? " [TRUNCATED]" : "";
-    const section = `### ${f.name}${tag}\n\n${text}`;
-    // Stop adding files if the total would exceed the hard cap
-    if (
-      totalChars + section.length > MAX_TOTAL_WORKSPACE_CHARS &&
-      sections.length > 0
-    ) {
-      break;
-    }
-    sections.push(section);
-    totalChars += section.length;
+    sections.push(`### ${f.name}\n\n${trimmed}`);
   }
   if (sections.length === 0) return "";
   return `## Project Context (Workspace)\n\n${sections.join("\n\n---\n\n")}`;
@@ -100,10 +68,8 @@ export function buildContext(
 
 export function createWorkspaceProvider(options?: {
   workspaceDir?: string;
-  maxCharsPerFile?: number;
 }): Provider {
   const dir = options?.workspaceDir ?? resolveDefaultAgentWorkspaceDir();
-  const maxChars = options?.maxCharsPerFile ?? DEFAULT_MAX_CHARS;
 
   return {
     name: "workspaceContext",
@@ -146,7 +112,7 @@ export function createWorkspaceProvider(options?: {
         const sessionKey =
           typeof meta?.sessionKey === "string" ? meta.sessionKey : undefined;
         const files = filterInitFilesForSession(allFiles, sessionKey);
-        const text = buildContext(files, maxChars);
+        const text = buildContext(files);
 
         return {
           text,

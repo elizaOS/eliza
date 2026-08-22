@@ -1,18 +1,15 @@
-name: Monetized Loop Nightly
+name: Monetized Loop Qualification
 
-# Scheduled keyless coverage for the full packages/cloud/e2e Playwright suite
+# On-demand keyless coverage for the full packages/cloud/e2e Playwright suite
 # (#18474): monetization lifecycle plus every other stack spec. The PR cloud
 # lane (cloud-tests.yml stack-e2e-tests) runs only the shared-to-dedicated
 # funnel subset for wall-time reasons; this schedule is where the complete
-# suite executes, and it also catches dependency and service drift even when
-# no cloud-owned path changes.
+# suite executes when explicitly requested.
 on:
-  schedule:
-    - cron: "30 7 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: monetized-loop-nightly
+  group: monetized-loop-qualification
   cancel-in-progress: false
 
 permissions:

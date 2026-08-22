@@ -89,6 +89,40 @@ describe("blooio verifyWebhook", () => {
     expect(ok).toBe(true);
   });
 
+  test("rejects a malformed timestamp instead of skipping the replay window", async () => {
+    // `parseInt("")` is NaN, and every comparison against NaN is false, so
+    // `Math.abs(now - timestamp) > TOLERANCE` did not reject — the replay-window
+    // check silently fell through for any non-numeric `t=`.
+    const body = inboundPayload();
+    const hmac = crypto
+      .createHmac("sha256", SECRET)
+      .update(`NaN.${body}`)
+      .digest("hex");
+    const ok = await blooioAdapter.verifyWebhook(
+      makeRequest(`t=,v1=${hmac}`),
+      body,
+      makeConfig(),
+    );
+    expect(ok).toBe(false);
+  });
+
+  test("rejects a prefix-parsed timestamp rather than the value the sender signed", async () => {
+    // `parseInt("<ts>junk")` yields <ts>, so a mutated header still produced the
+    // signed payload the sender authenticated.
+    const body = inboundPayload();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const hmac = crypto
+      .createHmac("sha256", SECRET)
+      .update(`${timestamp}.${body}`)
+      .digest("hex");
+    const ok = await blooioAdapter.verifyWebhook(
+      makeRequest(`t=${timestamp}junk,v1=${hmac}`),
+      body,
+      makeConfig(),
+    );
+    expect(ok).toBe(false);
+  });
+
   test("accepts a delivery signed 200s ago (inside Blooio's documented 300s window)", async () => {
     // Bidirectional: fails against the previous 120s tolerance, which dropped
     // legitimately retried deliveries.
@@ -179,7 +213,8 @@ describe("blooio extractEvent", () => {
 
     expect(event).not.toBeNull();
     expect(event?.messageId).toBe("msg_v4_abc123");
-    expect(event?.chatId).toBe("+15551234567");
+    expect(event?.chatId).toBe("chat_abc123");
+    expect(event?.chatType).toBe("private");
     expect(event?.senderId).toBe("+15551234567");
     expect(event?.channelId).toBe("ch_abc123");
     expect(event?.channelType).toBe("blooio");
@@ -232,11 +267,21 @@ describe("blooio extractEvent", () => {
     expect(event).toBeNull();
   });
 
-  test("skips group messages", async () => {
+  test("preserves group thread and participant identity", async () => {
     const event = await blooioAdapter.extractEvent(
-      inboundPayload({ is_group: true }),
+      v4InboundPayload({
+        chat_id: "chat_group_123",
+        is_group: true,
+        group: { group_id: "grp_123", member_count: 4 },
+        reply_to_message_id: "msg_eliza_previous",
+      }),
     );
-    expect(event).toBeNull();
+    expect(event).toMatchObject({
+      chatId: "chat_group_123",
+      chatType: "group",
+      senderId: "+15551234567",
+      replyToMessageId: "msg_eliza_previous",
+    });
   });
 
   test("skips non message.received events", async () => {
@@ -378,12 +423,15 @@ describe("blooio sendReply", () => {
   }
 
   test("pins a v4 reply to the exact inbound WhatsApp channel", async () => {
-    let body: Record<string, unknown> = {};
+    let captured: { url: string; body: Record<string, unknown> } | null = null;
     globalThis.fetch = (async (
-      _url: string | URL | Request,
+      url: string | URL | Request,
       init?: RequestInit,
     ) => {
-      body = JSON.parse(String(init?.body));
+      captured = {
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      };
       return Response.json({ id: "out_whatsapp_1" });
     }) as typeof fetch;
 
@@ -391,16 +439,45 @@ describe("blooio sendReply", () => {
       makeConfig(),
       {
         ...chatEvent,
+        chatId: "chat_whatsapp_123",
         channelId: "ch_whatsapp_123",
         channelType: "whatsapp_business",
         protocol: "whatsapp",
       },
       "hi",
     );
-    expect(body).toEqual({
-      to: "+15551234567",
-      from: "ch_whatsapp_123",
-      text: "hi",
+    expect(captured).toEqual({
+      url: "https://api.blooio.com/v4/chats/chat_whatsapp_123/messages",
+      body: { text: "hi" },
+    });
+  });
+
+  test("replies to a group through its existing provider chat", async () => {
+    let captured: { url: string; body: Record<string, unknown> } | null = null;
+    globalThis.fetch = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      captured = {
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      };
+      return Response.json({ id: "out_group_1" });
+    }) as typeof fetch;
+
+    await blooioAdapter.sendReply(
+      makeConfig(),
+      {
+        ...chatEvent,
+        chatId: "chat_group_123",
+        chatType: "group",
+      },
+      "hello group",
+    );
+
+    expect(captured).toEqual({
+      url: "https://api.blooio.com/v4/chats/chat_group_123/messages",
+      body: { text: "hello group" },
     });
   });
 
@@ -459,6 +536,63 @@ describe("blooio sendTypingIndicator", () => {
     await expect(
       blooioAdapter.sendTypingIndicator(makeConfig(), chatEvent),
     ).resolves.toBeUndefined();
+  });
+
+  test("uses v4 chat-scoped read and typing actions", async () => {
+    const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+    globalThis.fetch = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      calls.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        ...(init?.body
+          ? { body: JSON.parse(String(init.body)) as unknown }
+          : {}),
+      });
+      return Response.json({ data: { state: "started" } });
+    }) as typeof fetch;
+
+    await blooioAdapter.sendTypingIndicator(makeConfig(), {
+      ...chatEvent,
+      chatId: "chat_group_123",
+      chatType: "group",
+    });
+
+    expect(calls).toEqual([
+      {
+        url: "https://api.blooio.com/v4/chats/chat_group_123/read",
+        method: "POST",
+      },
+      {
+        url: "https://api.blooio.com/v4/chats/chat_group_123/typing",
+        method: "POST",
+        body: { state: "started" },
+      },
+    ]);
+  });
+
+  test("stops a v4 chat typing indicator after the turn", async () => {
+    let captured: { url: string; method: string } | null = null;
+    globalThis.fetch = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      captured = { url: String(input), method: init?.method ?? "GET" };
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    await blooioAdapter.stopTypingIndicator?.(makeConfig(), {
+      ...chatEvent,
+      chatId: "chat_group_123",
+      chatType: "group",
+    });
+
+    expect(captured).toEqual({
+      url: "https://api.blooio.com/v4/chats/chat_group_123/typing",
+      method: "DELETE",
+    });
   });
 
   test("does nothing without an API key", async () => {

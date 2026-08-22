@@ -33,7 +33,6 @@ import {
   type Memory,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import {
   type AgentMiddleware,
@@ -154,10 +153,10 @@ export interface ComputerUseAgentReport {
 export function formatComputerUseAgentProgress(
   progress: ComputerUseAgentStepProgress,
 ): string {
-  const rationale = truncateForStatus(progress.rationale || "no rationale");
+  const rationale = normalizeForStatus(progress.rationale || "no rationale");
   const failure = progress.result.success
     ? ""
-    : ` (failed: ${truncateForStatus(progress.result.error ?? "unknown")})`;
+    : ` (failed: ${normalizeForStatus(progress.result.error ?? "unknown")})`;
   return `Step ${progress.step}/${progress.maxSteps}: ${progress.actionKind} - ${rationale}${failure}`;
 }
 
@@ -479,12 +478,8 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function truncateForStatus(value: string, maxLength = 180): string {
-  const compact = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-  return `${truncateWellFormed(compact, maxLength - 3)}...`;
+function normalizeForStatus(value: string): string {
+  return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
 }
 
 export const computerUseAgentAction: Action = {

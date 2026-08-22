@@ -52,7 +52,7 @@ describe("managed-cloud login routing", () => {
 
     expect(screen.queryByText("Taking you to Eliza sign in")).toBeNull();
     expect(
-      await screen.findByRole("heading", { name: "Sign in to Eliza" }),
+      await screen.findByRole("heading", { name: "Sign in" }),
     ).toBeTruthy();
   });
 
@@ -71,7 +71,7 @@ describe("managed-cloud login routing", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: "Sign in to Eliza" }),
+      await screen.findByRole("heading", { name: "Sign in" }),
     ).toBeTruthy();
   });
 });

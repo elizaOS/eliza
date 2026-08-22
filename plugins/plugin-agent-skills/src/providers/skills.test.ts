@@ -97,7 +97,7 @@ describe("agent_skills_catalog provider", () => {
 });
 
 describe("skillInstructionsProvider", () => {
-	it("keeps surrogate pairs intact when truncating active skill instructions", async () => {
+	it("preserves complete active skill instructions", async () => {
 		const longInstructions = `${"a".repeat(3999)}🦊${"b".repeat(50)}`;
 		const service = {
 			getLoadedSkills: vi.fn(() => [
@@ -126,8 +126,8 @@ describe("skillInstructionsProvider", () => {
 		);
 
 		expect(result.text.isWellFormed()).toBe(true);
-		expect(result.text).toContain("...[truncated]");
-		expect(result.text).toContain(`${"a".repeat(3999)}\n\n...[truncated]`);
+		expect(result.text).toContain(longInstructions);
+		expect(result.text).not.toContain("...[truncated]");
 	});
 });
 
@@ -162,7 +162,7 @@ describe("enabledSkillsProvider", () => {
 		);
 
 		expect(result.text.isWellFormed()).toBe(true);
-		expect(result.text).toContain(`${"a".repeat(118)}…`);
+		expect(result.text).toContain(longDescription);
 		expect(result.text).toContain("bad \uFFFD description");
 	});
 });

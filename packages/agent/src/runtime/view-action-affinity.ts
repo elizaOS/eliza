@@ -1,14 +1,7 @@
 /**
- * Weights a plugin view's related actions up in the planner's tool catalogue
- * while the user is looking at that view — kept at full parameter detail so they
- * can be invoked reliably — even when the user's message contains no intent
- * keyword (e.g. "do it" while staring at the wallet).
- *
- * Complements the intent-based weighting in prompt-compaction.ts: intent looks
- * at *what the user said*, this looks at *where the user is*. Both feed the same
- * full-param action set the planner sees.
- *
- * The active view is reported by the shell via POST /api/views/:id/navigate and
+ * Tracks the plugin view currently visible to the user so the planner receives
+ * its complete addressable-element snapshot and can act without an extra
+ * discovery round-trip. The active view is reported by the shell via POST /api/views/:id/navigate and
  * stored here (set by views-routes) so the prompt-optimization layer can read it
  * without importing the HTTP route module. Also derives the view→action affinity
  * map, validates it for drift against registered actions/views, and renders the
@@ -31,9 +24,6 @@ export interface ActiveViewElement {
   value?: string;
   focused?: boolean;
 }
-
-/** Cap on elements rendered into the awareness block to bound prompt growth. */
-export const ACTIVE_VIEW_ELEMENT_RENDER_CAP = 40;
 
 /** Minimal description of the view the shell is currently showing. */
 export interface ActiveViewContext {
@@ -321,11 +311,11 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
   }
   const elements = view.elements ?? [];
   if (elements.length > 0) {
-    // Focused element first, then declared order; cap to bound prompt growth.
+    // Focused element first, then declared order.
     const ordered = [...elements].sort(
       (a, b) => Number(b.focused ?? false) - Number(a.focused ?? false),
     );
-    const shown = ordered.slice(0, ACTIVE_VIEW_ELEMENT_RENDER_CAP);
+    const shown = ordered;
     lines.push(
       "Addressable elements currently in this view (act on these by id — no list-elements call needed):",
     );
@@ -339,11 +329,6 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
         `- ${el.id} [${el.role}] ${JSON.stringify(el.label)}${value}${focused}`,
       );
     }
-    if (elements.length > shown.length) {
-      lines.push(
-        `- …and ${elements.length - shown.length} more — call list-elements for the rest.`,
-      );
-    }
   }
   return lines.join("\n");
 }
@@ -351,8 +336,8 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
 /**
  * Remove a previously injected Active View block (header through the line
  * before the next top-level `# ` section or end). Used so re-injection can
- * replace a stale/truncated block that still has the header but lost the
- * addressable-element list after multi-turn compaction (#17918).
+ * replace a stale incomplete block that still has the header but lost the
+ * addressable-element list (#17918).
  */
 export function stripActiveViewAwarenessBlock(prompt: string): string {
   const header = "# Active View";

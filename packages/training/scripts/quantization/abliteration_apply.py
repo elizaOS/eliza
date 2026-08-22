@@ -49,6 +49,10 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
+if str(_HERE.parent) not in sys.path:
+    sys.path.insert(0, str(_HERE.parent))
+
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 
 from _common import (  # noqa: E402
     get_text_config,
@@ -184,8 +188,11 @@ def _collect_end_token_activations(
         model.eval()
         for prompt in prompts:
             per_call_buffer.clear()
-            ids = tokenizer(
-                prompt, return_tensors="pt", truncation=True, max_length=2048
+            ids = tokenize_with_explicit_limit(
+                tokenizer,
+                prompt,
+                max_tokens=2048,
+                return_tensors="pt",
             ).to(model.device)
             with torch.no_grad():
                 model(**ids, use_cache=False)

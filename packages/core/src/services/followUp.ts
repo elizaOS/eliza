@@ -191,15 +191,30 @@ export class FollowUpService extends Service {
 		return upcomingFollowUps;
 	}
 
+	/**
+	 * Marks a follow-up completed and retires it from the scheduler: the row
+	 * loses its "queue" tag so no subsequent tick polls or selects it, and the
+	 * completion record (status, completedAt, notes) is preserved.
+	 *
+	 * Completion and worker execution compete through the storage adapter's
+	 * atomic pending-task transition. Once completion returns, even a scheduler
+	 * tick holding a stale queued snapshot cannot claim, fire, or delete the row.
+	 */
 	async completeFollowUp(taskId: UUID, notes?: string): Promise<void> {
 		try {
-			const task = await this.runtime.getTask(taskId);
+			let task = await this.runtime.getTask(taskId);
 			if (!task) {
 				throw new Error(`Task ${taskId} not found`);
 			}
 
-			// Update task metadata
-			await this.runtime.updateTask(taskId, {
+			// Update task metadata and unqueue the task. WHY drop the "queue"
+			// tag: the scheduler polls only queue-tagged rows, and nothing else
+			// consults metadata.status — leaving the tag would fire the reminder
+			// at dueAt even though the operator already completed it, after
+			// which the one-shot lifecycle deletes the record. Keeping the row
+			// (without "queue") preserves the completion history.
+			const completed = await this.runtime.updatePendingTask(taskId, {
+				tags: (task.tags ?? []).filter((tag) => tag !== "queue"),
 				metadata: {
 					...task.metadata,
 					status: "completed",
@@ -207,6 +222,25 @@ export class FollowUpService extends Service {
 					completionNotes: notes,
 				},
 			});
+			if (!completed) {
+				const current = await this.runtime.getTask(taskId);
+				if (current?.metadata?.status === "completed") {
+					if (current.tags?.includes("queue")) {
+						await this.runtime.updateTask(taskId, {
+							tags: current.tags.filter((tag) => tag !== "queue"),
+						});
+					}
+					task = current;
+				} else {
+					throw new Error(
+						current
+							? current.metadata?.status === "pending"
+								? `Task ${taskId} could not be completed atomically`
+								: `Task ${taskId} is already executing`
+							: `Task ${taskId} not found`,
+					);
+				}
+			}
 
 			// Clear next follow-up from contact
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
@@ -347,7 +381,7 @@ export class FollowUpService extends Service {
 			return scoreB - scoreA;
 		});
 
-		return suggestions.slice(0, 10); // Return top 10 suggestions
+		return suggestions;
 	}
 
 	// Task Workers
@@ -358,6 +392,11 @@ export class FollowUpService extends Service {
 				runtime: IAgentRuntime,
 				task: Task,
 			): Promise<boolean> => {
+				// Execution gate for rows stored before completion stopped
+				// unqueueing them: an explicitly completed follow-up must never
+				// fire. Rows without a status field stay runnable (backward
+				// compatibility with tasks created outside scheduleFollowUp).
+				if (task.metadata?.status === "completed") return false;
 				const targetEntityId = task.metadata?.targetEntityId as
 					| UUID
 					| undefined;
@@ -371,6 +410,13 @@ export class FollowUpService extends Service {
 				task: Task,
 			) => {
 				try {
+					if (!task.id) return { preserveTask: true };
+					const claimed = await runtime.updatePendingTask(task.id, {
+						tags: (task.tags ?? []).filter((tag) => tag !== "queue"),
+						metadata: { ...task.metadata, status: "executing" },
+					});
+					if (!claimed) return { preserveTask: true };
+
 					const targetEntityId = task.metadata?.targetEntityId as UUID;
 					const message =
 						(task.metadata?.message as string) || "Time for a follow-up!";

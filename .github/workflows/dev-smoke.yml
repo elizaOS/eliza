@@ -9,17 +9,6 @@ on:
         required: false
         type: string
         default: standalone
-  push:
-    branches: [develop]
-    paths:
-      - ".github/workflows/dev-smoke.yml"
-      - "package.json"
-      - "bun.lock"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/core/**"
-      - "packages/shared/**"
-      - "packages/ui/**"
   workflow_dispatch:
 
 # Develop pushes share a stable key so obsolete work is superseded. Reusable

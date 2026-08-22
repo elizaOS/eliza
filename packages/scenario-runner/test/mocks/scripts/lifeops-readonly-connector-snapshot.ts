@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Drives repo automation lifeops readonly connector snapshot with explicit CLI and CI behavior.
+/** Drives repository automation for read-only LifeOps connector snapshots with explicit CLI and CI behavior. */
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -54,11 +54,6 @@ const SAFE_ENDPOINTS: SnapshotEndpoint[] = [
     safe: true,
   },
   {
-    id: "signal.status",
-    path: "/api/lifeops/connectors/signal/status",
-    safe: true,
-  },
-  {
     id: "discord.status",
     path: "/api/lifeops/connectors/discord/status",
     safe: true,
@@ -77,14 +72,7 @@ const SAFE_ENDPOINTS: SnapshotEndpoint[] = [
   { id: "x.dms.digest", path: "/api/lifeops/x/dms/digest?limit=5", safe: true },
 ];
 
-const DESTRUCTIVE_PULL_ENDPOINTS: SnapshotEndpoint[] = [
-  {
-    id: "signal.messages",
-    path: "/api/lifeops/connectors/signal/messages?limit=5",
-    safe: false,
-    note: "Skipped unless --include-destructive-pulls is set because signal-cli receive can consume the daemon queue.",
-  },
-];
+const DESTRUCTIVE_PULL_ENDPOINTS: SnapshotEndpoint[] = [];
 
 function argValue(name: string): string | null {
   const prefix = `--${name}=`;

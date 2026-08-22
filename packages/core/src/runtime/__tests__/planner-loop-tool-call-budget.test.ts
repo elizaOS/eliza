@@ -2,7 +2,7 @@
  * `maxToolCalls` must bound the whole turn, not the portion of it that happens
  * to still be live. Compaction moves settled steps from `trajectory.steps` into
  * `trajectory.archivedSteps`; counting only the live half restarted the budget
- * every time compaction ran, so a turn could execute unboundedly many
+ * across repeated replans, so a turn cannot execute unboundedly many
  * side-effecting tool calls under a cap the operator had set.
  */
 
@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TrajectoryLimitExceeded } from "../limits";
 import { runPlannerLoop } from "../planner-loop";
 
-describe("tool-call budget across compaction", () => {
+describe("tool-call budget across replans", () => {
 	it("counts archived tool calls toward maxToolCalls", async () => {
 		const MAX = 3;
 		// Bounds the test if the budget fails to fire; without it the loop runs
@@ -59,10 +59,6 @@ describe("tool-call budget across compaction", () => {
 					maxRepeatedToolCalls: 50,
 					maxRepeatedFailures: 50,
 					maxTerminalOnlyContinuations: 50,
-					// Force compaction every round: tiny window, keep nothing.
-					contextWindowTokens: 2_000,
-					compactionReserveTokens: 500,
-					compactionKeepSteps: 0,
 				},
 				executeToolCall,
 				evaluate: vi.fn(async () => ({

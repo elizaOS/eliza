@@ -7,7 +7,6 @@
 
 const ACTION_REQUIRED = "action_required";
 const PAGE_SIZE = 100;
-const MAX_PAGES = 10;
 
 function workflowRunsFromPage(payload, page, url) {
   if (
@@ -58,7 +57,7 @@ export async function loadActionRequiredWorkflowPaths({
 }) {
   const workflowRuns = [];
 
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
+  for (let page = 1; ; page += 1) {
     const url =
       `https://api.github.com/repos/${repository}/actions/runs` +
       `?event=pull_request&head_sha=${encodeURIComponent(headSha)}` +
@@ -66,10 +65,9 @@ export async function loadActionRequiredWorkflowPaths({
     const payload = await requestJson(url);
     const pageRuns = workflowRunsFromPage(payload, page, url);
     workflowRuns.push(...pageRuns);
-    if (pageRuns.length < PAGE_SIZE) break;
+    if (pageRuns.length < PAGE_SIZE)
+      return actionRequiredWorkflowPaths(workflowRuns, headSha);
   }
-
-  return actionRequiredWorkflowPaths(workflowRuns, headSha);
 }
 
 export function awaitingApprovalMessage(paths) {

@@ -10,8 +10,6 @@ import { describe, expect, test } from "vitest";
 import type { ElizaConfig } from "../config/types.ts";
 import { resolveAppUserName } from "./server-helpers.ts";
 
-const APP_OWNER_NAME_MAX_LENGTH = 60;
-
 function isWellFormed(value: string): boolean {
   if (!value) return true;
   const maybe = value as unknown as { isWellFormed?: () => boolean };
@@ -23,21 +21,20 @@ const withOwnerName = (ownerName: string | undefined): ElizaConfig =>
   ({ ui: { ownerName } }) as unknown as ElizaConfig;
 
 describe("resolveAppUserName surrogate safety", () => {
-  test("backs off an emoji straddling the 60-char cap", () => {
+  test("preserves a long name including an emoji at the former cap", () => {
     const name = `${"a".repeat(59)}🦊${"b".repeat(20)}`;
     const resolved = resolveAppUserName(withOwnerName(name));
 
     expect(isWellFormed(resolved)).toBe(true);
-    expect(resolved.length).toBe(59);
+    expect(resolved).toBe(name);
     expect(() => JSON.stringify(resolved)).not.toThrow();
   });
 
-  test("keeps an emoji that ends exactly on the cap", () => {
+  test("preserves content beyond the former cap", () => {
     const name = `${"a".repeat(58)}🦊${"b".repeat(20)}`;
     const resolved = resolveAppUserName(withOwnerName(name));
 
-    expect(resolved).toBe(`${"a".repeat(58)}🦊`);
-    expect(resolved.length).toBe(APP_OWNER_NAME_MAX_LENGTH);
+    expect(resolved).toBe(name);
     expect(isWellFormed(resolved)).toBe(true);
   });
 

@@ -4,12 +4,22 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const emitAudit = mock(async () => undefined);
-const verifyStewardTokenCached = mock(async () => ({
-  userId: "steward-user-1",
-  tenantId: "personal-steward-user-1",
-  expiration: Math.floor(Date.now() / 1000) + 900,
-  issuedAt: Math.floor(Date.now() / 1000) - 10,
-}));
+type VerifiedClaims = {
+  userId: string;
+  tenantId?: string;
+  authMethod?: string;
+  telegramId?: string;
+  expiration: number;
+  issuedAt: number;
+};
+const verifyStewardTokenCached = mock(
+  async (): Promise<VerifiedClaims | null> => ({
+    userId: "steward-user-1",
+    tenantId: "personal-steward-user-1",
+    expiration: Math.floor(Date.now() / 1000) + 900,
+    issuedAt: Math.floor(Date.now() / 1000) - 10,
+  }),
+);
 type PhoneOwnership =
   | { status: "verified"; phoneNumber: string }
   | { status: "not_linked" };
@@ -50,6 +60,13 @@ mock.module("@/lib/services/steward-client", () => ({
 
 mock.module("@/lib/services/sso-bridge-codes", () => ({
   isBlockedBySsoBridgeLogout: mock(async () => false),
+}));
+
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  getIpKey: () => "test-client",
+  getRequestIp: () => "127.0.0.1",
+  RateLimitPresets: { STRICT: {} },
+  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
 mock.module("@/lib/steward-sync", () => ({
@@ -96,7 +113,13 @@ async function post(body: unknown): Promise<Response> {
 
 beforeEach(() => {
   emitAudit.mockClear();
-  verifyStewardTokenCached.mockClear();
+  verifyStewardTokenCached.mockReset();
+  verifyStewardTokenCached.mockResolvedValue({
+    userId: "steward-user-1",
+    tenantId: "personal-steward-user-1",
+    expiration: Math.floor(Date.now() / 1000) + 900,
+    issuedAt: Math.floor(Date.now() / 1000) - 10,
+  });
   verifyStewardBearerPhone.mockReset();
   verifyStewardBearerPhone.mockResolvedValue({
     status: "verified",
@@ -126,7 +149,9 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       walletAddress: undefined,
       walletChainType: undefined,
       verifiedPhone: "+14155552671",
+      verifiedTelegramId: undefined,
       telegramContinuation: undefined,
+      sharedRuntimeConversationNamespace: undefined,
     });
   });
 
@@ -144,8 +169,104 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       walletAddress: undefined,
       walletChainType: undefined,
       verifiedPhone: undefined,
+      verifiedTelegramId: undefined,
       telegramContinuation: "opaque-telegram-claim-token",
+      sharedRuntimeConversationNamespace: undefined,
     });
+  });
+
+  test("passes Telegram identity only from verified Steward claims", async () => {
+    verifyStewardTokenCached.mockResolvedValueOnce({
+      userId: "steward-telegram-user",
+      tenantId: "personal-steward-telegram-user",
+      authMethod: "telegram",
+      telegramId: "424242",
+      expiration: Math.floor(Date.now() / 1000) + 900,
+      issuedAt: Math.floor(Date.now() / 1000) - 10,
+    });
+
+    const response = await post({
+      token: "telegram-session-token",
+      verifiedTelegramId: "999999",
+    });
+
+    expect(response.status).toBe(200);
+    expect(syncUserFromSteward).toHaveBeenCalledWith({
+      stewardUserId: "steward-telegram-user",
+      email: undefined,
+      walletAddress: undefined,
+      walletChainType: undefined,
+      verifiedPhone: undefined,
+      verifiedTelegramId: "424242",
+      telegramContinuation: undefined,
+      sharedRuntimeConversationNamespace: undefined,
+    });
+  });
+
+  test("rejects Telegram identity on a non-Telegram verified session", async () => {
+    verifyStewardTokenCached.mockResolvedValueOnce({
+      userId: "steward-email-user",
+      tenantId: "personal-steward-email-user",
+      authMethod: "email",
+      telegramId: "424242",
+      expiration: Math.floor(Date.now() / 1000) + 900,
+      issuedAt: Math.floor(Date.now() / 1000) - 10,
+    });
+
+    const response = await post({ token: "email-session-token" });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "invalid_token",
+    });
+    expect(syncUserFromSteward).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  test("rejects combining a signed Telegram identity with a DM continuation", async () => {
+    verifyStewardTokenCached.mockResolvedValueOnce({
+      userId: "steward-telegram-user",
+      tenantId: "personal-steward-telegram-user",
+      authMethod: "telegram",
+      telegramId: "424242",
+      expiration: Math.floor(Date.now() / 1000) + 900,
+      issuedAt: Math.floor(Date.now() / 1000) - 10,
+    });
+
+    const response = await post({
+      token: "telegram-session-token",
+      telegramContinuation: "opaque-telegram-claim-token",
+      telegramClaimConfirmation: "explicit",
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "telegram_claim_conflict",
+    });
+    expect(syncUserFromSteward).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  test("sets no session cookie when signed Telegram convergence conflicts", async () => {
+    verifyStewardTokenCached.mockResolvedValueOnce({
+      userId: "steward-telegram-user",
+      tenantId: "personal-steward-telegram-user",
+      authMethod: "telegram",
+      telegramId: "424242",
+      expiration: Math.floor(Date.now() / 1000) + 900,
+      issuedAt: Math.floor(Date.now() / 1000) - 10,
+    });
+    syncUserFromSteward.mockRejectedValueOnce(
+      new MockStewardTelegramAccountClaimError("telegram owner conflict"),
+    );
+
+    const response = await post({ token: "telegram-session-token" });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "telegram_claim_conflict",
+    });
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 
   test("rejects claim authority without the explicit confirmation contract", async () => {

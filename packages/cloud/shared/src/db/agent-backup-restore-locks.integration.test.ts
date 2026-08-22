@@ -24,6 +24,7 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import { installAgentNodeOccurrenceTriggerForTests } from "./agent-node-occurrence-test-support";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "./repositories/agent-backup-restore-lease";
 import {
   agentBackupCatalogAuthorities,
@@ -99,16 +100,16 @@ const RECEIPT_SHA = "b".repeat(64);
 
 const WRITER_BACKUP_ID = "00000000-0000-4000-8000-00000000b301";
 const WRITER_OPERATION_ID = "00000000-0000-4000-8000-00000000b302";
-const WRITER_ATTEMPT_ID = "00000000-0000-4000-8000-00000000b303";
+const WRITER_RESTORE_OPERATION_ROW_ID = "00000000-0000-4000-8000-00000000b303";
 const WRITER_LEASE_ID = "00000000-0000-4000-8000-00000000b304";
 const WRITER_FENCE = "00000000-0000-4000-8000-00000000b305";
 const WRITER_SEED_ID = "00000000-0000-4000-8000-00000000b306";
 const WRITER_PUBLICATION_ID = "00000000-0000-4000-8000-00000000b307";
 const WRITER_FINAL_ID = "00000000-0000-4000-8000-00000000b308";
 const WRITER_TARGET_GENERATION = "00000000-0000-4000-8000-00000000b309";
+const WRITER_ATTEMPT_ID = WRITER_TARGET_GENERATION;
 const WRITER_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b30a";
 const WRITER_RESERVE_ONE = "00000000-0000-4000-8000-00000000b30b";
-const WRITER_RESERVE_TWO = "00000000-0000-4000-8000-00000000b30c";
 
 const LOCK_BACKUP_ONE = "00000000-0000-4000-8000-00000000b401";
 const LOCK_BACKUP_TWO = "00000000-0000-4000-8000-00000000b402";
@@ -128,6 +129,7 @@ const LOCK_KEY_BUNDLE_SHA = createHash("sha256").update(LOCK_KEY_BUNDLE).digest(
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
 let isolatedDatabaseName: string | null = null;
 let isolatedDsn: string | null = null;
+let sourceNodeHistoryId: string | null = null;
 let closeDatabaseConnectionsForTests:
   | typeof import("./client").closeDatabaseConnectionsForTests
   | undefined;
@@ -626,6 +628,7 @@ const realPostgres = postgres ? describe : describe.skip;
 realPostgres("restore authority PostgreSQL lock proofs", () => {
   beforeAll(async () => {
     if (!dbWrite) throw new Error("isolated database was not initialized");
+    const schemaDatabase = dbWrite;
     const { apply } = await pushSchema(
       {
         organizations,
@@ -646,9 +649,12 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentVaultKeyAuthorities,
         agentVaultKeyBackupBindings,
       } as never,
-      dbWrite as never,
+      schemaDatabase as never,
     );
     await apply();
+    await installAgentNodeOccurrenceTriggerForTests((statement) =>
+      schemaDatabase.execute(sql.raw(statement)),
+    );
     await dbWrite.insert(organizations).values({
       id: ORG_ID,
       name: "Restore Lock Org",
@@ -659,17 +665,22 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       steward_user_id: "restore-lock-user",
       organization_id: ORG_ID,
     });
-    await dbWrite.insert(dockerNodes).values({
-      id: NODE_RECORD_ID,
-      node_id: "robot-node-lock",
-      hostname: "robot-node-lock.example.test",
-      host_key_fingerprint: "sha256:restore-lock-host-key",
-      fleet_kind: "robot",
-      infrastructure_provider: "hetzner",
-      node_incarnation: NODE_INCARNATION,
-      status: "healthy",
-      enabled: true,
-    });
+    const [sourceNode] = await dbWrite
+      .insert(dockerNodes)
+      .values({
+        id: NODE_RECORD_ID,
+        node_id: "robot-node-lock",
+        hostname: "robot-node-lock.example.test",
+        host_key_fingerprint: "sha256:restore-lock-host-key",
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        node_incarnation: NODE_INCARNATION,
+        status: "healthy",
+        enabled: true,
+      })
+      .returning({ historyId: dockerNodes.current_node_history_id });
+    sourceNodeHistoryId = sourceNode?.historyId ?? null;
+    if (!sourceNodeHistoryId) throw new Error("source node occurrence token fixture is missing");
     await dbWrite.insert(agentSandboxes).values({
       id: AGENT_ID,
       organization_id: ORG_ID,
@@ -723,7 +734,12 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     if (!dbWrite) return;
     await dbWrite
       .delete(agentBackupRestoreOperations)
-      .where(eq(agentBackupRestoreOperations.restore_attempt_id, LOCK_ATTEMPT_ID));
+      .where(
+        inArray(agentBackupRestoreOperations.restore_attempt_id, [
+          LOCK_ATTEMPT_ID,
+          WRITER_ATTEMPT_ID,
+        ]),
+      );
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -768,7 +784,6 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         inArray(agentSandboxBackups.backup_operation_id, [
           WRITER_OPERATION_ID,
           WRITER_RESERVE_ONE,
-          WRITER_RESERVE_TWO,
           LOCK_OPERATION_ONE,
           LOCK_OPERATION_TWO,
         ]),
@@ -784,10 +799,10 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           LOCK_VAULT_GENERATION,
         ]),
       );
+    await dbWrite.delete(dockerNodes).where(eq(dockerNodes.id, LOCK_TARGET_NODE_RECORD_ID));
     await dbWrite
       .delete(agentNodeIncarnationHistories)
-      .where(eq(agentNodeIncarnationHistories.docker_node_record_id, NODE_RECORD_ID));
-    await dbWrite.delete(dockerNodes).where(eq(dockerNodes.id, LOCK_TARGET_NODE_RECORD_ID));
+      .where(eq(agentNodeIncarnationHistories.docker_node_record_id, LOCK_TARGET_NODE_RECORD_ID));
   });
 
   test("reservation replay and actual restore acquisition share backup-before-authority order", async () => {
@@ -1108,31 +1123,27 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       throw new Error("real PostgreSQL harness was not initialized");
     }
     const fixture = await seedRestoreOperationLockFixture(true);
-    await dbWrite.insert(dockerNodes).values({
-      id: LOCK_TARGET_NODE_RECORD_ID,
-      node_id: "restore-lock-target",
-      hostname: "restore-lock-target.example.test",
-      capacity: 2,
-      allocated_count: 0,
-      enabled: true,
-      status: "healthy",
-      placement_state: "open",
-      host_key_fingerprint: "SHA256:restore-lock-target-host-key",
-      fleet_kind: "robot",
-      infrastructure_provider: "hetzner",
-      provider_server_id: null,
-      node_incarnation: LOCK_TARGET_NODE_INCARNATION,
-      metadata: {},
-    });
-    await dbWrite.insert(agentNodeIncarnationHistories).values({
-      docker_node_record_id: LOCK_TARGET_NODE_RECORD_ID,
-      node_id: "restore-lock-target",
-      node_incarnation: LOCK_TARGET_NODE_INCARNATION,
-      fleet_kind: "robot",
-      infrastructure_provider: "hetzner",
-      provider_server_id: null,
-      host_key_fingerprint: "SHA256:restore-lock-target-host-key",
-    });
+    const [targetNode] = await dbWrite
+      .insert(dockerNodes)
+      .values({
+        id: LOCK_TARGET_NODE_RECORD_ID,
+        node_id: "restore-lock-target",
+        hostname: "restore-lock-target.example.test",
+        capacity: 2,
+        allocated_count: 0,
+        enabled: true,
+        status: "healthy",
+        placement_state: "open",
+        host_key_fingerprint: "SHA256:restore-lock-target-host-key",
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        provider_server_id: null,
+        node_incarnation: LOCK_TARGET_NODE_INCARNATION,
+        metadata: {},
+      })
+      .returning({ historyId: dockerNodes.current_node_history_id });
+    const targetNodeHistoryId = targetNode?.historyId;
+    if (!targetNodeHistoryId) throw new Error("target node occurrence token fixture is missing");
     const claimed = await claim({
       operationId: fixture.operationId,
       ownerId: LOCK_OWNER_ID,
@@ -1160,6 +1171,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         claimGeneration: claimed.claimGeneration,
         targetNodeRecordId: LOCK_TARGET_NODE_RECORD_ID,
         targetNodeIncarnation: LOCK_TARGET_NODE_INCARNATION,
+        targetNodeHistoryId,
       }).then(
         (result) => {
           reservationResult = result;
@@ -1203,12 +1215,14 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         nodeRecordId: LOCK_TARGET_NODE_RECORD_ID,
         nodeId: "restore-lock-target",
         nodeIncarnation: LOCK_TARGET_NODE_INCARNATION,
+        nodeHistoryId: targetNodeHistoryId,
         imageDigest: `sha256:${SHA}`,
       });
       expect(reservationResult?.operation.expected_node_record_id).toBe(LOCK_TARGET_NODE_RECORD_ID);
       expect(reservationResult?.operation.expected_node_incarnation).toBe(
         LOCK_TARGET_NODE_INCARNATION,
       );
+      expect(reservationResult?.operation.expected_node_history_id).toBe(targetNodeHistoryId);
       expect(reservationResult?.operation.expected_image_digest).toBe(`sha256:${SHA}`);
       const [targetNode] = await dbWrite
         .select({ allocatedCount: dockerNodes.allocated_count })
@@ -1222,7 +1236,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     }
   }, 30_000);
 
-  test("restore receipt writers cannot deadlock a concurrent sandbox-first reservation", async () => {
+  test("final restore receipt writer cannot deadlock a concurrent sandbox-first reservation", async () => {
     const reserve = reserveAgentBackupOperation;
     const publish = recordAgentActivationPublication;
     const seed = recordAgentVaultKeySeedReceipt;
@@ -1230,6 +1244,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     if (!isolatedDsn || !dbWrite || !reserve || !publish || !seed || !finalize) {
       throw new Error("real PostgreSQL harness was not initialized");
     }
+    const targetNodeHistoryId = sourceNodeHistoryId;
+    if (!targetNodeHistoryId) throw new Error("source node occurrence token fixture is missing");
 
     await dbWrite
       .insert(agentBackupCatalogAuthorities)
@@ -1347,6 +1363,28 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       catalog_epoch: initialAuthority.revision,
       expires_at: new Date(Date.now() + 300_000),
     });
+    await dbWrite.insert(agentBackupRestoreOperations).values({
+      id: WRITER_RESTORE_OPERATION_ROW_ID,
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      backup_id: WRITER_BACKUP_ID,
+      restore_attempt_id: WRITER_ATTEMPT_ID,
+      lease_id: WRITER_LEASE_ID,
+      lease_generation: WRITER_FENCE,
+      lease_owner_id: "writer-lock-owner",
+      catalog_epoch: initialAuthority.revision,
+      copy_role: "primary",
+      phase: "restart_attested",
+      expected_manifest_sha256: SHA,
+      expected_operation_id: WRITER_OPERATION_ID,
+      expected_activation_generation: ACTIVATION_GENERATION,
+      expected_lifecycle_revision: 0n,
+      expected_node_history_id: targetNodeHistoryId,
+      expected_node_record_id: NODE_RECORD_ID,
+      expected_node_incarnation: NODE_INCARNATION,
+      expected_container_id: SOURCE_CONTAINER_ID,
+      expected_image_digest: `sha256:${SHA}`,
+    });
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -1374,6 +1412,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       expectedContainerId: SOURCE_CONTAINER_ID,
       expectedNodeRecordId: NODE_RECORD_ID,
       expectedNodeIncarnation: NODE_INCARNATION,
+      expectedNodeHistoryId: targetNodeHistoryId,
       expectedTokenSha256: SHA,
     });
 
@@ -1442,34 +1481,28 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       }
     };
 
+    await seed({
+      receiptId: WRITER_SEED_ID,
+      receiptDigest: RECEIPT_SHA,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId: WRITER_BACKUP_ID,
+      restoreAttemptId: WRITER_ATTEMPT_ID,
+      leaseId: WRITER_LEASE_ID,
+      leaseOwnerId: "writer-lock-owner",
+      leaseFencingToken: WRITER_FENCE,
+      targetActivationGeneration: WRITER_TARGET_GENERATION,
+      targetNodeRecordId: NODE_RECORD_ID,
+      targetNodeIncarnation: NODE_INCARNATION,
+      targetNodeHistoryId,
+    });
+
+    // Seed and finalization share the same backup -> operation -> lease ->
+    // sandbox -> node -> catalogue prefix. Interleave the final writer because
+    // it also proves the receipt/publication suffix while keeping the lease's
+    // write-once catalogue epoch intact; the competing new reservation advances
+    // the epoch only after this writer commits.
     await interleaveWithReservation(WRITER_RESERVE_ONE, () =>
-      seed({
-        receiptId: WRITER_SEED_ID,
-        receiptDigest: RECEIPT_SHA,
-        organizationId: ORG_ID,
-        agentId: AGENT_ID,
-        backupId: WRITER_BACKUP_ID,
-        restoreAttemptId: WRITER_ATTEMPT_ID,
-        leaseId: WRITER_LEASE_ID,
-        leaseOwnerId: "writer-lock-owner",
-        leaseFencingToken: WRITER_FENCE,
-        targetActivationGeneration: WRITER_TARGET_GENERATION,
-        targetNodeRecordId: NODE_RECORD_ID,
-        targetNodeIncarnation: NODE_INCARNATION,
-      }),
-    );
-
-    const [currentAuthority] = await dbWrite
-      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
-      .from(agentBackupCatalogAuthorities)
-      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
-    if (!currentAuthority) throw new Error("writer fixture catalogue authority disappeared");
-    await dbWrite
-      .update(agentBackupRestoreLeases)
-      .set({ catalog_epoch: currentAuthority.revision })
-      .where(eq(agentBackupRestoreLeases.id, WRITER_LEASE_ID));
-
-    await interleaveWithReservation(WRITER_RESERVE_TWO, () =>
       finalize({
         receiptId: WRITER_FINAL_ID,
         receiptDigest: SHA,

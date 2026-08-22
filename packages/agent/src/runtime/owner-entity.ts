@@ -33,7 +33,7 @@ export async function resolveOwnerEntityId(
 
   try {
     const roomIds = await runtime.getRoomsForParticipant(runtime.agentId);
-    for (const roomId of roomIds.slice(0, 10)) {
+    for (const roomId of roomIds) {
       try {
         const room = await runtime.getRoom(roomId);
         if (!room?.worldId) {

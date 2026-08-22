@@ -78,17 +78,14 @@ describe("buildVerificationPrompt", () => {
     expect(prompt).toMatch(/"passed": <true\|false>/);
   });
 
-  it("truncates very long completion evidence to keep the prompt bounded", () => {
-    // #21240 raised the verifier evidence budget to 28_000 chars; oversize
-    // beyond it so head+tail truncation actually fires.
+  it("preserves very long completion evidence", () => {
     const longEvidence = "X".repeat(40_000);
     const prompt = buildVerificationPrompt({
       goal: "X",
       acceptanceCriteria: ["c"],
       completionEvidence: longEvidence,
     });
-    expect(prompt).toMatch(/\[…evidence truncated…\]/);
-    expect(prompt.length).toBeLessThan(40_000);
+    expect(prompt).toContain(longEvidence);
   });
 
   it("demands concrete proof per criterion and rejects unproven claims", () => {
@@ -345,6 +342,15 @@ describe("parseJudgeResponse", () => {
     expect(parsed.missing).toEqual(["c1"]);
   });
 
+  it("marks a JSON object without the verdict schema inconclusive", () => {
+    const parsed = parseJudgeResponse("{}", ["c1"]);
+    expect(parsed).toMatchObject({
+      passed: false,
+      missing: ["c1"],
+      inconclusive: true,
+    });
+  });
+
   it("trims whitespace from missing entries and drops empties", () => {
     const parsed = parseJudgeResponse(
       '{"passed": false, "summary": "s", "missing": ["  c1  ", "", "c2"]}',
@@ -353,13 +359,13 @@ describe("parseJudgeResponse", () => {
     expect(parsed.missing).toEqual(["c1", "c2"]);
   });
 
-  it("clamps the summary to 280 chars", () => {
+  it("preserves a long verifier summary", () => {
     const long = "a".repeat(500);
     const parsed = parseJudgeResponse(
       `{"passed": true, "summary": "${long}", "missing": []}`,
       ["c"],
     );
-    expect(parsed.summary.length).toBe(280);
+    expect(parsed.summary).toBe(long);
   });
 });
 
@@ -379,6 +385,7 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     expect(result.summary).toMatch(/no acceptance criteria/i);
     expect(result.missing).toEqual([]);
     expect(result.rawResponse).toBe("");
+    expect(result.inconclusive).toBe(false);
   });
 
   it("short-circuits to fail when completionEvidence is empty", async () => {
@@ -428,7 +435,7 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     );
   });
 
-  it("returns a structured fail when the model throws", async () => {
+  it("returns an inconclusive verdict when the verifier model is unavailable", async () => {
     const runtime = makeMockRuntime({
       shouldThrow: new Error("provider down"),
     });
@@ -441,6 +448,7 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     expect(result.summary).toMatch(/provider down/);
     expect(result.missing).toEqual(["c1"]);
     expect(result.rawResponse).toBe("");
+    expect(result.inconclusive).toBe(true);
   });
 
   it("returns a passed verdict on a clean model response", async () => {

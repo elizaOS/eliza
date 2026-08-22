@@ -6,31 +6,14 @@ name: Quality (Extended)
 # typecheck/biome format gate.
 
 on:
-  push:
-    branches: [develop]
-    paths-ignore:
-      - "docs/**"
-      - "packages/docs/**"
-      - "CHANGELOG.md"
-      - "LICENSE"
-      - ".github/ISSUE_TEMPLATE/**"
-      - ".github/pull_request_template.md"
+  workflow_call:
   workflow_dispatch:
 
-# Develop pushes share one ref group. Push runs must NOT cancel in progress:
-# during rapid merge waves cancellation meant no
-# quality run ever completed, so develop lint/format reds landed invisibly
-# until a release pin surfaced them (#18326, #18338, #18360). With a shared
-# ref group GitHub keeps at most one pending run (newer pushes supersede the
-# pending one), so the in-progress run always completes and the final tree of
-# every wave always gets a full quality run — bounded at one running plus one
-# pending, which cannot starve the fleet.
-# workflow_dispatch is excluded from the shared ref group: a manual run is an
-# on-demand health read, and parking it behind the push queue means it is
-# superseded before it ever starts.
+# Develop Full owns cancellation of superseded tips. Manual runs stay isolated
+# so an on-demand health read is not parked behind the develop queue.
 concurrency:
   group: quality-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
   BUN_VERSION: "1.3.14"
@@ -182,6 +165,9 @@ jobs:
 
       - name: Run CLAUDE/AGENTS guide parity
         run: bun run check:agents-claude
+
+      - name: Check maintained Markdown link targets
+        run: node scripts/check-markdown-links.mjs
 
       # The type-duplication finder is advisory (it never fails the build); only
       # its AST classifier is gated here so the candidate-report tooling stays

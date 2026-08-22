@@ -116,6 +116,15 @@ export function callStartedEvent(
   ].join(" ");
 }
 
+/**
+ * Returns the immediate phone opener while runtime, history, and provider
+ * caches warm in parallel. Keep this deterministic: generating the greeting
+ * through the agent runtime puts its entire cold path before first audio.
+ */
+export function callOpeningGreeting(returningCaller: boolean): string {
+  return returningCaller ? "Hey, what's up?" : "Hello? Who's this?";
+}
+
 /** Keeps variable history inside the canonical private turn while bounding its spoken output. */
 export function callOpeningPrompt(
   returningCaller: boolean,

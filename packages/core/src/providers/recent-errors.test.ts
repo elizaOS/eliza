@@ -13,7 +13,6 @@ import { AgentRuntime } from "../runtime";
 import { redactWithSecrets } from "../security/redact";
 import type { Character, IAgentRuntime, Memory, State } from "../types";
 import {
-	MAX_CONTEXT_CHARS,
 	QUIET_ERROR_CODES,
 	recentErrorsProvider,
 	serializeContext,
@@ -294,19 +293,14 @@ describe("serializeContext well-formed Unicode boundaries", () => {
 		return true;
 	}
 
-	it("keeps surrogate pairs intact when serializing and truncating context", () => {
-		const prefix = '{"payload":"';
-		const budget = MAX_CONTEXT_CHARS - 1; // 399
-		// Fill string so emoji lands at 398/399 index
-		const needed = budget - prefix.length - 1;
-		const payload = `${"a".repeat(needed)}🦊${"b".repeat(50)}`;
+	it("keeps large surrogate-bearing context complete", () => {
+		const payload = `HEAD${"a".repeat(150_000)}🦊${"b".repeat(50)}TAIL`;
 		const res = serializeContext({ payload }) ?? "";
-		expect(res.length).toBeLessThanOrEqual(MAX_CONTEXT_CHARS);
+		expect(res).toContain(payload);
 		expect(isWellFormed(res)).toBe(true);
-		expect(res.endsWith("…")).toBe(true);
 	});
 
-	it("sanitizes lone surrogates before truncation in context", () => {
+	it("sanitizes lone surrogates in context", () => {
 		const payload = `bad \uD800 ${"c".repeat(500)}`;
 		const res = serializeContext({ payload }) ?? "";
 		expect(res).toContain("\uFFFD");

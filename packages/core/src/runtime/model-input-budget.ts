@@ -13,6 +13,10 @@ import type {
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEFAULT_COMPACTION_RESERVE_TOKENS = 10_000;
+/** Conservative maximum inline allowance for one recoverable tool result. */
+export const DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS = 16_000;
+/** Conservative aggregate inline allowance for recoverable results in a turn. */
+export const DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS = 64_000;
 
 /**
  * When the context window is resolved from `lookupModelContextWindow` (i.e.
@@ -52,6 +56,13 @@ export interface ModelInputBudget {
 	resolvedModelKey: string | null;
 }
 
+export interface ContentProjectionBudget {
+	/** Maximum serialized tokens assigned to one tool result. */
+	perResultTokens: number;
+	/** Maximum serialized tokens assigned to all tool results in the turn. */
+	aggregateTokens: number;
+}
+
 function textLength(value: unknown): number {
 	if (typeof value === "string") {
 		return value.length;
@@ -62,8 +73,57 @@ function textLength(value: unknown): number {
 	return JSON.stringify(value).length;
 }
 
-function estimateTokensFromChars(chars: number): number {
+export function estimateTokensFromChars(chars: number): number {
 	return Math.ceil(chars / 3.5);
+}
+
+/**
+ * Derive a fair model-facing content allowance from an already-rendered
+ * metadata-only request. The baseline includes tool wrappers and ReadView
+ * metadata, so only capacity that remains below the request threshold is made
+ * available to exact page text.
+ */
+export function buildContentProjectionBudget(args: {
+	budget: ModelInputBudget;
+	resultCount: number;
+	perResultCeilingTokens?: number;
+	aggregateCeilingTokens?: number;
+}): ContentProjectionBudget {
+	if (!Number.isSafeInteger(args.resultCount) || args.resultCount < 0) {
+		throw new TypeError("resultCount must be a nonnegative safe integer");
+	}
+	const normalizeCeiling = (value: number | undefined, fallback: number) => {
+		if (value === undefined) return fallback;
+		if (!Number.isSafeInteger(value) || value < 0) {
+			throw new TypeError(
+				"content projection ceilings must be nonnegative safe integers",
+			);
+		}
+		return value;
+	};
+	const aggregateCeiling = normalizeCeiling(
+		args.aggregateCeilingTokens,
+		DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS,
+	);
+	const perResultCeiling = normalizeCeiling(
+		args.perResultCeilingTokens,
+		DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS,
+	);
+	const remainingTokens = Math.max(
+		0,
+		args.budget.compactionThresholdTokens - args.budget.estimatedInputTokens,
+	);
+	const aggregateTokens = Math.min(aggregateCeiling, remainingTokens);
+	return {
+		aggregateTokens,
+		perResultTokens:
+			args.resultCount === 0
+				? 0
+				: Math.min(
+						perResultCeiling,
+						Math.floor(aggregateTokens / args.resultCount),
+					),
+	};
 }
 
 export function estimateModelInputTokens(args: {

@@ -390,6 +390,18 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    // Owner-only vault workspace — reachable directly at /vault; not
+    // in any ALL_TAB_GROUPS launcher group, like rolodex/desktop/background.
+    tabId: "vault",
+    path: "/vault",
+    label: "Vault",
+    group: "Hidden",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "rolodex",
     path: "/rolodex",
     label: "Rolodex",
@@ -489,7 +501,7 @@ const MODALS: DevRouteModal[] = [
   {
     id: "signal-qr",
     trigger:
-      "Settings > Connectors > Signal > Link device (renders the QR pairing overlay).",
+      "Settings > Connectors > WhatsApp > Link device (renders the QR pairing overlay).",
   },
 ];
 

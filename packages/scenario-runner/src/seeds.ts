@@ -14,6 +14,27 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { isLoopbackUrl } from "./utils.js";
 
+const SEED_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every scenario-seed mock hop so a hung mock service cannot pin the
+ * executor. A caller-provided abort signal is composed with the timeout
+ * (either cancelling aborts), not substituted for it.
+ */
+export function seedFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = SEED_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal,
+  });
+}
+
 type LifeOpsOccurrenceState =
   | "completed"
   | "visible"
@@ -2396,7 +2417,7 @@ function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {
 }
 
 async function clearGmailMockLedger(baseUrl: string): Promise<void> {
-  const response = await fetch(`${baseUrl}/__mock/requests`, {
+  const response = await seedFetch(`${baseUrl}/__mock/requests`, {
     method: "DELETE",
   });
   if (!response.ok) {
@@ -2407,7 +2428,7 @@ async function clearGmailMockLedger(baseUrl: string): Promise<void> {
 }
 
 async function clearGmailMockFault(baseUrl: string): Promise<void> {
-  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+  const response = await seedFetch(`${baseUrl}/__mock/google/gmail/fault`, {
     method: "DELETE",
   });
   if (response.ok || response.status === 404) {
@@ -2486,7 +2507,7 @@ async function configureGmailMockFault(
   baseUrl: string,
   fault: GmailFaultInjectionConfig,
 ): Promise<string | undefined> {
-  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+  const response = await seedFetch(`${baseUrl}/__mock/google/gmail/fault`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(fault),
@@ -2501,7 +2522,7 @@ async function requireMockGmailMessage(
   baseUrl: string,
   messageId: string,
 ): Promise<string | undefined> {
-  const response = await fetch(
+  const response = await seedFetch(
     `${baseUrl}/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
   );
   if (response.ok) {
@@ -2513,7 +2534,7 @@ async function requireMockGmailMessage(
 async function gmailFixtureMessageIds(
   baseUrl: string,
 ): Promise<Record<string, readonly string[]>> {
-  const response = await fetch(`${baseUrl}/__mock/google/gmail/fixtures`);
+  const response = await seedFetch(`${baseUrl}/__mock/google/gmail/fixtures`);
   if (!response.ok) {
     return GMAIL_FIXTURE_MESSAGE_IDS;
   }

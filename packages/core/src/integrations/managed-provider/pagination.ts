@@ -1,8 +1,7 @@
 /**
  * Cursor pagination helper for provider adapters. Providers hand back opaque
- * cursors; this walker enforces page and item ceilings and rejects repeated
- * cursors so a malicious or buggy upstream cannot loop the runtime or grow
- * memory without bound.
+ * cursors; this walker rejects repeated cursors and enforces only the explicit
+ * limits selected by its caller.
  */
 
 import { ManagedProviderError } from "./errors";
@@ -14,13 +13,12 @@ export interface ProviderPage<T> {
 }
 
 export interface CollectProviderPagesOptions {
-	/** Ceiling on fetched pages; default 20. */
+	/** Optional ceiling on fetched pages for deliberately partial operations. */
 	maxPages?: number;
 	/** Ceiling on accumulated items; default 1000. */
 	maxItems?: number;
 }
 
-const DEFAULT_MAX_PAGES = 20;
 const DEFAULT_MAX_ITEMS = 1_000;
 
 /**
@@ -31,9 +29,9 @@ export async function collectProviderPages<T>(
 	fetchPage: (cursor: string | undefined) => Promise<ProviderPage<T>>,
 	options: CollectProviderPagesOptions = {},
 ): Promise<T[]> {
-	const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
+	const maxPages = options.maxPages;
 	const maxItems = options.maxItems ?? DEFAULT_MAX_ITEMS;
-	if (!Number.isInteger(maxPages) || maxPages < 1) {
+	if (maxPages !== undefined && (!Number.isInteger(maxPages) || maxPages < 1)) {
 		throw new ManagedProviderError("The pagination page limit is invalid.", {
 			code: "INVALID_INPUT",
 		});
@@ -46,7 +44,15 @@ export async function collectProviderPages<T>(
 	const seenCursors = new Set<string>();
 	const items: T[] = [];
 	let cursor: string | undefined;
-	for (let page = 0; page < maxPages; page += 1) {
+	let page = 0;
+	while (true) {
+		if (maxPages !== undefined && page >= maxPages) {
+			throw new ManagedProviderError(
+				"The provider listing exceeded the page limit.",
+				{ code: "PAGINATION_OVERFLOW", context: { maxPages } },
+			);
+		}
+		page += 1;
 		const result = await fetchPage(cursor);
 		items.push(...result.items);
 		if (items.length > maxItems) {
@@ -65,8 +71,4 @@ export async function collectProviderPages<T>(
 		seenCursors.add(result.nextCursor);
 		cursor = result.nextCursor;
 	}
-	throw new ManagedProviderError(
-		"The provider listing exceeded the page limit.",
-		{ code: "PAGINATION_OVERFLOW", context: { maxPages } },
-	);
 }

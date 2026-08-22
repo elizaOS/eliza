@@ -2,6 +2,8 @@
 
 import {
   parseTelegramWebhook,
+  resolveTelegramBotUsername,
+  resolveTelegramGroupActorRole,
   resolveTelegramVoiceNote,
   sendTelegramReply,
   sendTelegramTyping,
@@ -37,6 +39,10 @@ function asTelegramEvent(event: ChatEvent): TelegramConnectorEvent {
     senderName: event.senderName,
     text: event.text,
     isCommand: event.isCommand ?? event.text.startsWith("/"),
+    groupInvocation: event.groupInvocation,
+    groupActorRole: event.groupActorRole,
+    membershipChange: event.membershipChange,
+    replyToMessageId: event.replyToMessageId,
     providerSentAtMs: event.providerSentAtMs,
     voiceNote: event.voiceNote,
     rawPayload: event.rawPayload,
@@ -67,8 +73,52 @@ export const telegramAdapter: PlatformAdapter = {
     return verified;
   },
 
-  async extractEvent(rawBody: string): Promise<ChatEvent | null> {
-    return parseTelegramWebhook(rawBody, logger);
+  async extractEvent(rawBody: string, config): Promise<ChatEvent | null> {
+    let group = false;
+    try {
+      const payload = JSON.parse(rawBody) as {
+        message?: { chat?: { type?: unknown } };
+      };
+      group =
+        payload.message?.chat?.type === "group" ||
+        payload.message?.chat?.type === "supergroup";
+    } catch {
+      return parseTelegramWebhook(rawBody, logger);
+    }
+    if (!group) return parseTelegramWebhook(rawBody, logger);
+    let botUsername = config?.botUsername ?? "";
+    try {
+      botUsername = await resolveTelegramBotUsername(config ?? {});
+    } catch (error) {
+      logger.warn(
+        "Telegram bot identity lookup failed; group mentions will remain silent",
+        {
+          error: error instanceof Error ? error.name : "OtherError",
+        },
+      );
+    }
+    const event = parseTelegramWebhook(rawBody, logger, {
+      botUsername,
+      // Forward ambient facts to Cloud; the durable binding owns whether they
+      // may enter the model. Telegram privacy mode may still hide them.
+      allowAmbient: true,
+    });
+    if (event && /^\/eliza_link(?:@[a-z0-9_]{5,32})?\s+/i.test(event.text)) {
+      try {
+        event.groupActorRole = await resolveTelegramGroupActorRole(
+          config ?? {},
+          event.chatId,
+          event.senderId,
+        );
+      } catch (error) {
+        logger.warn(
+          "Telegram group authority lookup failed; link remains fail-closed",
+          { error: error instanceof Error ? error.name : "OtherError" },
+        );
+        event.groupActorRole = "unknown";
+      }
+    }
+    return event;
   },
 
   async resolveVoiceNote(config, event) {

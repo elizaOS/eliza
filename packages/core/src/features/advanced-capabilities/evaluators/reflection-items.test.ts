@@ -17,7 +17,6 @@ import { parseExtractorOutputTolerant } from "./factExtractor.schema.ts";
 import {
 	factMemoryEvaluator,
 	identityEvaluator,
-	REFLECTION_ENTITY_LIMIT,
 	relationshipEvaluator,
 } from "./reflection-items.ts";
 
@@ -370,7 +369,7 @@ describe("factExtractor tolerant parsing (#11235)", () => {
 	});
 });
 
-describe("reflection context bounds the room entity slice (#15087)", () => {
+describe("reflection context preserves the complete room entity set", () => {
 	const authorId = "00000000-0000-0000-0000-0000000000cf" as UUID;
 
 	function subAgentEntityId(index: number): UUID {
@@ -437,26 +436,20 @@ describe("reflection context bounds the room entity slice (#15087)", () => {
 		return prepared;
 	}
 
-	it("keeps conversation participants and caps the remainder in an entity-flooded room", async () => {
-		// 850 sub-agent entities observed live; 400 is just as far past the cap.
+	it("keeps every entity in an entity-flooded room", async () => {
 		const runtime = contextRuntime(roomEntities(400));
 		const prepared = await prepareContext(runtime);
 
-		expect(prepared.entities).toHaveLength(REFLECTION_ENTITY_LIMIT);
+		expect(prepared.entities).toHaveLength(403);
 		const keptIds = new Set(prepared.entities.map((entity) => entity.id));
 		expect(keptIds.has(agentId)).toBe(true);
 		expect(keptIds.has(entityId)).toBe(true);
 		expect(keptIds.has(authorId)).toBe(true);
-		// Participants lead the slice; the sub-agent flood fills the remainder.
-		expect(
-			prepared.entities
-				.slice(0, 3)
-				.map((entity) => entity.id)
-				.sort(),
-		).toEqual([agentId, entityId, authorId].sort());
+		expect(keptIds.has(subAgentEntityId(0))).toBe(true);
+		expect(keptIds.has(subAgentEntityId(399))).toBe(true);
 	});
 
-	it("renders a bounded Entities-in-Room block into the relationships prompt", async () => {
+	it("renders the complete Entities-in-Room block into the relationships prompt", async () => {
 		const runtime = contextRuntime(roomEntities(400));
 		const prepared = await prepareContext(runtime);
 
@@ -468,15 +461,12 @@ describe("reflection context bounds the room entity slice (#15087)", () => {
 			evaluatorName: "relationships",
 			prepared,
 		});
-		// Pre-fix, 400 entities with ~550-char task-description names rendered a
-		// ~220KB block; the slice cap + per-line name bound keep the whole section
-		// prompt-sized for the TEXT_SMALL tier.
-		expect(prompt.length).toBeLessThan(20_000);
-		expect(prompt).toContain("…[truncated]");
+		expect(prompt).toContain(subAgentEntityId(0));
+		expect(prompt).toContain(subAgentEntityId(399));
 		expect(prompt).toContain(entityId);
 	});
 
-	it("keeps a truncated entity name within its budget and Unicode-well-formed", async () => {
+	it("preserves a long Unicode entity name completely", async () => {
 		const longNameEntityId = subAgentEntityId(999);
 		const entities = roomEntities(0);
 		entities.push({
@@ -505,8 +495,7 @@ describe("reflection context bounds the room entity slice (#15087)", () => {
 			);
 		if (!line) throw new Error("long-name entity was not rendered");
 		const renderedName = line.slice(2, line.indexOf(" (ID:"));
-		expect(renderedName.length).toBeLessThanOrEqual(240);
-		expect(renderedName.endsWith("…[truncated]")).toBe(true);
+		expect(renderedName).toBe(`${"x".repeat(227)}🤖${"y".repeat(20)}`);
 		expect(renderedName.isWellFormed()).toBe(true);
 	});
 

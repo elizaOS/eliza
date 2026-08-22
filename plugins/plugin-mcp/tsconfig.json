@@ -45,8 +45,6 @@
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
       "@elizaos/plugin-google-workspace": ["../../plugins/plugin-google-workspace/src/index.ts"],
       "@elizaos/plugin-google-workspace/*": ["../../plugins/plugin-google-workspace/src/*"],
       "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/src/index.ts"],

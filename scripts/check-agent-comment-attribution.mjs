@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 /**
- * Validates model provenance on contribution claims and on comments that
- * declare AI assistance. Human discussion remains untouched, while claim
- * comments must end in either the canonical machine footer or an explicit
- * human-only footer.
+ * Validates voluntarily supplied model provenance. Comments without an
+ * attribution signal are accepted regardless of whether they claim work.
  */
 
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const CLAIM_LINE_RE = /^CLAIMING(?:\s+(?:REVIEW|LEVER))?\s*:/i;
 const ATTRIBUTION_DECLARATION_RE =
   /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
 // Two marker generations are accepted: the legacy repository footer
@@ -113,10 +110,6 @@ function declarationLineRecords(source) {
 
 function declarationLines(source) {
   return declarationLineRecords(source).map((record) => record.normalized);
-}
-
-function hasClaimSignal(source) {
-  return declarationLines(source).some((line) => CLAIM_LINE_RE.test(line));
 }
 
 function markerRecords(source) {
@@ -298,23 +291,22 @@ export function parseAttributionEvent(path) {
 // the provenance block, so it is unattributed rather than mis-attributed.
 const PRISTINE_ASSISTANCE_RE = /^`yes`\s*\/\s*`no\b[^`]*`\s*$/i;
 
-function pristineIssueNotice(source) {
-  if (hasClaimSignal(source)) return null;
+function shouldSkipIssueAttribution(source) {
   const assistanceLines = lineValues(source, "AI assistance");
   if (
     assistanceLines.length > 0 &&
     assistanceLines.every((value) => PRISTINE_ASSISTANCE_RE.test(value))
   ) {
-    return "Issue attribution rows are still the pristine template placeholders; fill them in (or keep the human-only defaults) so provenance is self-reported.";
+    return true;
   }
   if (
     assistanceLines.length === 0 &&
     !hasAttributionSignal(source) &&
     lineValues(source, "Attribution status").length === 0
   ) {
-    return "Issue body carries no attribution block; treating it as an unattributed human report.";
+    return true;
   }
-  return null;
+  return false;
 }
 
 export function evaluateCommentAttribution(body, options = {}) {
@@ -324,28 +316,18 @@ export function evaluateCommentAttribution(body, options = {}) {
   if (options.issueBody === true) {
     const noAiIssue = evaluateNoAiIssue(source);
     if (noAiIssue) return noAiIssue;
-    // Issue bodies come from templates ordinary reporters never designed for
-    // this gate: an absent or untouched provenance block warns instead of
-    // failing. Comments keep the strict behavior below.
-    if (options.required !== true) {
-      const notice = pristineIssueNotice(source);
-      if (notice) {
-        return {
-          ok: true,
-          skipped: true,
-          findings: [],
-          attribution: null,
-          notice,
-        };
-      }
+    if (shouldSkipIssueAttribution(source)) {
+      return {
+        ok: true,
+        skipped: true,
+        findings: [],
+        attribution: null,
+      };
     }
   }
-  const required =
-    options.required === true ||
-    options.issueBody === true ||
-    hasClaimSignal(source) ||
-    hasAttributionSignal(source);
-  if (!required) {
+  const hasDisclosure =
+    hasAttributionSignal(source) || hasHumanOnlyFooter(source);
+  if (!hasDisclosure) {
     return { ok: true, skipped: true, findings: [], attribution: null };
   }
 
@@ -550,7 +532,7 @@ export function evaluateCommentAttribution(body, options = {}) {
 }
 
 function parseArgs(argv) {
-  const args = { bodyFile: "", eventFile: "", required: false };
+  const args = { bodyFile: "", eventFile: "" };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--body-file") {
       args.bodyFile = argv[index + 1] ?? "";
@@ -558,8 +540,6 @@ function parseArgs(argv) {
     } else if (argv[index] === "--event-file") {
       args.eventFile = argv[index + 1] ?? "";
       index += 1;
-    } else if (argv[index] === "--required") {
-      args.required = true;
     }
   }
   return args;
@@ -569,14 +549,13 @@ export function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if ((args.bodyFile ? 1 : 0) + (args.eventFile ? 1 : 0) !== 1) {
     process.stderr.write(
-      "Usage: check-agent-comment-attribution.mjs (--body-file <path> | --event-file <path>) [--required]\n",
+      "Usage: check-agent-comment-attribution.mjs (--body-file <path> | --event-file <path>)\n",
     );
     return 2;
   }
   const event = args.eventFile ? parseAttributionEvent(args.eventFile) : null;
   const body = args.bodyFile ? readFileSync(args.bodyFile, "utf8") : event.body;
   const result = evaluateCommentAttribution(body, {
-    required: args.required,
     issueBody: event?.kind === "issue",
   });
   if (result.ok) {

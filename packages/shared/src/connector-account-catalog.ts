@@ -111,13 +111,6 @@ export const CONNECTOR_ACCOUNT_CATALOG: readonly ConnectorAccountCatalogEntry[] 
       supportsOAuth: false,
     },
     {
-      connectorId: "signal",
-      provider: "signal",
-      defaultRole: "OWNER",
-      defaultPurpose: ["messaging"],
-      supportsOAuth: false,
-    },
-    {
       connectorId: "google",
       provider: "google",
       defaultRole: "OWNER",

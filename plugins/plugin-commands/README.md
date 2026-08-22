@@ -14,7 +14,7 @@ Chat command system for [elizaOS](https://github.com/elizaos/eliza) agents. Adds
 | Category | Commands |
 |---|---|
 | Status | `/help` (`/h`, `/?`), `/commands` (`/cmds`), `/status` (`/s`), `/context` (`/ctx`), `/whoami` (`/who`) |
-| Session | `/stop` (`/abort`, `/cancel`), `/restart`\*, `/reset`\*, `/new`, `/compact` |
+| Session | `/stop` (`/abort`, `/cancel`), `/restart`\*, `/reset`\*, `/new` |
 | Options | `/think` (`/thinking`, `/t`), `/verbose` (`/v`), `/reasoning` (`/reason`), `/elevated`\* (`/elev`), `/model` (`/m`), `/models`, `/usage`, `/queue` (`/q`) |
 | Management | `/allowlist`\* (`/allow`), `/approve`\*, `/subagents`\* (`/sub`), `/config`\*† (`/cfg`), `/debug`\*† |
 | Media | `/tts` (`/voice`) |
@@ -80,4 +80,3 @@ hasCommand("hello world");            // false
 detectCommand("/think:high");          // { isCommand: true, command: { key: "think", args: ["high"], ... } }
 normalizeCommandBody("@bot /status", "bot"); // "/status"
 ```
-

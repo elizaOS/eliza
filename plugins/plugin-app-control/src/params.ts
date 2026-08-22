@@ -7,7 +7,12 @@
  */
 
 import type { Memory } from "@elizaos/core";
-import { getUserMessageText, unwrapUserMessageText } from "@elizaos/core";
+import {
+	completeUserReferenceView,
+	containsExternalEnvelopeMaterial,
+	getUserMessageText,
+	unwrapUserMessageText,
+} from "@elizaos/core";
 
 const LAUNCH_VERBS = [
 	"launch",
@@ -110,14 +115,15 @@ export function describeTargetReference(
 }
 
 /**
- * Render a target/query for logs and machine-facing action text/data, where
- * the actual value matters but must still never travel whole: a weak planner
- * echoes tool text verbatim, and a multi-KB blob bloats context. Collapse
- * whitespace to one line and clamp to 120 chars with a trailing ellipsis.
+ * Render a complete target/query for machine-facing action text/data while
+ * normalizing whitespace. Invalid shapes must be rejected at their owning
+ * boundary rather than silently changing the value here.
  */
 export function targetReferenceLogView(reference: string): string {
-	const collapsed = reference.replace(/\s+/g, " ").trim();
-	return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+	if (containsExternalEnvelopeMaterial(reference)) {
+		return "[external reference rejected]";
+	}
+	return completeUserReferenceView(reference);
 }
 
 export function normalizeActionOptions(

@@ -106,6 +106,9 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
+[browser]
+binding = "BROWSER"
+
 [[ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615301"
@@ -133,6 +136,10 @@ class_name = "SharedRuntimeConversation"
 [[durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+
+[[durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
 
 [[durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
@@ -185,6 +192,10 @@ type = "durable-object"
 storage = "sqlite"
 
 [exports.InferenceRateLimitV2RollbackFloor]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.DoorDashCheckoutGate]
 type = "durable-object"
 storage = "sqlite"
 
@@ -508,6 +519,9 @@ routes = [
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
+[env.staging.browser]
+binding = "BROWSER"
+
 [env.staging.vars]
 NODE_ENV = "production"
 # Capture every staging turn while validating voice and cross-channel routing.
@@ -723,6 +737,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[env.staging.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
+
+[[env.staging.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -801,6 +819,9 @@ routes = [
 [env.production.define]
 __dirname = '"/"'
 __filename = '"/worker.js"'
+
+[env.production.browser]
+binding = "BROWSER"
 
 [env.production.vars]
 NODE_ENV = "production"
@@ -973,6 +994,10 @@ class_name = "SharedRuntimeConversation"
 [[env.production.durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+
+[[env.production.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
 
 [[env.production.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"

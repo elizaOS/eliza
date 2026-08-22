@@ -73,9 +73,9 @@ export const inboxTriageProvider: Provider = {
 
     try {
       [urgent, needsReply, recentAutoReplies] = await Promise.all([
-        repo.getByClassification("urgent", { limit: 5 }),
-        repo.getByClassification("needs_reply", { limit: 10 }),
-        repo.getRecentAutoReplies(5),
+        repo.getByClassification("urgent"),
+        repo.getByClassification("needs_reply"),
+        repo.getRecentAutoReplies(),
       ]);
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade — a store-read failure
@@ -94,14 +94,14 @@ export const inboxTriageProvider: Provider = {
 
     if (urgent.length > 0) {
       lines.push("\n## Urgent");
-      for (const item of urgent.slice(0, 3)) {
+      for (const item of urgent) {
         lines.push(formatEntry(item));
       }
     }
 
     if (needsReply.length > 0) {
       lines.push("\n## Needs Reply");
-      for (const item of needsReply.slice(0, 5)) {
+      for (const item of needsReply) {
         lines.push(formatEntry(item));
       }
     }
@@ -110,7 +110,7 @@ export const inboxTriageProvider: Provider = {
       lines.push("\n## Recent Auto-Replies");
       for (const item of recentAutoReplies) {
         const draftPreview = item.draftResponse
-          ? `"${item.draftResponse.slice(0, 60)}..."`
+          ? `"${item.draftResponse}"`
           : "(no draft)";
         lines.push(`- Sent to ${item.channelName}: ${draftPreview}`);
       }
@@ -137,7 +137,7 @@ export const inboxTriageProvider: Provider = {
 function formatEntry(entry: TriageEntry): string {
   const senderInfo = entry.senderName ? ` from ${entry.senderName}` : "";
   const link = entry.deepLink ? `\n  ${entry.deepLink}` : "";
-  const snippet = entry.snippet.slice(0, 80);
+  const snippet = entry.snippet;
   return `- **${entry.channelName}**${senderInfo} (${entry.source}): "${snippet}"${link}`;
 }
 

@@ -1,7 +1,7 @@
 /**
  * REPLY_CONTEXT provider — when the incoming message is an explicit reply to
  * an earlier message (`content.inReplyTo`), pulls that replied-to message plus
- * a small window of surrounding turns into the prompt so the model reads the
+ * the surrounding turns into the prompt so the model reads the
  * reply against the exchange it belongs to, not just the tail of the recent
  * transcript. The reply id reaches `content.inReplyTo` from the dashboard reply
  * affordance (the API boundary lifts `metadata.replyToMessageId` into it — see
@@ -11,7 +11,7 @@
  * Renders nothing on ordinary (non-reply) turns — the only cost on the happy
  * path is one field check. Surrounding turns already visible in the
  * RECENT_MESSAGES window are deduped away so the transcript is never repeated;
- * the replied-to message itself is always identified (one bounded line) because
+ * the replied-to message itself is always identified on one complete line because
  * the transcript format gives the model no other way to tell WHICH earlier
  * message the user meant. A reply id that resolves to another room is ignored —
  * same forged-pivot guard as the conversation `?around` window.
@@ -27,20 +27,8 @@ import type {
 	ProviderResult,
 	UUID,
 } from "../../../types/index.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { addHeader, formatMessages, validateUuid } from "../../../utils.ts";
-
-/** Turns fetched on EACH side of the replied-to message. */
-export const REPLY_CONTEXT_WINDOW_RADIUS = 3;
-/** Mirror of the RECENT_MESSAGES lookback ceiling, for the dedupe window. */
-const MAX_RECENT_MESSAGES_LOOKBACK = 50;
-/** Bound on the always-rendered replied-to snippet line. */
-export const MAX_REPLY_TARGET_SNIPPET_CHARS = 300;
-/** Bound on each surrounding turn's rendered text. */
-export const MAX_REPLY_WINDOW_MESSAGE_CHARS = 1000;
 
 const EMPTY_RESULT: ProviderResult = {
 	data: { replyTargetMessage: null, replyContextMessages: [] },
@@ -52,37 +40,18 @@ function memoryText(memory: Memory): string {
 	return typeof memory.content.text === "string" ? memory.content.text : "";
 }
 
-export function truncateSingleLine(text: string, maxChars: number): string {
+export function normalizeSingleLine(text: string): string {
 	const collapsed = text.replace(/\s+/g, " ").trim();
-	const wellFormed = toWellFormedUnicode(collapsed);
-	if (wellFormed.length <= maxChars) {
-		return wellFormed;
-	}
-	const budget = Math.max(0, maxChars - 1);
-	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+	return toWellFormedUnicode(collapsed);
 }
 
-/** Cap a window turn's text so one giant pasted message can't blow up the prompt. */
-export function withBoundedText(memory: Memory): Memory {
+/** Normalize a window turn without changing its content length. */
+export function withWellFormedText(memory: Memory): Memory {
 	const text = memoryText(memory);
 	const wellFormed = toWellFormedUnicode(text);
-	if (wellFormed.length <= MAX_REPLY_WINDOW_MESSAGE_CHARS) {
-		if (wellFormed !== text) {
-			return {
-				...memory,
-				content: { ...memory.content, text: wellFormed },
-			};
-		}
-		return memory;
-	}
-	const budget = Math.max(0, MAX_REPLY_WINDOW_MESSAGE_CHARS - 1);
-	return {
-		...memory,
-		content: {
-			...memory.content,
-			text: `${truncateWellFormed(wellFormed, budget).trimEnd()}…`,
-		},
-	};
+	return wellFormed === text
+		? memory
+		: { ...memory, content: { ...memory.content, text: wellFormed } };
 }
 
 function resolveSenderName(
@@ -152,10 +121,7 @@ export const replyContextProvider: Provider = {
 		if (!target?.id || target.roomId !== roomId) return EMPTY_RESULT;
 
 		const targetCreatedAt = target.createdAt ?? 0;
-		const recentWindowLength = Math.min(
-			runtime.getConversationLength(),
-			MAX_RECENT_MESSAGES_LOOKBACK,
-		);
+		const recentWindowLength = runtime.getConversationLength();
 		const [recentWindow, olderOrAt, newerOrAt] = await Promise.all([
 			// The same window RECENT_MESSAGES renders, fetched for dedupe: any
 			// surrounding turn already in it is visible in the transcript above.
@@ -165,21 +131,19 @@ export const replyContextProvider: Provider = {
 				limit: recentWindowLength,
 				unique: false,
 			}),
-			// The target and up to RADIUS older turns (end is inclusive).
+			// Every retained turn at or before the target (end is inclusive).
 			runtime.getMemories({
 				tableName: "messages",
 				roomId,
 				end: targetCreatedAt,
-				limit: REPLY_CONTEXT_WINDOW_RADIUS + 1,
 				orderBy: "createdAt",
 				orderDirection: "desc",
 			}),
-			// The target and up to RADIUS newer turns (start is inclusive).
+			// Every retained turn at or after the target (start is inclusive).
 			runtime.getMemories({
 				tableName: "messages",
 				roomId,
 				start: targetCreatedAt,
-				limit: REPLY_CONTEXT_WINDOW_RADIUS + 1,
 				orderBy: "createdAt",
 				orderDirection: "asc",
 			}),
@@ -212,10 +176,7 @@ export const replyContextProvider: Provider = {
 		);
 
 		const targetSender = resolveSenderName(runtime, target, entities);
-		const targetSnippet = truncateSingleLine(
-			memoryText(target),
-			MAX_REPLY_TARGET_SNIPPET_CHARS,
-		);
+		const targetSnippet = normalizeSingleLine(memoryText(target));
 		const lines = [
 			`The incoming message is a direct reply to this earlier message from ${targetSender}:`,
 			`> ${targetSender}: ${targetSnippet || "(no text content)"}`,
@@ -224,7 +185,7 @@ export const replyContextProvider: Provider = {
 			// formatMessages renders its input back-to-front, so hand it the window
 			// newest-first to get an oldest-first block the model reads top-down.
 			const formattedWindow = formatMessages({
-				messages: contextMessages.map(withBoundedText).reverse(),
+				messages: contextMessages.map(withWellFormedText).reverse(),
 				entities,
 			});
 			lines.push(

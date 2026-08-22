@@ -1,7 +1,7 @@
 /**
  * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
  * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
- * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex),
  * speaks ACP over the native transport, tracks per-session state and emits the
  * session events the SubAgentRouter and task store consume, and cancels or tears
  * sessions down on stop or process shutdown.
@@ -85,10 +85,6 @@ import {
   mintSpawnLease,
   resolveLeaseBroker,
 } from "./model-gateway-lease.js";
-import {
-  buildOpencodeAcpEnv,
-  resolveVendoredOpencodeAcpCommand,
-} from "./opencode-config.js";
 import {
   createOwnedArtifactRecord,
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
@@ -449,7 +445,7 @@ const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";
 const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
-const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
+const _MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
@@ -802,7 +798,7 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
+const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude"];
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -2364,7 +2360,17 @@ export class AcpService extends Service {
     // session's selected-account credentials (the native transport keeps the
     // spawn-time client, which already has them) and the per-session git index
     // env that keeps same-repo sessions from sharing one mutable index file.
-    const promptCredentials = await this.accountCredentialsForSession(session);
+    let promptCredentials: Record<string, string> | undefined;
+    try {
+      promptCredentials = await this.accountCredentialsForSession(session);
+    } catch (err) {
+      // error-policy:J1 The CLI prompt boundary persists the typed account
+      // failure before propagating it; no subprocess may inherit ambient
+      // credentials after a session's pinned account pool is exhausted.
+      const message = errorMessage(err);
+      await this.recordAccountCredentialFailure(session, err, message);
+      throw err;
+    }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
       ...(this.gitIndexEnvForSession(session) ?? {}),
@@ -2902,12 +2908,6 @@ export class AcpService extends Service {
       args.push("--timeout", String(timeoutMs / 1000));
     if (opts.model) args.push("--model", opts.model);
     return args;
-  }
-
-  private opencodeAgentCommand(): string | undefined {
-    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
-    if (configured) return configured;
-    return resolveVendoredOpencodeAcpCommand();
   }
 
   private codexAcpSandboxMode(): CodexSandboxMode | undefined {
@@ -3539,10 +3539,16 @@ export class AcpService extends Service {
       };
     }
 
+    let reconnectLease: ModelGatewayLease | undefined;
     try {
-      await this.mintModelLease(session.id, session.agentType, opts.timeoutMs, {
-        rollbackSessionOnFailure: false,
-      });
+      reconnectLease = await this.mintModelLease(
+        session.id,
+        session.agentType,
+        opts.timeoutMs,
+        {
+          rollbackSessionOnFailure: false,
+        },
+      );
     } catch (err) {
       // error-policy:J2 context-adding rethrow — reconnect lease refusal must
       // persist on the existing session before the caller observes the failure.
@@ -3554,7 +3560,22 @@ export class AcpService extends Service {
       });
       throw err;
     }
-    const promptCredentials = await this.accountCredentialsForSession(session);
+    let promptCredentials: Record<string, string> | undefined;
+    try {
+      promptCredentials = await this.accountCredentialsForSession(session);
+    } catch (err) {
+      // error-policy:J1 A reconnect minted a short-lived model lease before it
+      // could re-resolve the pinned account. Persist and type the refusal, then
+      // revoke that lease before any native client can inherit ambient auth.
+      const message = errorMessage(err);
+      await this.revokeModelLease(
+        session.id,
+        "native_reconnect:account_exhausted",
+        reconnectLease?.leaseId,
+      );
+      await this.recordAccountCredentialFailure(session, err, message, true);
+      throw err;
+    }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
       ...(this.gitIndexEnvForSession(session) ?? {}),
@@ -3606,11 +3627,6 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "opencode") {
-      const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
-    }
     if (normalizedAgentType === "codex") return this.codexAgentCommand();
     const override = this.setting(
       `ELIZA_${String(normalizedAgentType)
@@ -3648,10 +3664,7 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
-    return ["--agent", command, ...args];
+    return [agentType, ...args];
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -4261,30 +4274,93 @@ export class AcpService extends Service {
     event: SessionEventName,
     data: unknown,
   ): void {
+    this.emitSessionEventInternal(sessionId, event, data, true);
+  }
+
+  private emitSessionEventInternal(
+    sessionId: string,
+    event: SessionEventName,
+    data: unknown,
+    revokeTerminalLease: boolean,
+  ): void {
     this.recordEventTrail(sessionId, event, data);
     const turn = this.promptTurns.get(sessionId);
     for (const callback of [...this.sessionCallbacks]) {
       try {
-        callback(sessionId, event, data, turn?.sessionSnapshot, turn?.id);
+        const result = callback(
+          sessionId,
+          event,
+          data,
+          turn?.sessionSnapshot,
+          turn?.id,
+        );
+        void Promise.resolve(result).catch((err) => {
+          // error-policy:J7 isolate a rejecting subscriber so the remaining
+          // session callbacks still run; warn and surface the diagnostic.
+          this.log("warn", "async session event callback failed", {
+            sessionId,
+            event,
+            error: errorMessage(err),
+          });
+          try {
+            this.runtime.reportError("AcpService.emitSessionEvent", err, {
+              sessionId,
+              event,
+            });
+          } catch {
+            // error-policy:J7 reporting failure cannot create an unhandled rejection.
+          }
+        });
       } catch (err) {
         // error-policy:J7 isolate a throwing subscriber so the remaining session
-        // callbacks still run; the failure is warn-logged.
+        // callbacks still run; warn and surface the diagnostic.
         this.log("warn", "session event callback failed", {
           sessionId,
           event,
           error: errorMessage(err),
         });
+        try {
+          this.runtime.reportError("AcpService.emitSessionEvent", err, {
+            sessionId,
+            event,
+          });
+        } catch {
+          // error-policy:J7 reporting failure cannot replace event delivery.
+        }
       }
     }
     // A terminal event means the task ended (completion via a stop/close,
     // failure, or timeout/cancel). Revoke the session's model lease so a leaked
     // child env is dead the moment its task ends. Fire-and-forget: this sync
     // emitter is called from deep transport paths; revocation is idempotent.
-    if (LEASE_REVOKE_EVENTS.has(event)) {
+    if (revokeTerminalLease && LEASE_REVOKE_EVENTS.has(event)) {
       void this.revokeModelLease(sessionId, `event:${event}`);
       void this.store.get(sessionId).then((session) => {
         if (session) void this.removeOwnedGitIndex(session);
       });
+    }
+  }
+
+  /** Await every durable consumer before an account identity may reach a child process. */
+  private async emitAccountSwitched(
+    session: SessionInfo,
+    meta: CodingAccountMeta,
+  ): Promise<void> {
+    const data = {
+      providerId: meta.providerId,
+      accountId: meta.accountId,
+      label: meta.label,
+    };
+    this.recordEventTrail(session.id, "account_switched", data);
+    const turn = this.promptTurns.get(session.id);
+    for (const callback of [...this.sessionCallbacks]) {
+      await callback(
+        session.id,
+        "account_switched",
+        data,
+        turn?.sessionSnapshot,
+        turn?.id,
+      );
     }
   }
 
@@ -4427,8 +4503,8 @@ export class AcpService extends Service {
    * needs-reauth / disabled / token resolve failed) does this deliberately
    * fail over to a fresh pick — and then re-stamps the session so every
    * account-keyed consumer follows the credential actually injected. Returns
-   * undefined when the session has no linked account and no account is
-   * available.
+   * undefined only when the session never had a linked account. A
+   * stamped session with no remaining compatible account fails closed.
    */
   private async accountCredentialsForSession(
     session: SessionInfo,
@@ -4448,7 +4524,26 @@ export class AcpService extends Service {
       sessionKey: session.id,
       exclude: [meta.accountId],
     });
-    if (!failover) return undefined;
+    if (!failover) {
+      // This session was explicitly stamped to a linked account. Returning no
+      // credential patch here would make buildEnv() fall back to ambient host
+      // API keys or CLI homes, silently changing account and billing authority
+      // on a follow-up prompt or reconnect while receipts remain pinned to the
+      // exhausted account.
+      throw new ElizaError(
+        "The coding session's pinned account is unavailable and no compatible failover remains",
+        {
+          code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+          context: {
+            sessionId: session.id,
+            agentType: session.agentType,
+            providerId: meta.providerId,
+            accountId: meta.accountId,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
     this.log("warn", "coding account failed over on follow-up prompt", {
       sessionId: session.id,
       previous: meta.accountId,
@@ -4472,25 +4567,15 @@ export class AcpService extends Service {
     meta: CodingAccountMeta,
   ): Promise<void> {
     const metadata = { ...(session.metadata ?? {}), account: meta };
+    // Durable session and task/billing consumers must agree before credentials
+    // for the new account can reach a child process. A partial re-key is a
+    // wrong-account billing defect, not a diagnostics-only degradation.
+    await this.emitAccountSwitched(session, meta);
+    // Persist the session pin last. If this write fails, the old pin causes the
+    // next attempt to replay the idempotent consumer re-key instead of silently
+    // treating a half-restamped account as complete.
+    await this.store.update(session.id, { metadata });
     session.metadata = metadata;
-    try {
-      await this.store.update(session.id, { metadata });
-    } catch (err) {
-      // error-policy:J7 the failover credential is already resolved and must
-      // reach the subprocess; a failed durable re-stamp only degrades the NEXT
-      // prompt's pin back to the stale account, so warn instead of failing the
-      // prompt.
-      this.log("warn", "failed to persist failover account on session", {
-        sessionId: session.id,
-        accountId: meta.accountId,
-        error: errorMessage(err),
-      });
-    }
-    this.emitSessionEvent(session.id, "account_switched", {
-      providerId: meta.providerId,
-      accountId: meta.accountId,
-      label: meta.label,
-    });
   }
 
   private buildEnv(
@@ -4556,7 +4641,6 @@ export class AcpService extends Service {
       if (agentType === "claude" && normalizedModel) {
         env.ANTHROPIC_MODEL = normalizedModel;
       }
-      if (agentType === "opencode") env.OPENCODE_MODEL = model;
     } else if (agentType === "claude") {
       // No per-spawn model: fall back to the app-configured claude coding
       // model (what POST /api/models/config writes). Config-env read, so a
@@ -4655,18 +4739,6 @@ export class AcpService extends Service {
         );
       }
     }
-    if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
-      Object.assign(env, opencode.env);
-      if (opencode.config) {
-        this.log("info", "OpenCode ACP provider configured", {
-          provider: opencode.config.providerLabel,
-          model: opencode.config.model,
-          smallModel: opencode.config.smallModel,
-          vendored: Boolean(opencode.vendoredShimDir),
-        });
-      }
-    }
     // Per-spawn git identity: pin an explicit author/committer for every agent
     // commit so the child never inherits the operator's personal `~/.gitconfig`
     // user.name/email (a provenance leak, and on a fresh box git refuses to
@@ -4746,7 +4818,7 @@ export class AcpService extends Service {
     agentType: AgentType,
     timeoutMs: number | undefined,
     options: { rollbackSessionOnFailure: boolean },
-  ): Promise<void> {
+  ): Promise<ModelGatewayLease | undefined> {
     const ttlMs = timeoutMs ?? this.sessionTimeoutMs ?? DEFAULT_LEASE_TTL_MS;
     let outcome: Awaited<ReturnType<typeof mintSpawnLease>>;
     try {
@@ -4780,7 +4852,9 @@ export class AcpService extends Service {
         leaseId: outcome.lease.leaseId,
         expiresAt: new Date(outcome.lease.expiresAt).toISOString(),
       });
+      return outcome.lease;
     }
+    return undefined;
   }
 
   /**
@@ -4792,9 +4866,11 @@ export class AcpService extends Service {
   private async revokeModelLease(
     sessionId: string,
     reason: string,
+    expectedLeaseId?: string,
   ): Promise<void> {
     const lease = this.modelLeases.get(sessionId);
     if (!lease) return;
+    if (expectedLeaseId && lease.leaseId !== expectedLeaseId) return;
     this.modelLeases.delete(sessionId);
     const gateway = resolveModelGatewayConfig();
     const broker = gateway ? resolveLeaseBroker(gateway) : null;
@@ -4862,6 +4938,82 @@ export class AcpService extends Service {
       : { failureKind: "auth" };
   }
 
+  /** Preserve typed account failures instead of reclassifying only their prose. */
+  private accountCredentialFailureFields(
+    error: unknown,
+    message: string,
+    agentType: AgentType,
+  ): Record<string, string> {
+    const fields: Record<string, string> = {
+      ...this.authFailureFields(message, agentType),
+    };
+    if (!(error instanceof ElizaError)) return fields;
+    fields.code = error.code;
+    if (error.code === "CODING_ACCOUNT_SESSION_EXHAUSTED") {
+      fields.failureKind = "account_exhausted";
+    }
+    return fields;
+  }
+
+  /** Best-effort diagnostics must never replace the typed account authority failure. */
+  private async recordAccountCredentialFailure(
+    session: SessionInfo,
+    error: unknown,
+    message: string,
+    leaseAlreadyHandled = false,
+  ): Promise<void> {
+    try {
+      await this.store.updateStatus(session.id, "errored", message);
+    } catch (persistError) {
+      // error-policy:J7 diagnostics persistence must not replace the primary
+      // typed account authority failure; warn and report it separately.
+      this.log("warn", "failed to persist coding account exhaustion", {
+        sessionId: session.id,
+        error: errorMessage(persistError),
+      });
+      try {
+        this.runtime.reportError(
+          "AcpService.persistAccountCredentialFailure",
+          persistError,
+          { sessionId: session.id },
+        );
+      } catch {
+        // error-policy:J7 reporting failure cannot replace the primary typed error.
+      }
+    }
+    try {
+      this.emitSessionEventInternal(
+        session.id,
+        "error",
+        {
+          message,
+          ...this.accountCredentialFailureFields(
+            error,
+            message,
+            session.agentType,
+          ),
+        },
+        !leaseAlreadyHandled,
+      );
+    } catch (eventError) {
+      // error-policy:J7 diagnostic event delivery must not replace the primary
+      // typed account authority failure; warn and report it separately.
+      this.log("warn", "failed to emit coding account exhaustion", {
+        sessionId: session.id,
+        error: errorMessage(eventError),
+      });
+      try {
+        this.runtime.reportError(
+          "AcpService.emitAccountCredentialFailure",
+          eventError,
+          { sessionId: session.id },
+        );
+      } catch {
+        // error-policy:J7 reporting failure cannot replace the primary typed error.
+      }
+    }
+  }
+
   private classifyExitError(code: number | null, stderr: string): string {
     if (code === 1 && isAuthText(stderr))
       return "acpx auth failed. Re-authenticate the selected agent or set ACPX_AUTH_* credentials.";
@@ -4870,10 +5022,7 @@ export class AcpService extends Service {
     if (code === 5) return "acpx permission denied.";
     if (code === 3) return "acpx prompt timed out.";
     if (stderr.trim()) {
-      const wellFormed = toWellFormedUnicode(stderr.trim());
-      return wellFormed.length > 500
-        ? truncateWellFormed(wellFormed, 500)
-        : wellFormed;
+      return toWellFormedUnicode(stderr.trim());
     }
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
@@ -5416,12 +5565,8 @@ function captureTerminalToolOutput(
   if (capturedToolOutputs.has(key)) return undefined;
   capturedToolOutputs.add(key);
   const wellFormed = toWellFormedUnicode(output);
-  const truncated =
-    wellFormed.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
-      ? `${truncateWellFormed(wellFormed, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
-      : wellFormed;
   const title = toolCall.title?.trim() || "tool output";
-  return `[tool output: ${title}]\n${truncated}\n${TOOL_OUTPUT_END_MARKER}`;
+  return `[tool output: ${title}]\n${wellFormed}\n${TOOL_OUTPUT_END_MARKER}`;
 }
 
 // Exported for unit coverage of the exec-record one-liner path (issue #11578).
@@ -5476,17 +5621,13 @@ function execRecordOneLiner(value: unknown): string | undefined {
   return line;
 }
 
-/** Extract a capped (≤200 char) stdout/stderr tail from an exec record. */
+/** Extract complete stdout/stderr text from an exec record. */
 function execRecordOutputTail(record: Record<string, unknown>): string {
   const candidates = [record.stdout, record.stderr, record.output]
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter((entry) => entry.length > 0);
   if (candidates.length === 0) return "";
-  const joined = candidates.join("\n").trim();
-  const wellFormed = toWellFormedUnicode(joined);
-  return wellFormed.length > 200
-    ? `${truncateWellFormed(wellFormed, 200)}…`
-    : wellFormed;
+  return toWellFormedUnicode(candidates.join("\n").trim());
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {

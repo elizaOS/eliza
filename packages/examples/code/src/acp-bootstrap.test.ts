@@ -25,13 +25,15 @@ it("deletes the warm token before imports and captures only claimed PATH", () =>
       after: shared.getHostExecutionBaseline().path,
     }));
   `;
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    ELIZA_ACP_WARM_CLAIM_TOKEN: "single-use-secret",
+  };
+  delete childEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
   const result = Bun.spawnSync(
     [process.execPath, "--conditions=eliza-source", "-e", script],
     {
-      env: {
-        ...process.env,
-        ELIZA_ACP_WARM_CLAIM_TOKEN: "single-use-secret",
-      },
+      env: childEnv,
       stdout: "pipe",
       stderr: "pipe",
     },

@@ -547,8 +547,11 @@ export function buildGenerateArgsFromParams(
 function readPositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // Prefix-parse hole: "4junk" parsed to 4, so a typo in e.g. ELIZA_LLAMA_N_CTX
+  // silently became a 4-token context window instead of falling back. The `> 0`
+  // check stays the range authority, so a signed value is still judged by it.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 /**
@@ -577,8 +580,9 @@ function readKvCacheTypeEnv(
 function readNonNegativeIntEnv(name: string): number | null {
   const raw = process.env[name]?.trim();
   if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  // Same hole on the non-negative form.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 export function isAospLocalEmbeddingEnabled(
@@ -604,8 +608,9 @@ function readPositiveIntEnvFrom(
 ): number {
   const raw = env[name]?.trim();
   if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // Same prefix-parse hole as the process.env forms above.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function readBooleanEnv(name: string): boolean | null {

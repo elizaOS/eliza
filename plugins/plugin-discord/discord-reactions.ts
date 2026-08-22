@@ -113,11 +113,7 @@ export async function handleReaction(
 
 		// Process message content
 		const messageContent = reaction.message.content || "";
-		const truncatedContent =
-			messageContent.length > 50
-				? `${messageContent.substring(0, 50)}...`
-				: messageContent;
-		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: \\"${truncatedContent}\\"*`;
+		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: \\"${messageContent}\\"*`;
 
 		// Get user info from the reacting user (not the message author)
 		const reactionMessageAuthor = reaction.message.author;
@@ -183,10 +179,8 @@ export async function handleReaction(
 				source: "discord",
 				inReplyTo,
 				channelType,
-				// `text` above truncates the reacted-to message to a 50-char display
-				// stub; preserve the full original so context-building feeds the
-				// planner the complete statement, not a fragment it back-rationalizes
-				// into a phantom task (#9874 item 2).
+				// Keep the typed original alongside the readable event text so context
+				// rendering can identify the reacted-to statement without reparsing it.
 				...(messageContent ? { reactedMessageText: messageContent } : {}),
 			},
 			metadata: {

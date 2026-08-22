@@ -41,7 +41,6 @@ const QUIET_RESULT: ProviderResult = {
   data: {},
 };
 
-const ONE_LINE_MAX = 120;
 const FIRST_RUN_REQUEST_RE =
   /\b(?:first[-\s]?run|first\s+run\s+setup|onboarding|initial\s+(?:setup|configuration)|setup\s+(?:this\s+)?(?:agent|bot|assistant)|configure\s+(?:this\s+)?(?:agent|bot|assistant)|use\s+defaults|customi[sz]e\s+(?:setup|first[-\s]?run))\b/iu;
 
@@ -52,26 +51,17 @@ function buildOneLine(
 ): string {
   if (inProgress) {
     const where = partialPath === "customize" ? " (customize)" : "";
-    return `First-run setup is in progress${where}. Continue the first-run workflow.`.slice(
-      0,
-      ONE_LINE_MAX,
-    );
+    return `First-run setup is in progress${where}. Continue the first-run workflow.`;
   }
   if (localBackupAvailable) {
-    return "First-run setup hasn't run yet. Ask whether to restore the latest local backup or start fresh.".slice(
-      0,
-      ONE_LINE_MAX,
-    );
+    return "First-run setup hasn't run yet. Ask whether to restore the latest local backup or start fresh.";
   }
   // "never claim it's done" is load-bearing: observed live (#16941), a
   // fresh-boot "set me up with defaults" ask was answered with "You're all
   // set up" while no setup had run, and a "customize my setup" ask was read
   // as devtool config knobs — the line forbids claiming completion and names
   // the real questions so the model walks the actual flow.
-  return "First-run setup NOT done — never claim it is. Offer defaults or customize (wake time / name, categories, channel).".slice(
-    0,
-    ONE_LINE_MAX,
-  );
+  return "First-run setup NOT done — never claim it is. Offer defaults or customize (wake time / name, categories, channel).";
 }
 
 function isPrivateFirstRunSurface(message: Memory): boolean {

@@ -109,7 +109,6 @@ CASUAL_USER_MSG_RE = re.compile(
     re.IGNORECASE,
 )
 
-HARD_CAP_CHARS = 4000  # for genuinely long task replies
 
 
 def is_casual(rec: dict) -> bool:
@@ -129,7 +128,6 @@ def is_casual(rec: dict) -> bool:
     return bool(CASUAL_USER_MSG_RE.match(cm)) or len(cm) < 25
 
 
-SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'\(])")
 
 
 def deslop_task_text(text: str, *, stats: dict) -> str:
@@ -158,20 +156,6 @@ def deslop_task_text(text: str, *, stats: dict) -> str:
             if text and text[-1] not in ".!?":
                 text += "."
             fired.append("tail.followup")
-
-    # Hard cap at 4000 chars (sentence boundary)
-    if len(text) > HARD_CAP_CHARS:
-        sents = SENTENCE_RE.split(text)
-        truncated = []
-        running = 0
-        for s in sents:
-            if running + len(s) + 1 > HARD_CAP_CHARS:
-                break
-            truncated.append(s)
-            running += len(s) + 1
-        if truncated:
-            text = " ".join(truncated)
-            fired.append("hard_cap")
 
     if fired:
         for f in fired:

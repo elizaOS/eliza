@@ -35,9 +35,9 @@
  * same agent process and share the {@link getInferencePriorityGate} singleton.
  *
  * The device-class background budget (#11760 probe seam) lives here too:
- * {@link resolveBackgroundInferenceBudget} caps a background job's `maxTokens`
- * and prompt size by RAM class so a background summarization cannot hold the
- * lane for multi-minute stretches on a constrained phone.
+ * {@link resolveBackgroundInferenceBudget} caps a background job's generated
+ * output and queue wait by RAM class. Input is never clipped; callers receive
+ * an explicit provider/model error when a complete prompt cannot be accepted.
  */
 
 import type { LocalInferencePriority } from "../types/model";
@@ -76,21 +76,17 @@ export function inferenceRamClassFromEnv(
 export interface BackgroundInferenceBudget {
 	/** Cap on `maxTokens` for a background generation. */
 	maxTokens: number;
-	/** Cap on prompt length in characters (middle-truncated, ends preserved). */
-	maxPromptChars: number;
 	/** Bounded gate wait before the background request fails without running. */
 	lockWaitMs: number;
 }
 
 const CONSTRAINED_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
 	maxTokens: 192,
-	maxPromptChars: 4_000,
 	lockWaitMs: 120_000,
 };
 
 const STANDARD_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
 	maxTokens: 1_024,
-	maxPromptChars: 24_000,
 	lockWaitMs: 300_000,
 };
 
@@ -101,31 +97,6 @@ export function resolveBackgroundInferenceBudget(
 	return ramClass === "constrained"
 		? CONSTRAINED_BACKGROUND_BUDGET
 		: STANDARD_BACKGROUND_BUDGET;
-}
-
-const PROMPT_TRUNCATION_MARKER =
-	"\n…[middle truncated: on-device background inference budget]…\n";
-
-/**
- * Clamp a background job's prompt to `maxPromptChars` by removing the MIDDLE,
- * preserving the head (system/template opening) and the tail (the most recent
- * context plus the template's generation suffix — e.g. Gemma's
- * `<start_of_turn>model`), so the prompt envelope stays well-formed.
- */
-export function clampBackgroundPrompt(
-	prompt: string,
-	maxPromptChars: number,
-): string {
-	if (prompt.length <= maxPromptChars) return prompt;
-	const usable = maxPromptChars - PROMPT_TRUNCATION_MARKER.length;
-	if (usable <= 0) return prompt.slice(-maxPromptChars);
-	const headChars = Math.floor(usable * 0.3);
-	const tailChars = usable - headChars;
-	return (
-		prompt.slice(0, headChars) +
-		PROMPT_TRUNCATION_MARKER +
-		prompt.slice(prompt.length - tailChars)
-	);
 }
 
 /**
@@ -139,19 +110,12 @@ export function applyBackgroundInferenceBudget(
 	budget: BackgroundInferenceBudget,
 ): { prompt: string; maxTokens: number; clamped: string[] } {
 	const clamped: string[] = [];
-	let prompt = args.prompt;
-	if (prompt.length > budget.maxPromptChars) {
-		prompt = clampBackgroundPrompt(prompt, budget.maxPromptChars);
-		clamped.push(
-			`prompt ${args.prompt.length}→${prompt.length} chars (cap ${budget.maxPromptChars})`,
-		);
-	}
 	let maxTokens = args.maxTokens ?? budget.maxTokens;
 	if (maxTokens > budget.maxTokens) {
 		clamped.push(`maxTokens ${maxTokens}→${budget.maxTokens}`);
 		maxTokens = budget.maxTokens;
 	}
-	return { prompt, maxTokens, clamped };
+	return { prompt: args.prompt, maxTokens, clamped };
 }
 
 /**

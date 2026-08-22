@@ -916,15 +916,12 @@ function normalizedToken(value: string | null | undefined): string | null {
   return normalized ? normalized : null;
 }
 
-const MAX_GOOGLE_CALENDAR_PAGES = 1_000;
-
 interface CalendarPaginationState {
-  pageCount: number;
   seenPageTokens: Set<string>;
 }
 
 function createCalendarPaginationState(): CalendarPaginationState {
-  return { pageCount: 0, seenPageTokens: new Set<string>() };
+  return { seenPageTokens: new Set<string>() };
 }
 
 function nextPageToken(
@@ -932,7 +929,6 @@ function nextPageToken(
   state: CalendarPaginationState,
   resource: string
 ): string | undefined {
-  state.pageCount += 1;
   if (!value) {
     return undefined;
   }
@@ -942,16 +938,6 @@ function nextPageToken(
       context: { resource },
       severity: "fatal",
     });
-  }
-  if (state.pageCount >= MAX_GOOGLE_CALENDAR_PAGES) {
-    throw new ElizaError(
-      `Google Calendar ${resource} pagination exceeded ${MAX_GOOGLE_CALENDAR_PAGES} pages.`,
-      {
-        code: "GOOGLE_CALENDAR_PAGINATION_LIMIT_EXCEEDED",
-        context: { maxPages: MAX_GOOGLE_CALENDAR_PAGES, resource },
-        severity: "fatal",
-      }
-    );
   }
   state.seenPageTokens.add(value);
   return value;

@@ -429,7 +429,7 @@ export function buildNextCalendarEventContext(
       ? "Open and test the call link before the meeting starts"
       : "",
     attendeeNames.length > 0
-      ? `Review attendee context for ${attendeeNames.slice(0, 3).join(", ")}`
+      ? `Review attendee context for ${attendeeNames.join(", ")}`
       : "",
     event.description.trim().length > 0
       ? "Read the event description and agenda notes"

@@ -29,14 +29,10 @@ import {
 	ModelType,
 } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
-import { truncateWellFormed } from "../../utils/well-formed";
+import { toWellFormedUnicode } from "../../utils/well-formed";
 import { stripReasoningBlocks } from "./fallback-reply";
 import { getV5ModelText } from "./generate-text-result";
 import { isUnaddressedTextGroupTurn } from "./stage1-prompt-tier";
-
-const MAX_HISTORY_MESSAGES = 8;
-const MAX_HISTORY_LINE_CHARS = 160;
-const MAX_CURRENT_TEXT_CHARS = 1200;
 
 export interface BotNoiseTriageArgs {
 	runtime: IAgentRuntime;
@@ -113,13 +109,6 @@ function senderNameOf(message: Memory): string {
 	return "bot";
 }
 
-function clip(text: string, maxChars: number): string {
-	const collapsed = text.replace(/\s+/g, " ").trim();
-	return collapsed.length > maxChars
-		? `${truncateWellFormed(collapsed, maxChars)}…`
-		: collapsed;
-}
-
 function historyLine(runtime: IAgentRuntime, memory: Memory): string | null {
 	const text =
 		typeof memory.content?.text === "string" ? memory.content.text : "";
@@ -128,7 +117,7 @@ function historyLine(runtime: IAgentRuntime, memory: Memory): string | null {
 		memory.entityId === runtime.agentId
 			? (runtime.character?.name ?? "agent")
 			: senderNameOf(memory);
-	return `${name}: ${clip(text, MAX_HISTORY_LINE_CHARS)}`;
+	return `${name}: ${toWellFormedUnicode(text)}`;
 }
 
 export function buildBotNoiseTriagePrompt(args: {
@@ -147,7 +136,7 @@ export function buildBotNoiseTriagePrompt(args: {
 		history,
 		"",
 		`Newest message, from ${args.senderName} (bot/webhook):`,
-		clip(args.messageText, MAX_CURRENT_TEXT_CHARS) || "(empty)",
+		toWellFormedUnicode(args.messageText) || "(empty)",
 		"",
 		`Automated status feeds, embeds, queue/system updates, notifications, and bot-to-bot chatter not involving ${args.agentName} should be ignored.`,
 		`Answer RESPOND only if the message clearly asks ${args.agentName} something or requires ${args.agentName} to act.`,
@@ -182,7 +171,6 @@ export async function runBotNoiseTriage(
 		const recent = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			count: MAX_HISTORY_MESSAGES,
 		});
 		historyLines = recent
 			.filter((memory) => memory.id !== message.id)

@@ -245,8 +245,6 @@ export type AgentDefaultsConfig = {
   repoRoot?: string;
   /** Skip init (INIT.md creation, etc.) for pre-configured deployments. */
   skipInit?: boolean;
-  /** Max chars for injected init files before truncation (default: 20000). */
-  initMaxChars?: number;
   /** Enable init providers (attachments, entities, facts). Can consume significant tokens (default: true). */
   enableInitProviders?: boolean;
   /** Optional IANA timezone for the user (used in system prompt; defaults to host timezone). */

@@ -1,5 +1,5 @@
 {
-  "uuid": "bbbb1111-aaaa-4000-8000-000000020122",
+  "uuid": "bbbb1111-aaaa-4000-8000-000000020112",
   "lastMigration": 33,
   "name": "lifeops-eliza-cloud-mock",
   "endpointPrefix": "",
@@ -9,14 +9,14 @@
   "folders": [],
   "routes": [
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020104",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f4",
       "type": "http",
       "documentation": "POST api/v1/eliza/auth/token",
       "method": "post",
       "endpoint": "api/v1/eliza/auth/token",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020105",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f5",
           "body": "{\n  \"apiKey\": \"elc_test_2026_05_09_shaw\",\n  \"expiresAt\": \"2026-08-09T00:00:00.000Z\",\n  \"agentId\": \"agent-shaw-default\"\n}",
           "latency": 0,
           "statusCode": 200,
@@ -40,7 +40,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020106",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f6",
           "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
           "latency": 0,
           "statusCode": 429,
@@ -83,7 +83,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020107",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f7",
           "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
           "latency": 0,
           "statusCode": 401,
@@ -122,7 +122,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020108",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f8",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -164,14 +164,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020109",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f9",
       "type": "http",
       "documentation": "GET api/v1/eliza/agents/me",
       "method": "get",
       "endpoint": "api/v1/eliza/agents/me",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002010a",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fa",
           "body": "{\n  \"id\": \"agent-shaw-default\",\n  \"handle\": \"shaw\",\n  \"displayName\": \"Shaw\",\n  \"tier\": \"pro\",\n  \"monetization\": {\n    \"revShare\": 0.7,\n    \"payoutCadence\": \"monthly\"\n  }\n}",
           "latency": 0,
           "statusCode": 200,
@@ -195,7 +195,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002010b",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fb",
           "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
           "latency": 0,
           "statusCode": 429,
@@ -238,7 +238,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002010c",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fc",
           "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
           "latency": 0,
           "statusCode": 401,
@@ -277,7 +277,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002010d",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200fd",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -319,14 +319,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-00000002010e",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200fe",
       "type": "http",
       "documentation": "GET api/v1/eliza/billing/balance",
       "method": "get",
       "endpoint": "api/v1/eliza/billing/balance",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002010f",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ff",
           "body": "{\n  \"currency\": \"USD\",\n  \"balance\": 18.42,\n  \"reservedCredits\": 1,\n  \"lastUpdated\": \"2026-05-09T17:30:00.000Z\",\n  \"lifetimeUsage\": 124.6\n}",
           "latency": 0,
           "statusCode": 200,
@@ -350,7 +350,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020110",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020100",
           "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
           "latency": 0,
           "statusCode": 429,
@@ -393,7 +393,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020111",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020101",
           "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
           "latency": 0,
           "statusCode": 401,
@@ -432,7 +432,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020112",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020102",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -474,14 +474,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020113",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020103",
       "type": "http",
       "documentation": "POST api/v1/eliza/plaid/link-token",
       "method": "post",
       "endpoint": "api/v1/eliza/plaid/link-token",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020114",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020104",
           "body": "{\n  \"linkToken\": \"link-sandbox-mock-2026-05-09\",\n  \"expiration\": \"2026-05-09T22:00:00.000Z\",\n  \"environment\": \"sandbox\"\n}",
           "latency": 0,
           "statusCode": 200,
@@ -505,7 +505,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020115",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020105",
           "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
           "latency": 0,
           "statusCode": 429,
@@ -548,7 +548,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020116",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020106",
           "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
           "latency": 0,
           "statusCode": 401,
@@ -587,7 +587,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020117",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020107",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -629,14 +629,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020118",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020108",
       "type": "http",
       "documentation": "POST api/v1/eliza/paypal/authorize",
       "method": "post",
       "endpoint": "api/v1/eliza/paypal/authorize",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020119",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020109",
           "body": "{\n  \"authorizationUrl\": \"https://www.paypal.com/connect?flowEntry=static&client_id=mock&scope=openid\",\n  \"state\": \"state-mock-2026-05-09\"\n}",
           "latency": 0,
           "statusCode": 200,
@@ -660,7 +660,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002011a",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010a",
           "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
           "latency": 0,
           "statusCode": 429,
@@ -703,7 +703,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002011b",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010b",
           "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
           "latency": 0,
           "statusCode": 401,
@@ -742,7 +742,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002011c",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010c",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -784,14 +784,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-00000002011d",
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002010d",
       "type": "http",
       "documentation": "POST api/v1/eliza/schedule/sync",
       "method": "post",
       "endpoint": "api/v1/eliza/schedule/sync",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002011e",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010e",
           "body": "{\n  \"synced\": 12,\n  \"pruned\": 1,\n  \"cursor\": \"cursor-2026-05-09-schedule-end\"\n}",
           "latency": 0,
           "statusCode": 200,
@@ -815,7 +815,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002011f",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010f",
           "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
           "latency": 0,
           "statusCode": 429,
@@ -858,7 +858,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020120",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020110",
           "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
           "latency": 0,
           "statusCode": 401,
@@ -897,7 +897,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020121",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020111",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -942,27 +942,27 @@
   "rootChildren": [
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020104"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f4"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020109"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f9"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-00000002010e"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200fe"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020113"
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020103"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020118"
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020108"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-00000002011d"
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002010d"
     }
   ],
   "proxyMode": false,

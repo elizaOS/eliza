@@ -13,13 +13,9 @@
  */
 import z from "zod";
 import { logger } from "../../../logger.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import {
 	FORMALITY_VALUES,
-	MAX_DIRECTIVE_CHARS,
 	type PersonalityTrait,
 	TONE_VALUES,
 	VERBOSITY_VALUES,
@@ -44,16 +40,7 @@ const SetTraitOpSchema = z.object({
 
 const AddDirectiveOpSchema = z.object({
 	op: z.literal("add_directive"),
-	// Cap enforced here, not on the wire: strict structured-output validators
-	// (Groq/Cerebras/OpenAI strict) reject maxLength outright — see the schema
-	// invariant note in reflection-items.ts.
-	text: z
-		.string()
-		.trim()
-		.min(1)
-		.transform((text) =>
-			truncateWellFormed(toWellFormedUnicode(text), MAX_DIRECTIVE_CHARS),
-		),
+	text: z.string().trim().min(1).transform(toWellFormedUnicode),
 	confidence: z.number().min(0).max(1),
 	evidence: z.string().optional(),
 });
@@ -61,13 +48,9 @@ const AddDirectiveOpSchema = z.object({
 const AddPreferenceFactOpSchema = z.object({
 	op: z.literal("add_preference_fact"),
 	claim: z.string().min(1),
-	// Trim instead of reject, mirroring the fact extractor's KeywordsSchema:
-	// the wire schema cannot advertise maxItems, so an over-long list degrades
-	// to the first 16. Storage re-caps via MAX_KEYWORDS anyway.
-	keywords: z
-		.array(z.string().min(1))
-		.transform((keywords) => keywords.slice(0, 16))
-		.optional(),
+	// Every supplied keyword is preserved through prompt parsing. Storage may
+	// separately normalize its index representation without changing the claim.
+	keywords: z.array(z.string().min(1)).optional(),
 	confidence: z.number().min(0).max(1).optional(),
 	evidence: z.string().optional(),
 });

@@ -6,7 +6,6 @@
  * and trajectory-export modules. Not intended for direct external consumption.
  */
 
-import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -26,23 +25,20 @@ import {
   resolveStateDir,
   resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
-  tailWellFormed,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
 export { asRecord };
 
-import {
-  TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
-  type TrajectoryActionAttempt,
-  type TrajectoryLlmCall,
-  type TrajectoryProviderAccess,
-  type TrajectorySkillInvocation,
-  type TrajectoryStatus,
-  type TrajectoryStep,
-  type TrajectoryStepKind,
+import type {
+  TrajectoryActionAttempt,
+  TrajectoryLlmCall,
+  TrajectoryProviderAccess,
+  TrajectorySkillInvocation,
+  TrajectoryStatus,
+  TrajectoryStep,
+  TrajectoryStepKind,
 } from "../types/trajectory.ts";
 
 // ---------------------------------------------------------------------------
@@ -116,7 +112,7 @@ export type PersistedStep = TrajectoryStep & {
   childSteps?: string[];
   /** Full inline script source for script-backed dedicated rows. */
   script?: string;
-  /** sha256 hex digest of the original script when it exceeded the cap. */
+  /** Legacy digest retained when reading rows written before full script preservation. */
   scriptHash?: string;
   /** Skill names the step relied on (populated by Track C). */
   usedSkills?: string[];
@@ -434,45 +430,15 @@ export function normalizeTrajectoryMetadata(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Truncation helpers
-// ---------------------------------------------------------------------------
-
-const DEFAULT_TRUNCATE_LIMIT = 500;
-
-/**
- * Head+tail preview of an over-long field. BOTH cuts land at an arbitrary
- * UTF-16 index, so both must back off a surrogate pair: `truncateWellFormed`
- * guards the head and `tailWellFormed` guards the tail. A raw `.slice()` here
- * split an astral character in half and persisted a lone surrogate into the
- * trajectory row (#23688 fixed the two clamps in this module that had callers
- * at the time; these helpers were left raw).
- *
- * `removed` is derived from the retained halves rather than from `limit * 2`
- * so the reported count stays truthful when a boundary backs off by one code
- * unit. ASCII and BMP input is unaffected: neither guard moves a boundary that
- * does not split a pair, so the output is byte-identical to the previous
- * implementation.
- */
-export function truncateField(
-  value: string,
-  limit = DEFAULT_TRUNCATE_LIMIT,
-): string {
-  const wellFormed = toWellFormedUnicode(value);
-  if (wellFormed.length <= limit * 2) return wellFormed;
-  const head = truncateWellFormed(wellFormed, limit);
-  const tail = tailWellFormed(wellFormed, limit);
-  const removed = wellFormed.length - head.length - tail.length;
-  return `${head}\n[...truncated ${removed} chars...]\n${tail}`;
+export function truncateField(value: string, _limit = 500): string {
+  return toWellFormedUnicode(value);
 }
 
 export function truncateRecord(
   obj: Record<string, unknown>,
-  limit = DEFAULT_TRUNCATE_LIMIT,
+  _limit = 500,
 ): Record<string, unknown> {
-  const serialized = JSON.stringify(obj);
-  if (serialized.length <= limit * 2) return obj;
-  return { _truncated: truncateField(serialized, limit) };
+  return obj;
 }
 
 // ---------------------------------------------------------------------------
@@ -480,33 +446,13 @@ export function truncateRecord(
 // ---------------------------------------------------------------------------
 
 /**
- * Cap a script source for inline persistence on a trajectory step. When the
- * source exceeds `TRAJECTORY_STEP_SCRIPT_MAX_CHARS`, returns a truncated
- * prefix together with the sha256 hex digest of the full source so callers
- * can store the digest alongside.
- *
- * The prefix is cut with `truncateWellFormed`, not a raw `.slice()`: this
- * value is the ONLY step field that bypasses `sanitizeTrajectoryJsonObject`
- * (`normalizeStepForPersistence` destructures `script` out of the sanitized
- * scalars), so a split surrogate pair is written straight into the
- * `steps_json` blob as a `\uD8xx` escape instead of being repaired downstream.
- *
- * Pre-existing lone surrogates in `script` are deliberately preserved rather
- * than replaced: `scriptHash` is the digest of the raw full source, and the
- * stored value must stay a genuine prefix of the bytes that were hashed.
+ * Preserve complete script source for trajectory persistence.
  */
 export function capScriptForPersistence(script: string): {
   script: string;
   scriptHash?: string;
 } {
-  if (script.length <= TRAJECTORY_STEP_SCRIPT_MAX_CHARS) {
-    return { script };
-  }
-  const scriptHash = createHash("sha256").update(script, "utf8").digest("hex");
-  return {
-    script: truncateWellFormed(script, TRAJECTORY_STEP_SCRIPT_MAX_CHARS),
-    scriptHash,
-  };
+  return { script: toWellFormedUnicode(script) };
 }
 
 // ---------------------------------------------------------------------------
@@ -518,10 +464,7 @@ export function extractInsightsFromResponse(
   purpose: string,
 ): string[] {
   const insights: string[] = [];
-  const safeResponse = truncateWellFormed(
-    toWellFormedUnicode(response),
-    100_000,
-  );
+  const safeResponse = toWellFormedUnicode(response);
   const decisionPattern = /DECISION:[ \t]{0,1024}([^\n]{1,1024})/gi;
   let match: RegExpExecArray | null;
   match = decisionPattern.exec(safeResponse);
@@ -656,7 +599,7 @@ export async function flushObservationBuffer(
   const exchangeText = exchanges
     .map(
       (e, i) =>
-        `Exchange ${i + 1}:\nUser: ${truncateWellFormed(toWellFormedUnicode(e.userPrompt), 500)}\nAssistant: ${truncateWellFormed(toWellFormedUnicode(e.response), 500)}`,
+        `Exchange ${i + 1}:\nUser: ${toWellFormedUnicode(e.userPrompt)}\nAssistant: ${toWellFormedUnicode(e.response)}`,
     )
     .join("\n\n");
 
@@ -689,12 +632,7 @@ export async function flushObservationBuffer(
 
     const observations = parsed
       .filter((s: unknown) => typeof s === "string" && s.length > 0)
-      // Model-authored observation text is persisted into trajectory
-      // metadata; the 150-char clamp must not split an astral pair (same
-      // guard as the exchange clamp above).
-      .map((s: string) =>
-        truncateWellFormed(toWellFormedUnicode(s), 150),
-      ) as string[];
+      .map((s: string) => toWellFormedUnicode(s)) as string[];
 
     if (observations.length === 0) return [];
 
@@ -1623,10 +1561,9 @@ function snapshotCaptureParams(
 }
 
 /**
- * Snapshot an LLM capture with its completeness fields first in the shared
- * byte budget. Optional prompts and metadata may exhaust that budget, but the
- * persisted record must still identify the model, purpose, action type, and
- * bounded response without adding data after sanitization.
+ * Snapshot a complete LLM capture after JSON-safe normalization. Field order
+ * keeps the required completeness contract visible without imposing a byte
+ * budget or dropping optional prompt and metadata fields.
  */
 function snapshotLlmCaptureParams(
   params: Record<string, unknown>,
@@ -1879,17 +1816,9 @@ function validateLlmCapture(
 }
 
 /**
- * Snapshot a provider capture with its completeness fields first in the shared
- * byte budget, mirroring {@link snapshotLlmCaptureParams}.
- *
- * `data` carries the provider's rendered output and routinely dominates the
- * row budget, and the canonical producer shape emits it BEFORE the required
- * `purpose` string. Bounding in producer order therefore starved `purpose`
- * into a truncation marker, and re-validating the deliberately lossy snapshot
- * against the same completeness contract discarded the ENTIRE provider access
- * — on exactly the context-heavy turns the record exists to explain. Reserving
- * the small required strings first keeps the record complete and lets `data`
- * degrade to a bounded object instead.
+ * Snapshot a complete provider capture after JSON-safe normalization, mirroring
+ * {@link snapshotLlmCaptureParams}. Required fields are ordered first for
+ * readability; provider data remains intact regardless of its serialized size.
  */
 function snapshotProviderCaptureParams(
   params: Record<string, unknown>,

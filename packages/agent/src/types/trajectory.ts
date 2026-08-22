@@ -2,32 +2,29 @@
  * Agent-local aliases for the trajectory record types owned by `@elizaos/core`,
  * giving the API and services shorter names (Trajectory, TrajectoryStep,
  * TrajectoryLlmCall, TrajectoryListResult, ...) over the canonical Core*Record
- * shapes, and re-exporting the shared TRAJECTORY_STEP_SCRIPT_MAX_CHARS cap.
+ * shapes.
  */
-import {
-  type TrajectoryActionAttemptRecord as CoreTrajectoryActionAttemptRecord,
-  type TrajectoryCacheStatsRecord as CoreTrajectoryCacheStatsRecord,
-  type TrajectoryDetailRecord as CoreTrajectoryDetailRecord,
-  type TrajectoryExportFormat as CoreTrajectoryExportFormat,
-  type TrajectoryExportOptions as CoreTrajectoryExportOptions,
-  type TrajectoryExportResult as CoreTrajectoryExportResult,
-  type TrajectoryFlattenedLlmCallRecord as CoreTrajectoryFlattenedLlmCallRecord,
-  type TrajectoryJsonShape as CoreTrajectoryJsonShape,
-  type TrajectoryListOptions as CoreTrajectoryListOptions,
-  type TrajectoryListResult as CoreTrajectoryListResult,
-  type TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
-  type TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
-  type TrajectorySkillInvocationRecord as CoreTrajectorySkillInvocationRecord,
-  type TrajectoryStatus as CoreTrajectoryStatus,
-  type TrajectoryStepId as CoreTrajectoryStepId,
-  type TrajectoryStepKind as CoreTrajectoryStepKind,
-  type TrajectoryStepRecord as CoreTrajectoryStepRecord,
-  type TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
-  type TrajectoryUsageTotalsRecord as CoreTrajectoryUsageTotalsRecord,
-  TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
+import type {
+  TrajectoryActionAttemptRecord as CoreTrajectoryActionAttemptRecord,
+  TrajectoryCacheStatsRecord as CoreTrajectoryCacheStatsRecord,
+  TrajectoryDetailRecord as CoreTrajectoryDetailRecord,
+  TrajectoryExportFormat as CoreTrajectoryExportFormat,
+  TrajectoryExportOptions as CoreTrajectoryExportOptions,
+  TrajectoryExportResult as CoreTrajectoryExportResult,
+  TrajectoryFlattenedLlmCallRecord as CoreTrajectoryFlattenedLlmCallRecord,
+  TrajectoryJsonShape as CoreTrajectoryJsonShape,
+  TrajectoryListOptions as CoreTrajectoryListOptions,
+  TrajectoryListResult as CoreTrajectoryListResult,
+  TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
+  TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
+  TrajectorySkillInvocationRecord as CoreTrajectorySkillInvocationRecord,
+  TrajectoryStatus as CoreTrajectoryStatus,
+  TrajectoryStepId as CoreTrajectoryStepId,
+  TrajectoryStepKind as CoreTrajectoryStepKind,
+  TrajectoryStepRecord as CoreTrajectoryStepRecord,
+  TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
+  TrajectoryUsageTotalsRecord as CoreTrajectoryUsageTotalsRecord,
 } from "@elizaos/core";
-
-export { TRAJECTORY_STEP_SCRIPT_MAX_CHARS };
 
 export type TrajectoryExportFormat = CoreTrajectoryExportFormat;
 export type TrajectoryExportOptions = CoreTrajectoryExportOptions;

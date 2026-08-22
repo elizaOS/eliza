@@ -113,10 +113,11 @@ export const rolesProvider: Provider = {
                 | Record<string, Record<string, string>>
                 | undefined
             )?.default?.name ??
-            id.slice(0, 8);
+            id;
           results.push(name);
         } catch {
-          results.push(id.slice(0, 8));
+          // error-policy:J4 best-effort display resolution; fallback to complete entity UUID
+          results.push(id);
         }
       }
       return results;

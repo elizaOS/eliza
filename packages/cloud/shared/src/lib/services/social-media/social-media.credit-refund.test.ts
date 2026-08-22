@@ -139,6 +139,32 @@ describe("createPost refund on thrown credential error (#11680)", () => {
     expect(refundCalls[0]?.amount).toBeCloseTo(1 * POST_CREDIT_COST, 10);
     expect(refundCalls[0]?.metadata?.failedPlatforms).toEqual(["twitter"]);
   });
+
+  test("does not refund a provider outcome that is explicitly held for reconciliation", async () => {
+    const credsSpy = spyOn(socialMediaService, "getCredentialsForPlatform").mockImplementation(
+      async () => ({ platform: "twitter" as const, accessToken: "tok" }),
+    );
+    const postSpy = spyOn(twitterProvider, "createPost").mockImplementation(async () => ({
+      platform: "twitter" as const,
+      success: false,
+      error: "Provider outcome is still being reconciled",
+      errorCode: "PROVIDER_OUTCOME_UNKNOWN",
+      creditDisposition: "hold" as const,
+    }));
+    spies.push(credsSpy, postSpy);
+
+    const result = await socialMediaService.createPost({
+      organizationId: ORG_ID,
+      userId: USER_ID,
+      content: { text: "hello world" },
+      platforms: ["twitter"],
+    });
+
+    expect(result.failureCount).toBe(1);
+    expect(result.failed[0]?.creditDisposition).toBe("hold");
+    expect(deductCalls).toHaveLength(1);
+    expect(refundCalls).toHaveLength(0);
+  });
 });
 
 describe("replyToPost refund on thrown provider error (#11680)", () => {

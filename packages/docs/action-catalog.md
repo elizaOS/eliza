@@ -10,12 +10,12 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 
 ## Summary
 
-- **Canonical actions:** 25
+- **Canonical actions:** 24
 - **Core actions:** 14
-- **Plugin overlay actions:** 11
+- **Plugin overlay actions:** 10
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 171
+- **Registered runtime actions:** 174
 
 ## Actions
 
@@ -46,7 +46,7 @@ Primary action for addressed messaging surfaces: DMs, group chats, channels, roo
 | Parameter | Required | Type | Description |
 | --- | --- | --- | --- |
 | `action` | no | string | Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. |
-| `source` | no | string | Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge. |
+| `source` | no | string | Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge. |
 | `accountId` | no | string | Optional connector account id for multi-account message connectors. |
 | `sources` | no | array | Optional inbox sources for action=triage, list_inbox, or search_inbox. |
 | `target` | no | string | Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID. |
@@ -244,16 +244,6 @@ Show or set the default coding backend
 | --- | --- | --- | --- |
 | `backend` | no | string | default coding backend for new tasks |
 
-### COMPACT_COMMAND
-
-Compact conversation history
-
-- **Aliases:** /compact
-
-| Parameter | Required | Type | Description |
-| --- | --- | --- | --- |
-| `instructions` | no | string | Optional compaction instructions |
-
 ### CONTEXT_COMMAND
 
 Show current context information
@@ -352,6 +342,7 @@ list. Regenerate this document after changing the registered action surface.
 - `AGENT_SWITCH` — `plugins/plugin-app-control/src/actions/agent-switch.ts`
 - `ALARM` — `plugins/plugin-native-macosalarm/src/actions.ts`
 - `APP` — `plugins/plugin-app-control/src/actions/app.ts`
+- `ASSERT_MEETING_MOCK_LEDGER` — `plugins/plugin-meetings/src/test-support.ts`
 - `ATTACH_TO_CHAT` — `packages/agent/src/actions/knowledge.ts`
 - `ATTACHMENT` — `packages/core/src/features/working-memory/readAttachmentAction.ts`
 - `AWAIT_CHILD_AGENT_DECISION` — `packages/core/src/features/sub-agent-credentials/actions/await-child-agent-decision.ts`
@@ -374,7 +365,6 @@ list. Regenerate this document after changing the registered action surface.
 - `CLOUD_ACCOUNT_STATUS` — `plugins/plugin-elizacloud/src/actions/cloud-account-status.ts`
 - `CLOUD_CREATE_API_KEY` — `plugins/plugin-elizacloud/src/actions/create-cloud-api-key.ts`
 - `CLOUD_LIST_AGENTS` — `plugins/plugin-elizacloud/src/actions/list-cloud-agents.ts`
-- `COMPACT_CONVERSATION` — `packages/agent/src/actions/compact-conversation.ts`
 - `COMPUTER_USE` — `plugins/plugin-computeruse/src/actions/use-computer.ts`
 - `COMPUTER_USE_AGENT` — `plugins/plugin-computeruse/src/actions/use-computer-agent.ts`
 - `CONNECT_ACCOUNT` — `packages/agent/src/actions/connect-account.ts`
@@ -395,6 +385,7 @@ list. Regenerate this document after changing the registered action surface.
 - `DEPLOY_FRONTEND` — `plugins/plugin-cloud-apps/src/actions/deploy-frontend.ts`
 - `DISABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `DOCUMENT` — `packages/core/src/features/documents/actions.ts`
+- `DOORDASH` — `plugins/plugin-doordash/src/action.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
@@ -422,6 +413,7 @@ list. Regenerate this document after changing the registered action surface.
 - `INBOX` — `plugins/plugin-inbox/src/actions/inbox.ts`
 - `JOIN_MEETING` — `plugins/plugin-meetings/src/actions/join-meeting.ts`
 - `LEAVE_MEETING` — `plugins/plugin-meetings/src/actions/leave-meeting.ts`
+- `LINEAR` — `plugins/plugin-linear/src/action.ts`
 - `LIQUIDITY` — `plugins/plugin-wallet/src/lp/actions/liquidity.ts`
 - `LIST_AD_SLOTS` — `plugins/plugin-cloud-apps/src/actions/ad-inventory.ts`
 - `LIST_APP_DOMAINS` — `plugins/plugin-cloud-apps/src/actions/list-app-domains.ts`
@@ -436,6 +428,7 @@ list. Regenerate this document after changing the registered action surface.
 - `MANAGE_BROWSER_BRIDGE` — `plugins/plugin-browser/src/actions/manage-browser-bridge.ts`
 - `MANAGE_PLUGINS` — `packages/core/src/features/plugin-manager/actions/plugin.ts`
 - `MANAGE_TRANSCRIPT_PRIVACY` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
+- `MAPS` — `plugins/plugin-maps/src/action.ts`
 - `MARK_FOLLOWUP_DONE` — `plugins/plugin-personal-assistant/src/followup/actions/markFollowupDone.ts`
 - `MCP` — `plugins/plugin-mcp/src/actions/mcp.ts`
 - `MEMORY` — `packages/agent/src/actions/memories.ts`
@@ -492,6 +485,7 @@ list. Regenerate this document after changing the registered action surface.
 - `SHARE_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `SHELL` — `plugins/plugin-coding-tools/src/actions/bash.ts`
 - `SKILL` — `plugins/plugin-agent-skills/src/actions/skill.ts`
+- `SPOTIFY` — `plugins/plugin-spotify/src/actions.ts`
 - `START_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
 - `STOP_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
 - `SUBMIT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`

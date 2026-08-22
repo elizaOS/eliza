@@ -966,8 +966,6 @@ function classifyDirectoryChannel(
   return "public_channel";
 }
 
-export const MAX_SLACK_DIRECTORY_PAGES = 250;
-
 async function listAllChannels(
   client: SlackPolicyDirectoryClient,
   accountId: string,
@@ -975,15 +973,7 @@ async function listAllChannels(
   const result: SlackDirectoryChannel[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
-  let pageCount = 0;
   do {
-    pageCount += 1;
-    if (pageCount > MAX_SLACK_DIRECTORY_PAGES) {
-      throw new SlackPolicyConfigurationError(
-        "channel directory exceeds the 250-page safety limit; use immutable IDs only",
-        accountId,
-      );
-    }
     const page = await client.conversations.list({
       ...(cursor ? { cursor } : {}),
       limit: 200,
@@ -1018,15 +1008,7 @@ async function listAllUsers(
   const result: SlackDirectoryUser[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
-  let pageCount = 0;
   do {
-    pageCount += 1;
-    if (pageCount > MAX_SLACK_DIRECTORY_PAGES) {
-      throw new SlackPolicyConfigurationError(
-        "user directory exceeds the 250-page safety limit; use explicit id:<opaque-slack-id> entries",
-        accountId,
-      );
-    }
     const page = await client.users.list({
       ...(cursor ? { cursor } : {}),
       limit: 200,

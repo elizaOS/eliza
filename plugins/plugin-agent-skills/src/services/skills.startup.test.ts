@@ -119,7 +119,7 @@ describe("Agent Skills startup catalog policy", () => {
 		);
 	});
 
-	it("bounds unique-cursor pagination without publishing partial data", async () => {
+	it("syncs catalogs beyond the former fixed page ceiling", async () => {
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValueOnce(
@@ -131,7 +131,10 @@ describe("Agent Skills startup catalog policy", () => {
 				new Response(
 					JSON.stringify({
 						items: [{ slug: `skill-${fetchMock.mock.calls.length}` }],
-						nextCursor: `cursor-${fetchMock.mock.calls.length}`,
+						nextCursor:
+							fetchMock.mock.calls.length === 102
+								? undefined
+								: `cursor-${fetchMock.mock.calls.length}`,
 					}),
 					{ status: 200 },
 				),
@@ -143,11 +146,12 @@ describe("Agent Skills startup catalog policy", () => {
 			storage: new MemorySkillStore(),
 		});
 		await service.syncCatalog();
-		await expect(service.syncCatalog()).rejects.toThrow(
-			"Catalog pagination exceeded 100 pages",
-		);
+		await expect(service.syncCatalog()).resolves.toMatchObject({
+			added: 100,
+			updated: 101,
+		});
 
-		expect(fetchMock).toHaveBeenCalledTimes(101);
-		expect(service.getCatalogStats().total).toBe(1);
+		expect(fetchMock).toHaveBeenCalledTimes(102);
+		expect(service.getCatalogStats().total).toBe(101);
 	});
 });

@@ -1,5 +1,4 @@
 import { LandingHandoffAttachment } from "@/components/landing-handoff-attachment";
-import { LandingHeatPlanAttachment } from "@/components/landing-heat-plan-attachment";
 import { LandingItineraryAttachment } from "@/components/landing-itinerary-attachment";
 import { LandingPlaceAttachment } from "@/components/landing-place-attachment";
 import { LandingTaskListAttachment } from "@/components/landing-task-list-attachment";
@@ -32,7 +31,5 @@ export function LandingDemoAttachment({
       return <LandingHandoffAttachment handoff={step.handoff} />;
     case "itinerary":
       return <LandingItineraryAttachment itinerary={step.itinerary} />;
-    case "heat-plan":
-      return <LandingHeatPlanAttachment heatPlan={step.heatPlan} />;
   }
 }

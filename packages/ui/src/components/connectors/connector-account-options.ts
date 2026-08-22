@@ -128,11 +128,6 @@ const CONNECTOR_PLUGIN_MANAGED_PRESENTATION: Readonly<
     description:
       "Manage Telegram bot accounts through @elizaos/plugin-telegram account inventory.",
   },
-  signal: {
-    title: "Signal accounts",
-    description:
-      "Manage Signal account records and device pairing through @elizaos/plugin-signal.",
-  },
   google: {
     title: "Google accounts",
     description:

@@ -19,8 +19,7 @@ export interface DirectActionInferenceHooks {
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
-	const trimmed = safe
+	const trimmed = value
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
 		.replace(/^["'`]+|["'`]+$/g, "");
@@ -722,8 +721,14 @@ type ScheduledAdminDomain =
 	| "scheduled-tasks"
 	| "calendar-events";
 
+// fix/change/update/adjust/correct joined 2026-08-18: "fix my vitamins
+// reminder so it goes off at 8am MY time" had no admin verb, no deterministic
+// candidate fired, and the planner invented a PAGE_DELEGATE capability
+// (TASKS_UPDATE_REMINDER) that errored. They are mutation verbs on an
+// existing item; creation phrasings ("set an alarm") stay with the owner
+// surfaces via their own patterns.
 const SCHEDULED_ADMIN_VERB_PATTERN =
-	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip|delete|remove|cancel|clear|(?:get\s+rid\s+of)|(?:stop\s+tracking))(?=$|[^\p{L}\p{N}\p{M}])/iu;
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip|delete|remove|cancel|clear|fix|change|update|adjust|correct|(?:get\s+rid\s+of)|(?:stop\s+tracking))(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_ALARM_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])alarms?(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_STRUCTURAL_PATTERN =
@@ -2205,7 +2210,6 @@ function isContinuationDialogueArtifact(
 	return false;
 }
 
-const CONTINUATION_LOOKBACK_ENTRIES = 12;
 const PENDING_ASSISTANT_TURN_MAX_CHARS = 160;
 
 function looksLikePendingAssistantTurn(text: string): boolean {
@@ -2243,8 +2247,7 @@ export function resolveExplicitContinuationRequestText(
 			if (currentMessageId && entry.id === currentMessageId) return false;
 			return continuationEntryText(entry).length > 0;
 		})
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-		.slice(-CONTINUATION_LOOKBACK_ENTRIES);
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
 	if (kind === "approval") {
 		// Approval must answer the immediately preceding visible assistant turn.

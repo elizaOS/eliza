@@ -64,25 +64,26 @@ describe("ensureManagedDiscordGatewayInTransaction", () => {
       return chain;
     });
 
-    const insert = mock(() => ({
-      values: mock(() => ({
-        returning: mock(async () => {
-          events.push("insert");
-          return [
-            {
-              id: AGENT_ID,
-              organization_id: ORG_ID,
-              user_id: USER_ID,
-              agent_config: {
-                __agentManagedDiscordGateway: {
-                  mode: "shared-gateway",
-                  createdAt: "2026-08-20T00:00:00.000Z",
-                },
+    const values = mock((_input: Record<string, unknown>) => ({
+      returning: mock(async () => {
+        events.push("insert");
+        return [
+          {
+            id: AGENT_ID,
+            organization_id: ORG_ID,
+            user_id: USER_ID,
+            agent_config: {
+              __agentManagedDiscordGateway: {
+                mode: "shared-gateway",
+                createdAt: "2026-08-20T00:00:00.000Z",
               },
             },
-          ];
-        }),
-      })),
+          },
+        ];
+      }),
+    }));
+    const insert = mock(() => ({
+      values,
     }));
 
     const tx = { execute, select, insert } as unknown as DbTransaction;
@@ -93,6 +94,8 @@ describe("ensureManagedDiscordGatewayInTransaction", () => {
 
     expect(result.created).toBe(true);
     expect(result.sandbox.id).toBe(AGENT_ID);
+    expect(values).toHaveBeenCalledTimes(1);
+    expect(values.mock.calls[0]?.[0].execution_tier).toBe("shared");
     expect(events).toEqual([
       "deadlines",
       "org-lock",

@@ -27,11 +27,10 @@ import { contentSafetyService } from "./content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import { generationsService } from "./generations";
 
-const MAX_PROMPT_LENGTH = 4000;
 const MAX_IMAGES = 4;
 
 export const imageGenerationRequestSchema = z.object({
-  prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
+  prompt: z.string().trim().min(1),
   model: z.string().trim().default(DEFAULT_IMAGE_MODEL_ID),
   numImages: z.coerce.number().int().min(1).max(MAX_IMAGES).default(1),
   aspectRatio: z.string().trim().max(16).optional(),

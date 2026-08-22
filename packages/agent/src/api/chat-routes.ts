@@ -575,9 +575,6 @@ function normalizeAndroidLocalDirectUserText(text: string): string {
     .trim();
 }
 
-const ANDROID_LOCAL_HISTORY_LIMIT = 6;
-const ANDROID_LOCAL_HISTORY_TEXT_LIMIT = 700;
-
 function compareCreatedAtAscending(
   left: { createdAt?: number },
   right: { createdAt?: number },
@@ -598,22 +595,17 @@ async function buildAndroidLocalDirectChatPrompt(args: {
     const recent = await args.runtime.getMemories({
       roomId: args.message.roomId,
       tableName: "messages",
-      // Allow for the current message already being persisted before generation.
-      limit: ANDROID_LOCAL_HISTORY_LIMIT + 1,
       includeEmbedding: false,
     });
     history = recent
       .filter((memory) => memory.id !== args.message.id)
       .sort(compareCreatedAtAscending)
-      .slice(-ANDROID_LOCAL_HISTORY_LIMIT)
       .flatMap((memory) => {
         const text = extractCompatTextContent(memory.content).trim();
         if (!text) return [];
         const role =
           memory.entityId === args.runtime.agentId ? "Assistant" : "User";
-        return [
-          `${role}: ${escapeAndroidLocalChatTemplateTokens(text.slice(0, ANDROID_LOCAL_HISTORY_TEXT_LIMIT))}`,
-        ];
+        return [`${role}: ${escapeAndroidLocalChatTemplateTokens(text)}`];
       });
   } catch (err) {
     // error-policy:J7 diagnostics-must-not-kill-the-loop — the full message
@@ -710,19 +702,7 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
   text = text.replace(/\s+/g, " ").trim();
-  const wellFormed = toWellFormedUnicode(text);
-  if (wellFormed.length <= 700) {
-    return wellFormed;
-  }
-  const truncated = truncateWellFormed(wellFormed, 700);
-  const sentenceEnd = Math.max(
-    truncated.lastIndexOf("."),
-    truncated.lastIndexOf("!"),
-    truncated.lastIndexOf("?"),
-  );
-  return (
-    sentenceEnd >= 80 ? truncated.slice(0, sentenceEnd + 1) : truncated
-  ).trim();
+  return toWellFormedUnicode(text);
 }
 
 async function rewriteDirectActionCallbackText(args: {

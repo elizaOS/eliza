@@ -86,7 +86,7 @@ describe("provider TEXT_SMALL / TEXT_LARGE dispatch", () => {
 		expect(seen.signal).toBe(controller.signal);
 	});
 
-	it("forwards stop sequences, temperature, and top-p verbatim", async () => {
+	it("forwards sampling options and adds Eliza turn stop sequences", async () => {
 		const generate = vi.fn(async () => "ok");
 		const handlers = createLocalInferenceModelHandlers();
 		const runtime = runtimeWithService({ generate });
@@ -102,7 +102,12 @@ describe("provider TEXT_SMALL / TEXT_LARGE dispatch", () => {
 		expect(generate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				prompt: "hi",
-				stopSequences: ["</done>"],
+				stopSequences: [
+					"</done>",
+					"<end_of_turn>",
+					"<start_of_turn>",
+					"<endoftext>",
+				],
 				temperature: 0.1,
 				topP: 0.95,
 				maxTokens: 512,

@@ -184,7 +184,7 @@ describe("WifiAppView — connected card", () => {
 });
 
 describe("WifiAppView — network list", () => {
-  it("sorts networks by descending rssi, slices to 12, shows '13 / 12 shown', and renders per-row data", async () => {
+  it("sorts and renders every returned network", async () => {
     mockDefaults();
     // 13 networks with rssi out of order so sort is observable.
     const rssis = [
@@ -202,16 +202,14 @@ describe("WifiAppView — network list", () => {
 
     renderView();
 
-    // Count badge for >12 networks.
-    expect(await screen.findByText("13 / 12 shown")).toBeTruthy();
+    expect(await screen.findByText("13")).toBeTruthy();
 
-    // Exactly 12 rows rendered (the 13th is sliced off).
     const rows = screen
       .getAllByRole("button")
       .filter((b) =>
         b.getAttribute("data-testid")?.startsWith("wifi-network-"),
       );
-    expect(rows).toHaveLength(12);
+    expect(rows).toHaveLength(13);
 
     // Descending rssi: read each row's "<bssid> · <rssi> dBm" line and parse the dBm.
     const rowRssis = rows.map((row) => {
@@ -220,9 +218,9 @@ describe("WifiAppView — network list", () => {
     });
     const sortedDesc = [...rowRssis].sort((a, b) => b - a);
     expect(rowRssis).toEqual(sortedDesc);
-    // Strongest (-41) first, weakest visible is the 12th-strongest (-88); -90 dropped.
+    // Strongest (-41) first and the weakest returned network remains visible.
     expect(rowRssis[0]).toBe(-41);
-    expect(rowRssis).not.toContain(-90);
+    expect(rowRssis.at(-1)).toBe(-90);
 
     // The -41 network is Net1 (index 1), which is secured:false (odd index) → Wifi icon, open.
     // Verify a specific row's ssid/bssid/rssi text is present.
@@ -284,7 +282,7 @@ describe("WifiAppView — network list", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("uses a plain '5' count badge (no '/ 12 shown') when 12 or fewer networks are present", async () => {
+  it("uses a plain count badge", async () => {
     mockDefaults();
     wifiBridge.listAvailableNetworks.mockResolvedValue({
       networks: [-40, -50, -60, -70, -80].map((rssi, i) =>
@@ -326,13 +324,11 @@ describe("WifiAppView — signalBars threshold mapping", () => {
 });
 
 describe("WifiAppView — controls", () => {
-  it("auto-scans on mount with limit 50", async () => {
+  it("auto-scans on mount without truncating the native result set", async () => {
     mockDefaults();
     renderView();
     await waitFor(() =>
-      expect(wifiBridge.listAvailableNetworks).toHaveBeenCalledWith({
-        limit: 50,
-      }),
+      expect(wifiBridge.listAvailableNetworks).toHaveBeenCalledWith(),
     );
   });
 

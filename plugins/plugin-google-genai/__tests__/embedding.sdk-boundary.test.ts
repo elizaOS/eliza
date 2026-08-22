@@ -2,7 +2,7 @@
  * Provider-SDK boundary test for Google embedding admission. A real
  * `GoogleGenAI` client talks to a deterministic local HTTP server, proving the
  * handler sends provider `countTokens` requests before the embedding request
- * and embeds only the exact Unicode-safe prefix admitted by the provider.
+ * and rejects an oversized request without embedding a prefix.
  */
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -64,16 +64,14 @@ describe("Google embedding SDK boundary", () => {
     {
       model: "gemini-embedding-001",
       inputCodePoints: 1_100,
-      expectedCodePoints: 1_024,
     },
     {
       model: "models/gemini-embedding-2",
       inputCodePoints: 4_100,
-      expectedCodePoints: 4_096,
     },
   ])(
-    "counts with the real SDK and embeds only the provider-admitted Unicode prefix for $model",
-    async ({ model, inputCodePoints, expectedCodePoints }) => {
+    "counts with the real SDK and rejects oversized input for $model",
+    async ({ model, inputCodePoints }) => {
       const captured: CapturedRequest[] = [];
       const server = createServer((request, response) => {
         const chunks: Buffer[] = [];
@@ -120,25 +118,15 @@ describe("Google embedding SDK boundary", () => {
         });
         const oversized = "😀".repeat(inputCodePoints);
 
-        const result = await handleTextEmbedding(
-          createRuntime(model),
-          oversized,
-        );
-
-        expect(result).toHaveLength(768);
+        await expect(
+          handleTextEmbedding(createRuntime(model), oversized),
+        ).rejects.toMatchObject({ code: "EMBEDDING_INPUT_TOO_LARGE" });
         expect(captured[0]).toMatchObject({
           path: expect.stringContaining(":countTokens"),
           text: oversized,
         });
-        expect(captured.at(-1)?.path).toMatch(
-          /:embedContent|:batchEmbedContents/,
-        );
-        expect(captured.at(-2)?.path).toContain(":countTokens");
-        expect(captured.at(-2)?.text).toBe(captured.at(-1)?.text);
-        expect(Array.from(captured.at(-1)?.text ?? "")).toHaveLength(
-          expectedCodePoints,
-        );
-        expect(captured.at(-1)?.text).toBe("😀".repeat(expectedCodePoints));
+        expect(captured).toHaveLength(1);
+        expect(captured[0]?.path).toContain(":countTokens");
         expect(
           captured.every(({ path }) => !path.includes("models/models/")),
         ).toBe(true);

@@ -28,7 +28,6 @@ import {
   SESSION_CWD_SERVICE,
 } from "../types.js";
 
-const RESULT_LIMIT = 100;
 const EXCLUDED_DIR_NAMES = new Set([
   ".git",
   "node_modules",
@@ -238,21 +237,17 @@ export async function globHandler(
   );
   filtered.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-  const truncated = filtered.length > RESULT_LIMIT;
-  const limited = filtered
-    .slice(0, RESULT_LIMIT)
-    .map((entry) => entry.filePath);
+  const files = filtered.map((entry) => entry.filePath);
 
-  const header = `${limited.length} files (truncated=${truncated})`;
-  const text =
-    limited.length === 0 ? header : `${header}\n${limited.join("\n")}`;
+  const header = `${files.length} files`;
+  const text = files.length === 0 ? header : `${header}\n${files.join("\n")}`;
 
   coreLogger.debug(
-    `${CODING_TOOLS_LOG_PREFIX} GLOB pattern=${JSON.stringify(pattern)} root=${root} found=${limited.length} truncated=${truncated}`,
+    `${CODING_TOOLS_LOG_PREFIX} GLOB pattern=${JSON.stringify(pattern)} root=${root} found=${files.length}`,
   );
 
   return successActionResult(text, {
-    files: limited,
-    truncated,
+    files,
+    truncated: false,
   });
 }

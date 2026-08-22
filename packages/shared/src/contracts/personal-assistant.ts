@@ -273,7 +273,6 @@ export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "telegram",
   "discord",
   "twilio",
-  "signal",
   "whatsapp",
   "imessage",
   "apple_calendar",
@@ -382,13 +381,6 @@ export const LIFEOPS_HEALTH_METRICS = [
 ] as const;
 export type LifeOpsHealthMetric = (typeof LIFEOPS_HEALTH_METRICS)[number];
 
-export const LIFEOPS_SIGNAL_CAPABILITIES = [
-  "signal.read",
-  "signal.send",
-] as const;
-export type LifeOpsSignalCapability =
-  (typeof LIFEOPS_SIGNAL_CAPABILITIES)[number];
-
 export const LIFEOPS_DISCORD_CAPABILITIES = [
   "discord.read",
   "discord.send",
@@ -422,7 +414,6 @@ export const LIFEOPS_REMINDER_CHANNELS = [
   "voice",
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "imessage",
   "email",
@@ -436,7 +427,6 @@ export const LIFEOPS_CHANNEL_TYPES = [
   "voice",
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "imessage",
   "x",
@@ -1616,7 +1606,6 @@ export type LifeOpsTelemetryMessageChannel =
   | "x_dm"
   | "discord"
   | "telegram"
-  | "signal"
   | "imessage"
   | "whatsapp"
   | "sms"
@@ -2619,7 +2608,6 @@ export const LIFEOPS_INBOX_CHANNELS = [
   "x_dm",
   "discord",
   "telegram",
-  "signal",
   "imessage",
   "whatsapp",
   "sms",
@@ -2715,7 +2703,7 @@ export interface LifeOpsInboxThreadGroup {
 
 /**
  * The connector-backed feeds the inbox aggregates. `chat` covers every
- * memory-backed chat channel (Discord/Telegram/Signal/iMessage/WhatsApp/SMS —
+ * memory-backed chat channel (Discord/Telegram/iMessage/WhatsApp/SMS —
  * one local scan); `gmail` and `x_dm` are the remote connector seams.
  */
 export const LIFEOPS_INBOX_SOURCES = ["chat", "gmail", "x_dm"] as const;
@@ -2869,7 +2857,7 @@ export interface LifeOpsXConnectorStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Messaging connector types (Signal, Discord, Telegram)
+// Messaging connector types (Discord, Telegram)
 // ---------------------------------------------------------------------------
 
 export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
@@ -2879,82 +2867,10 @@ export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
   "auth_pending",
   "auth_expired",
   "session_revoked",
+  "unsupported",
 ] as const;
 export type LifeOpsMessagingConnectorReason =
   (typeof LIFEOPS_MESSAGING_CONNECTOR_REASONS)[number];
-
-export interface LifeOpsSignalConnectorStatus {
-  provider: "signal";
-  side: LifeOpsConnectorSide;
-  connected: boolean;
-  inbound: boolean;
-  reason: LifeOpsMessagingConnectorReason;
-  identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
-  grantedCapabilities: LifeOpsSignalCapability[];
-  pairing: LifeOpsSignalPairingStatus | null;
-  grant: LifeOpsConnectorGrant | null;
-  degradations?: LifeOpsConnectorDegradation[];
-}
-
-export interface SendLifeOpsSignalMessageRequest {
-  side?: LifeOpsConnectorSide;
-  recipient: string;
-  text: string;
-}
-
-export interface SendLifeOpsSignalMessageResponse {
-  provider: "signal";
-  side: LifeOpsConnectorSide;
-  recipient: string;
-  ok: true;
-  timestamp: number;
-}
-
-/**
- * A single inbound Signal message as returned by {@link readSignalInbound} or
- * the plugin-signal local client.
- */
-export interface LifeOpsSignalInboundMessage {
-  /** Stable message ID (from the Signal service memory store or signal-cli). */
-  id: string;
-  /** elizaOS room ID this message was placed into. */
-  roomId: string;
-  /** Signal channel ID (typically the sender's phone number or group ID). */
-  channelId: string;
-  /** Stable per-conversation key used for reply routing. */
-  threadId: string;
-  /** Human-readable conversation name when known. */
-  roomName: string;
-  /** Display name of the sender. */
-  speakerName: string;
-  /** Sender phone number when signal-cli exposes one. */
-  senderNumber: string | null;
-  /** Sender UUID when signal-cli exposes one. */
-  senderUuid: string | null;
-  /** Sender device ID when signal-cli exposes one. */
-  sourceDevice: number | null;
-  /** Signal group ID for group messages. */
-  groupId: string | null;
-  /** Signal group event/type when signal-cli exposes one. */
-  groupType: string | null;
-  /** Plain-text body of the message. */
-  text: string;
-  /** Unix millisecond timestamp of the message. */
-  createdAt: number;
-  /** True when the message was sent by a contact (not by the agent's account). */
-  isInbound: boolean;
-  /** True when the message was received in a group conversation. */
-  isGroup: boolean;
-}
-
-export interface GetLifeOpsSignalMessagesRequest {
-  limit?: number;
-}
-
-export interface GetLifeOpsSignalMessagesResponse {
-  count: number;
-  messages: LifeOpsSignalInboundMessage[];
-}
 
 export interface LifeOpsDiscordDmPreview {
   channelId: string | null;
@@ -3152,29 +3068,6 @@ export interface VerifyLifeOpsTelegramConnectorResponse {
   };
 }
 
-export interface StartLifeOpsSignalPairingRequest {
-  side?: LifeOpsConnectorSide;
-}
-
-export interface StartLifeOpsSignalPairingResponse {
-  provider: "signal";
-  side: LifeOpsConnectorSide;
-  sessionId: string;
-}
-
-export interface LifeOpsSignalPairingStatus {
-  sessionId: string;
-  state:
-    | "idle"
-    | "generating_qr"
-    | "waiting_for_scan"
-    | "linking"
-    | "connected"
-    | "failed";
-  qrDataUrl: string | null;
-  error: string | null;
-}
-
 export interface StartLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
   source?: LifeOpsOwnerBrowserAccessSource;
@@ -3250,7 +3143,7 @@ export interface SubmitLifeOpsTelegramAuthRequest {
 
 export interface DisconnectLifeOpsMessagingConnectorRequest {
   side?: LifeOpsConnectorSide;
-  provider: "signal" | "discord" | "telegram";
+  provider: "discord" | "telegram";
 }
 
 export interface StartLifeOpsGoogleConnectorRequest {
@@ -3855,7 +3748,6 @@ export const LIFEOPS_MESSAGE_CHANNELS = [
   "email",
   "telegram",
   "discord",
-  "signal",
   "sms",
   "twilio_voice",
   "imessage",

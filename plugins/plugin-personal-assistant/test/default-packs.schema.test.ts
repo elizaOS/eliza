@@ -364,7 +364,6 @@ describe("W1-D default escalation ladders", () => {
     expect(DEFAULT_ESCALATION_LADDERS.priority_high_default.steps).toEqual([
       { delayMinutes: 15, channelKey: "push", intensity: "normal" },
       { delayMinutes: 45, channelKey: "telegram", intensity: "urgent" },
-      { delayMinutes: 45, channelKey: "signal", intensity: "urgent" },
       { delayMinutes: 45, channelKey: "whatsapp", intensity: "urgent" },
       { delayMinutes: 45, channelKey: "discord", intensity: "urgent" },
       { delayMinutes: 45, channelKey: "sms", intensity: "urgent" },

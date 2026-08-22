@@ -14,8 +14,6 @@ import type {
 import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import type { TrustInteraction } from "../types/trust.ts";
 
-const MAX_TRUST_INTERACTIONS = 5;
-
 export const trustProfileProvider: Provider = {
 	name: "trustProfile",
 	description:
@@ -59,10 +57,7 @@ export const trustProfileProvider: Provider = {
 				message.entityId,
 				7,
 			);
-			const visibleRecentInteractions = recentInteractions.slice(
-				0,
-				MAX_TRUST_INTERACTIONS,
-			);
+			const visibleRecentInteractions = recentInteractions;
 
 			const trustLevel =
 				senderProfile.overallTrust >= 80
@@ -104,8 +99,7 @@ export const trustProfileProvider: Provider = {
 				data: {
 					profile: senderProfile,
 					recentInteractions: visibleRecentInteractions,
-					truncated:
-						recentInteractions.length > visibleRecentInteractions.length,
+					truncated: false,
 				},
 			};
 		} catch (error) {

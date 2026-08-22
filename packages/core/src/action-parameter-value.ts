@@ -10,6 +10,7 @@
 
 import { ElizaError } from "./errors";
 import type { ActionParameters } from "./types";
+import { toWellFormedUnicode } from "./utils/well-formed";
 
 export const MAX_ACTION_PARAMETER_DEPTH = 32;
 export const MAX_ACTION_PARAMETER_NODES = 2_048;
@@ -242,11 +243,11 @@ function toActionParameterValueInner(
 	if (value === null || value === undefined) {
 		return null;
 	}
-	if (
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
+	if (typeof value === "string") {
+		if (!visitAlreadyReserved) reserve(ctx, 1);
+		return toWellFormedUnicode(value);
+	}
+	if (typeof value === "number" || typeof value === "boolean") {
 		if (!visitAlreadyReserved) reserve(ctx, 1);
 		return value;
 	}

@@ -261,21 +261,9 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
 };
 
-// Every decomposed personal-assistant view has a dedicated interaction owner
-// (apps-personal-assistant-decomposed-interactions.spec.ts) EXCEPT "documents":
-// its `/documents` view path collides with the built-in "documents" tab
-// (App.tsx findView matches `/${tab}`), so registering it in the ui-smoke stub
-// hijacks the `/character/documents` route. It stays tracked debt until that
-// view path is disambiguated.
-const INTERACTION_DEBT: Readonly<Record<string, string>> = {
-  "documents:gui":
-    "The decomposed documents view path `/documents` collides with the built-in " +
-    "`documents` tab (/character/documents) via App.tsx findView, so it cannot be " +
-    "registered in the ui-smoke stub without hijacking that route. Needs a " +
-    "disambiguated view path before a keyless interaction spec can drive it.",
-};
+const INTERACTION_DEBT: Readonly<Record<string, string>> = {};
 
-const MAX_INTERACTION_DEBT = 1;
+const MAX_INTERACTION_DEBT = 0;
 
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
@@ -327,7 +315,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(23);
+    expect(visualCases.length).toBe(22);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

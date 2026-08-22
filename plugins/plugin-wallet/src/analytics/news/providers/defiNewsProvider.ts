@@ -78,7 +78,6 @@ interface SolanaTokenInfoService {
   getAddressType(address: string): Promise<string>;
   getTokenSymbol(publicKey: object): Promise<string | null | undefined>;
 }
-const DEFI_NEWS_TEXT_LIMIT = 4000;
 
 export const defiNewsProvider: Provider = {
   name: "DEFI_NEWS",
@@ -132,7 +131,7 @@ export const defiNewsProvider: Provider = {
         ) as SolanaTokenInfoService | null;
 
         if (birdeyeService && solanaService) {
-          for (const detectedSymbol of extractedSymbols.slice(0, 3)) {
+          for (const detectedSymbol of extractedSymbols) {
             try {
               const options =
                 await birdeyeService.lookupSymbolAllChains(detectedSymbol);
@@ -166,7 +165,7 @@ export const defiNewsProvider: Provider = {
             }
           }
         } else {
-          for (const detectedSymbol of extractedSymbols.slice(0, 1)) {
+          for (const detectedSymbol of extractedSymbols) {
             const coingeckoId = getCoinGeckoIdFromSymbol(detectedSymbol);
             if (coingeckoId) {
               const tokenData = await getTokenInfo(
@@ -174,7 +173,6 @@ export const defiNewsProvider: Provider = {
                 coingeckoId,
               );
               defiNewsInfo += tokenData;
-              break; // Only one token in fallback mode
             }
           }
         }
@@ -204,7 +202,7 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = `${defiNewsInfo}\n`.slice(0, DEFI_NEWS_TEXT_LIMIT);
+    const text = `${defiNewsInfo}\n`;
 
     return {
       data,
@@ -397,9 +395,9 @@ async function getGlobalCryptoData(
 
     if (cryptoData.market_cap_percentage) {
       cryptoInfo += "\n🏆 MARKET DOMINANCE:\n";
-      const topCoins = Object.entries(cryptoData.market_cap_percentage)
-        .sort((a, b) => (b[1] as number) - (a[1] as number))
-        .slice(0, 5) as [string, number][];
+      const topCoins = Object.entries(cryptoData.market_cap_percentage).sort(
+        (a, b) => (b[1] as number) - (a[1] as number),
+      ) as [string, number][];
       topCoins.forEach(([coin, percentage]) => {
         cryptoInfo += `   • ${coin.toUpperCase()}: ${percentage.toFixed(2)}%\n`;
       });
@@ -434,8 +432,7 @@ async function getLatestCryptoNews(
       newsInfo += `${index + 1}. ${article.title}\n`;
 
       if (article.description) {
-        const shortDesc = article.description.substring(0, 100);
-        newsInfo += `   ${shortDesc}${article.description.length > 100 ? "..." : ""}\n`;
+        newsInfo += `   ${article.description}\n`;
       }
 
       if (article.pubDate) {

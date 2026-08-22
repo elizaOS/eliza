@@ -11,8 +11,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DEFAULT_MAX_RELAY_CHARS,
-  elideLongBlocks,
   sanitizeCompletionRelay,
   stripToolTranscript,
 } from "../../src/services/transcript-sanitizer.ts";
@@ -85,50 +83,13 @@ describe("stripToolTranscript", () => {
   });
 });
 
-describe("elideLongBlocks", () => {
-  it("passes short text through unchanged", () => {
-    expect(elideLongBlocks("short", 2000)).toBe("short");
-  });
-
-  it("TRUNCATES an over-cap remnant, preserving the head (#11605 destroyed it)", () => {
-    // Regression for 37813124bf (#11605): a legit long deliverable (pure
-    // prose, no envelopes) was hard-REPLACED by the elision marker — total
-    // data loss. It must instead relay the head plus a truncation marker.
-    const prose = "Step 1: back up the database. ".repeat(100); // 3000 chars
-    const out = elideLongBlocks(prose);
-    expect(out).not.toBe(`[output elided — ${prose.length} chars]`);
-    expect(out.startsWith("Step 1: back up the database.")).toBe(true);
-    expect(out).toContain(`${prose.length} chars total]`);
-  });
-
-  it("bounds the truncated result to the cap", () => {
-    const big = "x".repeat(DEFAULT_MAX_RELAY_CHARS + 500);
-    const out = elideLongBlocks(big);
-    expect(out.length).toBeLessThanOrEqual(DEFAULT_MAX_RELAY_CHARS);
-    expect(out).toContain(`${big.length} chars total]`);
-  });
-
-  it("is idempotent: re-sanitizing truncated output is a no-op (buildTaskResultLine re-applies it)", () => {
-    const big = "w".repeat(5000);
-    const once = elideLongBlocks(big);
-    expect(elideLongBlocks(once)).toBe(once);
-  });
-
-  it("keeps text exactly at the cap", () => {
-    const exact = "y".repeat(DEFAULT_MAX_RELAY_CHARS);
-    expect(elideLongBlocks(exact)).toBe(exact);
-  });
-});
-
 describe("sanitizeCompletionRelay", () => {
-  it("strips envelopes then truncates the oversized remnant, keeping the head", () => {
-    const remnant = "z".repeat(DEFAULT_MAX_RELAY_CHARS + 100);
+  it("strips envelopes while preserving the complete oversized remnant", () => {
+    const remnant = "z".repeat(10_000);
     const input = `${remnant}\n[tool output: t]\nbody\n[/tool output]`;
     const out = sanitizeCompletionRelay(input);
-    expect(out.startsWith("zzz")).toBe(true);
-    expect(out).toContain(`${remnant.length} chars total]`);
+    expect(out).toBe(remnant);
     expect(out).not.toContain("[tool output:");
-    expect(out.length).toBeLessThanOrEqual(DEFAULT_MAX_RELAY_CHARS);
   });
 
   it("does NOT reduce a long pure-prose deliverable to a bare marker (#11605 regression)", () => {

@@ -110,7 +110,6 @@ const CLAIM_CONNECTED_PATTERNS = [
 const NUDGE_INTERVAL = 3;
 const CONNECTION_STATUS_TTL_SECONDS = 30;
 const CONVERSATION_TTL_SECONDS = 3600;
-const MAX_HISTORY_MESSAGES = 10;
 const NUDGE_MODEL = "openai/gpt-5-mini";
 const NUDGE_MAX_OUTPUT_TOKENS = 160;
 
@@ -168,15 +167,7 @@ async function saveConversationState(
   state: ConversationState,
 ): Promise<void> {
   try {
-    const normalizedState: ConversationState = {
-      ...state,
-      messages: state.messages.slice(-MAX_HISTORY_MESSAGES),
-    };
-    await cache.set(
-      getConversationKey(organizationId, userId),
-      normalizedState,
-      CONVERSATION_TTL_SECONDS,
-    );
+    await cache.set(getConversationKey(organizationId, userId), state, CONVERSATION_TTL_SECONDS);
   } catch (error) {
     // error-policy:J7 auxiliary continuity write — runs after the user-facing reply is already
     // produced; a cache write blip must not turn a successful reply into a user error. Warns so

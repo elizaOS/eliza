@@ -24,17 +24,12 @@ import type {
 } from "../../../../types/index.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../../utils/well-formed.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 
 const EXPERIENCE_EXTRACTION_FALLBACK_INTERVAL = 25;
 const EXPERIENCE_EXTRACTION_MIN_SIGNAL_GAP = 4;
-const RECENT_MESSAGES_LIMIT = 12;
-const MAX_CONVERSATION_CONTEXT_CHARS = 6000;
 const EXISTING_EXPERIENCE_LIMIT = 5;
 const DEFAULT_AUTO_RECORD_THRESHOLD = 0.6;
 
@@ -163,7 +158,7 @@ function parseOutcomeType(value: unknown): OutcomeType | null {
 function parseExperienceOutput(output: unknown): ExperienceOutput | null {
 	if (!isRecord(output) || !Array.isArray(output.experiences)) return null;
 	const experiences: ExtractedExperience[] = [];
-	for (const entry of output.experiences.slice(0, 3)) {
+	for (const entry of output.experiences) {
 		if (!isRecord(entry)) continue;
 		const type = parseExperienceType(entry.type);
 		const outcome = parseOutcomeType(entry.outcome);
@@ -241,10 +236,7 @@ function buildExperienceProvenance(
 }
 
 function normalizeStoredText(runtime: IAgentRuntime, text: string): string {
-	return truncateWellFormed(
-		toWellFormedUnicode(runtime.redactSecrets(text)),
-		500,
-	);
+	return toWellFormedUnicode(runtime.redactSecrets(text));
 }
 
 function normalizeLearningKey(text: string): string {
@@ -434,7 +426,6 @@ export const experiencePatternEvaluator: Evaluator<
 		const recentMessages = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			limit: RECENT_MESSAGES_LIMIT,
 			unique: false,
 		});
 		const recentTexts = recentMessages
@@ -459,7 +450,6 @@ export const experiencePatternEvaluator: Evaluator<
 		const rawRecentMessages = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			limit: RECENT_MESSAGES_LIMIT,
 			unique: false,
 		});
 		const recentMessages = rawRecentMessages.filter(
@@ -471,8 +461,7 @@ export const experiencePatternEvaluator: Evaluator<
 				(text): text is string => typeof text === "string" && text.length > 0,
 			)
 			.map((text) => sanitizeConversationText(runtime, text))
-			.join("\n")
-			.slice(-MAX_CONVERSATION_CONTEXT_CHARS);
+			.join("\n");
 		const signalSummary = summarizeExperienceSignals(
 			scoreExperienceSignals({
 				latestText: getMessageText(message),

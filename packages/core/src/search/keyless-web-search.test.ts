@@ -43,7 +43,7 @@ describe("searchKeylessWeb", () => {
 		expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://mcp.exa.ai/mcp");
 	});
 
-	it("bounds model-visible text", async () => {
+	it("preserves complete model-visible text", async () => {
 		const result = await searchKeylessWeb("large", {
 			fetchImpl: async () => mcp("x".repeat(200)),
 			maxResultChars: 32,
@@ -51,30 +51,27 @@ describe("searchKeylessWeb", () => {
 
 		expect(result).toEqual({
 			provider: "parallel",
-			text: `${"x".repeat(20)}\n[truncated]`,
-			truncated: true,
+			text: "x".repeat(200),
+			truncated: false,
 		});
-		expect(result?.text).toHaveLength(32);
 	});
 
-	it("keeps tiny result budgets and Unicode truncation well formed", async () => {
+	it("ignores legacy result budgets and keeps Unicode well formed", async () => {
 		const tiny = await searchKeylessWeb("tiny", {
 			fetchImpl: async () => mcp("long result"),
 			maxResultChars: 5,
 		});
-		expect(tiny?.text).toBe("\n[tru");
-		expect(tiny?.text).toHaveLength(5);
+		expect(tiny?.text).toBe("long result");
 
 		const unicode = await searchKeylessWeb("unicode", {
 			fetchImpl: async () => mcp(`${"x".repeat(19)}🤖${"y".repeat(20)}`),
 			maxResultChars: 32,
 		});
-		expect(unicode?.text).toBe(`${"x".repeat(19)}\n[truncated]`);
-		expect(unicode?.text).toHaveLength(31);
+		expect(unicode?.text).toBe(`${"x".repeat(19)}🤖${"y".repeat(20)}`);
 		expect(unicode?.text?.isWellFormed()).toBe(true);
 	});
 
-	it("rejects invalid result budgets instead of silently returning an uncapped result", async () => {
+	it("ignores invalid legacy result budgets and still returns the full result", async () => {
 		for (const maxResultChars of [
 			-1,
 			1.5,
@@ -86,14 +83,18 @@ describe("searchKeylessWeb", () => {
 					fetchImpl: async () => mcp("long result"),
 					maxResultChars,
 				}),
-			).rejects.toThrow("maxResultChars must be a non-negative safe integer");
+			).resolves.toMatchObject({ text: "long result", truncated: false });
 		}
 
 		const zero = await searchKeylessWeb("zero budget", {
 			fetchImpl: async () => mcp("long result"),
 			maxResultChars: 0,
 		});
-		expect(zero).toEqual({ provider: "parallel", text: "", truncated: true });
+		expect(zero).toEqual({
+			provider: "parallel",
+			text: "long result",
+			truncated: false,
+		});
 	});
 
 	it("rejects oversized response bodies and returns no fabricated result", async () => {

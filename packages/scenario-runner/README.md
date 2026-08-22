@@ -54,9 +54,10 @@ export default {
 | Kind | What it does |
 |---|---|
 | `message` | Sends text through `runtime.messageService.handleMessage` (full conversational path) |
-| `action` | Calls a named action's `validate` + `handler` directly (bypasses LLM routing) |
+| `action` | Calls a runtime-registered action's `validate` + `handler` directly; `expectedValidation: "rejected"` proves an invalid input is refused without invoking the handler |
 | `api` | Makes an HTTP request to the agent's registered routes via a loopback server |
 | `tick` | Invokes the lifeops scheduler at a logical clock time |
+| `wait` | Waits for `durationMs`, or polls a bounded `until(ctx)` state predicate |
 
 ### Assertions
 
@@ -128,6 +129,45 @@ same-process observations cannot satisfy these contracts.
 
 Any one of `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `OPENROUTER_API_KEY` satisfies the live-provider requirement when deterministic mode is disabled.
 
+## Production manifest persistence
+
+`applyProductionManifest` seeds the scenario runtime through the same
+`AgentRuntime` repository methods used in production. Version 1 supports
+world-scoped entities, rooms and participants, message and non-message memory
+partitions, relationships, tasks, scheduled items, notifications, pending
+`execute_workflow` approvals, and provider cache state. Each domain is written
+and removed through its production owner; the manifest does not maintain a
+parallel mutable world store.
+
+Every apply returns a JSON-serializable receipt containing the exact created
+identifiers. `readProductionManifestSnapshot` projects canonical state back
+from the authoritative stores, while `resetProductionManifest` accepts that
+receipt in a later process, strictly reparses its keys, hashes, UUID sets, and
+participant containment, and requires its canonical hash to match the
+finalized receipt hash in authoritative world metadata before public read or
+reset. Each receipt carries a fresh generation fence. Reset then verifies
+namespace and generation ownership, persists an exact receipt-hash-bound
+`resetting` control record, deletes through the production boundaries, and
+proves absence before persisting `complete`. A retry after an ambiguous process
+exit resumes only that authorized generation, while a clean replay returns the
+same absence artifact; a never-issued or stale-generation receipt is rejected.
+Manifest input is
+admitted only as bounded, plain JSON data and recursively validated as lossless
+JSON before any write. Logical entity, relationship, and earlier-task
+references inside schedules are materialized to production IDs, then
+canonicalized back to logical IDs on readback. `proveProductionManifestReset`
+captures initial/readback/reset/reseed artifacts and requires byte-equivalent
+canonical snapshots.
+
+Receipts include the exact schedule, notification, approval, memory-partition,
+and provider-state ownership needed for restart-safe cleanup. Apply discovers
+idempotent production rows after post-commit failures and compensates them;
+notification enumeration used for cleanup includes expired rows. Approval
+seeding awaits its durable notification projection, so no background write can
+escape receipt finalization. The manifest generation fences deterministic rows
+and reset authority across processes; exclusive multi-host scheduling and
+virtual-clock authority remain controller-level composition dependencies.
+
 ## Strict model fixtures
 
 Deterministic scenarios can declare a serializable `modelFixtures` manifest on
@@ -143,14 +183,23 @@ ambiguous, over-consumed, and unused required fixtures fail the attempt. There
 is no fallback for a declared manifest. Direct action/API scenarios that never
 enter a model path may instead declare
 `modelFixtures: { mode: "model-free", reason: "..." }`; message, voice, tick,
-or judge work makes that declaration invalid.
+or judge work makes that declaration invalid. Wait turns are also model-free.
+
+Before final fixture validation, the executor waits a bounded interval for
+tracked post-delivery work and requests cancellation through each task's
+`AbortSignal`. A task that ignores cancellation leaves its runtime quarantined:
+the attempt fails and every later scenario is refused before its fixture scope
+or world can start. JavaScript cannot terminate arbitrary code that ignores an
+abort signal, so subprocess/generation isolation must end that container before
+the runtime can be replaced; quarantine is containment, not a claim that the
+task was killed.
 
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
-`strict-fixtures` or `model-free`. The migration ratchet currently records 40
-explicitly model-free and 79 legacy `pr-deterministic` scenario sources across
-the repository. The declared rows contain only direct action/API work or
-seed/final checks and are validated again by the real executor before each
+`strict-fixtures` or `model-free`. The migration ratchet currently records 48
+strict or explicitly model-free and 72 legacy `pr-deterministic` scenario
+sources across the repository. The declared rows contain only direct action/API work or
+wait/seed/final checks and are validated again by the real executor before each
 attempt. The legacy count may only decrease, and the epic is complete only when
 it reaches zero.
 
@@ -175,6 +224,6 @@ await cleanup();
 
 ## Notes
 
-- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
+- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. All declared plugins are registered before runtime initialization, preserving service availability for existing seeds. Test companions must scope dependency overrides and ledgers to the runtime, dispose them at shutdown, and declare a guaranteed cleanup assertion for exact completeness. The CLI rejects a shared batch that mixes the meetings test companion with production-only meetings scenarios; use process isolation for that selection. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
 - Schema types (`ScenarioDefinition`, `CapturedAction`, etc.) come from `@elizaos/scenario-runner/schema`, not from the main export.
 - Scenarios starting with `_` or in directories starting with `_` are skipped by the loader.

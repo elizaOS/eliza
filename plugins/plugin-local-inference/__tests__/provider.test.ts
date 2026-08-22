@@ -44,7 +44,12 @@ describe("local inference provider", () => {
 		expect(generate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				prompt: "hello",
-				stopSequences: ["</s>"],
+				stopSequences: [
+					"</s>",
+					"<end_of_turn>",
+					"<start_of_turn>",
+					"<endoftext>",
+				],
 				temperature: 0.2,
 			}),
 		);

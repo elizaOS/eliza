@@ -411,6 +411,26 @@ describe("scheduled-tasks REST handler", () => {
     expect(payload.task.kind).toBe("checkin");
   });
 
+  it("POST /test-probe reads a chunked body without content-length instead of silently defaulting (#23977)", async () => {
+    const runner = makeRunner();
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/scheduled-tasks/test-probe",
+      body: { kind: "checkin" },
+      headers: {
+        "content-type": "application/json",
+        "transfer-encoding": "chunked",
+      },
+    });
+    await handler(ctx);
+    expect(res.statusCode).toBe(201);
+    const payload = JSON.parse(res.body ?? "{}");
+    expect(payload.task.kind).toBe("checkin");
+  });
+
   it("rejects illegal percent-encoding in task ids with 400 before runner calls", async () => {
     let listed = 0;
     let applied = 0;
@@ -567,6 +587,26 @@ describe("scheduled-tasks REST handler", () => {
       expect(res.statusCode).toBe(400);
       expect(res.body).toContain("request body is required");
       expect(applyCalls).toBe(0);
+      expect(
+        (await runner.list()).find((item) => item.taskId === task.taskId),
+      ).toEqual(task);
+    });
+
+    it("rejects an explicit {} edit body instead of persisting an empty patch (#23977)", async () => {
+      const { runner, handler, task } = await seed();
+      let applyCalls = 0;
+      const originalApply = runner.apply.bind(runner);
+      runner.apply = async (taskId, verb, payload) => {
+        applyCalls += 1;
+        return originalApply(taskId, verb, payload);
+      };
+
+      const res = await edit(handler, task.taskId, {});
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("at least one field");
+      expect(applyCalls).toBe(0);
+      // No spurious `edited {keys:[]}` row survives in the state log.
       expect(
         (await runner.list()).find((item) => item.taskId === task.taskId),
       ).toEqual(task);

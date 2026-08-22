@@ -4,10 +4,9 @@
  * `getTweetsAndRepliesByUserId` in `tweets.ts` and
  * `Client.getUserTweetsIterator` in `client.ts`).
  *
- * These pin two things: that a provider which never stops paginating —
- * including the real X API v2 case of a page with zero tweets and a live
- * `next_token` — terminates with a typed error instead of looping forever, and
- * that ordinary multi-page timelines still page through to completion.
+ * These pin two things: repeated provider cursors fail instead of looping, and
+ * ordinary multi-page timelines follow provider continuation tokens through
+ * to completion without an arbitrary page ceiling.
  *
  * The provider is a local re-implementation of the `twitter-api-v2` paginator
  * surface these helpers touch: async iteration over the page's tweets,
@@ -26,7 +25,6 @@ import {
   getTweetsAndReplies,
   getTweetsAndRepliesByUserId,
   getTweetsByUserId,
-  MAX_TIMELINE_PAGES,
 } from "./tweets";
 
 const WATCHDOG_MS = 5_000;
@@ -119,13 +117,6 @@ async function terminationOf(
   return outcome;
 }
 
-/** Every page is empty but always advertises a brand new cursor — the real X
- * API v2 shape when server-side filtering empties a non-final page. */
-const emptyPageWithNovelCursor = (index: number): Page => ({
-  ids: [],
-  next: `cursor-${index}`,
-});
-
 let screenNameSeq = 0;
 /** Unique screen name per case so the profile id cache cannot mask a lookup. */
 function freshScreenName() {
@@ -133,19 +124,7 @@ function freshScreenName() {
   return `alice-${screenNameSeq}`;
 }
 
-describe("user-timeline pagination is bounded", () => {
-  it("getTweets stops on empty pages that keep advertising a new cursor", async () => {
-    const { auth, state } = stubAuth(emptyPageWithNovelCursor);
-
-    expect(
-      await terminationOf(
-        getTweets(freshScreenName(), 200, auth as never),
-        state,
-      ),
-    ).toBe("X_TIMELINE_PAGINATION_LIMIT_EXCEEDED");
-    expect(state.calls).toBe(MAX_TIMELINE_PAGES);
-  }, 30_000);
-
+describe("user-timeline pagination rejects cursor cycles", () => {
   it("getTweetsByUserId stops when the provider repeats a cursor", async () => {
     const { auth, state } = stubAuth(() => ({ ids: [], next: "stuck" }));
 
@@ -173,30 +152,6 @@ describe("user-timeline pagination is bounded", () => {
       ),
     ).toBe("X_TIMELINE_PAGINATION_CURSOR_REPEATED");
     expect(state.calls).toBe(3);
-  }, 30_000);
-
-  it("getTweetsAndRepliesByUserId stops on perpetually novel cursors", async () => {
-    const { auth, state } = stubAuth(emptyPageWithNovelCursor);
-
-    expect(
-      await terminationOf(
-        getTweetsAndRepliesByUserId("user-1", 200, auth as never),
-        state,
-      ),
-    ).toBe("X_TIMELINE_PAGINATION_LIMIT_EXCEEDED");
-    expect(state.calls).toBe(MAX_TIMELINE_PAGES);
-  }, 30_000);
-
-  it("Client.getUserTweetsIterator stops on perpetually novel cursors", async () => {
-    const { auth, state } = stubAuth(emptyPageWithNovelCursor);
-
-    expect(
-      await terminationOf(
-        clientWith(auth).getUserTweetsIterator("user-1", 200),
-        state,
-      ),
-    ).toBe("X_TIMELINE_PAGINATION_LIMIT_EXCEEDED");
-    expect(state.calls).toBe(MAX_TIMELINE_PAGES);
   }, 30_000);
 });
 
@@ -253,19 +208,18 @@ describe("ordinary timelines still page through completely", () => {
     expect(state.calls).toBe(3);
   });
 
-  it("a timeline that legitimately ends on the last allowed page still completes", async () => {
+  it("a timeline beyond the former thousand-page ceiling still completes", async () => {
+    const formerPageLimit = 1_000;
     const { auth, state } = stubAuth((index) =>
-      index < MAX_TIMELINE_PAGES - 1
-        ? { ids: [`t${index}`], next: `cursor-${index}` }
-        : { ids: [`t${index}`] },
+      index < formerPageLimit
+        ? { ids: [], next: `cursor-${index}` }
+        : { ids: ["after-former-limit"] },
     );
 
-    const ids = await collect(
-      getTweetsByUserId("user-1", MAX_TIMELINE_PAGES, auth as never),
-    );
+    const ids = await collect(getTweetsByUserId("user-1", 1, auth as never));
 
-    expect(ids).toHaveLength(MAX_TIMELINE_PAGES);
-    expect(state.calls).toBe(MAX_TIMELINE_PAGES);
+    expect(ids).toEqual(["after-former-limit"]);
+    expect(state.calls).toBe(formerPageLimit + 1);
   }, 30_000);
 
   it("a satisfied request returns normally even if its last page repeats a cursor", async () => {

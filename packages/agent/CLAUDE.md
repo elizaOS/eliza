@@ -31,7 +31,7 @@ src/
     roles.ts / roles/     Role definitions and role-resolution helpers
     agent-wallets.ts      Agent wallet bootstrap and TEE-gated wallet logic
     model-resolution.ts   Model name resolution helpers
-    prompt-optimization.ts / prompt-compaction.ts  Prompt optimization and compaction strategies
+    prompt-optimization.ts  Lossless prompt telemetry and active-view awareness
     tool-call-cache/ tool-call-cache-wrapper.ts  Tool-call result caching layer
     first-time-setup.ts   First-run initialization logic
     load-plugin-from-directory.ts / load-plugin-from-vfs.ts  Plugin loading from local dirs and VFS
@@ -43,7 +43,6 @@ src/
     view-action-affinity.ts  View↔action routing affinity
     web-search-tools.ts / vault-profile-resolver.ts  Miscellaneous runtime helpers
     trajectory-*.ts       Trajectory persistence / query / internals
-    conversation-compactor*.ts  Conversation summarization/compaction
     operations/           vault-bridge.ts (config env resolution + optimized-prompt integrity key), classifier.ts,
                           cold-strategy.ts, manager.ts, health.ts, health-checks.ts,
                           reload-hot.ts, repository.ts, types.ts
@@ -62,7 +61,7 @@ src/
     paths.ts              resolveUserPath() and state/path helpers
     env-vars.ts, schema.ts, model-metadata.ts, owner-contacts.ts
   services/               Business-logic services (capability-broker, permissions-registry, config-plugin-manager, plugin-installer/-compiler, relationships-graph, agent-export, shell-execution-router, provider-neutral tee-*)
-  actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory, compact-conversation)
+  actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory)
   providers/              Providers for createElizaPlugin (workspace, admin-trust/-panel, session, rolodex, recent/relevant-conversations, pending-permissions, escalation-trigger, page-scoped-context, ...)
   triggers/               runtime.ts (registerTriggerTaskWorker), scheduling.ts, types.ts
   auth/                   Credential storage + OAuth/Anthropic/OpenAI-Codex flows (account-storage, oauth-flow, refresh-mutex)
@@ -79,7 +78,7 @@ docs/                     capability-router-remote-plugins.md, e2b-capability-ro
 ## Key exports / surface
 
 - **Binary:** `eliza-autonomous` → `src/bin.ts` → `runAutonomousCli()`. Commands: `serve`/`start`, `runtime`, `ios-bridge`, `android-bridge`, `benchmark`.
-- **Boot:** `startEliza()`, `bootElizaRuntime()`, `startInCloudMode()` (`runtime/eliza.ts`); `createElizaPlugin()` (`runtime/eliza-plugin.ts`) — the `Plugin` named `"eliza"` registering services (`AgentEventService`, `ElizaCharacterPersistenceService`, `AgentMediaGenerationService`, `PermissionRegistry`), workspace/session/rolodex providers, and the terminal/trigger/contact/settings/plugin/logs/runtime/database/memory/compact actions.
+- **Boot:** `startEliza()`, `bootElizaRuntime()`, `startInCloudMode()` (`runtime/eliza.ts`); `createElizaPlugin()` (`runtime/eliza-plugin.ts`) — the `Plugin` named `"eliza"` registering services (`AgentEventService`, `ElizaCharacterPersistenceService`, `AgentMediaGenerationService`, `PermissionRegistry`), workspace/session/rolodex providers, and the terminal/trigger/contact/settings/plugin/logs/runtime/database/memory actions.
 - **HTTP:** `startApiServer()`, `dispatchRoute()`, route handlers (`@elizaos/agent/api`).
 - **Plugin sets:** `CORE_PLUGINS`, `BLOCKING_CORE_PLUGINS`, `DEFERRED_CORE_PLUGINS`, `OPTIONAL_CORE_PLUGINS`, `MOBILE_CORE_PLUGINS` (`runtime/core-plugins.ts`); `resolvePlugins()`, `collectPluginNames()`.
 - **Config:** `loadElizaConfig`/`saveElizaConfig`, `CharacterSchema`, `resolveUserPath`, `resolveDefaultAgentWorkspaceDir`.
@@ -140,7 +139,7 @@ Verified audio redaction:
 Capability router (remote plugins — see `docs/capability-router-remote-plugins.md`):
 - `ELIZA_CAPABILITY_ROUTER_ENABLED`, `ELIZA_CAPABILITY_ROUTER_URLS`, `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES`, `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, `ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT`.
 
-Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`, `ELIZA_CONVERSATION_COMPACTOR`.
+Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`.
 
 Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
   sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on

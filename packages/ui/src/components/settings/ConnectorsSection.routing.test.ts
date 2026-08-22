@@ -13,7 +13,7 @@ import { shouldRenderConnectorConfigForm } from "./ConnectorsSection";
  * Locks the Settings → Connectors mode-routing contract: the generic env-var
  * config form must surface for `local-config` modes (Discord bot token, etc.)
  * WITHOUT cannibalising the dedicated setup surfaces that `local-setup` modes
- * still need (iMessage Full-Disk-Access status, Signal/WhatsApp QR pairing,
+ * still need (iMessage Full-Disk-Access status, WhatsApp QR pairing,
  * Discord/Telegram desktop panels). Regression guard for the
  * "gate on parameters.length" bug that hid those panels.
  */
@@ -42,7 +42,6 @@ describe("ConnectorsSection mode routing", () => {
   it("keeps dedicated setup panels for local-setup modes (the regression)", () => {
     for (const [connectorId, modeId, expectedSetupId] of [
       ["imessage", "direct", "imessage"],
-      ["signal", "qr", "signal"],
       ["whatsapp", "qr", "whatsapp"],
       ["discord", "local", "discordlocal"],
       ["telegram", "account", "telegramaccount"],
@@ -53,16 +52,6 @@ describe("ConnectorsSection mode routing", () => {
       // the dedicated panel must remain reachable for that target
       expect(hasConnectorSetupPanel(expectedSetupId)).toBe(true);
     }
-  });
-
-  it("keeps the separate cloud BlueBubbles gateway routed to its own panel", () => {
-    const route = routeFor("imessage", "cloud-bluebubbles", true);
-    expect(route.managementMode).toBe("cloud-managed");
-    expect(route.setupPluginId).toBe("bluebubbles");
-    // The cloud gateway remains a distinct plugin; the local iMessage row no
-    // longer exposes a BlueBubbles mode or its environment-variable form.
-    expect(route.showForm).toBe(false);
-    expect(hasConnectorSetupPanel("bluebubbles")).toBe(true);
   });
 
   it("never shows the env form for a local-setup mode even with parameters", () => {

@@ -12,11 +12,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  stripHtmlRawTextElements,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { stripHtmlRawTextElements, toWellFormedUnicode } from "@elizaos/core";
 import {
   failureToActionResult,
   readStringParam,
@@ -24,8 +20,6 @@ import {
 } from "../lib/format.js";
 import { guardedTextHttpRequest } from "../lib/web-http.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
-
-const WEB_FETCH_RESULT_CHARS = 8_000;
 
 /**
  * Capability kill switch, mirroring the agent-runtime WEB_FETCH action:
@@ -104,11 +98,32 @@ export function htmlToReadableText(html: string): string {
   return body;
 }
 
+const MAX_JSON_EXTRACT_DEPTH = 16;
+const MAX_JSON_EXTRACT_PATH_LENGTH = 1024;
+const MAX_JSON_EXTRACT_SEGMENT_LENGTH = 256;
+
 function resolveJsonPath(root: unknown, path: string): unknown {
+  if (path.length === 0 || path.length > MAX_JSON_EXTRACT_PATH_LENGTH)
+    return undefined;
+  const segments = path.split(".");
+  if (segments.length === 0 || segments.length > MAX_JSON_EXTRACT_DEPTH)
+    return undefined;
   let current = root;
-  for (const segment of path.split(".")) {
+  for (const segment of segments) {
+    if (
+      segment.length === 0 ||
+      segment.length > MAX_JSON_EXTRACT_SEGMENT_LENGTH
+    )
+      return undefined;
     if (current === null || typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[segment];
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(current as object, segment);
+    } catch {
+      return undefined;
+    }
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    current = descriptor.value;
   }
   return current;
 }
@@ -215,19 +230,14 @@ export const webFetchAction: Action = {
         extract,
       );
       const wellFormed = toWellFormedUnicode(extracted.value);
-      const value =
-        wellFormed.length > WEB_FETCH_RESULT_CHARS
-          ? `${truncateWellFormed(wellFormed, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
-          : wellFormed;
-      return successActionResult(value, {
+      return successActionResult(wellFormed, {
         action: "WEB_FETCH",
         url,
         final_url: response.url,
         status: response.status,
         content_type: response.contentType,
         kind: extracted.kind,
-        truncated:
-          response.truncated || wellFormed.length > WEB_FETCH_RESULT_CHARS,
+        truncated: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -24,7 +24,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -45,8 +45,6 @@ const EMPTY: ProviderResult = {
   data: {},
 };
 
-const DEFAULT_INJECT_LIMIT = 5;
-const DEFAULT_PER_CHANNEL = 4;
 export const CROSS_CHANNEL_CONTEXT_UNAVAILABLE_TEXT = [
   "# Cross-channel context unavailable",
   "The requested prior-channel search failed for this turn. Do not infer that no prior message or commitment exists; say the search is temporarily unavailable and ask the owner to retry.",
@@ -156,10 +154,7 @@ function compactHit(
     speaker: hit.speaker,
     ...(hit.subject ? { subject: hit.subject } : {}),
     text: redactTextForEgress(
-      truncateWellFormed(
-        toWellFormedUnicode(hit.text.replace(/\s+/g, " ").trim()),
-        180,
-      ),
+      toWellFormedUnicode(hit.text.replace(/\s+/g, " ").trim()),
       {
         context: egressContext,
         dataClass: "body",
@@ -248,15 +243,12 @@ export const crossChannelContextProvider: Provider = {
       personRef,
       timeWindow,
       channels: request.channels,
-      limit: request.limit ?? DEFAULT_PER_CHANNEL,
+      limit: request.limit,
     };
 
     try {
       const result = await runCrossChannelSearch(runtime, query);
-      const injected = result.hits.slice(
-        0,
-        request.limit ?? DEFAULT_INJECT_LIMIT,
-      );
+      const injected = result.hits;
 
       if (injected.length === 0) {
         return {

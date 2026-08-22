@@ -39,7 +39,7 @@ function buildCtx(args: {
   pathname: string;
   body?: unknown;
   runtime?: Partial<NonNullable<DocumentRouteContext["runtime"]>>;
-  accessContext?: AccessContext;
+  accessContext?: AccessContext | null;
 }): {
   ctx: DocumentRouteContext;
   res: MockResponse;
@@ -64,12 +64,14 @@ function buildCtx(args: {
     pathname: args.pathname,
     url: new URL(`http://localhost${args.pathname}`),
     accessContext:
-      args.accessContext ??
-      ({
-        requesterEntityId: OWNER_ENTITY_ID,
-        role: "OWNER",
-        isOwner: true,
-      } satisfies AccessContext),
+      args.accessContext === null
+        ? undefined
+        : (args.accessContext ??
+          ({
+            requesterEntityId: OWNER_ENTITY_ID,
+            role: "OWNER",
+            isOwner: true,
+          } satisfies AccessContext)),
     runtime: {
       agentId: AGENT_ID,
       getSetting: () => undefined,
@@ -111,6 +113,36 @@ describe("document routes", () => {
     vi.clearAllMocks();
     __setDocumentFetchImplForTests(undefined);
   });
+
+  it.each([
+    ["list", "GET", "/api/documents", undefined],
+    [
+      "upload",
+      "POST",
+      "/api/documents",
+      { content: "private", filename: "private.txt" },
+    ],
+  ])(
+    "rejects unauthenticated %s before document access",
+    async (_label, method, pathname, body) => {
+      const getMemoryById = vi.fn();
+      const { ctx, res } = buildCtx({
+        method,
+        pathname,
+        body,
+        accessContext: null,
+        runtime: { getMemoryById },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toEqual({ error: "Authentication required" });
+      expect(getMemoryById).not.toHaveBeenCalled();
+      expect(searchDocuments).not.toHaveBeenCalled();
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([{}, { url: {} }, { url: "   " }])(
     "rejects malformed URL upload body %# with a 400",

@@ -180,7 +180,7 @@ describe("AutonomyService optimized prompt integration", () => {
 		const secondStats = harness.getAutonomyCompactionStats();
 
 		expect(first).toContain("Compacted autonomous context:");
-		expect(first).toContain("Compacted 8 prior autonomous thoughts");
+		expect(first).toContain("8 prior autonomous thoughts");
 		expect(first).toContain("standing goal: keep working");
 		expect(first).toContain("Recent autonomous thoughts:");
 		expect(first).toContain("autonomous loop thought 17");

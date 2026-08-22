@@ -13,7 +13,6 @@ import {
   PairingService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -90,7 +89,6 @@ import { MemoryRetentionService } from "./memory-retention-service.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
-  initMaxChars?: number;
   sessionStorePath?: string;
   agentId?: string;
 };
@@ -103,10 +101,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     config?.sessionStorePath ?? resolveDefaultSessionStorePath(agentId);
 
   const baseProviders = [
-    createWorkspaceProvider({
-      workspaceDir,
-      maxCharsPerFile: config?.initMaxChars,
-    }),
+    createWorkspaceProvider({ workspaceDir }),
     adminTrustProvider,
     adminPanelProvider,
 
@@ -217,7 +212,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(logsAction),
       ...promoteSubactionsToActions(runtimeAction),
       ...promoteSubactionsToActions(databaseAction),
-      compactConversationAction,
       connectAccountAction,
       pairOwnerAccountAction,
       notifyAction,

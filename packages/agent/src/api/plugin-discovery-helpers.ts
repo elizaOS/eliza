@@ -27,7 +27,7 @@ export {
 const require = createRequire(import.meta.url);
 
 // Pure-disk override helpers — inlined here to avoid module-scope dynamic
-// imports of @elizaos/plugin-signal and @elizaos/plugin-whatsapp. The plugin
+// imports of @elizaos/plugin-whatsapp. The plugin
 // versions still exist for external callers; these copies are scoped to the
 // agent's plugin-discovery surface and only walk the workspace directory.
 type QrOverrideEntry = {
@@ -36,38 +36,6 @@ type QrOverrideEntry = {
   configured: boolean;
   qrConnected?: boolean;
 };
-
-function signalAuthExists(
-  workspaceDir: string,
-  accountId = "default",
-): boolean {
-  const authDir = path.join(workspaceDir, "signal-auth", accountId);
-  if (!fs.existsSync(authDir)) return false;
-
-  const accountsPath = path.join(authDir, "data", "accounts.json");
-  if (!fs.existsSync(accountsPath)) return false;
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(accountsPath, "utf8")) as {
-      accounts?: unknown;
-    };
-    return Array.isArray(parsed.accounts) && parsed.accounts.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function applySignalQrOverride(
-  entries: QrOverrideEntry[],
-  workspaceDir: string,
-): void {
-  if (!signalAuthExists(workspaceDir, "default")) return;
-  const sigPlugin = entries.find((plugin) => plugin.id === "signal");
-  if (!sigPlugin) return;
-  sigPlugin.validationErrors = [];
-  sigPlugin.configured = true;
-  sigPlugin.qrConnected = true;
-}
 
 function applyWhatsAppQrOverride(
   entries: QrOverrideEntry[],
@@ -1134,8 +1102,6 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       );
 
       applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-      applySignalQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-
       return entries;
     } catch (err) {
       logger.debug(
@@ -1178,7 +1144,6 @@ export function categorizePlugin(
     "slack",
     "twitter",
     "whatsapp",
-    "signal",
     "imessage",
     "farcaster",
     "bluesky",
@@ -1228,7 +1193,6 @@ const SOCIAL_CHAT_CONNECTOR_IDS = new Set([
   "discord",
   "slack",
   "whatsapp",
-  "signal",
   "imessage",
   "matrix",
   "mattermost",
@@ -1261,7 +1225,6 @@ const PLUGIN_METADATA_CATEGORY_TAGS: Record<string, string[]> = {
 };
 const PLUGIN_DESCRIPTION_OVERRIDES: Record<string, string> = {
   slack: "Slack workspace connector for chatting with your agent",
-  signal: "Signal connector for secure chats with your agent",
   mattermost: "Mattermost connector for team chat with your agent",
   msteams: "Microsoft Teams connector for chatting with your agent",
   "nextcloud-talk": "Nextcloud Talk connector for chatting with your agent",
@@ -1296,7 +1259,6 @@ const PLUGIN_SETUP_GUIDE_ANCHORS: Record<string, string> = {
   matrix: "#matrix",
   msteams: "#microsoft-teams",
   "google-chat": "#google-chat",
-  signal: "#signal",
   imessage: "#imessage-macos-only",
   blooio: "#blooio-sms-via-api",
   nostr: "#nostr",

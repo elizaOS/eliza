@@ -8,8 +8,8 @@
  * every preview fetch is routed through the SSRF guard (`fetchWithSsrfGuard`),
  * and the summary is produced by a `TEXT_SMALL` model call over the fetched
  * page body. Capture is best-effort: the raw URL is still persisted when the
- * preview fetch or summarization fails, per-message URLs are deduped and capped
- * at `MAX_LINKS_PER_MESSAGE`, and per-URL errors are logged and swallowed so
+ * preview fetch or summarization fails, per-message URLs are deduped, and
+ * per-URL errors are logged and swallowed so
  * the evaluator never blocks the planner.
  */
 import { v4 } from "uuid";
@@ -23,15 +23,12 @@ import type {
 } from "../../../types/index.ts";
 import { asUUID, MemoryType, ModelType } from "../../../types/index.ts";
 import { stripHtmlRawTextElements } from "../../../utils/html-raw-text.ts";
-import { truncateWellFormed } from "../../../utils/well-formed.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
 const URL_REGEX = /https?:\/\/[^\s<>"'`)]+/gi;
-const MAX_LINKS_PER_MESSAGE = 5;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
-const SUMMARY_MAX_INPUT_CHARS = 4_000;
 
 interface LinkRecord {
 	url: string;
@@ -87,9 +84,6 @@ function extractUrls(text: string): string[] {
 		}
 		seen.add(trimmed);
 		urls.push(trimmed);
-		if (urls.length >= MAX_LINKS_PER_MESSAGE) {
-			break;
-		}
 	}
 	return urls;
 }
@@ -114,16 +108,13 @@ function hasUrl(message: Memory): boolean {
 function extractTitle(html: string): string {
 	const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
 	if (titleMatch?.[1]) {
-		return truncateWellFormed(
-			decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, " ").trim(),
-			200,
-		);
+		return decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, " ").trim();
 	}
 	const ogMatch = html.match(
 		/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
 	);
 	if (ogMatch?.[1]) {
-		return truncateWellFormed(decodeHtmlEntities(ogMatch[1]).trim(), 200);
+		return decodeHtmlEntities(ogMatch[1]).trim();
 	}
 	return "";
 }
@@ -201,12 +192,9 @@ async function fetchLinkPreview(
 		if (!/text\/html|application\/xhtml/i.test(contentType)) {
 			return null;
 		}
-		const html = truncateWellFormed(await response.text(), 200_000);
+		const html = await response.text();
 		const title = extractTitle(html);
-		const bodyChunk = truncateWellFormed(
-			stripTags(html),
-			SUMMARY_MAX_INPUT_CHARS,
-		);
+		const bodyChunk = stripTags(html);
 		return { title, bodyChunk };
 	} catch {
 		// error-policy:J4 link previews are optional enrichments; blocked,
@@ -236,7 +224,7 @@ ${bodyChunk}
 Summary:`;
 	const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
 	if (typeof response === "string") {
-		return truncateWellFormed(response.trim(), 1_000);
+		return response.trim();
 	}
 	return "";
 }

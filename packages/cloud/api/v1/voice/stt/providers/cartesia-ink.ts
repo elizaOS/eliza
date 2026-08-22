@@ -8,7 +8,7 @@
 export const CARTESIA_INK_WEBSOCKET_URL =
   "wss://api.cartesia.ai/stt/turns/websocket";
 export const CARTESIA_INK_MODEL_ID = "ink-2";
-export const CARTESIA_INK_API_VERSION = "2025-11-04";
+export const CARTESIA_INK_API_VERSION = "2026-08-14";
 export const CARTESIA_INK_SAMPLE_RATE = 16_000;
 export const CARTESIA_INK_AUDIO_ENCODING = "pcm_s16le";
 export const CARTESIA_INK_CHUNK_MILLISECONDS = 100;
@@ -18,7 +18,9 @@ export const CARTESIA_INK_CHUNK_BYTES = 3_200;
 export const CARTESIA_INK_TURN_START_THRESHOLD = 0.5;
 export const CARTESIA_INK_TURN_EAGER_END_THRESHOLD = 0.4;
 export const CARTESIA_INK_TURN_END_THRESHOLD = 0.3;
-export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 1_200;
+// Cartesia's documented minimum bounds uncertain end-of-turn detection without
+// delaying every short phone reply by another half-second beyond necessity.
+export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 640;
 
 const DEFAULT_CLOSE_CODE = 1000;
 

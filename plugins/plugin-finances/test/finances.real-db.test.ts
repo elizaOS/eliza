@@ -300,7 +300,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
     }
   });
 
-  it("fails without advancing the stored cursor when Plaid pagination exceeds the guard", async () => {
+  it("drains Plaid pagination beyond the former 20-page ceiling", async () => {
     let page = 0;
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -321,10 +321,76 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/sync")) {
           page += 1;
           return Response.json({
-            added: [plaidTransaction(`guard-page-${page}`)],
+            added: [plaidTransaction(`page-${page}`)],
             modified: [],
             removed: [],
-            nextCursor: crypto.randomUUID(),
+            nextCursor: `cursor-${page}`,
+            hasMore: page < 25,
+          });
+        }
+        return Response.json({ error: "unexpected route" }, { status: 500 });
+      });
+
+    try {
+      service.plaidManagedClientCache = new PlaidManagedClient(() => ({
+        configured: true,
+        apiKey: "eliza_test",
+        apiBaseUrl: "https://cloud.example/api/v1",
+        siteUrl: "https://cloud.example",
+      }));
+      const source = await service.completePlaidLink({
+        publicToken: "public-token",
+      });
+
+      await expect(
+        service.syncPlaidTransactions({ sourceId: source.id }),
+      ).resolves.toEqual({
+        inserted: 25,
+        skipped: 0,
+        nextCursor: "cursor-25",
+      });
+
+      const stored = await repository.getPaymentSource(
+        runtime.agentId,
+        source.id,
+      );
+      expect(stored?.metadata.plaid).toMatchObject({ cursor: "cursor-25" });
+      await expect(
+        repository.listPaymentTransactions(runtime.agentId, {
+          sourceId: source.id,
+        }),
+      ).resolves.toHaveLength(25);
+    } finally {
+      fetchSpy.mockRestore();
+      service.plaidManagedClientCache = null;
+    }
+  });
+
+  it("rejects a Plaid cursor cycle without advancing state or persisting a partial delta", async () => {
+    let page = 0;
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/exchange")) {
+          return Response.json({
+            connectionId: "33333333-3333-4333-8333-333333333334",
+            environment: "sandbox",
+            institution: {
+              institutionId: "ins-cycle",
+              institutionName: "Cycle Bank",
+              primaryAccountMask: null,
+              accounts: [],
+            },
+          });
+        }
+        if (url.endsWith("/sync")) {
+          page += 1;
+          return Response.json({
+            added: [plaidTransaction(`cycle-page-${page}`)],
+            modified: [],
+            removed: [],
+            nextCursor: page === 1 ? "cursor-a" : "",
             hasMore: true,
           });
         }
@@ -344,7 +410,8 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
 
       await expect(
         service.syncPlaidTransactions({ sourceId: source.id }),
-      ).rejects.toThrow("Plaid sync exceeded the 20-page safety limit");
+      ).rejects.toThrow("Plaid sync returned a repeated pagination cursor");
+      expect(page).toBe(2);
 
       const stored = await repository.getPaymentSource(
         runtime.agentId,

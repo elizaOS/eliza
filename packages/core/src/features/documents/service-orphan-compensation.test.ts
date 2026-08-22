@@ -303,7 +303,6 @@ describe("addDocument orphan compensation (#16021)", () => {
 			{
 				includeFilename: options.originalFilename,
 				contentType: options.contentType,
-				maxChars: 2_000,
 			},
 		) as UUID;
 
@@ -336,7 +335,6 @@ describe("addDocument orphan compensation (#16021)", () => {
 			{
 				includeFilename: options.originalFilename,
 				contentType: options.contentType,
-				maxChars: 2_000,
 			},
 		) as UUID;
 		await runtime.createMemory(

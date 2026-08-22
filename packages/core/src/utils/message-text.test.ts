@@ -25,6 +25,14 @@ describe("getUserMessageText", () => {
 			"Can you tell me what elizaOS is?",
 		);
 	});
+
+	it("preserves user text beyond the former 100,000-character ceiling", () => {
+		const text = `${"a".repeat(1_100_000)}TAIL_SENTINEL`;
+		const message = { content: { text } } as unknown as Memory;
+
+		expect(getUserMessageText(message)).toBe(text);
+		expect(getUserMessageText(message)).toContain("TAIL_SENTINEL");
+	});
 });
 
 // The exact model-facing wrapper that chat-augmentation.ts assembles around a

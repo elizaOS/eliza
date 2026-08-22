@@ -7,7 +7,6 @@ import { getEventListeners } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getMcpServerDetails,
-  MAX_MCP_MARKETPLACE_PAGES,
   McpMarketplaceError,
   searchMcpMarketplace,
 } from "../src/mcp-marketplace.js";
@@ -333,11 +332,11 @@ describe("MCP marketplace client", () => {
     );
   });
 
-  it("allows a match on the final page in the request budget", async () => {
+  it("allows a match beyond the former fixed page ceiling", async () => {
     let callIndex = 0;
     fetchMock.mockImplementation(async () => {
       callIndex += 1;
-      if (callIndex === MAX_MCP_MARKETPLACE_PAGES) {
+      if (callIndex === 201) {
         return jsonResponse(
           registryPage([
             {
@@ -355,7 +354,7 @@ describe("MCP marketplace client", () => {
     await expect(searchMcpMarketplace("last page", 1)).resolves.toEqual({
       results: [expect.objectContaining({ name: "io.example/final-page" })],
     });
-    expect(fetchMock).toHaveBeenCalledTimes(MAX_MCP_MARKETPLACE_PAGES);
+    expect(fetchMock).toHaveBeenCalledTimes(201);
   });
 
   it("rejects a pagination cursor cycle before refetching it", async () => {
@@ -366,23 +365,6 @@ describe("MCP marketplace client", () => {
       message: expect.stringContaining("repeated a pagination cursor"),
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("rejects MCP registry pagination exceeding the maximum page limit", async () => {
-    let callIndex = 0;
-    fetchMock.mockImplementation(async () => {
-      callIndex += 1;
-      return jsonResponse(registryPage([], `runaway-cursor-${callIndex}`));
-    });
-
-    await expect(searchMcpMarketplace("unmatched-query", 10)).rejects.toMatchObject({
-      code: "invalid_response",
-      message: expect.stringContaining(
-        `pagination exceeded ${MAX_MCP_MARKETPLACE_PAGES} page limit`
-      ),
-    });
-
-    expect(fetchMock).toHaveBeenCalledTimes(MAX_MCP_MARKETPLACE_PAGES);
   });
 
   it("rejects declared and streamed responses over the configured byte cap", async () => {

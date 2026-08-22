@@ -150,6 +150,39 @@ async function generatedPrBody(workflowPath) {
 }
 
 describe("PR agent attribution", () => {
+  it("accepts an unattributed PR body in both library and CLI paths", () => {
+    const markdown = "Implements the linked issue with tests and evidence.";
+    const result = evaluatePrAttribution(markdown);
+    assert.equal(result.ok, true);
+    assert.equal(result.skipped, true);
+    assert.equal(result.attribution, null);
+
+    const cli = runAttributionCli(markdown);
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.match(cli.stdout, /No pull-request attribution block/);
+  });
+
+  it("validates a voluntary footer without requiring template rows", () => {
+    const footer = `AI provider/model: OpenAI / gpt-5.6-sol
+Client / agent tooling: Codex Desktop
+Contribution skill revision: elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza
+Attribution status: self-reported
+— [optional-proof]
+<!-- eliza-computer-attribution:v1 {"provider":"openai","model":"gpt-5.6-sol","client":"Codex Desktop","skill_revision":"elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza"} -->`;
+    const accepted = evaluatePrAttribution(footer);
+    assert.equal(accepted.ok, true);
+    assert.equal(accepted.skipped, false);
+    assert.deepEqual(accepted.attribution.modelIds, ["openai/gpt-5.6-sol"]);
+
+    const malformed = evaluatePrAttribution(
+      footer.replace('"model":"gpt-5.6-sol"', '"model":"wrong"'),
+    );
+    assert.equal(malformed.ok, false);
+    assert.ok(
+      malformed.findings.some((finding) => finding.id === "marker-model"),
+    );
+  });
+
   it("accepts one or more exact provider/model identifiers", () => {
     const result = evaluatePrAttribution(
       body({
@@ -441,71 +474,29 @@ Attribution status: self-reported
     );
   });
 
-  it("keeps PR template labels free of army terminal-footer collisions (#17855)", () => {
+  it("keeps the PR template free of mandatory attribution inputs", () => {
     const templatePath = path.join(
       repositoryRoot,
       ".github",
       "pull_request_template.md",
     );
     const template = readFileSync(templatePath, "utf8");
-    // Reserved by elizaOS/army leaderboard.ts attributionLineValues for the
-    // terminal footer — if the template reuses them, filling the template and
-    // appending the skill footer yields count=2 and drops the machine marker.
-    const reserved = [
-      /^-\s*Client \/ agent tooling\s*:/im,
-      /^-\s*Skill revision\s*:/im,
-      /^-\s*Contribution skill revision\s*:/im,
-      /^-\s*Attribution status\s*:/im,
-    ];
-    for (const pattern of reserved) {
-      assert.equal(
-        pattern.test(template),
-        false,
-        `PR template must not use reserved footer label matching ${pattern}`,
-      );
-    }
-    assert.match(template, /<!-- attribution-row:client -->/);
-    assert.match(template, /Agent tooling:/);
-    assert.match(template, /Skill path:/);
-    assert.match(template, /Provenance status:/);
-
-    // Filled template rows + full terminal footer must still pass the CI gate.
-    const filled = template
-      .replace(/`yes` \/ `no - human-only contribution`/, "yes")
-      .replace(
-        /`provider\/model-id` \/ `None - human-only contribution`/,
-        "`xai/grok-4.5`",
-      )
-      .replace(/`client-name` \/ `None - human-only contribution`/, "grok")
-      .replace(
-        /`owner\/repo@full-commit-sha:path` \/ `N\/A - no contribution skill used`/,
-        "`elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza`",
-      )
-      .replace(/`self-reported`/, "self-reported");
-    const withFooter = `${filled}
-
-AI provider/model: xai / grok-4.5
-Client / agent tooling: grok
-Contribution skill revision: elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza
-Attribution status: self-reported
-— [grok-krutftw]
-<!-- eliza-computer-attribution:v1 {"provider":"xai","model":"grok-4.5","client":"grok","skill_revision":"elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza"} -->
-`;
-    const result = evaluatePrAttribution(withFooter);
-    assert.equal(
-      result.ok,
-      true,
-      result.findings.map((finding) => finding.message).join("; "),
-    );
+    assert.doesNotMatch(template, /contribution-attribution:v1/);
+    assert.doesNotMatch(template, /attribution-row:/);
+    assert.doesNotMatch(template, /Model\(s\) used:/);
+    const result = evaluatePrAttribution(template);
+    assert.equal(result.ok, true);
+    assert.equal(result.skipped, true);
+    assert.equal(result.attribution, null);
   });
 
-  it("rejects missing markers and rows even when prose names a model", () => {
+  it("accepts prose that names a model without declaring attribution", () => {
     const result = evaluatePrAttribution(
       "Built with openai/gpt-5.6-sol using Codex Desktop.",
     );
-    assert.equal(result.ok, false);
-    assert.ok(result.findings.some((finding) => finding.id === "marker"));
-    assert.ok(result.findings.some((finding) => finding.id === "models"));
+    assert.equal(result.ok, true);
+    assert.equal(result.skipped, true);
+    assert.equal(result.attribution, null);
   });
 
   it("rejects duplicate blocks and row markers instead of choosing one", () => {

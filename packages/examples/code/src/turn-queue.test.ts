@@ -2,7 +2,7 @@
 //
 // Queue-and-send + abort-key semantics for the eliza-code TUI (#11294):
 // * Enter during a running turn buffers the submission (no second concurrent
-//   turn) and fires it when the turn completes — opencode behavior.
+//   turn) and fires it when the turn completes.
 // * Aborting a turn discards the queue ("stop everything").
 // * A second Ctrl+C while an aborted turn is still unwinding quits the app
 //   instead of being eaten; Ctrl+C when idle quits on the first press.

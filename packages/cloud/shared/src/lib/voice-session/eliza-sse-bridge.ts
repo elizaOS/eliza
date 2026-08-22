@@ -650,12 +650,17 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
         : typeof data?.actionName === "string"
           ? data.actionName
           : null;
-    if (actionName?.toUpperCase() !== "VIEWS" || !isRecord(candidate.values)) {
+    if (!isRecord(candidate.values)) {
       continue;
     }
+    const normalizedActionName = actionName?.toUpperCase();
     const mode = readBoundedString(candidate.values.mode)?.toLowerCase();
     const viewId = readBoundedString(candidate.values.viewId);
-    if ((mode !== "show" && mode !== "open") || !viewId) continue;
+    if (!viewId) continue;
+    const isViewsHandoff = normalizedActionName === "VIEWS" && (mode === "show" || mode === "open");
+    const isAppBrowserHandoff =
+      normalizedActionName === "APP" && mode === "launch" && viewId === "browser";
+    if (!isViewsHandoff && !isAppBrowserHandoff) continue;
     const viewPath = readBoundedString(candidate.values.viewPath);
     const subview = readBoundedString(candidate.values.subview);
     return {

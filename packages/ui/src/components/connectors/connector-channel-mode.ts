@@ -12,7 +12,7 @@ import { shellLocalStorage } from "../../surface-realm-channel";
 /**
  * The two ways a connector channel can relate to the agent:
  * - `"delegate"` — the agent acts through the owner's own account on the
- *   platform (personal Telegram, WhatsApp QR pairing, Signal device link,
+ *   platform (personal Telegram, WhatsApp QR pairing,
  *   iMessage on the owner's number, …).
  * - `"bot"` — the agent is its own bot identity on the platform (bot tokens,
  *   OAuth workspace bots, hosted cloud gateways) that the owner chats with.

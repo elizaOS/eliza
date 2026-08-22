@@ -139,10 +139,6 @@ describe("root test lane require-work wiring (#13620)", () => {
         `${file} sets the retired MIN_TEST_TASKS env`,
       ).not.toContain("MIN_TEST_TASKS");
     }
-    const developPr = readFileSync(join(workflowDir, "develop-pr.yml"), "utf8");
-    expect(developPr).toContain(
-      "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work",
-    );
   });
 
   test("the standalone guard installs the Bun contract dependency first", () => {

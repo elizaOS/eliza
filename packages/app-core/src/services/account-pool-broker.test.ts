@@ -6,7 +6,26 @@
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import type { AccountPool } from "./account-pool.js";
-import { AccountPoolBroker } from "./account-pool-broker.js";
+import {
+  AccountPoolBroker,
+  parseBrokerReportRequest,
+} from "./account-pool-broker.js";
+
+describe("account-pool broker report admission", () => {
+  it("preserves admitted model identifiers and rejects oversized values atomically", () => {
+    const model = `${"m".repeat(120)}tail-id`;
+    expect(
+      parseBrokerReportRequest({ leaseId: "lease", ok: true, model }),
+    ).toMatchObject({ model });
+    expect(
+      parseBrokerReportRequest({
+        leaseId: "lease",
+        ok: true,
+        model: "m".repeat(129),
+      }),
+    ).toBeNull();
+  });
+});
 
 function account(
   overrides: Partial<LinkedAccountConfig> = {},

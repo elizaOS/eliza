@@ -85,7 +85,7 @@ import {
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
 import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
-import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
+import { OverlayAppSurface } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { AgentAuthGateSurface } from "./components/auth/AgentAuthGateSurface";
@@ -161,6 +161,7 @@ import {
   getAppSlugFromPath,
   getWindowNavigationPath,
   isAospShellEnabled,
+  isAppWindowRoute,
   isRouteRootPath,
   NATIVE_OS_VIEW_IDS,
   pathForTab,
@@ -233,10 +234,12 @@ import { fetchWithCsrf } from "./api/csrf-client";
 // view, so importing through it folds all of them back into the main chunk.
 import {
   type AppShellPageRegistration,
+  appShellAgentSurfaceDescriptor,
   appShellPageIsAvailable,
   appShellPageMatchesPath,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
+  requireRegisteredAgentSurface,
   subscribeAppShellPages,
 } from "./app-shell-registry";
 import {
@@ -593,6 +596,9 @@ function RegisteredAppShellPage({
 }: {
   registration: AppShellPageRegistration;
 }) {
+  const bridge = requireRegisteredAgentSurface(
+    appShellAgentSurfaceDescriptor(registration),
+  );
   let content: ReactNode;
   if (registration.Component) {
     const Component = registration.Component;
@@ -627,7 +633,7 @@ function RegisteredAppShellPage({
   // capability bridge for them. This keeps registry pages and remote bundles
   // equivalent: controls registered with useAgentElement are live immediately.
   return (
-    <ShellViewAgentSurface viewId={registration.id}>
+    <ShellViewAgentSurface viewId={bridge.viewId} surfaceKind={bridge.kind}>
       {content}
     </ShellViewAgentSurface>
   );
@@ -2356,6 +2362,7 @@ function AppContent() {
     t: s.t,
   }));
   const isPopout = useIsPopout();
+  const isAuxiliaryAppWindow = isAppWindowRoute();
   const shellMode = useShellMode();
   // Register the developer-only sandboxed-iframe consumer once at boot (#14180),
   // so the level has a shipped, navigable first-party view. Idempotent.
@@ -3366,25 +3373,17 @@ function AppContent() {
           </div>
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
-        {resolvedOverlayApp &&
-          (() => {
-            const exitToApps = () => {
+        {resolvedOverlayApp ? (
+          <OverlayAppSurface
+            app={resolvedOverlayApp}
+            exitToApps={() => {
               setState("activeOverlayApp", null);
               setTab("apps");
-            };
-            const theme = uiTheme === "dark" ? "dark" : "light";
-            const LazyOverlay = getOverlayAppLazyComponent(resolvedOverlayApp);
-            if (LazyOverlay) {
-              return (
-                <Suspense fallback={null}>
-                  <LazyOverlay exitToApps={exitToApps} uiTheme={theme} t={t} />
-                </Suspense>
-              );
-            }
-            const Component = resolvedOverlayApp.Component;
-            if (!Component) return null;
-            return <Component exitToApps={exitToApps} uiTheme={theme} t={t} />;
-          })()}
+            }}
+            uiTheme={uiTheme === "dark" ? "dark" : "light"}
+            t={t}
+          />
+        ) : null}
 
         {/* Persistent game overlay — stays visible across all tabs */}
         {activeGameViewerUrl &&
@@ -3392,46 +3391,44 @@ function AppContent() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {/*
-          Chat overlay (ChatOverlay) — one ambient glass
-          conversation (the app's single active conversation via
-          useShellController) that floats over EVERY view, including the /chat
-          route (whose base is now just ambient space). It survives tab/view
-          changes because it renders here in the persistent sibling region, and
-          is pointer-events-none except its own composer/messages, so the view
-          behind stays live.
+          Chat overlay (ChatOverlay) — one ambient glass conversation in the
+          primary shell. Native auxiliary app windows (`?appWindow=1`) are
+          dedicated workspaces; mounting another onboarding-pinned overlay in
+          each of them occludes their controls and duplicates the headless chat
+          conductors already owned by the primary/chat-overlay window.
         */}
-        <ChatOverlayMount
-          releaseFirstRunToFull={firstRunChatRelease.releasePending}
-          onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
-          onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
-          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
-        />
-        {/* In-chat first-run conductor (headless) — while firstRunComplete is
-            false it seeds the onboarding greeting + choices into the SAME live
-            transcript the overlay renders and routes first-run picks to the
-            headless finish use case. Renders null. */}
-        <FirstRunConductorMount
-          onFirstRunTranscriptMounted={
-            firstRunChatRelease.recordMountedTranscript
-          }
-          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
-          firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
-        />
-        {/* In-chat model-status card (headless) — while the local text model is
-            downloading/loading/missing/errored it seeds ONE live status turn
-            with cancel / switch-to-cloud / retry controls. Renders null. */}
-        <ModelStatusConductorMount />
-        {/* In-chat boot-recovery card (headless) — a stalled boot or a failed
-            dedicated-agent handoff seeds ONE live turn with re-log-in /
-            try-again / retry-setup controls; the transcript is the only boot
-            status surface (no floating banner). Renders null. */}
-        <BootRecoveryConductorMount />
-        {/* In-chat tutorial conductor (headless) — while the tour is active it
-            seeds one conversational turn per step into the SAME live transcript
-            the overlay renders, narrates through the real voice engine, and
-            auto-advances on the user's real actions. No locks, no spotlight:
-            the user can ignore it freely. */}
-        <TutorialConductorMount />
+        {!isAuxiliaryAppWindow ? (
+          <>
+            <ChatOverlayMount
+              releaseFirstRunToFull={firstRunChatRelease.releasePending}
+              onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+              onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+              firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+            />
+            {/* In-chat first-run conductor (headless) — while firstRunComplete
+                is false it seeds the onboarding greeting + choices into the
+                SAME live transcript the overlay renders and routes first-run
+                picks to the headless finish use case. Renders null. */}
+            <FirstRunConductorMount
+              onFirstRunTranscriptMounted={
+                firstRunChatRelease.recordMountedTranscript
+              }
+              firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+              firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
+            />
+            {/* In-chat model-status card (headless) — while the local text
+                model is downloading/loading/missing/errored it seeds ONE live
+                status turn with cancel / switch-to-cloud / retry controls. */}
+            <ModelStatusConductorMount />
+            {/* In-chat boot-recovery card (headless) — a stalled boot or a
+                failed dedicated-agent handoff seeds ONE live turn with
+                re-log-in / try-again / retry-setup controls. */}
+            <BootRecoveryConductorMount />
+            {/* In-chat tutorial conductor (headless) — narrates one live
+                transcript turn per step in the primary conversation only. */}
+            <TutorialConductorMount />
+          </>
+        ) : null}
         {/* Post-login permission priming: a one-time soft-ask modal that walks
             the user through the platform's onboarding permission set (voice,
             location, notifications) BEFORE any OS prompt. Self-gates on

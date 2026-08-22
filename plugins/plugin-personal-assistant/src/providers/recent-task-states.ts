@@ -199,7 +199,7 @@ function summarizeEntries(
   return {
     summary: summaryLines.join("\n"),
     streaks,
-    notable: acc.notable.slice(0, 10),
+    notable: acc.notable,
   };
 }
 

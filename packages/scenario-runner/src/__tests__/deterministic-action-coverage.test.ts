@@ -33,7 +33,10 @@ import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
 import workflowPlugin from "@elizaos/plugin-workflow";
-import type { ScenarioTurn } from "@elizaos/scenario-runner/schema";
+import type {
+  ScenarioDefinition,
+  ScenarioTurn,
+} from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import mcpPlugin from "../../../../plugins/plugin-mcp/src/index.ts";
 import { loadAllScenarios, loadScenarioMetadataFile } from "../loader";
@@ -81,7 +84,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "ACCOUNTS_COMMAND",
     "BACKEND_COMMAND",
     "COMMANDS_COMMAND",
-    "COMPACT_COMMAND",
     "CONTEXT_COMMAND",
     "ELEVATED_COMMAND",
     "HELP_COMMAND",
@@ -220,13 +222,12 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "MODEL_SWITCH",
   // Local-inference management action; no deterministic keyless scenario yet.
   "LOCAL_INFERENCE",
-  // plugin-commands slash-command actions (/help, /status, /reset, /compact,
+  // plugin-commands slash-command actions (/help, /status, /reset,
   // /think, /model, /tts, …) are dispatched through the command palette, not
   // the keyless scenario pipeline, so they have no deterministic scenario yet.
   "ACCOUNTS_COMMAND",
   "BACKEND_COMMAND",
   "COMMANDS_COMMAND",
-  "COMPACT_COMMAND",
   "CONTEXT_COMMAND",
   "ELEVATED_COMMAND",
   "HELP_COMMAND",
@@ -1017,9 +1018,9 @@ async function scenarioSourceById(id: string): Promise<string | null> {
   return null;
 }
 
-async function loadedScenarioById(id: string): Promise<{
-  turns: readonly ScenarioTurn[];
-} | null> {
+async function loadedScenarioById(
+  id: string,
+): Promise<ScenarioDefinition | null> {
   const loaded = await loadAllScenarios(scenarioDir);
   return loaded.find((entry) => entry.scenario.id === id)?.scenario ?? null;
 }
@@ -1267,13 +1268,35 @@ describe("deterministic action coverage", () => {
           `${id}: expected at least ${spec.minMessageTurns} message turns, saw ${messageTurns}`,
         );
       }
-      if (!/scenarioModelFixtures\?\.register\(/.test(fixtureSource)) {
+      const authoredFixtures =
+        scenario.modelFixtures?.mode === "fixtures"
+          ? scenario.modelFixtures.fixtures
+          : [];
+      const hasAuthoredModelType = (
+        modelType: "RESPONSE_HANDLER" | "ACTION_PLANNER",
+      ): boolean =>
+        authoredFixtures.some((fixture) => {
+          const declared = fixture.match.modelType;
+          return Array.isArray(declared)
+            ? declared.some((candidate) => candidate === modelType)
+            : declared === modelType;
+        });
+      if (
+        authoredFixtures.length === 0 &&
+        !/scenarioModelFixtures\?\.register\(/.test(fixtureSource)
+      ) {
         problems.push(`${id}: no scenarioModelFixtures.register call`);
       }
-      if (!fixtureSource.includes("ModelType.RESPONSE_HANDLER")) {
+      if (
+        !hasAuthoredModelType("RESPONSE_HANDLER") &&
+        !fixtureSource.includes("ModelType.RESPONSE_HANDLER")
+      ) {
         problems.push(`${id}: no RESPONSE_HANDLER fixture`);
       }
-      if (!fixtureSource.includes("ModelType.ACTION_PLANNER")) {
+      if (
+        !hasAuthoredModelType("ACTION_PLANNER") &&
+        !fixtureSource.includes("ModelType.ACTION_PLANNER")
+      ) {
         problems.push(`${id}: no ACTION_PLANNER fixture`);
       }
       for (const actionName of spec.actionNames) {

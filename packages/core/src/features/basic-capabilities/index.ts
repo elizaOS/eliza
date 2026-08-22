@@ -247,7 +247,7 @@ function textContainsAgentName(
 		return false;
 	}
 
-	const safeText = truncateWellFormed(toWellFormedUnicode(text), 10_000);
+	const safeText = toWellFormedUnicode(text);
 	return names.some((name) => {
 		const candidate = name?.trim();
 		if (!candidate) {
@@ -267,7 +267,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = truncateWellFormed(toWellFormedUnicode(text), 10_000);
+	const safeText = toWellFormedUnicode(text);
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 

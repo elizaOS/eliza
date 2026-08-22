@@ -52,8 +52,7 @@ export const AUTONOMY_TASK_NAME = "AUTONOMY_THINK" as const;
 export const AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"] as const;
 const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 const AUTONOMY_RECENT_THOUGHT_LIMIT = 10;
-const AUTONOMY_CONTEXT_MEMORY_LIMIT = 80;
-const AUTONOMY_COMPACTED_MAX_CHARS = 4_000;
+const _AUTONOMY_COMPACTED_MAX_CHARS = 4_000;
 const AUTONOMY_INCLUDE_ALL_ROOMS_SETTING = "AUTONOMY_INCLUDE_ALL_ROOMS";
 
 interface AutonomyCompactionCacheEntry {
@@ -197,7 +196,6 @@ export class AutonomyService extends Service {
 
 		const autonomyMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			limit: AUTONOMY_CONTEXT_MEMORY_LIMIT,
 			tableName: "memories",
 		});
 		const autonomySection =
@@ -223,13 +221,11 @@ export class AutonomyService extends Service {
 		const messageRoomIds = orderedRoomIds.filter(
 			(roomId) => roomId !== this.autonomousRoomId,
 		);
-		const perRoomLimit = 10;
 		const messages =
 			messageRoomIds.length > 0
 				? await this.runtime.getMemoriesByRoomIds({
 						tableName: "messages",
 						roomIds: messageRoomIds,
-						limit: perRoomLimit * messageRoomIds.length,
 					})
 				: [];
 
@@ -251,9 +247,6 @@ export class AutonomyService extends Service {
 				continue;
 			}
 			const bucket = messagesByRoom.get(memory.roomId) ?? [];
-			if (bucket.length >= perRoomLimit) {
-				continue;
-			}
 			bucket.push(memory);
 			messagesByRoom.set(memory.roomId, bucket);
 		}
@@ -411,35 +404,17 @@ export class AutonomyService extends Service {
 
 	private compactAutonomyThoughtsDeterministically(memories: Memory[]): string {
 		const importantLines: string[] = [];
-		const seen = new Set<string>();
 		for (const memory of memories) {
-			const text = this.readMemoryText(memory).replace(/\s+/g, " ").trim();
+			const text = toWellFormedUnicode(this.readMemoryText(memory)).trim();
 			if (!text) {
 				continue;
 			}
-			const normalized = text.toLowerCase();
-			if (seen.has(normalized)) {
-				continue;
-			}
-			seen.add(normalized);
 			const marker = new Date(memory.createdAt ?? Date.now()).toISOString();
-			importantLines.push(`- ${marker}: ${truncateWellFormed(text, 500)}`);
+			importantLines.push(`- ${marker}: ${text}`);
 		}
 
-		const header = `Compacted ${memories.length} prior autonomous thoughts. Preserve standing goals, unresolved blockers, commitments, and recently discovered facts:`;
-		let summary = [header, ...importantLines].join("\n");
-		if (summary.length > AUTONOMY_COMPACTED_MAX_CHARS) {
-			const tailBudget = Math.max(
-				0,
-				AUTONOMY_COMPACTED_MAX_CHARS - header.length - 16,
-			);
-			const tail = importantLines
-				.join("\n")
-				.slice(-tailBudget)
-				.replace(/^[^\n]*\n?/, "");
-			summary = [header, "...", tail].filter(Boolean).join("\n");
-		}
-		return summary;
+		const header = `${memories.length} prior autonomous thoughts:`;
+		return [header, ...importantLines].join("\n");
 	}
 
 	constructor() {
