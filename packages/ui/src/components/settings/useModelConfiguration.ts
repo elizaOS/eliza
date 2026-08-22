@@ -17,6 +17,8 @@
  * pinned codex-acp adapter's parseable set even though the catalog lists
  * `max`/`ultra` for some models — offering those would be a guaranteed 400.
  */
+
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -97,6 +99,29 @@ const CODING_CATALOG_PROVIDERS: Partial<
   opencode: "cerebras",
 };
 
+const ACCOUNT_PROVIDER_LABELS: Readonly<Record<string, string>> = {
+  "anthropic-subscription": "Claude subscription",
+  "anthropic-api": "Anthropic API",
+  "openai-codex": "OpenAI Codex subscription",
+  "openai-api": "OpenAI API",
+  "deepseek-api": "DeepSeek API",
+  "zai-api": "z.ai API",
+  "moonshot-api": "Kimi / Moonshot API",
+  "cerebras-api": "Cerebras API",
+  "openrouter-api": "OpenRouter credits or BYOK",
+  "xai-api": "xAI API (not Grok subscription)",
+};
+
+function accountProviderOptions(backend: ModelsConfigCodingBackend) {
+  const persistedBackend = backend === "eliza-code" ? "elizaos" : backend;
+  return (CODING_AGENT_BACKEND_PROVIDERS[persistedBackend] ?? []).map(
+    (providerId) => ({
+      value: providerId,
+      label: ACCOUNT_PROVIDER_LABELS[providerId] ?? providerId,
+    }),
+  );
+}
+
 const SAVED_STATE_TTL_MS = 2500;
 const RESTART_POLL_INTERVAL_MS = 1000;
 const RESTART_MAX_WAIT_MS = 60_000;
@@ -151,15 +176,34 @@ export interface ModelConfigCodingGroup {
   freeFormModel: boolean;
   modelOptions: ModelCatalogEntry[];
   model: string;
+  fastModel: string;
   effortOptions: string[];
   effort: string;
   selectedEntry: ModelCatalogEntry | null;
   configured: ConfiguredValue | null;
   save: ModelGroupSaveState;
+  fallbackBackends: ModelsConfigCodingBackend[];
+  approvalPreset: NonNullable<ModelsConfigWriteRequest["approvalPreset"]>;
+  accountStrategy: NonNullable<ModelsConfigWriteRequest["accountStrategy"]>;
+  billingMode: NonNullable<ModelsConfigWriteRequest["billingMode"]>;
+  accountProvider: string | null;
+  accountProviderOptions: Array<{ value: string; label: string }>;
   setBackend: (backend: ModelsConfigCodingBackend) => void;
   setModel: (model: string) => void;
+  setFastModel: (model: string) => void;
   setEffort: (effort: string) => void;
   setMakeDefault: (makeDefault: boolean) => void;
+  setFallbackBackend: (index: number, backend: string) => void;
+  setApprovalPreset: (
+    value: NonNullable<ModelsConfigWriteRequest["approvalPreset"]>,
+  ) => void;
+  setAccountStrategy: (
+    value: NonNullable<ModelsConfigWriteRequest["accountStrategy"]>,
+  ) => void;
+  setBillingMode: (
+    value: NonNullable<ModelsConfigWriteRequest["billingMode"]>,
+  ) => void;
+  setAccountProvider: (value: string) => void;
   saveNow: () => void;
 }
 
@@ -183,6 +227,7 @@ interface ChatDraft {
 
 interface CodingDraft {
   model: string;
+  fastModel: string;
   effort: string;
   configured: ConfiguredValue | null;
 }
@@ -333,6 +378,12 @@ function resolveCodingDraft(
   const effortOptions = entry ? codingEffortOptions(backend, entry) : [];
   return {
     model,
+    fastModel:
+      effective(
+        config,
+        "coding",
+        `${CODING_MODEL_KEYS[backend].replace("POWERFUL", "FAST")}`,
+      )?.value ?? "",
     effort:
       effortValue !== undefined && effortOptions.includes(effortValue)
         ? effortValue
@@ -459,10 +510,23 @@ export function useModelConfiguration(
   const [codingDrafts, setCodingDrafts] = useState<
     Record<ModelsConfigCodingBackend, CodingDraft>
   >({
-    codex: { model: "", effort: "", configured: null },
-    claude: { model: "", effort: "", configured: null },
-    opencode: { model: "", effort: "", configured: null },
-    "eliza-code": { model: "", effort: "", configured: null },
+    codex: { model: "", fastModel: "", effort: "", configured: null },
+    claude: { model: "", fastModel: "", effort: "", configured: null },
+    opencode: { model: "", fastModel: "", effort: "", configured: null },
+    "eliza-code": { model: "", fastModel: "", effort: "", configured: null },
+  });
+  const [codingPolicy, setCodingPolicy] = useState<{
+    fallbackBackends: ModelsConfigCodingBackend[];
+    approvalPreset: NonNullable<ModelsConfigWriteRequest["approvalPreset"]>;
+    accountStrategy: NonNullable<ModelsConfigWriteRequest["accountStrategy"]>;
+    billingMode: NonNullable<ModelsConfigWriteRequest["billingMode"]>;
+    accountProvider: string;
+  }>({
+    fallbackBackends: [],
+    approvalPreset: "standard",
+    accountStrategy: "least-used",
+    billingMode: "automatic",
+    accountProvider: "openai-codex",
   });
   const [persistedDefaultBackend, setPersistedDefaultBackend] =
     useState<ModelsConfigCodingBackend | null>(null);
@@ -508,6 +572,45 @@ export function useModelConfiguration(
       claude: resolveCodingDraft("claude", data.catalog, data.config),
       opencode: resolveCodingDraft("opencode", data.catalog, data.config),
       "eliza-code": resolveCodingDraft("eliza-code", data.catalog, data.config),
+    });
+    const coding = data.config.targets.coding;
+    const parseList = (key: string) =>
+      (coding[key]?.value ?? "")
+        .split(",")
+        .map((value) =>
+          value.trim() === "elizaos" ? "eliza-code" : value.trim(),
+        )
+        .filter((value): value is ModelsConfigCodingBackend =>
+          CODING_BACKEND_OPTIONS.some((option) => option.value === value),
+        );
+    const approval = coding.ELIZA_DEFAULT_APPROVAL_PRESET?.value;
+    const strategy = coding.ELIZA_CODING_ACCOUNT_STRATEGY?.value;
+    const billing = coding.ELIZA_CODING_BILLING_MODE?.value;
+    const accountProvider = coding.ELIZA_CODING_ACCOUNT_PROVIDER?.value;
+    setCodingPolicy({
+      fallbackBackends: parseList("ELIZA_CODING_FALLBACK_BACKENDS"),
+      approvalPreset:
+        approval === "readonly" ||
+        approval === "permissive" ||
+        approval === "autonomous"
+          ? approval
+          : "standard",
+      accountStrategy:
+        strategy === "priority" ||
+        strategy === "round-robin" ||
+        strategy === "quota-aware"
+          ? strategy
+          : "least-used",
+      billingMode:
+        billing === "subscription" ||
+        billing === "subscription-plus-overage" ||
+        billing === "api" ||
+        billing === "credits" ||
+        billing === "byok" ||
+        billing === "cloud"
+          ? billing
+          : "automatic",
+      accountProvider: accountProvider ?? "openai-codex",
     });
   }, []);
 
@@ -806,6 +909,16 @@ export function useModelConfiguration(
 
       const setBackend = (backend: ModelsConfigCodingBackend) => {
         setCodingBackend(backend);
+        const providers = accountProviderOptions(backend);
+        setCodingPolicy((previous) => ({
+          ...previous,
+          accountProvider:
+            providers.find(
+              (provider) => provider.value === previous.accountProvider,
+            )?.value ??
+            providers[0]?.value ??
+            "",
+        }));
         setMakeDefault(backend === persistedDefaultBackend);
         setSaveState("coding", { phase: "idle" });
       };
@@ -843,6 +956,28 @@ export function useModelConfiguration(
         }));
         setSaveState("coding", { phase: "idle" });
       };
+      const setFastModel = (fastModel: string) => {
+        setCodingDrafts((prev) => ({
+          ...prev,
+          [codingBackend]: { ...prev[codingBackend], fastModel },
+        }));
+        setSaveState("coding", { phase: "idle" });
+      };
+      const setFallbackBackend = (index: number, value: string) => {
+        setCodingPolicy((previous) => {
+          const next = [...previous.fallbackBackends];
+          if (value === "__none__") next.splice(index, 1);
+          else next[index] = value as ModelsConfigCodingBackend;
+          return {
+            ...previous,
+            fallbackBackends: next.filter(
+              (backend, position, all) =>
+                backend !== codingBackend && all.indexOf(backend) === position,
+            ),
+          };
+        });
+        setSaveState("coding", { phase: "idle" });
+      };
       const saveNow = () => {
         if (!draft.model.trim()) return;
         if (save.phase === "saving" || save.phase === "restarting") return;
@@ -850,10 +985,20 @@ export function useModelConfiguration(
           target: "coding",
           backend: codingBackend,
           model: draft.model.trim(),
+          ...(draft.fastModel.trim()
+            ? { fastModel: draft.fastModel.trim() }
+            : {}),
           ...(draft.effort && CODING_EFFORT_KEYS[codingBackend]
             ? { effort: draft.effort }
             : {}),
           ...(makeDefault ? { defaultBackend: codingBackend } : {}),
+          fallbackBackends: codingPolicy.fallbackBackends,
+          approvalPreset: codingPolicy.approvalPreset,
+          accountStrategy: codingPolicy.accountStrategy,
+          ...(codingPolicy.accountProvider
+            ? { accountProvider: codingPolicy.accountProvider }
+            : {}),
+          billingMode: codingPolicy.billingMode,
         });
       };
 
@@ -865,21 +1010,47 @@ export function useModelConfiguration(
         freeFormModel,
         modelOptions,
         model: draft.model,
+        fastModel: draft.fastModel,
         effortOptions,
         effort: draft.effort,
         selectedEntry,
         configured: draft.configured,
         save,
+        fallbackBackends: codingPolicy.fallbackBackends,
+        approvalPreset: codingPolicy.approvalPreset,
+        accountStrategy: codingPolicy.accountStrategy,
+        billingMode: codingPolicy.billingMode,
+        accountProvider: codingPolicy.accountProvider || null,
+        accountProviderOptions: accountProviderOptions(codingBackend),
         setBackend,
         setModel,
+        setFastModel,
         setEffort,
         setMakeDefault,
+        setFallbackBackend,
+        setApprovalPreset: (approvalPreset) => {
+          setCodingPolicy((previous) => ({ ...previous, approvalPreset }));
+          setSaveState("coding", { phase: "idle" });
+        },
+        setAccountStrategy: (accountStrategy) => {
+          setCodingPolicy((previous) => ({ ...previous, accountStrategy }));
+          setSaveState("coding", { phase: "idle" });
+        },
+        setBillingMode: (billingMode) => {
+          setCodingPolicy((previous) => ({ ...previous, billingMode }));
+          setSaveState("coding", { phase: "idle" });
+        },
+        setAccountProvider: (accountProvider) => {
+          setCodingPolicy((previous) => ({ ...previous, accountProvider }));
+          setSaveState("coding", { phase: "idle" });
+        },
         saveNow,
       };
     },
     [
       codingBackend,
       codingDrafts,
+      codingPolicy,
       makeDefault,
       performSave,
       persistedDefaultBackend,

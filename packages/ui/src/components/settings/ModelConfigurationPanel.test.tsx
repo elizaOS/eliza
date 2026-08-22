@@ -536,6 +536,11 @@ describe("coding save flow", () => {
         // codex is the persisted ELIZA_DEFAULT_AGENT_TYPE, so the default
         // switch is prefilled on.
         defaultBackend: "codex",
+        fallbackBackends: [],
+        approvalPreset: "standard",
+        accountStrategy: "least-used",
+        accountProvider: "openai-codex",
+        billingMode: "automatic",
       }),
     );
 
@@ -563,6 +568,10 @@ describe("coding save flow", () => {
         target: "coding",
         backend: "eliza-code",
         model: "my-house-model",
+        fallbackBackends: [],
+        approvalPreset: "standard",
+        accountStrategy: "least-used",
+        billingMode: "automatic",
       }),
     );
   });

@@ -38,6 +38,7 @@ import {
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
+import { readConfigEnvKey } from "../services/config-env.js";
 import {
   collisionProviderFromWorkspaceService,
   LanePlannerService,
@@ -324,6 +325,50 @@ function parseAgentPrefix(
     return { task: part, agentType: fallbackAgentType };
   }
   return { agentType: candidate, task: match[2] ?? part };
+}
+
+/**
+ * Evaluate the selected backend and its persisted fallback order against the
+ * same live preflight inventory exposed to Settings. The first installed,
+ * non-unauthenticated route wins; an exhausted order fails loudly before a
+ * session is created.
+ */
+export async function resolveReadyCodingBackend(
+  service: ReturnType<typeof getAcpService> & {},
+  selected: string,
+): Promise<AgentType> {
+  const fallback = (readConfigEnvKey("ELIZA_CODING_FALLBACK_BACKENDS") ?? "")
+    .split(",")
+    .map((value) => normalizeTaskAgentAdapter(value))
+    .filter(
+      (value): value is string =>
+        Boolean(value) && value !== selected && KNOWN_ADAPTER_TYPES.has(value),
+    );
+  const candidates = [selected, ...new Set(fallback)];
+  if (candidates.length === 1 || !service.checkAvailableAgents) {
+    return selected as AgentType;
+  }
+  const readiness = await service.checkAvailableAgents(candidates);
+  const ready = candidates.find((candidate) => {
+    const row = readiness.find(
+      (entry) => String(entry.agentType ?? entry.adapter) === candidate,
+    );
+    return row?.installed === true && row.auth?.status !== "unauthenticated";
+  });
+  if (ready) return ready as AgentType;
+  throw new ElizaError("No configured coding backend route is ready", {
+    code: "CODING_POLICY_ROUTES_UNAVAILABLE",
+    context: {
+      selected,
+      fallback,
+      readiness: readiness.map((entry) => ({
+        backend: entry.agentType ?? entry.adapter,
+        installed: entry.installed,
+        auth: entry.auth?.status ?? "unknown",
+      })),
+    },
+    severity: "ephemeral",
+  });
 }
 
 function labelFrom(task: string, index: number): string {
@@ -1083,7 +1128,10 @@ async function runCreateLegacy(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
       const task = parsed.task;
-      const agentType = parsed.agentType as AgentType;
+      const agentType = await resolveReadyCodingBackend(
+        service,
+        parsed.agentType,
+      );
       const label = baseLabel ?? labelFrom(task, index);
       // A matching workdir route outranks a planner-guessed workdir; a
       // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
@@ -1817,12 +1865,16 @@ async function runSpawnAgent(
       tag: pickString(params, content, "taskComplexity"),
       plannerGuess: pickString(params, content, "agentType"),
     });
-    const agentType = (routed?.agentType ??
+    const selectedAgentType = (routed?.agentType ??
       (await service.resolveAgentType?.({
         task,
         workdir: pickString(params, content, "workdir"),
       })) ??
       "codex") as AgentType;
+    const agentType = await resolveReadyCodingBackend(
+      service,
+      selectedAgentType,
+    );
     // Resolve the spawn workdir. A matching `TASK_AGENT_WORKDIR_ROUTES`
     // route outranks the planner-supplied workdir — the planner just
     // guesses a path-shaped string from context, while a route is

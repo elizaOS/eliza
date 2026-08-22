@@ -7,13 +7,45 @@
  * Deterministic: assertions against helpers and stub runtimes, no live model.
  */
 import { ModelType, satisfiesRoleGate } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const configHarness = vi.hoisted(() => ({
+  config: { env: {} as Record<string, unknown> },
+  save: vi.fn(),
+}));
+
+vi.mock("../config/config.ts", () => ({
+  loadElizaConfig: () => configHarness.config,
+  saveElizaConfig: configHarness.save,
+}));
+
 import {
   hasLoadedTextProvider,
   normalizeCodingBackend,
   readBackendRouting,
   settingsAction,
 } from "./settings-actions.ts";
+
+beforeEach(() => {
+  configHarness.config.env = {};
+  configHarness.save.mockClear();
+});
+
+afterEach(() => {
+  for (const key of [
+    "ELIZA_DEFAULT_AGENT_TYPE",
+    "ELIZA_CODEX_MODEL_POWERFUL",
+    "ELIZA_CODEX_MODEL_FAST",
+    "ELIZA_CODING_FALLBACK_BACKENDS",
+    "ELIZA_DEFAULT_APPROVAL_PRESET",
+    "ELIZA_CODING_ACCOUNT_STRATEGY",
+    "ELIZA_CODING_ACCOUNT_IDS",
+    "ELIZA_CODING_ACCOUNT_PROVIDER",
+    "ELIZA_CODING_BILLING_MODE",
+  ]) {
+    delete process.env[key];
+  }
+});
 
 describe("owner gate on SETTINGS (show_backends / set_backend)", () => {
   // show_backends/set_backend are ops of the SETTINGS action, whose roleGate
@@ -171,5 +203,87 @@ describe("set_backend allow-list enforcement", () => {
         }
       ).default,
     ).toBeUndefined();
+  });
+});
+
+describe("SETTINGS full coding policy", () => {
+  const parameters = {
+    action: "set_backend",
+    axis: "coding",
+    backend: "codex",
+    model: "gpt-5.6-sol",
+    fastModel: "gpt-5.6-luna",
+    fallbackBackends: ["claude", "opencode"],
+    approvalPreset: "standard",
+    accountStrategy: "quota-aware",
+    accountIds: ["acct-primary", "acct-backup"],
+    accountProvider: "openai-codex",
+    billingMode: "subscription-plus-overage",
+  };
+
+  it.each(["chat", "voice"])(
+    "uses the same validated atomic policy contract from %s",
+    async (source) => {
+      const runtime = { character: { settings: {} } };
+      const result = await settingsAction.handler(
+        runtime as never,
+        { entityId: "owner", content: { source } } as never,
+        undefined,
+        { parameters } as never,
+      );
+
+      expect(result?.success).toBe(true);
+      expect(configHarness.save).toHaveBeenCalledTimes(1);
+      expect(configHarness.config.env).toMatchObject({
+        ELIZA_DEFAULT_AGENT_TYPE: "codex",
+        ELIZA_CODEX_MODEL_POWERFUL: "gpt-5.6-sol",
+        ELIZA_CODEX_MODEL_FAST: "gpt-5.6-luna",
+        ELIZA_CODING_FALLBACK_BACKENDS: "claude,opencode",
+        ELIZA_CODING_ACCOUNT_PROVIDER: "openai-codex",
+        ELIZA_CODING_ACCOUNT_IDS: "acct-primary,acct-backup",
+        ELIZA_CODING_BILLING_MODE: "subscription-plus-overage",
+      });
+      expect(JSON.stringify(result?.data)).not.toContain("credential");
+      expect(JSON.stringify(result?.data)).not.toContain("apiKey");
+    },
+  );
+
+  it("shows the effective non-secret policy", async () => {
+    configHarness.config.env = {
+      ELIZA_CODEX_MODEL_POWERFUL: "gpt-5.6-sol",
+      ELIZA_CODEX_MODEL_FAST: "gpt-5.6-luna",
+      ELIZA_CODING_FALLBACK_BACKENDS: "claude,opencode",
+      ELIZA_DEFAULT_APPROVAL_PRESET: "standard",
+      ELIZA_CODING_ACCOUNT_PROVIDER: "openai-codex",
+      ELIZA_CODING_ACCOUNT_STRATEGY: "quota-aware",
+      ELIZA_CODING_BILLING_MODE: "subscription-plus-overage",
+    };
+    const result = await settingsAction.handler(
+      { character: { settings: {} } } as never,
+      { entityId: "owner" } as never,
+      undefined,
+      { parameters: { action: "show_backends" } } as never,
+    );
+
+    expect(result?.text).toContain("powerful model: gpt-5.6-sol");
+    expect(result?.text).toContain("fallback order: claude,opencode");
+    expect(result?.text).toContain("billing: subscription-plus-overage");
+  });
+
+  it("rejects an incompatible account provider before saving", async () => {
+    const result = await settingsAction.handler(
+      { character: { settings: {} } } as never,
+      { entityId: "owner" } as never,
+      undefined,
+      {
+        parameters: {
+          ...parameters,
+          accountProvider: "anthropic-subscription",
+        },
+      } as never,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(configHarness.save).not.toHaveBeenCalled();
   });
 });

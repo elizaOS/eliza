@@ -477,6 +477,48 @@ const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";
 const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
+
+export function buildCodingPolicyMetadata(args: {
+  backend: string;
+  model?: string;
+  account: CodingAccountMeta | null;
+  approvalPreset: ApprovalPreset;
+  accountStrategy?: string;
+  readSetting?: (key: string) => string | undefined;
+}): Record<string, unknown> {
+  const readSetting = args.readSetting ?? readConfigEnvKey;
+  const billing = readSetting("ELIZA_CODING_BILLING_MODE")?.trim();
+  const billingMode =
+    billing === "subscription" ||
+    billing === "subscription-plus-overage" ||
+    billing === "api" ||
+    billing === "credits" ||
+    billing === "byok" ||
+    billing === "cloud"
+      ? billing
+      : "automatic";
+  return {
+    backend: args.backend,
+    provider: args.account?.providerId ?? null,
+    accountId: args.account?.accountId ?? null,
+    accountSource: args.account?.source ?? null,
+    model: args.model ?? null,
+    // Configuration records the operator's expected funding path. The ACP
+    // selection receipt can prove which credential source was used, but the
+    // provider does not report whether this task crossed into overage/credits
+    // at spawn time, so never present the declaration as a verified charge.
+    expectedBillingMode: billingMode,
+    observedCredentialSource: args.account?.source ?? null,
+    actualBillingMode: null,
+    billingVerification: "declared-only",
+    fallbackBackends: (readSetting("ELIZA_CODING_FALLBACK_BACKENDS") ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    approvalPreset: args.approvalPreset,
+    accountStrategy: args.accountStrategy ?? "least-used",
+  };
+}
 const _MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
@@ -1886,7 +1928,16 @@ export class AcpService extends Service {
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
-    const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
+    // Coding policy writes are restart-free. Re-read the config seam on every
+    // spawn so a Settings save immediately governs the next child instead of
+    // being shadowed by the service's constructor-time default.
+    const approvalPreset =
+      opts.approvalPreset ??
+      normalizeApprovalPreset(
+        readConfigEnvKey("ELIZA_DEFAULT_APPROVAL_PRESET") ??
+          this.setting("ELIZA_DEFAULT_APPROVAL_PRESET"),
+      ) ??
+      this.defaultApprovalPreset;
     // Orchestrated spawns (via tasks.ts → resolveSpawnWorkdir) always pass
     // opts.workdir, which already applies route/convention/explicit resolution
     // and the same ELIZA_ACP_WORKSPACE_ROOT/ACPX_DEFAULT_CWD settings, falling
@@ -1980,7 +2031,8 @@ export class AcpService extends Service {
       // sub-agent authenticates AS that account. Returns null (and we keep the
       // single-account behavior) when no accounts are linked.
       const accountStrategy = resolveCodingAccountStrategy(
-        this.setting("ELIZA_CODING_ACCOUNT_STRATEGY"),
+        readConfigEnvKey("ELIZA_CODING_ACCOUNT_STRATEGY") ??
+          this.setting("ELIZA_CODING_ACCOUNT_STRATEGY"),
       );
       // A host model gateway owns the billed transport for every backend. Do
       // not select or stamp a pooled account in that mode: its credential is
@@ -1988,13 +2040,49 @@ export class AcpService extends Service {
       // or affinity to it would be false. The gateway is resolved before the
       // pool call so selection itself cannot mutate account affinity.
       const gatewayControlsBilling = Boolean(resolveModelGatewayConfig());
+      const configuredAccountIds = (
+        readConfigEnvKey("ELIZA_CODING_ACCOUNT_IDS") ?? ""
+      )
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (gatewayControlsBilling && configuredAccountIds.length > 0) {
+        throw new ElizaError(
+          "Selected coding accounts cannot be used while the model gateway owns billing",
+          {
+            code: "CODING_POLICY_ACCOUNT_GATEWAY_CONFLICT",
+            context: { agentType, accountIds: configuredAccountIds },
+            severity: "ephemeral",
+          },
+        );
+      }
       const resolvedAccount = gatewayControlsBilling
         ? null
         : await selectCodingAccount(agentType, {
             sessionKey: id,
             ...(accountStrategy ? { strategy: accountStrategy } : {}),
+            ...(configuredAccountIds.length > 0
+              ? { accountIds: configuredAccountIds }
+              : {}),
             ...(spawnModel ? { model: spawnModel } : {}),
           });
+      if (
+        !gatewayControlsBilling &&
+        configuredAccountIds.length > 0 &&
+        !resolvedAccount
+      ) {
+        throw new ElizaError(
+          "None of the selected coding accounts is healthy and compatible with this backend",
+          {
+            code: "CODING_POLICY_ACCOUNT_UNAVAILABLE",
+            context: {
+              agentType,
+              accountIds: configuredAccountIds,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
       const customCredentials = resolvedAccount
         ? {
             ...(opts.customCredentials ?? {}),
@@ -2047,6 +2135,13 @@ export class AcpService extends Service {
           : {}),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
+        codingPolicy: buildCodingPolicyMetadata({
+          backend: agentType,
+          model: spawnModel,
+          account: resolvedAccount?.meta ?? null,
+          approvalPreset,
+          accountStrategy,
+        }),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
         ...(spawnModel ? { [ACP_METADATA_SPAWN_MODEL]: spawnModel } : {}),

@@ -386,6 +386,40 @@ function CodingModelGroup({
           triggerClassName="w-full"
         />
       )}
+      {group.freeFormModel ? (
+        <SettingsInputRow
+          agentId="models-coding-fast-model"
+          label={t("modelconfig.fastModel", { defaultValue: "Fast model" })}
+          description={t("modelconfig.fastModelNote", {
+            defaultValue: "Used for routine and iteration-heavy coding tasks.",
+          })}
+          value={group.fastModel}
+          onValueChange={group.setFastModel}
+          placeholder={t("modelconfig.freeFormModelPlaceholder", {
+            defaultValue: "Model id",
+          })}
+          disabled={busy}
+        />
+      ) : (
+        <SettingsSelectRow
+          agentId="models-coding-fast-model"
+          label={t("modelconfig.fastModel", { defaultValue: "Fast model" })}
+          description={t("modelconfig.fastModelNote", {
+            defaultValue: "Used for routine and iteration-heavy coding tasks.",
+          })}
+          value={group.fastModel}
+          onValueChange={group.setFastModel}
+          options={group.modelOptions.map((entry) => ({
+            value: entry.id,
+            label: modelOptionLabel(entry),
+          }))}
+          placeholder={t("modelconfig.chooseModel", {
+            defaultValue: "Choose a model",
+          })}
+          disabled={busy || group.modelOptions.length === 0}
+          triggerClassName="w-full"
+        />
+      )}
       {group.effortOptions.length > 0 ? (
         <SettingsSelectRow
           agentId="models-coding-effort"
@@ -416,6 +450,139 @@ function CodingModelGroup({
         })}
         checked={group.makeDefault}
         onCheckedChange={group.setMakeDefault}
+        disabled={busy}
+      />
+      {[0, 1].map((index) => (
+        <SettingsSelectRow
+          key={index}
+          agentId={`models-coding-fallback-${index + 1}`}
+          label={t("modelconfig.fallbackBackend", {
+            defaultValue: `Fallback ${index + 1}`,
+          })}
+          description={
+            index === 0
+              ? t("modelconfig.fallbackBackendNote", {
+                  defaultValue:
+                    "Tried in order when the selected backend is unavailable.",
+                })
+              : undefined
+          }
+          value={group.fallbackBackends[index] ?? "__none__"}
+          onValueChange={(value) => group.setFallbackBackend(index, value)}
+          options={[
+            { value: "__none__", label: "None" },
+            ...group.backendOptions
+              .filter(
+                (option) =>
+                  option.value !== group.backend &&
+                  !group.fallbackBackends.some(
+                    (fallback, position) =>
+                      fallback === option.value && position !== index,
+                  ),
+              )
+              .map((option) => ({ value: option.value, label: option.label })),
+          ]}
+          disabled={busy}
+        />
+      ))}
+      <SettingsSelectRow
+        agentId="models-coding-approval"
+        label={t("modelconfig.approvalPolicy", {
+          defaultValue: "Approval policy",
+        })}
+        value={group.approvalPreset}
+        onValueChange={(value) =>
+          group.setApprovalPreset(
+            value as Parameters<typeof group.setApprovalPreset>[0],
+          )
+        }
+        options={[
+          { value: "readonly", label: "Read only" },
+          { value: "standard", label: "Standard" },
+          { value: "permissive", label: "Permissive" },
+          { value: "autonomous", label: "Autonomous" },
+        ]}
+        disabled={busy}
+      />
+      <SettingsSelectRow
+        agentId="models-coding-account-strategy"
+        label={t("modelconfig.accountStrategy", {
+          defaultValue: "Account selection",
+        })}
+        description={t("modelconfig.accountStrategyNote", {
+          defaultValue:
+            "Uses only encrypted, enabled accounts managed in Accounts below.",
+        })}
+        value={group.accountStrategy}
+        onValueChange={(value) =>
+          group.setAccountStrategy(
+            value as Parameters<typeof group.setAccountStrategy>[0],
+          )
+        }
+        options={[
+          { value: "least-used", label: "Least used" },
+          { value: "quota-aware", label: "Most quota" },
+          { value: "round-robin", label: "Round robin" },
+          { value: "priority", label: "Priority" },
+        ]}
+        disabled={busy}
+      />
+      {group.accountProviderOptions.length > 0 ? (
+        <SettingsSelectRow
+          agentId="models-coding-account-provider"
+          label={t("modelconfig.accountProvider", {
+            defaultValue: "Account provider",
+          })}
+          description={t("modelconfig.accountProviderNote", {
+            defaultValue:
+              "Uses encrypted account records from Accounts below; credentials are never stored in this policy.",
+          })}
+          value={group.accountProvider ?? ""}
+          onValueChange={group.setAccountProvider}
+          options={group.accountProviderOptions}
+          disabled={busy}
+        />
+      ) : (
+        <SettingsRow
+          label={t("modelconfig.accountProvider", {
+            defaultValue: "Account provider",
+          })}
+          description={t("modelconfig.accountProviderNote", {
+            defaultValue:
+              "This backend manages authentication without a linked account record.",
+          })}
+          control={<span className="text-sm text-txt">Backend-managed</span>}
+        />
+      )}
+      <SettingsSelectRow
+        agentId="models-coding-billing"
+        label={t("modelconfig.billingSource", {
+          defaultValue: "Billing source",
+        })}
+        description={t("modelconfig.billingSourceNote", {
+          defaultValue: "Recorded on each task for usage attribution.",
+        })}
+        value={group.billingMode}
+        onValueChange={(value) =>
+          group.setBillingMode(
+            value as Parameters<typeof group.setBillingMode>[0],
+          )
+        }
+        options={[
+          { value: "automatic", label: "Automatic" },
+          {
+            value: "subscription",
+            label: "Included plan allowance (no overage assumed)",
+          },
+          {
+            value: "subscription-plus-overage",
+            label: "Included plan, then enabled overage / shared credits",
+          },
+          { value: "credits", label: "Purchased credits" },
+          { value: "api", label: "API pay-as-you-go" },
+          { value: "byok", label: "Bring your own key" },
+          { value: "cloud", label: "Eliza Cloud" },
+        ]}
         disabled={busy}
       />
       <SaveErrorNotice save={save} t={t} />

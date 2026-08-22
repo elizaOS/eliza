@@ -40,6 +40,7 @@ import { resolveAnthropicBaseURL } from "@elizaos/plugin-anthropic/endpoint-conf
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import { resolveOpenAIBaseURL } from "@elizaos/plugin-openai/endpoint-config";
 import {
+  CODING_AGENT_BACKEND_PROVIDERS,
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   resolveServiceRoutingInConfig,
@@ -66,6 +67,27 @@ export interface ModelConfigWriteBody {
   effort?: string;
   /** Optional coding-backend switch, persisted as ELIZA_DEFAULT_AGENT_TYPE. */
   defaultBackend?: CodingBackend;
+  /** Optional fast-role model persisted atomically with the powerful model. */
+  fastModel?: string;
+  /** Ordered failover candidates after the selected backend. */
+  fallbackBackends?: CodingBackend[];
+  /** Default permission posture for newly spawned coding sessions. */
+  approvalPreset?: "readonly" | "standard" | "permissive" | "autonomous";
+  /** Account-pool selection policy used at spawn. */
+  accountStrategy?: "priority" | "round-robin" | "least-used" | "quota-aware";
+  /** Optional allow-list of encrypted account records. Never credential values. */
+  accountIds?: string[];
+  /** Account provider whose encrypted records may satisfy accountIds. */
+  accountProvider?: string;
+  /** Operator-declared billing source; stamped on every session. */
+  billingMode?:
+    | "automatic"
+    | "subscription"
+    | "subscription-plus-overage"
+    | "api"
+    | "credits"
+    | "byok"
+    | "cloud";
 }
 
 export interface ModelConfigRouteContext
@@ -86,6 +108,27 @@ const CODING_BACKENDS = new Set<CodingBackend>([
   "claude",
   "opencode",
   "eliza-code",
+]);
+const APPROVAL_PRESETS = new Set([
+  "readonly",
+  "standard",
+  "permissive",
+  "autonomous",
+]);
+const ACCOUNT_STRATEGIES = new Set([
+  "priority",
+  "round-robin",
+  "least-used",
+  "quota-aware",
+]);
+const BILLING_MODES = new Set([
+  "automatic",
+  "subscription",
+  "subscription-plus-overage",
+  "api",
+  "credits",
+  "byok",
+  "cloud",
 ]);
 
 // Chat providers → the env-var family the corresponding model plugin reads.
@@ -113,6 +156,7 @@ const LLM_BACKEND_TO_CHAT_PROVIDER: Record<string, string> = {
 
 interface CodingBackendSeam {
   modelKey: string;
+  fastModelKey: string;
   /** null = the backend has no effort seam; sending effort is a 400. */
   effortKey: string | null;
   /** Catalog provider to validate against; null = free-form model string. */
@@ -126,21 +170,25 @@ interface CodingBackendSeam {
 const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
   codex: {
     modelKey: "ELIZA_CODEX_MODEL_POWERFUL",
+    fastModelKey: "ELIZA_CODEX_MODEL_FAST",
     effortKey: "ELIZA_CODEX_EFFORT",
     catalogProvider: "codex",
   },
   claude: {
     modelKey: "ELIZA_CLAUDE_MODEL_POWERFUL",
+    fastModelKey: "ELIZA_CLAUDE_MODEL_FAST",
     effortKey: "ELIZA_CLAUDE_EFFORT",
     catalogProvider: "claude-coding",
   },
   opencode: {
     modelKey: "ELIZA_OPENCODE_MODEL_POWERFUL",
+    fastModelKey: "ELIZA_OPENCODE_MODEL_FAST",
     effortKey: null,
     catalogProvider: null,
   },
   "eliza-code": {
     modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL",
+    fastModelKey: "ELIZA_ELIZAOS_MODEL_FAST",
     effortKey: null,
     catalogProvider: null,
   },
@@ -272,6 +320,12 @@ function writeModelEnvKey(
 interface ResolvedWrite {
   key: string;
   value: string;
+}
+
+export interface AppliedCodingPolicy {
+  body: ModelConfigWriteBody;
+  keys: string[];
+  conflictingServiceEnvKeys: string[];
 }
 
 function resolveChatWrites(
@@ -437,10 +491,57 @@ function resolveCodingWrites(
   }
 
   const writes: ResolvedWrite[] = [{ key: seam.modelKey, value: model }];
+  if (body.fastModel !== undefined) {
+    if (
+      seam.catalogProvider &&
+      !findEntry(catalog, seam.catalogProvider, body.fastModel)
+    ) {
+      throw invalid(
+        `Unknown fast model "${body.fastModel}" for backend "${backend}"`,
+        { model: body.fastModel, backend, provider: seam.catalogProvider },
+      );
+    }
+    writes.push({ key: seam.fastModelKey, value: body.fastModel });
+  }
   if (body.effort !== undefined && seam.effortKey) {
     writes.push({ key: seam.effortKey, value: body.effort });
   }
   writes.push(...resolveDefaultBackendWrites(body));
+  if (body.fallbackBackends !== undefined) {
+    writes.push({
+      key: "ELIZA_CODING_FALLBACK_BACKENDS",
+      value: body.fallbackBackends
+        .map((candidate) => DEFAULT_BACKEND_PERSISTED_VALUE[candidate])
+        .join(","),
+    });
+  }
+  if (body.approvalPreset !== undefined) {
+    writes.push({
+      key: "ELIZA_DEFAULT_APPROVAL_PRESET",
+      value: body.approvalPreset,
+    });
+  }
+  if (body.accountStrategy !== undefined) {
+    writes.push({
+      key: "ELIZA_CODING_ACCOUNT_STRATEGY",
+      value: body.accountStrategy,
+    });
+  }
+  if (body.accountIds !== undefined) {
+    writes.push({
+      key: "ELIZA_CODING_ACCOUNT_IDS",
+      value: body.accountIds.join(","),
+    });
+  }
+  if (body.accountProvider !== undefined) {
+    writes.push({
+      key: "ELIZA_CODING_ACCOUNT_PROVIDER",
+      value: body.accountProvider,
+    });
+  }
+  if (body.billingMode !== undefined) {
+    writes.push({ key: "ELIZA_CODING_BILLING_MODE", value: body.billingMode });
+  }
   return writes;
 }
 
@@ -488,6 +589,27 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
     }
     return value.trim();
   };
+  const optionalStringArray = (field: string): string[] | undefined => {
+    const value = raw[field];
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.length > 32) {
+      throw invalid(`${field} must be an array with at most 32 entries`, {
+        [field]: value,
+      });
+    }
+    const normalized = value.map((entry) => {
+      if (typeof entry !== "string" || !entry.trim() || entry.length > 256) {
+        throw invalid(`${field} entries must be non-empty strings`, {
+          [field]: value,
+        });
+      }
+      return entry.trim();
+    });
+    if (new Set(normalized).size !== normalized.length) {
+      throw invalid(`${field} must not contain duplicates`, { [field]: value });
+    }
+    return normalized;
+  };
   const backend = optionalString("backend");
   if (backend !== undefined && !CODING_BACKENDS.has(backend as CodingBackend)) {
     throw invalid(
@@ -505,6 +627,47 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
       { defaultBackend },
     );
   }
+  const fallbackBackends = optionalStringArray("fallbackBackends");
+  if (
+    fallbackBackends?.some(
+      (value) =>
+        !CODING_BACKENDS.has(value as CodingBackend) || value === backend,
+    )
+  ) {
+    throw invalid(
+      "fallbackBackends must contain unique known backends other than backend",
+      { backend: backend ?? null, fallbackBackends },
+    );
+  }
+  const approvalPreset = optionalString("approvalPreset");
+  if (approvalPreset !== undefined && !APPROVAL_PRESETS.has(approvalPreset)) {
+    throw invalid("approvalPreset is invalid", { approvalPreset });
+  }
+  const accountStrategy = optionalString("accountStrategy");
+  if (
+    accountStrategy !== undefined &&
+    !ACCOUNT_STRATEGIES.has(accountStrategy)
+  ) {
+    throw invalid("accountStrategy is invalid", { accountStrategy });
+  }
+  const billingMode = optionalString("billingMode");
+  if (billingMode !== undefined && !BILLING_MODES.has(billingMode)) {
+    throw invalid("billingMode is invalid", { billingMode });
+  }
+  const accountProvider = optionalString("accountProvider");
+  if (accountProvider !== undefined && backend !== undefined) {
+    const persistedBackend =
+      backend === "eliza-code"
+        ? "elizaos"
+        : (backend as keyof typeof CODING_AGENT_BACKEND_PROVIDERS);
+    const providers = CODING_AGENT_BACKEND_PROVIDERS[persistedBackend] ?? [];
+    if (!providers.includes(accountProvider as never)) {
+      throw invalid(
+        `Account provider "${accountProvider}" cannot authenticate backend "${backend}"`,
+        { backend, accountProvider, supportedProviders: providers },
+      );
+    }
+  }
   return {
     target: target as ModelConfigTarget,
     model: typeof model === "string" ? model.trim() : undefined,
@@ -512,6 +675,46 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
     backend: backend as CodingBackend | undefined,
     effort: optionalString("effort"),
     defaultBackend: defaultBackend as CodingBackend | undefined,
+    fastModel: optionalString("fastModel"),
+    fallbackBackends: fallbackBackends as CodingBackend[] | undefined,
+    approvalPreset: approvalPreset as ModelConfigWriteBody["approvalPreset"],
+    accountStrategy: accountStrategy as ModelConfigWriteBody["accountStrategy"],
+    accountIds: optionalStringArray("accountIds"),
+    accountProvider,
+    billingMode: billingMode as ModelConfigWriteBody["billingMode"],
+  };
+}
+
+/**
+ * Applies the same validated atomic coding-policy write used by the HTTP route.
+ * The owner-only SETTINGS action calls this directly so chat and voice cannot
+ * drift onto a looser persistence contract. Credential values are not fields
+ * in the accepted body; account selection uses encrypted record ids only.
+ */
+export function applyCodingPolicyToConfig(args: {
+  raw: Record<string, unknown>;
+  config: ElizaConfig;
+  processEnv?: NodeJS.ProcessEnv;
+  catalog?: ModelCatalog;
+}): AppliedCodingPolicy {
+  const body = parseWriteBody(args.raw);
+  if (body.target !== "coding") {
+    throw invalid('Coding policy requires target "coding"', {
+      target: body.target,
+    });
+  }
+  const writes = resolveCodingWrites(args.catalog ?? buildModelCatalog(), body);
+  const processEnv = args.processEnv ?? process.env;
+  const conflicts: string[] = [];
+  for (const write of writes) {
+    if (writeModelEnvKey(args.config, processEnv, write.key, write.value)) {
+      conflicts.push(write.key);
+    }
+  }
+  return {
+    body,
+    keys: writes.map((write) => write.key),
+    conflictingServiceEnvKeys: conflicts,
   };
 }
 
@@ -698,12 +901,22 @@ function buildEffectiveConfig(
         resolve("ELIZA_CODEX_MODEL_POWERFUL") ??
         (codexDefault ? { value: codexDefault, source: "default" } : null),
       ELIZA_CODEX_EFFORT: resolve("ELIZA_CODEX_EFFORT"),
+      ELIZA_CODEX_MODEL_FAST: resolve("ELIZA_CODEX_MODEL_FAST"),
       ELIZA_CLAUDE_MODEL_POWERFUL:
         resolve("ELIZA_CLAUDE_MODEL_POWERFUL") ??
         (claudeDefault ? { value: claudeDefault, source: "default" } : null),
       ELIZA_CLAUDE_EFFORT: resolve("ELIZA_CLAUDE_EFFORT"),
+      ELIZA_CLAUDE_MODEL_FAST: resolve("ELIZA_CLAUDE_MODEL_FAST"),
       ELIZA_OPENCODE_MODEL_POWERFUL: resolve("ELIZA_OPENCODE_MODEL_POWERFUL"),
+      ELIZA_OPENCODE_MODEL_FAST: resolve("ELIZA_OPENCODE_MODEL_FAST"),
       ELIZA_ELIZAOS_MODEL_POWERFUL: resolve("ELIZA_ELIZAOS_MODEL_POWERFUL"),
+      ELIZA_ELIZAOS_MODEL_FAST: resolve("ELIZA_ELIZAOS_MODEL_FAST"),
+      ELIZA_CODING_FALLBACK_BACKENDS: resolve("ELIZA_CODING_FALLBACK_BACKENDS"),
+      ELIZA_DEFAULT_APPROVAL_PRESET: resolve("ELIZA_DEFAULT_APPROVAL_PRESET"),
+      ELIZA_CODING_ACCOUNT_STRATEGY: resolve("ELIZA_CODING_ACCOUNT_STRATEGY"),
+      ELIZA_CODING_ACCOUNT_IDS: resolve("ELIZA_CODING_ACCOUNT_IDS"),
+      ELIZA_CODING_ACCOUNT_PROVIDER: resolve("ELIZA_CODING_ACCOUNT_PROVIDER"),
+      ELIZA_CODING_BILLING_MODE: resolve("ELIZA_CODING_BILLING_MODE"),
     },
   };
 }
@@ -742,27 +955,24 @@ export async function handleModelConfigRoutes(
     const catalog = ctx.catalog ?? buildModelCatalog();
 
     if (body.target === "coding") {
-      const writes = resolveCodingWrites(catalog, body);
-      const conflicts: string[] = [];
-      for (const write of writes) {
-        if (
-          writeModelEnvKey(state.config, processEnv, write.key, write.value)
-        ) {
-          conflicts.push(write.key);
-        }
-      }
+      const applied = applyCodingPolicyToConfig({
+        raw,
+        config: state.config,
+        processEnv,
+        catalog,
+      });
       ctx.saveElizaConfig(state.config);
       logger.info(
-        `[ModelConfigRoutes] coding model config applied: ${writes.map((w) => `${w.key}=${w.value}`).join(" ")}`,
+        `[ModelConfigRoutes] coding policy applied: ${applied.keys.join(" ")}`,
       );
       // No restart: the orchestrator re-reads the config env section on every
       // sub-agent spawn (readConfigEnvKey), so the write is live immediately.
       json(res, {
         applied: true,
         restart: false,
-        keys: writes.map((w) => w.key),
-        ...(conflicts.length > 0
-          ? { conflictingServiceEnvKeys: conflicts }
+        keys: applied.keys,
+        ...(applied.conflictingServiceEnvKeys.length > 0
+          ? { conflictingServiceEnvKeys: applied.conflictingServiceEnvKeys }
           : {}),
       });
       return true;

@@ -17,6 +17,7 @@
 import {
   type Action,
   type ActionResult,
+  ElizaError,
   findWorldsForOwner,
   getSalt,
   type HandlerOptions,
@@ -37,6 +38,7 @@ import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
 } from "@elizaos/shared";
+import { applyCodingPolicyToConfig } from "../api/model-config-routes.ts";
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,
@@ -606,6 +608,13 @@ function handleShowBackends(runtime: IAgentRuntime): ActionResult {
   const codingLines = [
     `- coding default: ${coding.default ?? "(operator pin / planner choice)"}`,
   ];
+  const env = config.env ?? {};
+  const policyValue = (key: string): string | null => {
+    const direct = env[key];
+    if (typeof direct === "string" && direct.trim()) return direct.trim();
+    const vars = isRecord(env.vars) ? env.vars[key] : undefined;
+    return typeof vars === "string" && vars.trim() ? vars.trim() : null;
+  };
   if (coding.byTag && Object.keys(coding.byTag).length > 0) {
     for (const [tag, backend] of Object.entries(coding.byTag)) {
       codingLines.push(`- coding when ${tag}: ${backend}`);
@@ -616,6 +625,15 @@ function handleShowBackends(runtime: IAgentRuntime): ActionResult {
       `- coding allowed (lock-list): ${coding.allow.join(", ")}`,
     );
   }
+  codingLines.push(
+    `- powerful model: ${policyValue("ELIZA_CODEX_MODEL_POWERFUL") ?? policyValue("ELIZA_CLAUDE_MODEL_POWERFUL") ?? policyValue("ELIZA_OPENCODE_MODEL_POWERFUL") ?? policyValue("ELIZA_ELIZAOS_MODEL_POWERFUL") ?? "(backend default)"}`,
+    `- fast model: ${policyValue("ELIZA_CODEX_MODEL_FAST") ?? policyValue("ELIZA_CLAUDE_MODEL_FAST") ?? policyValue("ELIZA_OPENCODE_MODEL_FAST") ?? policyValue("ELIZA_ELIZAOS_MODEL_FAST") ?? "(backend default)"}`,
+    `- fallback order: ${policyValue("ELIZA_CODING_FALLBACK_BACKENDS") ?? "(none)"}`,
+    `- approval: ${policyValue("ELIZA_DEFAULT_APPROVAL_PRESET") ?? "standard"}`,
+    `- account provider: ${policyValue("ELIZA_CODING_ACCOUNT_PROVIDER") ?? "(backend managed)"}`,
+    `- account selection: ${policyValue("ELIZA_CODING_ACCOUNT_STRATEGY") ?? "least-used"}`,
+    `- billing: ${policyValue("ELIZA_CODING_BILLING_MODE") ?? "automatic"}`,
+  );
   const text = [
     "Current backend routing:",
     ...codingLines,
@@ -692,6 +710,61 @@ function handleSetBackend(
       );
     }
   }
+
+  const hasFullPolicy = [
+    "model",
+    "fastModel",
+    "fallbackBackends",
+    "approvalPreset",
+    "accountStrategy",
+    "accountIds",
+    "accountProvider",
+    "billingMode",
+  ].some((key) => params[key] !== undefined);
+  let appliedPolicy: ReturnType<typeof applyCodingPolicyToConfig> | undefined;
+  if (hasFullPolicy) {
+    if (tag) {
+      return fail(
+        "SETTINGS_CODING_POLICY_INVALID",
+        "A full coding policy sets the default route; omit tag.",
+      );
+    }
+    if (backend === "pi-agent") {
+      return fail(
+        "SETTINGS_CODING_POLICY_INVALID",
+        "Pi Agent does not expose a validated model-policy contract.",
+      );
+    }
+    try {
+      appliedPolicy = applyCodingPolicyToConfig({
+        raw: {
+          target: "coding",
+          backend: backend === "elizaos" ? "eliza-code" : backend,
+          defaultBackend: backend === "elizaos" ? "eliza-code" : backend,
+          model: params.model,
+          fastModel: params.fastModel,
+          fallbackBackends: Array.isArray(params.fallbackBackends)
+            ? params.fallbackBackends.map((value) =>
+                value === "elizaos" ? "eliza-code" : value,
+              )
+            : params.fallbackBackends,
+          approvalPreset: params.approvalPreset,
+          accountStrategy: params.accountStrategy,
+          accountIds: params.accountIds,
+          accountProvider: params.accountProvider,
+          billingMode: params.billingMode,
+        },
+        config: config as Parameters<
+          typeof applyCodingPolicyToConfig
+        >[0]["config"],
+      });
+    } catch (error) {
+      if (error instanceof ElizaError) {
+        return fail(error.code, error.message, { context: error.context });
+      }
+      throw error;
+    }
+  }
   if (tag) {
     coding.byTag = { ...(coding.byTag ?? {}), [tag]: backend };
   } else {
@@ -725,7 +798,19 @@ function handleSetBackend(
   const scope = tag ? `${tag} coding tasks` : "coding tasks (default)";
   return ok(
     `Routing ${scope} to \`${backend}\`. Takes effect on the next sub-agent spawn — no restart.`,
-    { op: "set_backend", axis: "coding", backend, tag: tag || null },
+    {
+      op: "set_backend",
+      axis: "coding",
+      backend,
+      tag: tag || null,
+      ...(appliedPolicy
+        ? {
+            policy: appliedPolicy.body,
+            keys: appliedPolicy.keys,
+            conflictingServiceEnvKeys: appliedPolicy.conflictingServiceEnvKeys,
+          }
+        : {}),
+    },
   );
 }
 
@@ -883,6 +968,61 @@ export const settingsAction: Action = {
         "[set_backend, coding only] Optional difficulty this routing applies to: 'simple', 'moderate', or 'hard'. Omit to set the default coding backend for all difficulties.",
       required: false,
       schema: { type: "string" as const, enum: [...DIFFICULTY_TAGS] },
+    },
+    {
+      name: "model",
+      description:
+        "[set_backend, coding only] Powerful model id. Supplying this enables the atomic full-policy write.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "fastModel",
+      description: "[set_backend, coding only] Fast/routine model id.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "fallbackBackends",
+      description:
+        "[set_backend, coding only] Ordered fallback backend ids, excluding the selected backend.",
+      required: false,
+      schema: { type: "array" as const, items: { type: "string" as const } },
+    },
+    {
+      name: "approvalPreset",
+      description:
+        "[set_backend, coding only] readonly, standard, permissive, or autonomous.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "accountStrategy",
+      description:
+        "[set_backend, coding only] priority, round-robin, least-used, or quota-aware.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "accountIds",
+      description:
+        "[set_backend, coding only] Encrypted account record ids. Never credential values.",
+      required: false,
+      schema: { type: "array" as const, items: { type: "string" as const } },
+    },
+    {
+      name: "accountProvider",
+      description:
+        "[set_backend, coding only] Account provider id compatible with the backend.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "billingMode",
+      description:
+        "[set_backend, coding only] automatic, subscription, subscription-plus-overage, credits, api, byok, or cloud.",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "key",

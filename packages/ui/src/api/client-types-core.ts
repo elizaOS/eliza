@@ -361,10 +361,32 @@ export interface ModelsConfigWriteRequest {
   provider?: string;
   /** Coding target only. */
   backend?: ModelsConfigCodingBackend;
-  model: string;
+  /** Omissible only for a default-backend-only coding write. */
+  model?: string;
   effort?: string;
   /** Persist this backend as ELIZA_DEFAULT_AGENT_TYPE alongside the write. */
   defaultBackend?: ModelsConfigCodingBackend;
+  /** Coding target: model used for routine/fast work. */
+  fastModel?: string;
+  /** Coding target: ordered failover candidates after `backend`. */
+  fallbackBackends?: ModelsConfigCodingBackend[];
+  /** Coding target: default permission posture. */
+  approvalPreset?: "readonly" | "standard" | "permissive" | "autonomous";
+  /** Coding target: encrypted-account pool selection strategy. */
+  accountStrategy?: "priority" | "round-robin" | "least-used" | "quota-aware";
+  /** Coding target: encrypted account record ids, never credential values. */
+  accountIds?: string[];
+  /** Coding target: provider owning the selected encrypted account records. */
+  accountProvider?: string;
+  /** Coding target: declared billing source for attribution. */
+  billingMode?:
+    | "automatic"
+    | "subscription"
+    | "subscription-plus-overage"
+    | "api"
+    | "credits"
+    | "byok"
+    | "cloud";
 }
 
 /**

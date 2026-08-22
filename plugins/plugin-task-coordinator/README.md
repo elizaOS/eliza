@@ -16,7 +16,7 @@ exports.
 
 The plugin also fills the coding-agent slot components that `@elizaos/ui` leaves empty until a slot provider registers them:
 - A header control chip showing active agent count with a stop-all button.
-- The per-framework settings section (model, LLM provider, approval preset, GitHub connection).
+- A compatibility settings slot backed by the canonical Models & Providers surface (encrypted accounts plus one validated coding policy).
 - The PTY console (drawer, side-panel, and full-screen variants).
 
 ## Capabilities

@@ -352,6 +352,85 @@ describe("POST /api/models/config chat writes", () => {
 });
 
 describe("POST /api/models/config coding writes", () => {
+  it("atomically persists the complete coding policy without secrets", async () => {
+    const { ctx, json, config, processEnv, saveElizaConfig } = makeHarness(
+      "POST",
+      {
+        target: "coding",
+        backend: "codex",
+        defaultBackend: "codex",
+        model: "gpt-5.6-sol",
+        fastModel: "gpt-5.6-luna",
+        effort: "high",
+        fallbackBackends: ["claude", "opencode"],
+        approvalPreset: "standard",
+        accountStrategy: "quota-aware",
+        accountIds: ["codex-primary", "codex-backup"],
+        accountProvider: "openai-codex",
+        billingMode: "subscription-plus-overage",
+      },
+    );
+
+    await handleModelConfigRoutes(ctx as never);
+
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    > & { vars: Record<string, string> };
+    expect(env).toMatchObject({
+      ELIZA_DEFAULT_AGENT_TYPE: "codex",
+      ELIZA_CODEX_MODEL_POWERFUL: "gpt-5.6-sol",
+      ELIZA_CODEX_MODEL_FAST: "gpt-5.6-luna",
+      ELIZA_CODEX_EFFORT: "high",
+      ELIZA_CODING_FALLBACK_BACKENDS: "claude,opencode",
+      ELIZA_DEFAULT_APPROVAL_PRESET: "standard",
+      ELIZA_CODING_ACCOUNT_STRATEGY: "quota-aware",
+      ELIZA_CODING_ACCOUNT_IDS: "codex-primary,codex-backup",
+      ELIZA_CODING_ACCOUNT_PROVIDER: "openai-codex",
+      ELIZA_CODING_BILLING_MODE: "subscription-plus-overage",
+    });
+    expect(env.vars.ELIZA_CODING_ACCOUNT_IDS).toBe(
+      "codex-primary,codex-backup",
+    );
+    expect(processEnv.ELIZA_CODING_BILLING_MODE).toBe(
+      "subscription-plus-overage",
+    );
+    expect(saveElizaConfig).toHaveBeenCalledTimes(1);
+    expect(responseOf(json).body).toMatchObject({
+      applied: true,
+      restart: false,
+    });
+    expect(JSON.stringify(env)).not.toContain("apiKey");
+  });
+
+  it("rejects invalid or self-referential fallback policy before writing", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "coding",
+      backend: "codex",
+      model: "gpt-5.6-sol",
+      fallbackBackends: ["claude", "codex"],
+    });
+
+    await handleModelConfigRoutes(ctx as never);
+
+    expect(responseOf(json).status).toBe(400);
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects an account provider that cannot authenticate the backend", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "coding",
+      backend: "codex",
+      model: "gpt-5.6-sol",
+      accountProvider: "anthropic-subscription",
+    });
+
+    await handleModelConfigRoutes(ctx as never);
+
+    expect(responseOf(json).status).toBe(400);
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
   it("writes codex model + effort without a restart", async () => {
     const { ctx, json, saveElizaConfig, managerStart, config, processEnv } =
       makeHarness("POST", {

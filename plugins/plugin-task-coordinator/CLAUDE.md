@@ -41,7 +41,7 @@ The `orchestrator` view declares typed capability descriptors. Capability IDs: `
 Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 - `CodingAgentControlChip` — header chip showing active session count; stop-all button.
-- `CodingAgentSettingsSection` — agent settings panel (per-framework tabs: elizaOS, Pi Agent, OpenCode, Claude, Codex; auth, model, approval-preset config).
+- `CodingAgentSettingsSection` — compatibility slot that mounts the canonical Models & Providers surface. Encrypted Accounts owns credentials; the validated model-config API owns coding policy.
 - `CodingAgentTasksPanel` — main task-thread list + PTY console view.
 - `PtyConsoleBase` — PTY output streamer; subscribes to `pty-output` WS events.
 
@@ -73,12 +73,7 @@ src/
   use-orchestrator-data.ts         Live data hook (detail+timeline, fast-poll, SSE, loud-failure mutations)
   orchestrator-workbench-glyphs.tsx  Shared glyphs/translate/status-filter helpers
   CodingAgentControlChip.tsx       Header chip: active session count + stop-all
-  CodingAgentSettingsSection.tsx   Per-framework settings panel
-  coding-agent-settings-shared.ts  Shared types/constants for settings sub-components
-  AgentTabsSection.tsx             Framework tab row inside settings panel
-  GlobalPrefsSection.tsx           Global preference controls
-  LlmProviderSection.tsx           LLM provider selector
-  ModelConfigSection.tsx           Model config controls
+  CodingAgentSettingsSection.tsx   Compatibility alias to Models & Providers
   GitHubConnectionCard.tsx         GitHub connection card — guided credential setup (PAT paste + OAuth device sign-in via /api/github/device/*)
   PtyConsoleBase.tsx               PTY output streamer (drawer/side-panel/full variants)
   PtyConsoleDrawer.tsx             Drawer variant wrapper
@@ -122,17 +117,10 @@ bun run --cwd plugins/plugin-task-coordinator test:e2e:manual  # live Codex e2e 
 
 ## Config / env vars
 
-This plugin reads no env vars directly. Coding-agent framework selection and per-framework settings are stored as agent preferences via the `@elizaos/ui` client. The settings UI in `CodingAgentSettingsSection.tsx` uses env-prefix constants from `coding-agent-settings-shared.ts`:
-
-| Agent tab | Env prefix constant | Value |
-|---|---|---|
-| elizaos | `ENV_PREFIX.elizaos` | `ELIZA_ELIZAOS` |
-| pi-agent | `ENV_PREFIX["pi-agent"]` | `ELIZA_PI_AGENT` |
-| claude | `ENV_PREFIX.claude` | `ELIZA_CLAUDE` |
-| codex | `ENV_PREFIX.codex` | `ELIZA_CODEX` |
-| opencode | `ENV_PREFIX.opencode` | `ELIZA_OPENCODE` |
-
-These prefixes are used to build preference keys sent to the agent prefs API; they are not read from `process.env` at runtime in this plugin.
+This plugin reads no env vars directly. `CodingAgentSettingsSection` reuses the
+canonical Models & Providers surface: encrypted Accounts routes own credential
+connect/repair/removal, while `/api/models/config` validates and atomically
+persists the non-secret coding policy consumed by new spawns.
 
 ## How to extend
 
@@ -141,12 +129,11 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 1. Add an entry to `ORCHESTRATOR_CAPABILITIES` in `src/index.ts` with a unique `id`, a `description`, and typed `params`.
 2. Handle the capability dispatch in `src/orchestrator-capabilities.ts` inside the capability dispatch map.
 
-### Add a new agent framework tab
+### Add a new coding backend
 
-1. Add the new key to `AgentTab` union type in `src/coding-agent-settings-shared.ts`.
-2. Add it to `AGENT_TABS`, `AGENT_LABELS`, `AGENT_PROVIDER_MAP`, `ADAPTER_NAME_TO_TAB`, and `ENV_PREFIX`.
-3. Add any fallback models to `FALLBACK_MODELS` keyed by provider name.
-4. Handle the new tab in `AgentTabsSection.tsx` and `CodingAgentSettingsSection.tsx`.
+Extend the shared backend contract, the validated model catalog/config route,
+and its spawn consumer together. Do not add provider-specific secret fields to
+this plugin; account enrollment belongs to the canonical Accounts surface.
 
 ### Add a new view component
 
