@@ -51,4 +51,52 @@ describe("createApiHealthWatchdog", () => {
     await watchdog.checkNow();
     expect(restart).toHaveBeenCalledTimes(1);
   });
+
+  it("holds the failure count through a replacement child's boot", async () => {
+    let clock = 0;
+    let healthy = false;
+    const restart = vi.fn();
+    const watchdog = createApiHealthWatchdog({
+      check: async () => healthy,
+      restart,
+      failureThreshold: 3,
+      recoveryGraceMs: 60_000,
+      now: () => clock,
+    });
+
+    for (let i = 0; i < 3; i++) await watchdog.checkNow();
+    expect(restart).toHaveBeenCalledTimes(1);
+
+    // The replacement is booting: ten more unhealthy probes inside the grace
+    // window must not bounce it again.
+    for (let i = 0; i < 10; i++) {
+      clock += 5_000;
+      await watchdog.checkNow();
+    }
+    expect(restart).toHaveBeenCalledTimes(1);
+
+    // It comes up; the hold clears and a later wedge is caught normally.
+    healthy = true;
+    await watchdog.checkNow();
+    healthy = false;
+    for (let i = 0; i < 3; i++) await watchdog.checkNow();
+    expect(restart).toHaveBeenCalledTimes(2);
+  });
+
+  it("restarts again when the replacement never becomes healthy within the grace", async () => {
+    let clock = 0;
+    const restart = vi.fn();
+    const watchdog = createApiHealthWatchdog({
+      check: async () => false,
+      restart,
+      failureThreshold: 3,
+      recoveryGraceMs: 60_000,
+      now: () => clock,
+    });
+    for (let i = 0; i < 3; i++) await watchdog.checkNow();
+    expect(restart).toHaveBeenCalledTimes(1);
+    clock = 61_000;
+    for (let i = 0; i < 3; i++) await watchdog.checkNow();
+    expect(restart).toHaveBeenCalledTimes(2);
+  });
 });
