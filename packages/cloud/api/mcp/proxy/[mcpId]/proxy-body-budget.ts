@@ -16,7 +16,10 @@
  * rejecting cancel must not delay or replace the budget result.
  *
  * The hop deadline is clearable, composed with caller cancellation, and races
- * both `fetch` (via the returned signal) and every `reader.read()`.
+ * endpoint prevalidation, DNS, `fetch`/`safeFetch`, and every body read. DNS
+ * APIs ignore AbortSignal, so {@link raceWithAbort} must settle those awaits
+ * when the hop fires — passing the signal later does not close a lookup that
+ * never returns.
  */
 
 /** The subset of `Request` / `Response` this reader needs. */
@@ -237,10 +240,11 @@ function isHopFailure(
 
 /**
  * Race `promise` against `signal` without leaving an abort listener attached
- * after the read wins. Abort does not cancel the underlying promise; the
- * caller must cancel the reader so a hanging `read()` cannot retain the hop.
+ * after the promise wins. Abort does not cancel the underlying work; the
+ * caller must still cancel readers and treat the rejection as the hop
+ * result so a never-settling DNS lookup or body read cannot retain the request.
  */
-function raceWithAbort<T>(
+export function raceWithAbort<T>(
   promise: Promise<T>,
   signal: AbortSignal | undefined,
 ): Promise<T> {

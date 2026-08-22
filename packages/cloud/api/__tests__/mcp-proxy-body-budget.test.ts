@@ -8,6 +8,7 @@ import {
   type BudgetedBodySource,
   createMcpProxyHopDeadline,
   McpProxyHopDeadlineError,
+  raceWithAbort,
   readBodyTextWithinBudget,
 } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 
@@ -322,5 +323,26 @@ describe("createMcpProxyHopDeadline", () => {
     expect(hop.signal.aborted).toBe(true);
     expect(hop.signal).toBe(caller.signal);
     hop.clear();
+  });
+});
+
+describe("raceWithAbort", () => {
+  test("returns when the underlying promise never settles and the hop aborts", async () => {
+    const controller = new AbortController();
+    const pending = raceWithAbort(
+      new Promise<never>(() => {
+        /* never settles — DNS / prevalidation hang */
+      }),
+      controller.signal,
+    );
+    queueMicrotask(() => {
+      controller.abort(new McpProxyHopDeadlineError(20));
+    });
+    const hung = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("raceWithAbort ignored abort")), 80);
+    });
+    await expect(Promise.race([pending, hung])).rejects.toBeInstanceOf(
+      McpProxyHopDeadlineError,
+    );
   });
 });

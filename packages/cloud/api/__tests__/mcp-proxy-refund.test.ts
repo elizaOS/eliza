@@ -400,6 +400,101 @@ test("successful call does NOT refund", async () => {
   expect(refundCredits).not.toHaveBeenCalled();
 });
 
+test("stalled endpoint prevalidation returns 504, refunds exact receipt, and skips usage", async () => {
+  __mcpProxyHopTestHooks.setHopTimeoutMs(20);
+  assertSafeOutboundUrl.mockReturnValue(
+    new Promise(() => {
+      /* never settles — attacker-controlled DNS during prevalidation */
+    }),
+  );
+  const hung = new Promise<never>((_, reject) => {
+    setTimeout(
+      () => reject(new Error("prevalidation ignored hop deadline")),
+      80,
+    );
+  });
+  const res = await Promise.race([post(), hung]);
+  expect(res.status).toBe(504);
+  const prevalidationTimedOut = (await res.json()) as { error: string };
+  expect(prevalidationTimedOut).toEqual({ error: "MCP endpoint timed out" });
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({
+        reason: "upstream_deadline_exceeded",
+      }),
+    }),
+  );
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
+test("stalled pre-socket DNS in safeFetch returns 504, refunds exact receipt, and skips usage", async () => {
+  __mcpProxyHopTestHooks.setHopTimeoutMs(20);
+  safeFetch.mockImplementation(() => {
+    return new Promise(() => {
+      /* never settles and ignores hop.signal — DNS lookup that never returns */
+    });
+  });
+  const hung = new Promise<never>((_, reject) => {
+    setTimeout(
+      () => reject(new Error("pre-socket DNS ignored hop deadline")),
+      80,
+    );
+  });
+  const res = await Promise.race([post(), hung]);
+  expect(res.status).toBe(504);
+  const dnsTimedOut = (await res.json()) as { error: string };
+  expect(dnsTimedOut).toEqual({ error: "MCP endpoint timed out" });
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({
+        reason: "upstream_deadline_exceeded",
+      }),
+    }),
+  );
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
+test("caller-aborted inbound JSON read returns 504, refunds exact receipt, and skips usage", async () => {
+  const caller = new AbortController();
+  const body = new ReadableStream<Uint8Array>({
+    pull() {
+      /* never enqueue — inbound parse waits on the caller body */
+    },
+  });
+  const pending = app.request("/test-mcp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    signal: caller.signal,
+  });
+  queueMicrotask(() => {
+    caller.abort(new Error("caller canceled"));
+  });
+  const hung = new Promise<never>((_, reject) => {
+    setTimeout(
+      () => reject(new Error("inbound JSON read ignored caller abort")),
+      80,
+    );
+  });
+  const res = await Promise.race([pending, hung]);
+  expect(res.status).toBe(504);
+  const inboundTimedOut = (await res.json()) as { error: string };
+  expect(inboundTimedOut).toEqual({ error: "MCP endpoint timed out" });
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({
+        reason: "upstream_deadline_exceeded",
+      }),
+    }),
+  );
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
 test("affiliate surcharge uses one exact debit, persisted receipt, and refund authority", async () => {
   getReferrer.mockResolvedValue({
     user_id: "affiliate-user",

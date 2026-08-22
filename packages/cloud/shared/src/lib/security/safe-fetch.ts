@@ -263,8 +263,13 @@ export async function safeFetch(rawUrl: string, init: RequestInit = {}): Promise
     // Validate (resolve DNS + screen every address) on every hop in both
     // runtimes. On Node we then pin the connection to the validated IP; on
     // workerd we cannot pin an arbitrary IP, so the platform fetch re-resolves
-    // — a residual rebinding window documented on canPinSockets().
-    const { url, address, family } = await resolveSafeOutboundTarget(currentUrl);
+    // — a residual rebinding window documented on canPinSockets(). DNS lookup
+    // is raced against this signal inside resolveSafeOutboundTarget so a
+    // never-settling resolution returns on deadline instead of retaining the
+    // Worker request until lookup happens to complete.
+    const { url, address, family } = await resolveSafeOutboundTarget(currentUrl, {
+      signal: currentInit.signal ?? undefined,
+    });
     // DNS APIs do not accept AbortSignal. Re-check immediately after the await
     // so a lookup that outlives its caller's deadline cannot open a socket.
     currentInit.signal?.throwIfAborted();

@@ -220,6 +220,27 @@ describe("safeFetch fail-closed", () => {
     expect(requestMock).not.toHaveBeenCalled();
   });
 
+  test("returns when DNS never settles if the request is aborted", async () => {
+    lookupMock.mockReturnValue(
+      new Promise(() => {
+        /* never settles */
+      }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("deadline expired");
+    const pending = safeFetch("https://slow-dns.example/image", {
+      signal: controller.signal,
+    });
+    queueMicrotask(() => {
+      controller.abort(reason);
+    });
+    const hung = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("safeFetch ignored abort during DNS")), 80);
+    });
+    await expect(Promise.race([pending, hung])).rejects.toBe(reason);
+    expect(requestMock).not.toHaveBeenCalled();
+  });
+
   test("rejects credential-bearing and non-http targets before any lookup", async () => {
     await expect(safeFetch("http://user:pass@example.com/")).rejects.toThrow();
     await expect(safeFetch("ftp://example.com/file")).rejects.toThrow();

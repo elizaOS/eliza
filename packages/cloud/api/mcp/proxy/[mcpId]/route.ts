@@ -5,6 +5,11 @@
  *
  * POST /api/mcp/proxy/[mcpId] - Proxy MCP request
  * GET /api/mcp/proxy/[mcpId] - Get MCP info
+ *
+ * After the precharge succeeds, the owned hop deadline starts before endpoint
+ * resolution and inbound body parsing. Untrusted waits (SSRF DNS, inbound JSON
+ * reads, outbound fetch, response reads) are raced against that signal so a
+ * never-settling lookup or caller abort still refunds as a typed 504.
  */
 
 import {
@@ -29,6 +34,9 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   createMcpProxyHopDeadline,
   isMcpProxyHopDeadline,
+  MCP_PROXY_HOP_TIMEOUT_MS,
+  McpProxyHopDeadlineError,
+  raceWithAbort,
   readBodyTextWithinBudget,
 } from "./proxy-body-budget";
 
@@ -157,15 +165,24 @@ export class McpProxyBodyTooLargeError extends Error {
 export async function parseJsonBody(
   request: Request,
   maxBytes: number = MAX_PROXY_REQUEST_BODY_BYTES,
+  options?: { signal?: AbortSignal },
 ): Promise<McpProxyJson> {
   const contentType = request.headers.get("content-type");
   if (!contentType?.includes("application/json")) {
     return {};
   }
+  const signal = options?.signal ?? request.signal;
   // Charge the budget before the bytes are retained: reading the whole body and
   // measuring it afterwards spends the memory the measurement exists to refuse.
-  const budgeted = await readBodyTextWithinBudget(request, maxBytes);
+  const budgeted = await readBodyTextWithinBudget(request, maxBytes, {
+    signal,
+  });
   if (!budgeted.ok) {
+    if (budgeted.reason === "deadline") {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new McpProxyHopDeadlineError(MCP_PROXY_HOP_TIMEOUT_MS);
+    }
     throw new McpProxyBodyTooLargeError(budgeted.bytes, maxBytes);
   }
   const text = budgeted.text;
@@ -379,92 +396,9 @@ app.post("/", async (c) => {
       });
   };
 
-  let targetUrl: string;
-  // External (user-configured) endpoints are fetched through safeFetch below,
-  // which re-validates AND pins the resolved IP for the actual request (closing
-  // the validate-then-fetch TOCTOU / DNS-rebind window on the Node path).
-  // Container endpoints resolve to a platform-internal load-balancer URL on the
-  // private tailnet, which safeFetch would (correctly) reject as a private IP —
-  // so those stay on the platform fetch.
-  let isExternalEndpoint = false;
-
-  if (mcp.endpoint_type === "external" && mcp.external_endpoint) {
-    let parsed: URL;
-    try {
-      parsed = await assertSafeOutboundUrl(mcp.external_endpoint);
-    } catch (error) {
-      logger.warn("[MCP Proxy] Blocked unsafe external endpoint", {
-        mcpId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await refundPrecharge("unsafe_endpoint");
-      return c.json({ error: "Unsafe external MCP endpoint" }, 400);
-    }
-    targetUrl = parsed.toString();
-    isExternalEndpoint = true;
-  } else if (mcp.endpoint_type === "container" && mcp.container_id) {
-    let container: Awaited<ReturnType<typeof containersService.getById>>;
-    try {
-      container = await containersService.getById(
-        mcp.container_id,
-        mcp.organization_id,
-      );
-    } catch (error) {
-      logger.error("[MCP Proxy] Failed to resolve MCP container", {
-        mcpId,
-        containerId: mcp.container_id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await refundPrecharge("container_lookup_failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return c.json({ error: "MCP container not available" }, 502);
-    }
-    if (!container?.load_balancer_url) {
-      await refundPrecharge("container_unavailable");
-      return c.json({ error: "MCP container not available" }, 503);
-    }
-    targetUrl = `${container.load_balancer_url}${mcp.endpoint_path || "/mcp"}`;
-  } else {
-    await refundPrecharge("endpoint_misconfigured");
-    return c.json({ error: "MCP endpoint not configured" }, 500);
-  }
-
-  let proxyBody: McpProxyJson;
-  try {
-    proxyBody = await parseJsonBody(c.req.raw);
-  } catch (error) {
-    if (error instanceof McpProxyBodyTooLargeError) {
-      logger.warn("[MCP Proxy] Request body exceeded the proxy byte budget", {
-        mcpId,
-        bytes: error.bytes,
-        maxBytes: error.maxBytes,
-      });
-      await refundPrecharge("request_body_too_large", {
-        maxBytes: error.maxBytes,
-      });
-      return c.json({ error: "MCP request body is too large" }, 413);
-    }
-    logger.warn("[MCP Proxy] Invalid JSON request body", {
-      mcpId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    await refundPrecharge("invalid_json");
-    return c.json({ error: "Invalid MCP request body" }, 400);
-  }
-  const toolName = toolNameFromRpcBody(proxyBody);
-
-  const proxyRequestInit: RequestInit = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(c.req.header("accept") && {
-        Accept: c.req.header("accept"),
-      }),
-    },
-    body: JSON.stringify(proxyBody),
-  };
-
+  // Own the wall-clock bound before every untrusted post-precharge wait.
+  // Creating the timer after endpoint DNS or inbound parsing left those
+  // awaits able to retain the Worker request and the debit indefinitely.
   const hop = createMcpProxyHopDeadline(c.req.raw.signal);
   const refundDeadline = async (): Promise<Response> => {
     logger.warn("[MCP Proxy] MCP hop exceeded the proxy deadline", {
@@ -476,34 +410,149 @@ app.post("/", async (c) => {
     });
     return c.json({ error: "MCP endpoint timed out" }, 504);
   };
+  const hopAborted = (error?: unknown): boolean =>
+    isMcpProxyHopDeadline(hop.signal, error) || hop.signal.aborted;
 
-  let mcpResponse: Response;
+  let targetUrl: string;
+  // External (user-configured) endpoints are fetched through safeFetch below,
+  // which re-validates AND pins the resolved IP for the actual request (closing
+  // the validate-then-fetch TOCTOU / DNS-rebind window on the Node path).
+  // Container endpoints resolve to a platform-internal load-balancer URL on the
+  // private tailnet, which safeFetch would (correctly) reject as a private IP —
+  // so those stay on the platform fetch.
+  let isExternalEndpoint = false;
+
   try {
+    if (mcp.endpoint_type === "external" && mcp.external_endpoint) {
+      let parsed: URL;
+      try {
+        parsed = await raceWithAbort(
+          assertSafeOutboundUrl(mcp.external_endpoint, { signal: hop.signal }),
+          hop.signal,
+        );
+      } catch (error) {
+        // error-policy:J1 hop abort maps to a 504 refund; other failures stay 400.
+        if (hopAborted(error)) {
+          return await refundDeadline();
+        }
+        logger.warn("[MCP Proxy] Blocked unsafe external endpoint", {
+          mcpId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await refundPrecharge("unsafe_endpoint");
+        return c.json({ error: "Unsafe external MCP endpoint" }, 400);
+      }
+      targetUrl = parsed.toString();
+      isExternalEndpoint = true;
+    } else if (mcp.endpoint_type === "container" && mcp.container_id) {
+      let container: Awaited<ReturnType<typeof containersService.getById>>;
+      try {
+        container = await raceWithAbort(
+          containersService.getById(mcp.container_id, mcp.organization_id),
+          hop.signal,
+        );
+      } catch (error) {
+        // error-policy:J1 hop abort maps to a 504 refund; other failures stay 502.
+        if (hopAborted(error)) {
+          return await refundDeadline();
+        }
+        logger.error("[MCP Proxy] Failed to resolve MCP container", {
+          mcpId,
+          containerId: mcp.container_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await refundPrecharge("container_lookup_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return c.json({ error: "MCP container not available" }, 502);
+      }
+      if (!container?.load_balancer_url) {
+        await refundPrecharge("container_unavailable");
+        return c.json({ error: "MCP container not available" }, 503);
+      }
+      targetUrl = `${container.load_balancer_url}${mcp.endpoint_path || "/mcp"}`;
+    } else {
+      await refundPrecharge("endpoint_misconfigured");
+      return c.json({ error: "MCP endpoint not configured" }, 500);
+    }
+
+    let proxyBody: McpProxyJson;
+    try {
+      proxyBody = await raceWithAbort(
+        parseJsonBody(c.req.raw, MAX_PROXY_REQUEST_BODY_BYTES, {
+          signal: hop.signal,
+        }),
+        hop.signal,
+      );
+    } catch (error) {
+      // error-policy:J1 hop abort maps to a 504 refund; overflow stays 413.
+      if (hopAborted(error)) {
+        return await refundDeadline();
+      }
+      if (error instanceof McpProxyBodyTooLargeError) {
+        logger.warn("[MCP Proxy] Request body exceeded the proxy byte budget", {
+          mcpId,
+          bytes: error.bytes,
+          maxBytes: error.maxBytes,
+        });
+        await refundPrecharge("request_body_too_large", {
+          maxBytes: error.maxBytes,
+        });
+        return c.json({ error: "MCP request body is too large" }, 413);
+      }
+      logger.warn("[MCP Proxy] Invalid JSON request body", {
+        mcpId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await refundPrecharge("invalid_json");
+      return c.json({ error: "Invalid MCP request body" }, 400);
+    }
+    const toolName = toolNameFromRpcBody(proxyBody);
+
+    const proxyRequestInit: RequestInit = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(c.req.header("accept") && {
+          Accept: c.req.header("accept"),
+        }),
+      },
+      body: JSON.stringify(proxyBody),
+    };
+
+    let mcpResponse: Response;
     try {
       if (isExternalEndpoint) {
         // safeFetch validates + IP-pins the request and (redirect: "error")
         // rejects any redirect — the single SSRF guard for outbound-from-user
-        // fetches, replacing the prior validate-then-raw-fetch pair.
-        mcpResponse = await safeFetch(targetUrl, {
-          ...proxyRequestInit,
-          redirect: "error",
-          signal: hop.signal,
-        });
+        // fetches, replacing the prior validate-then-raw-fetch pair. Race the
+        // await so a DNS lookup that never settles still hits the 504 refund.
+        mcpResponse = await raceWithAbort(
+          safeFetch(targetUrl, {
+            ...proxyRequestInit,
+            redirect: "error",
+            signal: hop.signal,
+          }),
+          hop.signal,
+        );
       } else {
         // Platform-internal container LB URL (private tailnet) — not a user-input
         // SSRF surface; keep the platform fetch with the manual redirect block.
-        mcpResponse = await fetch(targetUrl, {
-          ...proxyRequestInit,
-          redirect: "manual",
-          signal: hop.signal,
-        });
+        mcpResponse = await raceWithAbort(
+          fetch(targetUrl, {
+            ...proxyRequestInit,
+            redirect: "manual",
+            signal: hop.signal,
+          }),
+          hop.signal,
+        );
         if (mcpResponse.status >= 300 && mcpResponse.status < 400) {
           throw new Error("External MCP redirects are not allowed");
         }
       }
     } catch (error) {
       // error-policy:J1 hop abort maps to a 504 refund; other failures stay 502.
-      if (isMcpProxyHopDeadline(hop.signal, error) || hop.signal.aborted) {
+      if (hopAborted(error)) {
         return await refundDeadline();
       }
       logger.error("[MCP Proxy] Failed to reach MCP endpoint", {
@@ -555,7 +604,7 @@ app.post("/", async (c) => {
       responseBody = budgeted.text;
     } catch (error) {
       // error-policy:J1 hop abort maps to a 504 refund; other failures stay 502.
-      if (isMcpProxyHopDeadline(hop.signal, error) || hop.signal.aborted) {
+      if (hopAborted(error)) {
         return await refundDeadline();
       }
       logger.error("[MCP Proxy] Failed to read MCP response body", {
