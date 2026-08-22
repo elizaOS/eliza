@@ -1,7 +1,7 @@
 /**
  * Group G — MCP integration bridges.
  *
- * Covers `/api/mcps/<provider>/:transport` for all 17 provider routes mounted
+ * Covers `/api/mcps/<provider>/:transport` for every provider route mounted
  * by `_router.generated.ts`, backed by one shared gateway
  * (`src/lib/mcp/mcps-transport-gateway.ts`). Its contract is exact:
  *
@@ -11,6 +11,9 @@
  *   - built-in providers (`time`, `weather`, `crypto`) → real Workers-safe
  *     JSON-RPC transport: GET 405, POST tools/list 200 with a
  *     `jsonrpc: "2.0"` result listing the provider's tools
+ *   - managed providers (`doordash`) → GET 405, unauthenticated JSON-RPC
+ *     calls fail inside the protocol, and authenticated tools/list exposes the
+ *     guarded Cloud-managed tool surface
  *   - every other provider → 501 `not_yet_migrated` fallback envelope
  *
  * These routes are public-path-prefixed in `auth.ts`, so no response may be
@@ -22,10 +25,19 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { api, getBaseUrl, isServerReachable } from "./_helpers/api";
+import {
+  api,
+  bearerHeaders,
+  getBaseUrl,
+  isServerReachable,
+} from "./_helpers/api";
 
 // Built-in bridges run a real JSON-RPC transport in the Worker itself.
 const BUILTIN_PROVIDERS = ["time", "weather", "crypto"] as const;
+
+// Managed bridges run in the Worker but require an authenticated Cloud
+// identity before exposing tools or creating a user-isolated browser session.
+const MANAGED_PROVIDERS = ["doordash"] as const;
 
 // OAuth/vendor providers answer 501 until an operator sets
 // MCP_<PROVIDER>_STREAMABLE_HTTP_URL to proxy an external server.
@@ -33,7 +45,6 @@ const PROXY_PROVIDERS = [
   "airtable",
   "asana",
   "dropbox",
-  "doordash",
   "github",
   "google",
   "hubspot",
@@ -53,6 +64,22 @@ const BUILTIN_TOOL_NAMES: Record<string, string[]> = {
   time: ["get_current_time"],
   weather: ["get_current_weather", "search_location"],
   crypto: ["get_price", "get_market_data", "list_trending"],
+};
+
+const MANAGED_TOOL_NAMES: Record<string, string[]> = {
+  doordash: [
+    "doordash_auth_check",
+    "doordash_auth_clear",
+    "doordash_set_address",
+    "doordash_search",
+    "doordash_menu",
+    "doordash_add_to_cart",
+    "remove_from_cart",
+    "doordash_cart",
+    "order_history",
+    "doordash_checkout",
+    "doordash_track_order",
+  ],
 };
 
 const REAL_TRANSPORT = "mcp";
@@ -85,12 +112,22 @@ function jsonRpcToolsList(): Record<string, unknown> {
 
 async function postToolsList(
   basePath: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; text: string }> {
+  return postJsonRpc(basePath, jsonRpcToolsList(), headers);
+}
+
+async function postJsonRpc(
+  basePath: string,
+  request: Record<string, unknown>,
+  headers: Record<string, string> = {},
 ): Promise<{ status: number; text: string }> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await api.post(basePath, jsonRpcToolsList(), {
+    const res = await api.post(basePath, request, {
       headers: {
         Accept: "application/json, text/event-stream",
         "Content-Type": "application/json",
+        ...headers,
       },
     });
     const text = await res.text();
@@ -131,6 +168,137 @@ describeE2E("Group G — MCP provider bridges", () => {
         expect(body.id).toBe(1);
         const names = (body.result?.tools ?? []).map((tool) => tool.name);
         expect(names).toEqual(BUILTIN_TOOL_NAMES[provider]);
+      });
+
+      test(`${provider}: garbage :transport is 404 unsupported_transport`, async () => {
+        const res = await api.get(`/api/mcps/${provider}/garbage-transport`);
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as { error?: string };
+        expect(body.error).toBe("unsupported_transport");
+      });
+    });
+  }
+
+  for (const provider of MANAGED_PROVIDERS) {
+    describe(`/api/mcps/${provider}/:transport (managed)`, () => {
+      const basePath = `/api/mcps/${provider}/${REAL_TRANSPORT}`;
+      const proxied = upstreamConfigured(provider);
+
+      test(`${provider}: GET is 405 when managed locally`, async () => {
+        const res = await api.get(basePath);
+        if (proxied) {
+          expect(res.status).not.toBe(401);
+          return;
+        }
+        expect(res.status).toBe(405);
+        const body = (await res.json()) as { error?: string };
+        expect(body.error).toBe("Method not allowed");
+      });
+
+      test(`${provider}: unauthenticated tools/list fails inside JSON-RPC`, async () => {
+        const res = await postToolsList(basePath);
+        if (proxied) {
+          expect(res.status).not.toBe(401);
+          return;
+        }
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.text) as {
+          jsonrpc?: string;
+          id?: number;
+          error?: { code?: number; message?: string };
+        };
+        expect(body.jsonrpc).toBe("2.0");
+        expect(body.id).toBe(1);
+        expect(body.error?.code).toBe(-32001);
+        expect(body.error?.message).toBe(
+          "DoorDash requires authenticated Cloud access",
+        );
+      });
+
+      test(`${provider}: authenticated tools/list exposes the managed tools`, async () => {
+        const res = await postToolsList(basePath, bearerHeaders());
+        if (proxied) {
+          expect(res.status).not.toBe(401);
+          return;
+        }
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.text) as {
+          jsonrpc?: string;
+          id?: number;
+          result?: {
+            tools?: Array<{
+              name?: string;
+              description?: string;
+              inputSchema?: Record<string, unknown>;
+            }>;
+          };
+        };
+        expect(body.jsonrpc).toBe("2.0");
+        expect(body.id).toBe(1);
+        const names = (body.result?.tools ?? []).map((tool) => tool.name);
+        expect(names).toEqual(MANAGED_TOOL_NAMES[provider]);
+        const checkout = body.result?.tools?.find(
+          (tool) => tool.name === "doordash_checkout",
+        );
+        expect(checkout).toMatchObject({
+          description: expect.stringContaining("only with confirm=true"),
+          inputSchema: {
+            additionalProperties: false,
+            properties: {
+              confirm: { type: "boolean" },
+              conversationId: {
+                maxLength: 256,
+                minLength: 1,
+                type: "string",
+              },
+              expectedCheckoutDigest: {
+                pattern: "^[a-f0-9]{64}$",
+                type: "string",
+              },
+            },
+            required: ["conversationId"],
+            type: "object",
+          },
+        });
+      });
+
+      test(`${provider}: confirmed checkout without its exact digest is rejected`, async () => {
+        const res = await postJsonRpc(
+          basePath,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doordash_checkout",
+              arguments: {
+                confirm: true,
+                conversationId: "e2e-managed-mcp-approval-boundary",
+              },
+            },
+          },
+          bearerHeaders(),
+        );
+        if (proxied) {
+          expect(res.status).not.toBe(401);
+          return;
+        }
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.text) as {
+          jsonrpc?: string;
+          id?: number;
+          result?: {
+            content?: Array<{ type?: string; text?: string }>;
+            isError?: boolean;
+          };
+        };
+        expect(body).toMatchObject({
+          jsonrpc: "2.0",
+          id: 2,
+          result: { isError: true },
+        });
+        const errorText = body.result?.content?.[0]?.text ?? "";
+        expect(errorText).toContain("expectedCheckoutDigest is required");
       });
 
       test(`${provider}: garbage :transport is 404 unsupported_transport`, async () => {
