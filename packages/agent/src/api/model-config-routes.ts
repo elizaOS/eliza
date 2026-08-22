@@ -138,6 +138,32 @@ const BILLING_MODES = new Set([
   "byok",
   "cloud",
 ]);
+const MODEL_CONFIG_WRITE_FIELDS = new Set([
+  "target",
+  "provider",
+  "backend",
+  "model",
+  "effort",
+  "defaultBackend",
+  "fastModel",
+  "fallbackBackends",
+  "approvalPreset",
+  "accountStrategy",
+  "accountIds",
+  "accountProvider",
+  "billingMode",
+]);
+const CODING_ONLY_WRITE_FIELDS = [
+  "backend",
+  "defaultBackend",
+  "fastModel",
+  "fallbackBackends",
+  "approvalPreset",
+  "accountStrategy",
+  "accountIds",
+  "accountProvider",
+  "billingMode",
+] as const;
 
 // Chat providers → the env-var family the corresponding model plugin reads.
 // cerebras serves through plugin-openai's Cerebras mode (OPENAI_*), but
@@ -585,6 +611,12 @@ function resolveDefaultBackendWrites(
 }
 
 function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
+  const unknownFields = Object.keys(raw).filter(
+    (field) => !MODEL_CONFIG_WRITE_FIELDS.has(field),
+  );
+  if (unknownFields.length > 0) {
+    throw invalid("model config contains unknown fields", { unknownFields });
+  }
   const target = raw.target;
   if (typeof target !== "string" || !TARGETS.has(target as ModelConfigTarget)) {
     throw invalid(`target must be one of: ${[...TARGETS].join(", ")}`, {
@@ -600,6 +632,28 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
     raw.defaultBackend !== undefined;
   if (!defaultBackendOnly && (typeof model !== "string" || !model.trim())) {
     throw invalid("model must be a non-empty string", { model: model ?? null });
+  }
+  if (target !== "coding") {
+    const codingFields = CODING_ONLY_WRITE_FIELDS.filter(
+      (field) => raw[field] !== undefined,
+    );
+    if (codingFields.length > 0) {
+      throw invalid("chat model writes must not carry coding-target fields", {
+        target,
+        codingFields,
+      });
+    }
+  }
+  if (defaultBackendOnly) {
+    const ignoredFields = Object.keys(raw).filter(
+      (field) => field !== "target" && field !== "defaultBackend",
+    );
+    if (ignoredFields.length > 0) {
+      throw invalid(
+        "a defaultBackend-only write must not carry additional policy fields",
+        { ignoredFields },
+      );
+    }
   }
   const optionalString = (field: string): string | undefined => {
     const value = raw[field];

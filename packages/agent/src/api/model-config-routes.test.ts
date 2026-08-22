@@ -583,6 +583,48 @@ describe("POST /api/models/config defaultBackend-only writes", () => {
     expect(String(body.error)).toContain("defaultBackend-only write");
   });
 
+  it("rejects policy fields that a modelless backend switch cannot apply", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "coding",
+      defaultBackend: "codex",
+      fallbackBackends: ["claude"],
+      billingMode: "subscription",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("defaultBackend-only write");
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects coding-policy fields on chat model writes", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "large",
+      provider: "cerebras",
+      model: "gpt-oss-120b",
+      billingMode: "api",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("coding-target fields");
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects misspelled fields instead of reporting a false successful save", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "coding",
+      backend: "codex",
+      model: "gpt-5.6-sol",
+      billngMode: "subscription",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("unknown fields");
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
   it("still requires model for chat targets even with defaultBackend", async () => {
     const { ctx, json } = makeHarness("POST", {
       target: "large",
