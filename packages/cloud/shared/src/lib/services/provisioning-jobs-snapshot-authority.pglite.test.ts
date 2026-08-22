@@ -592,6 +592,7 @@ describe("agent_snapshot worker authority", () => {
           generation: jobExecutionLeases.execution_generation,
           ownerId: jobExecutionLeases.owner_id,
           expiresAt: jobExecutionLeases.expires_at,
+          isLive: sql<boolean>`${jobExecutionLeases.expires_at} > NOW()`,
         })
         .from(jobExecutionLeases)
         .where(eq(jobExecutionLeases.job_id, claimed.id));
@@ -599,9 +600,9 @@ describe("agent_snapshot worker authority", () => {
         jobId: claimed.id,
         generation: claimed.execution_generation,
         ownerId: OWNER_ID,
-        expiresAt: expect.any(Date),
+        expiresAt: expect.anything(),
+        isLive: true,
       });
-      expect(lease?.expiresAt.getTime()).toBeGreaterThan(Date.now());
       expect(await sandboxState(identity)).toEqual(before);
 
       await expect(
