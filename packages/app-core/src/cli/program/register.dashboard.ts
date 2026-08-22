@@ -4,7 +4,9 @@
  * server and opens that URL; failing that it locates the eliza package root,
  * spawns the app's Vite dev server, and opens the dev URL once Vite reports
  * "Local:" (or after a timeout). Cross-platform browser launch and dev-server
- * teardown (including a Windows taskkill tree-kill) are handled here.
+ * teardown are handled here: POSIX spawns the child detached and signals its
+ * whole process group (SIGTERM, then SIGKILL) so no orphaned Vite grandchild
+ * keeps holding the UI port; Windows tree-kills via taskkill /t /f.
  */
 import { resolveDesktopUiPort, theme } from "@elizaos/shared";
 import type { Command } from "commander";
@@ -130,10 +132,16 @@ export function registerDashboardCommand(program: Command) {
       }
 
       const { spawn, spawnSync } = await import("node:child_process");
+      // On POSIX, `bun run dev` executes the `dev` script (Vite) as a separate
+      // grandchild. `detached: true` makes the child the leader of its own
+      // process group so cleanup() can signal the whole tree via the negative
+      // PID. Windows keeps its default spawn behavior (`detached` there only
+      // controls console attachment) and tears the tree down with taskkill /t.
       const child = spawn("bun", ["run", "dev"], {
         cwd: appDir,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env },
+        detached: process.platform !== "win32",
       });
 
       let opened = false;
@@ -167,13 +175,39 @@ export function registerDashboardCommand(program: Command) {
 
       setTimeout(tryOpen, 10_000);
 
+      // Signal the child's whole process group (negative PID) so the detached
+      // `bun run dev` and its Vite grandchild both die. ESRCH means the group
+      // is already gone; swallow it so we never crash the parent on shutdown.
+      const killGroup = (signal: NodeJS.Signals) => {
+        if (!child.pid) return;
+        try {
+          process.kill(-child.pid, signal);
+        } catch (err) {
+          // error-policy:J6 best-effort teardown: the group may already be gone
+          // (ESRCH). Any other errno during shutdown is also non-actionable.
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code !== "ESRCH") {
+            console.log(
+              theme.muted(`Dev server teardown (${signal}) skipped: ${code}`),
+            );
+          }
+        }
+      };
+
+      let cleaned = false;
       const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
         if (process.platform === "win32" && child.pid) {
           // Windows does not propagate SIGTERM through Bun's child tree.
           spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
           return;
         }
-        child.kill("SIGTERM");
+        killGroup("SIGTERM");
+        // Escalate to SIGKILL after a short grace period if the group survives
+        // a graceful SIGTERM (e.g. a wedged Vite worker ignoring the signal).
+        const escalation = setTimeout(() => killGroup("SIGKILL"), 2_000);
+        escalation.unref();
       };
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
