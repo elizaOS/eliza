@@ -2,9 +2,8 @@
  * MOCKED invalid-url guard (#11856, `pr-deterministic`). A non-meeting URL must
  * NOT start a meeting: JOIN_MEETING's `validate` rejects it (no recognizable
  * Meet/Teams/Zoom link), so the bot never joins and nothing crashes. Asserts the
- * graceful non-join — no JOIN_MEETING call, no session created — and that a
- * direct handler invocation with the bad URL returns the typed invalid-url reply
- * rather than throwing.
+ * graceful non-join — no session created — and invokes the production action
+ * validator and handler directly so no language-model routing is involved.
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
@@ -22,10 +21,12 @@ async function gracefulInvalidUrl(
 ): Promise<string | undefined> {
   const runtime = ctx.runtime as IAgentRuntime;
   const service = runtime.getService("meetings") as {
-    listSessions(): unknown[];
+    listSessions(): Array<{ meetingUrl?: string }>;
   } | null;
   if (!service) return "meetings service not running";
-  if (service.listSessions().length !== 0) {
+  if (
+    service.listSessions().some((session) => session.meetingUrl === BAD_URL)
+  ) {
     return "a meeting session was created for a non-meeting URL";
   }
   if (ctx.actionsCalled.some((a) => a.actionName === "JOIN_MEETING")) {
@@ -66,6 +67,11 @@ async function gracefulInvalidUrl(
 export default scenario({
   id: "mock-join-invalid-url",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "The final check invokes the production action validator and handler directly.",
+  },
   title: "Mocked JOIN_MEETING declines a non-meeting URL gracefully",
   domain: "meetings",
   tags: ["mock", "meetings", "join-meeting", "invalid-url"],
@@ -75,10 +81,9 @@ export default scenario({
   rooms: [{ id: "main", source: "chat", title: "Mock Invalid URL" }],
   turns: [
     {
-      kind: "message",
-      name: "user pastes a non-meeting URL",
-      room: "main",
-      text: `join this: ${BAD_URL}`,
+      kind: "wait",
+      name: "allow the seeded meeting service to initialize",
+      durationMs: 1,
     },
   ],
   finalChecks: [

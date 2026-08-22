@@ -58,6 +58,11 @@ async function sessionFinalized(
 export default scenario({
   id: "mock-leave-meeting",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Action and wait turns exercise production runtime state without model calls.",
+  },
   title: "Mocked LEAVE_MEETING finalizes an active session (no browser)",
   domain: "meetings",
   tags: ["mock", "meetings", "leave-meeting"],
