@@ -25,7 +25,7 @@ function runtimeApiPath(requestUrl: string, agentId: string): string | null {
 export async function proxyLocalDedicatedOrNext(
   c: Context<AppEnv>,
   next: Next,
-): Promise<Response> {
+): Promise<Response | undefined> {
   if (c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN !== "https://") return next();
   const agentId = c.req.param("agentId")?.trim() ?? "";
   if (!DEDICATED_AGENT_ID.test(agentId)) return next();
