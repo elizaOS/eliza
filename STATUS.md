@@ -36,7 +36,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 
 ### Final current-base refresh and supervised cleanup
 
-- Rebased the thirteen-commit LifeOps stack without conflicts onto fetched `origin/develop` at `54663662f553ebd0ba92f33bbc44b7892bf9d6c4`; pre-ledger head `ea0e4c6f76332df286aacd48001bfcdd9808a444` is thirteen ahead and zero behind.
+- Rebased the thirteen-commit LifeOps implementation/test stack without conflicts onto fetched `origin/develop` at `37f92987eeddd06620ce6ba35c414a6caa56bc19`; pre-ledger head `707166fce42a9ba24f58c355869d9a3c24f2c906` is thirteen ahead and zero behind.
 - Old/new `git range-diff` reports thirteen exact `=` matches. Both cumulative stable patch IDs are `02d330b3df2f616c82f307cdc0e8e2cc3d444390`.
 - Current focused proof: deterministic LifeOps browser harness 48 scenarios passed; LifeOps connections component 7 tests passed; Inbox 26 files passed / 1 skipped with 226 tests passed / 2 skipped; Google Workspace 29 files and 328 tests passed. Google Workspace, Calendar, Inbox, and Native Calendar typechecks passed; focused Biome checks passed.
 - App audit completed 226 of 227 tests. Every LifeOps, Calendar, and Inbox desktop/mobile/iPad layout passed. The only failing test is `test/ui-smoke/all-views-aesthetic-audit.spec.ts` for four pre-existing `builtin-settings` readability findings plus the `plugin-trajectory-logger-gui` iPad assertion; those Settings/trajectory surfaces are outside this lane.
