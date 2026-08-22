@@ -1,9 +1,11 @@
 /**
  * Deterministic tests for `findEntityByName` on the real module: the resolution
  * prompt must carry the referent, EXACT_MATCH must stay inside the candidate
- * set, substring fallback must not bind a shorter handle, and a target's own
- * identity components must remain visible. Runtime collaborators are stubbed
- * at documented seams; findEntityByName is not replaced.
+ * set, substring fallback must not bind a shorter handle, a target's own
+ * identity components must remain visible, and a >20-message room transcript
+ * must reach the TEXT_SMALL prompt in full (no most-recent window). Runtime
+ * collaborators are stubbed at documented seams; findEntityByName is not
+ * replaced.
  */
 import { describe, expect, it } from "vitest";
 import { findEntityByName } from "./entities";
@@ -241,5 +243,48 @@ describe("findEntityByName referent and candidate containment", () => {
 			state,
 		);
 		expect(found?.id).toBe(ALICE);
+	});
+
+	it("puts every room message in the resolution prompt when more than 20 exist", async () => {
+		const prompts: string[] = [];
+		const roomMessageCount = 25;
+		const roomMessages: Memory[] = Array.from(
+			{ length: roomMessageCount },
+			(_, index) => {
+				const sequence = roomMessageCount - index;
+				return {
+					id: `00000000-0000-0000-0000-${String(sequence).padStart(12, "0")}` as UUID,
+					entityId: BOB,
+					roomId: ROOM,
+					agentId: AGENT,
+					createdAt: sequence,
+					content: {
+						text: `room-message-${String(sequence).padStart(2, "0")}`,
+					},
+				} as Memory;
+			},
+		);
+		await findEntityByName(
+			runtime({
+				prompts,
+				getRelationships: async () => [],
+				getMemories: async (params: { limit?: number; offset?: number }) => {
+					const offset = params.offset ?? 0;
+					if (params.limit === undefined) {
+						return roomMessages.slice(offset);
+					}
+					return roomMessages.slice(offset, offset + params.limit);
+				},
+			}),
+			message("who is that"),
+			state,
+		);
+		const prompt = prompts[0] ?? "";
+		expect(prompt.length).toBeGreaterThan(0);
+		for (let sequence = 1; sequence <= roomMessageCount; sequence += 1) {
+			expect(prompt).toContain(
+				`room-message-${String(sequence).padStart(2, "0")}`,
+			);
+		}
 	});
 });

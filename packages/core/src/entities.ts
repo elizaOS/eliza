@@ -2,10 +2,13 @@
  * Entity resolution, identity formatting, and component-visibility trust for the
  * agent runtime. `findEntityByName` maps a natural-language reference onto a
  * known `Entity`. The referent (`message.content.text`), sender, agent, room
- * members, related contacts, and recent messages are bound into the TEXT_SMALL
- * prompt; EXACT_MATCH is restricted to that candidate set. A unique exact
- * name/handle hit returns without a model call. Component filtering copies the
- * entity and keeps the target's own identity components.
+ * members, related contacts, and the complete room-message transcript are bound
+ * into the TEXT_SMALL prompt; EXACT_MATCH is restricted to that candidate set.
+ * Room messages are loaded by paging `getMemories` to a short page and
+ * concatenating losslessly — never a most-recent or item-count window
+ * (`AGENTS.md` prompt integrity, the "never discard model context" section).
+ * A unique exact name/handle hit returns without a model call. Component
+ * filtering copies the entity and keeps the target's own identity components.
  * `getEntityDetails` and `formatEntities` merge and render a room's entities for
  * prompt context; `createUniqueUuid` derives a stable per-agent UUID from a base
  * id.
@@ -148,6 +151,34 @@ function parseEntityResolutionResponse(
 	}
 
 	return null;
+}
+
+/**
+ * Store page size for the entity-resolution room-message scan. The TEXT_SMALL
+ * prompt receives the lossless concatenation of every page; this is not a
+ * most-recent window. Same exhaustion contract as `AgentRuntime.getAllMemories`.
+ */
+const ENTITY_RESOLUTION_MESSAGE_PAGE_SIZE = 10_000;
+
+async function loadCompleteRoomMessages(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+): Promise<Memory[]> {
+	const messages: Memory[] = [];
+	for (let offset = 0; ; offset += ENTITY_RESOLUTION_MESSAGE_PAGE_SIZE) {
+		const page = await runtime.getMemories({
+			tableName: "messages",
+			roomId,
+			includeEmbedding: false,
+			limit: ENTITY_RESOLUTION_MESSAGE_PAGE_SIZE,
+			offset,
+		});
+		messages.push(...page);
+		if (page.length < ENTITY_RESOLUTION_MESSAGE_PAGE_SIZE) {
+			break;
+		}
+	}
+	return messages;
 }
 
 const ENTITY_RESOLUTION_SCHEMA = {
@@ -499,11 +530,7 @@ export async function findEntityByName(
 		return uniqueReferentHits[0] ?? null;
 	}
 
-	const recentMessages = await runtime.getMemories({
-		tableName: "messages",
-		roomId: room.id,
-		limit: 20,
-	});
+	const recentMessages = await loadCompleteRoomMessages(runtime, room.id);
 	const interactionData = await getRecentInteractions(
 		message.entityId,
 		allEntities,
