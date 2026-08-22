@@ -101,6 +101,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-browser/src/workspace/browser-workspace-desktop.ts": [
 		/bodyText:\s*normalize\([^\n]+\)\.slice\(/,
 	],
+	"plugins/plugin-browser/src/actions/browser-autofill-login.ts": [
+		/MAX_BROWSER_TAB_SCAN/,
+		/tabs\s*\.slice\(0,/,
+	],
+	"plugins/plugin-browser/src/actions/manage-browser-bridge.ts": [
+		/MAX_BROWSER_BRIDGE_TEXT_LENGTH/,
+	],
 	"plugins/plugin-vision/src/provider.ts": [/tileAnalysis\.text\.substring\(/],
 	"packages/cloud/shared/src/lib/services/browser-tools.ts": [
 		/innerText\?\.slice\(/,
@@ -115,6 +122,40 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 			/MAX_PUBLIC_WEB_GROUNDING_(?:QUERY|RESULT|ENCODED)_BYTES/,
 			/MAX_HISTORY_MESSAGES/,
 		],
+	"packages/agent/src/api/chat-augmentation.ts": [/CHAT_DOCUMENTS_LIMIT/],
+	"packages/agent/src/api/chat-text-helpers.ts": [
+		/input\.slice\(0,\s*100_000\)/,
+	],
+	"packages/ui/src/components/chat/message-parser-helpers.ts": [
+		/MAX_DISPLAY_LEN/,
+	],
+	"packages/shared/src/utils/assistant-text.ts": [
+		/input\.length\s*>\s*200_000/,
+		/input\.slice\(0,\s*200_000\)/,
+	],
+	"packages/ui/src/voice/voice-chat-playback.ts": [/MAX_SPOKEN_CHARS/],
+	"packages/ui/src/chat/model-choices.ts": [/MAX_MODEL_CHOICES/],
+	"packages/ui/src/components/pages/documents-detail.tsx": [
+		/previewText\.slice\(/,
+	],
+	"packages/ui/src/components/composites/chat/permission-card.helpers.ts": [
+		/text\.slice\(0,\s*100_000\)/,
+		/\{0,50000\}/,
+	],
+	"packages/ui/src/components/custom-actions/custom-action-form.ts": [
+		/value\.slice\(0,\s*256\)/,
+	],
+	"plugins/plugin-cloud-apps/src/providers/cloud-apps.ts": [
+		/MAX_APPS_RENDERED/,
+	],
+	"plugins/plugin-elizacloud/src/cloud-providers/model-registry.ts": [
+		/MAX_MODEL_PROVIDERS/,
+		/MAX_MODELS_PER_PROVIDER/,
+	],
+	"plugins/plugin-wifi/src/components/WifiAppView.tsx": [
+		/VISIBLE_NETWORK_LIMIT/,
+	],
+	"plugins/plugin-wifi/src/providers/networks.ts": [/WIFI_NETWORKS_LIMIT/],
 	"plugins/plugin-agent-orchestrator/src/services/completion-residuals.ts": [
 		/MAX_RESIDUAL_PATHS/,
 	],
