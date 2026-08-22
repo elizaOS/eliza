@@ -173,6 +173,30 @@ describe("toolMessageContent", () => {
 		);
 	});
 
+	it("retains nested search references when oversized search prose is omitted", () => {
+		const reference = {
+			kind: "document" as const,
+			ref: "document:00000000-0000-0000-0000-000000000001",
+			revision: "rev:stable",
+		};
+		const parsed = JSON.parse(
+			toolMessageContent(
+				{
+					success: true,
+					text: "match ".repeat(10_000),
+					promptData: { results: [{ reference }] },
+				},
+				{ maxSerializedTokens: 100 },
+			),
+		);
+		expect(parsed.text).toBeUndefined();
+		expect(parsed.promptData.results).toEqual([{ reference }]);
+		expect(parsed.contentProjection).toEqual({
+			textIncluded: false,
+			reason: "model-input-budget",
+		});
+	});
+
 	it("does not grant recoverable omission to a hostile ReadView-like shape", () => {
 		const text = "x".repeat(20_000);
 		const invalidReadView = {

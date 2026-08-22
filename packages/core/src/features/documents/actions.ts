@@ -25,6 +25,7 @@ import type {
 	ActionExample,
 	ActionResult,
 	Content,
+	ContentReference,
 	DocumentRangeReadResult,
 	HandlerCallback,
 	HandlerOptions,
@@ -693,7 +694,7 @@ async function handleSearch(
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
 			...item,
-			readView: fragmentReadView(item),
+			reference: documentReference(item),
 			transcriptId:
 				typeof metadata?.transcriptId === "string"
 					? metadata.transcriptId
@@ -705,8 +706,8 @@ async function handleSearch(
 	});
 	const projectedData = projected.map((item) => ({
 		id: item.id,
-		...(item.readView
-			? { reference: item.readView.reference, readView: item.readView }
+		...(item.reference
+			? { reference: item.reference }
 			: { coordinateUnavailable: true }),
 		similarity: item.similarity,
 		transcriptId: item.transcriptId,
@@ -792,32 +793,18 @@ function opaqueDocumentRevision(metadata: Record<string, unknown>): string {
 		.digest("hex")}`;
 }
 
-function fragmentReadView(item: StoredDocument): ReadView | null {
+function documentReference(item: StoredDocument): ContentReference | null {
 	const metadata = (item.metadata ?? {}) as Record<string, unknown>;
-	if (
-		typeof metadata.documentId !== "string" ||
-		!Number.isSafeInteger(metadata.position) ||
-		(metadata.position as number) < 0
-	) {
+	if (typeof metadata.documentId !== "string") {
 		return null;
 	}
 	const documentId = metadata.documentId;
-	const position = metadata.position as number;
-	const text = item.content.text ?? "";
 	const revision = opaqueDocumentRevision(metadata);
-	return {
-		reference: buildContentReference({
-			kind: "document",
-			ref: `document:${documentId}`,
-			revision,
-		}),
-		slice: buildReadSlice({
-			range: { unit: "fragment", start: position, end: position + 1 },
-			completeness: "complete",
-			revision,
-			sliceSha256: createHash("sha256").update(text).digest("hex"),
-		}),
-	};
+	return buildContentReference({
+		kind: "document",
+		ref: `document:${documentId}`,
+		revision,
+	});
 }
 
 function requiredReadInteger(

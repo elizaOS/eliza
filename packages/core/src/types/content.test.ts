@@ -8,6 +8,7 @@ import {
 	buildContentReference,
 	buildReadSlice,
 	buildReadView,
+	isContentReference,
 	isReadView,
 	validateReadView,
 } from "./content.ts";
@@ -15,6 +16,18 @@ import {
 const HASH = "a".repeat(64);
 
 describe("progressive content contract", () => {
+	it("recognizes only strict opaque content references", () => {
+		expect(
+			isContentReference({ kind: "document", ref: "document:opaque" }),
+		).toBe(true);
+		expect(
+			isContentReference({
+				kind: "document",
+				ref: "document:opaque",
+				path: "/private/source",
+			}),
+		).toBe(false);
+	});
 	it("builds a complete empty view", () => {
 		const view = buildReadView({
 			reference: buildContentReference({ kind: "document", ref: "doc_123" }),

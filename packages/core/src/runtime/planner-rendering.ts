@@ -12,7 +12,7 @@ import {
 	projectToolDiagnosticValue,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
-import { isReadView } from "../types/content";
+import { isContentReference, isReadView } from "../types/content";
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { stringifyForModel } from "./json-output";
@@ -188,7 +188,7 @@ export function toolMessageContent(
 		onProjection?: (observation: ToolResultProjectionObservation) => void;
 	} = {},
 ): string {
-	const validatedReadView = findReadView(result.promptData);
+	const validatedReadView = hasRecoverableContentLocator(result.promptData);
 	const projected = projectToolResultForModel(
 		result,
 		options.omitRecoverableText,
@@ -254,12 +254,45 @@ export interface ToolResultProjectionObservation {
 	omissionReason?: "model-input-budget";
 }
 
-function findReadView(value: unknown): boolean {
-	if (isReadView(value)) return true;
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
+function hasRecoverableContentLocator(value: unknown): boolean {
+	const pending: Array<{ value: unknown; depth: number }> = [
+		{ value, depth: 0 },
+	];
+	let visited = 0;
+	while (pending.length > 0 && visited < 100) {
+		const current = pending.pop();
+		if (!current) break;
+		visited++;
+		if (isReadView(current.value) || isContentReference(current.value)) {
+			return true;
+		}
+		if (
+			current.depth >= 4 ||
+			current.value === null ||
+			typeof current.value !== "object"
+		) {
+			continue;
+		}
+		let children: unknown[];
+		if (Array.isArray(current.value)) {
+			children = current.value;
+		} else {
+			children = [];
+			for (const [key, child] of Object.entries(
+				current.value as Record<string, unknown>,
+			)) {
+				if (key === "readView") {
+					if (isReadView(child)) return true;
+					continue;
+				}
+				children.push(child);
+			}
+		}
+		for (const child of children) {
+			pending.push({ value: child, depth: current.depth + 1 });
+		}
 	}
-	return isReadView((value as Record<string, unknown>).readView);
+	return false;
 }
 
 /**
@@ -274,7 +307,7 @@ export function projectToolResultForModel(
 ): PlannerToolResult & {
 	contentProjection?: { textIncluded: boolean; reason?: string };
 } {
-	const hasReadView = findReadView(result.promptData);
+	const hasReadView = hasRecoverableContentLocator(result.promptData);
 	const projected = { ...result };
 	if (result.promptData !== undefined) {
 		delete projected.data;

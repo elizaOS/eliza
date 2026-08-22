@@ -163,6 +163,17 @@ export function validateContentReference(value: unknown): ContentReference {
 	};
 }
 
+export function isContentReference(value: unknown): value is ContentReference {
+	try {
+		validateContentReference(value);
+		return true;
+	} catch {
+		// error-policy:J3 untrusted model/plugin metadata uses false as the explicit
+		// invalid result; callers that need diagnostics use validateContentReference.
+		return false;
+	}
+}
+
 export function validateReadSlice(value: unknown): ReadSlice {
 	const input = record(value, "slice");
 	rejectUnknownKeys(input, READ_SLICE_KEYS, "slice");

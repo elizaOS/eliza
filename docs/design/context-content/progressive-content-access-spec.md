@@ -124,7 +124,7 @@ Search stays domain-owned. Search hits resolve to exact model-safe references/ra
 Requirements:
 
 - A page read performs bounded I/O. Line paging must not call whole-file `readFile` first.
-- `search` returns exact source ranges and does not claim completeness when its retrieval window is bounded.
+- `search` returns exact ranges only when the search index and native reader share the same coordinate system. Otherwise it returns the authorized parent reference plus ranking or media anchors and never invents readable coordinates or source completeness.
 - A readback page from an externalized result retains the original artifact identity; it is not externalized again as a new unrelated object.
 
 ## 6. Prompt projection and budgets
@@ -135,6 +135,8 @@ Actions use conservative retrieval-page limits. The central projection layer use
 The actual inline allowance is the minimum of the remaining request capacity after reserves, the per-result budget, the aggregate per-turn content budget, and safety limits. Larger-context models can receive larger projections after measurement, but no independent “percentage of context” formula is embedded in each action.
 
 Budgets are computed after final serialization, including JSON, line-number gutters, XML/fences, and omission notices. Tokenizer-backed counts are preferred; a model-family estimator is the fallback. Character count alone is not a prompt budget.
+
+The current experimental implementation applies this policy to native trajectory planner/evaluator rendering. Legacy prompt builders that serialize `ActionResult` values directly must migrate to the same final-request projector before the feature can be described as central across all model-facing paths or enabled by default.
 
 ### 6.2 Per-result and aggregate policy
 

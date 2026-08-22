@@ -290,6 +290,30 @@ describe("DocumentService requester authorization", () => {
 			}),
 		).resolves.toMatchObject({ id: GRANT_DOCUMENT_ID });
 		await expect(
+			runtime.adapter.readDocumentRange?.({
+				agentId: runtime.agentId,
+				documentId: GRANT_DOCUMENT_ID,
+				requesterEntityId: GRANTEE_ID,
+				requesterRoomIds: [],
+				requesterRole: "USER",
+				unit: "line",
+				offset: 0,
+				limit: 1,
+			}),
+		).resolves.toMatchObject({ text: "Grantable global body", total: 1 });
+		await expect(
+			runtime.adapter.readDocumentRange?.({
+				agentId: runtime.agentId,
+				documentId: GRANT_DOCUMENT_ID,
+				requesterEntityId: GRANTEE_ID,
+				requesterRoomIds: [],
+				requesterRole: "GUEST",
+				unit: "line",
+				offset: 0,
+				limit: 1,
+			}),
+		).resolves.toBeNull();
+		await expect(
 			service.setDocumentDirectGrantsWithAccessContext(GRANT_DOCUMENT_ID, [], {
 				requesterEntityId: GRANTEE_ID,
 				role: "USER",
@@ -303,6 +327,29 @@ describe("DocumentService requester authorization", () => {
 				isOwner: false,
 			}),
 		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN" });
+
+		await service.setDocumentDirectGrantsWithAccessContext(
+			GRANT_DOCUMENT_ID,
+			[],
+			adminContext,
+		);
+		await expect(
+			runtime.adapter.readDocumentRange?.({
+				agentId: runtime.agentId,
+				documentId: GRANT_DOCUMENT_ID,
+				requesterEntityId: GRANTEE_ID,
+				requesterRoomIds: [],
+				requesterRole: "USER",
+				unit: "line",
+				offset: 0,
+				limit: 1,
+			}),
+		).resolves.toBeNull();
+		await service.setDocumentDirectGrantsWithAccessContext(
+			GRANT_DOCUMENT_ID,
+			[GRANTEE_ID],
+			adminContext,
+		);
 	});
 
 	it("reads a late page from a 10 MiB PGLite document without returning a source-sized projection", async () => {

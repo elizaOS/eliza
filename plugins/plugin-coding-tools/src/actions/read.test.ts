@@ -141,6 +141,37 @@ describe("READ", () => {
     expect(`${first.text}${second.text}`).toBe("alpha\r\nbeta\ngamma\r\n");
   });
 
+  it("accepts an exact EOF line offset after caching the EOF checkpoint", async () => {
+    const file = path.join(env.tmpDir, "cached-eof.txt");
+    await fs.writeFile(file, "alpha\nbeta\n", "utf8");
+    const first = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, limit: 10 },
+    });
+    const firstView = (first.data as Record<string, unknown>).readView as {
+      reference: { revision: string };
+      slice: { range: { total: number } };
+    };
+
+    const eof = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        offset: firstView.slice.range.total,
+        limit: 1,
+        expectedRevision: firstView.reference.revision,
+      },
+    });
+
+    expect(eof.success).toBe(true);
+    expect(eof.text).toBe("");
+    expect(
+      (
+        (eof.data as Record<string, unknown>).readView as {
+          slice: { range: { start: number; end: number; total: number } };
+        }
+      ).slice.range,
+    ).toEqual({ unit: "line", start: 2, end: 2, total: 2 });
+  });
+
   it("respects offset and limit and marks truncated", async () => {
     const file = path.join(env.tmpDir, "long.txt");
     const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);

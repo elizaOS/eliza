@@ -216,7 +216,14 @@ async function lineWindow(
     end: endLine,
     hasMore: !atEof,
     ...(atEof
-      ? { total: size === 0 ? 0 : line + (endedWithNewline ? 0 : 1) }
+      ? {
+          total:
+            startByte >= size
+              ? startLine
+              : size === 0
+                ? 0
+                : line + (endedWithNewline ? 0 : 1),
+        }
       : {}),
     sourceBytesRead,
     nextByte: position,

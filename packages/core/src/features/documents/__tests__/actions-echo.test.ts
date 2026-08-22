@@ -220,7 +220,7 @@ describe("DOCUMENT search/list echo clamping", () => {
 		expect(res.text).toContain("completeness beyond that window is unknown");
 	});
 
-	it("projects transcript audio anchors into planner-facing search results", async () => {
+	it("projects transcript anchors and a document reference without inventing readable fragment coordinates", async () => {
 		const service = makeService();
 		service.searchDocuments.mockResolvedValueOnce([
 			{
@@ -249,13 +249,9 @@ describe("DOCUMENT search/list echo clamping", () => {
 			transcriptId: "transcript-1",
 			startMs: 12_500,
 			endMs: 15_000,
-			readView: {
-				reference: { kind: "document", ref: `document:${DOC_ID}` },
-				slice: {
-					range: { unit: "fragment", start: 12, end: 13 },
-				},
-			},
+			reference: { kind: "document", ref: `document:${DOC_ID}` },
 		});
+		expect(results[0]).not.toHaveProperty("readView");
 	});
 });
 
