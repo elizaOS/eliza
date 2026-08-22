@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Reports the production runtime-surface census and optionally compares two
- * generated reports within explicitly named package scopes. This foundation
- * is advisory: it never turns repository churn into a PR-blocking exit code.
+ * Reports the production runtime-surface census, optionally compares generated
+ * reports within named package scopes, and enforces the reviewed gap ratchet
+ * when explicitly requested by the audit command.
  */
 
 import { readFileSync } from "node:fs";
@@ -11,6 +11,10 @@ import {
   type RuntimeSurfaceInventory,
   type RuntimeSurfaceRow,
 } from "./runtime-surface-inventory.ts";
+import {
+  evaluateRuntimeSurfaceRatchet,
+  loadRuntimeSurfaceGapBaseline,
+} from "./runtime-surface-ratchet.ts";
 
 export interface RuntimeSurfaceHealth {
   duplicateRows: string[];
@@ -27,17 +31,25 @@ export interface RuntimeSurfaceScopedDrift {
 }
 
 interface CliOptions {
+  enforce: boolean;
   json: boolean;
   compareFile: string | null;
   packages: string[];
 }
 
 function parseArgs(args: string[]): CliOptions {
-  const options: CliOptions = { json: false, compareFile: null, packages: [] };
+  const options: CliOptions = {
+    enforce: false,
+    json: false,
+    compareFile: null,
+    packages: [],
+  };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--json") {
       options.json = true;
+    } else if (argument === "--enforce") {
+      options.enforce = true;
     } else if (argument === "--compare") {
       options.compareFile = args[++index] ?? null;
     } else if (argument === "--package") {
@@ -163,6 +175,9 @@ function main(): number {
   const options = parseArgs(process.argv.slice(2));
   const inventory = buildRuntimeSurfaceInventory();
   const health = inspectRuntimeSurfaceHealth(inventory);
+  const ratchet = options.enforce
+    ? evaluateRuntimeSurfaceRatchet(inventory, loadRuntimeSurfaceGapBaseline())
+    : null;
   const drift = options.compareFile
     ? compareRuntimeSurfaceInventories(
         inventory,
@@ -172,7 +187,7 @@ function main(): number {
     : null;
   if (options.json) {
     process.stdout.write(
-      `${JSON.stringify({ inventory, health, drift }, null, 2)}\n`,
+      `${JSON.stringify({ inventory, health, ratchet, drift }, null, 2)}\n`,
     );
   } else {
     process.stdout.write(
@@ -187,8 +202,28 @@ function main(): number {
           `+${drift.added.length} -${drift.removed.length} ~${drift.changed.length}.\n`,
       );
     }
+    if (ratchet) {
+      process.stdout.write(
+        `[runtime-surfaces] ${ratchet.ok ? "PASS" : "FAIL"} ratchet — ` +
+          `${ratchet.newGaps.length} new; ${ratchet.resolvedGaps.length} resolved; ` +
+          `${ratchet.changedGaps.length} reclassified.\n`,
+      );
+      for (const id of ratchet.newGaps) {
+        process.stdout.write(`  new gap: ${id}\n`);
+      }
+      for (const id of ratchet.resolvedGaps) {
+        process.stdout.write(`  remove resolved baseline entry: ${id}\n`);
+      }
+      for (const change of ratchet.changedGaps) {
+        process.stdout.write(
+          `  review changed gap: ${change.id} ` +
+            `(${change.baselineStatus}/${change.baselineWorkstream} -> ` +
+            `${change.currentStatus}/${change.currentWorkstream})\n`,
+        );
+      }
+    }
   }
-  return 0;
+  return options.enforce && (!health.ok || !ratchet?.ok) ? 1 : 0;
 }
 
 if (import.meta.main) process.exit(main());

@@ -39,6 +39,11 @@ import {
   servedCloudRoutes,
   workerBindingsFromSource,
 } from "./runtime-surface-inventory.ts";
+import {
+  evaluateRuntimeSurfaceRatchet,
+  loadRuntimeSurfaceGapBaseline,
+  type RuntimeSurfaceGapBaseline,
+} from "./runtime-surface-ratchet.ts";
 
 function row(
   id: string,
@@ -106,6 +111,79 @@ function inventory(rows: RuntimeSurfaceRow[]): RuntimeSurfaceInventory {
 describe("runtime-surface production inventory", () => {
   const realInventory = buildRuntimeSurfaceInventory({
     generatedAt: "2026-08-20T00:00:00.000Z",
+  });
+
+  test("enforces the exact reviewed gap set as a shrink-only ratchet", () => {
+    const baseline = loadRuntimeSurfaceGapBaseline();
+    expect(evaluateRuntimeSurfaceRatchet(realInventory, baseline)).toEqual({
+      newGaps: [],
+      resolvedGaps: [],
+      changedGaps: [],
+      ok: true,
+    });
+    expect(baseline.deferrals.flatMap((group) => group.surfaces).length).toBe(
+      realInventory.rows.filter((row) => row.status !== "covered").length,
+    );
+    for (const group of baseline.deferrals) {
+      expect(group.reason.length).toBeGreaterThan(23);
+      expect(group.reason).toContain(group.workstream);
+      expect(group.surfaces).toEqual(
+        [...group.surfaces].sort((left, right) =>
+          left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+        ),
+      );
+    }
+  });
+
+  test("rejects new, resolved, and reclassified gaps", () => {
+    const loaded = loadRuntimeSurfaceGapBaseline();
+    const baseline = structuredClone(loaded);
+    const dropped = baseline.deferrals[0]?.surfaces.shift();
+    if (!dropped)
+      throw new Error("Expected the real gap baseline to be nonempty");
+    expect(
+      evaluateRuntimeSurfaceRatchet(realInventory, baseline).newGaps,
+    ).toEqual([dropped.id]);
+
+    const fixtureBaseline: RuntimeSurfaceGapBaseline = {
+      ...loaded,
+      deferrals: [
+        {
+          workstream: "#23268",
+          reason:
+            "Deferred to #23268 while the exact fixture surface remains uncovered.",
+          surfaces: [
+            {
+              id: "fixture-gap",
+              status: "provider-qualified-only",
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      evaluateRuntimeSurfaceRatchet(
+        inventory([row("fixture-gap", "covered")]),
+        fixtureBaseline,
+      ),
+    ).toMatchObject({ resolvedGaps: ["fixture-gap"], ok: false });
+    expect(
+      evaluateRuntimeSurfaceRatchet(
+        inventory([row("fixture-gap", "uncovered", { workstream: "#23268" })]),
+        fixtureBaseline,
+      ),
+    ).toMatchObject({
+      changedGaps: [
+        {
+          id: "fixture-gap",
+          baselineStatus: "provider-qualified-only",
+          currentStatus: "uncovered",
+          baselineWorkstream: "#23268",
+          currentWorkstream: "#23268",
+        },
+      ],
+      ok: false,
+    });
   });
 
   test("reports a structurally valid production census without a frozen baseline", () => {

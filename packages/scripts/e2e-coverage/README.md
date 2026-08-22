@@ -1,15 +1,16 @@
 # e2e gates and synthetic-world coverage reporting
 
-Two coverage gates and one advisory inventory live in this directory. They read real
-production registration source and configuration statically, without booting a
-provider or importing plugin side effects.
+Three coverage gates live in this directory. They read real production
+registration source and configuration statically, without booting a provider
+or importing plugin side effects.
 
 1. **Canonical runtime-surface inventory (issue #22897)** — every maintained
    plugin and host registration is inventoried across actions, promoted
    subactions, providers, services, evaluators, events, routes, views, models,
    connector ingress/egress, scheduled workers, queues, native bridges, and
    Cloud services. Coverage and dependency dispositions are derived from the
-   current source tree; the inventory is report-only while its proof corpus grows.
+   current source tree. A row-level baseline ratchets the reviewed gap set so
+   existing debt can shrink but new uncovered production surfaces fail CI.
 2. **Surface coverage ship-gate (issue #8802)** — every slash command, pre-LLM
    shortcut (#8791), plugin-declared HTTP route, and view must have a real
    recorded e2e or a written exemption.
@@ -94,8 +95,9 @@ misreported as blockchain RPC.
 Browser bridge management is separated from browser automation, and Discord's
 web-app scraper is separated from the bot REST/Gateway protocol.
 
-Coverage and dependency status are derived, never baselined. A deterministic scenario declares the
-full canonical id in its exported `runtimeSurfaceIds` array. Canonical bare
+Coverage and dependency status are derived rather than assigned by the
+baseline. A deterministic scenario declares the full canonical id in its
+exported `runtimeSurfaceIds` array. Canonical bare
 objects and `scenario({...})` exports are both resolved; action evidence must
 come from an asserted turn, and other runtime calls must be reachable from a
 turn assertion or final-check callback. Setup, seed, unused-helper, comment,
@@ -106,16 +108,29 @@ or a boundary-name substring alone never counts. The initial proof corpus
 includes a deterministic Notes action scenario and a real booted-Cloud locale
 route cell, so both artifact classes are nonzero before any future enforcement.
 
-Drift comparison is opt-in and requires explicit package scopes. It compares
-two generated reports rather than consulting Git or a whole-repository frozen
-snapshot. The report command always exits zero for inventory findings; malformed
-arguments or an inventory construction error remain ordinary command failures.
+`runtime-surface-gap-baseline.json` is the enforcement baseline. It records
+every currently non-covered canonical id and its exact status under one owning
+workstream with a written deferral reason. The ratchet fails when a new gap is
+absent from the baseline, when a gap changes status or ownership, or when a
+baselined gap is covered or removed. The last case intentionally requires the
+stale entry to be deleted so the baseline may only shrink. A newly introduced
+surface is accepted without a baseline edit only when executable evidence makes
+it `covered` on its first revision. The complete `packages/scripts` test sweep
+runs this contract in required CI, and the direct audit command exposes the
+same nonzero exit behavior locally.
+
+Drift comparison remains opt-in and requires explicit package scopes. It
+compares two generated reports rather than consulting Git. The report command
+always exits zero for inventory findings unless `--enforce` is explicitly
+selected; malformed arguments or an inventory construction error remain
+ordinary command failures.
 
 Run the advisory report and generate its machine-readable and reviewer-readable
 artifacts with:
 
 ```bash
 bun run report:runtime-surface-coverage
+bun run audit:runtime-surface-coverage
 bun test packages/scripts/e2e-coverage/runtime-surface-inventory.test.ts
 bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
 ```
@@ -136,10 +151,10 @@ matrix and the parent #22896 workstreams.
 ### #8801/#8802 compatibility
 
 `bun run audit:e2e-coverage` retains the existing #8801/#8802 enforcement
-contract. The #22897 runtime census does not run in that gate. Its JSON,
-Markdown, and HTML outputs are additive report artifacts for reviewers and the
-parent #22896 workstreams. Enforcement is deliberately deferred until the
-proof corpus and mock ownership catalog are materially complete.
+contract. The row-level runtime ratchet is a separate
+`bun run audit:runtime-surface-coverage` gate; it does not reinterpret the
+legacy package baseline. JSON, Markdown, and HTML outputs remain additive
+report artifacts and are not committed or used as the enforcement baseline.
 
 ---
 

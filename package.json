@@ -40,6 +40,7 @@
     "ensure-plugin-test-conventions:check": "bun packages/scripts/ensure-plugin-test-conventions.mjs --check",
     "trajectory:inspect": "bun packages/scripts/trajectory.ts",
     "audit:e2e-coverage": "bun --conditions=eliza-source packages/scripts/e2e-coverage/check-e2e-coverage.ts",
+    "audit:runtime-surface-coverage": "bun --conditions=eliza-source packages/scripts/e2e-coverage/check-runtime-surface-coverage.ts --enforce",
     "report:runtime-surface-coverage": "bun packages/scripts/e2e-coverage/check-runtime-surface-coverage.ts",
     "audit:ui-determinism": "node packages/scripts/audit-ui-determinism.mjs",
     "audit:ui-determinism:update": "node packages/scripts/audit-ui-determinism.mjs --update-baseline",
