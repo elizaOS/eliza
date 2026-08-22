@@ -201,13 +201,24 @@ or use-case call and requires the caller to supply its authoritative readback.
 It hashes sanitized request, response, and readback values into an append-only
 JSONL receipt. An adapter response cannot be recorded as `succeeded` unless the
 real call occurred, its acceptance was typed, its readback exists and matches,
-and the authoritative active generation still matches the attempt.
+and the caller's production-owned async generation fence admitted the attempt.
+The fence must exclude reset/rollover for the complete invocation, readback,
+and durable receipt append. If the generation is stale when that fence is
+acquired, the boundary is not called.
 
 The ledger is evidence, never desired or provider state. Fault directives are
 injected at this consumer boundary and record timeout, retryable/permanent,
 rate-limit, partial, ambiguous, and stale-completion outcomes without inventing
-successful effects. `JsonlBoundaryObservationLedger` is single-writer; the
-cross-process namespace lease owns writer exclusion.
+successful effects. Its public surface is read-only; only the observer holds
+the module-private append capability. Records use strict schema validation and
+a SHA-256 chain, and each newline-framed append is synced before it resolves.
+Malformed, edited, blank, or truncated frames fail closed rather than being
+returned as evidence. The chain is tamper-evident, not signed proof.
+
+`JsonlBoundaryObservationLedger` remains a single-writer primitive. #24076's
+cross-process namespace lease must implement the generation-fence contract and
+own reset/rollover exclusion; this module does not fabricate that authority or
+claim exactly-once behavior for an external provider.
 
 ## Programmatic use
 
