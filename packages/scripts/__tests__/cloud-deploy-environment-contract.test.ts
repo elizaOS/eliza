@@ -755,7 +755,7 @@ describe("canonical cloud deployment environment contract", () => {
     expect(inventoryIndex).toBeLessThan(healthIndex);
 
     const inventory = steps[inventoryIndex];
-    expect(inventory?.run).toContain("wrangler@4.100.0 secret list");
+    expect(inventory?.run).toContain("wrangler@4.116.0 secret list");
     expect(inventory?.run).toContain("--format json");
     for (const name of cloudWorkerSecretNames) {
       expect(inventory?.run).toContain(`\n    "${name}",\n`);
