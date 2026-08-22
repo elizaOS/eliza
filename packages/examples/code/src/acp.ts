@@ -378,8 +378,7 @@ const _connection = new AgentSideConnection(
         publish: (update: Parameters<typeof conn.sessionUpdate>[0]) =>
           conn.sessionUpdate(update),
       };
-      let response: string;
-      response = await activePrompts.run(promptContext, (abortSignal) =>
+      const response = await activePrompts.run(promptContext, (abortSignal) =>
         getAgentClient().sendMessage({
           room,
           text,
