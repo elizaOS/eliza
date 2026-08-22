@@ -191,7 +191,7 @@ describe("blueskyProvider — media budget", () => {
 
     const result = await blueskyProvider.createPost(BSKY_CREDS, content);
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Media attachment exceeds the media byte limit");
+    expect(result.error).toContain("Media attachment exceeds the raw encoded media limit");
     // createRecord was never called.
     expect(fetchQueue.length).toBe(0);
     expect(mediaBodies.length).toBe(0);
