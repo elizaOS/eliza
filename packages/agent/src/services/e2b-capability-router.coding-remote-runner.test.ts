@@ -85,7 +85,7 @@ describe("E2B remote runner router with the Coding remote runner HTTP runner", (
       provider: "home",
       remoteHttpBaseUrl: REMOTE_RUNNER_URL,
       remoteHttpToken: REMOTE_RUNNER_TOKEN,
-      agentRunners: ["codex", "claude-code", "opencode"],
+      agentRunners: ["codex", "claude-code"],
       workdir: "/workspace",
       hostWorkspaceRoot: workspaceRoot,
       timeoutMs: 30_000,

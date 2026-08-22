@@ -2550,11 +2550,6 @@ async function handleRequest(
             applyWhatsAppQrOverride: (...args: unknown[]) => void;
           }>("whatsapp")
         ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
