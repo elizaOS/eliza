@@ -324,7 +324,7 @@ const ANDROID_FULL_TURN_PROMPT =
   "Reply with exactly these four words: android smoke model works.";
 const ANDROID_FULL_TURN_EXPECTED_REPLY = "android smoke model works";
 const ANDROID_FULL_TURN_CONTROL_TOKEN_RE =
-  /<(?:end|start)_of_turn>|<\|(?:im_end|im_start)\|>/i;
+  /<(?:end|start)_of_turn>|<endoftext>|<\|(?:im_end|im_start)\|>/i;
 const ANDROID_SMOKE_MODEL_CONTEXT_SIZE =
   smokeNumbers.androidSmokeModelContextSize;
 const ANDROID_SMOKE_MODEL_ID =
@@ -2453,6 +2453,17 @@ function requireUsableFullTurnReply(done, rawStreamText) {
   }
   if (ANDROID_FULL_TURN_CONTROL_TOKEN_RE.test(reply)) {
     throw new Error(`Full-turn smoke leaked a model control token: ${reply}`);
+  }
+  const normalizedReply = reply
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  if (normalizedReply !== ANDROID_FULL_TURN_EXPECTED_REPLY) {
+    throw new Error(
+      `Full-turn smoke returned the wrong reply: ${reply} (expected ${ANDROID_FULL_TURN_EXPECTED_REPLY})`,
+    );
   }
   return reply;
 }

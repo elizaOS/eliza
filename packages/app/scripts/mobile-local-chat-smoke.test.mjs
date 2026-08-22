@@ -389,7 +389,7 @@ describe("mobile smoke result parsing", () => {
     );
   });
 
-  it("requires a useful full-turn reply without leaked model control tokens", () => {
+  it("requires the normalized exact full-turn reply", () => {
     expect(
       smoke.requireUsableFullTurnReply(
         { fullText: '"Android smoke model works!"' },
@@ -402,19 +402,32 @@ describe("mobile smoke result parsing", () => {
       [{ noResponseReason: "muted" }, /noResponseReason/],
       [{ text: "" }, /empty reply/],
       [{ text: "Chat generation failed" }, /unusable reply/],
-      [{ text: "answer<end_of_turn>next prompt" }, /control token/],
     ]) {
       expect(() => smoke.requireUsableFullTurnReply(done, "stream")).toThrow(
         expected,
       );
     }
-    expect(
+  });
+
+  it("rejects a nonempty but semantically wrong full-turn reply", () => {
+    expect(() =>
       smoke.requireUsableFullTurnReply(
         { text: "I am ready to assist you. How can I help?" },
         "stream",
       ),
-    ).toBe("I am ready to assist you. How can I help?");
+    ).toThrow(/wrong reply/);
   });
+
+  for (const marker of ["<end_of_turn>", "<start_of_turn>", "<endoftext>"]) {
+    it(`rejects the leaked ${marker} model control marker`, () => {
+      expect(() =>
+        smoke.requireUsableFullTurnReply(
+          { text: `android smoke model works${marker}` },
+          "stream",
+        ),
+      ).toThrow(/control token/);
+    });
+  }
 
   it("summarizes optional local-inference payloads without inventing readiness", () => {
     expect(
