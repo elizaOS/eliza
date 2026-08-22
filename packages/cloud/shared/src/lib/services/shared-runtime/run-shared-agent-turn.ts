@@ -190,6 +190,23 @@ function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeE
   );
 }
 
+function normalizedWebSearchQuery(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
+  return normalized || undefined;
+}
+
+function isSameWebSearchQuery(result: ActionResult, query: string): boolean {
+  const resultQuery = normalizedWebSearchQuery(result.data?.query);
+  const expectedQuery = normalizedWebSearchQuery(query);
+  return (
+    result.data?.actionName === "WEB_SEARCH" &&
+    resultQuery !== undefined &&
+    expectedQuery !== undefined &&
+    resultQuery === expectedQuery
+  );
+}
+
 /** Streaming persistence belongs to the consumer-aware transport finalizer. */
 export type RunSharedAgentTurnStreamInput = Omit<RunSharedAgentTurnInput, "memory">;
 
@@ -572,11 +589,7 @@ export async function runSharedAgentTurn(
     );
     if (realtimeActionResults) {
       const runtimeActionResults = (turn.actionResults ?? []).filter(
-        (result) =>
-          !(
-            result.data?.actionName === "WEB_SEARCH" &&
-            result.data?.query === realtimeRequirement?.query
-          ),
+        (result) => !isSameWebSearchQuery(result, realtimeRequirement?.query ?? ""),
       );
       turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
     }
@@ -618,7 +631,7 @@ export async function runSharedAgentTurn(
       });
     }
     const actionResults = (turn.actionResults ?? []).map((result) =>
-      result.data?.actionName === "WEB_SEARCH" && result.data?.query === realtimeRequirement.query
+      isSameWebSearchQuery(result, realtimeRequirement.query)
         ? {
             ...result,
             data: {
