@@ -19,11 +19,6 @@
 
 import { toWellFormedUnicode } from "../utils/well-formed.ts";
 import {
-	tailWellFormed,
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
-import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptFewShotExample,
 	type OptimizedPromptService,

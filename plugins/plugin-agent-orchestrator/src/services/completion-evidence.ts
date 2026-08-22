@@ -432,7 +432,7 @@ export function buildCompletionEvidenceString(
     sections.push(
       [
         "## RUN OUTPUT (raw session output captured by the orchestrator)",
-        clamp(runOutput, 4_000),
+        runOutput,
       ].join("\n"),
     );
     hasRicherSection = true;

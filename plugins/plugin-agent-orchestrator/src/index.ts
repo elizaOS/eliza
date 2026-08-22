@@ -61,7 +61,6 @@ export {
 // package root so packages/agent's swarm-synthesis path can strip captured
 // tool-output envelopes with the SAME implementation the sub-agent router uses.
 export {
-  elideLongBlocks,
   sanitizeCompletionRelay,
   stripToolTranscript,
 } from "./services/transcript-sanitizer.js";
