@@ -498,6 +498,83 @@ describe("XService trusted account routing", () => {
     );
   });
 
+  it("rejects CJK text that exceeds the X weighted 280 cap before egress", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const getClient = vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    );
+
+    await expect(
+      service.handleSendPost(runtime, {
+        text: "你".repeat(141),
+      } as Content),
+    ).rejects.toThrow(/weighted characters; received 282/);
+    expect(getClient).not.toHaveBeenCalled();
+  });
+
+  it("admits 140 CJK characters and 280 Latin characters", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const profile = {
+      id: "account-owner",
+      username: "account-owner",
+      screenName: "Account Owner",
+      bio: "",
+      nicknames: [],
+    };
+    const base = {
+      profile,
+      withAuthenticatedSession: async <T>(
+        operation: (session: {
+          client: never;
+          profile: typeof profile;
+          revision: number;
+        }) => Promise<T>,
+      ) => operation({ client: {} as never, profile, revision: 1 }),
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+    const createPost = vi
+      .spyOn(TwitterPostService.prototype, "createPost")
+      .mockResolvedValue({
+        id: "post-cjk",
+        agentId: runtime.agentId,
+        roomId: "room-1" as never,
+        userId: "account-owner",
+        username: "account-owner",
+        text: "ok",
+        timestamp: 1,
+      });
+
+    createPost.mockClear();
+    await service.handleSendPost(runtime, {
+      text: "你".repeat(140),
+    } as Content);
+    await service.handleSendPost(runtime, {
+      text: "a".repeat(280),
+    } as Content);
+
+    expect(createPost).toHaveBeenCalledTimes(2);
+    expect(createPost).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ text: "你".repeat(140) }),
+      profile,
+    );
+    expect(createPost).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ text: "a".repeat(280) }),
+      profile,
+    );
+  });
+
   it("keeps DM recipient lookup and send inside one authenticated session", async () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);

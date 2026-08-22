@@ -18,6 +18,10 @@ import {
 } from "@elizaos/core";
 import type { ClientBase } from "../base";
 import { TWEET_MAX_LENGTH } from "../constants";
+import {
+  countTwitterWeightedLength,
+  truncateToTwitterWeightedLength,
+} from "../tweet-length";
 import type { TwitterClientState } from "../types";
 import { sendTweet } from "../utils";
 import {
@@ -33,14 +37,15 @@ function errorMessage(error: unknown): string {
 }
 
 function normalizePostText(text: string): string {
-  if (text.length <= TWEET_MAX_LENGTH) {
+  if (countTwitterWeightedLength(text) <= TWEET_MAX_LENGTH) {
     return text;
   }
 
   const sentenceMatches = text.match(/[^.!?]+[.!?]+/g) || [];
   let sentenceText = "";
   for (const sentence of sentenceMatches) {
-    if ((sentenceText + sentence).trim().length <= TWEET_MAX_LENGTH) {
+    const candidate = `${sentenceText}${sentence}`.trim();
+    if (countTwitterWeightedLength(candidate) <= TWEET_MAX_LENGTH) {
       sentenceText += sentence;
     } else {
       break;
@@ -50,12 +55,15 @@ function normalizePostText(text: string): string {
     return sentenceText.trim();
   }
 
-  const spaceIndex = text.lastIndexOf(" ", TWEET_MAX_LENGTH - 4);
+  const truncated = truncateToTwitterWeightedLength(text, TWEET_MAX_LENGTH - 3);
+  const spaceIndex = truncated.lastIndexOf(" ");
   if (spaceIndex > 0) {
-    return `${text.slice(0, spaceIndex).trim()}...`;
+    return `${truncated.slice(0, spaceIndex).trim()}...`;
   }
-
-  return `${text.slice(0, TWEET_MAX_LENGTH - 3).trim()}...`;
+  if (truncated.trim()) {
+    return `${truncated.trim()}...`;
+  }
+  return truncateToTwitterWeightedLength(text, TWEET_MAX_LENGTH);
 }
 
 export function createTwitterPostCallback({
