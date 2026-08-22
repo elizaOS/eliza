@@ -189,16 +189,29 @@ function isRedirectStatus(status: number): boolean {
 	);
 }
 
-async function cancelResponseBody(response: Response): Promise<void> {
-	try {
-		await response.body?.cancel();
-	} catch (error) {
-		// error-policy:J6 The request has already failed; body cancellation is
-		// best-effort transport teardown and must not replace the primary error.
+/**
+ * Disposes a response body the guard will never hand to the caller. The
+ * cancellation is detached on purpose: a hostile or wedged stream whose
+ * `cancel()` never settles (or rejects) must not pin the guard past its
+ * deadline or replace the primary redirect/HTTP failure that is about to be
+ * thrown. Failures are logged and otherwise ignored.
+ */
+function cancelResponseBody(response: Response): void {
+	const body = response.body;
+	if (!body) {
+		return;
+	}
+	const warn = (error: unknown) =>
 		logger.warn(
 			{ error },
 			"[FetchGuard] Failed to cancel rejected response body",
 		);
+	try {
+		void Promise.resolve(body.cancel()).catch((error: unknown) => warn(error));
+	} catch (error) {
+		// error-policy:J6 The request has already failed; body cancellation is
+		// best-effort transport teardown and must not replace the primary error.
+		warn(error);
 	}
 }
 
@@ -386,6 +399,13 @@ export async function fetchWithSsrfGuard(
 				...(signal ? { signal } : {}),
 			};
 
+			// A signal that is already aborted (caller cancellation or an elapsed
+			// deadline during DNS pinning) must not dispatch a request at all.
+			if (signal?.aborted) {
+				await release();
+				throw signal.reason;
+			}
+
 			const response =
 				pinned && pinnedFetchImpl
 					? await pinnedFetchImpl({
@@ -399,7 +419,7 @@ export async function fetchWithSsrfGuard(
 			if (isRedirectStatus(response.status)) {
 				const location = response.headers.get("location");
 				if (!location) {
-					await cancelResponseBody(response);
+					cancelResponseBody(response);
 					await release();
 					throw new Error(
 						`Redirect missing location header (${response.status})`,
@@ -407,14 +427,14 @@ export async function fetchWithSsrfGuard(
 				}
 				redirectCount += 1;
 				if (redirectCount > maxRedirects) {
-					await cancelResponseBody(response);
+					cancelResponseBody(response);
 					await release();
 					throw new Error(`Too many redirects (limit: ${maxRedirects})`);
 				}
 				// No redirect response body is consumed by this guard. Dispose it
 				// before parsing or validating the next hop so malformed Location
 				// values cannot retain the response socket on the failure path.
-				await cancelResponseBody(response);
+				cancelResponseBody(response);
 				const nextParsedUrl = new URL(location, parsedUrl);
 				const nextUrl = nextParsedUrl.toString();
 				if (visited.has(nextUrl)) {

@@ -105,14 +105,29 @@ function assertBoundedRequestBody(body: BodyInit | null | undefined): void {
   }
 }
 
-async function cancelBody(response: Response): Promise<void> {
+/**
+ * Fires a stream cancellation without waiting for it to settle. The bridge
+ * never lets a container-controlled stream decide when a failure surfaces: a
+ * `cancel()` that hangs or rejects is logged and otherwise ignored so the
+ * primary HTTP/size error returns immediately and the guard is released on
+ * the bridge's own schedule.
+ */
+function detachCancel(cancel: () => Promise<unknown>): void {
+  const warn = (error: unknown) =>
+    logger.warn({ error }, `${LOG_PREFIX} Failed to cancel bridge response body`);
   try {
-    await response.body?.cancel();
+    void Promise.resolve(cancel()).catch((error: unknown) => warn(error));
   } catch (error) {
     // error-policy:J6 The bridge request is already failing; response-body
     // cancellation is best-effort transport teardown.
-    logger.warn({ error }, `${LOG_PREFIX} Failed to cancel bridge response body`);
+    warn(error);
   }
+}
+
+function cancelBody(response: Response): void {
+  const body = response.body;
+  if (!body) return;
+  detachCancel(() => body.cancel());
 }
 
 async function responseWithBoundedBody(
@@ -126,7 +141,7 @@ async function responseWithBoundedBody(
 
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > SANDBOX_BRIDGE_MAX_RESPONSE_BYTES) {
-    await cancelBody(response);
+    cancelBody(response);
     await release();
     throw bridgeError(
       "Local bridge response exceeds the byte limit",
@@ -155,7 +170,7 @@ async function responseWithBoundedBody(
         }
         byteLength += chunk.value.byteLength;
         if (byteLength > SANDBOX_BRIDGE_MAX_RESPONSE_BYTES) {
-          await reader.cancel("Local bridge response exceeded the byte limit");
+          detachCancel(() => reader.cancel("Local bridge response exceeded the byte limit"));
           await finish();
           controller.error(
             bridgeError(
@@ -181,11 +196,8 @@ async function responseWithBoundedBody(
       }
     },
     async cancel(reason) {
-      try {
-        await reader.cancel(reason);
-      } finally {
-        await finish();
-      }
+      detachCancel(() => reader.cancel(reason));
+      await finish();
     },
   });
   return new Response(body, {
@@ -239,7 +251,7 @@ export async function sandboxBridgeFetch(
   }
 
   if (!guarded.response.ok) {
-    await cancelBody(guarded.response);
+    cancelBody(guarded.response);
     await guarded.release();
     throw bridgeError(
       `Local bridge returned HTTP ${guarded.response.status}`,
