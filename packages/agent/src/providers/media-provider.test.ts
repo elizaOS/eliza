@@ -647,11 +647,91 @@ describe("media vision provider input validation", () => {
     ).resolves.toMatchObject({
       success: false,
       errorCode: "VISION_OUTPUT_BUDGET_UNSUPPORTED",
-      error: expect.stringMatching(/supports at most 128000 output tokens/),
+      error: expect.stringMatching(
+        /Requested 128001 output tokens.*supports at most 128000/,
+      ),
+      errorContext: {
+        model: "claude-opus-4-7",
+        requestedMaxTokens: 128_001,
+        supportedMaxTokens: 128_000,
+      },
     });
     expect(calls.map((call) => call.url)).toEqual([
       "https://api.anthropic.com/v1/models/claude-opus-4-7",
     ]);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects malformed Anthropic output budget %s before any provider request",
+    async (maxTokens) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const provider = createVisionProvider(
+        {
+          mode: "own-key",
+          provider: "anthropic",
+          anthropic: { apiKey: "anthropic-key", model: "claude-opus-4-7" },
+        },
+        { cloudMediaDisabled: true },
+      );
+
+      await expect(
+        provider.analyze({ imageBase64: "AQID", maxTokens }),
+      ).resolves.toMatchObject({
+        success: false,
+        errorCode: "VISION_OUTPUT_BUDGET_INVALID",
+        error: expect.stringMatching(/must be a positive safe integer/),
+        errorContext: {
+          model: "claude-opus-4-7",
+          requestedMaxTokens: maxTokens,
+        },
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("preserves an accepted explicit Anthropic output request", async () => {
+    const calls: FetchCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({
+          url: href,
+          init,
+          body:
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as Record<string, unknown>)
+              : {},
+        });
+        return href.includes("/v1/models/")
+          ? Response.json({ max_tokens: 128_000 })
+          : Response.json({
+              stop_reason: "end_turn",
+              content: [{ type: "text", text: "complete image" }],
+            });
+      }),
+    );
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "anthropic",
+        anthropic: { apiKey: "anthropic-key", model: "claude-opus-4-7" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(
+      provider.analyze({ imageBase64: "AQID", maxTokens: 4096 }),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { description: "complete image" },
+    });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.anthropic.com/v1/models/claude-opus-4-7",
+      "https://api.anthropic.com/v1/messages",
+    ]);
+    expect(calls[1].body.max_tokens).toBe(4096);
   });
 });
 
