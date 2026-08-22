@@ -50,6 +50,8 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Local annotated tag: `lifeops-current-base-supervised-publication-20260822`. The tag was not pushed.
 - The draft PR records the exact focused proof and the protected-Google, native EventKit recurrence, unrelated aggregate app-audit, hosted CI/review, and deployment gates. It was not merged or deployed.
 - Root `bun run verify` was attempted at PR head `c64470c50a4865fe79f8de6183504efc3f58ef7e` and stopped at `check:i18n`: seven locale catalogs are each missing roughly 1,100 existing source keys and `en.json` is missing 14 `connectorcard.*` keys. This PR changes none of the reported source/catalog paths or the checker, so the failure is a current-base repository baseline rather than a LifeOps regression; later verify stages did not run.
+- Exact-head hosted run `32605246351` passed diff validation, secret scanning, workflow linting, workspace setup, and the core build, then failed while linting the repository-wide affected closure because the then-current base contained an unformatted `gateway-webhook` test. `develop` subsequently advanced to `823283038c9eeb437a984bd9f78a69b5ca47e4bd` with upstream PR `#24820`, which formats that file.
+- The published branch preserved history with a normal, conflict-free merge of that current `develop`; no force-push was used. Pre-ledger merge head `467aa154148e48cc43a11cd24126651adaf579fe` has cumulative patch ID `661137867d159396975053c45a72c6ee62eb75f7`, identical before and after the merge. The branch now has no `gateway-webhook` diff, and its package `lint:check` passes locally.
 
 ## Workspace and exact checkpoints
 
