@@ -55,6 +55,9 @@ const markPhaseProviderCallStarted = mock(async () => true);
 const completeStewardDeactivationPhase = mock(async () => true);
 const completeStewardReactivationPhase = mock(async () => true);
 const markPhaseForReconciliation = mock(async () => true);
+const deferPhaseReconciliation = mock(async () => true);
+const markPhaseRetryable = mock(async () => true);
+const markPhaseActionRequired = mock(async () => true);
 const cancelDuringRecovery = mock(async () => ({
   outcome: "canceling" as const,
   request: reservedRequest({
@@ -75,6 +78,9 @@ const requestRepo = {
   completeStewardDeactivationPhase,
   completeStewardReactivationPhase,
   markPhaseForReconciliation,
+  deferPhaseReconciliation,
+  markPhaseRetryable,
+  markPhaseActionRequired,
   findOpenByUserId: mock(async () => undefined),
   findById: mock(async () =>
     reservedRequest({
@@ -88,6 +94,7 @@ const requestRepo = {
   findCancelingRequestIds: mock(async () => []),
   finalizeCancellationIfComplete: mock(async () => false),
   findRecoveryPhaseCandidates: mock(async () => []),
+  findCancellationPhaseCandidates: mock(async () => []),
   findExpiredRecoveryRequestIds: mock(async () => []),
   findRunnableIrreversibleRequests: mock(async () => []),
   listPhaseReceipts: mock(async () => []),
@@ -158,11 +165,17 @@ beforeEach(() => {
   completeStewardReactivationPhase.mockResolvedValue(true);
   markPhaseForReconciliation.mockReset();
   markPhaseForReconciliation.mockResolvedValue(true);
+  deferPhaseReconciliation.mockReset();
+  deferPhaseReconciliation.mockResolvedValue(true);
+  markPhaseRetryable.mockReset();
+  markPhaseRetryable.mockResolvedValue(true);
+  markPhaseActionRequired.mockReset();
+  markPhaseActionRequired.mockResolvedValue(true);
   cancelDuringRecovery.mockReset();
   cancelDuringRecovery.mockResolvedValue({
-    outcome: "canceled",
+    outcome: "canceling",
     request: reservedRequest({
-      status: "canceled",
+      status: "canceling",
       canceled_at: REQUESTED_AT,
       recovery_token_hash: null,
       recovery_token_expires_at: null,
@@ -175,6 +188,17 @@ beforeEach(() => {
   deactivateSteward.mockResolvedValue({ userId: "steward-1" });
   reactivateSteward.mockReset();
   reactivateSteward.mockResolvedValue({ userId: "steward-1" });
+  inspectSteward.mockReset();
+  inspectSteward.mockResolvedValue("deactivated");
+  requestRepo.findById.mockReset();
+  requestRepo.findById.mockResolvedValue(
+    reservedRequest({
+      status: "canceling",
+      canceled_at: REQUESTED_AT,
+      identity_deactivated_at: null,
+      last_error_code: "CANCELLATION_CLEANUP_PENDING",
+    }),
+  );
   requestRepo.claimDue.mockReset();
   requestRepo.claimDue.mockResolvedValue([]);
   requestRepo.recoverStaleProcessing.mockReset();
@@ -189,6 +213,8 @@ beforeEach(() => {
   requestRepo.findExpiredRecoveryRequestIds.mockResolvedValue([]);
   requestRepo.findRunnableIrreversibleRequests.mockReset();
   requestRepo.findRunnableIrreversibleRequests.mockResolvedValue([]);
+  requestRepo.findCancellationPhaseCandidates.mockReset();
+  requestRepo.findCancellationPhaseCandidates.mockResolvedValue([]);
   requestRepo.findCancelingRequestIds.mockReset();
   requestRepo.findCancelingRequestIds.mockResolvedValue([]);
   purgeOrganizationResources.mockClear();
@@ -335,6 +361,49 @@ describe("account deletion lifecycle", () => {
     });
   });
 
+  test("reconciles a lost Steward reactivation response after restart without replay", async () => {
+    requestRepo.findCancellationPhaseCandidates.mockResolvedValueOnce([
+      reservedRequest({ status: "canceling" }),
+    ]);
+    leasePhase.mockResolvedValueOnce({
+      receipt: { id: "44444444-4444-4444-8444-444444444444", status: "reconciling" },
+      generation: 2,
+    });
+    inspectSteward.mockResolvedValueOnce("active");
+
+    const result = await processDueAccountDeletions(10, {
+      blob,
+      purgeOrganizationResources,
+    });
+
+    expect(result.stewardReactivationReconciliations).toBe(1);
+    expect(reactivateSteward).not.toHaveBeenCalled();
+    expect(completeStewardReactivationPhase).toHaveBeenCalledWith(
+      expect.objectContaining({ generation: 2 }),
+    );
+  });
+
+  test("requires a later generation after ambiguous reactivation confirms no effect", async () => {
+    requestRepo.findCancellationPhaseCandidates.mockResolvedValueOnce([
+      reservedRequest({ status: "canceling" }),
+    ]);
+    leasePhase.mockResolvedValueOnce({
+      receipt: { id: "44444444-4444-4444-8444-444444444444", status: "reconciling" },
+      generation: 2,
+    });
+    inspectSteward.mockResolvedValueOnce("deactivated");
+
+    await processDueAccountDeletions(10, { blob, purgeOrganizationResources });
+
+    expect(markPhaseRetryable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generation: 2,
+        retryClass: "provider_absence_confirmed",
+      }),
+    );
+    expect(reactivateSteward).not.toHaveBeenCalled();
+  });
+
   test("rejects missing object storage before claiming legacy receipts", async () => {
     await expect(processDueAccountDeletions()).rejects.toThrow(
       "Account deletion requires a valid Cloud object-storage binding",
@@ -358,6 +427,7 @@ describe("account deletion lifecycle", () => {
     });
     expect(result).toEqual({
       exportRevocations: { scheduled: 0, completed: 0, pending: 0 },
+      stewardReactivationReconciliations: 0,
       cancellationsFinalized: 0,
       stewardDeactivationReconciliations: 0,
       activated: 0,

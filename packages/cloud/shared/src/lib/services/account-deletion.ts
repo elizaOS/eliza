@@ -26,6 +26,7 @@ import {
 } from "./account-deletion-saga";
 import {
   deactivateStewardPlatformUser,
+  inspectStewardPlatformUser,
   reactivateStewardPlatformUser,
 } from "./steward-platform-users";
 
@@ -34,6 +35,7 @@ const STATUS_CREDENTIAL_RETENTION_MILLISECONDS = 120 * 24 * 60 * 60 * 1_000;
 const IMMEDIATE_PHASE_LEASE_MILLISECONDS = 60 * 1_000;
 // Outlive the export worker lease so a stale in-flight put cannot recreate an object after revoke.
 const EXPORT_REVOCATION_SAFETY_MILLISECONDS = 15 * 60 * 1_000;
+const CANCELLATION_RETRY_MILLISECONDS = 60 * 1_000;
 
 export const ACCOUNT_DELETION_PHASES = [
   "account_authority",
@@ -392,8 +394,134 @@ async function attemptImmediateStewardReactivation(input: {
   }
 }
 
+async function reconcileCancelingStewardReactivations(input: {
+  limit: number;
+  now: Date;
+}): Promise<{ completed: number; reconciling: number; actionRequired: number }> {
+  const result = { completed: 0, reconciling: 0, actionRequired: 0 };
+  const requests = await accountDeletionRequestsRepository.findCancellationPhaseCandidates(
+    "steward_reactivation",
+    input.now,
+    input.limit,
+  );
+  for (const request of requests) {
+    if (!request.steward_user_id) {
+      result.actionRequired++;
+      continue;
+    }
+    const lease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: request.id,
+      phase: "steward_reactivation",
+      leaseOwnerDigest: createHash("sha256").update(randomUUID()).digest("hex"),
+      now: input.now,
+      leaseMilliseconds: IMMEDIATE_PHASE_LEASE_MILLISECONDS,
+    });
+    if (!lease) continue;
+
+    let state: Awaited<ReturnType<typeof inspectStewardPlatformUser>>;
+    try {
+      state = await inspectStewardPlatformUser(request.steward_user_id);
+    } catch {
+      const retryAt = new Date(input.now.getTime() + CANCELLATION_RETRY_MILLISECONDS);
+      if (lease.receipt.status === "reconciling") {
+        await accountDeletionRequestsRepository.deferPhaseReconciliation({
+          phaseReceiptId: lease.receipt.id,
+          generation: lease.generation,
+          errorCode: "STEWARD_REACTIVATION_INSPECTION_FAILED",
+          now: input.now,
+          retryAt,
+        });
+      } else {
+        await accountDeletionRequestsRepository.markPhaseRetryable({
+          phaseReceiptId: lease.receipt.id,
+          generation: lease.generation,
+          errorCode: "STEWARD_REACTIVATION_INSPECTION_FAILED",
+          retryClass: "definite_pre_provider_failure",
+          now: input.now,
+          retryAt,
+        });
+      }
+      result.reconciling++;
+      continue;
+    }
+
+    if (state === "active") {
+      const completed = await accountDeletionRequestsRepository.completeStewardReactivationPhase({
+        requestId: request.id,
+        phaseReceiptId: lease.receipt.id,
+        generation: lease.generation,
+        providerReceiptDigest: createHash("sha256")
+          .update(`steward-reactivation-inspection:v1:${request.steward_user_id}`)
+          .digest("hex"),
+        now: input.now,
+      });
+      if (completed) result.completed++;
+      continue;
+    }
+    if (state === "absent") {
+      const parked = await accountDeletionRequestsRepository.markPhaseActionRequired({
+        requestId: request.id,
+        phaseReceiptId: lease.receipt.id,
+        generation: lease.generation,
+        errorCode: "STEWARD_IDENTITY_MISSING_DURING_CANCELLATION",
+        now: input.now,
+      });
+      if (parked) result.actionRequired++;
+      continue;
+    }
+    if (lease.receipt.status === "reconciling") {
+      await accountDeletionRequestsRepository.markPhaseRetryable({
+        phaseReceiptId: lease.receipt.id,
+        generation: lease.generation,
+        errorCode: "STEWARD_REACTIVATION_ABSENCE_CONFIRMED",
+        retryClass: "provider_absence_confirmed",
+        now: input.now,
+        retryAt: new Date(input.now.getTime() + CANCELLATION_RETRY_MILLISECONDS),
+      });
+      result.reconciling++;
+      continue;
+    }
+
+    const started = await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+      lease.receipt.id,
+      lease.generation,
+      input.now,
+      createHash("sha256").update(`steward-reactivation-operation:v1:${request.id}`).digest("hex"),
+    );
+    if (!started) continue;
+    try {
+      await reactivateStewardPlatformUser(request.steward_user_id);
+      if ((await inspectStewardPlatformUser(request.steward_user_id)) !== "active") {
+        throw new Error("Steward reactivation was not visible after acknowledgement");
+      }
+      const completed = await accountDeletionRequestsRepository.completeStewardReactivationPhase({
+        requestId: request.id,
+        phaseReceiptId: lease.receipt.id,
+        generation: lease.generation,
+        providerReceiptDigest: createHash("sha256")
+          .update(`steward-reactivation:v1:${request.steward_user_id}`)
+          .digest("hex"),
+        now: new Date(),
+      });
+      if (completed) result.completed++;
+    } catch {
+      const failedAt = new Date();
+      await accountDeletionRequestsRepository.markPhaseForReconciliation({
+        phaseReceiptId: lease.receipt.id,
+        generation: lease.generation,
+        errorCode: "STEWARD_REACTIVATION_AMBIGUOUS",
+        now: failedAt,
+        retryAt: new Date(failedAt.getTime() + CANCELLATION_RETRY_MILLISECONDS),
+      });
+      result.reconciling++;
+    }
+  }
+  return result;
+}
+
 export interface ProcessAccountDeletionResult {
   exportRevocations: AccountDeletionExportRevocationResult;
+  stewardReactivationReconciliations: number;
   cancellationsFinalized: number;
   stewardDeactivationReconciliations: number;
   activated: number;
@@ -445,6 +573,7 @@ export async function processDueAccountDeletions(
     bucket: resources.blob,
     now: () => now,
   });
+  const stewardReactivations = await reconcileCancelingStewardReactivations({ limit, now });
   const adapters =
     resources.adapters ??
     createAccountDeletionProviderAdapters({ backupRegistry: resources.backupRegistry });
@@ -513,6 +642,7 @@ export async function processDueAccountDeletions(
   const due = await accountDeletionRequestsRepository.claimDue(limit);
   const result = {
     exportRevocations,
+    stewardReactivationReconciliations: stewardReactivations.completed,
     cancellationsFinalized,
     stewardDeactivationReconciliations: stewardDeactivations.completed,
     activated,
@@ -522,7 +652,10 @@ export async function processDueAccountDeletions(
     progressed: saga.progressed,
     reconciling: saga.reconciling,
     actionRequired:
-      saga.actionRequired + activationActionRequired + stewardDeactivations.actionRequired,
+      saga.actionRequired +
+      activationActionRequired +
+      stewardDeactivations.actionRequired +
+      stewardReactivations.actionRequired,
   };
 
   for (const request of due) {
