@@ -29,6 +29,23 @@ interface IdentifierState {
   eventSequence: number;
 }
 
+const MATRIX_MAX_REQUEST_BYTES = 1024 * 1024;
+const MATRIX_MAX_JSON_DEPTH = 64;
+const MATRIX_MAX_JSON_NODES = 100_000;
+
+class MatrixRequestError extends Error {
+  constructor(
+    readonly status: 400 | 409 | 413,
+    readonly errcode:
+      | "M_BAD_JSON"
+      | "M_NOT_JSON"
+      | "M_TOO_LARGE"
+      | "M_UNKNOWN_POS",
+  ) {
+    super(errcode);
+  }
+}
+
 export interface RunningMatrixClientServerMock {
   url: string;
   port: number;
@@ -58,16 +75,41 @@ export async function startMatrixClientServerMock(
   const activeRequests = new Set<AbortController>();
 
   const server = await startFetchServer(async (request) => {
+    const admittedGeneration = generation;
+    const admittedSeed = cloneSeed(currentSeed);
     const url = new URL(request.url);
-    const body = await readJsonBody(request);
+    const resetController = new AbortController();
+    activeRequests.add(resetController);
+    let body: unknown;
+    try {
+      body = await readJsonBody(request, resetController.signal);
+    } catch (error) {
+      if (!(error instanceof MatrixRequestError)) throw error;
+      return matrixError(
+        error.status,
+        error.errcode,
+        error.errcode === "M_UNKNOWN_POS"
+          ? "synthetic Matrix generation changed"
+          : "invalid Matrix request body",
+      );
+    } finally {
+      activeRequests.delete(resetController);
+    }
+    if (generation !== admittedGeneration) {
+      return matrixError(
+        409,
+        "M_UNKNOWN_POS",
+        "synthetic Matrix generation changed",
+      );
+    }
     const authenticated =
       request.headers.get("authorization") ===
-      `Bearer ${currentSeed.accessToken}`;
+      `Bearer ${admittedSeed.accessToken}`;
     requests.push({
       sequence: ++requestSequence,
       method: request.method,
       path: url.pathname,
-      query: Object.fromEntries(url.searchParams),
+      query: sanitizedQuery(url.searchParams),
       authenticated,
       body,
     });
@@ -90,7 +132,7 @@ export async function startMatrixClientServerMock(
         !(await waitWithinGeneration(
           fault.delayMs,
           request.signal,
-          generation,
+          admittedGeneration,
           () => generation,
           activeRequests,
         ))
@@ -127,8 +169,8 @@ export async function startMatrixClientServerMock(
     }
     if (request.method === "GET" && path === "/account/whoami") {
       return json({
-        user_id: currentSeed.userId,
-        device_id: currentSeed.deviceId ?? "DEVICE",
+        user_id: admittedSeed.userId,
+        device_id: admittedSeed.deviceId ?? "DEVICE",
       });
     }
     if (request.method === "GET" && path === "/capabilities") {
@@ -143,7 +185,7 @@ export async function startMatrixClientServerMock(
       const parsedSince = parseSyncToken(rawSince);
       if (
         rawSince !== null &&
-        (!parsedSince || parsedSince.generation !== generation)
+        (!parsedSince || parsedSince.generation !== admittedGeneration)
       ) {
         return matrixError(
           409,
@@ -157,7 +199,7 @@ export async function startMatrixClientServerMock(
         !(await waitWithinGeneration(
           Math.min(readPositiveInt(url.searchParams.get("timeout"), 250), 250),
           request.signal,
-          generation,
+          admittedGeneration,
           () => generation,
           activeRequests,
         ))
@@ -168,7 +210,7 @@ export async function startMatrixClientServerMock(
           "synthetic Matrix generation changed",
         );
       }
-      return json(buildSync(rooms, since, generation, eventSequence));
+      return json(buildSync(rooms, since, admittedGeneration, eventSequence));
     }
     if (request.method === "POST" && path === "/createRoom") {
       const name = readString(body, "name");
@@ -191,11 +233,13 @@ export async function startMatrixClientServerMock(
         canonicalAlias,
         joined: true,
         joinedAt: ++eventSequence,
-        members: [{ userId: currentSeed.userId, displayName: "Synthetic Bot" }],
+        members: [
+          { userId: admittedSeed.userId, displayName: "Synthetic Bot" },
+        ],
         stateEvents: [],
         timeline: [],
       };
-      room.stateEvents = roomStateEvents(currentSeed, room, () =>
+      room.stateEvents = roomStateEvents(admittedSeed, room, () =>
         allocateEventId(identifiers),
       );
       rooms.set(roomId, room);
@@ -210,18 +254,18 @@ export async function startMatrixClientServerMock(
       room.joined = true;
       room.joinedAt = ++eventSequence;
       const ownMember = room.members.find(
-        (member) => member.userId === currentSeed.userId,
+        (member) => member.userId === admittedSeed.userId,
       );
       if (ownMember) {
         ownMember.membership = "join";
-        updateMemberState(room, currentSeed.userId, ownMember.displayName);
+        updateMemberState(room, admittedSeed.userId, ownMember.displayName);
       } else {
-        room.members.push({ userId: currentSeed.userId, membership: "join" });
+        room.members.push({ userId: admittedSeed.userId, membership: "join" });
         room.stateEvents.push(
           memberStateEvent(
             room.roomId,
             allocateEventId(identifiers),
-            currentSeed.userId,
+            admittedSeed.userId,
             undefined,
           ),
         );
@@ -243,7 +287,7 @@ export async function startMatrixClientServerMock(
       const sequence = ++eventSequence;
       room.timeline.push({
         eventId,
-        sender: currentSeed.userId,
+        sender: admittedSeed.userId,
         type: eventType,
         content: requireRecord(body),
         originServerTs: 1_700_000_100_000 + sequence,
@@ -618,15 +662,103 @@ function readPositiveInt(value: string | null, fallback: number): number {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-async function readJsonBody(request: Request): Promise<unknown> {
+async function readJsonBody(
+  request: Request,
+  resetSignal: AbortSignal,
+): Promise<unknown> {
   if (request.method === "GET" || request.method === "HEAD") return undefined;
-  const text = await request.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
+  const encoding = request.headers.get("content-encoding");
+  if (encoding !== null && encoding.toLowerCase() !== "identity")
+    throw new MatrixRequestError(400, "M_NOT_JSON");
+  const contentType = request.headers.get("content-type");
+  if (!contentType || !/^application\/json(?:\s*;|$)/i.test(contentType))
+    throw new MatrixRequestError(400, "M_NOT_JSON");
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null) {
+    const length = Number(declaredLength);
+    if (!Number.isSafeInteger(length) || length < 0)
+      throw new MatrixRequestError(400, "M_BAD_JSON");
+    if (length > MATRIX_MAX_REQUEST_BYTES)
+      throw new MatrixRequestError(413, "M_TOO_LARGE");
   }
+
+  const reader = request.body?.getReader();
+  if (!reader) return {};
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  const onReset = () => void reader.cancel("Matrix generation reset");
+  resetSignal.addEventListener("abort", onReset, { once: true });
+  try {
+    while (true) {
+      if (resetSignal.aborted)
+        throw new MatrixRequestError(409, "M_UNKNOWN_POS");
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MATRIX_MAX_REQUEST_BYTES) {
+        await reader.cancel("Matrix request body limit exceeded");
+        throw new MatrixRequestError(413, "M_TOO_LARGE");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    resetSignal.removeEventListener("abort", onReset);
+  }
+  if (resetSignal.aborted) throw new MatrixRequestError(409, "M_UNKNOWN_POS");
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new MatrixRequestError(400, "M_BAD_JSON");
+  }
+  if (!text) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new MatrixRequestError(400, "M_BAD_JSON");
+  }
+  assertJsonComplexity(parsed);
+  return parsed;
+}
+
+function assertJsonComplexity(value: unknown): void {
+  const pending: Array<{ value: unknown; depth: number }> = [
+    { value, depth: 0 },
+  ];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    nodes += 1;
+    if (
+      nodes > MATRIX_MAX_JSON_NODES ||
+      current.depth > MATRIX_MAX_JSON_DEPTH
+    ) {
+      throw new MatrixRequestError(413, "M_TOO_LARGE");
+    }
+    if (Array.isArray(current.value)) {
+      for (const child of current.value)
+        pending.push({ value: child, depth: current.depth + 1 });
+    } else if (current.value !== null && typeof current.value === "object") {
+      for (const child of Object.values(current.value))
+        pending.push({ value: child, depth: current.depth + 1 });
+    }
+  }
+}
+
+function sanitizedQuery(params: URLSearchParams): Record<string, string> {
+  const query = Object.fromEntries(params);
+  for (const key of ["access_token", "token", "key", "api_key"]) {
+    if (key in query) query[key] = "<redacted>";
+  }
+  return query;
 }
 
 function readString(value: unknown, key: string): string | null {

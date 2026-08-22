@@ -1,6 +1,7 @@
 /** Proves real matrix-js-sdk and MatrixService behavior against the resettable Client-Server API simulator. */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { connect } from "node:net";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { MatrixEventTypes, MatrixService } from "@elizaos/plugin-matrix";
 import {
@@ -114,6 +115,47 @@ async function waitFor(predicate: () => boolean, label: string): Promise<void> {
       throw new Error(`Timed out waiting for ${label}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+}
+
+async function openPartialCreateRoomRequest(
+  port: number,
+): Promise<{ finish(): void; response: Promise<string> }> {
+  const socket = connect({ host: "127.0.0.1", port });
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("error", reject);
+  });
+  const first = '{"name":"old';
+  socket.write(
+    [
+      "POST /_matrix/client/v3/createRoom HTTP/1.1",
+      "Host: 127.0.0.1",
+      `Authorization: Bearer ${ACCESS_TOKEN}`,
+      "Content-Type: application/json",
+      "Transfer-Encoding: chunked",
+      "Connection: close",
+      "",
+      `${Buffer.byteLength(first).toString(16)}\r\n${first}\r\n`,
+    ].join("\r\n"),
+  );
+  const response = new Promise<string>((resolve, reject) => {
+    let raw = "";
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      raw += chunk;
+    });
+    socket.once("end", () => resolve(raw));
+    socket.once("error", reject);
+  });
+  return {
+    finish() {
+      const last = ' generation"}';
+      socket.end(
+        `${Buffer.byteLength(last).toString(16)}\r\n${last}\r\n0\r\n\r\n`,
+      );
+    },
+    response,
+  };
 }
 
 describe("Matrix Client-Server production boundary", () => {
@@ -538,6 +580,70 @@ describe("Matrix Client-Server production boundary", () => {
         (matrixEvent) => matrixEvent.event_id,
       ),
     ).toEqual(["$replacement:mock"]);
+  });
+
+  test("bounds strict JSON, redacts token queries, and fences partial writes across reset", async () => {
+    const mock = await startMatrixClientServerMock(seed);
+    stops.push(mock.stop);
+
+    const wrongMedia = await fetch(`${mock.url}/_matrix/client/v3/createRoom`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ACCESS_TOKEN}`,
+        "content-type": "text/plain",
+      },
+      body: "{}",
+    });
+    expect(wrongMedia.status).toBe(400);
+    expect(await wrongMedia.json()).toMatchObject({ errcode: "M_NOT_JSON" });
+
+    let nested: unknown = "leaf";
+    for (let depth = 0; depth < 66; depth += 1) nested = { nested };
+    const tooDeep = await fetch(`${mock.url}/_matrix/client/v3/createRoom`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ACCESS_TOKEN}`,
+        "content-type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(nested),
+    });
+    expect(tooDeep.status).toBe(413);
+    expect(await tooDeep.json()).toMatchObject({ errcode: "M_TOO_LARGE" });
+
+    const whoami = await fetch(
+      `${mock.url}/_matrix/client/v3/account/whoami?access_token=query-secret`,
+      { headers: { authorization: `Bearer ${ACCESS_TOKEN}` } },
+    );
+    expect(whoami.status).toBe(200);
+    expect(mock.snapshot().requests.at(-1)?.query).toEqual({
+      access_token: "<redacted>",
+    });
+    expect(JSON.stringify(mock.snapshot())).not.toContain("query-secret");
+
+    const partial = await openPartialCreateRoomRequest(mock.port);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const replacementSeed = {
+      ...seed,
+      accessToken: "replacement-token",
+      rooms: seed.rooms.slice(0, 1),
+    };
+    mock.reset(replacementSeed);
+    partial.finish();
+    const rawResponse = await partial.response;
+    expect(
+      rawResponse === "" ||
+        (rawResponse.includes(" 409 ") &&
+          rawResponse.includes("M_UNKNOWN_POS")),
+    ).toBe(true);
+    expect(mock.snapshot().rooms.map(({ roomId }) => roomId)).toEqual([
+      ROOM_ID,
+    ]);
+    const afterReset = await fetch(
+      `${mock.url}/_matrix/client/v3/account/whoami`,
+      { headers: { authorization: "Bearer replacement-token" } },
+    );
+    expect(afterReset.status).toBe(200);
+    expect(await afterReset.json()).toMatchObject({ user_id: USER_ID });
   });
 
   test("replays the same effects to byte-equivalent provider state after reset", async () => {
