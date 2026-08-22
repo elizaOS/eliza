@@ -4,6 +4,7 @@
  * Handles tracking and aggregation of app usage analytics
  */
 
+import { ElizaError } from "@elizaos/core";
 import { type AppRequest, appsRepository, type NewAppAnalytics } from "../../db/repositories/apps";
 import type { App } from "../types";
 import { logger } from "../utils/logger";
@@ -45,6 +46,11 @@ export interface AppSessionAnalytics {
   };
 }
 
+type AppAnalyticsRepository = Pick<
+  typeof appsRepository,
+  "findById" | "getRecentRequests" | "incrementUsage" | "trackAppUserActivity"
+>;
+
 function metadataString(
   metadata: Record<string, unknown> | null | undefined,
   key: string,
@@ -83,6 +89,8 @@ function roundPercent(value: number): number {
 }
 
 export class AppAnalyticsService {
+  constructor(private readonly repository: AppAnalyticsRepository = appsRepository) {}
+
   /**
    * Track a request for an app
    * This should be called whenever an app makes an API request
@@ -102,11 +110,11 @@ export class AppAnalyticsService {
     const { appId, userId, requestType, success, creditsUsed = "0.00", metadata } = params;
 
     // Track app usage
-    await appsRepository.incrementUsage(appId, creditsUsed);
+    await this.repository.incrementUsage(appId, creditsUsed);
 
     // Track app user activity if userId is provided
     if (userId) {
-      await appsRepository.trackAppUserActivity(appId, userId, creditsUsed, metadata);
+      await this.repository.trackAppUserActivity(appId, userId, creditsUsed, metadata);
     }
 
     logger.info("Tracked app request", {
@@ -133,7 +141,7 @@ export class AppAnalyticsService {
     periodEnd: Date,
     periodType: "hourly" | "daily" | "monthly",
   ): Promise<NewAppAnalytics | null> {
-    const app = await appsRepository.findById(appId);
+    const app = await this.repository.findById(appId);
     if (!app) return null;
 
     // Return current totals as a snapshot
@@ -175,7 +183,7 @@ export class AppAnalyticsService {
   ): Promise<AppSessionAnalytics> {
     const scanLimit = Math.min(Math.max(options.scanLimit ?? 5000, 1), 5000);
     const sessionLimit = Math.min(Math.max(options.limit ?? 50, 1), 500);
-    const result = await appsRepository.getRecentRequests(appId, {
+    const result = await this.repository.getRecentRequests(appId, {
       requestType: "pageview",
       startDate: options.startDate,
       endDate: options.endDate,
@@ -392,18 +400,29 @@ export class AppAnalyticsService {
     avgRequestsPerDay: number;
     avgCostPerDay: string;
   }> {
-    const app = await appsRepository.findById(appId);
+    if (!Number.isSafeInteger(days) || days < 1) {
+      throw new ElizaError("App usage summary days must be a positive integer", {
+        code: "INVALID_APP_USAGE_SUMMARY_DAYS",
+        context: { appId, days },
+      });
+    }
+    const app = await this.repository.findById(appId);
 
     if (!app) {
       throw new Error("App not found");
     }
 
-    const effectiveDays = Math.max(1, Math.floor(Number.isFinite(days) ? days : 30));
-    const avgRequestsPerDay = Math.round(app.total_requests / effectiveDays);
+    const avgRequestsPerDay = Math.round(app.total_requests / days);
     const totalCreditsUsed = app.total_credits_used ?? "0.00";
-    const totalCostNum = parseFloat(totalCreditsUsed);
-    const safeCost = Number.isFinite(totalCostNum) ? totalCostNum : 0;
-    const avgCostPerDay = (safeCost / effectiveDays).toFixed(2);
+    const totalCostNum = Number(totalCreditsUsed);
+    if (!/^\d+(?:\.\d+)?$/.test(totalCreditsUsed) || !Number.isFinite(totalCostNum)) {
+      throw new ElizaError("Stored app usage credits are invalid", {
+        code: "INVALID_APP_USAGE_TOTAL_CREDITS",
+        context: { appId },
+        severity: "fatal",
+      });
+    }
+    const avgCostPerDay = (totalCostNum / days).toFixed(2);
 
     return {
       totalRequests: app.total_requests,
