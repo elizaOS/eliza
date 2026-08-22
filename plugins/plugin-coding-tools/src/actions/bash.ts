@@ -34,13 +34,10 @@ import {
   readNumberParam,
   readStringParam,
   successActionResult,
-  truncate,
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import {
-  persistShellOutputArtifact,
   readShellOutputArtifactPage,
-  type ShellOutputArtifact,
   type ShellOutputArtifactStream,
 } from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
@@ -61,9 +58,6 @@ const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const USER_FACING_STDOUT_CAP_CHARS = 8_000;
-// Match Pi's model-facing shell budget: preserve the command plus useful head
-// output while preventing one noisy test/build from consuming the next turn.
-const MODEL_FACING_SHELL_OUTPUT_CHARS = 50_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
@@ -1159,82 +1153,6 @@ function formatStreams(
   return lines.join("\n");
 }
 
-function shellArtifactResultData(
-  artifact: ShellOutputArtifact | undefined,
-): Record<string, unknown> {
-  if (!artifact) return {};
-  return {
-    output_artifact_handle: artifact.handle,
-    output_artifact_created_at: artifact.createdAt,
-    output_artifact_expires_at: artifact.expiresAt,
-    output_artifact_retention_ms: artifact.retentionMs,
-    output_artifact_retrieval: {
-      action: "read_output_artifact",
-      handle: artifact.handle,
-      streams: ["stdout", "stderr"],
-      max_characters_per_page: 20_000,
-    },
-    output_truncation: {
-      model_character_limit: MODEL_FACING_SHELL_OUTPUT_CHARS,
-      stdout: artifact.stdout,
-      stderr: artifact.stderr,
-    },
-  };
-}
-
-function truncateToHardLimit(
-  text: string,
-  maxCharacters: number,
-): { text: string; truncated: boolean } {
-  if (maxCharacters <= 0) {
-    return { text: "", truncated: text.length > 0 };
-  }
-  let prefixBudget = maxCharacters;
-  let result = truncate(text, prefixBudget);
-  while (result.text.length > maxCharacters && prefixBudget > 0) {
-    prefixBudget = Math.max(
-      0,
-      prefixBudget - (result.text.length - maxCharacters),
-    );
-    result = truncate(text, prefixBudget);
-  }
-  return result.text.length <= maxCharacters
-    ? result
-    : { text: "", truncated: text.length > 0 };
-}
-
-export function boundedShellText(
-  fullText: string,
-  artifact: ShellOutputArtifact | undefined,
-): { text: string; truncated: boolean } {
-  if (!artifact) {
-    return truncateToHardLimit(fullText, MODEL_FACING_SHELL_OUTPUT_CHARS);
-  }
-  const notice = [
-    `[output truncated; complete redacted artifact ${artifact.handle}]`,
-    `retrieve: SHELL action=read_output_artifact handle=${artifact.handle} artifact_stream=stdout artifact_offset=0`,
-    `stdout: ${artifact.stdout.bytes} bytes, ${artifact.stdout.lines} lines`,
-    `stderr: ${artifact.stderr.bytes} bytes, ${artifact.stderr.lines} lines`,
-    `expires: ${artifact.expiresAt}`,
-  ].join("\n");
-  // Bound the notice independently so even future opaque-handle formats cannot
-  // consume the planner's entire model-facing shell-output budget.
-  const boundedNotice = truncateToHardLimit(
-    notice,
-    Math.floor(MODEL_FACING_SHELL_OUTPUT_CHARS / 2),
-  );
-  const preview = truncateToHardLimit(
-    fullText,
-    MODEL_FACING_SHELL_OUTPUT_CHARS - boundedNotice.text.length - 1,
-  );
-  return {
-    text: preview.text
-      ? `${preview.text}\n${boundedNotice.text}`
-      : boundedNotice.text,
-    truncated: true,
-  };
-}
-
 export const shellAction: Action = {
   name: "SHELL",
   contexts: [...CODING_TOOLS_CONTEXTS],
@@ -1242,7 +1160,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands, retrieve complete redacted foreground output by artifact handle, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
   descriptionCompressed:
     "Run shell commands; page output artifacts; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
@@ -2044,38 +1962,11 @@ export const shellAction: Action = {
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
-    const fullText = streams.length > 0 ? `${head}\n${streams}` : head;
-    let artifact: ShellOutputArtifact | undefined;
-    if (fullText.length > MODEL_FACING_SHELL_OUTPUT_CHARS) {
-      try {
-        artifact = await persistShellOutputArtifact({
-          command: redactedCommand,
-          cwd: redactedCwd,
-          stdout: redactedStdout,
-          stderr: redactedStderr,
-          exitCode: result.exitCode,
-          timedOut,
-          signal,
-          modelCharacterLimit: MODEL_FACING_SHELL_OUTPUT_CHARS,
-          modelCharacters: MODEL_FACING_SHELL_OUTPUT_CHARS,
-          ownerAgentId: String(runtime.agentId),
-          ownerConversationId: conversationId,
-        });
-      } catch (err) {
-        // error-policy:J1 artifact persistence is part of the SHELL result
-        // boundary: do not claim recoverable truncation when storage failed.
-        return failureToActionResult(
-          {
-            reason: "io_error",
-            message: `complete shell output could not be persisted: ${redactShellText(runtime, (err as Error).message)}`,
-          },
-          { command: redactedCommand, cwd: redactedCwd },
-        );
-      }
-    }
-    const bounded = boundedShellText(fullText, artifact);
-    const text = bounded.text;
-    const artifactData = shellArtifactResultData(artifact);
+    // `runShell` rejects above the explicit complete-capture ceiling before
+    // this boundary. Every accepted result therefore remains complete after
+    // redaction; the planner must never receive a preview or optional handle
+    // in place of stdout/stderr it would otherwise reason over.
+    const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
@@ -2092,8 +1983,7 @@ export const shellAction: Action = {
           command: redactedCommand,
           cwd: redactedCwd,
           output: text,
-          output_truncated: bounded.truncated,
-          ...artifactData,
+          output_truncated: false,
         },
       );
     }
@@ -2108,8 +1998,7 @@ export const shellAction: Action = {
           exit_code: result.exitCode,
           cwd: redactedCwd,
           output: text,
-          output_truncated: bounded.truncated,
-          ...artifactData,
+          output_truncated: false,
         },
       );
     }
@@ -2120,8 +2009,7 @@ export const shellAction: Action = {
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
       sandbox_backend: result.sandbox,
       signal,
-      output_truncated: bounded.truncated,
-      ...artifactData,
+      output_truncated: false,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is
