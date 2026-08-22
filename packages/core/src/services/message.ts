@@ -2592,6 +2592,22 @@ function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	return source === MESSAGE_SOURCE_SUB_AGENT && metadata?.subAgent === true;
 }
 
+/** The inbound turn is a sub-agent router relay of a finished lane
+ * (`task_complete`) — the ONLY sub-agent artifact whose reply may state the
+ * worker's applied effects as its own: that relay IS the effect receipt for
+ * the completed work it reports. A question, error, blocked or progress
+ * relay from the same router carries no finished work, so grounding stays
+ * strict for those. Keyed on the router's parsed status header — the
+ * authoritative relay classifier on this branch — never on untrusted body
+ * prose or side-channel metadata. */
+function isTaskCompleteRelayTurn(memory: Memory): boolean {
+	return (
+		isSubAgentCompletionArtifact(memory) &&
+		parseSubAgentTaskCompleteRelay(String(memory.content?.text ?? "")) !==
+			undefined
+	);
+}
+
 function looksLikePriorDialogueArtifact(text: string): boolean {
 	if (!text) return false;
 	return /^\s*\[(?:sub-agent|tool output|tool result|command output)\b/im.test(
@@ -3327,10 +3343,7 @@ function buildV5PlannerActionSurface(params: {
 	// of relaying the result). Protocol tools (REPLY/IGNORE/STOP) remain.
 	// Blocked/question/coordination relays keep the full surface — those turns
 	// may legitimately act (answer a child, coordinate a sibling).
-	if (
-		isSubAgentCompletionArtifact(params.message) &&
-		parseSubAgentTaskCompleteRelay(String(params.message.content?.text ?? ""))
-	) {
+	if (isTaskCompleteRelayTurn(params.message)) {
 		return {
 			exposedActionNames: new Set<string>(),
 			summary: {
@@ -4154,11 +4167,18 @@ export function evaluatePlannedReplyEgress(args: {
 	reply: string;
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
+	/** The turn relays a sub-agent's verified completion (`task_complete`):
+	 *  that message is the effect receipt, so a completed-side-effect claim
+	 *  ("the page is ready") is grounded without an action of this turn.
+	 *  Without it a verified, live page shipped as "I couldn't verify that
+	 *  the requested change was completed" (2026-08-22). */
+	completionRelay?: boolean;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
+			args.completionRelay === true ||
 			plannedReplyHasClaimGroundingReceipt({
 				kind: "completed_side_effect",
 				reply,
@@ -8658,8 +8678,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				: undefined;
 		const prePatchStageOneReplyEffectStatus =
 			messageHandler.plan.replyEffectStatus;
+		// A sub-agent task_complete relay IS the effect receipt: the build it
+		// reports was done and verified by the child. Treating the relay's
+		// "applied" as ungrounded withheld the good reply and the planner
+		// shipped "i'm not sure if that change actually went through" for a
+		// verified, live page (2026-08-22, two-lane build).
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
-			prePatchStageOneReplyEffectStatus === "applied";
+			prePatchStageOneReplyEffectStatus === "applied" &&
+			!isTaskCompleteRelayTurn(args.message);
 		const responseHandlerEvaluation = args.codingMode
 			? {
 					activeEvaluators: [],
@@ -8826,6 +8852,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
+				completionRelay: isTaskCompleteRelayTurn(args.message),
 			});
 			if (directReplyEgressDecision.verdict === "reject") {
 				reply = directReplyEgressDecision.fallbackReply;
@@ -8887,6 +8914,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
+				completionRelay: isTaskCompleteRelayTurn(args.message),
 			});
 			if (earlyReplyEgressDecision.verdict === "reject") {
 				// Planning is still in progress, so an ungrounded completion claim
@@ -9836,6 +9864,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,
+						completionRelay: isTaskCompleteRelayTurn(args.message),
 					});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
@@ -10031,6 +10060,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: effectiveReplyText,
 						actionResults,
 						actions: args.runtime.actions,
+						completionRelay: isTaskCompleteRelayTurn(args.message),
 					});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
@@ -11238,6 +11268,29 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 	);
 }
 
+const COMPUTED_OBJECT_RE =
+	/[\/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
+
+/** The object of "just prints X" is a constant when it is a quoted literal,
+ * a bare numeric literal, or a few bare words naming nothing computed. The
+ * WHOLE object is scanned — a computed continuation after "and"/"then"
+ * ("prints hello and then fetches the weather") is still a real program. */
+function isConstantPrintedObject(object: string): boolean {
+	const trimmed = object.trim().replace(/[.!?]+$/u, "");
+	if (!trimmed) return false;
+	if (/^(?:["'`“‘]).+/u.test(trimmed)) return true;
+	const head =
+		trimmed.split(/\s*(?:,|;|\band\b|\bthen\b|\bwhen\b|\bif\b)\s*/iu)[0] ?? "";
+	// "just prints 42" is a constant, not a computation.
+	if (/^(?:the\s+)?(?:number\s+)?\d+$/u.test(head)) {
+		return !COMPUTED_OBJECT_RE.test(trimmed.replace(/\d+/gu, ""));
+	}
+	const words = head.split(/\s+/u).filter(Boolean);
+	if (words.length === 0 || words.length > 4) return false;
+	if (/\d/u.test(trimmed)) return false;
+	return !COMPUTED_OBJECT_RE.test(trimmed);
+}
+
 function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (
@@ -11252,10 +11305,17 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	// it through a coding sub-agent spent a 27s build and the user never saw
 	// the one line (live 2026-08-22). Scoped by the just/only/simply marker so
 	// computed deliverables ("prints a random card") still get built and run.
-	const constantOutputScript =
-		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\b/iu.test(
+	// The printed OBJECT must itself be constant: a quoted literal, or a few
+	// bare words with no path, URL, number or computed noun ("the current
+	// bitcoin price", "the contents of /etc/hosts", "the primes under a
+	// million" are real programs however the ask is phrased).
+	const constantOutputMatch =
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([^\n]{0,80})/iu.exec(
 			normalized,
 		);
+	const constantOutputScript =
+		constantOutputMatch !== null &&
+		isConstantPrintedObject(constantOutputMatch[1] ?? "");
 	const asksForSnippet =
 		constantOutputScript ||
 		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
@@ -11664,6 +11724,12 @@ function enforceEffectGroundedVisibleContent(
 	runtime: Pick<IAgentRuntime, "logger">,
 	response: Content,
 	actionName?: string,
+	opts: {
+		/** The turn relays a sub-agent's verified `task_complete` — that relay
+		 *  is the effect receipt for "the page is ready" (2026-08-22: the gate
+		 *  replaced a verified live page with the unverified-effect line). */
+		completionRelay?: boolean;
+	} = {},
 ): Content {
 	const hasEffectDeliveryBinding =
 		getEffectDeliveryBinding(response) !== undefined;
@@ -11675,6 +11741,7 @@ function enforceEffectGroundedVisibleContent(
 	if (
 		effectDeliveryBindingInvalid ||
 		(typeof response.text === "string" &&
+			!opts.completionRelay &&
 			replyClaimsCompletedSideEffect(response.text) &&
 			!effectDeliveryBindingProvesApplication(response))
 	) {
@@ -11965,7 +12032,8 @@ export function wrapSingleTurnVisibleCallback(
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
-	message: Pick<Memory, "id" | "roomId" | "entityId">,
+	message: Pick<Memory, "id" | "roomId" | "entityId"> &
+		Partial<Pick<Memory, "content">>,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
 ): HandlerCallback | undefined {
@@ -12062,6 +12130,7 @@ export function wrapSingleTurnVisibleCallback(
 			fullRuntime,
 			response,
 			actionName,
+			{ completionRelay: isTaskCompleteRelayTurn(message as Memory) },
 		);
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
@@ -13742,6 +13811,8 @@ export class DefaultMessageService implements IMessageService {
 					earlyContent = enforceEffectGroundedVisibleContent(
 						runtime,
 						earlyContent,
+						undefined,
+						{ completionRelay: isTaskCompleteRelayTurn(message) },
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
 						runtime,
@@ -14292,6 +14363,8 @@ export class DefaultMessageService implements IMessageService {
 					deliverableResponseContent = enforceEffectGroundedVisibleContent(
 						runtime,
 						deliverableResponseContent,
+						undefined,
+						{ completionRelay: isTaskCompleteRelayTurn(message) },
 					);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(
