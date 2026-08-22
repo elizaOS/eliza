@@ -42,11 +42,10 @@ function stubFetch(
   globalThis.fetch = impl as unknown as typeof fetch;
 }
 
-function providersUpstreamResponse(
+function providersData(
   overrides: Record<string, unknown> = {},
-): Response {
-  return Response.json({
-    ok: true,
+): Record<string, unknown> {
+  return {
     passkey: true,
     email: true,
     siwe: false,
@@ -54,15 +53,42 @@ function providersUpstreamResponse(
     google: false,
     discord: false,
     github: false,
+    twitter: false,
     oauth: [],
     ...overrides,
-  });
+  };
+}
+
+function providersUpstreamResponse(
+  overrides: Record<string, unknown> = {},
+): Response {
+  return Response.json({ ok: true, ...providersData(overrides) });
 }
 
 beforeEach(() => {
   resetProvidersResponseCacheForTests();
   globalThis.fetch = originalFetch;
 });
+
+async function expectInvalidProvidersResponse(
+  upstreamResponse: Response,
+): Promise<void> {
+  stubFetch(async () => upstreamResponse);
+
+  const app = createStewardThinApp();
+  const response = await app.request(
+    "https://api.elizacloud.ai/steward/auth/providers",
+    { method: "GET" },
+    stewardEnv,
+  );
+
+  expect(response.status).toBe(502);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(response.headers.get("x-eliza-providers-cache")).toBeNull();
+  await expect(response.json()).resolves.toMatchObject({
+    code: "steward_upstream_invalid_response",
+  });
+}
 
 describe("isThinStewardPublicPath", () => {
   test("matches only login-critical Steward GETs", () => {
@@ -193,6 +219,7 @@ describe("createStewardThinApp", () => {
       return providersUpstreamResponse({
         telegram: true,
         oauth: ["apple"],
+        futureProvider: { state: "preview" },
       });
     });
 
@@ -217,13 +244,109 @@ describe("createStewardThinApp", () => {
       passkey?: boolean;
       telegram?: boolean;
       oauth?: string[];
+      futureProvider?: unknown;
     };
     expect(body.ok).toBe(true);
     expect(body.passkey).toBe(true);
     expect(body.google).toBe(true);
     expect(body.telegram).toBe(true);
     expect(body.oauth).toEqual(["apple", "google"]);
+    expect(body.futureProvider).toEqual({ state: "preview" });
   });
+
+  test("preserves the legacy nested shape and unknown envelope/provider fields", async () => {
+    stubFetch(async () =>
+      Response.json({
+        ok: true,
+        requestVersion: 7,
+        data: providersData({
+          oauth: ["apple"],
+          sms: true,
+          oidc: ["workforce"],
+          disabled: ["line"],
+          captcha: {
+            enabled: true,
+            provider: "turnstile",
+            siteKey: "site-key",
+            requiredFor: ["email_otp", "sms_otp"],
+            futureCaptchaOption: "preserved",
+          },
+          futureProvider: { state: "preview" },
+        }),
+      }),
+    );
+
+    const app = createStewardThinApp();
+    const response = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+    const body = (await response.json()) as {
+      ok?: boolean;
+      requestVersion?: number;
+      google?: boolean;
+      data?: {
+        google?: boolean;
+        oauth?: string[];
+        sms?: boolean;
+        oidc?: string[];
+        disabled?: string[];
+        captcha?: Record<string, unknown>;
+        futureProvider?: unknown;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.requestVersion).toBe(7);
+    expect(body.google).toBeUndefined();
+    expect(body.data?.google).toBe(true);
+    expect(body.data?.oauth).toEqual(["apple", "google"]);
+    expect(body.data?.sms).toBe(true);
+    expect(body.data?.oidc).toEqual(["workforce"]);
+    expect(body.data?.disabled).toEqual(["line"]);
+    expect(body.data?.captcha).toEqual({
+      enabled: true,
+      provider: "turnstile",
+      siteKey: "site-key",
+      requiredFor: ["email_otp", "sms_otp"],
+      futureCaptchaOption: "preserved",
+    });
+    expect(body.data?.futureProvider).toEqual({ state: "preview" });
+  });
+
+  test.each([
+    ["object", { requestVersion: 7 }],
+    ["null", null],
+  ])(
+    "preserves an unknown flat data field containing %s",
+    async (_case, data) => {
+      stubFetch(async () =>
+        providersUpstreamResponse({
+          data,
+          futureProvider: { state: "preview" },
+        }),
+      );
+
+      const app = createStewardThinApp();
+      const response = await app.request(
+        "https://api.elizacloud.ai/steward/auth/providers",
+        { method: "GET" },
+        stewardEnv,
+      );
+      const body = (await response.json()) as {
+        data?: unknown;
+        google?: boolean;
+        futureProvider?: unknown;
+      };
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual(data);
+      expect(body.google).toBe(true);
+      expect(body.futureProvider).toEqual({ state: "preview" });
+    },
+  );
 
   test.each([true, false])(
     "preserves upstream Telegram provider state (%s) without inferring it from Eliza OAuth env",
@@ -247,26 +370,146 @@ describe("createStewardThinApp", () => {
   );
 
   test.each([
-    ["nested scalar provider data", { data: "telegram" }],
-    ["nested array provider data", { data: ["telegram"] }],
-    ["non-array oauth", { oauth: { google: true } }],
-    ["oauth entries with non-string values", { oauth: ["google", 42] }],
-  ])("fails closed on %s", async (_case, malformedProviders) => {
-    stubFetch(async () => providersUpstreamResponse(malformedProviders));
+    "passkey",
+    "email",
+    "siwe",
+    "siws",
+    "google",
+    "discord",
+    "github",
+    "twitter",
+    "oauth",
+  ])(
+    "fails closed when required provider field %s is missing",
+    async (field) => {
+      const body: Record<string, unknown> = {
+        ok: true,
+        ...providersData(),
+      };
+      delete body[field];
+      await expectInvalidProvidersResponse(Response.json(body));
+    },
+  );
+
+  test.each([
+    "passkey",
+    "email",
+    "siwe",
+    "siws",
+    "google",
+    "discord",
+    "github",
+    "twitter",
+  ])(
+    "fails closed when required provider boolean %s is malformed",
+    async (field) => {
+      await expectInvalidProvidersResponse(
+        providersUpstreamResponse({ [field]: "false" }),
+      );
+    },
+  );
+
+  test.each([
+    "sms",
+    "whatsapp",
+    "totp",
+    "telegram",
+    "farcaster",
+    "linkedin",
+    "spotify",
+    "twitch",
+    "instagram",
+    "line",
+    "jwt",
+  ])(
+    "fails closed when optional provider boolean %s is malformed",
+    async (field) => {
+      await expectInvalidProvidersResponse(
+        providersUpstreamResponse({ [field]: 1 }),
+      );
+    },
+  );
+
+  test.each([
+    ["oauth is not an array", { oauth: { google: true } }],
+    ["oauth contains a non-string", { oauth: ["google", 42] }],
+    ["oidc is not an array", { oidc: "corp" }],
+    ["oidc contains a non-string", { oidc: ["corp", false] }],
+    ["disabled is not an array", { disabled: null }],
+    ["disabled contains a non-string", { disabled: ["email", 7] }],
+  ])("fails closed when %s", async (_case, overrides) => {
+    await expectInvalidProvidersResponse(providersUpstreamResponse(overrides));
+  });
+
+  test.each([
+    ["captcha is null", null],
+    ["captcha is an array", []],
+    ["captcha enabled is not boolean", { enabled: "true" }],
+    ["captcha provider is not a string", { provider: 1 }],
+    ["captcha provider is unsupported", { provider: "recaptcha" }],
+    ["captcha siteKey is not a string", { siteKey: 123 }],
+    ["captcha requiredFor is not an array", { requiredFor: "email_otp" }],
+    [
+      "captcha requiredFor contains a non-string",
+      { requiredFor: ["email_otp", 1] },
+    ],
+    [
+      "captcha requiredFor contains an unsupported purpose",
+      { requiredFor: ["password"] },
+    ],
+  ])("fails closed when %s", async (_case, captcha) => {
+    await expectInvalidProvidersResponse(
+      providersUpstreamResponse({ captcha }),
+    );
+  });
+
+  test.each([
+    ["nested scalar provider data", "telegram"],
+    ["nested array provider data", ["telegram"]],
+    ["nested null provider data", null],
+  ])("fails closed on %s", async (_case, data) => {
+    await expectInvalidProvidersResponse(Response.json({ ok: true, data }));
+  });
+
+  test.each([
+    ["non-JSON content type", new Response("not json", { status: 200 })],
+    [
+      "malformed JSON body",
+      new Response("{", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ],
+  ])("fails closed on %s", async (_case, response) => {
+    await expectInvalidProvidersResponse(response);
+  });
+
+  test("does not cache a malformed provider response", async () => {
+    let upstreamCalls = 0;
+    stubFetch(async () => {
+      upstreamCalls += 1;
+      return upstreamCalls === 1
+        ? providersUpstreamResponse({ passkey: "true" })
+        : providersUpstreamResponse();
+    });
 
     const app = createStewardThinApp();
-    const response = await app.request(
+    const first = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+    const second = await app.request(
       "https://api.elizacloud.ai/steward/auth/providers",
       { method: "GET" },
       stewardEnv,
     );
 
-    expect(response.status).toBe(502);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("x-eliza-providers-cache")).toBeNull();
-    await expect(response.json()).resolves.toMatchObject({
-      code: "steward_upstream_invalid_response",
-    });
+    expect(first.status).toBe(502);
+    expect(first.headers.get("cache-control")).toBe("no-store");
+    expect(second.status).toBe(200);
+    expect(second.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(upstreamCalls).toBe(2);
   });
 
   test("serves GET /steward/tenants/config without upstream and defaults no-store", async () => {
@@ -409,20 +652,62 @@ describe("createStewardThinApp", () => {
     expect(upstreamCalls).toBe(0);
   });
 
-  test("HEAD /steward/auth/providers is accepted by the thin shell", async () => {
-    stubFetch(async () => providersUpstreamResponse());
+  test("HEAD /steward/auth/providers validates GET upstream, strips the body, and primes the cache", async () => {
+    let upstreamCalls = 0;
+    stubFetch(async (_input, init) => {
+      upstreamCalls += 1;
+      expect(init?.method).toBe("GET");
+      return providersUpstreamResponse();
+    });
 
     const app = createStewardThinApp();
-    const response = await app.request(
+    const head = await app.request(
       "https://api.elizacloud.ai/steward/auth/providers",
       { method: "HEAD" },
       stewardEnv,
     );
-
-    // Hono may answer HEAD via GET handler; either 200 or method-shaped success.
-    expect([200, 204].includes(response.status) || response.status < 500).toBe(
-      true,
+    const get = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
     );
+
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect(head.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(get.status).toBe(200);
+    expect(get.headers.get("x-eliza-providers-cache")).toBe("hit");
+    expect(upstreamCalls).toBe(1);
+  });
+
+  test("HEAD /steward/auth/providers fails closed on malformed upstream and does not poison the cache", async () => {
+    let upstreamCalls = 0;
+    stubFetch(async () => {
+      upstreamCalls += 1;
+      return upstreamCalls === 1
+        ? new Response("not json", { status: 200 })
+        : providersUpstreamResponse();
+    });
+
+    const app = createStewardThinApp();
+    const head = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "HEAD" },
+      stewardEnv,
+    );
+    const get = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+
+    expect(head.status).toBe(502);
+    expect(await head.text()).toBe("");
+    expect(head.headers.get("cache-control")).toBe("no-store");
+    expect(head.headers.get("x-eliza-providers-cache")).toBeNull();
+    expect(get.status).toBe(200);
+    expect(get.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(upstreamCalls).toBe(2);
   });
 
   test("proxies POST /steward/auth/email/send with signing headers", async () => {
