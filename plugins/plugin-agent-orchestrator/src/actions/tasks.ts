@@ -347,6 +347,10 @@ export function collapsePlannerLanes(
   const pluralDeliverableAsk =
     /\b(?:\d+|two|three|four|five|six|several|multiple|a few|a couple of)\s+(?:[\w-]+\s+){0,2}(?:pages|apps|sites|games|scripts|tools|widgets)\b/i.test(
       text,
+    ) ||
+    // "a coin flip page and a dice roll page": two named deliverables.
+    /\b(?:page|app|site|game|script|tool|widget)\b[^.!?\n]{0,60}\band\b[^.!?\n]{0,60}\b(?:page|app|site|game|script|tool|widget)\b/i.test(
+      text,
     );
   const singleDeliverableBuild =
     !pluralDeliverableAsk &&
@@ -1035,8 +1039,13 @@ async function runPromptAndClose(
 const FOLLOW_UP_SHAPE_RE =
   /^\s*(?:oh\s+|and\s+)?(?:also|plus|btw|additionally)\b|\b(?:to|on|in|for|into)\s+(?:it|that|the\s+(?:page|app|site|script))\b|\bmake\s+it\b|\bit\s+(?:too|as\s+well)\b/i;
 
+/** "make me a page …", "another script …": a new deliverable, even when the
+ *  sentence also says "on it" / "make it". */
+const NEW_DELIVERABLE_RE =
+  /\b(?:make|build|create|write|spin\s+up)\s+(?:me\s+)?(?:a|an|another|new|two|three|\d+)\b[^.!?\n]{0,40}\b(?:pages?|apps?|sites?|scripts?|games?|tools?|widgets?)\b/i;
+
 export function looksLikeFollowUpToInFlightWork(text: string): boolean {
-  return FOLLOW_UP_SHAPE_RE.test(text);
+  return FOLLOW_UP_SHAPE_RE.test(text) && !NEW_DELIVERABLE_RE.test(text);
 }
 
 const FOLLOW_UP_SIBLING_WINDOW_MS = 3 * 60_000;
@@ -1145,6 +1154,9 @@ async function runCreateLegacy(
   // session, then the send path queues it (busy) or builds a merged successor.
   if (
     !routedSubAgentCompletion(content) &&
+    // A redirect successor (runSend → create) carries lineage; folding it
+    // back into runSend would recurse until the sibling window closed.
+    typeof params.parentTaskId !== "string" &&
     looksLikeFollowUpToInFlightWork(text)
   ) {
     const sibling = await inFlightSiblingSessionForFollowUp(runtime, message);
@@ -1171,6 +1183,11 @@ async function runCreateLegacy(
   // The create turn's own abort signal (a user stop); checked once the spawn
   // returns, the only point at which a session exists to stop.
   const createTurnSignal = getStreamingContext()?.abortSignal;
+  // Workdirs of every session the orchestrator knows: a planner workdir that
+  // continues a finished lane is grounded by them (see resolveSpawnWorkdir).
+  const knownWorkdirs = (await Promise.resolve(service.listSessions()))
+    .map((session) => session.workdir)
+    .filter((workdir): workdir is string => typeof workdir === "string");
   // Genuine user request for workdir-route matching — see runSpawnAgent and
   // resolveOriginatingRequestText. Keeps routing planner-independent.
   const routingRequest = await resolveOriginatingRequestText(
@@ -1461,6 +1478,7 @@ async function runCreateLegacy(
       const boundWorkdir = first
         ? resolveSpawnWorkdir(runtime, first, routingRequest, explicitWorkdir, {
             lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+            knownWorkdirs,
           }).workdir
         : explicitWorkdir;
       const detail = await taskService.createTask({
@@ -1582,6 +1600,7 @@ async function runCreateLegacy(
         isolate: resolvedCreateIsolate,
       } = resolveSpawnWorkdir(runtime, task, routingRequest, explicitWorkdir, {
         lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+        knownWorkdirs,
       });
       let sessionWorkdir = resolvedSessionWorkdir;
       let isolateWorkdir = resolvedCreateIsolate;
@@ -4589,9 +4608,10 @@ async function runCancel(
           )
         : newestSession(sessions);
 
-    if (!target && !sessionId && _message.roomId) {
+    if (!target && !sessionId && !search && _message.roomId) {
       // No session yet, but the room's build may still be spawning: the
-      // durable task exists and is what the user wants stopped.
+      // durable task exists and is what the user wants stopped. An unmatched
+      // `search` is a miss, not a room-wide stop.
       const taskService = runtime.getService?.(
         OrchestratorTaskService.serviceType,
       ) as OrchestratorTaskService | null | undefined;

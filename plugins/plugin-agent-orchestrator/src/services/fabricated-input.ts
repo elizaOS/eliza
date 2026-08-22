@@ -8,8 +8,23 @@
  * redirections by file stem; a hit is a fabricated input, never a pass.
  */
 
-const READ_TARGET_RE =
-  /\b(?:read|reads|reading|parse|parses|parsing|load|loads|loading|open|opens|opening|fetch|fetches|consume|consumes|from|in)\b[^\n]{0,60}?((?:\/|~\/|\.\/|[A-Za-z]:\\)?[\w.\\/-]*[\w-]\.(?:ya?ml|json|csv|tsv|txt|toml|ini|cfg|conf|xml|env|log|md|db|sqlite3?|parquet|xlsx?))\b/gi;
+const FILE_TOKEN =
+  "((?:\\/|~\\/|\\.\\/|[A-Za-z]:\\\\)?[\\w.\\\\/-]*[\\w-]\\.(?:ya?ml|json|csv|tsv|txt|toml|ini|cfg|conf|xml|env|log|md|db|sqlite3?|parquet|xlsx?))\\b";
+const READ_VERBS =
+  "read|reads|reading|parse|parses|parsing|load|loads|loading|open|opens|opening|fetch|fetches|consume|consumes|from";
+const WRITE_VERBS =
+  "write|writes|save|saves|output|outputs|export|exports|store|stores|create|creates|generate|generates|produce|produces|emit|emits";
+/** Up to 60 chars on one line that never cross a verb of the other class. */
+const window = (blocked: string) => `(?:(?!\\b(?:${blocked})\\b)[^\\n]){0,60}?`;
+const READ_TARGET_RE = new RegExp(
+  `\\b(?:${READ_VERBS})\\b${window(WRITE_VERBS)}${FILE_TOKEN}`,
+  "gi",
+);
+/** Files the task tells the worker to PRODUCE — never read targets. */
+const WRITE_TARGET_RE = new RegExp(
+  `\\b(?:${WRITE_VERBS})\\b${window(READ_VERBS)}${FILE_TOKEN}`,
+  "gi",
+);
 
 const SHELL_WRITE_TARGET_RE =
   /(?:>>?|\btee\s+(?:-a\s+)?)\s*["']?([^\s"'|;&]+)/g;
@@ -21,17 +36,31 @@ export interface FabricatedInput {
   wrote: string;
 }
 
+function base(path: string): string {
+  return (path.replace(/\\/g, "/").split("/").pop() ?? path).toLowerCase();
+}
+
 function stem(path: string): string {
-  const base = path.replace(/\\/g, "/").split("/").pop() ?? path;
-  return base.replace(/\.[^.]+$/, "").toLowerCase();
+  return base(path).replace(/\.[^.]+$/, "");
 }
 
 /** File-like tokens the task text asks the worker to READ. */
 export function readTargetsFromTask(text: string): string[] {
+  const produced = new Set<string>();
+  for (const match of text.matchAll(WRITE_TARGET_RE)) {
+    const target = match[1]?.trim();
+    if (target) produced.add(target.toLowerCase());
+  }
   const out: string[] = [];
   for (const match of text.matchAll(READ_TARGET_RE)) {
     const target = match[1]?.trim();
-    if (target && !out.includes(target)) out.push(target);
+    if (
+      target &&
+      !produced.has(target.toLowerCase()) &&
+      !out.includes(target)
+    ) {
+      out.push(target);
+    }
   }
   return out;
 }
@@ -60,9 +89,17 @@ export function detectFabricatedInput(
     ...shellCommands.flatMap((command) => shellWriteTargets(command)),
   ];
   for (const target of targets) {
+    const targetBase = base(target);
     const targetStem = stem(target);
     if (!targetStem) continue;
-    const wrote = writes.find((path) => stem(path) === targetStem);
+    // Same file name, or the same stem when the stand-in carries no extension
+    // (`nubs-secret-config` for `nubs-secret-config.yaml`). A script that
+    // merely shares the stem (`config.py` for `config.json`) is not the input.
+    const wrote = writes.find(
+      (path) =>
+        base(path) === targetBase ||
+        (!/\.[^./\\]+$/.test(base(path)) && stem(path) === targetStem),
+    );
     if (wrote) return { target, wrote };
   }
   return undefined;

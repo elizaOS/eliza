@@ -137,6 +137,7 @@ function explicitWorkdirIsGrounded(
   workdir: string,
   userRequest: string,
   task: string,
+  knownWorkdirs: readonly string[],
 ): boolean {
   const resolved = path.resolve(workdir);
   if (resolveRouteForWorkdir(runtime, resolved)) return true;
@@ -157,20 +158,7 @@ function explicitWorkdirIsGrounded(
   ) {
     return true;
   }
-  const acp = runtime?.getService?.("ACP_SERVICE") as
-    | { listSessions?: () => unknown }
-    | null
-    | undefined;
-  const sessions = acp?.listSessions?.();
-  if (Array.isArray(sessions)) {
-    return sessions.some(
-      (session) =>
-        typeof (session as { workdir?: unknown }).workdir === "string" &&
-        path.resolve(String((session as { workdir: string }).workdir)) ===
-          resolved,
-    );
-  }
-  return false;
+  return knownWorkdirs.some((known) => path.resolve(known) === resolved);
 }
 
 export function resolveSpawnWorkdir(
@@ -178,7 +166,12 @@ export function resolveSpawnWorkdir(
   task: string,
   userRequest: string,
   explicitWorkdir: string | undefined,
-  opts: { lockWorkdir?: boolean } = {},
+  opts: {
+    lockWorkdir?: boolean;
+    /** Workdirs of sessions the orchestrator knows (a finished lane being
+     *  continued); the caller resolves them because session listing is async. */
+    knownWorkdirs?: readonly string[];
+  } = {},
 ): { workdir: string; route?: ResolvedWorkdirRoute; isolate?: boolean } {
   const expandedExplicit = explicitWorkdir
     ? expandHomePath(explicitWorkdir)
@@ -211,7 +204,13 @@ export function resolveSpawnWorkdir(
     expandedExplicit &&
     fs.existsSync(expandedExplicit) &&
     isProtectedLocation(runtime, expandedExplicit) &&
-    !explicitWorkdirIsGrounded(runtime, expandedExplicit, userRequest, task)
+    !explicitWorkdirIsGrounded(
+      runtime,
+      expandedExplicit,
+      userRequest,
+      task,
+      opts.knownWorkdirs ?? [],
+    )
   ) {
     // The planner fills `workdir` on every create ("/home/milady/<label>",
     // live 2026-08-22 on every build). An existing scratch dir stays trusted
