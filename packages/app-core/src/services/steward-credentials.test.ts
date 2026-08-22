@@ -334,8 +334,16 @@ describe("steward credentials", () => {
       target: fs.PathOrFileDescriptor,
       data,
     ) => {
+      // `data` widens to ArrayBufferView, which includes BigInt64Array —
+      // decode through the underlying bytes so every view type is accepted.
       const text =
-        typeof data === "string" ? data : Buffer.from(data).toString();
+        typeof data === "string"
+          ? data
+          : Buffer.from(
+              data.buffer,
+              data.byteOffset,
+              data.byteLength,
+            ).toString();
       realWriteFileSync(target, text.slice(0, Math.floor(text.length / 2)), {
         mode: 0o600,
       });
