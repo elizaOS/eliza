@@ -18,7 +18,12 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
-import { ElizaError, stableStringify } from "@elizaos/core/edge";
+import {
+  budgetSpreadBudget,
+  ElizaError,
+  STABLE_STRINGIFY_UNBOUNDED,
+  stableStringifyBounded,
+} from "@elizaos/core/edge";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -1150,9 +1155,34 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     receipt: { sourceAgentId: string; cutoverToken: string },
   ): Promise<{ task: ScheduledTask; imported: boolean }> {
+    try {
+      budgetSpreadBudget(
+        task,
+        (task as unknown as Record<string, unknown>).metadata,
+      );
+    } catch (error) {
+      throw error instanceof ElizaError
+        ? error
+        : new ElizaError("scheduled task import unbounded", {
+            code: STABLE_STRINGIFY_UNBOUNDED,
+            cause: error,
+            context: { reason: "spread-budget" },
+          });
+    }
+    let taskDigest: string;
+    try {
+      taskDigest = stableStringifyBounded(task);
+    } catch (error) {
+      throw error instanceof ElizaError
+        ? error
+        : new ElizaError("scheduled task digest unbounded", {
+            code: STABLE_STRINGIFY_UNBOUNDED,
+            cause: error,
+            context: { reason: "spread-budget" },
+          });
+    }
     const existing = await deps.store.get(task.taskId);
     const existingReceipt = existing?.metadata?.sharedCutoverImport;
-    const taskDigest = stableStringify(task);
     if (existing) {
       if (
         existingReceipt !== null &&
@@ -1176,7 +1206,27 @@ export function createScheduledTaskRunner(
     if (validationIssues.length > 0) {
       throw new ScheduledTaskValidationError(validationIssues, "importedTask");
     }
-    const imported = structuredClone(task);
+    let imported: ScheduledTask;
+    try {
+      imported = structuredClone(task);
+    } catch (error) {
+      throw new ElizaError("scheduled task clone unbounded", {
+        code: STABLE_STRINGIFY_UNBOUNDED,
+        cause: error,
+        context: { reason: "spread-budget" },
+      });
+    }
+    try {
+      budgetSpreadBudget(imported.metadata);
+    } catch (error) {
+      throw error instanceof ElizaError
+        ? error
+        : new ElizaError("scheduled task metadata spread unbounded", {
+            code: STABLE_STRINGIFY_UNBOUNDED,
+            cause: error,
+            context: { reason: "spread-budget" },
+          });
+    }
     imported.metadata = {
       ...(imported.metadata ?? {}),
       sharedCutoverImport: {

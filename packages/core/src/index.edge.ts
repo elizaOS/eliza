@@ -111,7 +111,7 @@ export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/channel-utils";
 export * from "./utils/description-compressed-lint";
-export { stableStringify } from "./utils/deterministic";
+export { STABLE_STRINGIFY_UNBOUNDED, budgetSpreadBudget, stableStringify, stableStringifyBounded } from "./utils/deterministic";
 export * from "./utils/environment";
 export * from "./utils/html-raw-text";
 export * from "./utils/prompt-compression";

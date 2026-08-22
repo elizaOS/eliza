@@ -20,6 +20,7 @@ import {
 	normalizeEntityMatches,
 	readEntityResolutionField,
 } from "./entity-matches";
+import { ElizaError } from "./errors";
 import { logger } from "./logger";
 // Type-only (erased at runtime, so no cycle with roles.ts, which imports
 // createUniqueUuid from this module). The role-resolution values are pulled via a
@@ -37,7 +38,11 @@ import {
 	type World,
 } from "./types";
 import * as utils from "./utils";
-import { stableStringify } from "./utils/deterministic";
+import {
+	budgetSpreadBudget,
+	STABLE_STRINGIFY_UNBOUNDED,
+	stableStringifyBounded,
+} from "./utils/deterministic";
 
 type EntityDetailsRecord = Pick<
 	Entity,
@@ -594,6 +599,17 @@ export async function getEntityDetails({
 					return undefined;
 				};
 
+				try {
+					budgetSpreadBudget(mergedData, entity.metadata);
+				} catch (error) {
+					throw error instanceof ElizaError
+						? error
+						: new ElizaError("entity data spread unbounded", {
+								code: STABLE_STRINGIFY_UNBOUNDED,
+								cause: error,
+								context: { reason: "spread-budget" },
+							});
+				}
 				uniqueEntities.set(entityId, {
 					id: entityId,
 					agentId: entity.agentId,
@@ -602,7 +618,7 @@ export async function getEntityDetails({
 						: entity.names[0],
 					names: entity.names,
 					metadata: entity.metadata,
-					data: stableStringify({ ...mergedData, ...entity.metadata }),
+					data: stableStringifyBounded({ ...mergedData, ...entity.metadata }),
 				});
 			}
 
@@ -626,7 +642,7 @@ function formatEntityNames(names: string[]): string {
 }
 
 export function formatEntityMetadata(metadata: unknown): string {
-	return stableStringify(metadata);
+	return stableStringifyBounded(metadata);
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {
