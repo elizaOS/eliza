@@ -377,6 +377,11 @@ describe("DocumentService requester authorization", () => {
 			"getRoomsForParticipants",
 		);
 		const request = message();
+		const accessContext = {
+			requesterEntityId: USER_ID,
+			role: "USER" as const,
+			isOwner: false,
+		};
 
 		await runWithTrajectoryContext(
 			{ turnMemo: new Map<string, Promise<unknown>>() },
@@ -397,8 +402,11 @@ describe("DocumentService requester authorization", () => {
 					}),
 				).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
 				await expect(
-					service.deleteDocument(DELETE_DOCUMENT_ID, request),
-				).rejects.toMatchObject({ code: "DOCUMENT_MUTATION_FORBIDDEN" });
+					service.deleteDocumentWithAccessContext(
+						DELETE_DOCUMENT_ID,
+						accessContext,
+					),
+				).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
 			},
 		);
 

@@ -91,6 +91,11 @@ Parent and fragment REST reads must call the access-context-aware
 belongs in the adapter query before rows, fragment bytes, counts, or pagination
 are constructed.
 
+PATCH and DELETE must use the access-context-aware mutation methods. The route
+may inspect the already-authorized parent for editability, but it may not scan
+or delete fragments itself; `DocumentService` owns snapshot validation and the
+adapter performs the atomic parent/revision mutation.
+
 ## How to extend
 
 **Add a new route:**

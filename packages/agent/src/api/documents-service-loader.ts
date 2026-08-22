@@ -91,6 +91,10 @@ export interface DocumentsServiceLike {
     documentId: UUID,
     accessContext: AccessContext,
   ): Promise<Memory | null>;
+  getMutableDocumentWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory | null>;
   listDocumentFragmentsWithAccessContext?(
     documentId: UUID,
     accessContext: AccessContext,
@@ -111,11 +115,16 @@ export interface DocumentsServiceLike {
     documentId: UUID;
     content: string;
     message?: Memory;
+    accessContext?: AccessContext;
   }): Promise<{
     documentId: UUID;
     fragmentCount: number;
   }>;
   deleteDocument?(documentId: UUID, message?: Memory): Promise<void>;
+  deleteDocumentWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<void>;
   deleteMemory(memoryId: UUID): Promise<void>;
 }
 

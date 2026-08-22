@@ -572,6 +572,29 @@ export class DocumentService extends Service {
 		});
 	}
 
+	async getMutableDocumentWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<Memory | null> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		const requestContext = {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		};
+		const document = await this.runtime.adapter.getDocument({
+			...requestContext,
+			documentId,
+		});
+		return document && canRequesterMutateDocument(document, requestContext)
+			? document
+			: null;
+	}
+
 	async listDocumentFragmentsWithAccessContext(
 		documentId: UUID,
 		accessContext: AccessContext,
@@ -798,6 +821,24 @@ export class DocumentService extends Service {
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
 		const requester = await resolveDocumentRequester(this.runtime, message);
+		await this.deleteDocumentForRequester(documentId, requester);
+	}
+
+	async deleteDocumentWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<void> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		await this.deleteDocumentForRequester(documentId, requester);
+	}
+
+	private async deleteDocumentForRequester(
+		documentId: UUID,
+		requester: DocumentRequester,
+	): Promise<void> {
 		const document = await this.runtime.adapter.getDocument({
 			agentId: this.runtime.agentId,
 			documentId,
@@ -806,22 +847,6 @@ export class DocumentService extends Service {
 			requesterRole: requester.role,
 		});
 		if (!document) {
-			// A hidden document owned by this runtime is a forbidden mutation, while
-			// foreign-agent and non-document rows remain indistinguishable from a
-			// missing UUID. This preserves tenant isolation across the unscoped probe.
-			const existingUnscoped = await this.runtime.getMemoryById(documentId);
-			if (
-				existingUnscoped?.agentId === this.runtime.agentId &&
-				readDocumentMutationSnapshot(existingUnscoped)
-			) {
-				throw new ElizaError(
-					`Document ${documentId} cannot be deleted by this requester`,
-					{
-						code: "DOCUMENT_MUTATION_FORBIDDEN",
-						context: { documentId, requesterRole: requester.role },
-					},
-				);
-			}
 			throw new ElizaError(`Document ${documentId} not found`, {
 				code: "DOCUMENT_NOT_FOUND",
 				context: { documentId },
@@ -2201,14 +2226,17 @@ export class DocumentService extends Service {
 		documentId: UUID;
 		content: string;
 		message?: Memory;
+		accessContext?: AccessContext;
 	}): Promise<{
 		documentId: UUID;
 		fragmentCount: number;
 	}> {
-		const requester = await resolveDocumentRequester(
-			this.runtime,
-			options.message,
-		);
+		const requester = options.accessContext
+			? await resolveDocumentRequesterFromAccessContext(
+					this.runtime,
+					options.accessContext,
+				)
+			: await resolveDocumentRequester(this.runtime, options.message);
 		const requestContext = {
 			agentId: this.runtime.agentId,
 			requesterEntityId: requester.entityId,
