@@ -41,6 +41,7 @@ import {
   trajectoryRowToListItem,
 } from "./trajectory-export.ts";
 import {
+  appendCompleteTrajectoryTextRecords,
   asRecord,
   type CompleteStepOptions,
   capScriptForPersistence,
@@ -1035,10 +1036,11 @@ async function appendLlmCall(
 
   if (insights.length > 0) {
     const meta = trajectory.metadata as Record<string, unknown>;
-    const existing = Array.isArray(meta.insights)
-      ? (meta.insights as string[])
-      : [];
-    meta.insights = [...existing, ...insights].slice(-20);
+    meta.insights = appendCompleteTrajectoryTextRecords(
+      meta.insights,
+      insights,
+      "insights",
+    );
     trajectory.metadata = meta;
   }
 

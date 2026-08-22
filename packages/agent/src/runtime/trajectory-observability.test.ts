@@ -6,6 +6,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  appendCompleteTrajectoryTextRecords,
   computeBySource,
   flushObservationBuffer,
   pushChatExchange,
@@ -26,6 +27,32 @@ function createRuntime() {
 }
 
 describe("trajectory observability", () => {
+  it("preserves every ordered metadata record across former recency caps", () => {
+    const existing = Array.from({ length: 35 }, (_, index) => `old-${index}`);
+    const additions = [
+      "duplicate",
+      "duplicate",
+      ...Array.from({ length: 25 }, (_, index) => `new-${index}`),
+    ];
+
+    const records = appendCompleteTrajectoryTextRecords(
+      existing,
+      additions,
+      "insights",
+    );
+
+    expect(records).toEqual([...existing, ...additions]);
+    expect(records).toHaveLength(62);
+  });
+
+  it("rejects malformed persisted metadata instead of treating it as empty", () => {
+    expect(() =>
+      appendCompleteTrajectoryTextRecords(["valid", 3], ["next"], "insights"),
+    ).toThrowError(
+      expect.objectContaining({ code: "TRAJECTORY_TEXT_METADATA_INVALID" }),
+    );
+  });
+
   it("logs observation flush failures before returning an empty result", async () => {
     const { runtime, warn } = createRuntime();
     pushChatExchange(runtime, {

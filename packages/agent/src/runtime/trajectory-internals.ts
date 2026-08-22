@@ -79,6 +79,30 @@ type RuntimeWithOrchestratorTrajectoryContext = {
   __orchestratorTrajectoryCtx?: OrchestratorTrajectoryContext;
 };
 
+/**
+ * Appends derived trajectory text records without a recency window, dedupe, or
+ * normalization. Invalid persisted metadata is rejected so a corrupt legacy
+ * value cannot make later context look complete.
+ */
+export function appendCompleteTrajectoryTextRecords(
+  existing: unknown,
+  additions: readonly string[],
+  field: string,
+): string[] {
+  const prior = existing === undefined ? [] : existing;
+  if (
+    !Array.isArray(prior) ||
+    prior.some((record) => typeof record !== "string") ||
+    additions.some((record) => typeof record !== "string")
+  ) {
+    throw new ElizaError("Trajectory text metadata is malformed", {
+      code: "TRAJECTORY_TEXT_METADATA_INVALID",
+      context: { field },
+    });
+  }
+  return [...prior, ...additions];
+}
+
 export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
@@ -647,10 +671,11 @@ export async function flushObservationBuffer(
     );
     if (trajectory) {
       const meta = trajectory.metadata as Record<string, unknown>;
-      const existing = Array.isArray(meta.observations)
-        ? (meta.observations as string[])
-        : [];
-      meta.observations = [...existing, ...observations].slice(-30);
+      meta.observations = appendCompleteTrajectoryTextRecords(
+        meta.observations,
+        observations,
+        "observations",
+      );
       trajectory.metadata = meta;
       await saveTrajectory(runtime, trajectory, { changedStepIds: [] });
     }
