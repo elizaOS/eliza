@@ -84,7 +84,10 @@ profile rather than branching on a provider name. Every block kind is required,
 unsupported primitives use zero limits, and supported primitives use positive
 limits. `negotiateInteractionDelivery` enforces counts, UTF-8 byte budgets,
 callback size, attachment MIME and byte limits, edit windows, threads, and URL
-limits before selecting a mode. The generated `CAPABILITY_MATRIX.md` is the
+limits before selecting a mode. Conversational delivery rejects a canonical
+payload that cannot fit intact; it never delegates truncation to a renderer.
+Signed-hosted delivery additionally requires a host-owned verifier to approve
+the HTTPS URL's authority and signature. The generated `CAPABILITY_MATRIX.md` is the
 reviewable golden contract and its test fails when a registered first-party
 message connector is omitted.
 
@@ -96,8 +99,10 @@ authorization decision, expiry, effect, and stable replay key. A store performs
 atomic `pending → claimed → committed → completed` transitions and retains the
 effect receipt. Reservation claims may expire before commitment. Once committed,
 the host may cross the external effect boundary, but an outcome lost to a crash
-remains permanently ambiguous: it is never transferred, retried, revoked as if
-cancellation succeeded, or garbage-collected. Revocation after render, expiry,
+remains ambiguous: it is never transferred, retried, or revoked as if
+cancellation succeeded. Stores expose committed rows and accept verified
+reconciliation receipts without re-executing the effect; bounded adapters may
+expire unreconciled records after their documented operator window. Revocation after render, expiry,
 mismatched context, response tampering, stale claims, and a different replay key
 all fail closed.
 
@@ -114,7 +119,8 @@ construct their own authority, store, or effect dispatcher.
 `InMemoryMessageInteractionSessionStore` is for deterministic tests and embedded
 processes. The agent host's `FileMessageInteractionSessionStore` is durable and
 cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
-commit and a stale-owner-aware lock. Multi-host deployments must implement the
+commit and a boot/process-generation-qualified stale-owner lock with an absolute
+recovery ceiling. Multi-host deployments must implement the
 same store interface with a transactional database and idempotent effect/outbox
 boundary; the JSON store does not claim distributed exactly-once semantics.
 
