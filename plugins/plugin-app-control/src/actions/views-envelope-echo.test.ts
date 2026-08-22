@@ -43,7 +43,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		getUserMessageText: actual.getUserMessageText,
 		hardenIncomingUserMessage: actual.hardenIncomingUserMessage,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
-		userReferenceLogView: actual.userReferenceLogView,
+		completeUserReferenceView: actual.completeUserReferenceView,
+		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
 		wrapExternalContent: actual.wrapExternalContent,
 	};
 });
@@ -181,7 +182,7 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(query).toBe("quantum ledger");
 	});
 
-	it("search: a blob-shaped planner query renders as a neutral noun and complete machine value", async () => {
+	it("search: a hardened planner query is explicitly rejected from machine data", async () => {
 		const blob = envelopedMessage("irrelevant").content.text;
 		const callback = vi.fn();
 		const result = await runViewsSearch({
@@ -194,9 +195,8 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(result.text).toContain("your search");
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
 		const query = (result.values as { query?: string })?.query;
-		expect(typeof query).toBe("string");
-		expect((query as string).length).toBeGreaterThan(121);
-		expect(query).not.toContain("\n");
+		expect(query).toBe("[external reference rejected]");
+		expectNoEnvelope(query);
 	});
 
 	it("edit: EDIT_VERBS no longer fire on the warning's 'Change your behavior' line", async () => {
@@ -243,7 +243,7 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(target).not.toContain("\n");
 	});
 
-	it("delete: a blob-shaped planner target renders as a neutral noun and complete machine value", async () => {
+	it("delete: a hardened planner target is explicitly rejected from machine data", async () => {
 		const blob = envelopedMessage("irrelevant").content.text;
 		const runtime = {
 			agentId: "agent-1",
@@ -264,9 +264,8 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(result.text).toContain("that view");
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
 		const target = (result.data as { target?: string })?.target;
-		expect(typeof target).toBe("string");
-		expect((target as string).length).toBeGreaterThan(121);
-		expect(target).not.toContain("\n");
+		expect(target).toBe("[external reference rejected]");
+		expectNoEnvelope(target);
 	});
 
 	it("create: a blob-shaped editTarget renders as the neutral noun, never verbatim", async () => {

@@ -69,8 +69,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Short or full ID/,
 	],
 	"packages/core/src/utils/reference-echo.ts": [
-		/truncateWellFormed/,
-		/collapsed\.slice\(/,
+		/completeUserReferenceView[^{]*\{[^}]*truncateWellFormed/,
+		/completeUserReferenceView[^{]*\{[^}]*\.slice\(/,
 	],
 	"packages/core/src/features/documents/naming.ts": [
 		/truncateWellFormed/,
@@ -106,13 +106,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-dropbox/src/connector-account-provider.ts": [/body\.slice\(/],
 	"plugins/plugin-github/src/actions/issue-op.ts": [/body\.slice\(/],
 	"plugins/plugin-github/src/actions/pr-op.ts": [/body\.slice\(/],
-	"plugins/plugin-app-control/src/params.ts": [/collapsed\.slice\(/],
+	"plugins/plugin-app-control/src/params.ts": [
+		/collapsed\.slice\(/,
+		/userReferenceLogView/,
+	],
 	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
 		/truncateWellFormed/,
 	],
 	"plugins/plugin-agent-orchestrator/src/actions/tasks.ts": [
 		/truncateWellFormed/,
 		/seed\.slice\(/,
+		/userReferenceLogView/,
 	],
 	"plugins/plugin-agent-orchestrator/src/actions/task-label.ts": [
 		/truncateWellFormed/,

@@ -8,9 +8,10 @@
 
 import type { Memory } from "@elizaos/core";
 import {
+	completeUserReferenceView,
+	containsExternalEnvelopeMaterial,
 	getUserMessageText,
 	unwrapUserMessageText,
-	userReferenceLogView,
 } from "@elizaos/core";
 
 const LAUNCH_VERBS = [
@@ -119,7 +120,10 @@ export function describeTargetReference(
  * boundary rather than silently changing the value here.
  */
 export function targetReferenceLogView(reference: string): string {
-	return userReferenceLogView(reference);
+	if (containsExternalEnvelopeMaterial(reference)) {
+		return "[external reference rejected]";
+	}
+	return completeUserReferenceView(reference);
 }
 
 export function normalizeActionOptions(

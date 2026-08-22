@@ -21,6 +21,7 @@ import type {
 } from "@elizaos/core";
 import {
   ChannelType,
+  completeUserReferenceView,
   logger as coreLogger,
   ElizaError,
   looksLikeBareLinkShare,
@@ -28,7 +29,6 @@ import {
   stringToUuid,
   toWellFormedUnicode,
   unwrapUserMessageText,
-  userReferenceLogView,
 } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
@@ -890,7 +890,7 @@ async function runCreateLegacy(
   // not become ambiguous aliases for different tasks.
   const baseLabelParam = pickString(params, content, "label");
   const baseLabel = baseLabelParam
-    ? userReferenceLogView(baseLabelParam)
+    ? completeUserReferenceView(baseLabelParam)
     : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
@@ -930,7 +930,7 @@ async function runCreateLegacy(
   const plannerTitle =
     pickString(params, content, "title") ?? pickString(params, content, "goal");
   const taskTitle = plannerTitle
-    ? userReferenceLogView(plannerTitle)
+    ? completeUserReferenceView(plannerTitle)
     : tasks[0]
       ? labelFrom(tasks[0], 0)
       : "Coding task";
@@ -1880,7 +1880,7 @@ async function runSpawnAgent(
     // Preserve the complete task label; it is model-visible task identity.
     const labelParam = pickString(params, content, "label");
     const label = labelParam
-      ? userReferenceLogView(labelParam)
+      ? completeUserReferenceView(labelParam)
       : labelFrom(task, 0);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,

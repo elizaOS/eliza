@@ -1,5 +1,6 @@
 /** Verifies complete normalized app references at the machine boundary. */
 
+import { wrapExternalContent } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { targetReferenceLogView } from "./params.js";
 
@@ -16,5 +17,15 @@ describe("targetReferenceLogView", () => {
 		);
 		expect(rendered.isWellFormed()).toBe(true);
 		expect(rendered).toBe("bad \uFFFD complete-tail");
+	});
+
+	it("explicitly rejects a hardened external-content envelope", () => {
+		const wrapped = wrapExternalContent("open the private view", {
+			source: "api",
+			includeWarning: true,
+		});
+		expect(targetReferenceLogView(wrapped)).toBe(
+			"[external reference rejected]",
+		);
 	});
 });

@@ -99,7 +99,7 @@ describe("APP — hardened-envelope messages never leak the envelope", () => {
 		expectNormalizedTarget(result?.data);
 	});
 
-	it("stop: a blob-shaped planner app option renders as a neutral noun and complete machine value", async () => {
+	it("stop: a hardened planner app option is explicitly rejected from machine data", async () => {
 		const blob = envelopedMessage("irrelevant").content.text;
 		const client = clientWith();
 		const callback = vi.fn();
@@ -116,9 +116,9 @@ describe("APP — hardened-envelope messages never leak the envelope", () => {
 		expect(result?.text).toContain("that app");
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
 		expectNormalizedTarget(result?.data);
-		expect(
-			((result?.data as { target?: string })?.target ?? "").length,
-		).toBeGreaterThan(121);
+		expect((result?.data as { target?: string })?.target).toBe(
+			"[external reference rejected]",
+		);
 	});
 
 	it("stop: verb scan runs on the payload, not the warning text", async () => {
