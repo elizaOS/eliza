@@ -120,7 +120,9 @@ describe("ProviderPicker", () => {
           "Model inference, using your API key; agent spawn unavailable",
         ),
       ).toBeTruthy();
-      expect(screen.queryByText(/Model inference and coding agents/)).toBeNull();
+      expect(
+        screen.queryByText(/Model inference and coding agents/),
+      ).toBeNull();
     },
   );
 });

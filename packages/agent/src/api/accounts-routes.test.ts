@@ -405,11 +405,11 @@ describe("accounts routes", () => {
         response.providers.find((item) => item.providerId === providerId),
       ).toMatchObject({
         runtimeEligibility: {
-          chat: { available: false, credentialPath: "none" },
+          chat: { available: true, credentialPath: "direct-api" },
           codingAgent: {
-            available: true,
-            backend: "opencode",
-            credentialPath: "direct-api",
+            available: false,
+            credentialPath: "none",
+            unavailableReason: expect.any(String),
           },
         },
       });
@@ -545,7 +545,7 @@ describe("accounts routes", () => {
     ["openrouter-api", "sk-or-test-value"],
     ["xai-api", "xai-test-value"],
   ] as const)(
-    "preflights and stores %s without copying its secret into process.env",
+    "preflights and stores %s for its inference route without reflecting the secret",
     async (providerId, apiKey) => {
       const envKey =
         providerId === "openrouter-api" ? "OPENROUTER_API_KEY" : "XAI_API_KEY";
