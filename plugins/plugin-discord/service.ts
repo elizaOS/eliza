@@ -1607,12 +1607,19 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 			scheduleRetry(closeEvent);
 		});
-		client.once(Events.Error, (error: unknown) => {
+		// Durable error listener: keeps the client error-listener-ful for the
+		// whole lifetime so a rejected async gateway listener can never become
+		// an uncaughtException (captureRejections rethrows via nextTick when no
+		// "error" listener exists). Logging only; retry decisions stay in the
+		// per-attempt once() below so a single error logs exactly once.
+		client.on(Events.Error, (error: unknown) => {
 			this.runtime.logger.error(
 				`Discord client error for account ${state.accountId}: ${
 					error instanceof Error ? error.message : String(error)
 				}`,
 			);
+		});
+		client.once(Events.Error, (error: unknown) => {
 			scheduleRetry(error);
 		});
 		client.login(token).catch((error: unknown) => {
