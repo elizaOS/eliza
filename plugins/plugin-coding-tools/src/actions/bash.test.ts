@@ -503,6 +503,9 @@ describeIfPosix("shellAction", () => {
     expect(providerResult.text).toContain("start_background");
     expect(providerResult.data?.codingTools).toEqual([
       "FILE",
+      "READ",
+      "WRITE",
+      "EDIT",
       "SHELL",
       "WEB_FETCH",
       "WEB_SEARCH",
