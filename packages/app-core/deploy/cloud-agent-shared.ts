@@ -485,10 +485,20 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           ...(process.env.GROQ_API_KEY
             ? { GROQ_API_KEY: process.env.GROQ_API_KEY }
             : {}),
+          ...(process.env.CEREBRAS_API_KEY
+            ? { CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY }
+            : {}),
         },
       });
 
       const plugins = [];
+
+      if (process.env.CEREBRAS_API_KEY || process.env.OPENAI_API_KEY) {
+        const openaiPlugin = await import("@elizaos/plugin-openai")
+          .then((m) => m.default)
+          .catch(logPluginLoadFailure("@elizaos/plugin-openai"));
+        if (openaiPlugin) plugins.push(openaiPlugin);
+      }
 
       const cloudPlugin = await import("@elizaos/plugin-elizacloud")
         .then((m) => m.default)
@@ -885,6 +895,24 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         res.end(JSON.stringify({ error: "Unauthorized" }));
         return;
       }
+    }
+
+    // The provisioning worker probes the bridge/tailnet port, not the
+    // host-only REST mapping. Keep this response aligned with the REST health
+    // contract so lifecycle recovery never marks a healthy runtime dead.
+    if (req.method === "GET" && req.url === "/api/health") {
+      const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
+      res.writeHead(databaseLiveness.terminal ? 503 : 200);
+      res.end(
+        JSON.stringify({
+          status: agentRuntime ? "healthy" : "initializing",
+          runtimeReady: agentRuntime !== null,
+          database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
+          lastActivityAt: state.lastActivityAt,
+        }),
+      );
+      return;
     }
 
     if (req.method === "POST" && req.url === "/api/snapshot") {
