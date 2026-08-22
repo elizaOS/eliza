@@ -362,7 +362,7 @@ async function resolveEntityPlanWithLlm(args: {
     "response: short clarifying question, or null",
     "intent: concise restatement of the user request, or null",
     "name: contact/entity display name, or null",
-    "channel: email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, or null",
+    "channel: email, telegram, discord, sms, twilio_voice, imessage, whatsapp, or null",
     "handle: primary channel handle/address, or null",
     "email: email address, or null",
     "phone: phone number, or null",
@@ -825,9 +825,9 @@ export const entityAction: Action & {
     {
       name: "channel",
       description:
-        "Primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp.",
+        "Primary channel: email|telegram|discord|sms|twilio_voice|imessage|whatsapp.",
       descriptionCompressed:
-        "primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp",
+        "primary channel: email|telegram|discord|sms|twilio_voice|imessage|whatsapp",
       schema: {
         type: "string" as const,
         enum: [...LIFEOPS_MESSAGE_CHANNELS],

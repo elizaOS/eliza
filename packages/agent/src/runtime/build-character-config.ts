@@ -153,7 +153,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "SLACK_BOT_TOKEN",
     "SLACK_APP_TOKEN",
     "SLACK_USER_TOKEN",
-    "SIGNAL_ACCOUNT_NUMBER",
     "MSTEAMS_APP_ID",
     "MSTEAMS_APP_PASSWORD",
     "MATTERMOST_BOT_TOKEN",

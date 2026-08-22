@@ -59,19 +59,28 @@ function appliedRows(
 function migrationClient(applied: ReturnType<typeof appliedRows>): {
   client: {
     backend: "pglite";
-    query<T = unknown>(text: string): Promise<{ rows: T[] }>;
+    query<T = unknown>(
+      text: string,
+      params?: unknown[],
+    ): Promise<{ rows: T[] }>;
     end(): Promise<void>;
   };
   queries: string[];
+  queryParams: unknown[][];
   ended: () => boolean;
 } {
   const queries: string[] = [];
+  const queryParams: unknown[][] = [];
   let didEnd = false;
   return {
     client: {
       backend: "pglite",
-      query: async <T = unknown>(text: string): Promise<{ rows: T[] }> => {
+      query: async <T = unknown>(
+        text: string,
+        params?: unknown[],
+      ): Promise<{ rows: T[] }> => {
         queries.push(text);
+        queryParams.push(params ?? []);
         if (text.includes(`FROM "drizzle"."__drizzle_migrations"`)) {
           return { rows: applied as T[] };
         }
@@ -82,6 +91,7 @@ function migrationClient(applied: ReturnType<typeof appliedRows>): {
       },
     },
     queries,
+    queryParams,
     ended: () => didEnd,
   };
 }
@@ -289,5 +299,171 @@ describe("usage-quotas migration release barrier", () => {
     const dropAt = tags.indexOf(DROP_TAG);
     expect(dropAt).toBeGreaterThanOrEqual(0);
     expect(tags[dropAt + 1]).toBe(RESTORE_TAG);
+  });
+
+  // A ledger sitting exactly at 0282 must repair forward: the restore runs
+  // first, every later migration follows in journal order, and the already-
+  // applied drop never executes again. Requiring the pair to be the journal
+  // tail here would push the stop-the-world failure onto the first ledger
+  // that adopts any future migration.
+  test("applies the restore then later migrations when 0282 is ledgered with future suffixes", async () => {
+    const migrations = [
+      ...barrierMigrations(),
+      migration(284, "0284_first_future_feature", "SELECT future_one"),
+      migration(285, "0285_second_future_feature", "SELECT future_two"),
+    ];
+    const harness = migrationClient(appliedRows(barrierMigrations(), 2));
+    let convergenceCalls = 0;
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      await runMigrations(
+        harness.client,
+        migrations,
+        OPTIONS,
+        undefined,
+        undefined,
+        async () => {
+          convergenceCalls += 1;
+        },
+      );
+    } finally {
+      outputLog.mockRestore();
+    }
+
+    expect(harness.queries).not.toContain("DROP TABLE usage_quotas");
+    // Each applied migration is individually ledgered in journal order: the
+    // statements run inside their own transaction and the ledger INSERT
+    // carries the migration's hash before the COMMIT.
+    const appliedInOrder = [
+      ["CREATE TABLE usage_quotas (id uuid)", RESTORE_TAG],
+      ["SELECT future_one", "0284_first_future_feature"],
+      ["SELECT future_two", "0285_second_future_feature"],
+    ] as const;
+    let searchFrom = 0;
+    for (const [statement, tag] of appliedInOrder) {
+      const begin = harness.queries.indexOf("BEGIN", searchFrom);
+      const run = harness.queries.indexOf(statement, searchFrom);
+      const ledgered = harness.queries.findIndex(
+        (query, index) =>
+          index > run &&
+          query.includes("INSERT INTO") &&
+          query.includes("__drizzle_migrations"),
+      );
+      const commit = harness.queries.indexOf("COMMIT", ledgered);
+      expect(begin).toBeGreaterThanOrEqual(0);
+      expect(run).toBeGreaterThan(begin);
+      expect(ledgered).toBeGreaterThan(run);
+      expect(commit).toBeGreaterThan(ledgered);
+      expect(harness.queryParams[ledgered]).toContain(`hash-${tag}`);
+      searchFrom = commit + 1;
+    }
+    expect(harness.queries.filter((query) => query === "BEGIN")).toHaveLength(
+      3,
+    );
+    expect(harness.queries.filter((query) => query === "COMMIT")).toHaveLength(
+      3,
+    );
+    expect(convergenceCalls).toBe(1);
+    expect(harness.ended()).toBe(true);
+  });
+
+  // Future suffixes behind the barrier must not unlock the guarded pair: an
+  // older ledger still pauses before the drop, never touching the restore or
+  // anything appended after it, and still reports the pause to the operator.
+  test("still pauses before the guarded pair when an older ledger has future suffixes pending", async () => {
+    const migrations = [
+      ...barrierMigrations(),
+      migration(284, "0284_pending_future_feature", "SELECT pending_future"),
+    ];
+    const harness = migrationClient(appliedRows(barrierMigrations(), 1));
+    let convergenceCalls = 0;
+    const barrierEvents: string[] = [];
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+    const warningLog = spyOn(console, "warn").mockImplementation(
+      (message: string) => {
+        if (message.includes("release barrier paused")) {
+          barrierEvents.push("warning");
+        }
+      },
+    );
+
+    try {
+      await runMigrations(
+        harness.client,
+        migrations,
+        OPTIONS,
+        undefined,
+        undefined,
+        async () => {
+          convergenceCalls += 1;
+          barrierEvents.push("convergence");
+        },
+      );
+    } finally {
+      outputLog.mockRestore();
+      warningLog.mockRestore();
+    }
+
+    expect(harness.queries).not.toContain("BEGIN");
+    expect(harness.queries).not.toContain("DROP TABLE usage_quotas");
+    expect(harness.queries).not.toContain(
+      "CREATE TABLE usage_quotas (id uuid)",
+    );
+    expect(harness.queries).not.toContain("SELECT pending_future");
+    expect(convergenceCalls).toBe(1);
+    // Convergence must finish before the pause is reported, so the schema is
+    // consistent when the operator reads the warning.
+    expect(barrierEvents).toEqual(["convergence", "warning"]);
+    expect(harness.ended()).toBe(true);
+  });
+
+  // A ledger that has already adopted a future suffix is fully migrated: the
+  // run is a no-op for migration SQL, yet still converges the schema and
+  // closes the client - and critically never reruns the drop or the restore.
+  test("no-ops when the ledger is already past a future suffix", async () => {
+    const migrations = [
+      ...barrierMigrations(),
+      migration(284, "0284_adopted_future_feature", "SELECT adopted_future"),
+    ];
+    const harness = migrationClient(appliedRows(migrations, 4));
+    let convergenceCalls = 0;
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      await runMigrations(
+        harness.client,
+        migrations,
+        OPTIONS,
+        undefined,
+        undefined,
+        async () => {
+          convergenceCalls += 1;
+        },
+      );
+    } finally {
+      outputLog.mockRestore();
+    }
+
+    expect(harness.queries).not.toContain("BEGIN");
+    expect(harness.queries).not.toContain("DROP TABLE usage_quotas");
+    expect(harness.queries).not.toContain(
+      "CREATE TABLE usage_quotas (id uuid)",
+    );
+    expect(harness.queries).not.toContain("SELECT adopted_future");
+    expect(convergenceCalls).toBe(1);
+    expect(harness.ended()).toBe(true);
+  });
+
+  // Journal order is part of the guarded contract, not just adjacency count:
+  // a restore indexed before the drop fails closed instead of "repairing"
+  // backwards.
+  test("fails closed when the restore is journal-indexed before the drop", () => {
+    const [checkpoint, before, drop, restore] = barrierMigrations();
+    const migrations = [checkpoint, before, restore, drop];
+
+    expect(() => evaluateMigrationReleaseBarrier(migrations, 1)).toThrow(
+      "adjacent journal entries",
+    );
   });
 });
