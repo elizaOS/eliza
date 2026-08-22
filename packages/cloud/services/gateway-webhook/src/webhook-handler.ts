@@ -16,6 +16,7 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "./adapters/types";
+import { PlatformDeliveryError } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
 import { tryConfirmIdentityLink } from "./identity-link";
@@ -117,6 +118,40 @@ function parseGroupDeliveryDirective(
 interface MessageTraceContext {
   traceId: string;
   gatewayReceivedAtMs: number;
+}
+
+async function sendReplyWithRequiredReceipt(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+  deliveryHooks?: TelegramDeliveryHooks,
+): Promise<void> {
+  if (!adapter.sendReplyWithReceipt) {
+    throw new PlatformDeliveryError(
+      `${adapter.platform} adapter does not expose provider receipts`,
+      "failed",
+      "DELIVERY_RECEIPT_UNSUPPORTED",
+      false,
+    );
+  }
+  const receipt = await adapter.sendReplyWithReceipt(
+    config,
+    event,
+    text,
+    deliveryHooks,
+  );
+  const providerMessageIds = receipt.providerMessageIds
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (providerMessageIds.length === 0) {
+    throw new PlatformDeliveryError(
+      `${adapter.platform} accepted delivery without a message receipt`,
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
+  }
 }
 
 async function reconcileLegacyTelegramDelivery(
@@ -578,7 +613,9 @@ export async function handleWebhook(
       });
       if (
         err instanceof PersonalSharedPreEgressError ||
-        err instanceof PersonalSharedRecoverablePostEgressError
+        err instanceof PersonalSharedRecoverablePostEgressError ||
+        (err instanceof PlatformDeliveryError &&
+          err.deliveryStatus === "failed")
       ) {
         try {
           // The Shared endpoint is idempotent. Blooio also keys provider
@@ -666,7 +703,13 @@ async function processMessage(
     event.text,
   );
   if (linkAttempt.handled && linkAttempt.reply) {
-    await adapter.sendReply(config, event, linkAttempt.reply, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      linkAttempt.reply,
+      deliveryHooks,
+    );
     return;
   }
 
@@ -858,7 +901,13 @@ async function processMessage(
 
   try {
     stageStartedAt = Date.now();
-    await adapter.sendReply(config, event, responseText, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      responseText,
+      deliveryHooks,
+    );
     logger.info("Connector message completed", {
       project,
       platform: adapter.platform,
@@ -1453,7 +1502,13 @@ async function sendPersonalSharedReply(
       );
     }
   } else {
-    await adapter.sendReply(config, event, reply, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      reply,
+      deliveryHooks,
+    );
   }
   return {
     cloudMs,
@@ -1532,7 +1587,13 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await adapter.sendReply(config, event, reply, deliveryHooks);
+  await sendReplyWithRequiredReceipt(
+    adapter,
+    config,
+    event,
+    reply,
+    deliveryHooks,
+  );
 }
 
 function ackResponse(platform: Platform): Response {
