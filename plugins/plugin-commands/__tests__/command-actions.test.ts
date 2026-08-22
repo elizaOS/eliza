@@ -189,7 +189,7 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 		expect(r.reply).toContain("Invalid thinking value");
 	});
 
-	it("deterministically handles lifecycle commands (reset/new/compact)", async () => {
+	it("deterministically handles lifecycle commands (reset/new)", async () => {
 		await resolveCommand(runtime, msg("/think high"), { isAuthorized: true });
 		const reset = await resolveCommand(runtime, msg("/reset"), {
 			isAuthorized: true,
@@ -208,25 +208,6 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 			"Started a new conversation context for this room.",
 		);
 		expect(await getCommandSettings(runtime, "room-1")).toEqual({});
-
-		const compactRuntime = makeRuntime("agent-1", undefined, {
-			actions: [
-				{
-					name: "COMPACT_CONVERSATION",
-					description: "Compact",
-					validate: async () => true,
-					handler: async () => ({
-						success: true,
-						text: "Compacted 4 older message(s); preserved the latest 2.",
-					}),
-				},
-			],
-		});
-		const compact = await resolveCommand(compactRuntime, msg("/compact"), {
-			isAuthorized: true,
-		});
-		expect(compact.handled).toBe(true);
-		expect(compact.reply).toContain("Compacted 4 older message(s)");
 	});
 
 	it("ignores non-command messages", async () => {
@@ -267,7 +248,6 @@ describe("command actions — slash-only validate (#8790)", () => {
 		expect(names.has("TTS_COMMAND")).toBe(true);
 		expect(names.has("RESET_COMMAND")).toBe(true);
 		expect(names.has("NEW_COMMAND")).toBe(true);
-		expect(names.has("COMPACT_COMMAND")).toBe(true);
 		expect(names.has("STOP_COMMAND")).toBe(false);
 		expect(names.has("RESTART_COMMAND")).toBe(false);
 	});
@@ -368,7 +348,6 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 			"cmd:backend:/backend->BACKEND_COMMAND",
 			"cmd:commands:/cmds->COMMANDS_COMMAND",
 			"cmd:commands:/commands->COMMANDS_COMMAND",
-			"cmd:compact:/compact->COMPACT_COMMAND",
 			"cmd:context:/context->CONTEXT_COMMAND",
 			"cmd:context:/ctx->CONTEXT_COMMAND",
 			"cmd:elevated:/elev->ELEVATED_COMMAND",

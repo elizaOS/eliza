@@ -27,10 +27,7 @@ import { AcpService } from "./acp-service.js";
 import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { isSessionBusyError } from "./parent-agent-dispatch.js";
-import {
-  DEFAULT_MAX_RELAY_CHARS,
-  sanitizeCompletionRelay,
-} from "./transcript-sanitizer.js";
+import { sanitizeCompletionRelay } from "./transcript-sanitizer.js";
 import { type PromptResult, TERMINAL_SESSION_STATUSES } from "./types.js";
 
 export { SWARM_COORDINATOR_SERVICE_TYPE } from "@elizaos/core";
@@ -1192,18 +1189,11 @@ export class SwarmCoordinatorService
     // `summary` ("App verification passed.") while `response` still holds the
     // raw ACP finalText spread from enrichedData. The verdict exists ONLY on
     // this record (the raw task_complete was withheld until validation), so it
-    // must not be shadowed by `response` in the read ladder: lead with it,
-    // then append the sanitized deliverable, budgeted so the combined text
-    // still fits the relay cap (buildTaskResultLine re-sanitizes defensively).
+    // must not be shadowed by `response` in the read ladder.
     const validatorVerdict = isCustomValidatorResult(record)
       ? (readString(record, "summary")?.trim() ?? "")
       : "";
-    const bodyBudget = validatorVerdict
-      ? DEFAULT_MAX_RELAY_CHARS - validatorVerdict.length - 2
-      : DEFAULT_MAX_RELAY_CHARS;
-    let sanitizedBody = rawSummary
-      ? sanitizeCompletionRelay(rawSummary, bodyBudget)
-      : "";
+    let sanitizedBody = rawSummary ? sanitizeCompletionRelay(rawSummary) : "";
     // A retried lineage can leave the planner's generic failed-tool apology as
     // the root session's finalText; next to a pass verdict it contradicts the
     // outcome ("verification passed" + "the runtime step failed"). Identity
@@ -1734,7 +1724,7 @@ export class SwarmCoordinatorService
     const acp = this.acp();
     if (!acp || typeof acp.sendPrompt !== "function") return false;
     const nextRetry = retryCount + 1;
-    const feedback = JSON.stringify(result, null, 2).slice(0, 12_000);
+    const feedback = JSON.stringify(result, null, 2);
     try {
       if (typeof acp.updateSessionMetadata === "function") {
         // The bump must land BEFORE the retry turn starts: the retried turn's

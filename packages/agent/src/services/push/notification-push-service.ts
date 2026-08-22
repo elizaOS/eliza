@@ -127,23 +127,25 @@ export class NotificationPushService extends Service {
 
     this.unsubscribe = bus.subscribe((event) => {
       if (event.stream !== NOTIFICATION_STREAM) return;
-      // error-policy:J7 push fan-out is best-effort delivery to backgrounded
-      // devices; a failure inside it must never end the agent process. The bus
-      // calls this listener synchronously and `AgentEventService.emit` wraps
-      // that call in a try/catch — but that only contains a SYNCHRONOUS throw,
-      // and a detached promise has already left its stack, so nothing upstream
-      // can catch a rejection. Two real ones reach here: `registry.list()` →
-      // `hydrate()` deliberately rethrows a failed `getCache`, and `dispatch`'s
-      // own catch calls `registry.unregister()`, which throws
-      // `PUSH_TOKEN_PERSIST_FAILED` when the durable write does not land. Both
-      // used to surface as unhandled rejections, which node's default
-      // `--unhandled-rejections=throw` turns into agent process exit.
-      void this.onNotification(event).catch((error) => {
-        logger.error(
-          { src: "service:notification_push", error },
-          "[NotificationPushService] notification push fan-out failed",
-        );
-      });
+      void (async () => {
+        try {
+          await this.onNotification(event);
+        } catch (error) {
+          // error-policy:J7 best-effort fan-out must not escape as an
+          // unhandled rejection; log + report and drop the event.
+          logger.error(
+            { src: "service:notification_push", error },
+            "[NotificationPushService] fan-out failed",
+          );
+          if (typeof this.runtime.reportError === "function") {
+            this.runtime.reportError(
+              "NotificationPushService.fanOut",
+              error as Error,
+              { stream: NOTIFICATION_STREAM },
+            );
+          }
+        }
+      })();
     });
   }
 

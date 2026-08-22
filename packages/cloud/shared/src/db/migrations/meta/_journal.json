@@ -1961,6 +1961,27 @@
       "when": 1793822400000,
       "tag": "0296_mcp_usage_canonical_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1793908800000,
+      "tag": "0297_personal_shared_group_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 281,
+      "version": "7",
+      "when": 1793995200000,
+      "tag": "0298_warm_pool_rate_segment_exemption",
+      "breakpoints": true
+    },
+    {
+      "idx": 282,
+      "version": "7",
+      "when": 1793995200001,
+      "tag": "0299_synthetic_environment_leases",
+      "breakpoints": true
     }
   ]
 }

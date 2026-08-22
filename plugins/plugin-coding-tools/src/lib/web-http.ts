@@ -60,7 +60,7 @@ export interface GuardedTextHttpResult {
   url: string;
   contentType: string;
   text: string;
-  truncated: boolean;
+  truncated: false;
 }
 
 function isTextualContentType(contentType: string): boolean {
@@ -81,38 +81,28 @@ function isTextualContentType(contentType: string): boolean {
   return false;
 }
 
-async function readTextCapped(
+async function readTextWithinLimit(
   response: Response,
   maxBytes: number,
-): Promise<{ text: string; truncated: boolean }> {
-  if (!response.body) return { text: "", truncated: false };
+): Promise<string> {
+  if (!response.body) return "";
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
-  let truncated = false;
 
   try {
-    while (bytes < maxBytes) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const remaining = maxBytes - bytes;
-      if (value.byteLength > remaining) {
-        chunks.push(value.slice(0, remaining));
-        bytes += remaining;
-        truncated = true;
+      if (bytes + value.byteLength > maxBytes) {
         await reader.cancel();
-        break;
+        throw new Error(
+          `Response body exceeds the ${maxBytes}-byte safety ceiling`,
+        );
       }
       chunks.push(value);
       bytes += value.byteLength;
-    }
-    if (bytes >= maxBytes) {
-      const next = await reader.read();
-      if (!next.done) {
-        truncated = true;
-        await reader.cancel();
-      }
     }
   } finally {
     reader.releaseLock();
@@ -123,7 +113,7 @@ async function readTextCapped(
     text += decoder.decode(chunk, { stream: true });
   }
   text += decoder.decode();
-  return { text, truncated };
+  return text;
 }
 
 /**
@@ -216,7 +206,7 @@ export async function guardedTextHttpRequest(
       void guarded.response.body?.cancel().catch(() => {});
       throw new Error(`Unsupported content type: ${contentType || "unknown"}`);
     }
-    const { text, truncated } = await readTextCapped(
+    const text = await readTextWithinLimit(
       guarded.response,
       options.maxBytes ?? DEFAULT_MAX_BYTES,
     );
@@ -226,7 +216,7 @@ export async function guardedTextHttpRequest(
       url: guarded.finalUrl,
       contentType,
       text,
-      truncated,
+      truncated: false,
     };
   } finally {
     await guarded.release();

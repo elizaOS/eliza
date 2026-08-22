@@ -236,7 +236,7 @@ describe("SAVED_NOTES provider", () => {
     expect(reported).toHaveLength(1);
   });
 
-  it("declares the notes it withheld so a truncated list never reads as complete", () => {
+  it("renders every saved note", () => {
     const notes: StickyNote[] = Array.from({ length: 23 }, (_, index) => ({
       id: `note-${index}`,
       title: `note ${index}`,
@@ -250,16 +250,18 @@ describe("SAVED_NOTES provider", () => {
 
     expect(text).toContain("- note 0");
     expect(text).toContain("- note 19");
-    expect(text).not.toContain("- note 20");
-    expect(text).toContain("3 older note(s) not shown");
+    expect(text).toContain("- note 20");
+    expect(text).toContain("- note 22");
+    expect(text).not.toContain("not shown");
   });
 
-  it("truncates an oversized note body without dropping the note", () => {
+  it("renders a complete oversized note body", () => {
+    const body = "x".repeat(5_000);
     const text = renderSavedNotesText([
       {
         id: "note-long",
         title: "launch checklist",
-        body: "x".repeat(5_000),
+        body,
         color: "slate",
         createdAt: "2026-08-14T12:00:00.000Z",
         updatedAt: "2026-08-14T12:00:00.000Z",
@@ -267,11 +269,11 @@ describe("SAVED_NOTES provider", () => {
     ]);
 
     expect(text).toContain("launch checklist");
-    expect(text).toContain("(truncated)");
-    expect(text.length).toBeLessThan(1_000);
+    expect(text).toContain(body);
+    expect(text).not.toContain("(truncated)");
   });
 
-  it("keeps UTF-16 surrogate pairs intact when truncating a note line to 400", () => {
+  it("keeps UTF-16 surrogate pairs intact in a long note", () => {
     const body = `${"a".repeat(382)}🦊${"b".repeat(100)}`;
     const text = renderSavedNotesText([
       {
@@ -287,13 +289,12 @@ describe("SAVED_NOTES provider", () => {
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);
-      expect(noteLine.length).toBeLessThanOrEqual(402);
+      expect(noteLine).toContain(body);
     }
-    expect(noteLine).not.toContain("🦊");
-    expect(noteLine).toContain("(truncated)");
+    expect(noteLine).toContain("🦊");
   });
 
-  it("sanitizes lone surrogates in a note before truncation", () => {
+  it("sanitizes lone surrogates in a note", () => {
     const text = renderSavedNotesText([
       {
         id: "note-lone",

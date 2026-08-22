@@ -2861,10 +2861,10 @@ export interface SendLifeOpsSignalMessageResponse {
 
 /**
  * A single inbound Signal message as returned by {@link readSignalInbound} or
- * the plugin-signal local client.
+ * a future first-party Signal transport.
  */
 export interface LifeOpsSignalInboundMessage {
-  /** Stable message ID (from the Signal service memory store or signal-cli). */
+  /** Stable message ID from the Signal transport. */
   id: string;
   /** elizaOS room ID this message was placed into. */
   roomId: string;
@@ -2876,15 +2876,15 @@ export interface LifeOpsSignalInboundMessage {
   roomName: string;
   /** Display name of the sender. */
   speakerName: string;
-  /** Sender phone number when signal-cli exposes one. */
+  /** Sender phone number when the transport exposes one. */
   senderNumber: string | null;
-  /** Sender UUID when signal-cli exposes one. */
+  /** Sender UUID when the transport exposes one. */
   senderUuid: string | null;
-  /** Sender device ID when signal-cli exposes one. */
+  /** Sender device ID when the transport exposes one. */
   sourceDevice: number | null;
   /** Signal group ID for group messages. */
   groupId: string | null;
-  /** Signal group event/type when signal-cli exposes one. */
+  /** Signal group event/type when the transport exposes one. */
   groupType: string | null;
   /** Plain-text body of the message. */
   text: string;

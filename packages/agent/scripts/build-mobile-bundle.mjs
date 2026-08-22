@@ -516,7 +516,6 @@ const optionalPluginStubs = {
   // bundle the real packages also drags Baileys / libsignal native
   // bindings into the mobile bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-signal": path.join(stubsDir, "null-plugin.cjs"),
   // Desktop/server-only optional integrations. The mobile agent does not host
   // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
   // imports both optional modules lazily. Resolve them to the shared no-op

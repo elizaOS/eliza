@@ -23,35 +23,6 @@ import type {
 } from "../../contracts/index.js";
 import { getLocalDateKey, getZonedDateParts } from "../time.js";
 
-const graphemeSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "grapheme",
-});
-
-function sliceGraphemePrefix(value: string, maxCodeUnits: number): string {
-  let end = 0;
-  for (const segment of graphemeSegmenter.segment(value)) {
-    const nextEnd = segment.index + segment.segment.length;
-    if (nextEnd > maxCodeUnits) break;
-    end = nextEnd;
-  }
-  return value.slice(0, end);
-}
-
-// Truncate snippet/preview text and append an ellipsis when we actually cut.
-// Without the marker the slice looks like a sentence the sender wrote, which
-// confuses readers when content gets clipped mid-word.
-function truncateForPreview(value: string, maxLength: number): string {
-  const limit = Number.isFinite(maxLength)
-    ? Math.max(0, Math.floor(maxLength))
-    : 0;
-  if (value.length <= limit) {
-    return value;
-  }
-  if (limit === 0) return "";
-  if (limit === 1) return "…";
-  return `${sliceGraphemePrefix(value, limit - 1).trimEnd()}…`;
-}
-
 // Build a "Display Name <email@host>" string when both are available, or
 // fall back to whichever field is set. Without explicit email rendering the
 // reader can't see who actually sent the message — only the display name,
@@ -359,7 +330,7 @@ export function formatEmailTriage(feed: LifeOpsGmailTriageFeed): string {
   const lines = [
     parts.length > 0 ? `Email inbox: ${parts.join(", ")}.` : "Email inbox:",
   ];
-  for (const message of feed.messages.slice(0, 8)) {
+  for (const message of feed.messages) {
     const badges: string[] = [];
     if (message.isImportant) {
       badges.push("important");
@@ -372,7 +343,7 @@ export function formatEmailTriage(feed: LifeOpsGmailTriageFeed): string {
     lines.push(`- **${message.subject}**${badgeText}`);
     lines.push(`  From: ${sender} · ${formatRelativeTime(message.receivedAt)}`);
     if (message.snippet) {
-      lines.push(`  ${truncateForPreview(message.snippet, 100)}`);
+      lines.push(`  ${message.snippet}`);
     }
   }
   return lines.join("\n");
@@ -387,13 +358,13 @@ export function formatEmailNeedsResponse(
   const lines = [
     `Emails that likely need a reply: ${feed.summary.totalCount}.`,
   ];
-  for (const message of feed.messages.slice(0, 8)) {
+  for (const message of feed.messages) {
     const sender = formatEmailSender(message.from, message.fromEmail);
     lines.push(
       `- **${message.subject}** from ${sender} · ${formatRelativeTime(message.receivedAt)}`,
     );
     if (message.snippet) {
-      lines.push(`  ${truncateForPreview(message.snippet, 120)}`);
+      lines.push(`  ${message.snippet}`);
     }
   }
   return lines.join("\n");
@@ -406,7 +377,7 @@ export function formatGmailRecommendations(
     return "No Gmail actions are recommended from the current email set.";
   }
   const lines = [`Recommended Gmail actions: ${feed.summary.totalCount}.`];
-  for (const recommendation of feed.recommendations.slice(0, 6)) {
+  for (const recommendation of feed.recommendations) {
     const operation = recommendation.operation
       ? ` (${recommendation.operation.replace("_", " ")})`
       : "";
@@ -414,7 +385,7 @@ export function formatGmailRecommendations(
       `- **${recommendation.title}**${operation}: ${recommendation.affectedCount} message${recommendation.affectedCount === 1 ? "" : "s"}`,
     );
     lines.push(`  ${recommendation.rationale}`);
-    for (const sample of recommendation.sampleMessages.slice(0, 2)) {
+    for (const sample of recommendation.sampleMessages) {
       const sender = formatEmailSender(sample.from, sample.fromEmail);
       lines.push(`  - ${sample.subject} from ${sender}`);
     }
@@ -515,7 +486,7 @@ export function formatEmailSearch(feed: LifeOpsGmailSearchFeed): string {
   const lines = [
     `Found ${feed.summary.totalCount} email${feed.summary.totalCount === 1 ? "" : "s"} for ${queryDescription}.`,
   ];
-  for (const message of feed.messages.slice(0, 8)) {
+  for (const message of feed.messages) {
     const badges: string[] = [];
     if (message.isImportant) {
       badges.push("important");
@@ -529,7 +500,7 @@ export function formatEmailSearch(feed: LifeOpsGmailSearchFeed): string {
       `- **${message.subject}**${badgeText} from ${sender} · ${formatRelativeTime(message.receivedAt)}`,
     );
     if (message.snippet) {
-      lines.push(`  ${truncateForPreview(message.snippet, 120)}`);
+      lines.push(`  ${message.snippet}`);
     }
   }
   return lines.join("\n");
@@ -538,19 +509,14 @@ export function formatEmailSearch(feed: LifeOpsGmailSearchFeed): string {
 export function formatEmailRead(result: LifeOpsGmailReadResultLike): string {
   const from = formatEmailSender(result.message.from, result.message.fromEmail);
   const bodyText = result.bodyText.trim();
-  const maxChars = 2_500;
-  const truncated = bodyText.length > maxChars;
-  const preview = truncated
-    ? `${bodyText.slice(0, maxChars).trimEnd()}\n\n[truncated]`
-    : bodyText;
   const lines = [
     `**${result.message.subject}** from ${from} · ${formatRelativeTime(result.message.receivedAt)}`,
   ];
   if (result.query) {
     lines.push(`Resolved from ${describeEmailSearchQuery(result.query)}.`);
   }
-  if (preview.length > 0) {
-    lines.push(preview);
+  if (bodyText.length > 0) {
+    lines.push(bodyText);
   } else if (result.message.snippet) {
     lines.push(
       `No readable body was available. Snippet: ${result.message.snippet}`,
@@ -570,7 +536,7 @@ export function formatGmailReplyDraft(draft: LifeOpsGmailReplyDraft): string {
     lines.push(`Cc: ${draft.cc.join(", ")}`);
   }
   lines.push("Preview:");
-  for (const line of draft.previewLines.slice(0, 5)) {
+  for (const line of draft.previewLines) {
     lines.push(`- ${line}`);
   }
   lines.push(
@@ -590,7 +556,7 @@ export function formatGmailBatchReplyDrafts(
   const lines = [
     `Drafted ${batch.summary.totalCount} Gmail repl${batch.summary.totalCount === 1 ? "y" : "ies"}.`,
   ];
-  for (const draft of batch.drafts.slice(0, 5)) {
+  for (const draft of batch.drafts) {
     lines.push(
       `- **${draft.subject}** → ${draft.to.join(", ") || "reply recipients"}`,
     );
@@ -654,7 +620,7 @@ export function formatOverview(overview: LifeOpsOverview): string {
   }
   if (overview.owner.occurrences.length > 0) {
     lines.push("\nCurrent items:");
-    for (const occurrence of overview.owner.occurrences.slice(0, 5)) {
+    for (const occurrence of overview.owner.occurrences) {
       const state =
         occurrence.state !== "visible" ? ` (${occurrence.state})` : "";
       lines.push(`- ${occurrence.title}${state}`);
@@ -662,7 +628,7 @@ export function formatOverview(overview: LifeOpsOverview): string {
   }
   if (overview.owner.goals.length > 0) {
     lines.push("\nActive goals:");
-    for (const goal of overview.owner.goals.slice(0, 3)) {
+    for (const goal of overview.owner.goals) {
       lines.push(`- ${goal.title} (${goal.status})`);
     }
   }
@@ -801,12 +767,9 @@ export function formatOverviewForQuery(
   if (remainingTodayGroups.length === 0) {
     return "You don't have any LifeOps tasks left for today.";
   }
-  const labels = remainingTodayGroups
-    .slice(0, 5)
-    .map((group) => formatRemainingTodayLabel(group));
+  const labels = remainingTodayGroups.map((group) =>
+    formatRemainingTodayLabel(group),
+  );
   const noun = remainingTodayGroups.length === 1 ? "task" : "tasks";
-  if (remainingTodayGroups.length <= labels.length) {
-    return `You have ${remainingTodayGroups.length} LifeOps ${noun} left for today: ${formatHumanList(labels)}.`;
-  }
-  return `You have ${remainingTodayGroups.length} LifeOps ${noun} left for today. Next up: ${formatHumanList(labels)}, plus ${remainingTodayGroups.length - labels.length} more.`;
+  return `You have ${remainingTodayGroups.length} LifeOps ${noun} left for today: ${formatHumanList(labels)}.`;
 }

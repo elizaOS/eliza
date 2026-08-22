@@ -1037,7 +1037,7 @@ function buildRecommendation(args: {
     destructive,
     requiresConfirmation: true,
     confidence: args.confidence,
-    sampleMessages: args.messages.slice(0, 5).map(recommendationMessage),
+    sampleMessages: args.messages.map(recommendationMessage),
     policy: {
       grouping: args.grouping,
       signals: uniqueStrings(
@@ -1156,7 +1156,7 @@ export function buildGmailRecommendations(
     }),
   );
 
-  const spamMessages = messages.filter(isGmailSpamReviewCandidate).slice(0, 25);
+  const spamMessages = messages.filter(isGmailSpamReviewCandidate);
   recommendations.push(
     buildRecommendation({
       id: "gmail-review-spam",

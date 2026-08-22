@@ -182,14 +182,8 @@ const INSUFFICIENT_CREDITS_RE =
 const BILLING_KEYWORDS_RE =
 	/\b(?:billing|quota|credits?|budget|spending|payment|subscription|plan limit)\b/i;
 
-/** Cap a value before running a regex scan so a pathological provider payload
- *  cannot turn a substring match into a catastrophic-backtracking DoS. */
-function clampForScan(value: string): string {
-	return value.length > 10_000 ? value.slice(0, 10_000) : value;
-}
-
 export function isInsufficientCreditsMessage(message: string): boolean {
-	return INSUFFICIENT_CREDITS_RE.test(clampForScan(message));
+	return INSUFFICIENT_CREDITS_RE.test(message);
 }
 
 /**
@@ -226,10 +220,7 @@ export function isInsufficientCreditsError(error: unknown): boolean {
 	}
 	const message = unwrapped instanceof Error ? unwrapped.message : "";
 	if (isInsufficientCreditsMessage(message)) return true;
-	return (
-		hasHttpStatus(unwrapped, [429]) &&
-		BILLING_KEYWORDS_RE.test(clampForScan(message))
-	);
+	return hasHttpStatus(unwrapped, [429]) && BILLING_KEYWORDS_RE.test(message);
 }
 
 /**

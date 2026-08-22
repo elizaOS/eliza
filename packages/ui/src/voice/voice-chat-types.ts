@@ -380,7 +380,6 @@ export interface AssistantSpeechState {
 
 export const DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5";
 export const DEFAULT_ELEVEN_VOICE = "EXAVITQu4vr4xnSDxMaL";
-export const MAX_SPOKEN_CHARS = 4000;
 /** Bound retained synthesized audio by bytes rather than utterance count. */
 export const MAX_CACHED_AUDIO_BYTES = 32 * 1024 * 1024;
 /** Secondary metadata bound for pathological streams of tiny audio payloads. */

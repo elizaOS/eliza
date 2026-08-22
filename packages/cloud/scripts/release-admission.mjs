@@ -1,8 +1,9 @@
 /**
  * Decides whether a cloud release may consume build or mutation capacity.
  *
- * Production, previews, and forced rollbacks are always admitted. Automatic
- * staging releases are latest-wins among runs eligible for this workflow.
+ * Production, previews, manual staging releases, and forced rollbacks are
+ * always admitted. Automatic staging releases are latest-wins among runs
+ * eligible for this workflow.
  */
 
 export function decideReleaseAdmission({
@@ -15,6 +16,7 @@ export function decideReleaseAdmission({
 }) {
   if (
     eventName === "pull_request" ||
+    eventName === "workflow_dispatch" ||
     targetEnvironment === "production" ||
     ref === "refs/heads/main" ||
     force

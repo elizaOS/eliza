@@ -5,8 +5,7 @@
  * settings block if none exists), decrypts stored secret values via
  * unsaltWorldSettings, and renders either a setup checklist (required settings
  * first, with explicit UPDATE_SETTINGS action instructions) or a read-only
- * configuration summary. Secret values are masked outside setup, and total
- * output is truncated at MAX_SETTINGS_OUTPUT_LENGTH.
+ * configuration summary. Secret values are masked outside setup.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
@@ -23,14 +22,9 @@ import type {
 	WorldSettings,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("SETTINGS");
-const MAX_SETTINGS_OUTPUT_LENGTH = 12000;
 
 /**
  * Formats a setting value for display, respecting privacy flags
@@ -390,20 +384,12 @@ export const settingsProvider: Provider = {
 			}
 
 			// Generate the status message based on the settings
-			let output = generateStatusMessage(
+			const output = generateStatusMessage(
 				runtime,
 				worldSettings,
 				isSetup,
 				state,
 			);
-			if (output.length > MAX_SETTINGS_OUTPUT_LENGTH) {
-				const wellFormed = toWellFormedUnicode(output);
-				output =
-					wellFormed.length > MAX_SETTINGS_OUTPUT_LENGTH
-						? `${truncateWellFormed(wellFormed, MAX_SETTINGS_OUTPUT_LENGTH - 3)}...`
-						: wellFormed;
-			}
-
 			return {
 				data: {
 					settings: worldSettings,

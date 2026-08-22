@@ -1563,7 +1563,7 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		expect(stages[1]?.model?.response).toContain("retry rate limited");
 	});
 
-	it("falls back to parse-recovery when the bounded retry throws", async () => {
+	it("rejects the original partial response when the retry throws", async () => {
 		const providerError = Object.assign(new Error("retry rate limited"), {
 			status: 429,
 		});
@@ -1589,7 +1589,7 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		});
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ retryMaxTokens: 4096 }),
-			"[evaluator] truncation retry failed; using the original response for parse-recovery",
+			"[evaluator] output-limit retry failed; rejecting the original partial response",
 		);
 		expect(reportError).toHaveBeenCalledWith(
 			"Evaluator.truncationRetry",

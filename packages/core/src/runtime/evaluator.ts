@@ -32,10 +32,12 @@ import {
 } from "../utils/model-errors";
 import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
+import { toWellFormedUnicode } from "../utils/well-formed.js";
 import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.js";
+	buildContentProjectionDiagnostics,
+	type ContentProjectionDiagnostics,
+	isProgressiveContentProjectionEnabled,
+} from "./content-projection-policy";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
@@ -47,15 +49,17 @@ import {
 	extractJsonObjects,
 	parseJsonObject,
 } from "./json-output";
-import { DEFAULT_MAX_KEPT_STEP_CHARS } from "./limits";
 import {
+	buildContentProjectionBudget,
 	buildModelInputBudget,
+	type ContentProjectionBudget,
 	DEFAULT_COMPACTION_RESERVE_TOKENS,
 	MODEL_WINDOW_RESERVE_FRACTION,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
+	type ToolResultProjectionStats,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -303,24 +307,28 @@ function finalizeEvaluatorOutput(
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
 	return sanitizeOutputMessage(
-		repairFinishWithProgressPromise(
-			repairFinishedToolTurnWithoutUserMessage(
-				repairMissingEvaluatorMessage(
-					repairMissingEvaluatorSuccess(
-						rejectEvaluatorInvocationMessage(
-							recoverEvaluatorTextOutput(
-								parseEvaluatorOutput(raw),
-								raw,
-								trajectory,
+		repairFinishWithUnservedDeclaredIntents(
+			repairFinishWithProgressPromise(
+				repairFinishedToolTurnWithoutUserMessage(
+					repairMissingEvaluatorMessage(
+						repairMissingEvaluatorSuccess(
+							rejectEvaluatorInvocationMessage(
+								recoverEvaluatorTextOutput(
+									parseEvaluatorOutput(raw),
+									raw,
+									trajectory,
+								),
 							),
+							trajectory,
 						),
+						context,
 						trajectory,
 					),
-					context,
 					trajectory,
 				),
 				trajectory,
 			),
+			context,
 			trajectory,
 		),
 	);
@@ -338,54 +346,55 @@ export async function runEvaluator(
 		params.provider,
 	);
 	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
-	const EVALUATOR_MIN_TOOL_RESULT_CHARS = 2_000;
-	let toolResultCap = DEFAULT_MAX_KEPT_STEP_CHARS;
-	let renderedInput = renderEvaluatorModelInput({
+	const initialBudgetOptions = budgetResolution.contextWindowTokens
+		? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
+		: {};
+	const projectionEnabled = isProgressiveContentProjectionEnabled(
+		params.runtime,
+	);
+	const renderArgs = {
 		context: params.context,
 		trajectory: params.trajectory,
-		maxToolResultChars: undefined,
 		redactText: redactDiagnosticText,
+	};
+	const baselineInput = renderEvaluatorModelInput({
+		...renderArgs,
+		...(projectionEnabled ? { omitRecoverableText: true } : {}),
 	});
-	let modelInputBudget = buildModelInputBudget({
+	const baselineBudget = buildModelInputBudget({
+		messages: baselineInput.messages,
+		promptSegments: baselineInput.promptSegments,
+		...initialBudgetOptions,
+	});
+	const projectionBudget = projectionEnabled
+		? buildContentProjectionBudget({
+				budget: baselineBudget,
+				resultCount: baselineInput.projectionStats.resultCount,
+			})
+		: undefined;
+	const renderedInput = projectionBudget
+		? renderEvaluatorModelInput({ ...renderArgs, projectionBudget })
+		: baselineInput;
+	const modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
-		...(budgetResolution.contextWindowTokens
-			? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
-			: {}),
+		...initialBudgetOptions,
 	});
-	// Degrade, don't fail: when the assembled input would exceed the window
-	// (threshold = window - output reserve), shrink only the rendered tool
-	// results and re-estimate. Stable/context segments (system instructions,
-	// current user message) are never modified or dropped. Bounded: 30k -> 7.5k
-	// -> 2k. Live incident 2026-08: one oversized tool result rendered verbatim
-	// pushed the evaluator call to 2.28M tokens and the provider hard-400'd the
-	// whole turn with context_length_exceeded instead of answering.
-	while (
-		modelInputBudget.shouldCompact &&
-		toolResultCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
-	) {
-		toolResultCap = Math.max(
-			EVALUATOR_MIN_TOOL_RESULT_CHARS,
-			Math.floor(toolResultCap / 4),
-		);
-		renderedInput = renderEvaluatorModelInput({
-			context: params.context,
-			trajectory: params.trajectory,
-			maxToolResultChars: toolResultCap,
-			redactText: redactDiagnosticText,
-		});
-		modelInputBudget = buildModelInputBudget({
-			messages: renderedInput.messages,
-			promptSegments: renderedInput.promptSegments,
-			...(budgetResolution.contextWindowTokens
-				? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
-				: {}),
-		});
-	}
+	const contentProjection = buildContentProjectionDiagnostics({
+		enabled: projectionEnabled,
+		baselineBudget,
+		...(projectionBudget ? { projectionBudget } : {}),
+		stats: renderedInput.projectionStats,
+	});
+	params.runtime.logger?.debug?.(
+		{ src: "evaluator", contentProjection },
+		"Computed progressive content projection",
+	);
 	const buildAttemptProviderOptions = (
 		input: ReturnType<typeof renderEvaluatorModelInput>,
 		budget: ReturnType<typeof buildModelInputBudget>,
 		provider: string | undefined,
+		projectionDiagnostics: ContentProjectionDiagnostics,
 	): {
 		providerOptions: Record<string, unknown>;
 		prefixHashes: ReturnType<typeof computePrefixHashes>;
@@ -408,6 +417,7 @@ export async function runEvaluator(
 		providerOptions.eliza = {
 			...(providerOptions.eliza ?? {}),
 			thinking: "off",
+			contentProjection: projectionDiagnostics,
 		};
 		return { providerOptions, prefixHashes, prefixHash };
 	};
@@ -415,6 +425,7 @@ export async function runEvaluator(
 		renderedInput,
 		modelInputBudget,
 		params.provider,
+		contentProjection,
 	);
 	const providerOptions = initialAttempt.providerOptions;
 	const prefixHashes = initialAttempt.prefixHashes;
@@ -431,19 +442,17 @@ export async function runEvaluator(
 	const buildInputBudgetError = (args: {
 		input: ReturnType<typeof renderEvaluatorModelInput>;
 		budget: ReturnType<typeof buildModelInputBudget>;
-		toolResultCap: number;
 		resolvedModelNames: string[];
 		unknownReachableModel: boolean;
 	}): ElizaError =>
 		new ElizaError(
-			"Evaluator model input exceeds the context budget even after tool results were compacted to the floor",
+			"Evaluator model input exceeds the resolved context budget",
 			{
 				code: "EVALUATOR_INPUT_OVER_BUDGET",
 				context: {
 					estimatedInputTokens: args.budget.estimatedInputTokens,
 					compactionThresholdTokens: args.budget.compactionThresholdTokens,
 					contextWindowTokens: args.budget.contextWindowTokens,
-					toolResultCap: args.toolResultCap,
 					structuredParameterChars: structuredParameterChars(
 						args.input.messages,
 					),
@@ -504,42 +513,53 @@ export async function runEvaluator(
 		const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
 		const resolvedBudget = buildModelInputBudget({ modelName });
 		const attemptWindow = resolvedBudget.contextWindowTokens;
-		let attemptCap = DEFAULT_MAX_KEPT_STEP_CHARS;
-		let attemptInput = renderEvaluatorModelInput({
+		const attemptBudgetOptions = evaluatorBudgetOptions(
+			attemptWindow,
+			maxOutputTokens,
+		);
+		const attemptBaselineInput = renderEvaluatorModelInput({
 			context: params.context,
 			trajectory: params.trajectory,
-			maxToolResultChars: undefined,
 			redactText: redactDiagnosticText,
+			...(projectionEnabled ? { omitRecoverableText: true } : {}),
 		});
-		let attemptBudget = buildModelInputBudget({
+		const attemptBaselineBudget = buildModelInputBudget({
+			messages: attemptBaselineInput.messages,
+			promptSegments: attemptBaselineInput.promptSegments,
+			...attemptBudgetOptions,
+		});
+		const attemptProjectionBudget = projectionEnabled
+			? buildContentProjectionBudget({
+					budget: attemptBaselineBudget,
+					resultCount: attemptBaselineInput.projectionStats.resultCount,
+				})
+			: undefined;
+		const attemptInput = attemptProjectionBudget
+			? renderEvaluatorModelInput({
+					context: params.context,
+					trajectory: params.trajectory,
+					redactText: redactDiagnosticText,
+					projectionBudget: attemptProjectionBudget,
+				})
+			: attemptBaselineInput;
+		const attemptBudget = buildModelInputBudget({
 			messages: attemptInput.messages,
 			promptSegments: attemptInput.promptSegments,
-			...evaluatorBudgetOptions(attemptWindow, maxOutputTokens),
+			...attemptBudgetOptions,
 		});
-		while (
-			attemptBudget.shouldCompact &&
-			attemptCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
-		) {
-			attemptCap = Math.max(
-				EVALUATOR_MIN_TOOL_RESULT_CHARS,
-				Math.floor(attemptCap / 4),
-			);
-			attemptInput = renderEvaluatorModelInput({
-				context: params.context,
-				trajectory: params.trajectory,
-				maxToolResultChars: attemptCap,
-				redactText: redactDiagnosticText,
-			});
-			attemptBudget = buildModelInputBudget({
-				messages: attemptInput.messages,
-				promptSegments: attemptInput.promptSegments,
-				...evaluatorBudgetOptions(attemptWindow, maxOutputTokens),
-			});
-		}
+		const attemptContentProjection = buildContentProjectionDiagnostics({
+			enabled: projectionEnabled,
+			baselineBudget: attemptBaselineBudget,
+			...(attemptProjectionBudget
+				? { projectionBudget: attemptProjectionBudget }
+				: {}),
+			stats: attemptInput.projectionStats,
+		});
 		const attemptOptions = buildAttemptProviderOptions(
 			attemptInput,
 			attemptBudget,
 			attempt.provider,
+			attemptContentProjection,
 		);
 		preparedAttempt = {
 			input: attemptInput,
@@ -550,14 +570,13 @@ export async function runEvaluator(
 		};
 		if (attemptBudget.shouldCompact) {
 			// Attempt-local rejection: this registration's window cannot fit the
-			// stable input even at the tool-result floor. The runtime treats a
+			// complete input. The runtime treats a
 			// preparation throw as a skip and advances to the next registration;
 			// the stage is recorded only if the rejection turns out terminal
 			// (see the EVALUATOR_INPUT_OVER_BUDGET branch in the catch below).
 			throw buildInputBudgetError({
 				input: attemptInput,
 				budget: attemptBudget,
-				toolResultCap: attemptCap,
 				resolvedModelNames: modelName ? [modelName] : [],
 				unknownReachableModel: resolvedBudget.resolvedModelKey === null,
 			});
@@ -566,9 +585,8 @@ export async function runEvaluator(
 		request.promptSegments = attemptInput.promptSegments;
 		request.providerOptions = attemptOptions.providerOptions;
 	};
-	// Bottom-out guard: if the input is still over the compaction threshold at
-	// the 2k floor, the overflow lives in the stable/context segments this loop
-	// deliberately never touches. Calling the provider anyway is a guaranteed
+	// If the complete input is over the resolved threshold, do not silently
+	// rewrite it. Calling the provider anyway is a guaranteed
 	// context_length_exceeded 400 that burns a round trip and surfaces as an
 	// opaque provider error — fail fast with a typed error instead so the
 	// planner-loop's degrade/propagate policy sees the real cause.
@@ -579,7 +597,6 @@ export async function runEvaluator(
 		const preflightError = buildInputBudgetError({
 			input: renderedInput,
 			budget: modelInputBudget,
-			toolResultCap,
 			resolvedModelNames: budgetResolution.modelNames,
 			unknownReachableModel: budgetResolution.unknownReachableModel,
 		});
@@ -604,15 +621,14 @@ export async function runEvaluator(
 			preparedAttempt = undefined;
 			const callStartedAt = Date.now();
 			activeCallStartedAt = callStartedAt;
-			let callInput = renderedInput;
+			const callInput = renderedInput;
 			let callProviderOptions = providerOptions;
 			if (
 				maxTokens > DEFAULT_EVALUATOR_MAX_TOKENS &&
 				params.runtime.supportsModelAttemptPreparation !== true &&
 				budgetResolution.contextWindowTokens
 			) {
-				let retryToolResultCap = toolResultCap;
-				let retryBudget = buildModelInputBudget({
+				const retryBudget = buildModelInputBudget({
 					messages: callInput.messages,
 					promptSegments: callInput.promptSegments,
 					...evaluatorBudgetOptions(
@@ -620,33 +636,16 @@ export async function runEvaluator(
 						maxTokens,
 					),
 				});
-				while (
-					retryBudget.shouldCompact &&
-					retryToolResultCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
-				) {
-					retryToolResultCap = Math.max(
-						EVALUATOR_MIN_TOOL_RESULT_CHARS,
-						Math.floor(retryToolResultCap / 4),
-					);
-					callInput = renderEvaluatorModelInput({
-						context: params.context,
-						trajectory: params.trajectory,
-						maxToolResultChars: retryToolResultCap,
-						redactText: redactDiagnosticText,
-					});
-					retryBudget = buildModelInputBudget({
-						messages: callInput.messages,
-						promptSegments: callInput.promptSegments,
-						...evaluatorBudgetOptions(
-							budgetResolution.contextWindowTokens,
-							maxTokens,
-						),
-					});
-				}
 				const retryOptions = buildAttemptProviderOptions(
 					callInput,
 					retryBudget,
 					params.provider,
+					buildContentProjectionDiagnostics({
+						enabled: projectionEnabled,
+						baselineBudget: retryBudget,
+						...(projectionBudget ? { projectionBudget } : {}),
+						stats: callInput.projectionStats,
+					}),
 				);
 				callProviderOptions = retryOptions.providerOptions;
 				preparedAttempt = {
@@ -660,7 +659,6 @@ export async function runEvaluator(
 					throw buildInputBudgetError({
 						input: callInput,
 						budget: retryBudget,
-						toolResultCap: retryToolResultCap,
 						resolvedModelNames: budgetResolution.modelNames,
 						unknownReachableModel: budgetResolution.unknownReachableModel,
 					});
@@ -773,8 +771,9 @@ export async function runEvaluator(
 				if (evaluatorHitCompletionLimit(raw, retryMaxTokens)) {
 					params.runtime.logger?.warn?.(
 						{ modelType: String(modelType), retryMaxTokens },
-						"[evaluator] retry completion still truncated; proceeding with parse-recovery (no further retries)",
+						"[evaluator] retry completion still hit its output limit; rejecting the partial response",
 					);
+					raw = "";
 				}
 			} catch (retryError) {
 				// error-policy:J4 The retry is an optional recovery attempt. Preserve
@@ -838,10 +837,10 @@ export async function runEvaluator(
 						logger: params.runtime.logger,
 					});
 				}
-				// The selected response remains the initial attempt. Restore its
-				// provider/input snapshot rather than attributing it to the failed retry.
+				// Keep the initial attempt for trajectory attribution, but never parse
+				// its partial response as a completed evaluation.
 				selectedCall = initialCall;
-				raw = initialCall.raw;
+				raw = "";
 				fellBackToInitialCall = true;
 				params.runtime.logger?.warn?.(
 					{
@@ -852,7 +851,7 @@ export async function runEvaluator(
 						modelType: String(modelType),
 						retryMaxTokens,
 					},
-					"[evaluator] truncation retry failed; using the original response for parse-recovery",
+					"[evaluator] output-limit retry failed; rejecting the original partial response",
 				);
 				params.runtime.reportError?.("Evaluator.truncationRetry", retryError, {
 					modelType: String(modelType),
@@ -1132,26 +1131,34 @@ function renderEvaluatorModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	redactText: ToolDiagnosticTextRedactor;
-	/**
-	 * Per-tool-result render cap (chars) applied via
-	 * `trajectoryStepsToMessages`. Undefined preserves the trajectory result
-	 * byte-for-byte; `runEvaluator` applies the cap only after the resolved
-	 * model budget requires compaction.
-	 */
-	maxToolResultChars?: number;
+	projectionBudget?: ContentProjectionBudget;
+	omitRecoverableText?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
+	projectionStats: ToolResultProjectionStats;
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
+	let projectionStats: ToolResultProjectionStats = {
+		resultCount: 0,
+		pagesIncluded: 0,
+		pagesOmitted: 0,
+		omissionReasons: {},
+	};
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
-		maxToolResultChars: params.maxToolResultChars,
 		redactText: params.redactText,
+		...(params.projectionBudget
+			? { projectionBudget: params.projectionBudget }
+			: {}),
+		...(params.omitRecoverableText ? { omitRecoverableText: true } : {}),
+		onProjectionStats: (stats) => {
+			projectionStats = stats;
+		},
 	});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
@@ -1178,7 +1185,7 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments };
+	return { messages, promptSegments, cacheKeySegments, projectionStats };
 }
 
 export function parseEvaluatorOutput(
@@ -1473,6 +1480,65 @@ const FINISH_BARE_PROGRESS_ACK_RE =
 	/^(?:checking|fetching|gathering|reading|scanning|looking (?:up|into)|working on it|on it|one (?:moment|sec(?:ond)?)|give me a (?:sec(?:ond)?|moment)|let me (?!know\b)[a-z]+)[.…!\s]*$/i;
 const FINISH_PROGRESS_PROMISE_TAIL_RE =
 	/(?:^|[.!?…]\s+|\n\s*)(?:checking|reading|opening|fetching|scanning|pulling(?: up)?|going through|digging into|looking (?:up|into)|working on)\s+(?:this|that|these|those|it\b|the\b)[^.!?\n]{0,80}[.!?…]?\s*$/i;
+
+/**
+ * A FINISH that leaves declared multi-step work unserved is a broken promise:
+ * Stage 1 explicitly listed the turn's intents ("delete reminder", "create
+ * reminder", "list reminders"), the planner served the first and quit, and
+ * the reminder stayed deleted (live 2026-08-18, three times — the context
+ * instruction alone did not move a small planner model). When the context
+ * carries the declared-intents instruction and fewer successful non-terminal
+ * operations exist than declared intents, coerce ONE CONTINUE so the loop
+ * gets the iterations the declaration promised; the marker thought makes the
+ * coercion once-per-turn so an intent genuinely unservable cannot loop.
+ */
+const UNSERVED_INTENTS_THOUGHT_MARKER = "unserved declared intents";
+
+function declaredIntentsFromContext(context: ContextObject): string[] {
+	const events = Array.isArray(context.events) ? context.events : [];
+	for (const event of events) {
+		if (
+			event &&
+			typeof event === "object" &&
+			(event as { id?: unknown }).id === "stage1-declared-intents"
+		) {
+			const content = (event as { content?: unknown }).content;
+			if (typeof content !== "string") return [];
+			return content
+				.split("\n")
+				.filter((line) => line.startsWith("- "))
+				.map((line) => line.slice(2).trim())
+				.filter(Boolean);
+		}
+	}
+	return [];
+}
+
+function repairFinishWithUnservedDeclaredIntents(
+	output: EvaluatorOutput,
+	context: ContextObject,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.decision !== "FINISH") return output;
+	const intents = declaredIntentsFromContext(context);
+	if (intents.length < 2) return output;
+	const priorCoercion = (trajectory.evaluatorOutputs ?? []).some((prior) =>
+		(prior?.thought ?? "").includes(UNSERVED_INTENTS_THOUGHT_MARKER),
+	);
+	if (priorCoercion) return output;
+	const served = [
+		...(trajectory.archivedSteps ?? []),
+		...trajectory.steps,
+	].filter((step) => step.toolCall && step.result?.success === true).length;
+	if (served >= intents.length) return output;
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		messageToUser: undefined,
+		thought: `Stage 1 declared ${intents.length} intents (${intents.join("; ")}) but only ${served} tool operation(s) succeeded — continuing with the ${UNSERVED_INTENTS_THOUGHT_MARKER}.`,
+	};
+}
 
 function repairFinishWithProgressPromise(
 	output: EvaluatorOutput,
@@ -2129,7 +2195,7 @@ function getStructuredEvaluatorObject(
 		if (!isEvaluatorShapedObject(raw.object)) {
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${truncateWellFormed(toWellFormedUnicode(JSON.stringify(raw.object)), 200)}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${toWellFormedUnicode(JSON.stringify(raw.object))}`,
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };

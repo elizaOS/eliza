@@ -66,10 +66,10 @@ describe("sanitizeExperienceText", () => {
 		);
 	});
 
-	it("truncates to 200 characters (bounded memory footprint)", () => {
+	it("preserves complete long text", () => {
 		const long = "word ".repeat(80).trim(); // ~399 chars, spaced (no token run)
 		const out = sanitizeExperienceText(long);
-		expect(out.length).toBe(200);
+		expect(out).toBe(long);
 	});
 
 	it("leaves benign text untouched", () => {

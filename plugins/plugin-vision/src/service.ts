@@ -75,12 +75,6 @@ const execAsync = promisify(exec);
 // lives in a peer plugin. The structural contract must stay in sync with the
 // `VisionContext` exported from plugin-computeruse.
 const VISION_CONTEXT_SERVICE_TYPE = "vision-context";
-const SCENE_CONTEXT_OPEN_APPS_LIMIT = 20;
-const SCENE_CONTEXT_RECENT_ACTIONS_LIMIT = 10;
-const SCENE_DESCRIPTION_OCR_LINE_LIMIT = 40;
-const SCENE_DESCRIPTION_OCR_TEXT_LIMIT = 2000;
-const SCENE_DESCRIPTION_OBJECT_LIMIT = 20;
-const SCENE_DESCRIPTION_FACE_LIMIT = 10;
 const CAMERA_PERMISSION_DENIED_PATTERN =
   /camera access (?:denied|not granted)|permission denied|not authorized|not permitted|device access denied/i;
 
@@ -136,15 +130,13 @@ function isVisionContextProvider(
   );
 }
 
-function trimVisionContextForPrompt(
+function normalizeVisionContextForPrompt(
   context: VisionContextSnapshot,
 ): VisionContextSnapshot {
   return {
-    openApps: context.openApps.slice(0, SCENE_CONTEXT_OPEN_APPS_LIMIT),
+    openApps: context.openApps,
     focusedWindow: context.focusedWindow,
-    recentActions: context.recentActions.slice(
-      -SCENE_CONTEXT_RECENT_ACTIONS_LIMIT,
-    ),
+    recentActions: context.recentActions,
     currentTaskGoal: context.currentTaskGoal,
   };
 }
@@ -159,7 +151,7 @@ export function buildSceneDescriptionPrompt(
     task: "describe_visual_scene",
     instructions: SCENE_DESCRIPTION_INSTRUCTIONS,
   };
-  if (context) payload.context = trimVisionContextForPrompt(context);
+  if (context) payload.context = normalizeVisionContextForPrompt(context);
   const detectedText = normalizeOcrTextForPrompt(ocrText);
   if (detectedText) payload.detectedText = detectedText;
   const objects = normalizeDetectedObjectsForPrompt(detectedObjects);
@@ -175,7 +167,6 @@ function normalizeDetectedObjectsForPrompt(
   if (!objects || objects.length === 0) return [];
   return [...objects]
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, SCENE_DESCRIPTION_OBJECT_LIMIT)
     .map((obj) => ({
       type: obj.type,
       confidence: obj.confidence,
@@ -195,7 +186,6 @@ function normalizeRecognizedFacesForPrompt(
     if (seen.has(label)) continue;
     seen.add(label);
     result.push({ label, bbox: face.bbox });
-    if (result.length >= SCENE_DESCRIPTION_FACE_LIMIT) break;
   }
   return result;
 }
@@ -212,13 +202,9 @@ function normalizeOcrTextForPrompt(text?: string | null): string | null {
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     lines.push(line);
-    if (lines.length >= SCENE_DESCRIPTION_OCR_LINE_LIMIT) break;
   }
 
-  const normalized = lines
-    .join("\n")
-    .slice(0, SCENE_DESCRIPTION_OCR_TEXT_LIMIT)
-    .trim();
+  const normalized = lines.join("\n").trim();
   return normalized.length > 0 ? normalized : null;
 }
 

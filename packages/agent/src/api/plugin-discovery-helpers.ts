@@ -27,7 +27,7 @@ export {
 const require = createRequire(import.meta.url);
 
 // Pure-disk override helpers — inlined here to avoid module-scope dynamic
-// imports of @elizaos/plugin-signal and @elizaos/plugin-whatsapp. The plugin
+// imports of @elizaos/plugin-whatsapp. The plugin
 // versions still exist for external callers; these copies are scoped to the
 // agent's plugin-discovery surface and only walk the workspace directory.
 type QrOverrideEntry = {

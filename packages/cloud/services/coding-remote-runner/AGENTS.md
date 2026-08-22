@@ -30,7 +30,7 @@ POST /v1/processes/run                run a command (JSON body)
   `commandRunner`).
 - `Dockerfile` — `node:24-bookworm-slim` base; installs Bun plus `git`,
   `ripgrep`, `python3`, `jq`, `openssh-client`, and (by default) the Codex,
-  Claude Code, and opencode CLIs.
+  and Claude Code CLIs.
   Runs as the non-root `runner` user; healthcheck hits `/health`.
 
 ## Scripts (scope with `--cwd`)
@@ -44,8 +44,7 @@ bun run --cwd packages/cloud/services/coding-remote-runner docker:build # build 
 ```
 
 Disable the bundled coding CLIs at image-build time with
-`--build-arg INSTALL_CODEX=false`, `INSTALL_CLAUDE_CODE=false`, and
-`INSTALL_OPENCODE=false`.
+`--build-arg INSTALL_CODEX=false` and `INSTALL_CLAUDE_CODE=false`.
 
 ## Env vars
 

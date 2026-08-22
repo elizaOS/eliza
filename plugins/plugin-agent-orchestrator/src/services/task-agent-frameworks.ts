@@ -21,7 +21,6 @@ import {
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
-import { resolveVendoredOpencodeShim } from "./opencode-config.js";
 
 type AgentMetricsSummary = {
   spawned: number;
@@ -42,8 +41,7 @@ export type SupportedTaskAgentAdapter =
   | "elizaos"
   | "pi-agent"
   | "claude"
-  | "codex"
-  | "opencode";
+  | "codex";
 export type TaskAgentFrameworkId = SupportedTaskAgentAdapter;
 
 export interface TaskAgentModelPrefs {
@@ -171,16 +169,6 @@ const FRAMEWORK_CAPABILITY_PROFILES: Record<
     repoWork: 1,
     fastIteration: 0.95,
   },
-  opencode: {
-    implementation: 0.85,
-    research: 0.75,
-    planning: 0.75,
-    ops: 0.7,
-    verification: 0.8,
-    coordination: 0.7,
-    repoWork: 0.85,
-    fastIteration: 0.85,
-  },
   elizaos: {
     implementation: 1,
     research: 0.85,
@@ -208,7 +196,6 @@ const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
   "pi-agent": "Pi Agent",
   claude: "Claude Code",
   codex: "Codex",
-  opencode: "OpenCode",
 };
 
 const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
@@ -216,7 +203,6 @@ const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
   "pi-agent",
   "claude",
   "codex",
-  "opencode",
 ];
 
 const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
@@ -286,10 +272,6 @@ const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
     powerful: "ELIZA_CODEX_MODEL_POWERFUL",
     fast: "ELIZA_CODEX_MODEL_FAST",
   },
-  opencode: {
-    powerful: "ELIZA_OPENCODE_MODEL_POWERFUL",
-    fast: "ELIZA_OPENCODE_MODEL_FAST",
-  },
 };
 
 export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
@@ -302,7 +284,6 @@ export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
   // packages/agent/src/api/model-catalog.ts — keep the two in sync.
   claude: { powerful: "claude-opus-4-8", fast: "claude-sonnet-5" },
   codex: { powerful: "gpt-5.6-sol", fast: "gpt-5.6-luna" },
-  opencode: {},
 };
 
 type FrameworkInventory = {
@@ -358,9 +339,6 @@ function normalizePreflightAdapterId(
     case "codex":
     case "openai codex":
       return "codex";
-    case "opencode":
-    case "open code":
-      return "opencode";
     default:
       return null;
   }
@@ -440,10 +418,6 @@ function normalizeTaskAgentAdapterForModelPrefs(
     case "openai-codex":
     case "openai codex":
       return "codex";
-    case "opencode":
-    case "open-code":
-    case "open code":
-      return "opencode";
     default:
       return undefined;
   }
@@ -610,15 +584,6 @@ function hasElizaCloudApiKey(): boolean {
   return Boolean(readConfigCloudKey("apiKey"));
 }
 
-function hasOpencodeBinary(): boolean {
-  return hasBinaryOnPath("opencode") || Boolean(resolveVendoredOpencodeShim());
-}
-
-function isOpencodeLocalMode(): boolean {
-  const flag = readConfigEnvKey("ELIZA_OPENCODE_LOCAL");
-  return flag === "1" || flag?.toLowerCase() === "true";
-}
-
 function isExecutableFile(candidate: string): boolean {
   try {
     if (!fs.statSync(candidate).isFile()) return false;
@@ -685,8 +650,6 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
         ? isCommandExecutableAvailable(configured)
         : hasBinaryOnPath("codex");
     }
-    case "opencode":
-      return hasOpencodeBinary();
   }
 }
 
@@ -737,9 +700,6 @@ async function computeTaskAgentFrameworkState(
   const codexPreflightAuth = getPreflightAuthStatus(
     preflightByAdapter.get("codex"),
   );
-  const opencodePreflightAuth = getPreflightAuthStatus(
-    preflightByAdapter.get("opencode"),
-  );
 
   const claudeSubscriptionReady =
     claudePreflightAuth === "authenticated" || hasClaudeSubscriptionAuth();
@@ -749,16 +709,6 @@ async function computeTaskAgentFrameworkState(
     codexPreflightAuth === "authenticated" || hasCodexSubscriptionAuth();
   const codexAuthReady =
     cloudReady || codexSubscriptionReady || hasCodexApiKey(runtime);
-  const opencodeLocalMode = isOpencodeLocalMode();
-  const opencodeAuthReady =
-    opencodePreflightAuth === "authenticated" ||
-    cloudReady ||
-    opencodeLocalMode ||
-    Boolean(
-      readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
-        readConfigEnvKey("ELIZA_OPENCODE_API_KEY"),
-    ) ||
-    Boolean(readConfigEnvKey("CEREBRAS_API_KEY"));
 
   const providerPrefersClaude =
     configuredSubscriptionProvider === "anthropic-subscription" ||
@@ -767,16 +717,6 @@ async function computeTaskAgentFrameworkState(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
-  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
-  // INSTALLED: it shares OpenCode's provider thumb (below) and its
-  // capability-profile fit dominates OpenCode on every axis, so with an equal
-  // provider signal it wins the weighted sort (alphabetical tie-break also
-  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
-  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
-  // running). Claude/Codex only become preferred when their key path is set.
-  const providerPrefersOpencode =
-    !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
@@ -803,7 +743,7 @@ async function computeTaskAgentFrameworkState(
             ? claudeAuthReady
             : id === "codex"
               ? codexAuthReady
-              : opencodeAuthReady;
+              : false;
       const reason =
         id === "elizaos" && installed
           ? "ready to use the configured native ElizaOS ACP adapter"
@@ -813,15 +753,11 @@ async function computeTaskAgentFrameworkState(
               ? "ready to use the user's Claude subscription"
               : id === "codex" && subscriptionReady
                 ? "ready to use the user's OpenAI subscription"
-                : id === "opencode" && installed && opencodeLocalMode
-                  ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
-                  : id === "opencode" && installed && authReady
-                    ? "ready to use the configured OpenCode provider"
-                    : installed
-                      ? authReady
-                        ? "installed with credentials available"
-                        : "installed but credentials were not detected"
-                      : "CLI not detected";
+                : installed
+                  ? authReady
+                    ? "installed with credentials available"
+                    : "installed but credentials were not detected"
+                  : "CLI not detected";
       return {
         id,
         label: FRAMEWORK_LABELS[id],
@@ -836,12 +772,8 @@ async function computeTaskAgentFrameworkState(
             ? "Configure ELIZA_ELIZAOS_ACP_COMMAND or install eliza-code-acp on PATH"
             : id === "pi-agent"
               ? "Configure ELIZA_PI_AGENT_ACP_COMMAND or install pi-agent on PATH"
-              : id === "opencode"
-                ? "curl -fsSL https://opencode.ai/install | bash"
-                : undefined),
-        docsUrl:
-          preflight?.docsUrl ??
-          (id === "opencode" ? "https://opencode.ai/docs/" : undefined),
+              : undefined),
+        docsUrl: preflight?.docsUrl,
       };
     },
   );
@@ -861,14 +793,7 @@ async function computeTaskAgentFrameworkState(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : // eliza-code shares OpenCode's BYO provider thumb when no provider
-            // key prefers claude/codex; its dominant capability-profile fit then
-            // makes an installed eliza-code the default over OpenCode.
-            framework.id === "elizaos" && providerPrefersOpencode
-            ? framework.authReady
-              ? 18
-              : 6
-            : 0
+          : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
@@ -877,11 +802,7 @@ async function computeTaskAgentFrameworkState(
             ? framework.subscriptionReady
               ? 18
               : 6
-            : providerPrefersOpencode && framework.id === "opencode"
-              ? framework.authReady
-                ? 18
-                : 6
-              : 0;
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -1076,16 +997,6 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
-  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
-  // INSTALLED: it shares OpenCode's provider thumb (below) and its
-  // capability-profile fit dominates OpenCode on every axis, so with an equal
-  // provider signal it wins the weighted sort (alphabetical tie-break also
-  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
-  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
-  // running). Claude/Codex only become preferred when their key path is set.
-  const providerPrefersOpencode =
-    !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
@@ -1097,14 +1008,7 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : // eliza-code shares OpenCode's BYO provider thumb when no provider
-            // key prefers claude/codex; its dominant capability-profile fit then
-            // makes an installed eliza-code the default over OpenCode.
-            framework.id === "elizaos" && providerPrefersOpencode
-            ? framework.authReady
-              ? 18
-              : 6
-            : 0
+          : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
@@ -1113,11 +1017,7 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
             ? framework.subscriptionReady
               ? 18
               : 6
-            : providerPrefersOpencode && framework.id === "opencode"
-              ? framework.authReady
-                ? 18
-                : 6
-              : 0;
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +

@@ -5,7 +5,7 @@
  * `Memory`. Group DMs are deliberately distinct from 1:1 DMs: only a true DM
  * may attest as an owner-only delivery audience downstream.
  */
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
 	ChannelType as DiscordChannelType,
 	type Message as DiscordMessage,
@@ -28,8 +28,6 @@ export interface DiscordReplyContext {
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const ENVELOPE_REPLY_MAX_CHARS = 200;
-const STORED_REPLY_MAX_CHARS = 1500;
 const REPLY_REFERENCE_START = "[platform_reply_reference]";
 const REPLY_REFERENCE_END = "[/platform_reply_reference]";
 
@@ -114,13 +112,6 @@ function buildChannelLabel(
 	return guildName ? `${channelPart} | ${guildName}` : channelPart;
 }
 
-function truncateText(text: string, maxChars: number): string {
-	const wellFormed = toWellFormedUnicode(text.trim());
-	if (wellFormed.length <= maxChars) return wellFormed;
-	const budget = Math.max(0, maxChars - 3);
-	return `${truncateWellFormed(wellFormed, budget)}...`;
-}
-
 function sanitizeReplyReferenceText(text: string): string {
 	return text
 		.replaceAll(REPLY_REFERENCE_START, "[platform_reply_reference escaped]")
@@ -152,10 +143,7 @@ export async function getDiscordReplyContext(
 			refMessage.author?.displayName ??
 			refMessage.author?.username ??
 			"unknown";
-		const content = truncateText(
-			refMessage.content ?? "",
-			STORED_REPLY_MAX_CHARS,
-		);
+		const content = toWellFormedUnicode((refMessage.content ?? "").trim());
 		return {
 			messageId,
 			authorId: refMessage.author?.id,
@@ -186,22 +174,16 @@ export async function formatInboundEnvelope(
 			? await getDiscordReplyContext(message)
 			: knownReplyContext;
 	if (refContext) {
-		const truncated = truncateText(
-			refContext.content,
-			ENVELOPE_REPLY_MAX_CHARS,
-		);
 		// Put the reply quote AFTER the user's actual message so Stage 1
 		// classification weights the user's current intent first. The previous
 		// order ("replying to @x:\n> <quote>\n<userText>") biased the
 		// classifier toward the quoted topic, which broke routing for turns
 		// where the user replied to a long bot message and asked for something
 		// unrelated (e.g. an app build after a tech-debt status update).
-		// Use typographic curly quotes as outer delimiters so embedded straight
-		// `"` characters in the quoted content don't visually break the wrapper
-		// or confuse an LLM classifier reading the result.
-		const humanReplyContext = truncated
-			? `(in reply to @${refContext.authorName}: “${truncated}”)`
-			: `(in reply to @${refContext.authorName})`;
+		// The machine-readable reference block carries the complete quoted text;
+		// the human label only identifies the reply relationship so the content is
+		// not duplicated in the same prompt.
+		const humanReplyContext = `(in reply to @${refContext.authorName})`;
 		replyContextText = `\n${formatReplyReferenceBlock(refContext)}\n${humanReplyContext}`;
 	}
 
