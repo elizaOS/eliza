@@ -4,8 +4,11 @@ import { startFetchServer } from "../../src/fetch-server.ts";
 
 const encoder = new TextEncoder();
 const server = await startFetchServer(
-  (request) =>
-    new Response(
+  (request) => {
+    if (new URL(request.url).pathname === "/throw") {
+      throw new Error("NODE_ADAPTER_SECRET_do-not-reflect_9e37");
+    }
+    return new Response(
       new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(encoder.encode("first\n"));
@@ -25,7 +28,8 @@ const server = await startFetchServer(
         },
       }),
       { headers: { "content-type": "text/plain" } },
-    ),
+    );
+  },
   { hostname: "127.0.0.1", port: 0 },
 );
 

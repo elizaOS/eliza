@@ -55,4 +55,10 @@ it("streams the first chunk without buffering and aborts work on disconnect", as
 
   controller.abort("test disconnect");
   expect(await readLine(stdout)).toBe("aborted");
+
+  const failed = await fetch(`http://127.0.0.1:${port}/throw`);
+  expect(failed.status).toBe(500);
+  const failureBody = await failed.text();
+  expect(failureBody).toBe("mock server error");
+  expect(failureBody).not.toContain("NODE_ADAPTER_SECRET");
 });

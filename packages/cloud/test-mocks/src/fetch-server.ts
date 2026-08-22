@@ -140,9 +140,7 @@ async function handleNodeRequest(
   } catch (error) {
     if (!outgoing.headersSent && !outgoing.destroyed) {
       outgoing.statusCode = 500;
-      outgoing.end(
-        error instanceof Error ? error.message : "mock server error",
-      );
+      outgoing.end("mock server error");
     } else if (!outgoing.destroyed) {
       outgoing.destroy(error instanceof Error ? error : undefined);
     }
