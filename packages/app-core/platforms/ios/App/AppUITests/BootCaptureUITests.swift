@@ -1047,8 +1047,18 @@ final class BootCaptureUITests: XCTestCase {
                     submittedByButton = true
                 }
             } else if app.webViews.firstMatch.exists {
-                stableAuthenticatedPolls += 1
-                if stableAuthenticatedPolls >= 3 { return }
+                // The ordinary signed-out shell also has a live WKWebView and
+                // no pairing form. Never mistake it for a completed remote
+                // session merely because routing or form presentation failed.
+                let signedOutCue = app.descendants(matching: .any).matching(
+                    NSPredicate(format: "label CONTAINS[c] 'Sign in to start chatting'")
+                ).firstMatch
+                if signedOutCue.exists {
+                    stableAuthenticatedPolls = 0
+                } else {
+                    stableAuthenticatedPolls += 1
+                    if stableAuthenticatedPolls >= 3 { return }
+                }
             }
             Thread.sleep(forTimeInterval: 0.35)
         }

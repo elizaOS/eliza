@@ -29,6 +29,51 @@ export const IOS_APPEX_TARGET_NAMES = Object.freeze(
     .sort(),
 );
 
+/**
+ * Test-process inputs that the physical/simulator capture wrapper may forward
+ * through Xcode's TEST_RUNNER_ environment convention. Keep this list explicit:
+ * it includes only AppUITest behavior knobs and prevents unrelated host secrets
+ * from entering the runner process.
+ */
+export const IOS_XCUITEST_FORWARDED_ENV_NAMES = Object.freeze([
+  "ELIZA_AGENT_READY_TIMEOUT_SECONDS",
+  "ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS",
+  "ELIZA_BOOT_TIMEOUT_SECONDS",
+  "ELIZA_FAIL_ON_SKIP",
+  "ELIZA_FIRSTRUN_TIMEOUT_SECONDS",
+  "ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS",
+  "ELIZA_LOOP_ACTIONS",
+  "ELIZA_LOOP_SEED",
+  "ELIZA_REPLY_SCREENSHOT_INTERVAL_SECONDS",
+  "ELIZA_REPLY_TIMEOUT_SECONDS",
+  "ELIZA_REQUIRE_HOME",
+  "ELIZA_REQUIRE_NO_SKIPS",
+  "ELIZA_REQUIRE_REPLY",
+  "ELIZA_SEND_PROMPT",
+  "ELIZA_TEST_PAIRING_CODE",
+  "ELIZA_TEST_REMOTE_API_BASE",
+  "ELIZA_VIEW_PROMPT",
+  "ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS",
+]);
+
+/**
+ * Build the allowlisted TEST_RUNNER_ environment fragment consumed by
+ * xcodebuild. Values stay in the child-process environment rather than being
+ * serialized into the evidence .xctestrun plist.
+ *
+ * @param {Record<string, unknown>} env host environment
+ * @returns {Record<string, string>}
+ */
+export function buildIosXcuitestForwardedEnvironment(env = {}) {
+  const forwarded = {};
+  for (const name of IOS_XCUITEST_FORWARDED_ENV_NAMES) {
+    const value = env[name];
+    if (typeof value !== "string" || value.length === 0) continue;
+    forwarded[`TEST_RUNNER_${name}`] = value;
+  }
+  return forwarded;
+}
+
 export function entitlementSourceForTarget(targetName) {
   const source = IOS_TARGET_ENTITLEMENT_PATHS[targetName];
   if (!source) {

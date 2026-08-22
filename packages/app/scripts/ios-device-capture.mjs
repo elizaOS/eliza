@@ -48,6 +48,7 @@ import {
 import {
   assertDeviceUnlocked,
   buildCodesignVerificationPlan,
+  buildIosXcuitestForwardedEnvironment,
   buildIosXcuitestShardPlan,
   buildPlistXml,
   buildRunnerCodesignPlan,
@@ -1145,6 +1146,9 @@ async function main() {
   }
   const harnessEnv = {
     ...process.env,
+    // Forward only declared AppUITest knobs. This includes the short-lived
+    // pairing code without copying it into the evidence .xctestrun or logs.
+    ...buildIosXcuitestForwardedEnvironment(process.env),
     TEST_RUNNER_ELIZA_BOOT_TIMEOUT_SECONDS:
       args["boot-timeout"] ?? process.env.ELIZA_BOOT_TIMEOUT_SECONDS ?? "180",
     TEST_RUNNER_ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS:

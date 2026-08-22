@@ -19,6 +19,7 @@ import {
   assertDeviceUnlocked,
   buildCodesignPlan,
   buildCodesignVerificationPlan,
+  buildIosXcuitestForwardedEnvironment,
   buildIosXcuitestShardPlan,
   buildOnlyTestingIdentifier,
   buildPlistXml,
@@ -836,6 +837,34 @@ describe("rewriteXctestrunUITargetApp", () => {
 
   it("returns 0 when there is nothing to rewrite", () => {
     expect(rewriteXctestrunUITargetApp({ Foo: { Bar: "baz" } }, "/x")).toBe(0);
+  });
+});
+
+describe("buildIosXcuitestForwardedEnvironment", () => {
+  it("forwards remote pairing and view knobs through Xcode's runner prefix", () => {
+    expect(
+      buildIosXcuitestForwardedEnvironment({
+        ELIZA_TEST_PAIRING_CODE: "ABCD-EFGH-IJKL",
+        ELIZA_TEST_REMOTE_API_BASE: "http://192.0.2.10:31338",
+        ELIZA_VIEW_PROMPT: "Open the Notes view now.",
+        ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS: "45",
+      }),
+    ).toEqual({
+      TEST_RUNNER_ELIZA_TEST_PAIRING_CODE: "ABCD-EFGH-IJKL",
+      TEST_RUNNER_ELIZA_TEST_REMOTE_API_BASE: "http://192.0.2.10:31338",
+      TEST_RUNNER_ELIZA_VIEW_PROMPT: "Open the Notes view now.",
+      TEST_RUNNER_ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS: "45",
+    });
+  });
+
+  it("does not forward undeclared host values or empty knobs", () => {
+    expect(
+      buildIosXcuitestForwardedEnvironment({
+        CEREBRAS_API_KEY: "must-not-cross-the-test-boundary",
+        ELIZA_TEST_PAIRING_CODE: "",
+        ELIZA_SEND_PROMPT: "hello",
+      }),
+    ).toEqual({ TEST_RUNNER_ELIZA_SEND_PROMPT: "hello" });
   });
 });
 
