@@ -7,6 +7,7 @@
 import { setStorageValue } from "../bridge/storage-bridge";
 import { getActiveProfile, updateAgentProfile } from "./agent-profiles";
 import {
+  createPersistedActiveServer,
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
@@ -15,10 +16,22 @@ const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 
 export async function persistActiveServerCredential(
   token: string,
+  pairedApiBase?: string,
 ): Promise<void> {
   const activeServer = loadPersistedActiveServer();
-  if (activeServer && activeServer.kind !== "local") {
-    const authenticatedServer = { ...activeServer, accessToken: token };
+  const fallbackRemote = pairedApiBase?.trim()
+    ? createPersistedActiveServer({
+        kind: "remote",
+        apiBase: pairedApiBase,
+        accessToken: token,
+      })
+    : null;
+  const credentialTarget =
+    activeServer && activeServer.kind !== "local"
+      ? { ...activeServer, accessToken: token }
+      : fallbackRemote;
+  if (credentialTarget) {
+    const authenticatedServer = credentialTarget;
     savePersistedActiveServer(authenticatedServer);
     // Native storage mirroring is normally fire-and-forget, but pairing reloads
     // immediately after this boundary. Await the authoritative Preferences write

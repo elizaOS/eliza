@@ -30,7 +30,7 @@ export function usePairingState() {
     setPairingBusy(true);
     try {
       const { token } = await client.pair(code);
-      await persistActiveServerCredential(token);
+      await persistActiveServerCredential(token, client.getBaseUrl());
       client.setToken(token);
       window.location.reload();
     } catch (err) {
