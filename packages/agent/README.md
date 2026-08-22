@@ -41,8 +41,13 @@ filesystems cannot conditionally unlink a pathname generation; an operator may
 remove it only after stopping every store user and verifying that no host
 process owns the store. Operations report
 `INTERACTION_STORE_RECOVERY_REQUIRED` and do not mutate state while that marker
-remains; this state has no bounded automatic recovery. Its boundary is one
-machine and one state directory. Multi-host deployments must supply a
+remains; this state has no bounded automatic recovery. The marker path is
+reported in `error.context.markerPath`; with the default filename it is
+`<stateDirectory>/message-interaction-sessions.v1.json.lock.transition`.
+Recovery requires stopping every process that uses the store, verifying that
+none owns the adjacent `.lock` owner file, removing that exact `.transition`
+path, fsyncing the state directory, and only then restarting store users. Its
+boundary is one machine and one state directory. Multi-host deployments must supply a
 transactional database implementation of `MessageInteractionSessionStore` and
 use the session replay key as the effect or outbox idempotency key.
 
