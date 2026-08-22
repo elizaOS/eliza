@@ -28,7 +28,7 @@ export default scenario({
       kind: "message",
       name: "outage-recovery",
       room: "main",
-      text: "If Gmail and Signal are degraded, recover my command brief from calendar, Discord, local reminders, docs, and cached context. Tell me exactly what is missing.",
+      text: "If Gmail and Telegram are degraded, recover my command brief from calendar, Discord, local reminders, docs, and cached context. Tell me exactly what is missing.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
           "BRIEF",
@@ -39,7 +39,7 @@ export default scenario({
           "CONNECTOR",
         ],
         description: "degraded connector command brief",
-        includesAny: ["Gmail", "Signal", "degraded", "missing", "cached"],
+        includesAny: ["Gmail", "Telegram", "degraded", "missing", "cached"],
       }),
       responseIncludesAny: [
         /degraded|missing|cached/i,
@@ -77,7 +77,7 @@ export default scenario({
           "CONNECTOR",
         ],
         description: "degraded connector command brief",
-        includesAny: ["Gmail", "Signal", "degraded", "missing", "cached"],
+        includesAny: ["Gmail", "Telegram", "degraded", "missing", "cached"],
       }),
     },
     judgeRubric({

@@ -1468,6 +1468,23 @@ export function resolveBionicStreamStep(): number | undefined {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+/**
+ * Keep Eliza chat-turn control markers on every bionic-host request, including
+ * the Capacitor bridge fast path that builds its native wire payload directly.
+ */
+export function resolveBionicStopSequences(
+	requested: readonly string[] | undefined,
+): string[] {
+	return Array.from(
+		new Set([
+			...(requested ?? []).filter((stop) => stop.length > 0),
+			"<end_of_turn>",
+			"<start_of_turn>",
+			"<endoftext>",
+		]),
+	);
+}
+
 // A flat on-device model (…/models/eliza-1-2b-128k.gguf) is not the bundle
 // layout `libelizainference`'s eliza_pick_text_file() globs (<bundle>/text/
 // *.gguf), so a delegated generate fails with "bundle_dir does not exist". We
@@ -1800,6 +1817,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				drafterPath: installed?.draftModelPath ?? "",
 				prompt: lane.prompt,
 				maxTokens: lane.maxTokens ?? 256,
+				stopSequences: resolveBionicStopSequences(params.stopSequences),
 			};
 			const res = await getInferencePriorityGate().runExclusive(
 				{

@@ -6,6 +6,7 @@ import android.system.Os;
 import android.util.Base64;
 import android.util.Log;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.DataInputStream;
@@ -15,6 +16,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +40,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <pre>
  *   [int32 big-endian byte length N][N bytes UTF-8 JSON]
  * </pre>
- * Request JSON: {@code {op:"generate", bundleDir, prompt, maxTokens}}.
+ * Request JSON: {@code {op:"generate", bundleDir, prompt, maxTokens,
+ * stopSequences?}}.
  * Response JSON: {@code {ok, text?, error?, tokens?, ms?, tokS?}} — for the
  * buffered first slice this is exactly the JSON {@link ElizaVoiceNative#nativeLlmSelfTest}
  * already returns, so the GPU decode loop runs entirely server-side and the
@@ -416,8 +421,10 @@ final class ElizaBionicInferenceServer {
             String prompt = req.optString("prompt", "");
             String drafterPath = req.optString("drafterPath", "");
             int maxTokens = req.optInt("maxTokens", 256);
+            List<String> stopSequences = readStopSequences(req);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
                 + " maxTokens=" + maxTokens + ", bundle=" + bundleDir
+                + ", stops=" + stopSequences.size()
                 + ", drafter=" + (drafterPath.isEmpty() ? "(none)" : drafterPath));
             // RESIDENT path (default): the model + context stay loaded across turns;
             // only the KV cache + sampler are reset and the prompt re-prefilled per
@@ -430,7 +437,8 @@ final class ElizaBionicInferenceServer {
             // ELIZA_BIONIC_RESIDENT=0 to force the old path).
             if (!"0".equals(System.getenv("ELIZA_BIONIC_RESIDENT"))) {
                 try {
-                    String r = generateResident(bundleDir, drafterPath, prompt, maxTokens);
+                    String r = generateResident(
+                        bundleDir, drafterPath, prompt, maxTokens, stopSequences);
                     Log.i(TAG, "GENERATE result (resident): "
                         + (r.length() > 200 ? r.substring(0, 200) + "…" : r));
                     return r;
@@ -440,6 +448,7 @@ final class ElizaBionicInferenceServer {
                 }
             }
             String result = ElizaVoiceNative.nativeLlmSelfTest(bundleDir, prompt, maxTokens);
+            result = trimGenerateResponseAtStops(result, stopSequences);
             Log.i(TAG, "GENERATE result: "
                 + (result.length() > 200 ? result.substring(0, 200) + "…" : result));
             return result;
@@ -460,17 +469,20 @@ final class ElizaBionicInferenceServer {
      * most 20 tokens of eval work (#11913 — previously one native call decoded
      * the full 256-token JNI buffer before the Java cap check ever ran).
      */
-    private String generateResident(String bundleDir, String drafterPath, String prompt, int maxTokens)
-            throws Exception {
+    private String generateResident(String bundleDir, String drafterPath, String prompt,
+                                    int maxTokens, List<String> stopSequences) throws Exception {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
             resetAndPrefillResident(prompt, drafterPath);
-            // Buffered op: no per-frame consumer, so use the largest step the
-            // JNI buffer allows — the per-turn cap still bounds every call.
+            // Buffered callers still need bounded native steps: stop markers
+            // are visible only after nativeLlmStreamNext returns, so decoding
+            // the whole turn in one call would trim the marker but still pay
+            // the complete maxTokens budget. Eight-token slices bound that
+            // overshoot while keeping JNI round trips inexpensive.
             final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
                 this::residentStreamStep, maxTokens,
-                BionicDecodeLoop.MAX_STEP_TOKENS, null);
+                DEFAULT_STREAM_STEP_TOKENS, stopSequences, null);
             final long ms = android.os.SystemClock.elapsedRealtime() - t0;
             final double tokS = ms > 0 ? r.produced * 1000.0 / ms : 0.0;
             Log.i(TAG, "GENERATE (resident) eval count: " + r.produced
@@ -521,6 +533,7 @@ final class ElizaBionicInferenceServer {
         String prompt = "";
         int maxTokens = 256;
         int streamStep = 0;
+        List<String> stopSequences = Collections.emptyList();
         try {
             JSONObject req = new JSONObject(requestJson);
             bundleDir = req.optString("bundleDir", "");
@@ -531,11 +544,13 @@ final class ElizaBionicInferenceServer {
             prompt = req.optString("prompt", "");
             maxTokens = req.optInt("maxTokens", 256);
             streamStep = req.optInt("streamStep", 0);
+            stopSequences = readStopSequences(req);
         } catch (org.json.JSONException e) {
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
-        generateStream(bundleDir, drafterPath, prompt, maxTokens, streamStep, out);
+        generateStream(
+            bundleDir, drafterPath, prompt, maxTokens, streamStep, stopSequences, out);
     }
 
     /**
@@ -565,6 +580,44 @@ final class ElizaBionicInferenceServer {
         }
     }
 
+    /** Read bounded, non-empty stop strings from either supported wire key. */
+    static List<String> readStopSequences(JSONObject request) {
+        JSONArray values = request.optJSONArray("stopSequences");
+        if (values == null) values = request.optJSONArray("stop");
+        if (values == null || values.length() == 0) return Collections.emptyList();
+
+        final ArrayList<String> stops = new ArrayList<>();
+        final int count = Math.min(values.length(), 32);
+        for (int i = 0; i < count; i++) {
+            final Object value = values.opt(i);
+            if (!(value instanceof String)) continue;
+            final String stop = (String) value;
+            if (!stop.isEmpty() && stop.length() <= 1024 && !stops.contains(stop)) {
+                stops.add(stop);
+            }
+        }
+        return stops;
+    }
+
+    /** The reload-per-call fallback cannot stop eval early, but must not leak markers. */
+    static String trimGenerateResponseAtStops(String responseJson, List<String> stopSequences) {
+        if (stopSequences == null || stopSequences.isEmpty()) return responseJson;
+        try {
+            final JSONObject response = new JSONObject(responseJson);
+            final String text = response.optString("text", "");
+            int earliest = -1;
+            for (String stop : stopSequences) {
+                if (stop == null || stop.isEmpty()) continue;
+                final int index = text.indexOf(stop);
+                if (index >= 0 && (earliest < 0 || index < earliest)) earliest = index;
+            }
+            if (earliest >= 0) response.put("text", text.substring(0, earliest));
+            return response.toString();
+        } catch (org.json.JSONException ignored) {
+            return responseJson;
+        }
+    }
+
     /**
      * Streaming variant of {@link #generateResident}: the identical warm decode,
      * but it writes one length-prefixed {type:"token",text} frame per decode step
@@ -582,12 +635,14 @@ final class ElizaBionicInferenceServer {
      * single giant frame and TTFT equaled full-turn latency.
      */
     private void generateStream(String bundleDir, String drafterPath, String prompt, int maxTokens,
-                                int requestedStreamStep, DataOutputStream out) throws IOException {
+                                int requestedStreamStep, List<String> stopSequences,
+                                DataOutputStream out) throws IOException {
         final int streamStep = resolveStreamStepTokens(
             requestedStreamStep, System.getenv("ELIZA_BIONIC_STREAM_STEP"));
         Log.i(TAG, "GENERATE_STREAM from agent: " + prompt.length() + " prompt chars,"
             + " maxTokens=" + maxTokens + ", streamStep=" + streamStep
             + ", bundle=" + bundleDir
+            + ", stops=" + stopSequences.size()
             + ", drafter=" + (drafterPath.isEmpty() ? "(none)" : drafterPath));
         try {
             synchronized (residentLock) {
@@ -595,7 +650,7 @@ final class ElizaBionicInferenceServer {
                 final long t0 = android.os.SystemClock.elapsedRealtime();
                 resetAndPrefillResident(prompt, drafterPath);
                 final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
-                    this::residentStreamStep, maxTokens, streamStep,
+                    this::residentStreamStep, maxTokens, streamStep, stopSequences,
                     text -> {
                         writeFrame(out, new JSONObject()
                             .put("type", "token").put("text", text).toString());

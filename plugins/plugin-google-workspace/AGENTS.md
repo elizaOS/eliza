@@ -168,6 +168,7 @@ Google Chat (service-account auth; see `src/chat/accounts.ts` for full resolutio
 - **googleapis clients are created per-call.** `GoogleApiClientFactory` creates a new googleapis client each call (auth client is cached by credential version in `DefaultGoogleCredentialResolver`).
 - **Chat and Workspace auth never mix.** Chat uses service-account credentials and its own webhook audience model; Workspace uses the consolidated per-account OAuth grant. Do not route Chat calls through `GoogleApiClientFactory` or Workspace calls through the Chat account state.
 - **Chat messaging routes through the `MessageConnector`** registered by `GoogleChatService` (`source: "google-chat"`); no actions or providers are registered for Chat by design.
+- **Chat target inventories are complete.** Target resolution, recent targets, roomless reads, and searches consider every listed Chat space. Do not silently slice the space list; introduce an explicit lossless page contract first if a boundary needs one.
 - **Chat webhooks:** the plugin does not register an HTTP route; the host runtime delivers events to `GoogleChatService.processWebhookEvent()` on the configured `webhookPath`. Long messages chunk at 4,000 chars on newline/word boundaries (`splitMessageForGoogleChat`).
 
 See the root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and ESM requirements.

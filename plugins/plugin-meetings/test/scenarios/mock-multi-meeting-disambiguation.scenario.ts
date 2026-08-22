@@ -9,7 +9,13 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { installMockSeed } from "./_meetings-mock.js";
+import {
+  assertMeetingMockLedger,
+  finalizeMeetingMockLedger,
+  installMockSeed,
+  MEETINGS_MOCK_REQUIRED_PLUGINS,
+  meetingMockLedgerMatches,
+} from "./_meetings-mock.js";
 
 const MEET_ID = "abc-defg-hij";
 const ZOOM_ID = "9876543210";
@@ -44,11 +50,15 @@ export default scenario({
   domain: "meetings",
   tags: ["mock", "meetings", "leave-meeting", "disambiguation"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-meetings"] },
+  requires: { plugins: MEETINGS_MOCK_REQUIRED_PLUGINS },
   seed: [
     installMockSeed({
-      [MEET_ID]: { holdUntilLeave: true, turns: [] },
-      [ZOOM_ID]: { holdUntilLeave: true, turns: [] },
+      [MEET_ID]: {
+        platform: "google_meet",
+        holdUntilLeave: true,
+        turns: [],
+      },
+      [ZOOM_ID]: { platform: "zoom", holdUntilLeave: true, turns: [] },
     }),
   ],
   rooms: [{ id: "main", source: "chat", title: "Mock Two Meetings" }],
@@ -79,6 +89,12 @@ export default scenario({
         }
       },
     },
+    {
+      kind: "action",
+      name: "snapshot strict meetings provider ledger",
+      actionName: "ASSERT_MEETING_MOCK_LEDGER",
+      assertTurn: assertMeetingMockLedger,
+    },
   ],
   finalChecks: [
     {
@@ -93,5 +109,11 @@ export default scenario({
       name: "both meetings remain active (none left on an ambiguous request)",
       predicate: bothStillActive,
     },
+    {
+      type: "custom",
+      name: "strict meetings provider ledger matches",
+      predicate: meetingMockLedgerMatches,
+    },
   ],
+  cleanup: [finalizeMeetingMockLedger()],
 });

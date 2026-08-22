@@ -47,6 +47,13 @@ const searchHtml = `<!doctype html>
   </body>
 </html>`;
 
+const longSnapshotTail = "complete-snapshot-tail";
+const longSnapshotHtml = `<!doctype html>
+<html>
+  <head><title>Complete Snapshot</title></head>
+  <body><main><p>${"browser content ".repeat(80)}${longSnapshotTail}</p></main></body>
+</html>`;
+
 describe("browser workspace web-mode real-code command flow", () => {
   beforeEach(async () => {
     await __resetBrowserWorkspaceStateForTests();
@@ -226,6 +233,39 @@ describe("browser workspace web-mode real-code command flow", () => {
     expect(resultText.value).toBe(
       "Form submission reached the routed POST response.",
     );
+  });
+
+  it("preserves semantic page content beyond the former fixed snapshot ceiling", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        networkAction: "route",
+        responseBody: longSnapshotHtml,
+        subaction: "network",
+        url: "https://example.test/complete-snapshot",
+      },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "navigate",
+        url: "https://example.test/complete-snapshot",
+      },
+      webEnv,
+    );
+
+    const snapshot = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "snapshot" },
+      webEnv,
+    );
+
+    expect(snapshot.value?.bodyText).toContain(longSnapshotTail);
+    expect(snapshot.value?.bodyText?.length).toBeGreaterThan(800);
   });
 
   it("scrolls and hovers a routed page through the command router (#18259)", async () => {

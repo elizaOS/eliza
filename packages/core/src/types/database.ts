@@ -67,8 +67,10 @@ export type DocumentListRequesterRole =
 	| "OWNER"
 	| "ADMIN"
 	| "USER"
+	| "GUEST"
 	| "AGENT"
-	| "RUNTIME";
+	| "RUNTIME"
+	| "UNRESOLVED";
 
 /** Identity and room membership used by every document authorization query. */
 export interface DocumentRequesterContext {
@@ -100,12 +102,43 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
+/** Exact unit used by an authorized bounded document read. */
+export type DocumentRangeUnit = "line" | "fragment";
+
+/**
+ * Authorized bounded document read. Offsets and limits count exact retained
+ * line or paragraph-like fragment units, never JavaScript string code units.
+ */
+export interface DocumentRangeReadParams extends DocumentRequesterContext {
+	documentId: UUID;
+	unit: DocumentRangeUnit;
+	offset: number;
+	limit: number;
+}
+
+/**
+ * Bounded source projection returned by a native adapter. The source
+ * fingerprint is an adapter-internal change detector and must be wrapped in an
+ * opaque public revision before it leaves DocumentService.
+ */
+export interface DocumentRangeReadResult {
+	text: string;
+	start: number;
+	end: number;
+	total: number;
+	documentRevision: number;
+	revisionAttemptId?: string;
+	sourceFingerprint: string;
+}
+
 /**
  * Authorized fragment query. Fragment visibility is derived from the parent
  * document, never from denormalized fragment metadata.
  */
 export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
 	limit: number;
+	offset?: number;
+	documentId?: UUID;
 	roomId?: UUID;
 	worldId?: UUID;
 	entityId?: UUID;
@@ -121,6 +154,7 @@ export interface DocumentMutationSnapshot {
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
+	directGrantEntityIds?: UUID[];
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
 	revision: number;
@@ -133,6 +167,14 @@ export interface DocumentCompareAndSwapParams extends DocumentRequesterContext {
 	documentId: UUID;
 	expected: DocumentMutationSnapshot;
 	replacement: Memory;
+}
+
+/** Atomic replacement of a document's explicit entity read grants. */
+export interface DocumentDirectGrantUpdateParams
+	extends DocumentRequesterContext {
+	documentId: UUID;
+	expected: DocumentMutationSnapshot;
+	directGrantEntityIds: UUID[];
 }
 
 /**
@@ -1112,22 +1154,30 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	}): Promise<Memory[]>;
 
 	/**
-	 * Required native document-store contract. Version 3 covers canonical
+	 * Required native document-store contract. Version 4 covers canonical
 	 * visibility for list/lookup/search plus atomic revision replacement. Adapter
 	 * authors migrating from version 2 must implement all six methods; there is
 	 * deliberately no bounded compatibility scan because it cannot preserve
 	 * authorization, counts, or pagination guarantees.
 	 */
-	readonly documentListQueryCapability: 3;
+	readonly documentListQueryCapability: 4;
+	/** Native bounded source projection; absent adapters must fail explicitly. */
+	readonly documentRangeReadCapability?: 1;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
 	getDocument(params: DocumentGetQueryParams): Promise<Memory | null>;
+	readDocumentRange?(
+		params: DocumentRangeReadParams,
+	): Promise<DocumentRangeReadResult | null>;
 	queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]>;
 	compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+	updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult>;
 	replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,
@@ -1568,6 +1618,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		/** Required. Only tasks with agentId in this array are returned. Single agent = [id]. WHY: multi-tenant safety; schema indexes by agent_id; daemon batches one getTasks(agentIds) for many agents. */
@@ -1583,6 +1634,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	// getTasksByName() are query methods (filter by room, tags, name).
 	createTasks(tasks: Task[]): Promise<UUID[]>;
 	getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
+	/**
+	 * Atomically updates a queued task only while its lifecycle status is
+	 * pending (or absent for legacy rows). The queue tag and status predicate
+	 * are evaluated by storage in the same mutation that applies `task`.
+	 */
+	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
 

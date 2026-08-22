@@ -37,6 +37,7 @@ const queryParamsSchema = z.object({
       "search",
       "communication",
       "productivity",
+      "commerce",
       "data",
       "ai",
     ])
@@ -120,6 +121,48 @@ type RegistryEntry = BuiltInRegistryEntry | UserRegistryEntry;
  * These can be enabled on agents via their character settings
  */
 const MCP_REGISTRY: McpRegistryEntry[] = [
+  {
+    id: "doordash",
+    name: "DoorDash",
+    description:
+      "Search restaurants, browse menus, manage carts, preview checkout, place explicitly confirmed orders, and track delivery through an operator-configured DoorDash MCP adapter.",
+    category: "commerce",
+    endpoint: "/api/mcps/doordash/streamable-http",
+    type: "streamable-http",
+    version: "1.0.0",
+    status: "live",
+    icon: "shopping-bag",
+    color: "#FF3008",
+    toolCount: 11,
+    features: [
+      "doordash_auth_check",
+      "doordash_auth_clear",
+      "doordash_set_address",
+      "doordash_search",
+      "doordash_menu",
+      "doordash_add_to_cart",
+      "remove_from_cart",
+      "doordash_cart",
+      "order_history",
+      "doordash_checkout",
+      "doordash_track_order",
+    ],
+    pricing: {
+      type: "free",
+      description: "No Eliza platform fee; DoorDash order charges still apply",
+    },
+    x402Enabled: false,
+    documentation:
+      "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-doordash",
+    configTemplate: {
+      servers: {
+        doordash: {
+          type: "streamable-http",
+          url: "/api/mcps/doordash/streamable-http",
+        },
+      },
+    },
+  },
   {
     id: "crypto-prices",
     name: "Crypto Prices",

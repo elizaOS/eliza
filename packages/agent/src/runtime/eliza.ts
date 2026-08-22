@@ -4411,7 +4411,7 @@ export async function startEliza(
     recursive: true,
   });
 
-  // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
+  // 5. Create the Eliza bridge plugin (workspace context + session keys)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
 
   // 5-pre0. Apply per-agent vault profile overrides to process.env.
@@ -4985,7 +4985,7 @@ export async function startEliza(
         logger.warn(message);
       }
     }
-    // Fast-path, no-wait: wrap useModel for compaction/tracing now so the very
+    // Fast-path, no-wait: wrap useModel for prompt optimization/tracing so the
     // first turn runs through the optimized prompt path.
     await installPromptOptimizationLayer(
       runtime,

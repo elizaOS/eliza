@@ -248,6 +248,8 @@ const DOCUMENT_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/documents/search" },
   { type: "GET", path: "/api/documents/:id" },
   { type: "PATCH", path: "/api/documents/:id" },
+  { type: "PATCH", path: "/api/documents/:id/access" },
+  { type: "GET", path: "/api/documents/:id/access" },
   { type: "DELETE", path: "/api/documents/:id" },
   { type: "GET", path: "/api/documents/:id/fragments" },
 ];
@@ -267,26 +269,9 @@ export const documentsPlugin: Plugin = {
   description: "Document management, fragment listing, and search routes",
   routes: documentsRoutes,
   // OWNER_DOCUMENTS is still host-adapted by plugin-personal-assistant.
-  // Do not register the scaffold action from this route/view plugin.
+  // Do not register the scaffold action from this route plugin. The app shell's
+  // built-in Knowledge view is the only first-party document UI; declaring a
+  // second plugin view here previously collided on the `documents` id while
+  // presenting a smaller duplicate surface at `/documents`.
   actions: [],
-  views: [
-    {
-      id: "documents",
-      label: "Documents",
-      description: "Browse and search the document store.",
-      icon: "FileText",
-      path: "/documents",
-      modalities: ["gui"],
-      bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
-      componentExport: "DocumentsView",
-      tags: ["documents", "files", "signatures"],
-      relatedActions: ["OWNER_DOCUMENTS"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-  ],
 };

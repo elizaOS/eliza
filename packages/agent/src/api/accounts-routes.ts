@@ -61,7 +61,13 @@ import {
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { ElizaError, logger, resolveStateDir, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  resolveStateDir,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,

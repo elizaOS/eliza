@@ -13,7 +13,6 @@ import {
   type IAgentRuntime,
   type Memory,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   OwnerFactsView,
@@ -28,8 +27,6 @@ import {
 import { readActivityProfile } from "./activity-gates.js";
 import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 
-const RECENT_CONVERSATION_LIMIT = 6;
-const RECENT_CONVERSATION_LINE_LIMIT = 1_000;
 const EVENT_PAYLOAD_LIMIT = 16_000;
 const CONTEXT_ID_LIMIT = 100;
 const CONTEXT_LOOKBACK_HOURS_LIMIT = 24 * 365;
@@ -159,7 +156,6 @@ async function resolveRecentConversation(
     const memories = await runtime.getMemoriesByRoomIds({
       tableName: "messages",
       roomIds: roomIds as never[],
-      limit: RECENT_CONVERSATION_LIMIT * 2,
     });
     const lines = memories
       .slice()
@@ -178,13 +174,9 @@ async function resolveRecentConversation(
             : "";
         if (!text) return null;
         const speaker = entityId === agentEntityId ? "Assistant" : "Owner";
-        return truncateWellFormed(
-          toWellFormedUnicode(`${speaker}: ${text}`),
-          RECENT_CONVERSATION_LINE_LIMIT,
-        );
+        return toWellFormedUnicode(`${speaker}: ${text}`);
       })
-      .filter((line: string | null): line is string => line !== null)
-      .slice(-RECENT_CONVERSATION_LIMIT);
+      .filter((line: string | null): line is string => line !== null);
     return lines.length > 0 ? lines : undefined;
   } catch (error) {
     // error-policy:J4 recent conversation is optional tone context; requested

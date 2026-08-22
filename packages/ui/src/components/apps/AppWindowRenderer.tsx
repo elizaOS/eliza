@@ -12,8 +12,15 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import {
+  overlayAgentSurfaceDescriptor,
+  requireRegisteredAgentSurface,
+} from "../../app-shell-registry";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
 import { getAppSlug } from "./helpers";
 import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
@@ -21,6 +28,30 @@ import { getAvailableOverlayApps } from "./overlay-app-registry";
 
 export interface AppWindowRendererProps {
   slug: string;
+}
+
+export interface OverlayAppSurfaceProps extends OverlayAppContext {
+  app: OverlayApp;
+}
+
+async function runOverlayLifecycleHook(
+  app: OverlayApp,
+  phase: "launch" | "stop",
+): Promise<void> {
+  const hook = phase === "launch" ? app.onLaunch : app.onStop;
+  if (!hook) return;
+  try {
+    await hook();
+  } catch (error) {
+    // error-policy:J1 the renderer host owns this lifecycle boundary and emits
+    // a structured diagnostic without turning a hook failure into an unhandled
+    // rejection that can take down the shell.
+    reportRendererDiagnostic({
+      scope: `overlay-app.${phase}`,
+      error,
+      context: { appName: app.name },
+    });
+  }
 }
 
 function resolveOverlayAppBySlug(slug: string): OverlayApp | undefined {
@@ -50,6 +81,71 @@ function AppFallback(): React.ReactElement {
   );
 }
 
+/**
+ * Mount one resolved overlay through the same generated bridge used by
+ * registry-backed app-shell pages. Both the main-window overlay and detached
+ * app-window renderer use this component, so lifecycle and interaction
+ * ownership cannot drift between launch paths.
+ */
+export function OverlayAppSurface({
+  app,
+  exitToApps,
+  uiTheme,
+  t,
+}: OverlayAppSurfaceProps): React.ReactElement {
+  const descriptor = requireRegisteredAgentSurface(
+    overlayAgentSurfaceDescriptor(app),
+  );
+
+  const lifecycleQueueRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    const launch = lifecycleQueueRef.current.then(() =>
+      runOverlayLifecycleHook(app, "launch"),
+    );
+    lifecycleQueueRef.current = launch;
+    return () => {
+      // React does not await effect cleanup. Retaining this promise as the
+      // next effect's predecessor still provides a strict local lease: a stop
+      // cannot overtake its launch, and the successor cannot launch before the
+      // prior owner has fully stopped.
+      lifecycleQueueRef.current = launch.then(() =>
+        runOverlayLifecycleHook(app, "stop"),
+      );
+    };
+  }, [app]);
+
+  const context = useMemo<OverlayAppContext>(
+    () => ({ exitToApps, uiTheme, t }),
+    [exitToApps, t, uiTheme],
+  );
+  const LazyComponent = getLazyComponentForApp(app);
+  let content: React.ReactElement;
+  if (LazyComponent) {
+    content = (
+      <Suspense fallback={<AppFallback />}>
+        <LazyComponent {...context} />
+      </Suspense>
+    );
+  } else if (app.Component) {
+    content = <app.Component {...context} />;
+  } else {
+    content = (
+      <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
+        App has no component: {descriptor.viewId}
+      </div>
+    );
+  }
+
+  return (
+    <ShellViewAgentSurface
+      viewId={descriptor.viewId}
+      surfaceKind={descriptor.kind}
+    >
+      {content}
+    </ShellViewAgentSurface>
+  );
+}
+
 export function AppWindowRenderer({
   slug,
 }: AppWindowRendererProps): React.ReactElement {
@@ -75,13 +171,6 @@ export function AppWindowRenderer({
     }, RESOLVE_RETRY_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [app, slug]);
-
-  useEffect(() => {
-    void app?.onLaunch?.();
-    return () => {
-      void app?.onStop?.();
-    };
-  }, [app]);
 
   // Read the theme from the DOM in an effect (not during render) and keep it in
   // sync as the document class toggles, so the memoized context only changes when
@@ -123,23 +212,5 @@ export function AppWindowRenderer({
       </div>
     );
   }
-
-  const LazyComponent = getLazyComponentForApp(app);
-  if (LazyComponent) {
-    return (
-      <Suspense fallback={<AppFallback />}>
-        <LazyComponent {...context} />
-      </Suspense>
-    );
-  }
-
-  if (app.Component) {
-    return <app.Component {...context} />;
-  }
-
-  return (
-    <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
-      App has no component: {slug}
-    </div>
-  );
+  return <OverlayAppSurface app={app} {...context} />;
 }

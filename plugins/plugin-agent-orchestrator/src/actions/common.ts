@@ -334,8 +334,8 @@ export function hasExplicitPayload(message: Memory, fields: string[]): boolean {
   return fields.some((field) => typeof content[field] === "string");
 }
 
-export function shortId(id: string): string {
-  return id.slice(0, 8).toLowerCase();
+export function canonicalSessionId(id: string): string {
+  return id;
 }
 
 export function labelFor(
@@ -343,7 +343,7 @@ export function labelFor(
 ): string {
   return typeof session.metadata?.label === "string"
     ? session.metadata.label
-    : (session.name ?? shortId(session.id));
+    : (session.name ?? canonicalSessionId(session.id));
 }
 
 export function newestSession(
