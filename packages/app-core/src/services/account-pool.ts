@@ -145,12 +145,16 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   deepseek: "deepseek-api",
   zai: "zai-api",
   moonshot: "moonshot-api",
+  openrouter: "openrouter-api",
+  xai: "xai-api",
 };
 
 const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
   Partial<Record<DirectAccountProvider, string>>
 > = {
   "moonshot-api": "https://api.moonshot.ai/v1",
+  "openrouter-api": "https://openrouter.ai/api/v1",
+  "xai-api": "https://api.x.ai/v1",
 };
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;

@@ -153,6 +153,8 @@ const PROVIDER_MARKS: Record<
   "zai-api": ZaiMark,
   "zai-coding": ZaiMark,
   "cerebras-api": CerebrasMark,
+  "openrouter-api": ElizaCloudMark,
+  "xai-api": ElizaCloudMark,
 };
 
 export interface ProviderMarkProps extends BrandGlyphProps {
