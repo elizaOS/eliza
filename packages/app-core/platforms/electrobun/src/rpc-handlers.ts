@@ -124,12 +124,25 @@ import {
   readNativeTranscriptViewModel,
 } from "./native-transcript-host";
 import {
+  desktopClearRemoteSessionState,
+  desktopCreateRemoteCommand,
+  desktopGetOrCreateControllerIdentity,
+  desktopOpenRemoteCommandResult,
+  desktopOpenRemoteCommandStartReceipt,
+} from "./remote-controller-rpc";
+import {
   buildDynamicViewRpcHandlers,
   buildNotificationRpcHandlers,
   buildWindowRpcHandlers,
 } from "./rpc-handler-slices";
 import { resolveRpcAgentPort } from "./rpc-port-resolver";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
+import {
+  deleteRuntimeCredentialRecord,
+  desktopDeleteRuntimeCredential,
+  desktopLoadRuntimeCredential,
+  desktopStoreRuntimeCredential,
+} from "./runtime-credential-rpc";
 import {
   buildRuntimePermissionUnavailableState,
   fetchRuntimePermissionState,
@@ -153,6 +166,13 @@ import {
   updateTradePermissionModeViaHttp,
 } from "./settings-mutations-rpc";
 import type { ShellControllerEndpoint } from "./shell-sync-relay";
+import {
+  desktopGetSshRuntimeStatus,
+  desktopInspectSshHost,
+  desktopSshRuntimeRequest,
+  desktopStartSshRuntime,
+  desktopStopSshRuntime,
+} from "./ssh-runtime-rpc";
 import {
   composeSubscriptionStatusSnapshot,
   readSubscriptionStatusViaHttp,
@@ -1358,6 +1378,31 @@ export function buildBunRpcHandlers({
       ),
     secureStoreStatus: async () =>
       describeNodePlatformSecureStore(rendererSecureStore),
+    runtimeCredentialStore: async (params) =>
+      desktopStoreRuntimeCredential(params),
+    runtimeCredentialLoad: async (params) =>
+      desktopLoadRuntimeCredential(params),
+    runtimeCredentialDelete: async (params) =>
+      desktopDeleteRuntimeCredential(params),
+    runtimeCredentialDeleteRecord: async (params) => {
+      await deleteRuntimeCredentialRecord(params.runtimeId);
+      return { deleted: true };
+    },
+    sshRuntimeInspectHost: async (params) => desktopInspectSshHost(params),
+    sshRuntimeStart: async (params) => desktopStartSshRuntime(params),
+    sshRuntimeStop: async (params) => desktopStopSshRuntime(params),
+    sshRuntimeStatus: async (params) => desktopGetSshRuntimeStatus(params),
+    sshRuntimeRequest: async (params) => desktopSshRuntimeRequest(params),
+    remoteControllerGetOrCreateIdentity: async (params) =>
+      desktopGetOrCreateControllerIdentity(params),
+    remoteControllerCreateCommand: async (params) =>
+      desktopCreateRemoteCommand(params),
+    remoteControllerOpenResult: async (params) =>
+      desktopOpenRemoteCommandResult(params),
+    remoteControllerOpenStartReceipt: async (params) =>
+      desktopOpenRemoteCommandStartReceipt(params),
+    remoteControllerClearSessionState: async (params) =>
+      desktopClearRemoteSessionState(params),
 
     // ---- GPU Window ----
     gpuWindowCreate: async (

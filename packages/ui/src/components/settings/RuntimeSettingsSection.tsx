@@ -55,7 +55,7 @@ export function RuntimeSettingsSection() {
     useAgentElement<HTMLButtonElement>({
       id: "runtime-manage-runtimes",
       role: "button",
-      label: "My Runtimes",
+      label: "Devices & Runtimes",
       description: "Open the canonical runtime list and switcher",
       group: "runtime",
       onActivate: handleOpenMyRuntimes,
@@ -152,7 +152,7 @@ export function RuntimeSettingsSection() {
         <SettingsRow
           icon={Server}
           label={t("settings.runtime.manageRuntimesLabel", {
-            defaultValue: "My Runtimes",
+            defaultValue: "Devices & Runtimes",
           })}
           description={t("settings.runtime.manageRuntimesHelp", {
             defaultValue: "Saved local, cloud, and remote agents.",

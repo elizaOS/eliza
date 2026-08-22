@@ -72,6 +72,8 @@ import type {
 } from "./client-types";
 import { ApiError, isCloudAgentGoneError } from "./client-types";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
+import { remoteRelayTransportForUrl } from "./remote-relay-transport";
+import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
 import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import {
   iosInProcessAgentTransportForUrl,
@@ -1791,6 +1793,8 @@ export class ElizaClient {
       (await androidNativeAgentTransportForUrl(requestUrl)) ??
       (await iosInProcessAgentTransportForUrl(requestUrl)) ??
       (await desktopLocalAgentTransportForUrl(requestUrl)) ??
+      remoteRelayTransportForUrl(requestUrl) ??
+      sshRuntimeTransportForUrl(requestUrl) ??
       desktopHttpTransportForUrl(requestUrl) ??
       nativeCloudHttpTransportForUrl(requestUrl) ??
       this.requestTransport

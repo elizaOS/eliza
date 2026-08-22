@@ -89,7 +89,9 @@ describe("RuntimeSettingsSection IA", () => {
     render(<RuntimeSettingsSection />);
 
     expect(screen.getByText("Current mode: Trading bot")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /My Runtimes/ })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Devices & Runtimes/ }),
+    ).toBeTruthy();
   });
 
   it("opens the canonical My Runtimes section through settings hash navigation", () => {
@@ -98,7 +100,9 @@ describe("RuntimeSettingsSection IA", () => {
     try {
       render(<RuntimeSettingsSection />);
 
-      fireEvent.click(screen.getByRole("button", { name: /My Runtimes/ }));
+      fireEvent.click(
+        screen.getByRole("button", { name: /Devices & Runtimes/ }),
+      );
 
       expect(window.location.hash).toBe("#my-runtimes");
       expect(onHashChange).toHaveBeenCalledTimes(1);

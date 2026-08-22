@@ -13,6 +13,14 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import type {
+  EncryptedRemoteControlEnvelope,
+  RemoteCommandAction,
+  RemoteControllerPublicIdentity,
+  RemoteJsonValue,
+  RemoteTargetPublicIdentity,
+  SignedRemoteCommand,
+} from "@elizaos/shared/contracts/remote-control";
 import type { ExistingElizaInstallInfo } from "@elizaos/shared/types";
 import type { RPCSchema } from "electrobun/bun";
 import type {
@@ -516,6 +524,76 @@ export interface RendererSecureStoreStatus {
   scope: "device" | "host" | "unavailable";
   access: "app_only" | "user_session" | "unavailable";
 }
+
+export interface RuntimeCredentialParams {
+  runtimeId: string;
+}
+
+export interface RuntimeCredentialSetParams extends RuntimeCredentialParams {
+  accessToken: string;
+}
+
+export interface SshHostInspectParams extends RuntimeCredentialParams {
+  target: string;
+  sshPort: number;
+}
+
+export interface SshHostInspection {
+  target: string;
+  host: string;
+  sshPort: number;
+  fingerprints: Array<{ algorithm: string; fingerprint: string }>;
+  preferredFingerprint: string;
+  pinnedFingerprint: string | null;
+  changed: boolean;
+}
+
+export interface SshRuntimeStartParams extends SshHostInspectParams {
+  remoteApiPort: number;
+  expectedFingerprint: string;
+  identityFile?: string;
+  credentialRef?: string;
+}
+
+export interface SshRuntimeRequestParams extends RuntimeCredentialParams {
+  credentialRef?: string;
+  path: string;
+  method: "GET" | "POST" | "PATCH" | "DELETE";
+  headers: Record<string, string>;
+  body: string | null;
+  timeoutMs: number;
+}
+
+export interface RemoteControllerIdentityParams {
+  ownerId: string;
+  deviceId?: string;
+  displayName: string;
+  platform: "macos" | "windows" | "linux" | "ios" | "android" | "web";
+}
+
+export interface RemoteCommandCreateParams {
+  ownerId: string;
+  grantId: string;
+  grantRevision: number;
+  sessionId: string;
+  controllerDeviceId: string;
+  controllerKeyId: string;
+  targetRuntimeId: string;
+  targetKeyId: string;
+  targetEncryptionPublicKeyJwk: JsonWebKey;
+  action: RemoteCommandAction;
+  payload: RemoteJsonValue;
+}
+
+export interface RemoteCommandOpenResultParams {
+  ownerId: string;
+  controllerDeviceId: string;
+  envelope: EncryptedRemoteControlEnvelope;
+  command: SignedRemoteCommand;
+  targetIdentity: RemoteTargetPublicIdentity;
+}
+
+export type RemoteCommandOpenStartReceiptParams = RemoteCommandOpenResultParams;
 
 // -- Screencapture --
 export interface ScreenSource {
@@ -2112,6 +2190,88 @@ export type ElizaDesktopRPCSchema = {
         params: undefined;
         response: RendererSecureStoreStatus;
       };
+      runtimeCredentialStore: {
+        params: RuntimeCredentialSetParams;
+        response: { stored: true };
+      };
+      runtimeCredentialLoad: {
+        params: RuntimeCredentialParams;
+        response: { accessToken: string | null };
+      };
+      runtimeCredentialDelete: {
+        params: RuntimeCredentialParams;
+        response: { deleted: boolean };
+      };
+      runtimeCredentialDeleteRecord: {
+        params: RuntimeCredentialParams;
+        response: { deleted: boolean };
+      };
+      sshRuntimeInspectHost: {
+        params: SshHostInspectParams;
+        response: SshHostInspection;
+      };
+      sshRuntimeStart: {
+        params: SshRuntimeStartParams;
+        response: {
+          apiBase: string;
+          localPort: number;
+          fingerprint: string;
+        };
+      };
+      sshRuntimeStop: {
+        params: RuntimeCredentialParams;
+        response: { stopped: boolean };
+      };
+      sshRuntimeStatus: {
+        params: RuntimeCredentialParams;
+        response: {
+          running: boolean;
+          localPort: number | null;
+          startedAt: number | null;
+        };
+      };
+      sshRuntimeRequest: {
+        params: SshRuntimeRequestParams;
+        response: {
+          status: number;
+          statusText: string;
+          headers: Record<string, string>;
+          body: string;
+        };
+      };
+      remoteControllerGetOrCreateIdentity: {
+        params: RemoteControllerIdentityParams;
+        response: RemoteControllerPublicIdentity;
+      };
+      remoteControllerCreateCommand: {
+        params: RemoteCommandCreateParams;
+        response: {
+          commandId: string;
+          expiresAt: number;
+          command: SignedRemoteCommand;
+          envelope: EncryptedRemoteControlEnvelope;
+        };
+      };
+      remoteControllerOpenResult: {
+        params: RemoteCommandOpenResultParams;
+        response: {
+          status: string;
+          result?: RemoteJsonValue;
+          errorCode?: string;
+        };
+      };
+      remoteControllerOpenStartReceipt: {
+        params: RemoteCommandOpenStartReceiptParams;
+        response: { startedAt: number; executionId: string };
+      };
+      remoteControllerClearSessionState: {
+        params: {
+          ownerId: string;
+          controllerDeviceId: string;
+          sessionId: string;
+        };
+        response: { cleared: boolean };
+      };
 
       // ---- GPU Window ----
       gpuWindowCreate: {
@@ -2747,6 +2907,20 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "secureStore:set": "secureStoreSet",
   "secureStore:delete": "secureStoreDelete",
   "secureStore:status": "secureStoreStatus",
+  "runtimeCredential:store": "runtimeCredentialStore",
+  "runtimeCredential:load": "runtimeCredentialLoad",
+  "runtimeCredential:delete": "runtimeCredentialDelete",
+  "runtimeCredential:deleteRecord": "runtimeCredentialDeleteRecord",
+  "sshRuntime:inspectHost": "sshRuntimeInspectHost",
+  "sshRuntime:start": "sshRuntimeStart",
+  "sshRuntime:stop": "sshRuntimeStop",
+  "sshRuntime:status": "sshRuntimeStatus",
+  "sshRuntime:request": "sshRuntimeRequest",
+  "remoteController:getOrCreateIdentity": "remoteControllerGetOrCreateIdentity",
+  "remoteController:createCommand": "remoteControllerCreateCommand",
+  "remoteController:openResult": "remoteControllerOpenResult",
+  "remoteController:openStartReceipt": "remoteControllerOpenStartReceipt",
+  "remoteController:clearSessionState": "remoteControllerClearSessionState",
 
   // GPU Window
   "gpuWindow:create": "gpuWindowCreate",
