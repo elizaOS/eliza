@@ -182,6 +182,25 @@ describe("ROOM action — timed mute persistence (durationMinutes)", () => {
 		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
 	});
 
+	it("rejects an out-of-range duration before mutating room state", async () => {
+		const { runtime, states, rooms } = makeRuntime({
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("mute this channel for the maximum duration"),
+			state,
+			opts({ action: "mute", durationMinutes: Number.MAX_SAFE_INTEGER }),
+		);
+		expect(result.success).toBe(false);
+		expect((result.data as Record<string, unknown>).error).toBe(
+			"ROOM_DURATION_INVALID",
+		);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
+		expect(rooms.get(ROOM_ID)?.metadata?.agentMuteUntilIso).toBeUndefined();
+	});
+
 	it("ignores durationMinutes for operations where the field is not applicable", async () => {
 		const { runtime, states } = makeRuntime({
 			states: { [`${ROOM_ID}:${AGENT_ID}`]: "MUTED" },

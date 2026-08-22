@@ -204,7 +204,12 @@ function normalizePlatform(value: unknown): string | undefined {
 function normalizeDurationMinutes(value: unknown): number | undefined | null {
 	if (value === undefined) return undefined;
 	const parsed = typeof value === "string" ? Number(value) : value;
-	if (typeof parsed !== "number" || !Number.isInteger(parsed) || parsed <= 0) {
+	if (
+		typeof parsed !== "number" ||
+		!Number.isSafeInteger(parsed) ||
+		parsed <= 0 ||
+		Number.isNaN(new Date(Date.now() + parsed * 60_000).getTime())
+	) {
 		return null;
 	}
 	return parsed;
@@ -450,6 +455,13 @@ async function applyOp(args: {
 	durationMinutes?: number;
 }): Promise<ActionResult> {
 	try {
+		// Compute the expiry before mutating participant state. Validation normally
+		// guarantees this conversion, but keeping the fallible Date boundary first
+		// prevents a near-limit value from leaving an unintended untimed mute.
+		const untilIso =
+			args.op === "mute"
+				? muteUntilIsoFromDuration(args.durationMinutes)
+				: undefined;
 		await args.runtime.updateParticipantUserState(
 			args.roomId,
 			args.runtime.agentId,
@@ -459,9 +471,7 @@ async function applyOp(args: {
 		// (services/message/mute-state.ts) can auto-unmute at the ISO time.
 		// An untimed mute clears any stale expiry from a previous timed one;
 		// unmute always clears it.
-		let untilIso: string | undefined;
 		if (args.op === "mute") {
-			untilIso = muteUntilIsoFromDuration(args.durationMinutes);
 			await setRoomMuteUntil(args.runtime, args.roomId, untilIso ?? null);
 		} else if (args.op === "unmute") {
 			await setRoomMuteUntil(args.runtime, args.roomId, null);
