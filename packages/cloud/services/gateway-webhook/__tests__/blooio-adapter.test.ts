@@ -4,7 +4,10 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import crypto from "node:crypto";
-import { blooioAdapter } from "../src/adapters/blooio";
+import {
+  BlooioConfigurationError,
+  blooioAdapter,
+} from "../src/adapters/blooio";
 import type { ChatEvent, WebhookConfig } from "../src/adapters/types";
 
 const SECRET = "whsec_test_secret";
@@ -588,8 +591,9 @@ describe("blooio sendReply", () => {
       return Response.json({ message_id: "unexpected" });
     }) as typeof fetch;
 
-    await expect(
-      blooioAdapter.sendReply(
+    let thrown: unknown;
+    try {
+      await blooioAdapter.sendReply(
         makeConfig({ fromNumber: undefined }),
         {
           ...chatEvent,
@@ -597,8 +601,19 @@ describe("blooio sendReply", () => {
           chatType: "group",
         },
         "hello legacy group",
-      ),
-    ).rejects.toThrow("Missing fromNumber for Blooio legacy group reply");
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(BlooioConfigurationError);
+    expect(thrown).toMatchObject({
+      code: "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING",
+      context: {
+        setting: "fromNumber",
+        chatId: "grp_legacy_123",
+      },
+    });
     expect(called).toBe(false);
   });
 

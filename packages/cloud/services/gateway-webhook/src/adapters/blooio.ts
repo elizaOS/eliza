@@ -21,6 +21,20 @@ export class BlooioApiResponseError extends Error {
   }
 }
 
+export class BlooioConfigurationError extends Error {
+  readonly code = "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING";
+  readonly context: Readonly<{ setting: string; chatId: string }>;
+
+  constructor(chatId: string) {
+    super("Missing fromNumber for Blooio legacy group reply");
+    this.name = "BlooioConfigurationError";
+    this.context = {
+      setting: "fromNumber",
+      chatId,
+    };
+  }
+}
+
 const BlooioAttachmentSchema = z.union([
   z.string(),
   z.object({ url: z.string().url(), name: z.string().nullish() }).passthrough(),
@@ -183,7 +197,7 @@ async function sendBlooioMessage(
   const isLegacyV2Group = /^grp_/i.test(event.chatId);
   if (isLegacyV2Group) {
     if (!config.fromNumber) {
-      throw new Error("Missing fromNumber for Blooio legacy group reply");
+      throw new BlooioConfigurationError(event.chatId);
     }
   }
   const url = isV4Chat
