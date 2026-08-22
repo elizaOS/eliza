@@ -1068,11 +1068,13 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
         );
       }
     }
-    task.contextRequest?.includeEntities?.entityIds.forEach((id, entityIndex) =>
-      requireEntity(
-        id,
-        `manifest.schedules[${index}].task.contextRequest.includeEntities.entityIds[${entityIndex}]`,
-      ),
+    task.contextRequest?.includeEntities?.entityIds.forEach(
+      (id, entityIndex) => {
+        requireEntity(
+          id,
+          `manifest.schedules[${index}].task.contextRequest.includeEntities.entityIds[${entityIndex}]`,
+        );
+      },
     );
     task.contextRequest?.includeRelationships?.relationshipIds?.forEach(
       (id, relationshipIndex) => {
@@ -1085,11 +1087,12 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
       },
     );
     task.contextRequest?.includeRelationships?.forEntityIds?.forEach(
-      (id, entityIndex) =>
+      (id, entityIndex) => {
         requireEntity(
           id,
           `manifest.schedules[${index}].task.contextRequest.includeRelationships.forEntityIds[${entityIndex}]`,
-        ),
+        );
+      },
     );
     earlierScheduleIds.add(schedule.id);
   });
