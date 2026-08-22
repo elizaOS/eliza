@@ -611,7 +611,7 @@ describe("RemoteCodingCapabilityRouterService", () => {
 
   it("rejects retired OpenCode runners", () => {
     expect(() =>
-      resolveE2BRemoteRunnerConfig(
+      resolveRemoteCodingRunnerConfig(
         makeRuntime({
           ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/remote-runner",
           ELIZA_SANDBOX_AGENT_RUNNERS: "codex,opencode",
