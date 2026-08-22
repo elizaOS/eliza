@@ -22,10 +22,7 @@ import {
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import { TWEET_MAX_LENGTH } from "./constants";
-import {
-  countTwitterWeightedLength,
-  truncateToTwitterWeightedLength,
-} from "./tweet-length";
+import { countTwitterWeightedLength } from "./tweet-length";
 import type { ActionResponse, MediaData } from "./types";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
 
@@ -230,12 +227,14 @@ export async function sendTweet(
   tweetToReplyTo?: string,
   mediaIds?: string[],
 ): Promise<SentTweet> {
+  const weightedLength = countTwitterWeightedLength(text);
+  if (weightedLength > TWEET_MAX_LENGTH) {
+    throw new RangeError(
+      `X posts are limited to ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
+    );
+  }
   return client.withAuthenticatedSession(async (session) => {
     const { profile } = session;
-    const isNoteTweet = countTwitterWeightedLength(text) > TWEET_MAX_LENGTH;
-    const postText = isNoteTweet
-      ? truncateToTwitterWeightedLength(text, TWEET_MAX_LENGTH)
-      : text;
 
     if (!client.isAuthenticatedSessionCurrent(session)) {
       throw new ElizaError("X credentials rotated before post egress", {
@@ -243,7 +242,7 @@ export async function sendTweet(
       });
     }
     const result: SendTweetResponse = await client.twitterClient.sendTweet(
-      postText,
+      text,
       tweetToReplyTo,
       mediaData,
       false,
