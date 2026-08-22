@@ -226,7 +226,11 @@ export class MemoryService extends Service {
 		}
 
 		const extractionInterval = runtime.getSetting("MEMORY_EXTRACTION_INTERVAL");
-		if (extractionInterval) {
+		if (
+			extractionInterval !== undefined &&
+			extractionInterval !== null &&
+			extractionInterval !== ""
+		) {
 			// This value is a DIVISOR in shouldRunExtraction:
 			//   Math.floor(currentMessageCount / interval) * interval
 			// `Number.parseInt` truncates, so "0.5" became 0 and the checkpoint
@@ -245,7 +249,6 @@ export class MemoryService extends Service {
 				);
 			}
 		}
-
 
 		const configuredModelType = resolveConfiguredTextGenerationModelType(
 			runtime.getSetting("MEMORY_SUMMARY_MODEL_TYPE") ??

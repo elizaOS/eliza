@@ -1,5 +1,6 @@
 /** Verifies extraction checkpoints distinguish an absent value from cache I/O failure. */
 import { describe, expect, it, vi } from "vitest";
+import { logger } from "../../../logger.ts";
 import { createMockRuntime } from "../../../testing/mock-runtime.ts";
 import type { UUID } from "../../../types/primitives.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
@@ -58,7 +59,7 @@ describe("MemoryService extraction interval configuration", () => {
 	const DEFAULT_INTERVAL = 10;
 
 	/** Initialize a service with MEMORY_EXTRACTION_INTERVAL set to `raw`. */
-	async function intervalFor(raw: string): Promise<number> {
+	async function intervalFor(raw: string | number | boolean): Promise<number> {
 		const runtime = createMockRuntime({
 			getCache: vi.fn<IAgentRuntime["getCache"]>(async () => 0),
 			setCache: vi.fn(async () => true),
@@ -102,6 +103,16 @@ describe("MemoryService extraction interval configuration", () => {
 		await expect(intervalFor("9007199254740993")).resolves.toBe(
 			DEFAULT_INTERVAL,
 		);
+	});
+
+	it("warns and keeps the default for a defined numeric zero", async () => {
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+
+		await expect(intervalFor(0)).resolves.toBe(DEFAULT_INTERVAL);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining('MEMORY_EXTRACTION_INTERVAL="0"'),
+		);
+		warn.mockRestore();
 	});
 
 	it("still honours a clean interval, including a signed one", async () => {
