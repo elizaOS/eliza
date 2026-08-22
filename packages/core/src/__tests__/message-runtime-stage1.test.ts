@@ -3816,7 +3816,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		).messages?.[1]?.content;
 		expect(userContent).toContain(priorAttack);
 		expect(userContent).toContain(providerMarker);
-		expect(userContent?.endsWith(currentMessage)).toBe(true);
+		expect(
+			userContent?.endsWith(
+				JSON.stringify({
+					text: currentMessage,
+					source: "test",
+				}),
+			),
+		).toBe(true);
 	});
 
 	it("renders CURRENT_TIME in Stage 1 for every turn, regardless of phrasing", async () => {
@@ -4577,7 +4584,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"prior_message:user:\n1gig: i was asking about shedick",
 		);
 		expect(userContent).toContain(
-			"message:user:\nwhats the compatibility between her and botdick",
+			'message:user:\n{"text":"whats the compatibility between her and botdick","source":"test"}',
 		);
 	});
 
