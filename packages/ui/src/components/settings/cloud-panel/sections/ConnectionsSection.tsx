@@ -908,7 +908,9 @@ export function ConnectionsSection() {
         onClose={() => setMcpAddOpen(false)}
         onSuccess={() => {
           setMcpAddOpen(false);
-          void refetchMcps();
+          void refetchMcps().catch(() => {
+            // error-policy:J5 the same rejection is represented by the hook's visible error state.
+          });
         }}
       />
       <McpRemoveDialog

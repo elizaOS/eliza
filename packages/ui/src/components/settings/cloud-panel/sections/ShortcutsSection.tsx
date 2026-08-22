@@ -17,6 +17,11 @@ import { invokeDesktopBridgeRequest } from "../../../../bridge";
 import { cn } from "../../../../lib/utils";
 import { isDesktopPlatform } from "../../../../platform";
 import {
+  DEFAULT_PUSH_TO_TALK_ACCELERATOR,
+  getPushToTalkAccelerator,
+  setPushToTalkAccelerator,
+} from "../../../../state/push-to-talk-hotkey";
+import {
   NuphyRow,
   NuphySelectRow,
   NuphySwitchRow,
@@ -109,6 +114,19 @@ function comboToAccelerator(combo: Combo): string {
   return out.join("+");
 }
 
+/** Convert an Electrobun accelerator into the recorder's canonical combo. */
+function acceleratorToCombo(accelerator: string): Combo {
+  return accelerator
+    .split("+")
+    .map((part) => {
+      const token = part.toLowerCase();
+      if (token === "commandorcontrol") return "cmd";
+      if (token === "control") return "ctrl";
+      return token;
+    })
+    .join("+");
+}
+
 /** Replace a shortcut through the desktop bridge's transactional registration boundary. */
 async function syncShortcut(id: string, combo: Combo): Promise<void> {
   if (!isDesktopPlatform()) return;
@@ -132,8 +150,8 @@ const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   {
     id: "push-to-talk",
     label: "Push to talk",
-    defaultCombo: "cmd+r",
-    combo: "cmd+r",
+    defaultCombo: acceleratorToCombo(DEFAULT_PUSH_TO_TALK_ACCELERATOR),
+    combo: acceleratorToCombo(DEFAULT_PUSH_TO_TALK_ACCELERATOR),
   },
 ];
 
@@ -158,8 +176,16 @@ const THRESHOLD_OPTIONS = [
 ];
 
 export function ShortcutsSection() {
-  const [shortcuts, setShortcuts] =
-    React.useState<ShortcutBinding[]>(DEFAULT_SHORTCUTS);
+  const [shortcuts, setShortcuts] = React.useState<ShortcutBinding[]>(() =>
+    DEFAULT_SHORTCUTS.map((shortcut) =>
+      shortcut.id === "push-to-talk"
+        ? {
+            ...shortcut,
+            combo: acceleratorToCombo(getPushToTalkAccelerator()),
+          }
+        : shortcut,
+    ),
+  );
   const [recordingId, setRecordingId] = React.useState<string | null>(null);
   // A captured combo awaiting conflict resolution before it is committed.
   const [pending, setPending] = React.useState<{
@@ -205,22 +231,50 @@ export function ShortcutsSection() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [recordingId]);
 
-  const commitCombo = React.useCallback(async (id: string, combo: Combo) => {
-    setShortcutMutationPending(true);
-    try {
-      await syncShortcut(id, combo);
-      setShortcuts((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, combo } : s)),
-      );
-      setPending(null);
-      setShortcutError(null);
-    } catch (error) {
-      setPending(null);
-      setShortcutError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setShortcutMutationPending(false);
-    }
-  }, []);
+  const commitCombo = React.useCallback(
+    async (id: string, combo: Combo) => {
+      setShortcutMutationPending(true);
+      const previousCombo = shortcuts.find(
+        (shortcut) => shortcut.id === id,
+      )?.combo;
+      try {
+        await syncShortcut(id, combo);
+        if (id === "push-to-talk") {
+          try {
+            setPushToTalkAccelerator(comboToAccelerator(combo));
+          } catch (persistenceError) {
+            if (previousCombo) {
+              try {
+                await syncShortcut(id, previousCombo);
+              } catch (rollbackError) {
+                throw new Error(
+                  `The shortcut changed but could not be saved or restored. Restart Eliza to restore the saved shortcut. ${String(rollbackError)}`,
+                  { cause: persistenceError },
+                );
+              }
+            }
+            throw new Error(
+              "The shortcut could not be saved, so the previous shortcut was restored.",
+              { cause: persistenceError },
+            );
+          }
+        }
+        setShortcuts((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, combo } : s)),
+        );
+        setPending(null);
+        setShortcutError(null);
+      } catch (error) {
+        setPending(null);
+        setShortcutError(
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        setShortcutMutationPending(false);
+      }
+    },
+    [shortcuts],
+  );
 
   const resetCombo = React.useCallback(
     (id: string) => {
