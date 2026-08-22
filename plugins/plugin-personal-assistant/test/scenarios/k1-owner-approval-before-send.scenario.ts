@@ -19,7 +19,7 @@ export default scenario({
       name: "stage-supportive-draft",
       room: "main",
       actionName: "MESSAGE",
-      text: "Draft a supportive Signal reply to Zane and hold it for my approval.",
+      text: "Draft a supportive WhatsApp reply to Zane and hold it for my approval.",
       options: {
         action: "draft_reply",
         recipient: "Zane Turner",

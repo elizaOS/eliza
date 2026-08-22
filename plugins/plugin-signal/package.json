@@ -25,12 +25,10 @@
     }
   },
   "files": [
-    "dist",
-    "auto-enable.ts"
+    "dist"
   ],
   "elizaos": {
     "plugin": {
-      "autoEnableModule": "./auto-enable.ts",
       "capabilities": []
     }
   },

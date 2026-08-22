@@ -3052,6 +3052,24 @@
         "react-dom": "^19.0.0",
       },
     },
+    "plugins/plugin-signal": {
+      "name": "@elizaos/plugin-signal",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "bun-types": "^1.2.25",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-slack": {
       "name": "@elizaos/plugin-slack",
       "version": "2.0.3-beta.7",
@@ -4262,6 +4280,8 @@
     "@elizaos/plugin-reminders": ["@elizaos/plugin-reminders@workspace:plugins/plugin-reminders"],
 
     "@elizaos/plugin-scheduling": ["@elizaos/plugin-scheduling@workspace:plugins/plugin-scheduling"],
+
+    "@elizaos/plugin-signal": ["@elizaos/plugin-signal@workspace:plugins/plugin-signal"],
 
     "@elizaos/plugin-slack": ["@elizaos/plugin-slack@workspace:plugins/plugin-slack"],
 

@@ -840,7 +840,11 @@ async function handleBuiltinOptionalRoutes(
     if (method === "POST") {
       await readBody(req).catch(() => undefined);
     }
-    json(res, absentPluginStub.buildBody(req));
+    json(
+      res,
+      absentPluginStub.buildBody(req),
+      absentPluginStub.statusCode ?? 200,
+    );
     return true;
   }
 

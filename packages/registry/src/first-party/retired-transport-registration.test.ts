@@ -73,10 +73,12 @@ describe("retired transport registration", () => {
     ).toBe(true);
   });
 
-  it("does not ship, advertise, or activate the retired Signal transport", () => {
-    expect(existsSync(path.join(repositoryRoot, "plugins/plugin-signal"))).toBe(
-      false,
-    );
+  it("does not advertise or activate the retired Signal transport", () => {
+    expect(
+      existsSync(
+        path.join(repositoryRoot, "plugins/plugin-signal/src/index.ts"),
+      ),
+    ).toBe(true);
     expect(channelPluginMap).not.toHaveProperty("signal");
     expect(shortIdPluginMap).not.toHaveProperty("signal");
     expect(
@@ -120,6 +122,26 @@ describe("retired transport registration", () => {
         /@elizaos\/plugin-signal|SIGNAL_HTTP_URL|SIGNAL_CLI_PATH|signal-cli|signald/i,
       );
     }
+
+    const tombstoneSource = readFileSync(
+      path.join(repositoryRoot, "plugins/plugin-signal/src/index.ts"),
+      "utf8",
+    );
+    expect(tombstoneSource).toContain("SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE");
+    expect(tombstoneSource).not.toMatch(
+      /node:child_process|\bspawn\s*\(|\bfetch\s*\(/,
+    );
+
+    const statusTombstone = readFileSync(
+      path.join(
+        repositoryRoot,
+        "packages/agent/src/api/absent-plugin-route-stubs.ts",
+      ),
+      "utf8",
+    );
+    expect(statusTombstone).toMatch(
+      /capabilityId:\s*["']signal-unsupported["'][\s\S]+?statusCode:\s*501[\s\S]+?status:\s*["']unsupported["'][\s\S]+?SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE/,
+    );
 
     const inactiveAuthorities: Array<[string, RegExp]> = [
       [
@@ -235,6 +257,10 @@ describe("retired transport registration", () => {
         "packages/ui/src/cloud/connectors/CloudConnectorsUpsell.tsx",
         /\bSignal\b/,
       ],
+      [
+        "packages/scenario-runner/test/mocks/scripts/lifeops-readonly-connector-snapshot.ts",
+        /lifeops\/connectors\/signal|signal\.status/i,
+      ],
     ];
     for (const [authority, forbidden] of inactiveAuthorities) {
       expect(
@@ -243,7 +269,6 @@ describe("retired transport registration", () => {
     }
 
     for (const removedSurface of [
-      "plugins/plugin-signal",
       "plugins/plugin-signal/src/local-client.ts",
       "plugins/plugin-signal/src/pairing-service.ts",
       "plugins/plugin-signal/src/rpc.ts",

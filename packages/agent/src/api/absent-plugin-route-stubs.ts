@@ -45,6 +45,8 @@ export interface AbsentPluginRouteStub {
   readonly method: "GET" | "POST";
   /** Exact pathname (no query string) this stub answers. */
   readonly path: string;
+  /** HTTP status for the compatibility boundary. Defaults to 200. */
+  readonly statusCode?: number;
   /** Pure builder for the "unavailable" snapshot. No I/O, no plugin loading. */
   readonly buildBody: (req: http.IncomingMessage) => AbsentPluginRouteStubBody;
 }
@@ -108,6 +110,25 @@ export const ABSENT_PLUGIN_ROUTE_STUBS: readonly AbsentPluginRouteStub[] = [
       sendOnly: false,
       reason: "lifeops_route_unavailable",
       permissionAction: null,
+    }),
+  },
+  {
+    capabilityId: "signal-unsupported",
+    method: "GET",
+    path: "/api/signal/status",
+    statusCode: 501,
+    buildBody: (req) => ({
+      accountId: queryParam(req, "accountId", "default") || "default",
+      status: "unsupported",
+      available: false,
+      supported: false,
+      authExists: false,
+      serviceConnected: false,
+      qrDataUrl: null,
+      phoneNumber: null,
+      code: "SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE",
+      error:
+        "Signal is unsupported because no bundled in-process transport is available.",
     }),
   },
   {
