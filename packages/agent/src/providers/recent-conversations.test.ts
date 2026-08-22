@@ -84,6 +84,10 @@ beforeEach(() => {
 });
 
 describe("recentConversationsProvider", () => {
+  it("is always present during response routing so cross-world recall can answer directly", () => {
+    expect(recentConversationsProvider.alwaysInResponseState).toBe(true);
+  });
+
   it("omits empty age labels and their parentheses from provider output", async () => {
     const runtime = makeRuntime();
 
