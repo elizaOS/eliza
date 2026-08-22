@@ -1307,7 +1307,6 @@ export function ensureProvisionedCloudContainerConfig(
     const largeModel = readEffectiveEnvValue(config, "OPENAI_LARGE_MODEL", env);
     config.deploymentTarget = {
       runtime: "local",
-      provider: directProvider,
     };
     config.serviceRouting = {
       ...(existingRouting ?? {}),

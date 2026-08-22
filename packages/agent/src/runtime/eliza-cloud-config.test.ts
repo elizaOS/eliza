@@ -377,7 +377,6 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(ensureProvisionedCloudContainerConfig(config)).toBe(true);
     expect(config.deploymentTarget).toEqual({
       runtime: "local",
-      provider: "cerebras",
     });
     expect(config.serviceRouting?.llmText).toEqual({
       backend: "cerebras",
@@ -398,7 +397,6 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
     expect(config.deploymentTarget).toEqual({
       runtime: "local",
-      provider: "cerebras",
     });
   });
 
