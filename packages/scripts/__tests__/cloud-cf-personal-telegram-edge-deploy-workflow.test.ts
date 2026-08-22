@@ -562,7 +562,7 @@ describe("Personal Shared Telegram edge deploy", () => {
     expect(apply.env?.EXPECTED_GATEWAY_DEPLOYMENT_ID).toContain(
       "steps.gateway_proof.outputs.deployment_id",
     );
-    expect(apply.run).toContain("wrangler@4.100.0 secret put");
+    expect(apply.run).toContain("wrangler@4.116.0 secret put");
     expect(apply.run).toContain(
       '"$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT"',
     );
