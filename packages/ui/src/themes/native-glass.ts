@@ -3,7 +3,7 @@
  * ChatOverlay) anchor the same iOS native-glass tint; keeping the literal here
  * — the one policy-sanctioned color-token location — means the surfaces cannot
  * drift apart and component code stays free of raw color literals (the
- * hardcoded-color ratchet enforces the latter).
+ * hardcoded-color guard enforces the latter).
  */
 
 /** Dark chrome tint (RGBA hex) for native liquid-glass overlay anchors. */

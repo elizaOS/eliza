@@ -14,16 +14,12 @@ consolidation follow-up (#10201).
 ```bash
 bun run audit:type-duplication                  # writes the report (below)
 bun run audit:type-duplication:self-test        # prove the clustering still fires
-bun run audit:type-duplication:check            # advisory drift vs the baseline
-bun run audit:type-duplication:update-baseline  # re-baseline after a triaged cleanup
 ```
 
 Outputs:
 
 - `reports/type-duplication.json` — full machine output (gitignored).
 - `test-results/evidence/10195-type-duplication.md` — committed summary.
-- `packages/scripts/type-duplication-audit.baseline.json` — per-class counts
-  for advisory drift detection (`--check`).
 
 ## Candidate classes
 
@@ -117,14 +113,6 @@ so re-runs stay low-noise. Every entry needs a written `reason`.
 | `pairKey` | one subset/near-duplicate pair (the exact `a.file#a.name <=> b.file#b.name` key from `reports/type-duplication.json`) |
 | `memberKey` | one literal-set cluster (the `a\|b\|c` value key from the report) |
 | `schemaPairKey` | one runtime-schema/type match (`schema:<file>#<schema> <=> type:<file>#<type>`) |
-
-## Advisory drift baseline
-
-`type-duplication-audit.baseline.json` records the per-class candidate counts
-after the first human-reviewed cleanup. `--check` prints the drift vs that
-baseline and **exits 0** (advisory) so new local types are never blocked; only
-`--check --strict` turns growth into a non-zero exit. Re-baseline with
-`--update-baseline` once a new batch of duplicates has been triaged.
 
 ## Decision log (#10201)
 

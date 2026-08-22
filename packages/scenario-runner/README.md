@@ -196,7 +196,7 @@ task was killed.
 
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
-`strict-fixtures` or `model-free`. The migration ratchet currently records 48
+`strict-fixtures` or `model-free`. The migration guard currently records 48
 strict or explicitly model-free and 72 legacy `pr-deterministic` scenario
 sources across the repository. The declared rows contain only direct action/API work or
 wait/seed/final checks and are validated again by the real executor before each
