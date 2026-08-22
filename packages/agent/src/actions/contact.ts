@@ -96,8 +96,6 @@ interface ContactParams {
   attributes?: Record<string, unknown>;
   // update — update_mode for list/map updates (replace | add_to | remove_from)
   update_mode?: string;
-  /** @deprecated dispatcher-only alias for update_mode; not part of the schema. */
-  operation?: string;
   // update — UPDATE_ENTITY (component) semantics
   source?: string;
   data?: Record<string, unknown>;
@@ -1026,8 +1024,7 @@ async function handleUpdateContactInfo(
   }
 
   const contact = contacts[0];
-  const operation =
-    readString(params.update_mode) ?? readString(params.operation) ?? "replace";
+  const operation = readString(params.update_mode) ?? "replace";
 
   const updateData: Record<string, unknown> = {};
 
