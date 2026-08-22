@@ -1,6 +1,6 @@
 /**
- * Stage-1 prompt rendering: every channel and addressing state receives the
- * complete canonical instruction block, context catalog, and field docs.
+ * Stage-1 prompt rendering and structural addressing use complete canonical
+ * instructions while keeping generic name tokens ambient.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -14,7 +14,10 @@ import {
 } from "../runtime/builtin-field-evaluators";
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
+import {
+	runV5MessageRuntimeStage1,
+	textContainsAgentName,
+} from "../services/message";
 import { isUnaddressedTextGroupTurn } from "../services/message/stage1-prompt-tier";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
@@ -296,17 +299,29 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(systemContent).toContain("Sticky Notes -> NOTES");
 	});
 
-	it("a single TOKEN of a multi-word agent name counts as addressed (live 2026-08-22)", async () => {
-		// "nubilio whats the setting …" was classified ambient because only the
-		// full phrase "remilio nubilio" matched; any distinctive name token
-		// (>= 4 chars) must structurally address the agent.
-		const { systemContent } = await renderedSystemPrompt(
-			makeMessage({
-				channelType: String(ChannelType.GROUP),
-				text: "Agent whats the setting we use to make u always respond",
-			}),
+	it.each([
+		"agent whats the setting we use to make u always respond",
+		"test the build before release",
+	])("keeps generic multi-word-name tokens ambient: %s", (text) => {
+		const message = makeMessage({
+			channelType: String(ChannelType.GROUP),
+			text,
+		});
+		const addressed = textContainsAgentName(text, ["Test Agent"]);
+		expect(addressed).toBe(false);
+		expect(isUnaddressedTextGroupTurn(message, addressed)).toBe(true);
+	});
+
+	it("preserves full names, explicit aliases, and distinctive name tokens", () => {
+		expect(textContainsAgentName("Test Agent check this", ["Test Agent"])).toBe(
+			true,
 		);
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(
+			textContainsAgentName("@test_agent check this", ["test_agent"]),
+		).toBe(true);
+		expect(
+			textContainsAgentName("nubilio whats the setting", ["remilio nubilio"]),
+		).toBe(true);
 	});
 
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
