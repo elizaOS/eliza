@@ -14,10 +14,7 @@ import { ElizaError } from "@elizaos/core";
 
 const MAX_TIMER_MS = 2_147_483_647;
 
-function cancelBodyDetached(
-  body: ReadableStream<Uint8Array> | null,
-  reason: unknown,
-): void {
+function cancelBodyDetached(body: ReadableStream<Uint8Array> | null, reason: unknown): void {
   if (!body) return;
   try {
     // error-policy:J6 The request has already failed; cancellation is detached
