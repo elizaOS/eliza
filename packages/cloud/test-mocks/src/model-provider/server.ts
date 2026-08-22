@@ -9,9 +9,41 @@ import type {
 } from "./types";
 
 const JSON_HEADERS = { "content-type": "application/json" };
+export const MODEL_PROVIDER_MAX_REQUEST_BYTES = 1024 * 1024;
+const MODEL_PROVIDER_MAX_JSON_DEPTH = 64;
+const MODEL_PROVIDER_MAX_JSON_NODES = 100_000;
+
+class InvalidProviderRequest extends Error {
+  constructor(
+    readonly status: 400 | 413,
+    readonly code:
+      | "INVALID_JSON"
+      | "REQUEST_TOO_LARGE"
+      | "JSON_TOO_COMPLEX"
+      | "UNSUPPORTED_ENCODING"
+      | "UNSUPPORTED_MEDIA_TYPE",
+  ) {
+    super(code);
+  }
+}
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+function boundedObservationBody(value: unknown): unknown {
+  try {
+    assertJsonComplexity(value);
+    if (
+      new TextEncoder().encode(JSON.stringify(value)).byteLength >
+      MODEL_PROVIDER_MAX_REQUEST_BYTES
+    ) {
+      throw new InvalidProviderRequest(413, "REQUEST_TOO_LARGE");
+    }
+    return clone(value);
+  } catch {
+    return { omitted: "observation body exceeded protocol bounds" };
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -24,7 +56,10 @@ function redactHeaders(headers: Headers): Record<string, string> {
   const sanitized: Record<string, string> = {};
   headers.forEach((value, key) => {
     sanitized[key] =
-      key === "authorization" || key === "x-goog-api-key"
+      key === "authorization" ||
+      key === "x-goog-api-key" ||
+      key === "x-api-key" ||
+      key === "api-key"
         ? "<redacted>"
         : value;
   });
@@ -33,7 +68,9 @@ function redactHeaders(headers: Headers): Record<string, string> {
 
 function sanitizedPath(url: URL): string {
   const copy = new URL(url);
-  if (copy.searchParams.has("key")) copy.searchParams.set("key", "<redacted>");
+  for (const key of ["key", "api_key", "access_token", "token"]) {
+    if (copy.searchParams.has(key)) copy.searchParams.set(key, "<redacted>");
+  }
   return `${copy.pathname}${copy.search}`;
 }
 
@@ -56,12 +93,82 @@ function unauthorized(provider: string): Response {
 }
 
 async function requestBody(request: Request): Promise<unknown> {
-  const text = await request.text();
-  if (!text) return null;
+  if (request.method === "GET" || request.method === "HEAD") return null;
+  const contentEncoding = request.headers.get("content-encoding");
+  if (contentEncoding !== null && contentEncoding.toLowerCase() !== "identity")
+    throw new InvalidProviderRequest(400, "UNSUPPORTED_ENCODING");
+  const contentType = request.headers.get("content-type");
+  if (!contentType || !/^application\/json(?:\s*;|$)/i.test(contentType))
+    throw new InvalidProviderRequest(400, "UNSUPPORTED_MEDIA_TYPE");
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null) {
+    const length = Number(declaredLength);
+    if (!Number.isSafeInteger(length) || length < 0)
+      throw new InvalidProviderRequest(400, "INVALID_JSON");
+    if (length > MODEL_PROVIDER_MAX_REQUEST_BYTES)
+      throw new InvalidProviderRequest(413, "REQUEST_TOO_LARGE");
+  }
+
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  const reader = request.body?.getReader();
+  if (reader) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MODEL_PROVIDER_MAX_REQUEST_BYTES) {
+        await reader.cancel("model-provider request body limit exceeded");
+        throw new InvalidProviderRequest(413, "REQUEST_TOO_LARGE");
+      }
+      chunks.push(value);
+    }
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let text: string;
   try {
-    return JSON.parse(text) as unknown;
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    return { malformedJson: true, raw: text };
+    throw new InvalidProviderRequest(400, "INVALID_JSON");
+  }
+  if (!text) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new InvalidProviderRequest(400, "INVALID_JSON");
+  }
+  assertJsonComplexity(parsed);
+  return parsed;
+}
+
+function assertJsonComplexity(value: unknown): void {
+  const pending: Array<{ value: unknown; depth: number }> = [
+    { value, depth: 0 },
+  ];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    nodes += 1;
+    if (
+      nodes > MODEL_PROVIDER_MAX_JSON_NODES ||
+      current.depth > MODEL_PROVIDER_MAX_JSON_DEPTH
+    ) {
+      throw new InvalidProviderRequest(413, "JSON_TOO_COMPLEX");
+    }
+    if (Array.isArray(current.value)) {
+      for (const child of current.value)
+        pending.push({ value: child, depth: current.depth + 1 });
+    } else if (current.value !== null && typeof current.value === "object") {
+      for (const child of Object.values(current.value))
+        pending.push({ value: child, depth: current.depth + 1 });
+    }
   }
 }
 
@@ -158,7 +265,7 @@ export class ModelProviderMockStore {
     const observation = {
       sequence: ++this.sequence,
       generation,
-      ...clone(args),
+      ...clone({ ...args, body: boundedObservationBody(args.body) }),
     };
     if (this.isCurrent(generation)) this.observations.push(observation);
     else this.staleObservations.push(observation);
@@ -245,12 +352,31 @@ export function buildModelProviderMockFetch(store: ModelProviderMockStore) {
     const admittedGeneration = store.generation;
     const admittedSeed = store.seed;
     const operation = classify(url.pathname);
-    const body = await requestBody(request);
     if (!operation)
       return json(
         { error: { message: "unknown synthetic provider route" } },
         404,
       );
+    let body: unknown;
+    try {
+      body = await requestBody(request);
+    } catch (error) {
+      if (!(error instanceof InvalidProviderRequest)) throw error;
+      const response = json(
+        { error: { code: error.code, message: "invalid provider request" } },
+        error.status,
+        { connection: "close" },
+      );
+      store.record(admittedGeneration, {
+        operation,
+        method: request.method,
+        path: sanitizedPath(url),
+        headers: redactHeaders(request.headers),
+        body: { invalidRequest: error.code },
+        status: response.status,
+      });
+      return response;
+    }
 
     if (!store.isCurrent(admittedGeneration)) {
       const stale = json(

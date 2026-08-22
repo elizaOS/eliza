@@ -9,7 +9,11 @@ import { handleTextSmall as handleZaiText } from "../../../../plugins/plugin-zai
 import { handleTextEmbedding as handleOllamaEmbedding } from "../../../../plugins/plugin-zerollama/models/embedding";
 import { handleTextSmall as handleOllamaText } from "../../../../plugins/plugin-zerollama/models/text";
 import { clearOllamaHostFlavorCache } from "../../../../plugins/plugin-zerollama/utils/host-flavor";
-import { startModelProviderMock } from "../src/model-provider";
+import {
+  MODEL_PROVIDER_MAX_REQUEST_BYTES,
+  ModelProviderMockStore,
+  startModelProviderMock,
+} from "../src/model-provider";
 import type { ModelProviderSeed } from "../src/model-provider/types";
 
 const vector = (length: number, offset = 0) =>
@@ -122,6 +126,102 @@ describe("model-provider production protocol mocks", () => {
     const priorGeneration = readback.generation;
     expect(server.store.reset()).toBe(priorGeneration + 1);
     expect(server.store.readback().observations).toEqual([]);
+  });
+
+  it("bounds adversarial provider bodies and redacts alternate credential carriers", async () => {
+    const server = await start();
+    const oversized = await fetch(
+      `${server.zaiBaseUrl}/chat/completions?access_token=query-secret&api_key=other-secret`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": "header-secret",
+        },
+        body: JSON.stringify({
+          model: "glm-synthetic",
+          prompt: "x".repeat(MODEL_PROVIDER_MAX_REQUEST_BYTES),
+        }),
+      },
+    );
+    expect(oversized.status).toBe(413);
+    expect(await oversized.json()).toEqual({
+      error: {
+        code: "REQUEST_TOO_LARGE",
+        message: "invalid provider request",
+      },
+    });
+    const oversizedReadback = server.store.readback();
+    expect(oversizedReadback.observations[0]).toMatchObject({
+      operation: "zai-chat",
+      status: 413,
+      headers: { "x-api-key": "<redacted>" },
+      body: { invalidRequest: "REQUEST_TOO_LARGE" },
+    });
+    expect(oversizedReadback.observations[0]?.path).toBe(
+      "/zai/chat/completions?access_token=%3Credacted%3E&api_key=%3Credacted%3E",
+    );
+    expect(JSON.stringify(oversizedReadback)).not.toContain("secret");
+
+    server.store.reset();
+    let nested: unknown = "leaf";
+    for (let depth = 0; depth < 66; depth += 1) nested = { nested };
+    const tooDeep = await fetch(`${server.zaiBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(nested),
+    });
+    expect(tooDeep.status).toBe(413);
+    expect(await tooDeep.json()).toEqual({
+      error: {
+        code: "JSON_TOO_COMPLEX",
+        message: "invalid provider request",
+      },
+    });
+    expect(server.store.readback().observations[0]?.body).toEqual({
+      invalidRequest: "JSON_TOO_COMPLEX",
+    });
+
+    server.store.reset();
+    const wrongMediaType = await fetch(
+      `${server.zaiBaseUrl}/chat/completions`,
+      {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: "{}",
+      },
+    );
+    expect(wrongMediaType.status).toBe(400);
+    expect(await wrongMediaType.json()).toMatchObject({
+      error: { code: "UNSUPPORTED_MEDIA_TYPE" },
+    });
+
+    server.store.reset();
+    const compressed = await fetch(`${server.zaiBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-encoding": "gzip",
+        "content-type": "application/json; charset=utf-8",
+      },
+      body: "{}",
+    });
+    expect(compressed.status).toBe(400);
+    expect(await compressed.json()).toMatchObject({
+      error: { code: "UNSUPPORTED_ENCODING" },
+    });
+
+    const boundedStore = new ModelProviderMockStore(baseSeed);
+    boundedStore.record(boundedStore.generation, {
+      operation: "zai-chat",
+      method: "POST",
+      path: "/zai/chat/completions",
+      headers: {},
+      body: nested,
+      status: 200,
+    });
+    expect(boundedStore.readback().observations[0]?.body).toEqual({
+      omitted: "observation body exceeded protocol bounds",
+    });
   });
 
   it("fences a delayed old-generation Ollama mutation across reset", async () => {
