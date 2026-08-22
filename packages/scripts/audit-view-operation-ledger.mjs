@@ -12,6 +12,7 @@ import {
 import {
   discoverViewOperationLedger,
   renderViewOperationLedgerMarkdown,
+  validateViewOperationLedger,
 } from "./lib/view-operation-ledger.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
@@ -71,7 +72,10 @@ function main() {
     );
     return;
   }
-  const ledger = discoverViewOperationLedger({ repoRoot: REPO_ROOT });
+  const ledger = discoverViewOperationLedger({
+    repoRoot: REPO_ROOT,
+    validate: false,
+  });
   const markdown = renderViewOperationLedgerMarkdown(ledger);
   const jsonArtifact = artifactPath(options.jsonOutput, ".json", "--output");
   const markdownArtifact = artifactPath(
@@ -89,6 +93,7 @@ function main() {
       `[view-operation-ledger] ${ledger.operationCount} operation(s) across ${ledger.surfaceCount} surface(s); wrote ${jsonArtifact.relative} and ${markdownArtifact.relative}\n`,
     );
   }
+  validateViewOperationLedger(ledger);
 }
 
 if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
