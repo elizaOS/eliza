@@ -2,8 +2,8 @@
  * Steward login section for the app-hosted login page.
  *
  * Supports phone OTP when Steward advertises SMS, passkey where browser
- * WebAuthn is actually available, plus email magic-link, OAuth, wallets, and
- * the post-redirect OAuth `code` consumption + cookie sync.
+ * WebAuthn is actually available, plus email magic-link, OAuth, Telegram,
+ * wallets, and the post-redirect OAuth `code` consumption + cookie sync.
  *
  * Wallet (SIWE / SIWS) sign-in is the bounded port of the wallet UI from
  * `cloud-frontend@4056e0e868` (nubs's call, 2026-07-06): gated on the live
@@ -28,8 +28,10 @@ import type {
   StewardAuthResult,
   StewardMfaRequiredResult,
   StewardProviders,
+  StewardTelegramLoginPayload,
 } from "@stwd/sdk";
 import { StewardApiError, StewardAuth } from "@stwd/sdk";
+import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {
   lazy,
@@ -47,10 +49,19 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
-import { DiscordIcon } from "../../../../cloud-ui/components/icons";
+import {
+  DiscordIcon,
+  TelegramIcon,
+} from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "../../../../components/ui/select";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -98,6 +109,15 @@ import {
   resolveWebPasskeyCapability,
   type WebPasskeyCapability,
 } from "./passkey-capability";
+import {
+  inferPhoneCountry,
+  normalizePhoneForCountry,
+  PHONE_COUNTRY_OPTIONS,
+} from "./phone-country";
+import {
+  configuredTelegramBotUsername,
+  TelegramLoginWidget,
+} from "./telegram-login-widget";
 
 const Github = ({ className }: { className?: string }) => (
   <svg
@@ -177,7 +197,9 @@ type Provider =
   | "google"
   | "discord"
   | "github"
+  | "telegram"
   | "twitter"
+  | "apple"
   | "ethereum"
   | "solana";
 
@@ -198,6 +220,23 @@ function hasAnyWalletProvider(providers: StewardProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
 }
 
+const STEWARD_OAUTH_PROVIDERS = [
+  "google",
+  "discord",
+  "github",
+  "twitter",
+  "apple",
+] as const satisfies readonly StewardOAuthProvider[];
+
+function isStewardOAuthProviderEnabled(
+  providers: StewardProviders,
+  provider: StewardOAuthProvider,
+): boolean {
+  if (providers.oauth?.includes(provider)) return true;
+  if (provider === "apple") return false;
+  return providers[provider] === true;
+}
+
 const DEFAULT_PROVIDERS: StewardProviders = {
   passkey: true,
   email: true,
@@ -208,6 +247,7 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   discord: false,
   github: false,
   twitter: false,
+  telegram: false,
   oauth: [],
 };
 
@@ -314,11 +354,6 @@ function sanitizeOneTimeCode(value: string): string {
   return value.replace(/[^0-9]/g, "").slice(0, 6);
 }
 
-function normalizeE164Phone(value: string): string | null {
-  const normalized = value.trim().replace(/[\s().-]/g, "");
-  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
-}
-
 function challengeExpiresAtMs(challenge: StewardEmailLoginChallenge): number {
   if (typeof challenge.expiresAt === "number") {
     return challenge.expiresAt < 10_000_000_000
@@ -388,6 +423,7 @@ function normalizeSessionCachedProviders(
   const discord = record.discord;
   const github = record.github;
   const twitter = record.twitter;
+  const telegram = record.telegram;
   const oauth = record.oauth;
   if (
     typeof passkey !== "boolean" ||
@@ -400,7 +436,8 @@ function normalizeSessionCachedProviders(
     typeof twitter !== "boolean" ||
     !Array.isArray(oauth) ||
     !oauth.every((provider) => typeof provider === "string") ||
-    (record.sms !== undefined && typeof record.sms !== "boolean")
+    (record.sms !== undefined && typeof record.sms !== "boolean") ||
+    (telegram !== undefined && typeof telegram !== "boolean")
   ) {
     return null;
   }
@@ -415,6 +452,7 @@ function normalizeSessionCachedProviders(
     twitter,
     oauth,
     ...(typeof record.sms === "boolean" ? { sms: record.sms } : {}),
+    ...(typeof telegram === "boolean" ? { telegram } : {}),
   };
 }
 
@@ -467,6 +505,13 @@ export default function StewardLoginSection() {
   const navigate = useNavigate();
   const pathname = useLocation().pathname;
   const stewardApiUrl = useMemo(() => resolveBrowserStewardApiUrl(), []);
+  const [phoneCountry, setPhoneCountry] = useState<CountryCode>(() =>
+    inferPhoneCountry(),
+  );
+  const telegramBotUsername = useMemo(
+    () => configuredTelegramBotUsername(),
+    [],
+  );
 
   const auth = useMemo(() => {
     const privateSession = new Map<string, string>();
@@ -506,6 +551,9 @@ export default function StewardLoginSection() {
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
+  const [telegramIntent, setTelegramIntent] = useState(false);
+  const telegramIntentButtonRef = useRef<HTMLButtonElement>(null);
+  const telegramRegionRef = useRef<HTMLFieldSetElement>(null);
   // Wallet libs mount only on intent: the first wallet-button click renders
   // the (lazy) providers + buttons and auto-starts that wallet's flow.
   const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
@@ -567,9 +615,11 @@ export default function StewardLoginSection() {
         : null,
     );
 
-  const hasOAuthProviders = Boolean(
-    providers.google || providers.discord || providers.github,
+  const enabledOAuthProviders = STEWARD_OAUTH_PROVIDERS.filter((provider) =>
+    isStewardOAuthProviderEnabled(providers, provider),
   );
+  const hasIdentityProviders =
+    enabledOAuthProviders.length > 0 || providers.telegram === true;
   const showWallets = hasAnyWalletProvider(providers);
   const showPasskey =
     providers.passkey !== false && passkeyCapability?.usable === true;
@@ -1185,10 +1235,17 @@ export default function StewardLoginSection() {
   }
 
   async function handleSendSms() {
-    const normalizedPhone = normalizeE164Phone(phone);
+    const normalizedPhone = normalizePhoneForCountry(phone, phoneCountry);
     if (!normalizedPhone) {
+      const selectedCountry = PHONE_COUNTRY_OPTIONS.find(
+        (option) => option.code === phoneCountry,
+      );
       setError(
-        "Enter a complete phone number with country code, such as +1 415 555 2671.",
+        t("cloud.login.error.invalidPhone", {
+          defaultValue:
+            "Enter a valid phone number for {{country}}, or include + and the country code.",
+          country: selectedCountry?.name ?? phoneCountry,
+        }),
       );
       return;
     }
@@ -1326,6 +1383,40 @@ export default function StewardLoginSection() {
     window.location.href = authorizeUrl;
   }
 
+  function handleTelegramError(message: string) {
+    setError(message);
+    setLoading(null);
+    setTelegramIntent(false);
+    window.setTimeout(
+      () => telegramIntentButtonRef.current?.focus({ preventScroll: true }),
+      0,
+    );
+  }
+
+  async function handleTelegramAuth(payload: StewardTelegramLoginPayload) {
+    setLoading("telegram");
+    setError(null);
+    try {
+      const result = requireCompletedAuth(
+        await auth.signInWithTelegram(payload, {
+          tenantId: STEWARD_TENANT_ID,
+        }),
+      );
+      await handleSuccess(result.token, result.refreshToken);
+    } catch (telegramError: unknown) {
+      // error-policy:J4 Steward or Cloud session failures remain visibly
+      // distinct and leave the user on the login surface for a safe retry.
+      setError(
+        getErrorMessage(telegramError, "Telegram sign-in failed. Try again."),
+      );
+      setLoading(null);
+      window.setTimeout(
+        () => telegramRegionRef.current?.focus({ preventScroll: true }),
+        0,
+      );
+    }
+  }
+
   // First wallet click: mount the lazy wallet stack and remember which chain
   // to auto-start once it's up, so the user doesn't have to click twice.
   function handleWalletIntent(kind: WalletKind) {
@@ -1342,6 +1433,11 @@ export default function StewardLoginSection() {
     if (!walletButtonsMounted) return;
     walletOptionsRegionRef.current?.focus({ preventScroll: true });
   }, [walletButtonsMounted]);
+
+  useEffect(() => {
+    if (!telegramIntent) return;
+    telegramRegionRef.current?.focus({ preventScroll: true });
+  }, [telegramIntent]);
 
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
@@ -1815,6 +1911,9 @@ export default function StewardLoginSection() {
   }
 
   const isLoading = loading !== null;
+  const selectedPhoneCountry =
+    PHONE_COUNTRY_OPTIONS.find((option) => option.code === phoneCountry) ??
+    PHONE_COUNTRY_OPTIONS.find((option) => option.code === "US");
 
   return (
     <div className="space-y-4">
@@ -1830,25 +1929,62 @@ export default function StewardLoginSection() {
           <div className="space-y-2">
             <label
               htmlFor="steward-login-phone"
-              className="block text-left text-sm font-medium text-txt"
+              className="block text-center text-sm font-medium text-txt"
             >
               {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
             </label>
-            <Input
-              id="steward-login-phone"
-              type="tel"
-              name="phone"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="+1 415 555 2671"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") handleSendSms();
-              }}
-              disabled={isLoading}
-              className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
-            />
+            <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong focus-within:border-border-strong">
+              <Select
+                name="phone-country"
+                value={phoneCountry}
+                onValueChange={(value) => setPhoneCountry(value as CountryCode)}
+                disabled={isLoading}
+              >
+                <SelectTrigger
+                  aria-label={t("cloud.login.phoneCountryLabel", {
+                    defaultValue: "Country calling code",
+                  })}
+                  className="hosted-signin-focus-emphasis h-auto min-h-touch w-24 shrink-0 rounded-none border-0 border-r border-input bg-bg-elevated px-3 text-sm font-medium text-txt outline-none disabled:opacity-50"
+                >
+                  <span className="truncate">
+                    {selectedPhoneCountry?.code ?? phoneCountry} +
+                    {selectedPhoneCountry?.dialCode ?? "1"}
+                  </span>
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  align="start"
+                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-input !bg-bg-elevated text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none"
+                >
+                  {PHONE_COUNTRY_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.code}
+                      value={option.code}
+                      className="cursor-pointer data-[highlighted]:bg-bg-hover data-[highlighted]:text-txt-strong"
+                    >
+                      {option.code} +{option.dialCode} — {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                id="steward-login-phone"
+                type="tel"
+                name="phone"
+                inputMode="tel"
+                autoComplete="tel-national"
+                placeholder={t("cloud.login.phonePlaceholder", {
+                  defaultValue: "Phone number",
+                })}
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleSendSms();
+                }}
+                disabled={isLoading}
+                className="hosted-signin-focus-emphasis min-h-touch min-w-0 flex-1 rounded-none border-0 bg-transparent px-4 py-3 text-txt outline-none placeholder:text-muted disabled:opacity-50"
+              />
+            </div>
           </div>
           <Button
             variant="ghost"
@@ -1879,7 +2015,7 @@ export default function StewardLoginSection() {
       <div className="space-y-2">
         <label
           htmlFor="steward-login-email"
-          className="block text-left text-sm font-medium text-txt"
+          className="block text-center text-sm font-medium text-txt"
         >
           {t("cloud.login.emailLabel", { defaultValue: "Email" })}
         </label>
@@ -1941,13 +2077,9 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      {showPasskey ? (
-        <p className="text-center text-xs text-muted">
-          {t("cloud.login.signupHint", {
-            defaultValue: "New here? Passkey sets up your account in seconds.",
-          })}
-        </p>
-      ) : providers.passkey !== false && passkeyCapability === null ? (
+      {!showPasskey &&
+      providers.passkey !== false &&
+      passkeyCapability === null ? (
         <p className="text-center text-xs text-muted" role="status">
           {t("cloud.login.checkingPasskey", {
             defaultValue:
@@ -2005,65 +2137,101 @@ export default function StewardLoginSection() {
         </section>
       )}
 
-      {hasOAuthProviders && (
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-xs text-muted">
-            {t("cloud.login.orContinueWith", {
-              defaultValue: "or continue with",
-            })}
-          </span>
-          <div className="h-px flex-1 bg-border" />
+      {hasIdentityProviders && (
+        <div className="grid grid-cols-2 gap-2">
+          {enabledOAuthProviders.map((provider) => (
+            <Button
+              key={provider}
+              variant="ghost"
+              type="button"
+              aria-label={stewardOAuthProviderLabel(provider)}
+              onClick={() => handleOAuth(provider)}
+              disabled={isLoading}
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+            >
+              {loading === provider ? (
+                <Spinner />
+              ) : (
+                <StewardOAuthIcon provider={provider} />
+              )}
+              {provider === "twitter"
+                ? null
+                : ` ${stewardOAuthProviderLabel(provider)}`}
+            </Button>
+          ))}
+          {providers.telegram && (
+            <Button
+              ref={telegramIntentButtonRef}
+              variant="ghost"
+              type="button"
+              aria-expanded={telegramIntent}
+              aria-controls="steward-telegram-login-widget"
+              onClick={() => {
+                setError(null);
+                setTelegramIntent(true);
+              }}
+              disabled={isLoading || telegramIntent}
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+            >
+              {loading === "telegram" ? (
+                <Spinner />
+              ) : (
+                <TelegramIcon className="h-4 w-4" />
+              )}{" "}
+              {t("cloud.login.button.telegram", {
+                defaultValue: "Telegram",
+              })}
+            </Button>
+          )}
         </div>
       )}
 
-      {hasOAuthProviders && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {providers.google && (
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleOAuth("google")}
+      {providers.telegram && telegramIntent && (
+        <fieldset
+          id="steward-telegram-login-widget"
+          ref={telegramRegionRef}
+          aria-label={t("cloud.login.telegramRegion", {
+            defaultValue: "Telegram sign-in",
+          })}
+          tabIndex={-1}
+          className="space-y-2 outline-none"
+        >
+          {telegramBotUsername ? (
+            <TelegramLoginWidget
+              botUsername={telegramBotUsername}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-            >
-              {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
-              {t("cloud.login.button.google", { defaultValue: "Google" })}
-            </Button>
+              onAuth={handleTelegramAuth}
+              onError={handleTelegramError}
+            />
+          ) : (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>
+                Telegram sign-in is not configured for this deployment.
+              </AlertDescription>
+            </Alert>
           )}
-          {providers.discord && (
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleOAuth("discord")}
-              disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-            >
-              {loading === "discord" ? (
-                <Spinner />
-              ) : (
-                <DiscordIcon className="h-4 w-4" />
-              )}{" "}
-              {t("cloud.login.button.discord", { defaultValue: "Discord" })}
-            </Button>
-          )}
-          {providers.github && (
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleOAuth("github")}
-              disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-            >
-              {loading === "github" ? (
-                <Spinner />
-              ) : (
-                <Github className="h-4 w-4" />
-              )}{" "}
-              {t("cloud.login.button.github", { defaultValue: "GitHub" })}
-            </Button>
-          )}
-        </div>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => {
+              setTelegramIntent(false);
+              window.setTimeout(
+                () =>
+                  telegramIntentButtonRef.current?.focus({
+                    preventScroll: true,
+                  }),
+                0,
+              );
+            }}
+            disabled={isLoading}
+            className="min-h-touch w-full rounded-md px-3 text-sm font-medium text-muted hover:text-txt"
+          >
+            {t("cloud.login.button.cancelTelegram", {
+              defaultValue: "Use another sign-in method",
+            })}
+          </Button>
+        </fieldset>
       )}
 
       {showWallets && (
@@ -2075,11 +2243,19 @@ export default function StewardLoginSection() {
             aria-controls="steward-wallet-options"
             onClick={() => setShowWalletOptions((v) => !v)}
             disabled={isLoading || walletButtonsMounted}
-            className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+            className="hosted-signin-focus-emphasis flex min-h-touch w-full items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
           >
-            {t("cloud.login.moreOptions", {
-              defaultValue: "Continue with a wallet",
-            })}
+            {walletButtonsMounted
+              ? t("cloud.login.walletOptions", {
+                  defaultValue: "Wallet options",
+                })
+              : showWalletOptions
+                ? t("cloud.login.collapseWalletOptions", {
+                    defaultValue: "Collapse wallet options",
+                  })
+                : t("cloud.login.moreOptions", {
+                    defaultValue: "Continue with a wallet",
+                  })}
           </Button>
 
           <div
@@ -2088,84 +2264,71 @@ export default function StewardLoginSection() {
             tabIndex={-1}
             hidden={!showWalletOptions && !walletButtonsMounted}
           >
-            {(showWalletOptions || walletButtonsMounted) && (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-xs text-muted">
-                    {t("cloud.login.orSignInWallet", {
-                      defaultValue: "or sign in with a wallet",
-                    })}
-                  </span>
-                  <div className="h-px flex-1 bg-border" />
+            {(showWalletOptions || walletButtonsMounted) &&
+              (walletButtonsMounted ? (
+                <Suspense
+                  fallback={
+                    <div className="flex min-h-touch items-center justify-center py-2.5">
+                      <Spinner />
+                    </div>
+                  }
+                >
+                  <StewardWalletProviders>
+                    <WalletButtons
+                      auth={auth}
+                      autoStart={autoStartWallet}
+                      disabled={isLoading}
+                      loadingProvider={
+                        loading === "ethereum" || loading === "solana"
+                          ? (loading as WalletKind)
+                          : null
+                      }
+                      onAutoStartHandled={() => setAutoStartWallet(null)}
+                      onLoadingChange={(kind) => setLoading(kind)}
+                      onSuccess={(result) =>
+                        handleSuccess(result.token, result.refreshToken)
+                      }
+                      onError={(walletError) => {
+                        setError(
+                          walletError.message ||
+                            t("cloud.login.error.walletFailed", {
+                              defaultValue: "Wallet sign-in failed",
+                            }),
+                        );
+                      }}
+                    />
+                  </StewardWalletProviders>
+                </Suspense>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {providers.siwe && (
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      onClick={() => handleWalletIntent("ethereum")}
+                      disabled={isLoading}
+                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+                    >
+                      {t("cloud.login.wallet.evm", {
+                        defaultValue: "EVM wallet",
+                      })}
+                    </Button>
+                  )}
+                  {providers.siws && (
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      onClick={() => handleWalletIntent("solana")}
+                      disabled={isLoading}
+                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+                    >
+                      {t("cloud.login.wallet.solana", {
+                        defaultValue: "Solana wallet",
+                      })}
+                    </Button>
+                  )}
                 </div>
-
-                {walletButtonsMounted ? (
-                  <Suspense
-                    fallback={
-                      <div className="flex min-h-touch items-center justify-center py-2.5">
-                        <Spinner />
-                      </div>
-                    }
-                  >
-                    <StewardWalletProviders>
-                      <WalletButtons
-                        auth={auth}
-                        autoStart={autoStartWallet}
-                        disabled={isLoading}
-                        loadingProvider={
-                          loading === "ethereum" || loading === "solana"
-                            ? (loading as WalletKind)
-                            : null
-                        }
-                        onAutoStartHandled={() => setAutoStartWallet(null)}
-                        onLoadingChange={(kind) => setLoading(kind)}
-                        onSuccess={(result) =>
-                          handleSuccess(result.token, result.refreshToken)
-                        }
-                        onError={(walletError) => {
-                          setError(
-                            walletError.message ||
-                              t("cloud.login.error.walletFailed", {
-                                defaultValue: "Wallet sign-in failed",
-                              }),
-                          );
-                        }}
-                      />
-                    </StewardWalletProviders>
-                  </Suspense>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {providers.siwe && (
-                      <Button
-                        variant="ghost"
-                        type="button"
-                        onClick={() => handleWalletIntent("ethereum")}
-                        disabled={isLoading}
-                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-                      >
-                        {t("cloud.login.wallet.evm", {
-                          defaultValue: "EVM wallet",
-                        })}
-                      </Button>
-                    )}
-                    {providers.siws && (
-                      <Button
-                        variant="ghost"
-                        type="button"
-                        onClick={() => handleWalletIntent("solana")}
-                        disabled={isLoading}
-                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-                      >
-                        {t("cloud.login.wallet.solana", {
-                          defaultValue: "Solana wallet",
-                        })}
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
+              ))}
           </div>
         </>
       )}
@@ -2182,6 +2345,62 @@ export default function StewardLoginSection() {
 function Spinner() {
   return (
     <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+  );
+}
+
+function stewardOAuthProviderLabel(provider: StewardOAuthProvider): string {
+  switch (provider) {
+    case "google":
+      return "Google";
+    case "discord":
+      return "Discord";
+    case "github":
+      return "GitHub";
+    case "twitter":
+      return "X";
+    case "apple":
+      return "Apple";
+  }
+}
+
+function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
+  switch (provider) {
+    case "google":
+      return <GoogleIcon />;
+    case "discord":
+      return <DiscordIcon className="h-4 w-4" />;
+    case "github":
+      return <Github className="h-4 w-4" />;
+    case "twitter":
+      return <XIcon />;
+    case "apple":
+      return <AppleIcon />;
+  }
+}
+
+function AppleIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.79 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4.1v-.01ZM12.03 7.25C11.88 5.02 13.69 3.18 15.77 3c.29 2.58-2.34 4.5-3.74 4.25Z" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
+    </svg>
   );
 }
 

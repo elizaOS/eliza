@@ -161,6 +161,7 @@ import {
   getAppSlugFromPath,
   getWindowNavigationPath,
   isAospShellEnabled,
+  isAppWindowRoute,
   isRouteRootPath,
   NATIVE_OS_VIEW_IDS,
   pathForTab,
@@ -2361,6 +2362,7 @@ function AppContent() {
     t: s.t,
   }));
   const isPopout = useIsPopout();
+  const isAuxiliaryAppWindow = isAppWindowRoute();
   const shellMode = useShellMode();
   // Register the developer-only sandboxed-iframe consumer once at boot (#14180),
   // so the level has a shipped, navigable first-party view. Idempotent.
@@ -3389,46 +3391,44 @@ function AppContent() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {/*
-          Chat overlay (ChatOverlay) — one ambient glass
-          conversation (the app's single active conversation via
-          useShellController) that floats over EVERY view, including the /chat
-          route (whose base is now just ambient space). It survives tab/view
-          changes because it renders here in the persistent sibling region, and
-          is pointer-events-none except its own composer/messages, so the view
-          behind stays live.
+          Chat overlay (ChatOverlay) — one ambient glass conversation in the
+          primary shell. Native auxiliary app windows (`?appWindow=1`) are
+          dedicated workspaces; mounting another onboarding-pinned overlay in
+          each of them occludes their controls and duplicates the headless chat
+          conductors already owned by the primary/chat-overlay window.
         */}
-        <ChatOverlayMount
-          releaseFirstRunToFull={firstRunChatRelease.releasePending}
-          onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
-          onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
-          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
-        />
-        {/* In-chat first-run conductor (headless) — while firstRunComplete is
-            false it seeds the onboarding greeting + choices into the SAME live
-            transcript the overlay renders and routes first-run picks to the
-            headless finish use case. Renders null. */}
-        <FirstRunConductorMount
-          onFirstRunTranscriptMounted={
-            firstRunChatRelease.recordMountedTranscript
-          }
-          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
-          firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
-        />
-        {/* In-chat model-status card (headless) — while the local text model is
-            downloading/loading/missing/errored it seeds ONE live status turn
-            with cancel / switch-to-cloud / retry controls. Renders null. */}
-        <ModelStatusConductorMount />
-        {/* In-chat boot-recovery card (headless) — a stalled boot or a failed
-            dedicated-agent handoff seeds ONE live turn with re-log-in /
-            try-again / retry-setup controls; the transcript is the only boot
-            status surface (no floating banner). Renders null. */}
-        <BootRecoveryConductorMount />
-        {/* In-chat tutorial conductor (headless) — while the tour is active it
-            seeds one conversational turn per step into the SAME live transcript
-            the overlay renders, narrates through the real voice engine, and
-            auto-advances on the user's real actions. No locks, no spotlight:
-            the user can ignore it freely. */}
-        <TutorialConductorMount />
+        {!isAuxiliaryAppWindow ? (
+          <>
+            <ChatOverlayMount
+              releaseFirstRunToFull={firstRunChatRelease.releasePending}
+              onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+              onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+              firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+            />
+            {/* In-chat first-run conductor (headless) — while firstRunComplete
+                is false it seeds the onboarding greeting + choices into the
+                SAME live transcript the overlay renders and routes first-run
+                picks to the headless finish use case. Renders null. */}
+            <FirstRunConductorMount
+              onFirstRunTranscriptMounted={
+                firstRunChatRelease.recordMountedTranscript
+              }
+              firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+              firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
+            />
+            {/* In-chat model-status card (headless) — while the local text
+                model is downloading/loading/missing/errored it seeds ONE live
+                status turn with cancel / switch-to-cloud / retry controls. */}
+            <ModelStatusConductorMount />
+            {/* In-chat boot-recovery card (headless) — a stalled boot or a
+                failed dedicated-agent handoff seeds ONE live turn with
+                re-log-in / try-again / retry-setup controls. */}
+            <BootRecoveryConductorMount />
+            {/* In-chat tutorial conductor (headless) — narrates one live
+                transcript turn per step in the primary conversation only. */}
+            <TutorialConductorMount />
+          </>
+        ) : null}
         {/* Post-login permission priming: a one-time soft-ask modal that walks
             the user through the platform's onboarding permission set (voice,
             location, notifications) BEFORE any OS prompt. Self-gates on

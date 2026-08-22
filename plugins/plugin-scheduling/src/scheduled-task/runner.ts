@@ -1249,6 +1249,13 @@ export function createScheduledTaskRunner(
     return deps.store.list(filter);
   }
 
+  async function remove(taskId: string): Promise<boolean> {
+    const existing = await deps.store.get(taskId);
+    if (!existing) return false;
+    await deps.store.delete(taskId);
+    return (await deps.store.get(taskId)) === null;
+  }
+
   // -------------------------------------------------------------------------
   // Verb dispatch
   // -------------------------------------------------------------------------
@@ -2614,6 +2621,7 @@ export function createScheduledTaskRunner(
     importTask,
     activateImportedTask,
     list,
+    remove,
     apply,
     applyWithResult,
     pipeline,

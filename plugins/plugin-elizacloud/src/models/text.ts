@@ -96,8 +96,12 @@ export function resolveTextTimeoutMs(): number | undefined {
   const raw =
     typeof process !== "undefined" ? process.env[TEXT_TIMEOUT_ENV] : undefined;
   if (raw === undefined || raw.trim() === "") return DEFAULT_TEXT_TIMEOUT_MS;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return DEFAULT_TEXT_TIMEOUT_MS;
+  // `Number.parseInt` stops at the first non-digit, so "500junk" parsed to 500
+  // and became a 500ms client timeout instead of the documented fallback. The
+  // sign is accepted here on purpose: this setting documents `0`/negative as
+  // the opt-out, so the `<= 0` check below stays the range authority.
+  const parsed = /^[+-]?\d+$/.test(raw.trim()) ? Number(raw) : Number.NaN;
+  if (!Number.isSafeInteger(parsed)) return DEFAULT_TEXT_TIMEOUT_MS;
   return parsed <= 0 ? undefined : parsed;
 }
 
@@ -141,8 +145,14 @@ let nativeChatLimiter: Semaphore | null = null;
 function resolveNativeConcurrency(): number {
   const raw =
     typeof process !== "undefined" ? process.env[NATIVE_CONCURRENCY_ENV] : undefined;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_NATIVE_CONCURRENCY;
+  // Same prefix-parse hole as the timeout above: "2junk" parsed to 2 and
+  // silently tightened the semaphore from 8. The `> 0` check stays the range
+  // authority, so a signed value is still parsed and then judged by it.
+  const parsed =
+    raw && /^[+-]?\d+$/.test(raw.trim()) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_NATIVE_CONCURRENCY;
 }
 
 function getNativeChatLimiter(): Semaphore {
@@ -977,9 +987,6 @@ function buildNativeRequestBody(
   }
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
   if (userReasoningEffort) {
-    // Token caps bound output length; they do not express reasoning intent.
-    // Preserve the explicit user pin unless the caller independently asks for
-    // thinking="off" below.
     requestBody.reasoning_effort = userReasoningEffort;
   }
   // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"

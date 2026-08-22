@@ -44,8 +44,12 @@ function readEnvInt(
 ): number {
   const raw = env[name]?.trim();
   if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  // `Number.parseInt` stops at the first non-digit, so "4junk" parsed to a
+  // finite 4 and was accepted as a deliberate setting. Require the whole value
+  // to be a decimal integer; the optional leading sign is kept because
+  // `parseInt` accepted it, and the `< 0` check below stays the range authority.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 0) return fallback;
   return parsed;
 }
 

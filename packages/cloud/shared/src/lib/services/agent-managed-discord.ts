@@ -1,10 +1,18 @@
-// Coordinates cloud service agent managed discord behavior behind route handlers.
+/**
+ * Coordinates managed Discord gateway admission and agent connector
+ * configuration. Connector mutations persist first, then schedule lifecycle
+ * work only for running agents backed by a container.
+ */
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
-import { type AgentSandbox, agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import {
+  type AgentSandbox,
+  agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
+} from "../../db/schemas/agent-sandboxes";
 import { organizations } from "../../db/schemas/organizations";
 import { getMaxNonTerminalAgentsForOrg } from "../constants/agent-sandbox-quota";
 import { logger } from "../utils/logger";
@@ -202,6 +210,7 @@ export async function ensureManagedDiscordGatewayInTransaction(
       // `pending` + non-pool is intentionally quota-counted. Keep this aligned
       // with QUOTA_COUNTED_STATUSES and account-limit snapshots.
       status: "pending",
+      execution_tier: "shared",
       pool_status: null,
       database_status: "none",
     })
@@ -306,7 +315,10 @@ export class ManagedAgentDiscordService {
     // daemon picks it up, stops the container, and re-provisions with
     // the freshly-persisted agent_config above.
     let restarted = false;
-    if (sandbox.status === "running") {
+    if (
+      sandbox.status === "running" &&
+      CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === sandbox.execution_tier)
+    ) {
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: sandbox.id,
         organizationId: params.organizationId,
@@ -314,7 +326,8 @@ export class ManagedAgentDiscordService {
       });
       // The restart job is already enqueued; triggerImmediate only nudges the
       // daemon to pick it up now. A failed nudge delays restart to the next poll.
-      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      // error-policy:J5 The durable restart remains observable by the scheduled poller;
+      // this handler observes and reports only the failed immediate nudge.
       void provisioningJobService.triggerImmediate().catch((err) =>
         logger.warn("[managed-discord] provisioning triggerImmediate nudge failed", {
           agentId: sandbox.id,
@@ -368,7 +381,10 @@ export class ManagedAgentDiscordService {
     // daemon picks it up, stops the container, and re-provisions with
     // the freshly-persisted agent_config above.
     let restarted = false;
-    if (sandbox.status === "running") {
+    if (
+      sandbox.status === "running" &&
+      CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === sandbox.execution_tier)
+    ) {
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: sandbox.id,
         organizationId: params.organizationId,
@@ -376,7 +392,8 @@ export class ManagedAgentDiscordService {
       });
       // The restart job is already enqueued; triggerImmediate only nudges the
       // daemon to pick it up now. A failed nudge delays restart to the next poll.
-      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      // error-policy:J5 The durable restart remains observable by the scheduled poller;
+      // this handler observes and reports only the failed immediate nudge.
       void provisioningJobService.triggerImmediate().catch((err) =>
         logger.warn("[managed-discord] provisioning triggerImmediate nudge failed", {
           agentId: sandbox.id,

@@ -43,6 +43,7 @@ import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
+import { resolveApiUrl } from "../../utils/asset-url";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
@@ -309,17 +310,26 @@ function isBrowserWorkspaceSessionMode(
   return mode === "cloud";
 }
 
-function normalizeBrowserWorkspaceInputUrl(
+export function normalizeBrowserWorkspaceInputUrl(
   rawUrl: string,
   t: TranslateFn,
 ): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
   if (trimmed === "about:blank") return trimmed;
+  if (/^\/[\\/]/.test(trimmed)) {
+    throw new Error(
+      t("browserworkspace.InvalidUrl", {
+        defaultValue: "Enter a valid http or https URL.",
+      }),
+    );
+  }
 
-  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  const candidate = trimmed.startsWith("/")
+    ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
+    : /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
 
   let parsed: URL;
   try {

@@ -7,6 +7,7 @@ import {
   executeTelegramDelivery,
   type TelegramDeliveryHooks,
   type TelegramDeliveryLedger,
+  type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type {
@@ -29,6 +30,7 @@ import {
 import { resolveWebhookConfig } from "./webhook-config";
 
 const DEDUP_TTL_SECONDS = 300;
+const PERSONAL_SHARED_DELIVERY_LEASE_MS = 90_000;
 // Must outlive the 75s non-idempotent message-forward budget plus Telegram
 // egress. Otherwise a provider retry can reclaim the update while the first
 // worker is still generating and execute the same user turn twice.
@@ -49,6 +51,10 @@ class PersonalSharedPreEgressError extends Error {
   override readonly name = "PersonalSharedPreEgressError";
 }
 
+class PersonalSharedRecoverablePostEgressError extends Error {
+  override readonly name = "PersonalSharedRecoverablePostEgressError";
+}
+
 interface HandlerDeps {
   redis: GatewayRedis;
   cloudBaseUrl: string;
@@ -62,6 +68,48 @@ interface PersonalSharedDeliveryTiming {
   cloudAttempts: number;
   egressMs: number;
   cloudServerTiming: string | null;
+}
+
+interface GroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
+type GroupDeliveryDirective =
+  | { kind: "control" }
+  | { kind: "binding"; authority: GroupDeliveryAuthority };
+
+function parseGroupDeliveryDirective(
+  value: unknown,
+): GroupDeliveryDirective | null {
+  if (!value || typeof value !== "object") return null;
+  const directive = value as Record<string, unknown>;
+  if (directive.kind === "control") return { kind: "control" };
+  const authority = directive.authority;
+  if (
+    directive.kind !== "binding" ||
+    !authority ||
+    typeof authority !== "object"
+  ) {
+    return null;
+  }
+  const candidate = authority as Record<string, unknown>;
+  if (
+    typeof candidate.bindingId !== "string" ||
+    typeof candidate.ownerUserId !== "string" ||
+    typeof candidate.personalAgentId !== "string" ||
+    typeof candidate.version !== "number" ||
+    !Number.isSafeInteger(candidate.version) ||
+    candidate.version <= 0
+  ) {
+    return null;
+  }
+  return {
+    kind: "binding",
+    authority: candidate as unknown as GroupDeliveryAuthority,
+  };
 }
 
 interface MessageTraceContext {
@@ -209,6 +257,33 @@ function redisTelegramDeliveryLedger(
   const planKey = `${dedupKey}:plan`;
   const chunkKey = (chunkIndex: number, chunkDigest: string) =>
     `${dedupKey}:chunk:${chunkIndex}:${chunkDigest}`;
+  const decodeChunk = (
+    encoded: string | null,
+  ): { state: TelegramDeliveryState; providerMessageId?: string } | null => {
+    if (encoded === "uncertain" || encoded === "delivered") {
+      return { state: encoded };
+    }
+    if (!encoded) return null;
+    try {
+      const parsed = JSON.parse(encoded) as {
+        state?: unknown;
+        providerMessageId?: unknown;
+      };
+      if (
+        parsed.state === "delivered" &&
+        typeof parsed.providerMessageId === "string"
+      ) {
+        return {
+          state: "delivered",
+          providerMessageId: parsed.providerMessageId,
+        };
+      }
+    } catch {
+      // error-policy:J3 Redis delivery state is untrusted persisted input; an
+      // invalid value is treated as absent, never as permission to resend.
+    }
+    return null;
+  };
   return {
     async read() {
       const state = await redis.get<string>(dedupKey);
@@ -244,8 +319,16 @@ function redisTelegramDeliveryLedger(
         : "conflict";
     },
     async readChunk(chunkIndex, chunkDigest) {
-      const state = await redis.get<string>(chunkKey(chunkIndex, chunkDigest));
-      return state === "uncertain" || state === "delivered" ? state : null;
+      return (
+        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+          ?.state ?? null
+      );
+    },
+    async readChunkProviderMessageId(chunkIndex, chunkDigest) {
+      return (
+        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+          ?.providerMessageId ?? null
+      );
     },
     async claimChunk(chunkIndex, chunkDigest) {
       return Boolean(
@@ -258,10 +341,12 @@ function redisTelegramDeliveryLedger(
     async releaseChunk(chunkIndex, chunkDigest) {
       await redis.del(chunkKey(chunkIndex, chunkDigest));
     },
-    async markChunkDelivered(chunkIndex, chunkDigest) {
-      await redis.set(chunkKey(chunkIndex, chunkDigest), "delivered", {
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
+    async markChunkDelivered(chunkIndex, chunkDigest, providerMessageId) {
+      await redis.set(
+        chunkKey(chunkIndex, chunkDigest),
+        JSON.stringify({ state: "delivered", providerMessageId }),
+        { ex: TELEGRAM_DELIVERY_TTL_SECONDS },
+      );
     },
     async markDelivered() {
       await redis.set(dedupKey, TELEGRAM_DELIVERED, {
@@ -334,7 +419,7 @@ export async function handleWebhook(
     });
   }
 
-  const event = await adapter.extractEvent(rawBody);
+  const event = await adapter.extractEvent(rawBody, config);
   if (!event) {
     return ackResponse(adapter.platform);
   }
@@ -354,6 +439,8 @@ export async function handleWebhook(
       if (
         !agentId &&
         project === configuredPersonalProject &&
+        event.chatType !== "group" &&
+        event.chatType !== "supergroup" &&
         deps.deliveryAuthoritySecret !== undefined
       ) {
         return forwardPersonalTelegramToEdge(
@@ -455,10 +542,14 @@ export async function handleWebhook(
         messageId: event.messageId,
         traceId: trace.traceId,
       });
-      if (err instanceof PersonalSharedPreEgressError) {
+      if (
+        err instanceof PersonalSharedPreEgressError ||
+        err instanceof PersonalSharedRecoverablePostEgressError
+      ) {
         try {
-          // The Shared endpoint is idempotent and provider egress has not
-          // started, so reopening lets the messaging provider retry safely.
+          // The Shared endpoint is idempotent. Blooio also keys provider
+          // egress by the inbound message id, so a lost receipt response can
+          // safely reopen the webhook without sending a second text.
           await redis.del(dedupKey);
         } catch (cleanupError) {
           // error-policy:J7 The original delivery failure is already observed;
@@ -531,7 +622,12 @@ async function processMessage(
   // forwarding used `userId` as its room and forked connector turns away from
   // the imported `personal:*` conversation.
   if (!explicitAgentId && isPersonalElizaTransport(adapter.platform)) {
-    const stopTyping = beginTypingFeedback(adapter, config, event);
+    // Membership transitions mutate routing state only. Emitting a typing
+    // action while the bot is being removed is both misleading and violates
+    // the no-provider-egress membership contract.
+    const stopTyping = event.membershipChange
+      ? () => undefined
+      : beginTypingFeedback(adapter, config, event);
     try {
       const timing = await sendPersonalSharedReply(
         adapter,
@@ -776,6 +872,16 @@ function isPersonalElizaTransport(
   );
 }
 
+function groupInvocationForEvent(
+  event: ChatEvent,
+): "mention" | "command" | "reply" | "ambient" {
+  if (event.groupInvocation) return event.groupInvocation;
+  if (event.replyToMessageId) return "reply";
+  if (/^\s*(?:\/|eliza\b)/i.test(event.text)) return "command";
+  if (/(?:^|\s)@eliza\b/i.test(event.text)) return "mention";
+  return "ambient";
+}
+
 function beginTypingFeedback(
   adapter: PlatformAdapter,
   config: WebhookConfig,
@@ -790,7 +896,14 @@ function beginTypingFeedback(
       error: err instanceof Error ? err.message : String(err),
     });
   });
-  return () => undefined;
+  return () => {
+    adapter.stopTypingIndicator?.(config, event).catch((err) => {
+      logger.debug("stopTypingIndicator failed", {
+        platform: adapter.platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  };
 }
 
 async function sendUnlinkedReply(
@@ -832,6 +945,22 @@ async function sendPersonalSharedReply(
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+  const connectorAccountId = resolveConnectorAccountId(
+    adapter.platform,
+    config,
+  );
+  if (!connectorAccountId) {
+    throw new PersonalSharedPreEgressError(
+      "connector account identity is not configured",
+    );
+  }
+  const isGroup = event.chatType === "group" || event.chatType === "supergroup";
+  const sendReplyWithReceipt = adapter.sendReplyWithReceipt;
+  if (isGroup && !sendReplyWithReceipt) {
+    throw new PersonalSharedPreEgressError(
+      "group connector cannot return a provider delivery receipt",
+    );
+  }
   const voiceNote = event.voiceNote
     ? await adapter.resolveVoiceNote?.(config, event)
     : undefined;
@@ -853,24 +982,61 @@ async function sendPersonalSharedReply(
         ...authHeader,
       },
       body: JSON.stringify(
-        adapter.platform === "telegram"
+        event.membershipChange
           ? {
+              eventType: "membership",
               platform: "telegram",
               project,
+              connectorAccountId,
               chatId: event.chatId,
-              telegramUserId: event.senderId,
-              displayName: event.senderName,
               messageId: `telegram:${project}:${event.messageId}`,
-              ...(event.text ? { message: event.text } : {}),
-              ...(voiceNote ? { voiceNote } : {}),
+              membershipChange: event.membershipChange,
             }
-          : {
-              platform: adapter.platform,
-              project,
-              phoneNumber: event.senderId,
-              messageId: `${adapter.platform}:${project}:${event.messageId}`,
-              message: event.text,
-            },
+          : isGroup &&
+              (adapter.platform === "telegram" || adapter.platform === "blooio")
+            ? {
+                platform: adapter.platform,
+                chatType: event.chatType,
+                project,
+                connectorAccountId,
+                chatId: event.chatId,
+                actor: {
+                  platformUserId: event.senderId,
+                  ...(event.senderName
+                    ? { displayName: event.senderName }
+                    : {}),
+                  role:
+                    adapter.platform === "telegram"
+                      ? (event.groupActorRole ?? "unknown")
+                      : "possessor",
+                },
+                messageId: `${adapter.platform}:${project}:${event.messageId}`,
+                message: event.text,
+                invocation: groupInvocationForEvent(event),
+                ...(event.replyToMessageId
+                  ? { replyToMessageId: event.replyToMessageId }
+                  : {}),
+              }
+            : adapter.platform === "telegram"
+              ? {
+                  platform: "telegram",
+                  project,
+                  connectorAccountId,
+                  chatId: event.chatId,
+                  telegramUserId: event.senderId,
+                  displayName: event.senderName,
+                  messageId: `telegram:${project}:${event.messageId}`,
+                  ...(event.text ? { message: event.text } : {}),
+                  ...(voiceNote ? { voiceNote } : {}),
+                }
+              : {
+                  platform: adapter.platform,
+                  project,
+                  connectorAccountId,
+                  phoneNumber: event.senderId,
+                  messageId: `${adapter.platform}:${project}:${event.messageId}`,
+                  message: event.text,
+                },
       ),
       signal: AbortSignal.timeout(
         voiceNote ? PERSONAL_SHARED_VOICE_TIMEOUT_MS : 30_000,
@@ -959,19 +1125,35 @@ async function sendPersonalSharedReply(
     );
   }
   const cloudServerTiming = response.headers.get("Server-Timing");
-  const body: unknown = await response.json();
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (error) {
+    // error-policy:J3 a successful transport response is still untrusted until
+    // its JSON contract parses; provider egress has not started at this point.
+    throw new PersonalSharedPreEgressError(
+      "personal Shared chat returned invalid JSON",
+      { cause: error },
+    );
+  }
   const cloudMs = attemptResult.durationMs;
-  const reply =
-    body && typeof body === "object" && "data" in body
-      ? (body.data as { reply?: unknown } | null)?.reply
-      : undefined;
+  const data =
+    body &&
+    typeof body === "object" &&
+    "data" in body &&
+    body.data &&
+    typeof body.data === "object"
+      ? (body.data as Record<string, unknown>)
+      : null;
+  const reply = data?.reply;
   if (typeof reply !== "string") {
     throw new PersonalSharedPreEgressError(
       "personal Shared chat returned no reply",
     );
   }
-  // Empty is the agent's deliberate shouldRespond=no result. It is a
-  // successful turn with no provider egress, not a malformed response.
+  // Empty is the agent's deliberate shouldRespond=no result. Membership
+  // changes and stale turns intentionally take this path with no authority
+  // token because there will be no provider egress to authorize.
   if (reply.length === 0) {
     return {
       cloudMs,
@@ -980,8 +1162,245 @@ async function sendPersonalSharedReply(
       cloudServerTiming,
     };
   }
+  const groupDelivery = parseGroupDeliveryDirective(data?.groupDelivery);
   const egressStartedAt = Date.now();
-  await adapter.sendReply(config, event, reply, deliveryHooks);
+  if (isGroup) {
+    if (!groupDelivery) {
+      throw new PersonalSharedPreEgressError(
+        "personal Shared group reply returned no delivery directive",
+      );
+    }
+    if (!sendReplyWithReceipt) {
+      throw new PersonalSharedPreEgressError(
+        "group connector cannot return a provider delivery receipt",
+      );
+    }
+    if (groupDelivery.kind === "control") {
+      await sendReplyWithReceipt(config, event, reply, deliveryHooks);
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: Date.now() - egressStartedAt,
+        cloudServerTiming,
+      };
+    }
+    const deliveryLeaseToken = crypto.randomUUID();
+    const sourceMessageId = `${adapter.platform}:${project}:${event.messageId}`;
+    const authorizationBody = JSON.stringify({
+      eventType: "delivery_authorization",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId,
+      leaseToken: deliveryLeaseToken,
+      invocation: groupInvocationForEvent(event),
+      authority: groupDelivery.authority,
+    });
+    const postAuthorization = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: authorizationBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let authorizationResponse = await postAuthorization(authHeader);
+    if (
+      authorizationResponse.status === 401 ||
+      authorizationResponse.status === 403
+    ) {
+      await authorizationResponse.body?.cancel();
+      authHeader = await reauth();
+      authorizationResponse = await postAuthorization(authHeader);
+    }
+    if (!authorizationResponse.ok) {
+      await authorizationResponse.body?.cancel();
+      throw new PersonalSharedPreEgressError(
+        `group delivery authorization failed (${authorizationResponse.status})`,
+      );
+    }
+    let authorizationResult: unknown;
+    try {
+      authorizationResult = await authorizationResponse.json();
+    } catch (error) {
+      // error-policy:J3 authorization is untrusted until the explicit boolean
+      // contract parses; provider egress has not started.
+      throw new PersonalSharedPreEgressError(
+        "group delivery authorization returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const authorizationData =
+      authorizationResult !== null &&
+      typeof authorizationResult === "object" &&
+      "success" in authorizationResult &&
+      authorizationResult.success === true &&
+      "data" in authorizationResult &&
+      authorizationResult.data !== null &&
+      typeof authorizationResult.data === "object" &&
+      (authorizationResult.data as Record<string, unknown>);
+    const leaseExpiresAtMs =
+      authorizationData !== false &&
+      typeof authorizationData.expiresAt === "string"
+        ? Date.parse(authorizationData.expiresAt)
+        : Number.NaN;
+    const authorizationObservedAt = Date.now();
+    if (
+      authorizationData === false ||
+      authorizationData.code !== "group_delivery_authorization" ||
+      authorizationData.authorized !== true ||
+      authorizationData.leaseToken !== deliveryLeaseToken ||
+      !Number.isFinite(leaseExpiresAtMs) ||
+      leaseExpiresAtMs <= authorizationObservedAt ||
+      leaseExpiresAtMs >
+        authorizationObservedAt + PERSONAL_SHARED_DELIVERY_LEASE_MS
+    ) {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
+    }
+    const commitBody = JSON.stringify({
+      eventType: "delivery_commit",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId,
+      leaseToken: deliveryLeaseToken,
+      authority: groupDelivery.authority,
+    });
+    const postCommit = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: commitBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let commitResponse = await postCommit(authHeader);
+    if (commitResponse.status === 401 || commitResponse.status === 403) {
+      await commitResponse.body?.cancel();
+      authHeader = await reauth();
+      commitResponse = await postCommit(authHeader);
+    }
+    if (!commitResponse.ok) {
+      await commitResponse.body?.cancel();
+      throw new PersonalSharedPreEgressError(
+        `group delivery commit failed (${commitResponse.status})`,
+      );
+    }
+    let commitResult: unknown;
+    try {
+      commitResult = await commitResponse.json();
+    } catch (error) {
+      // error-policy:J3 no provider call begins unless the durable commit's
+      // explicit boolean contract parses.
+      throw new PersonalSharedPreEgressError(
+        "group delivery commit returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const committed =
+      commitResult !== null &&
+      typeof commitResult === "object" &&
+      "success" in commitResult &&
+      commitResult.success === true &&
+      "data" in commitResult &&
+      commitResult.data !== null &&
+      typeof commitResult.data === "object" &&
+      "code" in commitResult.data &&
+      commitResult.data.code === "group_delivery_committed" &&
+      "committed" in commitResult.data &&
+      commitResult.data.committed === true;
+    if (!committed) {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
+    }
+    const receipt = await sendReplyWithReceipt(
+      config,
+      event,
+      reply,
+      deliveryHooks,
+    );
+    const receiptBody = JSON.stringify({
+      eventType: "delivery_receipt",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId,
+      providerMessageIds: receipt.providerMessageIds,
+      authority: groupDelivery.authority,
+      leaseToken: deliveryLeaseToken,
+    });
+    const postReceipt = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: receiptBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let receiptResponse = await postReceipt(authHeader);
+    if (receiptResponse.status === 401 || receiptResponse.status === 403) {
+      await receiptResponse.body?.cancel();
+      authHeader = await reauth();
+      receiptResponse = await postReceipt(authHeader);
+    }
+    if (!receiptResponse.ok) {
+      await receiptResponse.body?.cancel();
+      throw new PersonalSharedRecoverablePostEgressError(
+        `group delivery receipt persistence failed (${receiptResponse.status})`,
+      );
+    }
+    let receiptResult: unknown;
+    try {
+      receiptResult = await receiptResponse.json();
+    } catch (error) {
+      // error-policy:J3 provider egress is idempotent, so malformed receipt
+      // persistence can reopen the webhook for an exact retry.
+      throw new PersonalSharedRecoverablePostEgressError(
+        "group delivery receipt persistence returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const recorded =
+      receiptResult !== null &&
+      typeof receiptResult === "object" &&
+      "success" in receiptResult &&
+      receiptResult.success === true &&
+      "data" in receiptResult &&
+      receiptResult.data !== null &&
+      typeof receiptResult.data === "object" &&
+      "code" in receiptResult.data &&
+      receiptResult.data.code === "group_delivery_receipt_recorded" &&
+      "recorded" in receiptResult.data &&
+      receiptResult.data.recorded === true;
+    if (!recorded) {
+      throw new PersonalSharedRecoverablePostEgressError(
+        "group delivery receipt persistence rejected stale authority",
+      );
+    }
+  } else {
+    await adapter.sendReply(config, event, reply, deliveryHooks);
+  }
   return {
     cloudMs,
     cloudAttempts: attemptResult.attempts,

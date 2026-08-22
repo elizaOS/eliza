@@ -14,7 +14,10 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "../../../../types/index.ts";
-import { scheduleDraftSendAction } from "../actions/scheduleDraftSend.ts";
+import {
+	formatSendAtIso,
+	scheduleDraftSendAction,
+} from "../actions/scheduleDraftSend.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { registerDeferredMessageScheduler } from "../deferred-send-scheduler.ts";
 import {
@@ -123,6 +126,54 @@ afterEach(() => {
 });
 
 describe("durable deferred MESSAGE core contract", () => {
+	it("formats valid schedule timestamps as ISO-8601", () => {
+		expect(formatSendAtIso(1700000000000)).toBe("2023-11-14T22:13:20.000Z");
+	});
+
+	it.each([
+		["NaN", Number.NaN, "not finite"],
+		["positive infinity", Number.POSITIVE_INFINITY, "not finite"],
+		["negative infinity", Number.NEGATIVE_INFINITY, "not finite"],
+		["out-of-range epoch", 8640000000000001, "out of Date range"],
+	])(
+		"rejects %s schedule timestamps with a typed error",
+		(_label, value, message) => {
+			expect(() => formatSendAtIso(value as number)).toThrow(
+				expect.objectContaining({
+					code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+					message: expect.stringContaining(message as string),
+				}),
+			);
+		},
+	);
+
+	it("rejects an invalid time before reading or scheduling a draft", async () => {
+		const service = getDefaultTriageService();
+		const getDraft = vi.spyOn(service.getStore(), "getDraft");
+		const scheduleDraftSend = vi.spyOn(service, "scheduleDraftSend");
+		const callback = vi.fn();
+
+		await expect(
+			scheduleDraftSendAction.handler(
+				runtime(),
+				{ content: {} } as Memory,
+				undefined,
+				{
+					parameters: {
+						draftId: "draft-1",
+						sendAtMs: 8640000000000001,
+					},
+				} as HandlerOptions,
+				callback,
+			),
+		).rejects.toMatchObject({
+			code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+		});
+		expect(getDraft).not.toHaveBeenCalled();
+		expect(scheduleDraftSend).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	it("fails closed when no durable scheduler is registered", async () => {
 		const rt = runtime();
 		const service = new TriageService(new MessageRefStore());

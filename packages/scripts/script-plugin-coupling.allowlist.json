@@ -61,7 +61,6 @@
       "plugins/plugin-local-inference",
       "plugins/plugin-meetings",
       "plugins/plugin-scheduling",
-      "plugins/plugin-signal",
       "plugins/plugin-notes",
       "plugins/plugin-telegram",
       "plugins/plugin-wallet",

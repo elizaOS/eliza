@@ -56,17 +56,7 @@ describe("buildDeepLink — Telegram", () => {
   });
 });
 
-describe("buildDeepLink — Signal / iMessage / WhatsApp", () => {
-  it("signal uses phoneNumber or identifier", () => {
-    expect(
-      buildDeepLink("signal", { roomMeta: { phoneNumber: "+15551234" } }),
-    ).toBe("signal://signal.me/#p/+15551234");
-    expect(buildDeepLink("signal", { roomMeta: { identifier: "+1999" } })).toBe(
-      "signal://signal.me/#p/+1999",
-    );
-    expect(buildDeepLink("signal", { roomMeta: {} })).toBeNull();
-  });
-
+describe("buildDeepLink — iMessage / WhatsApp", () => {
   it("imessage accepts handle / chatIdentifier / chat_identifier", () => {
     expect(buildDeepLink("imessage", { roomMeta: { handle: "a@b.com" } })).toBe(
       "imessage://a@b.com",

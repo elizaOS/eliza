@@ -115,6 +115,8 @@ export interface DocumentMetadata {
 	mediaHash?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaFileName?: string;
+	/** Adapter-derived parent source fingerprint used only to build opaque revisions. */
+	sourceFingerprint?: string;
 }
 
 export interface FragmentMetadata {
@@ -122,6 +124,8 @@ export interface FragmentMetadata {
 	documentId: UUID;
 	position: number;
 	type?: "fragment";
+	/** Adapter-derived parent source fingerprint used only to build opaque revisions. */
+	sourceFingerprint?: string;
 }
 
 /**

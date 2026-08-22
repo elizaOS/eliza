@@ -34,6 +34,7 @@ import type {
   SandboxHandle,
   SandboxProvider,
 } from "./sandbox-provider-types";
+import { assertContainerBackedExecutionTier } from "./sandbox-provider-types";
 
 const execFileAsync = promisify(execFile);
 
@@ -179,6 +180,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
   // ------------------------------------------------------------------
 
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
+    assertContainerBackedExecutionTier(config.executionTier);
     const { agentId, agentName, environmentVars } = config;
 
     validateAgentId(agentId);

@@ -62,12 +62,14 @@ function ownerSourceDocument(): Memory {
   };
 }
 
-function harness(options: { transcript?: string } = {}) {
+function harness(
+  options: { transcript?: string; ownerDocuments?: Memory[] } = {},
+) {
   const stored = new Map<string, string>();
   const listDocuments = vi.fn(async () => {
     const draftContent = stored.get(DRAFT_DOCUMENT_ID);
     return [
-      ownerSourceDocument(),
+      ...(options.ownerDocuments ?? [ownerSourceDocument()]),
       ...(draftContent
         ? [
             {
@@ -85,6 +87,22 @@ function harness(options: { transcript?: string } = {}) {
           ]
         : []),
     ];
+  });
+  const listDocumentsDetailed = vi.fn(async () => {
+    const documents = await listDocuments();
+    return {
+      status: documents.length > 0 ? ("ok" as const) : ("empty_store" as const),
+      documents,
+      availableDocuments: [],
+      limit: 100,
+      offset: 0,
+      totalVisible: documents.length,
+      totalAvailable: documents.length,
+      totalMatched: documents.length,
+      hasMore: false,
+      availableOffset: 0,
+      availableHasMore: false,
+    };
   });
   const addDocument = vi.fn(async (input: AddDocumentOptions) => {
     stored.set(DRAFT_DOCUMENT_ID, input.content);
@@ -131,6 +149,7 @@ function harness(options: { transcript?: string } = {}) {
   });
   const documents = {
     listDocuments,
+    listDocumentsDetailed,
     addDocument,
     getDocumentById,
     updateDocument,
@@ -198,9 +217,9 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
 
     expect(result.success).toBe(true);
     expect(test.processAttachments).toHaveBeenCalledOnce();
-    expect(test.documents.listDocuments).toHaveBeenCalledWith(
+    expect(test.documents.listDocumentsDetailed).toHaveBeenCalledWith(
       expect.objectContaining({ entityId: OWNER_ID }),
-      expect.objectContaining({ addedBy: OWNER_ID }),
+      expect.objectContaining({ addedBy: OWNER_ID, limit: 100 }),
     );
     expect(test.documents.addDocument).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -228,6 +247,60 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
     const prompt = test.useModel.mock.calls[0]?.[1] as { prompt: string };
     expect(prompt.prompt).toContain("They wasted six months");
     expect(prompt.prompt).toContain('"the point is"');
+  });
+
+  it("preserves every owner source and tail evidence in model inputs", async () => {
+    const longText = `${"complete owner voice ".repeat(500)}tail signature tail signature END`;
+    const ownerDocuments = Array.from({ length: 15 }, (_, index) => ({
+      ...ownerSourceDocument(),
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
+      content: { text: index === 14 ? longText : `owner source ${index}` },
+    }));
+    const test = harness({
+      transcript: "Preserve all of the source material.",
+      ownerDocuments,
+    });
+
+    const result = await runAction(
+      test.runtime,
+      voiceMessage({
+        id: "voice-memo-complete",
+        url: "/api/media/voice-memo-complete.m4a",
+        contentType: "audio",
+        mimeType: "audio/mp4",
+        filename: "complete.m4a",
+      }),
+      {
+        action: "compose",
+        request: {
+          title: "Complete sources",
+          targetForm: "essay",
+          ownerAsk: "Use every complete owner source.",
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    const styleCard = (
+      result.data as {
+        styleCard: { sourceIds: string[]; signaturePhrases: string[] };
+      }
+    ).styleCard;
+    expect(styleCard.sourceIds).toContain(
+      "00000000-0000-4000-8000-000000000000",
+    );
+    expect(styleCard.sourceIds).toContain(
+      "00000000-0000-4000-8000-000000000014",
+    );
+    expect(styleCard.sourceIds).toHaveLength(15);
+    expect(styleCard.signaturePhrases).toContain("tail signature");
+    const largeModelCall = test.useModel.mock.calls.find(
+      ([modelType]) => modelType === ModelType.TEXT_LARGE,
+    );
+    const prompt = String(
+      (largeModelCall?.[1] as { prompt?: string } | undefined)?.prompt ?? "",
+    );
+    expect(prompt).toContain("complete owner");
   });
 
   it("fails closed without persisting when canonical room lookup fails", async () => {

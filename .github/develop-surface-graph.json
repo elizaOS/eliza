@@ -1,15 +1,19 @@
 {
   "schemaVersion": 1,
-  "graphVersion": "2026-08-21.1",
+  "graphVersion": "2026-08-22.1",
   "evidenceTtlHours": 168,
+  "reusePolicy": "current-run-only",
   "environment": {
     "bun": "1.3.14",
     "node": "24.15.0",
-    "runnerPolicy": "develop-full-v1"
+    "runnerPolicy": "develop-full-v1",
+    "runnerImageIdentity": "not-bound"
   },
   "globalInputs": [
     ".github/develop-surface-graph.json",
+    ".github/develop-effects.json",
     ".github/workflows/develop-full.yml",
+    ".github/workflows/develop-reconcile.yml",
     ".github/actions/setup-bun-workspace/**",
     "package.json",
     "bun.lock",
@@ -18,6 +22,7 @@
     "turbo.json",
     "tsconfig.json",
     "tsconfig.base.json",
+    "packages/scripts/develop-effect-ledger.mjs",
     "packages/scripts/develop-impact-evidence.mjs"
   ],
   "surfaces": [

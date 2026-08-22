@@ -22,9 +22,12 @@
 import { v4 } from "uuid";
 import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
+import { isProgressiveContentProjectionEnabled } from "../../../runtime/content-projection-policy.ts";
+import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
+	ActionResult,
 	Entity,
 	Evaluator,
 	IAgentRuntime,
@@ -46,6 +49,7 @@ import type {
 } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
+import { formatActionResultsForPrompt } from "../../../utils/action-results.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import {
 	buildFactKeywordsForStorage,
@@ -295,7 +299,7 @@ interface FactPrepared extends ReflectionPrepared {
 }
 
 interface SuccessPrepared extends ReflectionPrepared {
-	actionResults: unknown[];
+	actionResults: ActionResult[];
 }
 
 interface FactCandidate {
@@ -452,9 +456,14 @@ function formatRelationships(
 	);
 }
 
-function actionResultsFromState(state: State | undefined): unknown[] {
+function actionResultsFromState(state: State | undefined): ActionResult[] {
 	const raw = state?.data?.actionResults;
-	return Array.isArray(raw) ? raw : [];
+	return Array.isArray(raw)
+		? raw.filter(
+				(value): value is ActionResult =>
+					value !== null && typeof value === "object" && "success" in value,
+			)
+		: [];
 }
 
 const reflectionContextByMessage = new WeakMap<
@@ -1203,7 +1212,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 					: actionResultsFromState(state),
 		};
 	},
-	prompt({ prepared, options }) {
+	prompt({ runtime, prepared, options }) {
 		return `Evaluate if current user task is complete after agent response.
 
 Rules:
@@ -1217,7 +1226,15 @@ Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
 
 Action results:
-${JSON.stringify(prepared.actionResults, null, 2)}`;
+${
+	isProgressiveContentProjectionEnabled(runtime)
+		? renderActionResultsForModel(prepared.actionResults, {
+				omitRecoverableText: true,
+			}).text
+		: formatActionResultsForPrompt(prepared.actionResults, {
+				includeData: true,
+			})
+}`;
 	},
 	parse(output) {
 		const result = SuccessOutputSchema.safeParse(output);

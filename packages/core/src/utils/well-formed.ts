@@ -171,7 +171,10 @@ function failUnsafeValue(
 			cause,
 			// The key name is load-bearing diagnosis: without it the producer of
 			// the accessor property is unfindable from the error alone.
-			context: { operation, ...(key !== undefined ? { propertyName: key } : {}) },
+			context: {
+				operation,
+				...(key !== undefined ? { propertyName: key } : {}),
+			},
 			severity: "fatal",
 		},
 	);
