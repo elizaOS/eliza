@@ -370,7 +370,7 @@ final class BootCaptureUITests: XCTestCase {
             try skipOrFail("keyboard never appeared for Notes request", env: env)
         }
 
-        let initialDraft = (composer.value as? String) ?? ""
+        let initialDraft = composerDraftValue(composer)
         if !initialDraft.isEmpty {
             composer.typeText(
                 String(
@@ -379,7 +379,7 @@ final class BootCaptureUITests: XCTestCase {
                 )
             )
         }
-        let clearedDraft = (composer.value as? String) ?? ""
+        let clearedDraft = composerDraftValue(composer)
         XCTAssertTrue(
             clearedDraft.isEmpty,
             "could not clear the persisted composer draft before the Notes request; remaining value was '\(clearedDraft)'"
@@ -436,6 +436,83 @@ final class BootCaptureUITests: XCTestCase {
         XCTAssertTrue(
             notesVisible,
             "the agent completed the request but the routed Notes surface never appeared"
+        )
+    }
+
+    /// Prove the already-paired remote session can send a fresh turn through
+    /// the physical phone and render the exact model reply. This is deliberately
+    /// separate from view routing so a navigation failure cannot hide a broken
+    /// auth/chat boundary (or vice versa).
+    func testPairedRemoteCerebrasChatReply() throws {
+        let env = ProcessInfo.processInfo.environment
+        let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
+        let replyTimeout = Double(env["ELIZA_CHAT_REPLY_TIMEOUT_SECONDS"] ?? "") ?? 120
+        let replyMarker = "IOS_CEREBRAS_CHAT_202_OK"
+        let prompt = "Reply with exactly: \(replyMarker)"
+
+        let app = XCUIApplication()
+        launchWithRetry(app)
+        try connectRemoteAgentFromClipboardIfRequested(app, env: env)
+
+        let bootDeadline = Date().addingTimeInterval(bootTimeout)
+        var reachedHome = false
+        while Date() < bootDeadline {
+            if app.state == .notRunning { break }
+            if let terminal = classifyBootState(of: app) {
+                reachedHome = terminal == .home
+                break
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        attachScreenshot(named: "paired-chat-000-home")
+        guard reachedHome else {
+            try skipOrFail("boot did not reach home — paired chat not attempted", env: env)
+        }
+
+        guard let composer = firstHittableComposer(app) else {
+            attachAccessibilitySnapshot(of: app)
+            try skipOrFail("no hittable composer for paired chat", env: env)
+        }
+        composer.tap()
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 10) else {
+            attachAccessibilitySnapshot(of: app)
+            try skipOrFail("keyboard never appeared for paired chat", env: env)
+        }
+        let initialDraft = composerDraftValue(composer)
+        if !initialDraft.isEmpty {
+            composer.typeText(
+                String(
+                    repeating: XCUIKeyboardKey.delete.rawValue,
+                    count: min(initialDraft.count, 1_024)
+                )
+            )
+        }
+        XCTAssertTrue(
+            composerDraftValue(composer).isEmpty,
+            "could not clear the composer before the paired chat request"
+        )
+
+        composer.typeText(prompt)
+        let sendButton = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'send'")
+        ).firstMatch
+        guard sendButton.waitForExistence(timeout: 5), sendButton.isHittable else {
+            attachAccessibilitySnapshot(of: app)
+            try skipOrFail("no hittable send control for paired chat", env: env)
+        }
+        sendButton.tap()
+        attachScreenshot(named: "paired-chat-010-submitted")
+
+        let reply = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", replyMarker)
+        ).firstMatch
+        let replyArrived = reply.waitForExistence(timeout: replyTimeout)
+        attachScreenshot(named: replyArrived ? "paired-chat-020-reply" : "paired-chat-020-timeout")
+        attachAccessibilitySnapshot(of: app)
+        XCTAssertNotEqual(app.state, .notRunning, "the app terminated during paired chat")
+        XCTAssertTrue(
+            replyArrived,
+            "the paired remote session did not render the required Cerebras reply marker"
         )
     }
 
@@ -913,6 +990,16 @@ final class BootCaptureUITests: XCTestCase {
         return candidates.first { $0.waitForExistence(timeout: 10) && $0.isHittable }
     }
 
+    /// WKWebView exposes an empty text field's placeholder through `value` on
+    /// physical iOS. Treat only that exact placeholder as empty; user-authored
+    /// text remains byte-for-byte observable for the clear/type assertions.
+    private func composerDraftValue(_ composer: XCUIElement) -> String {
+        let value = ((composer.value as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.localizedCaseInsensitiveCompare("Message Eliza") == .orderedSame
+            ? "" : value
+    }
+
     /// Re-enters the real remote-agent first-run path after a fresh-container
     /// device reset. The caller supplies a short-lived, single-use code only to
     /// the disposable pairing run; accepted evidence is captured by a second
@@ -959,6 +1046,10 @@ final class BootCaptureUITests: XCTestCase {
         )
         _ = grantLocalNetworkPermissionIfPresent(app, timeout: 10)
         try confirmRemoteServerTrustPromptIfNeeded(app, timeout: 15)
+
+        if hasAuthenticatedChatComposer(app) {
+            return
+        }
 
         let pairingField = app.textFields.matching(
             NSPredicate(
@@ -1111,6 +1202,19 @@ final class BootCaptureUITests: XCTestCase {
             || app.textFields.count > 0 || app.textViews.count > 0
     }
 
+    /// A restored machine session can complete the remote handoff without
+    /// exposing PairingView again. Require the unlocked composer and absence
+    /// of the signed-out cue so a merely painted shell cannot false-pass.
+    private func hasAuthenticatedChatComposer(_ app: XCUIApplication) -> Bool {
+        let composer = app.textFields.matching(
+            NSPredicate(format: "placeholderValue ==[c] 'Message Eliza'")
+        ).firstMatch
+        let signedOutCue = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] 'Sign in to start chatting'")
+        ).firstMatch
+        return composer.exists && !signedOutCue.exists
+    }
+
     /// Accepts only the app's explicit remote-server confirmation. The prompt
     /// is part of the product trust boundary, so generic alerts and unrelated
     /// permission sheets are never dismissed by this setup path.
@@ -1126,15 +1230,39 @@ final class BootCaptureUITests: XCTestCase {
         let trustCopy = app.staticTexts.matching(
             NSPredicate(format: "label BEGINSWITH[c] 'Connect to this server?'")
         ).firstMatch
+        let setupTitle = app.staticTexts.matching(
+            NSPredicate(format: "label ==[c] 'Set up Eliza'")
+        ).firstMatch
+        let skipSetup = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label ==[c] 'Skip for now'")
+        ).firstMatch
         var deadline = Date().addingTimeInterval(timeout)
         var tapAttempts = 0
+        var setupSkipAttempts = 0
         var nextTapAt = Date.distantPast
         while Date() < deadline {
             if pairingField.exists {
                 return
             }
+            if hasAuthenticatedChatComposer(app) {
+                return
+            }
+            if setupTitle.exists, skipSetup.exists, skipSetup.isHittable,
+               setupSkipAttempts < 2
+            {
+                attachScreenshot(named: "pairing-008-setup-sheet")
+                skipSetup.tap()
+                setupSkipAttempts += 1
+                deadline = max(deadline, Date().addingTimeInterval(10))
+                Thread.sleep(forTimeInterval: 0.5)
+                continue
+            }
             if trustCopy.exists {
-                let confirm = app.alerts.firstMatch.buttons.matching(
+                // The product confirmation is a React dialog inside the
+                // WKWebView, not a native XCUI alert. Query the app-wide
+                // button surface, but only while the exact trust copy is
+                // present, so this can never accept an unrelated prompt.
+                let confirm = app.buttons.matching(
                     NSPredicate(format: "label ==[c] 'Ok' OR label ==[c] 'Connect'")
                 ).firstMatch
                 if confirm.exists, !confirm.frame.isEmpty, tapAttempts < 3,
