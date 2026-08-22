@@ -259,7 +259,7 @@ function gmailMessageFromGoogle(args: {
   const externalId = message.id;
   const receivedAt = message.receivedAt ?? syncedAt;
   return {
-    id: `${agentId}:google:${grant.side}:gmail:${externalId}`,
+    id: `${agentId}:google:${grant.side}:${accountIdForGrant(grant)}:gmail:${externalId}`,
     externalId,
     agentId,
     provider: "google",

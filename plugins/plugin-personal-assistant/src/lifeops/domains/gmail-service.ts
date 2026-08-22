@@ -45,6 +45,7 @@ import {
   googleAccountIdFromGrantId,
   googleSendEmailInput,
   lifeOpsGmailMessageFromGoogle,
+  lifeOpsGmailMessageId,
   requireGoogleServiceMethod,
 } from "../google-plugin-delegates.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
@@ -377,7 +378,11 @@ export class GmailDomain {
         historyId = nextHistoryId;
 
         for (const [externalId, action] of actions) {
-          const canonicalId = `${this.ctx.agentId()}:google:${grant.side}:gmail:${externalId}`;
+          const canonicalId = lifeOpsGmailMessageId({
+            agentId: this.ctx.agentId(),
+            grant,
+            externalId,
+          });
           if (action === "delete") {
             await this.ctx.repository.deleteGmailMessages(
               this.ctx.agentId(),

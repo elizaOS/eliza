@@ -184,7 +184,7 @@ describe("LifeOps Gmail sync cursors", () => {
     expect(repository.deleteGmailMessages).toHaveBeenCalledWith(
       "agent-1",
       "google",
-      ["agent-1:google:owner:gmail:gone"],
+      ["agent-1:google:owner:account-1:gmail:gone"],
       "owner",
       grant.id,
     );
