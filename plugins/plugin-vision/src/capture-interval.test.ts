@@ -48,6 +48,12 @@ describe("resolveCaptureIntervalMs", () => {
     expectInvalid("-5");
   });
 
+  it("rejects positive sub-millisecond values that Node clamps to 1ms", () => {
+    expectInvalid("0.5");
+    expectInvalid("0.999");
+    expect(resolveCaptureIntervalMs("1", DEFAULT, NAME)).toBe(1);
+  });
+
   it("rejects a non-numeric configured value rather than substituting the default", () => {
     // The distinction that matters: absent is a default, configured-and-wrong
     // is a mistake the operator needs to see.
@@ -98,6 +104,19 @@ describe("VisionService config wiring", () => {
         }
       ).visionConfig.screenCaptureInterval,
     ).toBe(750);
+  });
+
+  it("attributes an invalid legacy alias to the alias setting", () => {
+    expect(() =>
+      serviceWith({ VISION_SCREEN_CAPTURE_INTERVAL: "abc" }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "VISION_CAPTURE_INTERVAL_INVALID",
+        context: expect.objectContaining({
+          settingName: "VISION_SCREEN_CAPTURE_INTERVAL",
+        }),
+      }),
+    );
   });
 
   it("refuses to construct — and so arms no timer — on an invalid configured interval", () => {

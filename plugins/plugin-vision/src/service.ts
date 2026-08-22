@@ -217,6 +217,7 @@ interface CameraDevice {
 
 /** Node clamps a `setInterval` delay above this to 1ms, so it is the real ceiling. */
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const DEFAULT_SCREEN_CAPTURE_INTERVAL_MS = 2_000;
 
 /**
  * Resolve a capture-interval setting that is passed directly to `setInterval`.
@@ -228,8 +229,9 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
  *     default would hide it
  *   - valid            -> the configured number
  *
- * "Invalid" is anything Node cannot use as a timer delay: non-finite, <= 0, or
- * above `MAX_TIMER_DELAY_MS`. Node clamps ALL of those to 1ms
+ * "Invalid" is anything Node cannot use as the requested timer delay:
+ * non-finite, below 1ms, or above `MAX_TIMER_DELAY_MS`. Node clamps ALL of
+ * those out-of-range values to 1ms
  * (`TimeoutOverflowWarning` / `TimeoutNegativeWarning`), turning a mistyped
  * interval into a capture busy-loop rather than a slower cadence.
  */
@@ -240,9 +242,9 @@ export function resolveCaptureIntervalMs(
 ): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > MAX_TIMER_DELAY_MS) {
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > MAX_TIMER_DELAY_MS) {
     throw new ElizaError(
-      `${settingName} must be a positive number of milliseconds no greater than ${MAX_TIMER_DELAY_MS}; received ${JSON.stringify(raw)}`,
+      `${settingName} must be at least 1 millisecond and no greater than ${MAX_TIMER_DELAY_MS}; received ${JSON.stringify(raw)}`,
       {
         code: "VISION_CAPTURE_INTERVAL_INVALID",
         context: { settingName, raw, maxMs: MAX_TIMER_DELAY_MS },
@@ -251,7 +253,6 @@ export function resolveCaptureIntervalMs(
   }
   return parsed;
 }
-
 
 export class VisionService extends Service {
   static override serviceType: ServiceTypeName =
@@ -330,7 +331,7 @@ export class VisionService extends Service {
     tfChangeThreshold: 10, // 10% change triggers TF update
     vlmChangeThreshold: 50, // 50% change triggers VLM update
     visionMode: VisionMode.OFF, // Capture requires explicit activation
-    screenCaptureInterval: 2000, // Screen capture every 2 seconds
+    screenCaptureInterval: DEFAULT_SCREEN_CAPTURE_INTERVAL_MS,
     tileSize: 256,
     tileProcessingOrder: "priority",
     ocrEnabled: true,
@@ -398,6 +399,13 @@ export class VisionService extends Service {
       if (raw === undefined) return defaultValue;
       return raw.trim().toLowerCase() === "true";
     };
+    const primaryCaptureInterval = getSettingString("SCREEN_CAPTURE_INTERVAL");
+    const captureIntervalSetting =
+      primaryCaptureInterval ||
+      getSettingString("VISION_SCREEN_CAPTURE_INTERVAL");
+    const captureIntervalSettingName = primaryCaptureInterval
+      ? "SCREEN_CAPTURE_INTERVAL"
+      : "VISION_SCREEN_CAPTURE_INTERVAL";
 
     return {
       ...this.DEFAULT_CONFIG,
@@ -443,13 +451,13 @@ export class VisionService extends Service {
       visionMode:
         (getSettingString("VISION_MODE") as VisionMode) ||
         this.DEFAULT_CONFIG.visionMode,
-      // `||` (not `??`) preserves the existing alias precedence: a blank
-      // primary falls through to the legacy alias exactly as before.
+      // `||` (not `??`) preserves the existing alias precedence: an empty
+      // primary reaches the legacy alias, while a whitespace-only primary is
+      // truthy and therefore suppresses the alias exactly as before.
       screenCaptureInterval: resolveCaptureIntervalMs(
-        getSettingString("SCREEN_CAPTURE_INTERVAL") ||
-          getSettingString("VISION_SCREEN_CAPTURE_INTERVAL"),
-        this.DEFAULT_CONFIG.screenCaptureInterval,
-        "SCREEN_CAPTURE_INTERVAL",
+        captureIntervalSetting,
+        DEFAULT_SCREEN_CAPTURE_INTERVAL_MS,
+        captureIntervalSettingName,
       ),
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
