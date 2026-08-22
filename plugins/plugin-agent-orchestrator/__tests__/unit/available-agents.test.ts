@@ -105,7 +105,7 @@ describe("availableAgentsProvider", () => {
     expect(result.text).not.toContain("framework probe unavailable");
   });
 
-  it("caps rendered sessions while keeping all structured session data", async () => {
+  it("renders every session while keeping all structured session data", async () => {
     const sessions = Array.from({ length: 12 }, (_, index) =>
       session({
         id: `session-${String(index).padStart(2, "0")}`,
@@ -124,10 +124,23 @@ describe("availableAgentsProvider", () => {
 
     expect(result.data?.activeSessions).toHaveLength(12);
     expect(result.text).toContain("Active sessions (12)");
-    expect(result.text).toContain("... (+4 older sessions omitted)");
-    expect(result.text?.match(/- demo-/g)).toHaveLength(8);
-    expect(result.text).toContain("demo-2");
-    expect(result.text).toContain("demo-0");
-    expect(result.text).not.toContain("demo-3");
+    expect(result.text).not.toContain("older sessions omitted");
+    const rendered = [...(result.text ?? "").matchAll(/- (demo-\d+) \[/g)].map(
+      (match) => match[1],
+    );
+    expect(rendered).toEqual([
+      "demo-2",
+      "demo-1",
+      "demo-0",
+      "demo-11",
+      "demo-10",
+      "demo-9",
+      "demo-8",
+      "demo-7",
+      "demo-6",
+      "demo-5",
+      "demo-4",
+      "demo-3",
+    ]);
   });
 });

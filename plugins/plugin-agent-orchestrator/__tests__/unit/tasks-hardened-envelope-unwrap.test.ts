@@ -95,7 +95,7 @@ describe("TASKS hardened-envelope unwrap", () => {
     expect(emitted).not.toContain("SECURITY NOTICE");
   });
 
-  it("create clamps a planner-supplied title blob at the persist/display seam", async () => {
+  it("create preserves the complete first title line", async () => {
     const acp = serviceMock();
     const createTask = vi.fn(async () => ({ id: THREAD_ID, title: "t" }));
     const runtime = runtimeWithTaskService(acp, createTask);
@@ -120,14 +120,13 @@ describe("TASKS hardened-envelope unwrap", () => {
     expect(result?.success).toBe(true);
     const stored = createTask.mock.calls[0]?.[0] as { title: string };
     expect(stored.title).not.toContain("\n");
-    expect(stored.title.length).toBeLessThanOrEqual(121);
-    expect(stored.title).toContain("first line of a blob");
+    expect(stored.title).toBe(`first line of a blob ${"x".repeat(300)}`);
     const emitted = emittedText(cb);
     expect(emitted).toContain(`[TASK:${THREAD_ID}]`);
-    expect(emitted).not.toContain("x".repeat(200));
+    expect(emitted).toContain("x".repeat(300));
   });
 
-  it("spawn_agent clamps a planner-supplied label blob before it reaches session metadata", async () => {
+  it("spawn_agent preserves the complete single-line label", async () => {
     const acp = serviceMock();
     const runtime = runtimeWith(acp);
     const blobLabel = `deploy helper\n${"y".repeat(400)}`;
@@ -154,8 +153,7 @@ describe("TASKS hardened-envelope unwrap", () => {
     };
     const label = spawnArg.metadata?.label ?? "";
     expect(label).not.toContain("\n");
-    expect(label.length).toBeLessThanOrEqual(121);
-    expect(label).toContain("deploy helper");
+    expect(label).toBe(`deploy helper ${"y".repeat(400)}`);
   });
 
   it("control continue forwards the unwrapped payload as the follow-up instruction", async () => {

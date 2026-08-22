@@ -123,7 +123,8 @@ const shortReason = extractFailureReason;
 
 function buildFailureReply(label: string, reason: string): string {
   const what = label ? `the "${label}" task` : "that task";
-  const because = reason ? ` — ${reason}` : "";
+  const normalizedReason = reason.replace(/[.!?]+$/u, "");
+  const because = normalizedReason ? ` — ${normalizedReason}` : "";
   return `Couldn't finish ${what}${because}. Want me to retry?`;
 }
 

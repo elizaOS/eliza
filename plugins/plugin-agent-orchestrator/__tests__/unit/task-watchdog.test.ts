@@ -76,7 +76,12 @@ describe("TaskWatchdogService.runOnce (#8901)", () => {
     expect(sendToSession).toHaveBeenCalledTimes(1);
   });
 
-  it("clears the prod flag when a session recovers, so a later stall re-grills", async () => {
+  it("does NOT re-grill after recovery — the prod memo lasts the session's lifetime (nag-loop regression)", async () => {
+    // The old recover-then-regrill contract was the 4-minute nag loop: the
+    // grill's own reply reset lastActivity ("recovery"), recovery cleared the
+    // memo, and the same session was grilled forever. The memo now persists
+    // until the session id leaves the list (see task-watchdog-nag-loop.test.ts
+    // for the full cycle pins).
     const sendToSession = vi.fn(async () => ({}));
     let activity = NOW - 200_000; // stalled
     const acp = {
@@ -89,13 +94,13 @@ describe("TaskWatchdogService.runOnce (#8901)", () => {
     await svc.runOnce(NOW); // prod #1
     expect(sendToSession).toHaveBeenCalledTimes(1);
 
-    activity = NOW; // recovered
+    activity = NOW; // "recovered" (in the live loop this was the grill's own reply)
     await svc.runOnce(NOW + 1_000);
     expect(svc.getStalledSessionIds()).toEqual([]);
 
     activity = NOW - 200_000; // stalls again
     await svc.runOnce(NOW + 2_000);
-    expect(sendToSession).toHaveBeenCalledTimes(2); // re-grilled
+    expect(sendToSession).toHaveBeenCalledTimes(1); // one grill per lifetime
   });
 });
 
@@ -194,8 +199,11 @@ describe("composeCapWarning (#8901)", () => {
       limit: 32,
     };
     const text = composeCapWarning(w, "Lin");
-    expect(text).toContain("Lin is at 26/32 round-trips (81%)");
-    expect(text).toContain("STOP_AGENT");
+    expect(text).toContain("Lin is at 26/32 check-ins (81%)");
+    // Minimal-factual fallback: what the user can do, never internal action
+    // names or mechanism vocabulary.
+    expect(text).toContain("stop it or redirect it");
+    expect(text).not.toMatch(/STOP_AGENT|SEND_TO_AGENT/);
   });
 
   it("renders deterministic spend text in dollars", () => {
@@ -307,7 +315,7 @@ describe("TaskWatchdogService cap warnings (#8901)", () => {
     expect(
       posts.every((p) => p.roomId === "room-b" && p.source === "discord"),
     ).toBe(true);
-    expect(posts.some((p) => p.text.includes("round-trips"))).toBe(true);
+    expect(posts.some((p) => p.text.includes("check-ins"))).toBe(true);
     expect(posts.some((p) => p.text.includes("budget"))).toBe(true);
     expect(
       svc
@@ -335,7 +343,7 @@ describe("TaskWatchdogService cap warnings (#8901)", () => {
     const svc = new TaskWatchdogService(capRuntime({ acp, router, posts }));
 
     await svc.runOnce(NOW);
-    expect(posts.filter((p) => p.text.includes("round-trips"))).toHaveLength(1);
+    expect(posts.filter((p) => p.text.includes("check-ins"))).toHaveLength(1);
 
     rtCount = 10; // recovered (0.31)
     await svc.runOnce(NOW + 1_000);
@@ -343,7 +351,7 @@ describe("TaskWatchdogService cap warnings (#8901)", () => {
 
     rtCount = 28; // climbs again
     await svc.runOnce(NOW + 2_000);
-    expect(posts.filter((p) => p.text.includes("round-trips"))).toHaveLength(2);
+    expect(posts.filter((p) => p.text.includes("check-ins"))).toHaveLength(2);
   });
 
   it("warns nothing when no cap signal is available, leaving the idle path intact", async () => {

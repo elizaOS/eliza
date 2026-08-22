@@ -26,15 +26,17 @@ describe("SubAgentInbox", () => {
     expect(inbox.drain("s2")).toBe("b");
   });
 
-  it("drops the oldest entries past the cap", () => {
+  it("retains every entry — user messages are never evicted", () => {
     const inbox = new SubAgentInbox(2);
     inbox.enqueue("s", "1");
     inbox.enqueue("s", "2");
     inbox.enqueue("s", "3");
-    expect(inbox.drain("s")).toBe("2\n3");
+    // Prompt-integrity: a queued user message is never silently dropped,
+    // whatever cap the constructor was given.
+    expect(inbox.drain("s")).toBe("1\n2\n3");
   });
 
-  it("surfaces overflow drops through the observer — never a silent drop", () => {
+  it("never reports overflow drops — nothing is dropped", () => {
     const inbox = new SubAgentInbox(2);
     const seen: Array<{ sessionId: string; now: number; total: number }> = [];
     inbox.setOverflowObserver((sessionId, now, total) =>
@@ -42,30 +44,23 @@ describe("SubAgentInbox", () => {
     );
     inbox.enqueue("s", "1");
     inbox.enqueue("s", "2");
-    expect(seen).toEqual([]);
-    expect(inbox.droppedCount("s")).toBe(0);
-
     inbox.enqueue("s", "3");
     inbox.enqueue("s", "4");
-    expect(seen).toEqual([
-      { sessionId: "s", now: 1, total: 1 },
-      { sessionId: "s", now: 1, total: 2 },
-    ]);
-    expect(inbox.droppedCount("s")).toBe(2);
-    // The surviving window is still the newest entries.
-    expect(inbox.drain("s")).toBe("3\n4");
-    // Session teardown resets the drop ledger with the queue.
+    expect(seen).toEqual([]);
+    expect(inbox.droppedCount("s")).toBe(0);
+    expect(inbox.drain("s")).toBe("1\n2\n3\n4");
+    // Session teardown resets the ledger with the queue.
     inbox.enqueue("s", "5");
     inbox.clear("s");
     expect(inbox.droppedCount("s")).toBe(0);
   });
 
-  it("counts overflow drops even with no observer attached", () => {
+  it("droppedCount stays zero with no observer attached", () => {
     const inbox = new SubAgentInbox(1);
     inbox.enqueue("s", "a");
     inbox.enqueue("s", "b");
-    expect(inbox.droppedCount("s")).toBe(1);
-    expect(inbox.drain("s")).toBe("b");
+    expect(inbox.droppedCount("s")).toBe(0);
+    expect(inbox.drain("s")).toBe("a\nb");
   });
 
   it("clears one session and all sessions", () => {

@@ -942,9 +942,8 @@ describe("emitProgress routing ladder + cadence", () => {
     // The junk `""` tool entries must NOT be in the summarizer prompt.
     expect(params.prompt).not.toContain('"", ""');
     expect(params.prompt).not.toMatch(/recently[^\n]*:\s*""/);
-    // The real, informative call still made it in (path >2 segments → shortPath
-    // abbreviates the leading segments to `…/`).
-    expect(params.prompt).toContain("Edit(\u2026/src/app.ts)");
+    // The real, informative call remains complete in model context.
+    expect(params.prompt).toContain("Edit(/repo/src/app.ts)");
 
     await rt.dispose();
   });

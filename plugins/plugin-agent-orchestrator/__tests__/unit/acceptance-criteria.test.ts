@@ -224,7 +224,7 @@ describe("generateDefaultAcceptanceCriteria", () => {
     expect(criteria[0]).toBe("only one concrete criterion");
   });
 
-  it("caps the criteria at the upper bound", async () => {
+  it("keeps every refined criterion without an upper-bound slice", async () => {
     const many = Array.from({ length: 12 }, (_, i) => `criterion number ${i}`);
     const runtime = runtimeWithModel(JSON.stringify({ criteria: many }));
     const criteria = await generateDefaultAcceptanceCriteria(
@@ -232,6 +232,6 @@ describe("generateDefaultAcceptanceCriteria", () => {
       "coding",
       runtime,
     );
-    expect(criteria.length).toBeLessThanOrEqual(5);
+    expect(criteria).toEqual(many);
   });
 });

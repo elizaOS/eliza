@@ -12,7 +12,6 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
       "TELEGRAM_BOT_TOKEN",
       "SLACK_BOT_TOKEN",
       "BOT_TOKEN",
-      "OPENCODE_CONFIG_CONTENT",
       "ELIZA_VAULT_PASSPHRASE",
       "eliza_vault_passphrase",
       "TERMINAL_RUN_TOKEN",

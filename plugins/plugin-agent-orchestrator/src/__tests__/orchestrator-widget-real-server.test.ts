@@ -117,8 +117,13 @@ describe("orchestrator widget registered HTTP surface", () => {
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error("SSE response body is unavailable");
-    const frame = await reader.read();
-    const text = new TextDecoder().decode(frame.value);
+    const decoder = new TextDecoder();
+    let text = "";
+    while (!text.includes("\n\n")) {
+      const frame = await reader.read();
+      if (frame.done) break;
+      text += decoder.decode(frame.value, { stream: true });
+    }
     expect(text).toContain("event: snapshot");
     expect(text).toContain("Render live orchestration");
     expect(text).toContain("Production service state reached the app consumer");
