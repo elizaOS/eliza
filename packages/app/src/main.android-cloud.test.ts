@@ -40,6 +40,7 @@ describe("Android Cloud renderer entry", () => {
       source.indexOf("interface SecureCredentialsPlugin"),
     );
     expect(source).toContain('"ElizaSecureCredentials"');
+    expect(source).toContain('"ElizaPlayExport"');
     expect(source).toContain('"ElizaPlayVoice"');
     expect(source).toContain('"ElizaPlaySettings"');
     expect(source).not.toContain("@elizaos/capacitor-talkmode");
@@ -52,11 +53,17 @@ describe("Android Cloud renderer entry", () => {
   it("wires account deletion only to canonical Cloud HTTPS transport", () => {
     expect(source).toContain("androidCloudAccountLifecycle");
     expect(source).toContain("CapacitorHttp.request");
-    expect(source).toContain(
-      'data: { confirmation: "DELETE", consequencesAcknowledged: true }',
-    );
-    expect(source).toContain('data: { confirmation: "KEEP" }');
-    expect(source).toContain("statusAccessEstablished !== true");
+    expect(source).toContain('data: { confirmation: "DELETE" }');
+    expect(source).toContain('data: { confirmation: "CANCEL DELETION" }');
+    expect(source).toContain('"/api/public/account-deletion"');
+    expect(source).toContain('"X-Account-Deletion-Status"');
+    expect(source).toContain('"X-Account-Deletion-Recovery"');
+    expect(source).toContain("parseAccountDeletionAccepted");
+    expect(source).toContain("persistDeletionCapabilities");
+    expect(source).toContain("PlayExport.saveExport");
+    expect(source).toContain("appOrigin: androidCloudClient.appBase");
+    expect(source).not.toContain("statusAccessEstablished");
+    expect(source).not.toContain("/api/v1/account-deletion/");
     expect(source).toContain("disableRedirects: true");
     expect(source).toContain("readonly status: number | null = null");
     expect(source).toContain("error.status === 401 || error.status === 404");

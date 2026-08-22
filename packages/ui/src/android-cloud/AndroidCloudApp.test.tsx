@@ -50,22 +50,21 @@ function createVoice(): AndroidCloudVoiceAdapter {
 function deletionRequest(): AccountDeletionRequestDto {
   return {
     requestId: "receipt_android_opaque_1",
-    phase: "recovery_window" as const,
+    status: "recovery" as const,
     requestedAt: "2026-08-22T00:00:00.000Z",
-    recoveryEndsAt: "2026-08-29T00:00:00.000Z",
-    scheduledDeletionAt: "2026-08-29T00:00:00.000Z",
+    recoveryExpiresAt: "2026-09-21T00:00:00.000Z",
+    scheduledDeletionAt: "2026-09-21T00:00:00.000Z",
+    irreversibleAt: null,
     completedAt: null,
     identityDeactivated: true,
     canCancel: true,
-    canExport: true,
-    nextPollAfterMs: null,
-    progress: null,
+    nextAction: "download_export_or_cancel",
     export: {
-      status: "not_requested" as const,
-      downloadUrl: null,
-      expiresAt: null,
+      status: "building" as const,
+      readyAt: null,
+      expiresAt: "2026-09-21T00:00:00.000Z",
+      contentDigest: null,
     },
-    actionRequiredCode: null,
   };
 }
 
@@ -78,20 +77,11 @@ function createLifecycle(
     cancelDeletion: vi.fn(
       async (): Promise<AccountDeletionRequestDto> => ({
         ...deletionRequest(),
-        phase: "cancelled",
+        status: "canceled",
         canCancel: false,
       }),
     ),
-    requestExport: vi.fn(
-      async (): Promise<AccountDeletionRequestDto> => ({
-        ...deletionRequest(),
-        export: {
-          status: "preparing",
-          downloadUrl: null,
-          expiresAt: null,
-        },
-      }),
-    ),
+    downloadExport: vi.fn(async () => true),
   };
 }
 

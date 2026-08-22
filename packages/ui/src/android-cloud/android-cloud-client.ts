@@ -158,11 +158,13 @@ export function resolveAndroidCloudChatAuthority(
 
 export class AndroidCloudClient {
   readonly apiBase: string;
+  readonly appBase: string;
   private readonly fetchImpl: typeof fetch;
   private readonly credentialStore: AndroidCloudCredentialStore;
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
+    this.appBase = directCloudAppBaseForApi(this.apiBase);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.credentialStore = options.credentialStore ?? browserCredentialStore;
   }

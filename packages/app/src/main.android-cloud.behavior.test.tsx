@@ -18,9 +18,18 @@ const playEntry = vi.hoisted(() => ({
   preferenceSet: vi.fn(
     async (_options: { key: string; value: string }) => undefined,
   ),
-  secureClear: vi.fn(async () => undefined),
-  secureGet: vi.fn(async () => ({ value: null as string | null })),
-  secureSet: vi.fn(async (_options: { value: string }) => undefined),
+  secureClear: vi.fn(async (_options?: { key?: string }) => undefined),
+  secureGet: vi.fn(async (_options?: { key?: string }) => ({
+    value: null as string | null,
+  })),
+  secureSet: vi.fn(
+    async (_options: { key?: string; value: string }) => undefined,
+  ),
+  httpRequest: vi.fn(),
+  saveExport: vi.fn(async () => ({
+    saved: true,
+    contentDigest: "a".repeat(64),
+  })),
 }));
 
 vi.mock("react-dom/client", () => ({ createRoot: playEntry.createRoot }));
@@ -34,6 +43,7 @@ vi.mock("@elizaos/ui/components/ui/error-boundary", () => ({
 vi.mock("@elizaos/ui/styles", () => ({}));
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => true },
+  CapacitorHttp: { request: playEntry.httpRequest },
   registerPlugin: (name: string) =>
     name === "ElizaSecureCredentials"
       ? {
@@ -41,13 +51,15 @@ vi.mock("@capacitor/core", () => ({
           set: playEntry.secureSet,
           remove: playEntry.secureClear,
         }
-      : {
-          addListener: vi.fn(async () => ({ remove: vi.fn() })),
-          requestPermission: vi.fn(async () => ({ granted: true })),
-          speak: vi.fn(async () => undefined),
-          startDictation: vi.fn(async () => ({ started: true })),
-          stopDictation: vi.fn(async () => undefined),
-        },
+      : name === "ElizaPlayExport"
+        ? { saveExport: playEntry.saveExport }
+        : {
+            addListener: vi.fn(async () => ({ remove: vi.fn() })),
+            requestPermission: vi.fn(async () => ({ granted: true })),
+            speak: vi.fn(async () => undefined),
+            startDictation: vi.fn(async () => ({ started: true })),
+            stopDictation: vi.fn(async () => undefined),
+          },
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
@@ -94,6 +106,31 @@ vi.mock("@capacitor/status-bar", () => ({
 
 let entry: typeof import("./main.android-cloud");
 
+const STATUS_CAPABILITY = "s".repeat(43);
+const RECOVERY_CAPABILITY = "r".repeat(43);
+
+function deletionRequest(status = "reserved") {
+  return {
+    requestId: "receipt-opaque-1",
+    status,
+    requestedAt: "2026-08-22T00:00:00.000Z",
+    recoveryExpiresAt: "2026-09-21T00:00:00.000Z",
+    scheduledDeletionAt: "2026-09-21T00:00:00.000Z",
+    irreversibleAt: null,
+    completedAt: null,
+    identityDeactivated: true,
+    canCancel: status === "reserved" || status === "recovery",
+    nextAction:
+      status === "reserved" ? "wait_for_export" : "download_export_or_cancel",
+    export: {
+      status: "building",
+      readyAt: null,
+      expiresAt: "2026-09-21T00:00:00.000Z",
+      contentDigest: null,
+    },
+  };
+}
+
 beforeAll(async () => {
   document.body.innerHTML = '<div id="root"></div>';
   entry = await import("./main.android-cloud");
@@ -110,6 +147,12 @@ beforeEach(() => {
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
   playEntry.secureSet.mockResolvedValue(undefined);
+  playEntry.secureClear.mockResolvedValue(undefined);
+  playEntry.httpRequest.mockReset();
+  playEntry.saveExport.mockResolvedValue({
+    saved: true,
+    contentDigest: "a".repeat(64),
+  });
 });
 
 describe("Android Cloud renderer behavior", () => {
@@ -202,5 +245,135 @@ describe("Android Cloud renderer behavior", () => {
 
     window.removeEventListener("eliza:android-cloud-compose", compose);
     document.removeEventListener("eliza:share-target", share);
+  });
+
+  it("stores both one-time deletion capabilities before accepting reservation", async () => {
+    const secure = new Map<string, string>([["session", "steward-token"]]);
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: secure.get(options?.key ?? "session") ?? null,
+    }));
+    playEntry.secureSet.mockImplementation(async ({ key, value }) => {
+      secure.set(key ?? "session", value);
+    });
+    playEntry.httpRequest.mockResolvedValueOnce({
+      status: 202,
+      data: {
+        request: deletionRequest(),
+        statusCredential: STATUS_CAPABILITY,
+        recoveryCredential: RECOVERY_CAPABILITY,
+      },
+    });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.requestDeletion(),
+    ).resolves.toMatchObject({ status: "reserved" });
+    expect(playEntry.httpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.eliza.app/api/v1/me/account-deletion",
+        method: "POST",
+        data: { confirmation: "DELETE" },
+        disableRedirects: true,
+        headers: expect.objectContaining({
+          Authorization: "Bearer steward-token",
+          Origin: "https://cloud.eliza.app",
+        }),
+      }),
+    );
+    expect(secure.get("accountDeletionStatus")).toBe(STATUS_CAPABILITY);
+    expect(secure.get("accountDeletionRecovery")).toBe(RECOVERY_CAPABILITY);
+  });
+
+  it("uses separate header capabilities for status, undo, and export", async () => {
+    const secure = new Map<string, string>([
+      ["accountDeletionStatus", STATUS_CAPABILITY],
+      ["accountDeletionRecovery", RECOVERY_CAPABILITY],
+    ]);
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: secure.get(options?.key ?? "session") ?? null,
+    }));
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
+    });
+    playEntry.httpRequest
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { request: deletionRequest("recovery") },
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { request: deletionRequest("canceled") },
+      });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.getStatus(),
+    ).resolves.toMatchObject({ status: "recovery" });
+    expect(playEntry.httpRequest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        url: "https://api.eliza.app/api/public/account-deletion",
+        headers: expect.objectContaining({
+          "X-Account-Deletion-Status": STATUS_CAPABILITY,
+        }),
+      }),
+    );
+
+    await expect(
+      entry.androidCloudAccountLifecycle.cancelDeletion(),
+    ).resolves.toMatchObject({ status: "canceled" });
+    expect(playEntry.httpRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        method: "DELETE",
+        data: { confirmation: "CANCEL DELETION" },
+        headers: expect.objectContaining({
+          "X-Account-Deletion-Recovery": RECOVERY_CAPABILITY,
+        }),
+      }),
+    );
+
+    secure.set("accountDeletionRecovery", RECOVERY_CAPABILITY);
+    await entry.androidCloudAccountLifecycle.downloadExport();
+    expect(playEntry.saveExport).toHaveBeenCalledWith({
+      apiBase: "https://api.eliza.app",
+      appOrigin: "https://cloud.eliza.app",
+      recoveryCredential: RECOVERY_CAPABILITY,
+    });
+  });
+
+  it("cancels a reservation if durable recovery storage fails", async () => {
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: options?.key ? null : "steward-token",
+    }));
+    playEntry.secureSet.mockImplementation(async ({ key }) => {
+      if (key === "accountDeletionRecovery") {
+        throw new Error("keystore unavailable");
+      }
+    });
+    playEntry.httpRequest
+      .mockResolvedValueOnce({
+        status: 202,
+        data: {
+          request: deletionRequest(),
+          statusCredential: STATUS_CAPABILITY,
+          recoveryCredential: RECOVERY_CAPABILITY,
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { request: deletionRequest("canceled") },
+      });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.requestDeletion(),
+    ).rejects.toThrow("Deletion was safely cancelled");
+    expect(playEntry.httpRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({
+          "X-Account-Deletion-Recovery": RECOVERY_CAPABILITY,
+        }),
+      }),
+    );
   });
 });

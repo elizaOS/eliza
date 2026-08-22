@@ -37,37 +37,24 @@ describe("Android Play account-deletion contract", () => {
     }
   });
 
-  it("keeps deletion admission fenced until the lifecycle reservation exists", () => {
-    const route = read("cloud/api/v1/me/account-deletion/route.ts");
-    const lifecycle = read("cloud/shared/src/lib/services/account-deletion.ts");
-    const resourcePurge = read(
-      "cloud/shared/src/lib/services/account-deletion-resource-purge.ts",
-    );
-    const users = read("cloud/shared/src/lib/services/users.ts");
-    const appCleanup = read("cloud/shared/src/lib/services/app-cleanup.ts");
-    const publicPage = read(
-      "ui/src/cloud/public-pages/pages/legal/account-deletion-page.tsx",
-    );
-    expect(route).toContain('body.confirmation !== "DELETE"');
-    expect(lifecycle).toContain('"TRANSFER_REQUIRED"');
-    expect(lifecycle).toContain('"LIFECYCLE_RESERVATION_REQUIRED"');
-    expect(lifecycle).toContain("listByOrganizationForWrite");
-    expect(lifecycle).not.toContain("deactivateStewardPlatformUser");
-    expect(lifecycle).not.toContain("deleteStewardPlatformUser");
-    expect(lifecycle).toContain("recoverStaleProcessing");
-    expect(lifecycle).toContain("purgePersonalOrganizationResources");
-    expect(lifecycle).toContain("markActionRequired");
-    expect(resourcePurge).toContain("deleteBillingCustomer");
-    expect(resourcePurge).toContain("prepareManagedDomains");
-    expect(resourcePurge).toContain('authorization: "account_deletion"');
-    expect(resourcePurge).toContain("purgeOrganizationObjectStorage");
-    expect(users).toContain("deletePersonalOrganizationAtomically");
-    expect(appCleanup).toContain("requireContainerTeardownCompletion");
-    expect(publicPage).toContain("within 30 days");
-    expect(publicPage).toContain("support@eliza.cloud");
-    expect(publicPage).not.toContain("sign back in");
-    expect(read("cloud/shared/src/lib/cron/cloudflare-cron.ts")).toContain(
-      '"/api/cron/process-account-deletions"',
-    );
+  it("pins Android to the stable capability contract without backend ownership", () => {
+    const entry = read("app/src/main.android-cloud.tsx");
+    const parser = read("ui/src/android-cloud/account-deletion-contract.ts");
+    const settings = read("ui/src/android-cloud/AndroidCloudSettings.tsx");
+    const seam = read("ui/src/android-cloud/ACCOUNT_DELETION_CONTRACT_SEAM.md");
+
+    expect(seam).toContain("398b2e79d2681109c3425cc9f21b7262ef882010");
+    expect(entry).toContain('"/api/v1/me/account-deletion"');
+    expect(entry).toContain('"/api/public/account-deletion"');
+    expect(entry).toContain('"X-Account-Deletion-Status"');
+    expect(entry).toContain('"X-Account-Deletion-Recovery"');
+    expect(entry).toContain('confirmation: "CANCEL DELETION"');
+    expect(entry).toContain("persistDeletionCapabilities");
+    expect(entry).not.toContain("statusAccessEstablished");
+    expect(parser).toContain("statusCredential: string;");
+    expect(parser).toContain("recoveryCredential: string;");
+    expect(parser).toContain("nextAction: AccountDeletionNextAction;");
+    expect(settings).toContain("Type CANCEL DELETION");
+    expect(settings).toContain("Save data export");
   });
 });

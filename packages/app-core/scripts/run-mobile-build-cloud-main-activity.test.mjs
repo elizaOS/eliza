@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cloudSafeMainActivityJava,
+  cloudSafePlayExportPluginJava,
   cloudSafePlaySettingsPluginJava,
   cloudSafePlayVoicePluginJava,
   cloudSafeSecureCredentialsPluginJava,
@@ -62,6 +63,7 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain(
       "registerPlugin(ElizaSecureCredentialsPlugin.class);",
     );
+    expect(source).toContain("registerPlugin(ElizaPlayExportPlugin.class);");
     expect(source).toContain("registerPlugin(ElizaPlayVoicePlugin.class);");
     expect(source).toContain("registerPlugin(ElizaPlaySettingsPlugin.class);");
     expect(coldCapture).toBeGreaterThanOrEqual(0);
@@ -92,9 +94,31 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("Cipher.getInstance(TRANSFORMATION)");
     expect(source).toContain("KeyProperties.BLOCK_MODE_GCM");
     expect(source).toContain(".setRandomizedEncryptionRequired(true)");
+    expect(source).toContain('"accountDeletionStatus".equals(key)');
+    expect(source).toContain('"accountDeletionRecovery".equals(key)');
+    expect(source).toContain("putString(storageKey, encoded).commit()");
+    expect(source).toContain("remove(storageKey).commit()");
     expect(source).not.toContain("uses-permission");
     expect(source).not.toContain("http://");
     expect(source).not.toContain("https://");
+  });
+
+  it("saves verified exports with the standard document picker", () => {
+    const source = cloudSafePlayExportPluginJava("ai.elizaos.app");
+
+    expect(source).toContain('@CapacitorPlugin(name = "ElizaPlayExport")');
+    expect(source).toContain("Intent.ACTION_CREATE_DOCUMENT");
+    expect(source).toContain('connection.setRequestMethod("POST")');
+    expect(source).toContain('"X-Account-Deletion-Recovery"');
+    expect(source).toContain("EXPORT MY DATA");
+    expect(source).toContain('MessageDigest.getInstance("SHA-256")');
+    expect(source).toContain("MessageDigest.isEqual(");
+    expect(source).toContain("MAX_EXPORT_BYTES = 32 * 1024 * 1024");
+    expect(source).toContain("connection.setInstanceFollowRedirects(false)");
+    expect(source).not.toContain("uses-permission");
+    expect(source).not.toMatch(
+      /MANAGE_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE/,
+    );
   });
 
   it("generates standard speech recognition and system TTS without local transports", () => {

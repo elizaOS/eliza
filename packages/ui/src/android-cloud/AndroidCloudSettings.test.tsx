@@ -22,22 +22,21 @@ function request(
 ): AccountDeletionRequestDto {
   return {
     requestId: "receipt_android_opaque_1",
-    phase: "recovery_window",
+    status: "recovery",
     requestedAt: "2026-08-22T00:00:00.000Z",
-    recoveryEndsAt: "2026-08-29T00:00:00.000Z",
-    scheduledDeletionAt: "2026-08-29T00:00:00.000Z",
+    recoveryExpiresAt: "2026-09-21T00:00:00.000Z",
+    scheduledDeletionAt: "2026-09-21T00:00:00.000Z",
+    irreversibleAt: null,
     completedAt: null,
     identityDeactivated: true,
     canCancel: true,
-    canExport: true,
-    nextPollAfterMs: null,
-    progress: null,
+    nextAction: "download_export_or_cancel",
     export: {
-      status: "not_requested",
-      downloadUrl: null,
-      expiresAt: null,
+      status: "building",
+      readyAt: null,
+      expiresAt: "2026-09-21T00:00:00.000Z",
+      contentDigest: null,
     },
-    actionRequiredCode: null,
     ...overrides,
   };
 }
@@ -49,13 +48,9 @@ function lifecycle(
     getStatus: vi.fn(async () => null),
     requestDeletion: vi.fn(async () => request()),
     cancelDeletion: vi.fn(async () =>
-      request({ phase: "cancelled", canCancel: false }),
+      request({ status: "canceled", canCancel: false }),
     ),
-    requestExport: vi.fn(async () =>
-      request({
-        export: { status: "preparing", downloadUrl: null, expiresAt: null },
-      }),
-    ),
+    downloadExport: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -182,7 +177,7 @@ describe("AndroidCloudSettings", () => {
     );
   });
 
-  it("requires exact KEEP before cancelling inside the recovery window", async () => {
+  it("requires exact CANCEL DELETION before cancelling", async () => {
     const adapter = lifecycle();
     render(
       <AndroidCloudSettings
@@ -201,7 +196,7 @@ describe("AndroidCloudSettings", () => {
     }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Confirmation"), {
-      target: { value: "KEEP" },
+      target: { value: "CANCEL DELETION" },
     });
     expect(confirm.disabled).toBe(false);
     await act(async () => {
@@ -215,30 +210,33 @@ describe("AndroidCloudSettings", () => {
     expect(await screen.findByText("Deletion cancelled")).toBeTruthy();
   });
 
-  it("opens only an HTTPS export in the external browser", () => {
-    const openExternal = vi.fn();
+  it("saves a ready export through the native document flow", async () => {
+    const adapter = lifecycle();
     render(
       <AndroidCloudSettings
         initialRequest={request({
           export: {
             status: "ready",
-            downloadUrl: "https://downloads.eliza.app/export/opaque",
+            readyAt: "2026-08-22T00:01:00.000Z",
             expiresAt: "2026-08-23T00:00:00.000Z",
+            contentDigest: "a".repeat(64),
           },
         })}
-        lifecycle={lifecycle()}
+        lifecycle={adapter}
         onBack={vi.fn()}
         onDeletionReserved={vi.fn()}
         onSignOut={vi.fn()}
-        openExternal={openExternal}
+        openExternal={vi.fn()}
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Download data export" }),
-    );
-    expect(openExternal).toHaveBeenCalledWith(
-      "https://downloads.eliza.app/export/opaque",
-    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save data export" }));
+      await Promise.resolve();
+    });
+    expect(adapter.downloadExport).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByText("Export saved to the location you selected."),
+    ).toBeTruthy();
   });
 });

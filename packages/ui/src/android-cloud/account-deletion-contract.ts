@@ -1,161 +1,154 @@
-/** Pure account-deletion DTO contract shared by web and Play-safe renderers. */
+/**
+ * Android-owned runtime parser for the identifier-minimal wire contract in
+ * account-deletion owner candidate 398b2e79d2681109c3425cc9f21b7262ef882010.
+ */
 
-export type AccountDeletionPhase =
-  | "preparing"
-  | "recovery_window"
+export type AccountDeletionStatus =
+  | "reserved"
+  | "recovery"
+  | "scheduled"
   | "processing"
-  | "action_required"
   | "completed"
-  | "cancelled";
+  | "canceled"
+  | "action_required";
 
-export type AccountDeletionExportState =
-  | "not_requested"
-  | "preparing"
+export type AccountDeletionExportStatus =
+  | "pending"
+  | "building"
   | "ready"
   | "expired"
-  | "unavailable";
+  | "deleted"
+  | "failed";
 
-export interface AccountDeletionProgressDto {
-  completedSteps: number;
-  totalSteps: number;
-  currentStep: string | null;
-}
+export type AccountDeletionNextAction =
+  | "wait_for_export"
+  | "download_export_or_cancel"
+  | "wait_for_reconciliation"
+  | "contact_support"
+  | "none";
 
 export interface AccountDeletionExportDto {
-  status: AccountDeletionExportState;
-  downloadUrl: string | null;
-  expiresAt: string | null;
+  status: AccountDeletionExportStatus;
+  readyAt: string | null;
+  expiresAt: string;
+  contentDigest: string | null;
 }
 
 export interface AccountDeletionRequestDto {
-  /** Non-identifying support receipt, not a user, organization, or provider ID. */
+  /** Opaque support receipt. Never treat it as authority. */
   requestId: string;
-  phase: AccountDeletionPhase;
+  status: AccountDeletionStatus;
   requestedAt: string;
-  recoveryEndsAt: string | null;
-  scheduledDeletionAt: string | null;
+  recoveryExpiresAt: string | null;
+  scheduledDeletionAt: string;
+  irreversibleAt: string | null;
   completedAt: string | null;
   identityDeactivated: boolean;
   canCancel: boolean;
-  canExport: boolean;
-  nextPollAfterMs: number | null;
-  progress: AccountDeletionProgressDto | null;
-  export: AccountDeletionExportDto;
-  actionRequiredCode: string | null;
+  nextAction: AccountDeletionNextAction;
+  export: AccountDeletionExportDto | null;
 }
 
-export interface AccountDeletionEnvelope {
-  request: unknown;
-  /** True only after the server durably reserved post-session status access. */
-  statusAccessEstablished?: unknown;
+export interface AccountDeletionAcceptedDto {
+  request: AccountDeletionRequestDto;
+  statusCredential: string;
+  recoveryCredential: string;
 }
 
-const PHASES = new Set<AccountDeletionPhase>([
-  "preparing",
-  "recovery_window",
+const STATUSES = new Set<AccountDeletionStatus>([
+  "reserved",
+  "recovery",
+  "scheduled",
   "processing",
-  "action_required",
   "completed",
-  "cancelled",
+  "canceled",
+  "action_required",
 ]);
 
-const EXPORT_STATES = new Set<AccountDeletionExportState>([
-  "not_requested",
-  "preparing",
+const EXPORT_STATUSES = new Set<AccountDeletionExportStatus>([
+  "pending",
+  "building",
   "ready",
   "expired",
-  "unavailable",
+  "deleted",
+  "failed",
 ]);
 
+const NEXT_ACTIONS = new Set<AccountDeletionNextAction>([
+  "wait_for_export",
+  "download_export_or_cancel",
+  "wait_for_reconciliation",
+  "contact_support",
+  "none",
+]);
+
+const CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value === "string" && value.length > 0) return value;
+  throw new Error(`Account deletion response has an invalid ${field}`);
 }
 
 function nullableString(value: unknown, field: string): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  throw new Error(`Account deletion response has an invalid ${field}`);
+  if (value === null) return null;
+  return requiredString(value, field);
 }
 
-function finiteNumber(value: unknown, field: string): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  throw new Error(`Account deletion response has an invalid ${field}`);
-}
-
-function parseProgress(value: unknown): AccountDeletionProgressDto | null {
-  if (value === null || value === undefined) return null;
-  if (!isRecord(value)) {
-    throw new Error("Account deletion response has invalid progress");
-  }
-  const completedSteps = finiteNumber(value.completedSteps, "completedSteps");
-  const totalSteps = finiteNumber(value.totalSteps, "totalSteps");
-  if (completedSteps < 0 || totalSteps < 0 || completedSteps > totalSteps) {
-    throw new Error("Account deletion response has inconsistent progress");
-  }
-  return {
-    completedSteps,
-    totalSteps,
-    currentStep: nullableString(value.currentStep, "currentStep"),
-  };
-}
-
-function parseExport(value: unknown): AccountDeletionExportDto {
+function parseExport(value: unknown): AccountDeletionExportDto | null {
+  if (value === null) return null;
   if (
     !isRecord(value) ||
-    !EXPORT_STATES.has(value.status as AccountDeletionExportState)
+    !EXPORT_STATUSES.has(value.status as AccountDeletionExportStatus)
   ) {
-    throw new Error("Account deletion response has invalid export status");
+    throw new Error("Account deletion response has invalid export state");
+  }
+  const contentDigest = nullableString(value.contentDigest, "contentDigest");
+  if (contentDigest !== null && !SHA256_PATTERN.test(contentDigest)) {
+    throw new Error("Account deletion response has an invalid contentDigest");
   }
   return {
-    status: value.status as AccountDeletionExportState,
-    downloadUrl: nullableString(value.downloadUrl, "downloadUrl"),
-    expiresAt: nullableString(value.expiresAt, "expiresAt"),
+    status: value.status as AccountDeletionExportStatus,
+    readyAt: nullableString(value.readyAt, "readyAt"),
+    expiresAt: requiredString(value.expiresAt, "expiresAt"),
+    contentDigest,
   };
 }
 
 export function parseAccountDeletionRequest(
   value: unknown,
 ): AccountDeletionRequestDto {
-  if (!isRecord(value)) {
-    throw new Error("Account deletion response was malformed");
-  }
   if (
-    typeof value.requestId !== "string" ||
-    !PHASES.has(value.phase as AccountDeletionPhase) ||
-    typeof value.requestedAt !== "string" ||
+    !isRecord(value) ||
+    !STATUSES.has(value.status as AccountDeletionStatus) ||
     typeof value.identityDeactivated !== "boolean" ||
     typeof value.canCancel !== "boolean" ||
-    typeof value.canExport !== "boolean"
+    !NEXT_ACTIONS.has(value.nextAction as AccountDeletionNextAction)
   ) {
     throw new Error("Account deletion response was malformed");
   }
-  const nextPollAfterMs =
-    value.nextPollAfterMs === null || value.nextPollAfterMs === undefined
-      ? null
-      : finiteNumber(value.nextPollAfterMs, "nextPollAfterMs");
   return {
-    requestId: value.requestId,
-    phase: value.phase as AccountDeletionPhase,
-    requestedAt: value.requestedAt,
-    recoveryEndsAt: nullableString(value.recoveryEndsAt, "recoveryEndsAt"),
-    scheduledDeletionAt: nullableString(
+    requestId: requiredString(value.requestId, "requestId"),
+    status: value.status as AccountDeletionStatus,
+    requestedAt: requiredString(value.requestedAt, "requestedAt"),
+    recoveryExpiresAt: nullableString(
+      value.recoveryExpiresAt,
+      "recoveryExpiresAt",
+    ),
+    scheduledDeletionAt: requiredString(
       value.scheduledDeletionAt,
       "scheduledDeletionAt",
     ),
+    irreversibleAt: nullableString(value.irreversibleAt, "irreversibleAt"),
     completedAt: nullableString(value.completedAt, "completedAt"),
     identityDeactivated: value.identityDeactivated,
     canCancel: value.canCancel,
-    canExport: value.canExport,
-    nextPollAfterMs:
-      nextPollAfterMs === null
-        ? null
-        : Math.min(Math.max(nextPollAfterMs, 1_000), 60_000),
-    progress: parseProgress(value.progress),
+    nextAction: value.nextAction as AccountDeletionNextAction,
     export: parseExport(value.export),
-    actionRequiredCode: nullableString(
-      value.actionRequiredCode,
-      "actionRequiredCode",
-    ),
   };
 }
 
@@ -168,4 +161,35 @@ export function parseAccountDeletionEnvelope(
   return value.request === null
     ? null
     : parseAccountDeletionRequest(value.request);
+}
+
+function parseCapability(value: unknown, field: string): string {
+  if (typeof value === "string" && CAPABILITY_PATTERN.test(value)) {
+    return value;
+  }
+  throw new Error(`Account deletion response has an invalid ${field}`);
+}
+
+export function parseAccountDeletionAccepted(
+  value: unknown,
+): AccountDeletionAcceptedDto {
+  if (!isRecord(value)) {
+    throw new Error("Account deletion acceptance was malformed");
+  }
+  const statusCredential = parseCapability(
+    value.statusCredential,
+    "statusCredential",
+  );
+  const recoveryCredential = parseCapability(
+    value.recoveryCredential,
+    "recoveryCredential",
+  );
+  if (statusCredential === recoveryCredential) {
+    throw new Error("Account deletion capabilities must be independent");
+  }
+  return {
+    request: parseAccountDeletionRequest(value.request),
+    statusCredential,
+    recoveryCredential,
+  };
 }

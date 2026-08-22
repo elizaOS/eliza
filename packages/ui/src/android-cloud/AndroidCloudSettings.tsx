@@ -7,7 +7,7 @@ export interface AndroidCloudAccountLifecycleAdapter {
   getStatus(): Promise<AccountDeletionRequestDto | null>;
   requestDeletion(): Promise<AccountDeletionRequestDto>;
   cancelDeletion(): Promise<AccountDeletionRequestDto>;
-  requestExport(): Promise<AccountDeletionRequestDto>;
+  downloadExport(): Promise<boolean>;
 }
 
 export interface AndroidCloudSettingsProps {
@@ -45,22 +45,28 @@ function formatDate(value: string | null): string | null {
   }).format(date);
 }
 
-function phaseCopy(request: AccountDeletionRequestDto): {
+function statusCopy(request: AccountDeletionRequestDto): {
   title: string;
   description: string;
 } {
-  switch (request.phase) {
-    case "preparing":
+  switch (request.status) {
+    case "reserved":
       return {
         title: "Securing your request",
         description:
-          "Eliza is reserving recovery access and fencing new account activity.",
+          "Account access is fenced while Eliza prepares the encrypted recovery export.",
       };
-    case "recovery_window":
+    case "recovery":
       return {
         title: "Deletion requested",
         description:
           "Ordinary access is disabled. You can export your data or cancel until the recovery window ends.",
+      };
+    case "scheduled":
+      return {
+        title: "Deletion scheduled",
+        description:
+          "The recovery window has ended. Permanent cleanup is queued and can no longer be cancelled.",
       };
     case "processing":
       return {
@@ -80,7 +86,7 @@ function phaseCopy(request: AccountDeletionRequestDto): {
         description:
           "Your account and associated account-owned data were deleted. Only a bounded non-identifying receipt remains.",
       };
-    case "cancelled":
+    case "canceled":
       return {
         title: "Deletion cancelled",
         description:
@@ -89,36 +95,22 @@ function phaseCopy(request: AccountDeletionRequestDto): {
   }
 }
 
-function safeDownloadUrl(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "https:" ? parsed.toString() : null;
-  } catch {
-    // error-policy:J3 Invalid or non-HTTPS export links are never rendered.
-    return null;
-  }
-}
-
 function DeletionStatus({
   request,
   lifecycle,
   onChange,
-  openExternal,
 }: {
   request: AccountDeletionRequestDto;
   lifecycle?: AndroidCloudAccountLifecycleAdapter;
   onChange(request: AccountDeletionRequestDto): void;
-  openExternal(url: string): Promise<void> | void;
 }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelText, setCancelText] = useState("");
   const [working, setWorking] = useState<"cancel" | "export" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const copy = phaseCopy(request);
-  const deadline = formatDate(request.recoveryEndsAt);
-  const downloadUrl = safeDownloadUrl(request.export.downloadUrl);
-  const progress = request.progress;
+  const [exportSaved, setExportSaved] = useState(false);
+  const copy = statusCopy(request);
+  const deadline = formatDate(request.recoveryExpiresAt);
 
   const cancel = async () => {
     if (!lifecycle) return;
@@ -137,15 +129,16 @@ function DeletionStatus({
     }
   };
 
-  const requestExport = async () => {
+  const downloadExport = async () => {
     if (!lifecycle) return;
     setWorking("export");
     setError(null);
+    setExportSaved(false);
     try {
-      onChange(await lifecycle.requestExport());
+      setExportSaved(await lifecycle.downloadExport());
     } catch (cause) {
       // error-policy:J4 Export failures remain visible without fabricating a
-      // download or changing the server-owned lifecycle state.
+      // saved file or changing the server-owned lifecycle state.
       setError(errorMessage(cause));
     } finally {
       setWorking(null);
@@ -160,45 +153,28 @@ function DeletionStatus({
           {copy.description}
         </p>
       </div>
-      {deadline && request.phase === "recovery_window" ? (
+      {deadline && request.status === "recovery" ? (
         <p className="rounded-xl border border-status-warning/40 p-3 text-sm">
           Recovery ends <strong>{deadline}</strong>. Deletion cannot be
           cancelled after that time.
         </p>
       ) : null}
-      {progress && progress.totalSteps > 0 ? (
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between gap-3 text-muted">
-            <span>{progress.currentStep ?? "Reconciling resources"}</span>
-            <span>
-              {progress.completedSteps}/{progress.totalSteps}
-            </span>
-          </div>
-          <progress
-            className="h-2 w-full"
-            max={progress.totalSteps}
-            value={progress.completedSteps}
-          />
-        </div>
-      ) : null}
-      {request.actionRequiredCode ? (
+      {request.status === "action_required" ? (
         <p className="text-sm text-status-warning">
-          Reference code: <code>{request.actionRequiredCode}</code>
+          Contact Eliza support with the receipt below so cleanup can be
+          reconciled safely.
         </p>
       ) : null}
-      {request.export.status === "preparing" ? (
+      {request.export?.status === "pending" ||
+      request.export?.status === "building" ? (
         <p className="text-sm text-muted" role="status">
           Preparing your encrypted export…
         </p>
       ) : null}
-      {downloadUrl ? (
-        <button
-          type="button"
-          className="block rounded-xl border border-border px-4 py-3 text-center font-semibold"
-          onClick={() => void openExternal(downloadUrl)}
-        >
-          Download data export
-        </button>
+      {exportSaved ? (
+        <p className="text-sm text-status-success" role="status">
+          Export saved to the location you selected.
+        </p>
       ) : null}
       {error ? (
         <p className="text-sm text-status-danger" role="alert">
@@ -206,14 +182,14 @@ function DeletionStatus({
         </p>
       ) : null}
       <div className="grid gap-2">
-        {request.canExport && request.export.status !== "preparing" ? (
+        {request.export?.status === "ready" ? (
           <button
             type="button"
             className="rounded-xl border border-border px-4 py-3 font-semibold"
             disabled={!lifecycle || working !== null}
-            onClick={() => void requestExport()}
+            onClick={() => void downloadExport()}
           >
-            {working === "export" ? "Starting export…" : "Export my data"}
+            {working === "export" ? "Saving export…" : "Save data export"}
           </button>
         ) : null}
         {request.canCancel ? (
@@ -245,7 +221,8 @@ function DeletionStatus({
               Cancel account deletion?
             </h2>
             <p className="text-sm text-muted">
-              Type KEEP to confirm that you want to retain the account.
+              Type CANCEL DELETION to confirm that you want to retain the
+              account.
             </p>
             <label
               className="block text-sm"
@@ -272,7 +249,9 @@ function DeletionStatus({
               <button
                 type="button"
                 className="rounded-xl bg-accent px-3 py-3 font-semibold text-accent-foreground disabled:opacity-50"
-                disabled={cancelText !== "KEEP" || working === "cancel"}
+                disabled={
+                  cancelText !== "CANCEL DELETION" || working === "cancel"
+                }
                 onClick={() => void cancel()}
               >
                 Keep account
@@ -325,12 +304,9 @@ export function AndroidCloudSettings({
   }, [initialRequest, refresh]);
 
   useEffect(() => {
-    if (!request?.nextPollAfterMs) return;
-    if (request.phase === "completed" || request.phase === "cancelled") return;
-    const timer = window.setTimeout(
-      () => void refresh(),
-      request.nextPollAfterMs,
-    );
+    if (!request) return;
+    if (request.status === "completed" || request.status === "canceled") return;
+    const timer = window.setTimeout(() => void refresh(), 5_000);
     return () => window.clearTimeout(timer);
   }, [refresh, request]);
 
@@ -381,7 +357,6 @@ export function AndroidCloudSettings({
             request={request}
             lifecycle={lifecycle}
             onChange={setRequest}
-            openExternal={openExternal}
           />
         ) : (
           <>

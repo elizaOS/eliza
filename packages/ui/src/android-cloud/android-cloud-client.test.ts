@@ -36,6 +36,10 @@ describe("AndroidCloudClient", () => {
       new AndroidCloudClient({ cloudApiBase: "https://attacker.example" })
         .apiBase,
     ).toBe("https://api.eliza.app");
+    expect(
+      new AndroidCloudClient({ cloudApiBase: "https://attacker.example" })
+        .appBase,
+    ).toBe("https://cloud.eliza.app");
   });
 
   it("accepts only the canonical API or UUID-shaped managed runtime hosts", () => {

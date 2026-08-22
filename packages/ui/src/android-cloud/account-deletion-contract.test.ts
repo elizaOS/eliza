@@ -1,77 +1,94 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseAccountDeletionAccepted,
   parseAccountDeletionEnvelope,
   parseAccountDeletionRequest,
 } from "./account-deletion-contract";
 
+const STATUS_CAPABILITY = "s".repeat(43);
+const RECOVERY_CAPABILITY = "r".repeat(43);
+
 function lifecycleRequest(overrides: Record<string, unknown> = {}) {
   return {
     requestId: "receipt_opaque_1",
-    phase: "recovery_window",
+    status: "recovery",
     requestedAt: "2026-08-22T00:00:00.000Z",
-    recoveryEndsAt: "2026-08-29T00:00:00.000Z",
-    scheduledDeletionAt: "2026-08-29T00:00:00.000Z",
+    recoveryExpiresAt: "2026-09-21T00:00:00.000Z",
+    scheduledDeletionAt: "2026-09-21T00:00:00.000Z",
+    irreversibleAt: null,
     completedAt: null,
     identityDeactivated: true,
     canCancel: true,
-    canExport: true,
-    nextPollAfterMs: 5_000,
-    progress: null,
+    nextAction: "download_export_or_cancel",
     export: {
-      status: "not_requested",
-      downloadUrl: null,
-      expiresAt: null,
+      status: "ready",
+      readyAt: "2026-08-22T00:01:00.000Z",
+      expiresAt: "2026-09-21T00:00:00.000Z",
+      contentDigest: "a".repeat(64),
     },
-    actionRequiredCode: null,
     ...overrides,
   };
 }
 
 describe("Android account-deletion lifecycle contract", () => {
-  it("parses the dedicated deletion owner's lifecycle DTO", () => {
+  it("parses the exact identifier-minimal DTO from owner candidate 398b2e79", () => {
     expect(
       parseAccountDeletionEnvelope({ request: lifecycleRequest() }),
     ).toMatchObject({
-      requestId: "receipt_opaque_1",
-      phase: "recovery_window",
-      canCancel: true,
-      canExport: true,
+      status: "recovery",
+      nextAction: "download_export_or_cancel",
+      export: { status: "ready", contentDigest: "a".repeat(64) },
     });
   });
 
-  it("fails closed on the legacy status-only backend DTO", () => {
-    expect(() =>
-      parseAccountDeletionRequest({
-        requestId: "database-id",
-        status: "pending",
-        requestedAt: "2026-08-22T00:00:00.000Z",
-        scheduledDeletionAt: "2026-09-21T00:00:00.000Z",
-        identityDeactivated: false,
-        completedAt: null,
+  it("parses two independent one-time capabilities only on acceptance", () => {
+    expect(
+      parseAccountDeletionAccepted({
+        request: lifecycleRequest({ status: "reserved" }),
+        statusCredential: STATUS_CAPABILITY,
+        recoveryCredential: RECOVERY_CAPABILITY,
       }),
-    ).toThrow("malformed");
+    ).toMatchObject({
+      request: { status: "reserved" },
+      statusCredential: STATUS_CAPABILITY,
+      recoveryCredential: RECOVERY_CAPABILITY,
+    });
+    expect(() =>
+      parseAccountDeletionAccepted({
+        request: lifecycleRequest(),
+        statusCredential: STATUS_CAPABILITY,
+        recoveryCredential: STATUS_CAPABILITY,
+      }),
+    ).toThrow(/independent/);
   });
 
-  it("bounds server polling hints and rejects inconsistent progress", () => {
-    expect(
-      parseAccountDeletionRequest(lifecycleRequest({ nextPollAfterMs: 1 }))
-        .nextPollAfterMs,
-    ).toBe(1_000);
-    expect(
-      parseAccountDeletionRequest(
-        lifecycleRequest({ nextPollAfterMs: 120_000 }),
-      ).nextPollAfterMs,
-    ).toBe(60_000);
+  it("fails closed on the superseded draft and legacy response shapes", () => {
     expect(() =>
-      parseAccountDeletionRequest(
-        lifecycleRequest({
-          progress: {
-            completedSteps: 2,
-            totalSteps: 1,
-            currentStep: "provider purge",
-          },
-        }),
-      ),
-    ).toThrow("inconsistent progress");
+      parseAccountDeletionRequest({
+        ...lifecycleRequest(),
+        status: undefined,
+        phase: "recovery_window",
+      }),
+    ).toThrow(/malformed/);
+    expect(() =>
+      parseAccountDeletionRequest({
+        status: "pending",
+        requestedAt: "2026-08-22T00:00:00.000Z",
+      }),
+    ).toThrow(/malformed/);
+  });
+
+  it("rejects malformed export integrity evidence", () => {
+    expect(() =>
+      parseAccountDeletionRequest({
+        ...lifecycleRequest(),
+        export: {
+          status: "ready",
+          readyAt: null,
+          expiresAt: "2026-09-21T00:00:00.000Z",
+          contentDigest: "not-a-sha256",
+        },
+      }),
+    ).toThrow(/contentDigest/);
   });
 });
