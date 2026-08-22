@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppContext } from "../../types/cloud-worker-env";
+import { checkCookieMutationGuard } from "../auth/cookie-mutation-guard";
 
 const requireCurrentBillingManagerSession = mock();
 const originalFetch = globalThis.fetch;
@@ -25,6 +26,22 @@ const context = {
     header: () => undefined,
   },
 } as unknown as AppContext;
+
+function cookieContext(): AppContext {
+  const headers: Record<string, string> = {
+    cookie: "steward-token-test=session-token",
+    host: "cloud.test",
+    origin: "https://cloud.test",
+    "x-eliza-csrf": "csrf-proof",
+  };
+  return {
+    env: {},
+    req: {
+      url: "https://cloud.test/api/mcp",
+      header: (name: string) => headers[name.toLowerCase()],
+    },
+  } as unknown as AppContext;
+}
 
 beforeEach(() => {
   requireCurrentBillingManagerSession.mockReset();
@@ -77,5 +94,34 @@ describe("billing cancellation capability authority", () => {
     expect(String(forwarded.mock.calls[0]?.[0])).toContain(
       "/api/v1/billing/resources/resource-1/cancel",
     );
+  });
+
+  test("preserves cookie-session CSRF proof through the internal REST boundary", async () => {
+    requireCurrentBillingManagerSession.mockResolvedValue({
+      organization_id: "org-current",
+      role: "owner",
+    });
+    globalThis.fetch = mock(async (url, init) => {
+      const requestHeaders = new Headers(init?.headers);
+      const requestHost = new URL(String(url)).host;
+      const verdict = checkCookieMutationGuard(
+        {
+          header: (name) =>
+            name.toLowerCase() === "host" ? requestHost : (requestHeaders.get(name) ?? undefined),
+        },
+        "test",
+        false,
+      );
+      return verdict.ok
+        ? Response.json({ success: true })
+        : Response.json(verdict, { status: 403 });
+    }) as typeof fetch;
+
+    const result = await executeCloudCapabilityRest(cookieContext(), "billing.cancel_resource", {
+      resourceId: "resource-1",
+    });
+
+    expect(result.response.status).toBe(200);
+    expect(result.response.ok).toBe(true);
   });
 });

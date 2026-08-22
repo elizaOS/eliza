@@ -156,6 +156,9 @@ function copyAuthHeaders(c: AppContext): Headers {
     "idempotency-key",
     "x-idempotency-key",
     "cookie",
+    "origin",
+    "referer",
+    "x-eliza-csrf",
   ]) {
     const value = c.req.header(name);
     if (value) headers.set(name, value);

@@ -3,16 +3,19 @@
  * the final current-session OWNER/ADMIN authority gate succeeds.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppContext } from "../../types/cloud-worker-env";
+import { checkCookieMutationGuard } from "../auth/cookie-mutation-guard";
 
 const requireCurrentBillingManagerSession = mock();
+const requireUserOrApiKeyWithOrg = mock();
 const cancelResource = mock();
+const originalFetch = globalThis.fetch;
 
 mock.module("../auth/workers-hono-auth", () => ({
   requireAdmin: mock(),
   requireCurrentBillingManagerSession,
-  requireUserOrApiKeyWithOrg: mock(),
+  requireUserOrApiKeyWithOrg,
 }));
 
 mock.module("../services/active-billing", () => ({
@@ -66,8 +69,29 @@ const context = {
 
 beforeEach(() => {
   requireCurrentBillingManagerSession.mockReset();
+  requireUserOrApiKeyWithOrg.mockReset();
   cancelResource.mockReset();
 });
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+function cookieContext(): AppContext {
+  const headers: Record<string, string> = {
+    cookie: "steward-token-test=session-token",
+    host: "cloud.test",
+    origin: "https://cloud.test",
+    "x-eliza-csrf": "csrf-proof",
+  };
+  return {
+    env: {},
+    req: {
+      url: "https://cloud.test/api/mcp",
+      header: (name: string) => headers[name.toLowerCase()],
+    },
+  } as unknown as AppContext;
+}
 
 describe("platform MCP billing cancellation authority", () => {
   test("discovery advertises session-only owner/admin authority", () => {
@@ -122,5 +146,38 @@ describe("platform MCP billing cancellation authority", () => {
     }
 
     expect(cancelResource).not.toHaveBeenCalled();
+  });
+
+  test("cloud.api.request preserves cookie-session CSRF proof on its REST hop", async () => {
+    requireUserOrApiKeyWithOrg.mockResolvedValue({
+      id: "owner-1",
+      organization_id: "org-current",
+      role: "owner",
+    });
+    globalThis.fetch = mock(async (url, init) => {
+      const requestHeaders = new Headers(init?.headers);
+      const requestHost = new URL(String(url)).host;
+      const verdict = checkCookieMutationGuard(
+        {
+          header: (name) =>
+            name.toLowerCase() === "host" ? requestHost : (requestHeaders.get(name) ?? undefined),
+        },
+        "test",
+        false,
+      );
+      return verdict.ok
+        ? Response.json({ success: true })
+        : Response.json(verdict, { status: 403 });
+    }) as typeof fetch;
+
+    const result = await callPlatformCloudMcpTool(cookieContext(), "cloud.api.request", {
+      method: "POST",
+      path: "/api/v1/billing/resources/resource-1/cancel",
+    });
+
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({
+      status: 200,
+      ok: true,
+    });
   });
 });
