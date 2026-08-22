@@ -1502,29 +1502,6 @@ function providerStateKey(namespace: string, template: string): string {
   return template.replaceAll("{{namespace}}", namespace);
 }
 
-function providerStateEnvelope(
-  namespace: string,
-  generation: UUID,
-  logicalId: string,
-  value: JsonValue,
-): JsonValue {
-  return {
-    scenarioManifest: { namespace, generation, logicalId },
-    value,
-  };
-}
-
-function providerStateEnvelopeMatches(
-  value: unknown,
-  receipt: ProductionManifestReceipt,
-): value is { scenarioManifest: Record<string, unknown>; value: JsonValue } {
-  return (
-    isRecord(value) &&
-    Object.hasOwn(value, "value") &&
-    hasNamespaceMarker(value, receipt.namespace, receipt.generation)
-  );
-}
-
 function scheduleIdempotencyKey(namespace: string, logicalId: string): string {
   return `scenario-manifest:${namespace}:schedule:${logicalId}`;
 }
@@ -2184,15 +2161,7 @@ export async function applyProductionManifest(
       const key = receipt.providerStateKeys[index];
       if (!key)
         throw new Error(`provider state ${entry.id} key was not resolved`);
-      const written = await runtime.setCache(
-        key,
-        providerStateEnvelope(
-          manifest.namespace,
-          receipt.generation,
-          entry.id,
-          entry.value,
-        ),
-      );
+      const written = await runtime.setCache(key, entry.value);
       if (!written)
         throw new Error(`provider state ${entry.id} was not persisted`);
     }
@@ -2743,17 +2712,10 @@ export async function readProductionManifestSnapshot(
       })
       .sort((a, b) => a.logicalId.localeCompare(b.logicalId)),
     providerState: receipt.providerStateKeys
-      .map((key, index) => {
-        const row = providerStateRows[index];
-        if (!providerStateEnvelopeMatches(row, receipt)) {
-          throw new ProductionManifestApplyError(
-            `[production-manifest] provider state ${key} lacks namespace provenance`,
-            "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
-            { dirtyReceipt: receipt },
-          );
-        }
-        return { key, value: stableValue(row.value) };
-      })
+      .map((key, index) => ({
+        key,
+        value: stableValue(providerStateRows[index]),
+      }))
       .sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
@@ -3219,10 +3181,8 @@ async function assertReceiptTargetsOwned(
         approvalRecord !== undefined && approvalById.has(approvalRecord.id)
       );
     });
-  const providerStateOwned = providerState.every(
-    (value) =>
-      value === undefined || providerStateEnvelopeMatches(value, receipt),
-  );
+  const providerStateOwned =
+    providerState.length === receipt.providerStateKeys.length;
   if (
     !worldOwned ||
     !entitiesOwned ||

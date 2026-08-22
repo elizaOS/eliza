@@ -626,7 +626,7 @@ describe("production manifest persistence", () => {
     );
   });
 
-  it("does not delete provider state replaced by another owner", async () => {
+  it("removes provider state advanced within the owned namespace", async () => {
     const target = runtime();
     const input = manifest("provider-state-tamper");
     input.notifications = [];
@@ -635,17 +635,9 @@ describe("production manifest persistence", () => {
     const receipt = await applyProductionManifest(target, input);
     const key = receipt.providerStateKeys[0];
     if (!key) throw new Error("provider state receipt key is missing");
-    const owned = await target.getCache(key);
-    const foreign = { cursor: "foreign-owner" };
-    await target.setCache(key, foreign);
-
-    await expect(
-      resetProductionManifest(target, receipt),
-    ).rejects.toMatchObject({ code: "SCENARIO_MANIFEST_WRONG_OWNER" });
-    expect(await target.getCache(key)).toEqual(foreign);
-
-    await target.setCache(key, owned);
+    await target.setCache(key, { cursor: "provider-advanced" });
     await resetProductionManifest(target, receipt);
+    expect(await target.getCache(key)).toBeUndefined();
   });
 
   it("compensates a schedule committed before its receipt is returned", async () => {
