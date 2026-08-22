@@ -651,11 +651,6 @@ export class TelegramService extends Service {
             "Starting Telegram bot",
           );
           await service.initializeBot(state);
-          if (!state.wiring.handlers) {
-            service.setupMiddlewares(state);
-            service.setupMessageHandlers(state);
-            state.wiring.handlers = true;
-          }
           await state.bot.telegram.getMe();
 
           logger.success(
@@ -806,12 +801,19 @@ export class TelegramService extends Service {
    */
   private async initializeBot(state?: TelegramAccountRuntime): Promise<void> {
     const activeState = state ?? this.getDefaultAccountState();
-    const bot = activeState?.bot ?? this.bot;
-    if (!bot) {
-      throw new Error("Telegram bot is not initialized");
+    if (!activeState) {
+      throw new ElizaError("Telegram account runtime state is missing", {
+        code: "TELEGRAM_ACCOUNT_STATE_MISSING",
+        severity: "fatal",
+        context: {
+          defaultAccountId: this.defaultAccountId,
+          configuredAccountCount:
+            this.accountStates instanceof Map ? this.accountStates.size : 0,
+        },
+      });
     }
-    const botToken = activeState?.account.botToken ?? this.botToken;
-    const accountId = activeState?.accountId ?? this.defaultAccountId;
+    const { accountId, bot } = activeState;
+    const botToken = activeState.account.botToken;
 
     if (botToken) {
       try {
@@ -844,21 +846,33 @@ export class TelegramService extends Service {
       }
     }
 
-    // Registration is one-shot per Telegraf instance: `start()` retries this
-    // whole method after a transient failure, and Telegraf's registration APIs
-    // append rather than replace, so an unguarded retry duplicates every
-    // handler on the same bot.
-    if (!activeState?.wiring.commands) {
-      this.registerBotCommands(bot, activeState, accountId);
-      if (activeState) {
-        activeState.wiring.commands = true;
-      }
+    await this.ensureWiredOnce(activeState);
+  }
+
+  /**
+   * Completes every non-idempotent setup step exactly once for an account's
+   * Telegraf instance. A step is recorded only after it succeeds, so startup
+   * retries skip completed work while still retrying the first unfinished step.
+   */
+  private async ensureWiredOnce(state: TelegramAccountRuntime): Promise<void> {
+    const { accountId, bot, wiring } = state;
+
+    if (!wiring.commands) {
+      this.registerBotCommands(bot, state, accountId);
+      wiring.commands = true;
+    }
+
+    if (!wiring.handlers) {
+      this.setupMiddlewares(state);
+      this.setupMessageHandlers(state);
+      wiring.handlers = true;
     }
 
     // Telegraf v4's `bot.launch()` resolves only when polling STOPS — it awaits
     // the long-poll loop internally — so it must not be awaited for completion.
-    // launchPollerSupervised awaits just the connect signal and then supervises
-    // the loop (with bounded self-healing relaunch) in the background.
+    // launchPollerSupervised awaits until Telegraf assigns a stoppable polling
+    // object, then supervises the loop (with bounded self-healing relaunch) in
+    // the background.
     //
     // It is also one-shot: `startPolling()` assigns `bot.polling`, so launching
     // twice on the same instance leaves the first `Polling` unreachable —
@@ -866,15 +880,19 @@ export class TelegramService extends Service {
     // long-polling `getUpdates` against the same token forever (a guaranteed
     // 409 "terminated by other getUpdates request" against whichever poller
     // Telegram picks, and a process that can no longer be shut down cleanly).
-    // A pre-connect launch failure never reaches `startPolling`, so the flag is
-    // set only after a successful connect and a retry can still relaunch.
-    if (!activeState?.wiring.poller) {
-      await this.launchPollerSupervised(bot, botToken, accountId);
-      if (activeState) {
-        activeState.wiring.poller = true;
-      }
+    // A launch failure before polling becomes stoppable leaves the flag false,
+    // so the startup retry can still relaunch.
+    if (!wiring.poller) {
+      await this.launchPollerSupervised(bot, state.account.botToken, accountId);
+      wiring.poller = true;
     }
-    await this.finishBotStartup(bot, activeState, accountId);
+
+    if (!wiring.shutdownHooks) {
+      this.installShutdownHooks(bot);
+      wiring.shutdownHooks = true;
+    }
+
+    await this.finishBotStartup(bot, accountId);
   }
 
   /**
@@ -884,7 +902,7 @@ export class TelegramService extends Service {
    */
   private registerBotCommands(
     bot: Telegraf<Context>,
-    activeState: TelegramAccountRuntime | null,
+    activeState: TelegramAccountRuntime,
     accountId: string,
   ): void {
     bot.start((ctx) => {
@@ -906,41 +924,37 @@ export class TelegramService extends Service {
     // handler that never calls next() terminates the middleware chain — so the
     // catch-all message handler in setupMessageHandlers does not also process
     // command messages (no double-processing).
-    const commandMessageManager =
-      activeState?.messageManager ?? this.messageManager ?? undefined;
-    if (commandMessageManager) {
-      const registered = registerTelegramCommandHandlers(
-        bot,
-        this.runtime,
-        commandMessageManager,
+    const commandMessageManager = activeState.messageManager;
+    const registered = registerTelegramCommandHandlers(
+      bot,
+      this.runtime,
+      commandMessageManager,
+      accountId,
+    );
+    logger.debug(
+      {
+        src: "plugin:telegram",
+        agentId: this.runtime.agentId,
         accountId,
-      );
-      logger.debug(
-        {
-          src: "plugin:telegram",
-          agentId: this.runtime.agentId,
-          accountId,
-          commandCount: registered.length,
-        },
-        "Registered universal slash-command handlers",
-      );
-      // #8902: the live, edited-in-place orchestrator task board (`/tasks`).
-      registerTelegramTaskBoardCommand(
-        bot,
-        this.runtime,
-        commandMessageManager,
-        accountId,
-      );
-    }
+        commandCount: registered.length,
+      },
+      "Registered universal slash-command handlers",
+    );
+    // #8902: the live, edited-in-place orchestrator task board (`/tasks`).
+    registerTelegramTaskBoardCommand(
+      bot,
+      this.runtime,
+      commandMessageManager,
+      accountId,
+    );
   }
 
   /**
-   * Post-launch startup steps: publish the slash-command menu, log bot info,
-   * and install the process shutdown hooks (once per bot instance).
+   * Runs the retryable post-launch probes: publish the slash-command menu and
+   * retrieve bot identity before process shutdown hooks are installed.
    */
   private async finishBotStartup(
     bot: Telegraf<Context>,
-    activeState: TelegramAccountRuntime | null,
     accountId: string,
   ): Promise<void> {
     // Publish the slash-command menu to Telegram so commands appear in the `/`
@@ -960,7 +974,10 @@ export class TelegramService extends Service {
       },
       "Bot info retrieved",
     );
+  }
 
+  /** Installs the process-level teardown hooks for one Telegraf instance. */
+  private installShutdownHooks(bot: Telegraf<Context>): void {
     // Stop the poller on process shutdown so the long-poll slot is released
     // before a replacement process starts — otherwise the new process's poller
     // 409s against the lingering one. bot.stop() throws if already stopped, so
@@ -972,14 +989,8 @@ export class TelegramService extends Service {
         // error-policy:J6 best-effort teardown — bot already stopped.
       }
     };
-    if (activeState?.wiring.shutdownHooks) {
-      return;
-    }
     process.once("SIGINT", () => stopBot("SIGINT"));
     process.once("SIGTERM", () => stopBot("SIGTERM"));
-    if (activeState) {
-      activeState.wiring.shutdownHooks = true;
-    }
   }
 
   /**
@@ -987,18 +998,15 @@ export class TelegramService extends Service {
    * of the process.
    *
    * `bot.launch()` in Telegraf v4 only settles when polling stops (it awaits the
-   * loop internally), so the returned promise resolves on the `onLaunch`
-   * callback — fired after `getMe` succeeds, just before polling begins — and
-   * the loop is supervised in the background afterwards. A failure *after*
-   * connecting (a 409 "terminated by other getUpdates request" from a transient
-   * poller overlap during a restart, or a dropped network) is relaunched with
-   * exponential backoff so the connector self-heals instead of going
-   * permanently silent. Relaunches are bounded to `maxPollRelaunches` (reset
-   * after a stable run) so a genuinely duplicated bot instance cannot thrash
-   * forever, and stop entirely once a newer runtime has taken over the token
-   * (the dedup map points at a different bot). Message/command handlers are
-   * registered once by the caller before this runs; a relaunch reuses the same
-   * bot instance, so they are never double-registered.
+   * loop internally), while its `onLaunch` callback fires before `startPolling`
+   * assigns `bot.polling`. The returned promise therefore yields through the
+   * event loop until that polling object exists and exposes `stop()`, allowing
+   * the caller to install process shutdown hooks without a non-stoppable gap.
+   * A slow readiness wait emits a diagnostic but keeps the in-flight launch
+   * and token claim fenced until the poller becomes stoppable or launch itself
+   * settles. All readiness timers are cancelled on readiness or launch failure.
+   * The poll loop remains supervised in the background afterwards, with
+   * bounded exponential-backoff relaunches for post-connect failures.
    */
   private launchPollerSupervised(
     bot: Telegraf<Context>,
@@ -1006,6 +1014,8 @@ export class TelegramService extends Service {
     accountId: string,
   ): Promise<void> {
     const maxPollRelaunches = 5;
+    const pollerReadyWarningMs = 30_000;
+    const pollerReadyCheckMs = 10;
     // A loop that ran healthy for at least this long before failing is treated
     // as a fresh transient (relaunch budget reset); a faster failure counts
     // against the budget so a persistent conflict cannot relaunch forever.
@@ -1038,7 +1048,64 @@ export class TelegramService extends Service {
     let relaunches = 0;
 
     return new Promise<void>((resolve, reject) => {
-      let connectedOnce = false;
+      let pollerReadyOnce = false;
+      let initialSettled = false;
+      let pollerReadyTimer: ReturnType<typeof setTimeout> | undefined;
+      let pollerReadyWarningTimer: ReturnType<typeof setTimeout> | undefined;
+
+      const clearPollerReadyTimers = (): void => {
+        if (pollerReadyTimer !== undefined) {
+          clearTimeout(pollerReadyTimer);
+          pollerReadyTimer = undefined;
+        }
+        if (pollerReadyWarningTimer !== undefined) {
+          clearTimeout(pollerReadyWarningTimer);
+          pollerReadyWarningTimer = undefined;
+        }
+      };
+
+      const rejectInitialLaunch = (error: unknown): void => {
+        if (initialSettled) return;
+        initialSettled = true;
+        clearPollerReadyTimers();
+        reject(error);
+      };
+
+      const waitForStoppablePoller = (): void => {
+        if (pollerReadyOnce || initialSettled) return;
+        pollerReadyWarningTimer = setTimeout(() => {
+          pollerReadyWarningTimer = undefined;
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId,
+              pollerReadyWarningMs,
+            },
+            "Telegram launch is still waiting for a stoppable poller",
+          );
+        }, pollerReadyWarningMs);
+        pollerReadyWarningTimer.unref?.();
+
+        const check = (): void => {
+          if (pollerReadyOnce || initialSettled) return;
+          const polling = (bot as unknown as { polling?: { stop?: unknown } })
+            .polling;
+          if (typeof polling?.stop === "function") {
+            pollerReadyOnce = true;
+            initialSettled = true;
+            clearPollerReadyTimers();
+            if (botToken) {
+              markTelegramPollerConnected(botToken, bot);
+            }
+            resolve();
+            return;
+          }
+          pollerReadyTimer = setTimeout(check, pollerReadyCheckMs);
+          pollerReadyTimer.unref?.();
+        };
+        check();
+      };
 
       const scheduleRelaunch = (): void => {
         if (!ownsToken()) {
@@ -1094,8 +1161,8 @@ export class TelegramService extends Service {
         } catch (error) {
           // error-policy:J4 A failed ownership claim either rejects initial
           // startup or becomes explicit unhealthy poller state after launch.
-          if (!connectedOnce) {
-            reject(error);
+          if (!pollerReadyOnce) {
+            rejectInitialLaunch(error);
           } else {
             if (botToken) {
               markTelegramPollerError(botToken, bot, error);
@@ -1111,12 +1178,10 @@ export class TelegramService extends Service {
             },
             () => {
               connectedAt = Date.now();
-              if (botToken) {
+              if (!pollerReadyOnce) {
+                waitForStoppablePoller();
+              } else if (botToken) {
                 markTelegramPollerConnected(botToken, bot);
-              }
-              if (!connectedOnce) {
-                connectedOnce = true;
-                resolve();
               }
             },
           )
@@ -1125,19 +1190,18 @@ export class TelegramService extends Service {
               // Clean stop (shutdown, or deliberate replacement by a newer
               // runtime): release ownership and do not relaunch.
               clearActive();
-              if (!connectedOnce) {
-                reject(
+              if (!pollerReadyOnce) {
+                rejectInitialLaunch(
                   new Error("Telegram poller stopped before it connected"),
                 );
               }
             },
             (error: unknown) => {
-              if (connectedAt === 0 && !connectedOnce) {
-                // Pre-connect failure on the first launch (revoked/malformed
-                // token, network): reject so start()'s retry / token-rejection
-                // branch handles it.
+              if (!pollerReadyOnce) {
+                // Any failure before a stoppable polling object exists rejects
+                // initial startup so its retry / token-rejection path owns it.
                 clearActive();
-                reject(error);
+                rejectInitialLaunch(error);
                 return;
               }
               if (botToken) {
