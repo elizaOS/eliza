@@ -32,6 +32,10 @@ const createAgent = mock(async () => ({
   },
   idempotent: true,
 }));
+const listAgents = mock(async () => [] as Array<Record<string, unknown>>);
+const getActiveAgentLifecycleJobsForOrg = mock(
+  async () => [] as Array<Record<string, unknown>>,
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({
@@ -48,7 +52,7 @@ mock.module("@/lib/services/agent-billing-gate-402", () => ({
 mock.module("@/lib/services/eliza-sandbox", () => ({
   AgentImageNotAllowedError: class AgentImageNotAllowedError extends Error {},
   AgentQuotaExceededError: class AgentQuotaExceededError extends Error {},
-  elizaSandboxService: { createAgent, listAgents: mock(async () => []) },
+  elizaSandboxService: { createAgent, listAgents },
 }));
 mock.module("@/db/repositories/characters", () => ({
   userCharactersRepository: {
@@ -73,6 +77,7 @@ mock.module("@/lib/services/eliza-managed-launch", () => ({
 mock.module("@/lib/services/provisioning-jobs", () => ({
   provisioningJobService: {
     enqueueAgentProvision: mock(async () => ({ id: "job-1" })),
+    getActiveAgentLifecycleJobsForOrg,
     triggerImmediate: mock(async () => undefined),
   },
 }));
@@ -81,7 +86,7 @@ mock.module("@/lib/services/provisioning-worker-health", () => ({
   provisioningWorkerFailureBody: () => ({ error: "worker" }),
 }));
 mock.module("@/lib/config/containers-env", () => ({
-  containersEnv: {},
+  containersEnv: { publicBaseDomain: () => null },
 }));
 mock.module("@/lib/eliza-agent-web-ui", () => ({
   getElizaAgentPublicWebUiUrl: () => "https://example.test",
@@ -128,6 +133,52 @@ function post(query = "") {
     ENV,
   );
 }
+
+function get() {
+  return buildApp().request("/api/v1/eliza/agents", {}, ENV);
+}
+
+test("GET reconnects an agent row to its newest active lifecycle job", async () => {
+  listAgents.mockImplementationOnce(async () => [
+    {
+      id: "agent-1",
+      agent_name: "Ada",
+      status: "provisioning",
+      database_status: "provisioning",
+      last_backup_at: null,
+      last_heartbeat_at: null,
+      error_message: null,
+      created_at: new Date("2026-08-21T00:00:00.000Z"),
+      updated_at: new Date("2026-08-21T00:01:00.000Z"),
+      character_id: null,
+      agent_config: {},
+      docker_image: null,
+      execution_tier: "dedicated-always",
+    },
+  ]);
+  getActiveAgentLifecycleJobsForOrg.mockImplementationOnce(async () => [
+    {
+      id: "job-1",
+      type: "agent_provision",
+      status: "in_progress",
+      agent_id: "agent-1",
+      attempts: 1,
+      max_attempts: 3,
+      estimated_completion_at: new Date("2026-08-21T00:05:00.000Z"),
+      scheduled_for: new Date("2026-08-21T00:00:00.000Z"),
+      started_at: new Date("2026-08-21T00:00:05.000Z"),
+      created_at: new Date("2026-08-21T00:00:00.000Z"),
+      updated_at: new Date("2026-08-21T00:01:00.000Z"),
+    },
+  ]);
+
+  const response = await get();
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: Array<{ activeJob: { id: string; attempts: number } | null }>;
+  };
+  expect(body.data[0]?.activeJob).toMatchObject({ id: "job-1", attempts: 1 });
+});
 
 describe("POST /api/v1/eliza/agents autoProvision identity", () => {
   beforeEach(() => {

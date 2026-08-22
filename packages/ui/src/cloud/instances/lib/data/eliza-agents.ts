@@ -71,6 +71,26 @@ function isNullableIsoDate(value: unknown): value is string | null {
   return value === null || isIsoDate(value);
 }
 
+function parseActiveJob(value: unknown): AgentListItemDto["activeJob"] {
+  if (value === null) return null;
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.type !== "string" ||
+    (value.status !== "pending" && value.status !== "in_progress") ||
+    !Number.isInteger(value.attempts) ||
+    !Number.isInteger(value.maxAttempts) ||
+    !isNullableIsoDate(value.estimatedCompletionAt) ||
+    !isIsoDate(value.scheduledFor) ||
+    !isNullableIsoDate(value.startedAt) ||
+    !isIsoDate(value.createdAt) ||
+    !isIsoDate(value.updatedAt)
+  ) {
+    throw new Error("Agents response contained an invalid active job");
+  }
+  return value as unknown as NonNullable<AgentListItemDto["activeJob"]>;
+}
+
 function parseAgentListItem(value: unknown): AgentListItemDto {
   if (
     !isRecord(value) ||
@@ -90,7 +110,8 @@ function parseAgentListItem(value: unknown): AgentListItemDto {
     !isNullableString(value.token_ticker) ||
     !isNullableString(value.dockerImage) ||
     !isEnumValue(EXECUTION_TIERS, value.executionTier) ||
-    !isNullableString(value.webUiUrl)
+    !isNullableString(value.webUiUrl) ||
+    !("activeJob" in value)
   ) {
     throw new Error("Agents response contained an invalid agent record");
   }
@@ -112,6 +133,7 @@ function parseAgentListItem(value: unknown): AgentListItemDto {
     dockerImage: value.dockerImage,
     executionTier: value.executionTier,
     webUiUrl: value.webUiUrl,
+    activeJob: parseActiveJob(value.activeJob),
   };
 }
 

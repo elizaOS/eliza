@@ -3384,6 +3384,11 @@ export class ProvisioningJobService {
     });
   }
 
+  /** Active agent lifecycle jobs used to restore truthful UI polling after reload. */
+  async getActiveAgentLifecycleJobsForOrg(organizationId: string): Promise<Job[]> {
+    return jobsRepository.findActiveAgentLifecycleJobsForOrg(organizationId);
+  }
+
   // ---------------------------------------------------------------------------
   // Processing (called by cron)
   // ---------------------------------------------------------------------------

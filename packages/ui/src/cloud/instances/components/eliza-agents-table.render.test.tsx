@@ -31,6 +31,7 @@ vi.mock("../lib/i18n", () => ({
 
 function row(overrides: Partial<AgentListItemDto>): AgentListItemDto {
   return {
+    activeJob: null,
     id: "00000000-1111-2222-3333-444444444444",
     agentName: "Ada",
     status: "running",

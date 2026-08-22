@@ -505,6 +505,20 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
     },
   });
 
+  useEffect(() => {
+    for (const agent of localAgents) {
+      const job = agent.activeJob;
+      if (!job) continue;
+      poller.track(agent.id, job.id, {
+        status: job.status,
+        startedAt: Date.parse(job.startedAt ?? job.createdAt),
+        attempts: job.attempts,
+        maxAttempts: job.maxAttempts,
+        estimatedCompletionAt: job.estimatedCompletionAt,
+      });
+    }
+  }, [localAgents, poller.track]);
+
   useSandboxListPoll(
     localAgents.map((agent) => ({
       id: agent.id,
