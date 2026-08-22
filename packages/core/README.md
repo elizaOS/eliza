@@ -4,6 +4,13 @@
 
 `@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the API + dashboard host), and every `@elizaos/*` plugin.
 
+Document authorization treats a document's `roomId` as its single room
+entitlement and evaluates it against current requester membership inside the
+adapter before rows, counts, fragments, or ranking are produced. Explicit
+`directGrantEntityIds` are read-only and independent of room membership; they
+cannot expose `agent-private` documents or confer mutation authority. Invalid
+or duplicate grant arrays fail closed.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.

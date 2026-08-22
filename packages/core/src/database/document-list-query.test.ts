@@ -204,6 +204,59 @@ describe("document-list capability contract", () => {
 		);
 	});
 
+	it("keeps direct grants independent from room membership without opening agent-private data", () => {
+		const granted = {
+			...document(30),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "owner-private",
+				directGrantEntityIds: [REQUESTER_ID],
+			},
+		};
+		const agentOnly = {
+			...document(31),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "agent-private",
+				directGrantEntityIds: [REQUESTER_ID],
+			},
+		};
+		const userParams = {
+			...params,
+			requesterRole: "USER" as const,
+			requesterRoomIds: [],
+		};
+
+		expect(isDocumentVisibleToRequester(granted, userParams)).toBe(true);
+		expect(isDocumentVisibleToRequester(agentOnly, userParams)).toBe(false);
+		expect(
+			isDocumentVisibleToRequester(granted, {
+				...userParams,
+				requesterRole: "GUEST",
+			}),
+		).toBe(false);
+		expect(canRequesterMutateDocument(granted, userParams)).toBe(false);
+	});
+
+	it("fails closed on malformed or duplicate direct grants", () => {
+		for (const directGrantEntityIds of [
+			["not-a-uuid"],
+			[REQUESTER_ID, REQUESTER_ID],
+			"not-an-array",
+		]) {
+			const malformed = {
+				...document(32),
+				metadata: {
+					type: MemoryType.DOCUMENT,
+					scope: "global",
+					directGrantEntityIds,
+				},
+			};
+			expect(readDocumentMutationSnapshot(malformed)).toBeNull();
+			expect(isDocumentVisibleToRequester(malformed, params)).toBe(false);
+		}
+	});
+
 	it("keeps guest and unresolved document authority fail-closed", () => {
 		const global = document(3);
 		const privateDocument = {
@@ -317,17 +370,31 @@ describe("document-list capability contract", () => {
 			...document(10),
 			metadata: {
 				...document(10).metadata,
+				directGrantEntityIds: [REQUESTER_ID],
 				ingestionAttemptId,
 				ingestionState: "pending",
 			},
 		} as Memory;
 		const snapshot = readDocumentMutationSnapshot(pending);
 		expect(snapshot).toMatchObject({
+			directGrantEntityIds: [REQUESTER_ID],
 			ingestionAttemptId,
 			ingestionState: "pending",
 		});
 		if (!snapshot) throw new Error("expected a valid ingestion snapshot");
 		expect(documentMutationSnapshotMatches(pending, snapshot)).toBe(true);
+		expect(
+			documentMutationSnapshotMatches(
+				{
+					...pending,
+					metadata: {
+						...pending.metadata,
+						directGrantEntityIds: [],
+					} as Memory["metadata"],
+				},
+				snapshot,
+			),
+		).toBe(false);
 		expect(
 			documentMutationSnapshotMatches(
 				{

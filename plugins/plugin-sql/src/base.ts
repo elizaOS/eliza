@@ -234,6 +234,22 @@ function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
       OR ${metadata}->>'addedBy' ~* ${DOCUMENT_UUID_PATTERN}
     )
     AND (
+      NOT (${metadata} ? 'directGrantEntityIds')
+      OR (
+        jsonb_typeof(${metadata}->'directGrantEntityIds') = 'array'
+        AND jsonb_array_length(${metadata}->'directGrantEntityIds') <= 1000
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${metadata}->'directGrantEntityIds') AS grant_id
+          WHERE grant_id !~* ${DOCUMENT_UUID_PATTERN}
+        )
+        AND jsonb_array_length(${metadata}->'directGrantEntityIds') = (
+          SELECT COUNT(DISTINCT grant_id)
+          FROM jsonb_array_elements_text(${metadata}->'directGrantEntityIds') AS grant_id
+        )
+      )
+    )
+    AND (
       ${metadata}->>'scope' <> 'user-private'
       OR ${metadata}->>'scopedToEntityId' ~* ${DOCUMENT_UUID_PATTERN}
     )
@@ -242,6 +258,40 @@ function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
       NOT (${metadata} ? 'ingestionState')
       OR ${metadata}->>'ingestionState' = 'ready'
     )
+  )`;
+}
+
+function documentDirectGrantCondition(
+  params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
+  metadata: SQLWrapper = memoryTable.metadata
+): SQL {
+  if (
+    params.requesterRole === "UNRESOLVED" ||
+    params.requesterRole === "GUEST" ||
+    documentRoleHasGlobalVisibility(params.requesterRole)
+  ) {
+    return sql`false`;
+  }
+  return sql`(
+    ${metadata}->>'scope' <> 'agent-private'
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(
+        COALESCE(${metadata}->'directGrantEntityIds', '[]'::jsonb)
+      ) AS grant_id
+      WHERE grant_id = ${params.requesterEntityId}
+    )
+  )`;
+}
+
+function documentRoomOrDirectGrantCondition(
+  params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
+  roomCondition: SQL,
+  metadata: SQLWrapper = memoryTable.metadata
+): SQL {
+  return sql`(
+    ${roomCondition}
+    OR ${documentDirectGrantCondition(params, metadata)}
   )`;
 }
 
@@ -259,7 +309,10 @@ function documentVisibilityCondition(
   if (params.requesterRole === "ADMIN") {
     return sql`(
       ${validAuthorizationMetadata}
-      AND ${metadata}->>'scope' IN ('global', 'user-private')
+      AND (
+        ${metadata}->>'scope' IN ('global', 'user-private')
+        OR ${documentDirectGrantCondition(params, metadata)}
+      )
     )`;
   }
   if (params.requesterRole === "GUEST") {
@@ -271,6 +324,8 @@ function documentVisibilityCondition(
   return sql`(
     ${validAuthorizationMetadata}
     AND (
+      ${documentDirectGrantCondition(params, metadata)}
+      OR
       ${metadata}->>'scope' = 'global'
       OR (
         ${metadata}->>'scope' = 'user-private'
@@ -1769,9 +1824,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         visibleConditions.push(
-          params.requesterRoomIds.length > 0
-            ? inArray(memoryTable.roomId, params.requesterRoomIds)
-            : sql`false`
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(memoryTable.roomId, params.requesterRoomIds)
+              : sql`false`
+          )
         );
       }
       visibleConditions.push(documentVisibilityCondition(params));
@@ -2118,9 +2176,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ...(hasGlobalVisibility
         ? []
         : [
-            params.requesterRoomIds.length > 0
-              ? inArray(memoryTable.roomId, params.requesterRoomIds)
-              : sql`false`,
+            documentRoomOrDirectGrantCondition(
+              params,
+              params.requesterRoomIds.length > 0
+                ? inArray(memoryTable.roomId, params.requesterRoomIds)
+                : sql`false`
+            ),
           ]),
       documentVisibilityCondition(params),
     ];
@@ -2186,9 +2247,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         conditions.push(
-          params.requesterRoomIds.length > 0
-            ? inArray(parent.roomId, params.requesterRoomIds)
-            : sql`false`
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(parent.roomId, params.requesterRoomIds)
+              : sql`false`,
+            parent.metadata
+          )
         );
       }
       if (params.roomId) conditions.push(eq(parent.roomId, params.roomId));

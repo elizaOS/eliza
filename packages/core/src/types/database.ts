@@ -125,6 +125,7 @@ export interface DocumentMutationSnapshot {
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
+	directGrantEntityIds?: UUID[];
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
 	revision: number;

@@ -123,6 +123,12 @@ export const plugin = {
 
 Destructive changes (column drops, type changes) are blocked by default. Set `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` to allow them.
 
+Document list, lookup, and fragment queries authorize each parent before
+pagination, counts, bytes, or ranking. A parent `roomId` is its room entitlement
+and is joined to current requester membership. Validated
+`directGrantEntityIds` provide read-only access independent of room membership,
+but never expose `agent-private` documents or grant mutation authority.
+
 Message-search DDL is also guarded on production Postgres. The generated column and GIN indexes are still installed automatically for development/test and embedded PGlite. For production Postgres, schedule the table rewrite/index creation and run with `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true` once the deployment window is approved.
 
 ## Connection Management

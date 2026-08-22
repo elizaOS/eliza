@@ -107,6 +107,8 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
+	/** Read-only entity grants that remain valid independently of room membership. */
+	directGrantEntityIds?: UUID[];
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaUrl?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
