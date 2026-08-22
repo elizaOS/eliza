@@ -1,6 +1,17 @@
-// Pins the bounded WhatsApp adapter contract: every Cloud API hop fails
-// closed at the hop timeout, composing a caller signal with the deadline.
-import { describe, expect, test, vi } from "vitest";
+/**
+ * Pins the bounded WhatsApp adapter contract: every Cloud API hop fails closed
+ * at the hop timeout and composes a caller signal with that deadline. The
+ * harness stubs globalThis.fetch with a hung or immediate responder and
+ * restores the real implementation after each test so the stub cannot leak
+ * into other files sharing the worker.
+ */
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+const realFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller signals", () => {
   test("aborts a hung WhatsApp hop at the configured timeout", async () => {
@@ -13,7 +24,7 @@ describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller
             );
           });
         }),
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { whatsappFetch } = await import("./whatsapp");
     const start = Date.now();
@@ -37,7 +48,7 @@ describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller
             );
           });
         }),
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { whatsappFetch } = await import("./whatsapp");
     const controller = new AbortController();
@@ -56,7 +67,7 @@ describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller
   });
 
   test("preserves caller cancellation (composed)", async () => {
-    let seen: AbortSignal | undefined;
+    let seen: AbortSignal | null | undefined;
     globalThis.fetch = vi
       .fn()
       .mockImplementation(
@@ -64,7 +75,7 @@ describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller
           seen = init?.signal;
           return new Response("{}", { status: 200 });
         },
-      ) as typeof fetch;
+      ) as unknown as typeof fetch;
 
     const { whatsappFetch } = await import("./whatsapp");
     const controller = new AbortController();
