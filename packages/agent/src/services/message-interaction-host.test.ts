@@ -39,6 +39,14 @@ const bindings = {
   sourceMessageId: "message-a",
 };
 
+const authenticatedBindings = {
+  actorId: bindings.actorId,
+  audience: bindings.audience,
+  agentId: bindings.agentId,
+  connector: bindings.connector,
+  roomId: bindings.roomId,
+};
+
 const profile = createConnectorInteractionCapabilityProfile({
   template: BUTTON_INTERACTION_PROFILE,
   source: "connector",
@@ -143,6 +151,47 @@ describe("MessageInteractionHostService", () => {
     expect(prepared).not.toHaveProperty("bindings");
   });
 
+  it("returns a validated hosted URL without retained authority fields", async () => {
+    const { service } = fixture();
+    const hostedProfile = createConnectorInteractionCapabilityProfile({
+      template: {
+        ...BUTTON_INTERACTION_PROFILE,
+        templateId: "signed-hosted-only-test",
+        blocks: {
+          ...BUTTON_INTERACTION_PROFILE.blocks,
+          choice: {
+            ...BUTTON_INTERACTION_PROFILE.blocks.choice,
+            modes: ["signed-hosted"],
+          },
+        },
+      },
+      source: "connector",
+      accountId: "account-a",
+      targetKind: "room",
+      targetId: "room-a",
+    });
+    const prepared = await service.prepare({
+      block,
+      profile: hostedProfile,
+      bindings,
+      purpose: "approval",
+      negotiationContext: { signedHostedUrl: "https://example.test/form/a" },
+      authorization: {
+        decisionId: "decision-hosted",
+        policyRevision: "policy-7",
+        decidedAt: "2026-08-20T23:59:59.000Z",
+      },
+      effect: { kind: "approve_operation" },
+      expiresAt: "2026-08-21T00:10:00.000Z",
+    });
+
+    expect(prepared).toMatchObject({
+      delivery: { mode: "signed-hosted" },
+      hostedUrl: "https://example.test/form/a",
+    });
+    expect(prepared).not.toHaveProperty("bindings");
+  });
+
   it("denies a second actor before executing the retained effect", async () => {
     const { service, execute, prepare, providerReceipt } = fixture();
     const prepared = await prepare();
@@ -150,7 +199,7 @@ describe("MessageInteractionHostService", () => {
     await expect(
       service.consume({
         callbackData: prepared.callbackData,
-        bindings: { ...bindings, actorId: "actor-b" },
+        bindings: { ...authenticatedBindings, actorId: "actor-b" },
         response: { value: "approve" },
         providerReceipt: providerReceipt(),
       }),
@@ -168,7 +217,7 @@ describe("MessageInteractionHostService", () => {
     await expect(
       expired.service.consume({
         callbackData: expiredPrepared.callbackData,
-        bindings,
+        bindings: authenticatedBindings,
         response: { value: "approve" },
         providerReceipt: expired.providerReceipt(),
       }),
@@ -191,7 +240,7 @@ describe("MessageInteractionHostService", () => {
     await expect(
       revoked.service.consume({
         callbackData: revokedPrepared.callbackData,
-        bindings,
+        bindings: authenticatedBindings,
         response: { value: "approve" },
         providerReceipt: revoked.providerReceipt(),
       }),
@@ -208,7 +257,7 @@ describe("MessageInteractionHostService", () => {
     const prepared = await prepare();
     const request = {
       callbackData: prepared.callbackData,
-      bindings,
+      bindings: authenticatedBindings,
       response: { value: "approve" },
       providerReceipt: providerReceipt(),
     };
@@ -246,7 +295,7 @@ describe("MessageInteractionHostService", () => {
     await expect(
       service.consume({
         callbackData: prepared.callbackData,
-        bindings,
+        bindings: authenticatedBindings,
         response: { value: "approve" },
         providerReceipt: { ...providerReceipt(), accountId: "account-b" },
       }),
@@ -263,7 +312,7 @@ describe("MessageInteractionHostService", () => {
     const prepared = await fixtureValue.prepare();
     const request = {
       callbackData: prepared.callbackData,
-      bindings,
+      bindings: authenticatedBindings,
       response: { value: "approve" },
       providerReceipt: fixtureValue.providerReceipt(),
     };
@@ -318,7 +367,7 @@ describe("MessageInteractionHostService", () => {
     await expect(
       unsafe.service.consume({
         callbackData: prepared.callbackData,
-        bindings,
+        bindings: authenticatedBindings,
         response: { value: "approve" },
         providerReceipt: unsafe.providerReceipt(),
       }),
@@ -361,10 +410,27 @@ describe("MessageInteractionHostService", () => {
         },
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
+      const reference = decodeMessageInteractionCallback(prepared.callbackData);
+      if (!reference) throw new Error("Expected an opaque callback reference");
+      await expect(service.get(reference)).resolves.toMatchObject({
+        bindings: { sourceMessageId: "message-a" },
+        consume: { state: "pending" },
+      });
+      await service.stop();
+      const restarted = await MessageInteractionHostService.start(runtime());
+      restarted.registerEffectHandler("approve_operation", {
+        execute: async ({ idempotencyKey }) => ({
+          receiptId: `receipt-${idempotencyKey}`,
+          canonicalInboundEventId: `memory-${idempotencyKey}`,
+          auditId: `audit-${idempotencyKey}`,
+          appStateResult: { taskState: "approved" },
+          result: { accepted: true },
+        }),
+      });
       await expect(
-        service.consume({
+        restarted.consume({
           callbackData: prepared.callbackData,
-          bindings,
+          bindings: authenticatedBindings,
           response: { value: "approve" },
           providerReceipt: {
             source: "connector",
@@ -381,7 +447,7 @@ describe("MessageInteractionHostService", () => {
         "message-interaction-sessions.v1.json",
       );
       expect((await stat(filePath)).mode & 0o777).toBe(0o600);
-      await service.stop();
+      await restarted.stop();
     } finally {
       if (previousStateDirectory === undefined)
         delete process.env.ELIZA_STATE_DIR;
