@@ -26,6 +26,7 @@ function row(id: string, status: AgentListItemDto["status"]): AgentListItemDto {
     dockerImage: null,
     executionTier: "dedicated-lazy",
     webUiUrl: null,
+    activeJob: null,
   };
 }
 
