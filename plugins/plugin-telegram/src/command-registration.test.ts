@@ -407,6 +407,33 @@ describe("Telegram Mini App launch command", () => {
 });
 
 describe("auth gating", () => {
+  it("fails visibly and without dispatch when canonical identity storage rejects", async () => {
+    const identityError = new Error("identity database unavailable");
+    const reportError = vi.fn();
+    const rt = {
+      ...makeOwnerRuntime(vi.fn(async () => Promise.reject(identityError))),
+      reportError,
+    } as unknown as IAgentRuntime;
+    const { manager, handleMessage } = makeMessageManager();
+    const { handlers } = registerHandlers(rt, manager);
+    const restartHandler = handlers.get("restart");
+    expect(restartHandler).toBeDefined();
+    const { ctx, reply } = makeCtx("/restart");
+
+    await restartHandler?.(ctx);
+
+    expect(reply).toHaveBeenCalledWith(
+      "Could not verify your identity. Try again.",
+    );
+    expect(hasRoleAccess).not.toHaveBeenCalled();
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(
+      "telegram:command-identity",
+      identityError,
+      { accountId: "default", telegramUserId: "4242" },
+    );
+  });
+
   it("refuses a requiresAuth command when the sender is not an owner", async () => {
     hasRoleAccess.mockResolvedValue(false);
     const { manager, handleMessage } = makeMessageManager();

@@ -271,6 +271,42 @@ export async function resolveTelegramSenderAuth(
 }
 
 /**
+ * Translate a fallible canonical-identity lookup at the Telegram command
+ * boundary. Commands must fail closed with a visible response instead of
+ * disappearing into the bot-wide error handler when durable identity storage
+ * is unavailable.
+ */
+async function resolveTelegramSenderAuthOrReply(
+  ctx: Context,
+  runtime: IAgentRuntime,
+  accountId: string,
+): Promise<TelegramSenderAuth | null> {
+  try {
+    return await resolveTelegramSenderAuth(ctx, runtime, accountId);
+  } catch (error) {
+    // error-policy:J4 identity storage failure is an explicit unavailable
+    // response; authorization and dispatch remain fail closed.
+    runtime.reportError("telegram:command-identity", error, {
+      accountId,
+      telegramUserId:
+        ctx.from?.id === undefined ? undefined : String(ctx.from.id),
+    });
+    logger.error(
+      {
+        src: "plugin:telegram",
+        agentId: runtime.agentId,
+        accountId,
+        telegramUserId: ctx.from?.id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Telegram command identity lookup failed",
+    );
+    await ctx.reply("Could not verify your identity. Try again.");
+    return null;
+  }
+}
+
+/**
  * Run an agent-target command. Deterministic commands
  * (help/status/think/model/reset/…) resolve via `resolveCommand` and answer
  * locally. Pipeline-owned commands route the command message through the agent
@@ -345,7 +381,12 @@ function buildCommandHandler(
   const { command } = descriptor;
 
   return async (ctx: Context) => {
-    const sender = await resolveTelegramSenderAuth(ctx, runtime, accountId);
+    const sender = await resolveTelegramSenderAuthOrReply(
+      ctx,
+      runtime,
+      accountId,
+    );
+    if (!sender) return;
     const gate = gateConnectorCommandByName(
       runtime.agentId,
       command.name,
@@ -398,7 +439,12 @@ function registerTelegramEmbedCommand(
   accountId: string,
 ): void {
   bot.command(TELEGRAM_EMBED_COMMAND, async (ctx) => {
-    const sender = await resolveTelegramSenderAuth(ctx, runtime, accountId);
+    const sender = await resolveTelegramSenderAuthOrReply(
+      ctx,
+      runtime,
+      accountId,
+    );
+    if (!sender) return;
     if (!sender.isAuthorized && !sender.isElevated) {
       await ctx.reply(
         "Opening the Eliza app from Telegram requires OWNER or ADMIN access.",
