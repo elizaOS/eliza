@@ -28,6 +28,7 @@ import {
   PaypalManagedClientError,
   type PaypalTransactionDto,
   type PlaidExchangeResponse,
+  type PlaidItemStatusResponse,
   PlaidManagedClient,
   PlaidManagedClientError,
   type PlaidSyncResponse,
@@ -67,6 +68,12 @@ import type {
   ListTransactionsRequest,
   SpendingSummaryRequest,
 } from "./payment-types.ts";
+import {
+  classifyPlaidWebhook,
+  type PlaidWebhookAction,
+  type PlaidWebhookPayload,
+  verifyPlaidWebhook,
+} from "./plaid-webhook.ts";
 import { findLifeOpsSubscriptionPlaybook } from "./subscriptions-playbooks.ts";
 import {
   decryptTokenEnvelope,
@@ -91,16 +98,32 @@ const SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS = new Set(["plaid", "paypal"]);
 const PLAID_SYNC_MUTATION_RESTART_LIMIT = 3;
 const PLAID_RELINK_CODES = new Set([
   "ITEM_LOGIN_REQUIRED",
+  "PENDING_DISCONNECT",
+  "PENDING_EXPIRATION",
   "INVALID_ACCESS_TOKEN",
   "ITEM_NOT_FOUND",
 ]);
+const PLAID_REVOKED_ERROR_CODES = new Set([
+  "USER_PERMISSION_REVOKED",
+  "INVALID_ACCESS_TOKEN",
+  "ITEM_NOT_FOUND",
+]);
+const PLAID_JWK_CACHE_TTL_MS = 10 * 60_000;
+const PLAID_SYNC_BLOCKED_UPDATE_REASONS = new Set(["USER_PERMISSION_REVOKED"]);
+const plaidJwkCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    key: Awaited<ReturnType<PlaidManagedClient["getWebhookVerificationKey"]>>;
+  }
+>();
 
 /** Optional construction options (mirrors the LifeOps service shape). */
 export type FinancesServiceOptions = {
   ownerEntityId?: string | null;
 };
 
-function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
+export function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
   let configKey: string | null = null;
   let configBase: string | null = null;
   try {
@@ -123,10 +146,11 @@ function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfi
   const apiKey =
     configKey ?? normalizeElizaCloudApiKey(process.env.ELIZAOS_CLOUD_API_KEY);
   const baseUrl = configBase ?? process.env.ELIZAOS_CLOUD_BASE_URL ?? undefined;
+  const apiBaseUrl = resolveCloudApiBaseUrl(baseUrl);
   return {
     configured: Boolean(apiKey),
     apiKey,
-    apiBaseUrl: resolveCloudApiBaseUrl(baseUrl),
+    apiBaseUrl,
     siteUrl: normalizeCloudSiteUrl(baseUrl),
   };
 }
@@ -135,6 +159,15 @@ type PlaidPaymentMetadata = Record<string, unknown> & {
   accessToken?: unknown;
   connectionId?: string;
   cursor?: string;
+  itemError?: { code: string; message: string | null } | null;
+  consentExpirationTime?: string | null;
+  cleanupPending?: {
+    reason: "terminal_item_error" | "disconnect_requested";
+    requestedAt: string;
+  } | null;
+  lastWebhook?: { code: string; receivedAt: string };
+  updateReason?: string;
+  revokedAccountIds?: string[];
 };
 
 type PaypalCapability = { hasReporting: boolean; hasIdentity: boolean };
@@ -170,7 +203,26 @@ function readPlaidPaymentMetadata(value: unknown): PlaidPaymentMetadata | null {
   if (typeof metadata.connectionId !== "string") {
     delete metadata.connectionId;
   }
+  if (Array.isArray(metadata.revokedAccountIds)) {
+    metadata.revokedAccountIds = metadata.revokedAccountIds.filter(
+      (accountId): accountId is string => typeof accountId === "string",
+    );
+  } else {
+    delete metadata.revokedAccountIds;
+  }
   return metadata;
+}
+
+function plaidLogicalIdentityKey(result: PlaidExchangeResponse): string {
+  const normalized = JSON.stringify([
+    result.institution.institutionId.trim(),
+    [
+      ...new Set(
+        result.institution.accounts.map((account) => account.accountId),
+      ),
+    ].sort(),
+  ]);
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 function hasLegacyPlaidAccessToken(
@@ -254,6 +306,15 @@ export function sanitizePaymentSourceForClient(
     if (!SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS.has(key.toLowerCase())) {
       metadata[key] = value;
     }
+  }
+  const plaid = readPlaidPaymentMetadata(source.metadata.plaid);
+  if (source.kind === "plaid" && plaid) {
+    metadata.plaidStatus = {
+      error: plaid.itemError ?? null,
+      consentExpirationTime: plaid.consentExpirationTime ?? null,
+      lastWebhook: plaid.lastWebhook ?? null,
+      updateReason: plaid.updateReason ?? null,
+    };
   }
   return { ...source, metadata };
 }
@@ -995,6 +1056,13 @@ export class FinancesService {
     return this.plaidManagedClientCache;
   }
 
+  private plaidWebhookUrl(): string | undefined {
+    const raw = this.runtime.getSetting("PLAID_WEBHOOK_URL");
+    return typeof raw === "string" && raw.trim().length > 0
+      ? raw.trim()
+      : undefined;
+  }
+
   /** Returns a Plaid Link token for the frontend to drive the Plaid Link UI. */
   async createPlaidLinkToken(): Promise<{
     linkToken: string;
@@ -1002,7 +1070,9 @@ export class FinancesService {
     environment: string;
   }> {
     try {
-      return await this.getPlaidManagedClient().createLinkToken();
+      return await this.getPlaidManagedClient().createLinkToken({
+        webhookUrl: this.plaidWebhookUrl(),
+      });
     } catch (error) {
       if (error instanceof PlaidManagedClientError) {
         fail(error.status, error.message, error.code ?? undefined);
@@ -1039,59 +1109,160 @@ export class FinancesService {
           ? ` ··${result.institution.primaryAccountMask}`
           : ""
       }`;
+    const existingSources = (
+      await this.repository.listPaymentSources(this.agentId())
+    ).filter((candidate) => candidate.kind === "plaid");
+    const accountIds = new Set(
+      result.institution.accounts.map((account) => account.accountId),
+    );
+    const sameAccounts = (candidate: LifeOpsPaymentSource): boolean => {
+      const candidateMetadata = readPlaidPaymentMetadata(
+        candidate.metadata.plaid,
+      );
+      if (
+        candidateMetadata?.institutionId !== result.institution.institutionId
+      ) {
+        return false;
+      }
+      const candidateAccounts = candidateMetadata.accounts;
+      if (
+        !Array.isArray(candidateAccounts) ||
+        candidateAccounts.length !== accountIds.size
+      ) {
+        return false;
+      }
+      const ids = candidateAccounts
+        .map((account) =>
+          isRecord(account) && typeof account.accountId === "string"
+            ? account.accountId
+            : null,
+        )
+        .filter((id): id is string => id !== null);
+      return (
+        ids.length === accountIds.size && ids.every((id) => accountIds.has(id))
+      );
+    };
+    const existing =
+      existingSources.find(
+        (candidate) =>
+          readPlaidPaymentMetadata(candidate.metadata.plaid)?.connectionId ===
+          result.connectionId,
+      ) ?? existingSources.find(sameAccounts);
+    const existingMetadata = readPlaidPaymentMetadata(existing?.metadata.plaid);
+    const matchedConnectionId =
+      existingMetadata?.connectionId &&
+      existingMetadata.connectionId !== result.connectionId
+        ? existingMetadata.connectionId
+        : null;
     const now = new Date().toISOString();
     const source: LifeOpsPaymentSource = {
-      id: crypto.randomUUID(),
+      id: existing?.id ?? crypto.randomUUID(),
       agentId: this.agentId(),
       kind: "plaid",
       label: label.slice(0, 120),
       institution: result.institution.institutionName.slice(0, 120),
       accountMask: result.institution.primaryAccountMask?.slice(0, 16) ?? null,
       status: "active",
-      lastSyncedAt: null,
-      transactionCount: 0,
+      lastSyncedAt: existing?.lastSyncedAt ?? null,
+      transactionCount: existing?.transactionCount ?? 0,
       metadata: {
         plaid: {
           connectionId: result.connectionId,
           environment: result.environment,
           institutionId: result.institution.institutionId,
-          cursor: "",
+          cursor:
+            existingMetadata?.connectionId === result.connectionId
+              ? (existingMetadata.cursor ?? "")
+              : "",
           accounts: result.institution.accounts,
         },
       },
-      createdAt: now,
+      createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
+    let persisted: Awaited<
+      ReturnType<FinancesRepository["upsertPlaidPaymentSource"]>
+    >;
     try {
-      await this.repository.upsertPaymentSource(source);
+      persisted = await this.repository.upsertPlaidPaymentSource({
+        source,
+        connectionId: result.connectionId,
+        identityKey: plaidLogicalIdentityKey(result),
+      });
     } catch (error) {
+      if (!result.connectionCreated) {
+        throw error;
+      }
+      let connectionClaimed = true;
       try {
-        await this.getPlaidManagedClient().revokeConnection({
-          connectionId: result.connectionId,
-        });
+        connectionClaimed = await this.repository.hasPlaidPaymentSourceIdentity(
+          this.agentId(),
+          result.connectionId,
+        );
       } catch (cleanupError) {
-        // error-policy:J6 compensating revoke is best-effort; preserve the
-        // authoritative local persistence failure without logging credentials.
+        // error-policy:J6 a database failure makes ownership ambiguous. Keep
+        // the shared Cloud connection intact rather than revoking a claim that
+        // may have committed through a concurrent callback.
         this.logFinancesWarn(
           "plaid_link_cleanup",
           cleanupError instanceof Error
             ? cleanupError.message
-            : "Plaid connection cleanup failed.",
+            : "Plaid connection ownership check failed.",
           { connectionId: result.connectionId },
         );
       }
+      if (!connectionClaimed) {
+        try {
+          await this.getPlaidManagedClient().revokeConnection({
+            connectionId: result.connectionId,
+          });
+        } catch (cleanupError) {
+          // error-policy:J6 compensating revoke is best-effort; preserve the
+          // authoritative local persistence failure without logging credentials.
+          this.logFinancesWarn(
+            "plaid_link_cleanup",
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : "Plaid connection cleanup failed.",
+            { connectionId: result.connectionId },
+          );
+        }
+      }
       throw error;
     }
-    return source;
+    const replacedConnectionId =
+      persisted.replacedConnectionId ?? matchedConnectionId;
+    if (replacedConnectionId) {
+      try {
+        await this.getPlaidManagedClient().revokeConnection({
+          connectionId: replacedConnectionId,
+        });
+      } catch (cleanupError) {
+        // error-policy:J6 the new connection is already authoritative locally;
+        // warn without credential material so stale Cloud cleanup can retry.
+        this.logFinancesWarn(
+          "plaid_relink_cleanup",
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : "Previous Plaid connection cleanup failed.",
+          { connectionId: replacedConnectionId },
+        );
+      }
+    }
+    return persisted.source;
   }
 
   /**
    * Pulls the latest transaction delta for a Plaid-backed source and
    * inserts the new rows into life_payment_transactions.
    */
-  async syncPlaidTransactions(args: {
-    sourceId: string;
-  }): Promise<{ inserted: number; skipped: number; nextCursor: string }> {
+  async syncPlaidTransactions(args: { sourceId: string }): Promise<{
+    inserted: number;
+    skipped: number;
+    modified: number;
+    removed: number;
+    nextCursor: string;
+  }> {
     const sourceId = requireNonEmptyString(args.sourceId, "sourceId");
     return this.syncPlaidTransactionsFromCurrentCursor(sourceId, 0);
   }
@@ -1099,7 +1270,13 @@ export class FinancesService {
   private async syncPlaidTransactionsFromCurrentCursor(
     sourceId: string,
     cursorConflictAttempt: number,
-  ): Promise<{ inserted: number; skipped: number; nextCursor: string }> {
+  ): Promise<{
+    inserted: number;
+    skipped: number;
+    modified: number;
+    removed: number;
+    nextCursor: string;
+  }> {
     const storedSource = await this.repository.getPaymentSource(
       this.agentId(),
       sourceId,
@@ -1125,6 +1302,13 @@ export class FinancesService {
       );
     }
     const cursor = plaidMetadata?.cursor ?? "";
+    const revokedAccountIds = new Set(
+      Array.isArray(plaidMetadata?.revokedAccountIds)
+        ? plaidMetadata.revokedAccountIds.filter(
+            (accountId): accountId is string => typeof accountId === "string",
+          )
+        : [],
+    );
 
     let pageCursor = cursor;
     let added: PlaidTransactionDto[] = [];
@@ -1161,16 +1345,71 @@ export class FinancesService {
             break;
           }
           if (error.code && PLAID_RELINK_CODES.has(error.code)) {
+            const revoked = PLAID_REVOKED_ERROR_CODES.has(error.code);
+            let cleanupPending: PlaidPaymentMetadata["cleanupPending"] = null;
+            if (revoked) {
+              try {
+                await this.getPlaidManagedClient().revokeConnection({
+                  connectionId,
+                });
+              } catch (cleanupError) {
+                if (
+                  !(
+                    cleanupError instanceof PlaidManagedClientError &&
+                    cleanupError.code &&
+                    PLAID_REVOKED_ERROR_CODES.has(cleanupError.code)
+                  )
+                ) {
+                  // error-policy:J4 cleanup remains visibly pending and the
+                  // normal disconnect boundary retries the Cloud revocation.
+                  cleanupPending = {
+                    reason: "terminal_item_error",
+                    requestedAt: new Date().toISOString(),
+                  };
+                  this.logFinancesWarn(
+                    "plaid_sync_revoke_cleanup",
+                    "Plaid connection cleanup after a terminal Item error failed.",
+                    {
+                      connectionId,
+                      errorType:
+                        cleanupError instanceof Error
+                          ? cleanupError.name
+                          : "UnknownCleanupFailure",
+                    },
+                  );
+                }
+              }
+            }
             await this.repository.upsertPaymentSource({
               ...source,
-              status: "needs_attention",
+              status:
+                revoked && cleanupPending === null
+                  ? "disconnected"
+                  : "needs_attention",
+              metadata: {
+                ...source.metadata,
+                plaid: {
+                  ...plaidMetadata,
+                  connectionId,
+                  itemError: { code: error.code, message: error.message },
+                  cleanupPending,
+                },
+              },
               updatedAt: new Date().toISOString(),
             });
           }
           fail(error.status, error.message, error.code ?? undefined);
         }
-        added.push(...delta.added);
-        modified.push(...delta.modified);
+        added.push(
+          ...delta.added.filter(
+            (transaction) => !revokedAccountIds.has(transaction.account_id),
+          ),
+        );
+        modified.push(
+          ...delta.modified.filter(
+            (transaction) => !revokedAccountIds.has(transaction.account_id),
+          ),
+        );
         removedExternalIds.push(
           ...delta.removed.map((transaction) => transaction.transaction_id),
         );
@@ -1192,6 +1431,8 @@ export class FinancesService {
     let applied: {
       inserted: number;
       skipped: number;
+      modified: number;
+      removed: number;
       transactionCount: number;
     };
     try {
@@ -1199,15 +1440,16 @@ export class FinancesService {
         expectedCursor: cursor,
         source: {
           ...source,
-          status: "active",
+          status:
+            plaidMetadata.itemError || plaidMetadata.updateReason
+              ? "needs_attention"
+              : "active",
           lastSyncedAt: now,
           metadata: {
             ...source.metadata,
             plaid: {
+              ...plaidMetadata,
               connectionId,
-              environment: plaidMetadata?.environment,
-              institutionId: plaidMetadata?.institutionId,
-              accounts: plaidMetadata?.accounts,
               cursor: pageCursor,
             },
           },
@@ -1239,8 +1481,471 @@ export class FinancesService {
     return {
       inserted: applied.inserted,
       skipped: applied.skipped,
+      modified: applied.modified,
+      removed: applied.removed,
       nextCursor: pageCursor,
     };
+  }
+
+  private async requirePlaidSource(
+    sourceId: string,
+  ): Promise<{ source: LifeOpsPaymentSource; metadata: PlaidPaymentMetadata }> {
+    const source = await this.repository.getPaymentSource(
+      this.agentId(),
+      sourceId,
+    );
+    if (!source) fail(404, `Payment source ${sourceId} not found.`);
+    if (source.kind !== "plaid")
+      fail(409, `Source ${sourceId} is not a Plaid source.`);
+    const metadata = readPlaidPaymentMetadata(source.metadata.plaid) ?? {};
+    if (!metadata.connectionId) {
+      fail(
+        409,
+        "Plaid source is missing a Cloud connection. Re-link the account.",
+      );
+    }
+    return { source, metadata };
+  }
+
+  async createPlaidUpdateLinkToken(args: { sourceId: string }): Promise<{
+    linkToken: string;
+    expiration: string;
+    environment: string;
+  }> {
+    const { metadata } = await this.requirePlaidSource(
+      requireNonEmptyString(args.sourceId, "sourceId"),
+    );
+    const connectionId = metadata.connectionId;
+    if (!connectionId) fail(409, "Plaid source is missing a Cloud connection.");
+    try {
+      return await this.getPlaidManagedClient().createLinkToken({
+        connectionId,
+        webhookUrl: this.plaidWebhookUrl(),
+      });
+    } catch (error) {
+      if (error instanceof PlaidManagedClientError) {
+        fail(error.status, error.message, error.code ?? undefined);
+      }
+      throw error;
+    }
+  }
+
+  async completePlaidUpdate(args: {
+    sourceId: string;
+  }): Promise<LifeOpsPaymentSource> {
+    const sourceId = requireNonEmptyString(args.sourceId, "sourceId");
+    const { source, metadata } = await this.requirePlaidSource(sourceId);
+    const connectionId = metadata.connectionId;
+    if (!connectionId) fail(409, "Plaid source is missing a Cloud connection.");
+    let status: PlaidItemStatusResponse;
+    try {
+      status = await this.getPlaidManagedClient().getItemStatus({
+        connectionId,
+      });
+    } catch (error) {
+      if (error instanceof PlaidManagedClientError) {
+        fail(error.status, error.message, error.code ?? undefined);
+      }
+      throw error;
+    }
+    const updated = this.reconcilePlaidItemStatus({
+      source,
+      metadata,
+      status,
+      updateReason: null,
+    });
+    const updatedMetadata = readPlaidPaymentMetadata(updated.metadata.plaid);
+    if (!updatedMetadata) {
+      fail(500, "Plaid source metadata disappeared during update completion.");
+    }
+    const authoritativeAccountIds = new Set(
+      status.institution.accounts.map((account) => account.accountId),
+    );
+    const stillRevokedAccountIds = (metadata.revokedAccountIds ?? []).filter(
+      (accountId) => !authoritativeAccountIds.has(accountId),
+    );
+    if (stillRevokedAccountIds.length === 0) {
+      delete updatedMetadata.revokedAccountIds;
+    } else {
+      updatedMetadata.revokedAccountIds = stillRevokedAccountIds;
+      updatedMetadata.updateReason = "USER_ACCOUNT_REVOKED";
+    }
+    const completed = {
+      ...updated,
+      status:
+        status.error || stillRevokedAccountIds.length > 0
+          ? ("needs_attention" as const)
+          : ("active" as const),
+      metadata: { ...updated.metadata, plaid: updatedMetadata },
+    };
+    await this.repository.upsertPaymentSource(completed);
+    return completed;
+  }
+
+  /**
+   * Reconciles local display/lifecycle state from the organization-scoped
+   * Cloud Item read. Webhook codes are delivery hints and may arrive out of
+   * order; provider status and account metadata are the authoritative state.
+   */
+  private reconcilePlaidItemStatus(args: {
+    source: LifeOpsPaymentSource;
+    metadata: PlaidPaymentMetadata;
+    status: PlaidItemStatusResponse;
+    updateReason: string | null;
+  }): LifeOpsPaymentSource {
+    const plaid: PlaidPaymentMetadata = {
+      ...args.metadata,
+      institutionId: args.status.institution.institutionId,
+      accounts: args.status.institution.accounts,
+      itemError: args.status.error,
+      consentExpirationTime: args.status.consentExpirationTime,
+    };
+    if (args.updateReason === null) {
+      delete plaid.updateReason;
+    } else {
+      plaid.updateReason = args.updateReason;
+    }
+    return {
+      ...args.source,
+      institution: args.status.institution.institutionName.slice(0, 120),
+      accountMask:
+        args.status.institution.primaryAccountMask?.slice(0, 16) ?? null,
+      status:
+        args.status.error ||
+        args.updateReason ||
+        (args.metadata.revokedAccountIds?.length ?? 0) > 0
+          ? "needs_attention"
+          : "active",
+      metadata: { ...args.source.metadata, plaid },
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private async readCurrentPlaidItemStatus(
+    connectionId: string,
+  ): Promise<PlaidItemStatusResponse> {
+    try {
+      return await this.getPlaidManagedClient().getItemStatus({ connectionId });
+    } catch (error) {
+      if (error instanceof PlaidManagedClientError) {
+        fail(error.status, error.message, error.code ?? undefined);
+      }
+      throw error;
+    }
+  }
+
+  async disconnectPlaidSource(args: { sourceId: string }): Promise<{
+    source: LifeOpsPaymentSource;
+    alreadyDisconnected: boolean;
+  }> {
+    const sourceId = requireNonEmptyString(args.sourceId, "sourceId");
+    const { source, metadata } = await this.requirePlaidSource(sourceId);
+    const connectionId = metadata.connectionId;
+    if (!connectionId) fail(409, "Plaid source is missing a Cloud connection.");
+    if (source.status === "disconnected")
+      return { source, alreadyDisconnected: true };
+    try {
+      await this.getPlaidManagedClient().revokeConnection({
+        connectionId,
+      });
+    } catch (error) {
+      const alreadyGone =
+        error instanceof PlaidManagedClientError &&
+        error.code &&
+        PLAID_REVOKED_ERROR_CODES.has(error.code);
+      if (!alreadyGone) {
+        await this.repository.upsertPaymentSource({
+          ...source,
+          status: "needs_attention",
+          metadata: {
+            ...source.metadata,
+            plaid: {
+              ...metadata,
+              cleanupPending: {
+                reason: "disconnect_requested",
+                requestedAt: new Date().toISOString(),
+              },
+            },
+          },
+          updatedAt: new Date().toISOString(),
+        });
+        if (error instanceof PlaidManagedClientError) {
+          fail(error.status, error.message, error.code ?? undefined);
+        }
+        throw error;
+      }
+    }
+    const updated: LifeOpsPaymentSource = {
+      ...source,
+      status: "disconnected",
+      metadata: {
+        ...source.metadata,
+        plaid: { ...metadata, itemError: null, cleanupPending: null },
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    await this.repository.upsertPaymentSource(updated);
+    return { source: updated, alreadyDisconnected: false };
+  }
+
+  private async getCachedPlaidWebhookKey(keyId: string) {
+    const cached = plaidJwkCache.get(keyId);
+    if (cached && cached.expiresAt > Date.now()) return cached.key;
+    const key = await this.getPlaidManagedClient().getWebhookVerificationKey({
+      keyId,
+    });
+    if (plaidJwkCache.size >= 32)
+      plaidJwkCache.delete(plaidJwkCache.keys().next().value ?? "");
+    plaidJwkCache.set(keyId, {
+      expiresAt: Date.now() + PLAID_JWK_CACHE_TTL_MS,
+      key,
+    });
+    return key;
+  }
+
+  async handlePlaidWebhook(args: {
+    rawBody: string | Buffer;
+    verificationJwt: string;
+  }): Promise<{
+    handled: boolean;
+    action: PlaidWebhookAction;
+    sourceId: string | null;
+  }> {
+    let payload: PlaidWebhookPayload;
+    try {
+      payload = await verifyPlaidWebhook({
+        ...args,
+        getKey: (keyId) => this.getCachedPlaidWebhookKey(keyId),
+      });
+    } catch (error) {
+      if (error instanceof PlaidManagedClientError) {
+        this.logFinancesWarn(
+          "plaid_webhook_key",
+          "Plaid webhook key lookup failed.",
+          {
+            status: error.status,
+            code: error.code,
+          },
+        );
+        fail(401, "Plaid webhook verification failed.");
+      }
+      throw error;
+    }
+    return this.processPlaidWebhook(payload);
+  }
+
+  async processPlaidWebhook(payload: PlaidWebhookPayload): Promise<{
+    handled: boolean;
+    action: PlaidWebhookAction;
+    sourceId: string | null;
+  }> {
+    const action = classifyPlaidWebhook(payload);
+    let connection: { connectionId: string };
+    try {
+      connection = await this.getPlaidManagedClient().resolveItemConnection({
+        itemId: payload.item_id,
+      });
+    } catch (error) {
+      if (error instanceof PlaidManagedClientError && error.status === 404) {
+        return { handled: false, action, sourceId: null };
+      }
+      if (error instanceof PlaidManagedClientError) {
+        this.logFinancesWarn(
+          "plaid_webhook_item_resolution",
+          "Plaid webhook Item resolution failed.",
+          { status: error.status, code: error.code },
+        );
+        fail(502, "Plaid webhook Item resolution failed.");
+      }
+      throw error;
+    }
+    const sources = await this.repository.listPaymentSources(this.agentId());
+    const source = sources.find(
+      (candidate) =>
+        candidate.kind === "plaid" &&
+        readPlaidPaymentMetadata(candidate.metadata.plaid)?.connectionId ===
+          connection.connectionId,
+    );
+    if (!source) return { handled: false, action, sourceId: null };
+    const metadata = readPlaidPaymentMetadata(source.metadata.plaid) ?? {};
+    const stamp = (base: LifeOpsPaymentSource): LifeOpsPaymentSource => {
+      const baseMetadata =
+        readPlaidPaymentMetadata(base.metadata.plaid) ?? metadata;
+      return {
+        ...base,
+        metadata: {
+          ...base.metadata,
+          plaid: {
+            ...baseMetadata,
+            lastWebhook: {
+              code: payload.webhook_code,
+              receivedAt: new Date().toISOString(),
+            },
+          },
+        },
+        updatedAt: new Date().toISOString(),
+      };
+    };
+    if (action === "sync") {
+      await this.repository.upsertPaymentSource(stamp(source));
+      if (
+        source.status === "disconnected" ||
+        (metadata.updateReason &&
+          PLAID_SYNC_BLOCKED_UPDATE_REASONS.has(metadata.updateReason))
+      )
+        return { handled: false, action, sourceId: source.id };
+      await this.syncPlaidTransactions({ sourceId: source.id });
+    } else if (action === "reauth") {
+      const status = await this.readCurrentPlaidItemStatus(
+        connection.connectionId,
+      );
+      await this.repository.upsertPaymentSource(
+        stamp(
+          this.reconcilePlaidItemStatus({
+            source,
+            metadata,
+            status,
+            updateReason: null,
+          }),
+        ),
+      );
+    } else if (action === "update") {
+      const status = await this.readCurrentPlaidItemStatus(
+        connection.connectionId,
+      );
+      await this.repository.upsertPaymentSource(
+        stamp(
+          this.reconcilePlaidItemStatus({
+            source,
+            metadata,
+            status,
+            updateReason: payload.webhook_code,
+          }),
+        ),
+      );
+    } else if (action === "account_revoked") {
+      const accountId =
+        typeof payload.account_id === "string" ? payload.account_id.trim() : "";
+      if (!accountId) {
+        fail(400, "Plaid USER_ACCOUNT_REVOKED webhook is missing account_id.");
+      }
+      const deleted =
+        await this.repository.deletePaymentTransactionsForPlaidAccount(
+          this.agentId(),
+          source.id,
+          accountId,
+        );
+      const accounts = Array.isArray(metadata.accounts)
+        ? metadata.accounts.filter(
+            (account) => !isRecord(account) || account.accountId !== accountId,
+          )
+        : [];
+      const revokedAccount = Array.isArray(metadata.accounts)
+        ? metadata.accounts.find(
+            (account) => isRecord(account) && account.accountId === accountId,
+          )
+        : undefined;
+      const replacementMask = accounts.find(
+        (account) => isRecord(account) && typeof account.mask === "string",
+      );
+      const revokedMask =
+        isRecord(revokedAccount) && typeof revokedAccount.mask === "string"
+          ? revokedAccount.mask
+          : null;
+      const accountRevokedPlaid: PlaidPaymentMetadata = {
+        ...metadata,
+        accounts,
+        revokedAccountIds: Array.from(
+          new Set([...(metadata.revokedAccountIds ?? []), accountId]),
+        ),
+        updateReason: payload.webhook_code,
+      };
+      await this.repository.upsertPaymentSource(
+        stamp({
+          ...source,
+          accountMask:
+            revokedMask && source.accountMask === revokedMask
+              ? isRecord(replacementMask) &&
+                typeof replacementMask.mask === "string"
+                ? replacementMask.mask.slice(0, 16)
+                : null
+              : source.accountMask,
+          status: "needs_attention",
+          transactionCount: Math.max(0, source.transactionCount - deleted),
+          metadata: {
+            ...source.metadata,
+            plaid: accountRevokedPlaid,
+          },
+        }),
+      );
+    } else if (action === "permission_revoked") {
+      await this.repository.deletePaymentTransactionsForSource(
+        this.agentId(),
+        source.id,
+      );
+      const permissionRevokedPlaid: PlaidPaymentMetadata = {
+        connectionId: metadata.connectionId,
+        environment: metadata.environment,
+        itemError: {
+          code: payload.webhook_code,
+          message: payload.error?.error_message ?? null,
+        },
+        updateReason: payload.webhook_code,
+      };
+      await this.repository.upsertPaymentSource(
+        stamp({
+          ...source,
+          label: "Plaid connection",
+          institution: null,
+          accountMask: null,
+          status: "needs_attention",
+          lastSyncedAt: null,
+          transactionCount: 0,
+          metadata: {
+            ...source.metadata,
+            plaid: permissionRevokedPlaid,
+          },
+        }),
+      );
+    } else if (action === "disconnect") {
+      try {
+        await this.getPlaidManagedClient().revokeConnection({
+          connectionId: connection.connectionId,
+        });
+      } catch (error) {
+        if (
+          !(error instanceof PlaidManagedClientError) ||
+          !error.code ||
+          !PLAID_REVOKED_ERROR_CODES.has(error.code)
+        ) {
+          if (error instanceof PlaidManagedClientError) {
+            fail(error.status, error.message, error.code ?? undefined);
+          }
+          throw error;
+        }
+      }
+      const disconnectedPlaid: PlaidPaymentMetadata = {
+        ...metadata,
+        itemError: {
+          code: payload.webhook_code,
+          message: payload.error?.error_message ?? null,
+        },
+      };
+      delete disconnectedPlaid.updateReason;
+      await this.repository.upsertPaymentSource(
+        stamp({
+          ...source,
+          status: "disconnected",
+          metadata: {
+            ...source.metadata,
+            plaid: disconnectedPlaid,
+          },
+        }),
+      );
+    } else {
+      await this.repository.upsertPaymentSource(stamp(source));
+    }
+    return { handled: true, action, sourceId: source.id };
   }
 
   // -----------------------------------------------------------------------
