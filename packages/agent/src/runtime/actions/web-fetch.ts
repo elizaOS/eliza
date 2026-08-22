@@ -25,6 +25,7 @@ import {
   type Memory,
   type State,
   toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
 
@@ -70,16 +71,39 @@ function readParams(options: unknown): WebFetchParams {
   };
 }
 
+const MAX_JSON_EXTRACT_DEPTH = 16;
+const MAX_JSON_EXTRACT_PATH_LENGTH = 1024;
+const MAX_JSON_EXTRACT_SEGMENT_LENGTH = 256;
+
 /**
  * Resolve a dotted JSON path (e.g. `data.price` or `items.0.name`) against a
- * parsed JSON value. Returns undefined when any segment is missing.
+ * parsed JSON value. Returns undefined when any segment is missing or when
+ * the path is empty, too long, too deep, or contains an empty/oversized
+ * segment. Uses descriptor-only reflection so accessor properties are not
+ * invoked, and fails closed on hostile inputs.
  */
 function resolveJsonPath(root: unknown, path: string): unknown {
+  if (path.length === 0 || path.length > MAX_JSON_EXTRACT_PATH_LENGTH)
+    return undefined;
+  const segments = path.split(".");
+  if (segments.length === 0 || segments.length > MAX_JSON_EXTRACT_DEPTH)
+    return undefined;
   let current: unknown = root;
-  for (const segment of path.split(".")) {
-    if (current === null || current === undefined) return undefined;
-    if (typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[segment];
+  for (const segment of segments) {
+    if (
+      segment.length === 0 ||
+      segment.length > MAX_JSON_EXTRACT_SEGMENT_LENGTH
+    )
+      return undefined;
+    if (current === null || typeof current !== "object") return undefined;
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(current as object, segment);
+    } catch {
+      return undefined;
+    }
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    current = descriptor.value;
   }
   return current;
 }
@@ -104,7 +128,10 @@ function extractValue(body: string, extract: string | undefined): string {
       // Body was not JSON, or extract did not resolve — return the complete body.
     }
   }
-  return toWellFormedUnicode(body);
+  return truncateWellFormed(
+    toWellFormedUnicode(body),
+    _WEB_FETCH_SNIPPET_CHARS,
+  );
 }
 
 export const webFetch: Action & Record<string, unknown> = {

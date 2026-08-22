@@ -183,7 +183,7 @@ describe("coding-tools WEB_FETCH", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("complete-capture safety limit");
+    expect(result.text).toContain("safety ceiling");
     expect(result.text).not.toContain("x".repeat(100));
   });
 
