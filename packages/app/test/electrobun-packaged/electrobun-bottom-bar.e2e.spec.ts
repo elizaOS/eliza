@@ -234,7 +234,10 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         const red = pillPixels[offset];
         const green = pillPixels[offset + 1];
         const blue = pillPixels[offset + 2];
-        if (red > 210 && green > 210 && blue > 210) whitePixels += 1;
+        // WebKitGTK composites the declared white/95 handle anywhere from
+        // ~210 to ~245 depending on the software-renderer path. Count the
+        // visibly light capsule, not one exact compositor rounding outcome.
+        if (red >= 190 && green >= 190 && blue >= 190) whitePixels += 1;
       }
       const sampledPixels = width * height;
       const pillCapturePath = testInfo.outputPath("bottom-launcher-pill.png");
@@ -247,7 +250,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         contentType: "image/png",
       });
       if (captureHasVisiblePixels) {
-        expect(whitePixels / sampledPixels).toBeGreaterThan(0.55);
+        expect(whitePixels / sampledPixels).toBeGreaterThan(0.75);
       } else {
         // error-policy:J4 Preserve the all-black capture attachment and the
         // DOM/native geometry assertions without misreporting OS capture
