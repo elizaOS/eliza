@@ -4249,8 +4249,11 @@ async function handleListWorlds(
 					...world.sources,
 				]),
 		)
-		.sort((left, right) =>
-			(left.name ?? left.worldId).localeCompare(right.name ?? right.worldId),
+		.sort(
+			(left, right) =>
+				(left.name ?? left.worldId).localeCompare(
+					right.name ?? right.worldId,
+				) || left.worldId.localeCompare(right.worldId),
 		);
 	const page = explicitPage(matches, params);
 	const lines = page.items.map(
@@ -4340,8 +4343,11 @@ async function handleListRooms(
 			channelId: room.channelId ?? null,
 			serverId: room.serverId ?? null,
 		}))
-		.sort((left, right) =>
-			(left.name ?? left.roomId).localeCompare(right.name ?? right.roomId),
+		.sort(
+			(left, right) =>
+				(left.name ?? left.roomId).localeCompare(
+					right.name ?? right.roomId,
+				) || left.roomId.localeCompare(right.roomId),
 		);
 	const page = explicitPage(matches, params);
 	const lines = page.items.map(

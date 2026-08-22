@@ -88,6 +88,7 @@ type Harness = {
 	runtime: IAgentRuntime;
 	message: Memory;
 	getRoomsByIds: ReturnType<typeof vi.fn>;
+	getWorldsByIds: ReturnType<typeof vi.fn>;
 };
 
 function harness(channelType: ChannelType = ChannelType.DM): Harness {
@@ -103,6 +104,12 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 		ids.flatMap((id) => {
 			const room = roomById.get(id);
 			return room ? [room] : [];
+		}),
+	);
+	const getWorldsByIds = vi.fn(async (ids: UUID[]) =>
+		ids.flatMap((id) => {
+			const world = worldById.get(id);
+			return world ? [world] : [];
 		}),
 	);
 	const runtime = {
@@ -147,12 +154,7 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 			async (entityId: UUID) => participantRooms.get(entityId) ?? [],
 		),
 		getRoomsByIds,
-		getWorldsByIds: vi.fn(async (ids: UUID[]) =>
-			ids.flatMap((id) => {
-				const world = worldById.get(id);
-				return world ? [world] : [];
-			}),
-		),
+		getWorldsByIds,
 	} as unknown as IAgentRuntime;
 	const message = {
 		id: "00000000-0000-0000-0000-000000000041" as UUID,
@@ -166,7 +168,7 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 		},
 		createdAt: 1,
 	} as Memory;
-	return { runtime, message, getRoomsByIds };
+	return { runtime, message, getRoomsByIds, getWorldsByIds };
 }
 
 async function run(
@@ -269,6 +271,61 @@ describe("MESSAGE authorized world and room discovery", () => {
 			nextOffset: null,
 		});
 		expect((second.data as { worlds: unknown[] }).worlds).toHaveLength(1);
+	});
+
+	it("uses UUID tie-breakers so equal-name topology pages remain stable", async () => {
+		const h = harness();
+		h.getRoomsByIds.mockImplementation(async (ids: UUID[]) =>
+			ids
+				.slice()
+				.reverse()
+				.flatMap((id) => {
+					const room = rooms.find((candidate) => candidate.id === id);
+					return room ? [{ ...room, name: "same-name" }] : [];
+				}),
+		);
+		h.getWorldsByIds.mockImplementation(async (ids: UUID[]) =>
+			ids
+				.slice()
+				.reverse()
+				.flatMap((id) => {
+					const world = worlds.find((candidate) => candidate.id === id);
+					return world ? [{ ...world, name: "same-name" }] : [];
+				}),
+		);
+
+		const firstWorld = await run(h, { action: "list_worlds", limit: 1 });
+		const secondWorld = await run(h, {
+			action: "list_worlds",
+			limit: 1,
+			offset: 1,
+		});
+		expect(
+			(firstWorld.data as { worlds: Array<{ worldId: UUID }> }).worlds[0]
+				?.worldId,
+		).toBe(DISCORD_WORLD);
+		expect(
+			(secondWorld.data as { worlds: Array<{ worldId: UUID }> }).worlds[0]
+				?.worldId,
+		).toBe(TELEGRAM_WORLD);
+
+		const firstRoom = await run(h, {
+			action: "list_rooms",
+			worldId: DISCORD_WORLD,
+			limit: 1,
+		});
+		const secondRoom = await run(h, {
+			action: "list_rooms",
+			worldId: DISCORD_WORLD,
+			limit: 1,
+			offset: 1,
+		});
+		expect(
+			(firstRoom.data as { rooms: Array<{ roomId: UUID }> }).rooms[0]?.roomId,
+		).toBe(CURRENT_ROOM);
+		expect(
+			(secondRoom.data as { rooms: Array<{ roomId: UUID }> }).rooms[0]?.roomId,
+		).toBe(DISCORD_ROOM);
 	});
 
 	it("rejects malformed and unshared world ids", async () => {
