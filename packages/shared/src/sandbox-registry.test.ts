@@ -113,8 +113,7 @@ function installFetch(): void {
       if (cmd.length === 8) {
         const ttl = cmd[7];
         const owned =
-          (store.get(key1) === expected1 && store.get(key2) === expected2) ||
-          (!store.has(key1) && !store.has(key2));
+          store.get(key1) === expected1 && store.get(key2) === expected2;
         if (owned) {
           store.set(key1, expected1);
           store.set(key2, expected2);
@@ -568,9 +567,7 @@ async function startFakeRedis(opts?: {
           const [, , , key1, key2, expected1, expected2] = cmd;
           if (cmd.length === 8) {
             const owned =
-              (store.get(key1) === expected1 &&
-                store.get(key2) === expected2) ||
-              (!store.has(key1) && !store.has(key2));
+              store.get(key1) === expected1 && store.get(key2) === expected2;
             if (owned) {
               store.set(key1, expected1);
               store.set(key2, expected2);
