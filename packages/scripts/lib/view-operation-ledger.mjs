@@ -70,8 +70,8 @@ const SENSITIVE_PATTERN =
 const BUSINESS_MUTATION_PATTERN =
   /\b(approve|archive|block|capture|connect|create|delete|deny|disable|disconnect|enable|execute|grant|install|purchase|remove|reopen|restart|revoke|run|save|send|start|stop|submit|transfer|unblock|uninstall|update|upload)\b/i;
 const VIEW_ONLY_JUSTIFICATIONS = Object.freeze({
-  "chat-native":
-    "The chat surface is itself the canonical text/voice delivery boundary.",
+  "ast-proven-local":
+    "The local handler call graph resolves without a known business mutation primitive.",
   "data-refresh":
     "Refreshes or retries read-only backing data without changing domain state.",
   "dense-manipulation":
@@ -83,10 +83,10 @@ const VIEW_ONLY_JUSTIFICATIONS = Object.freeze({
   "local-selection":
     "Changes a local filter, sort, tab, focus, or selection without changing domain data.",
   "media-control": "Controls local media playback or inspection state.",
+  "native-control":
+    "Uses native read-only or draft interaction semantics without an executable handler.",
   "readonly-display":
     "The registered surface has no enabled control and only presents state.",
-  "visual-command":
-    "Runs a non-mutating visual command whose effect is confined to the mounted view.",
 });
 
 function compareText(left, right) {
@@ -99,6 +99,18 @@ function sha(value) {
 
 function normalizePath(value) {
   return value.split(path.sep).join("/");
+}
+
+function sourceDomain(source) {
+  const parts = source.split("/");
+  if (parts[0] === "plugins") return parts[1] ?? "plugins";
+  if (parts[0] === "packages" && parts[1] === "ui") {
+    const componentIndex = parts.indexOf("components");
+    if (componentIndex >= 0)
+      return `ui/${parts[componentIndex + 1] ?? "components"}`;
+    return "ui";
+  }
+  return parts.slice(0, 2).join("/");
 }
 
 function repositoryFiles(repoRoot) {
@@ -145,15 +157,38 @@ function parseSource(repoRoot, source, cache) {
     );
   }
   const constants = new Map();
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-        constants.set(declaration.name.text, declaration.initializer);
+  const callables = new Map();
+  const collectBindings = (node) => {
+    if (ts.isVariableStatement(node)) {
+      for (const declaration of node.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+          if (node.parent === sourceFile) {
+            constants.set(declaration.name.text, declaration.initializer);
+          }
+          const entries = callables.get(declaration.name.text) ?? [];
+          entries.push({
+            expression: declaration.initializer,
+            scope: scopeName(node),
+          });
+          callables.set(declaration.name.text, entries);
+        }
       }
+    } else if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      const entries = callables.get(node.name.text) ?? [];
+      entries.push({ expression: node, scope: scopeName(node.parent) });
+      callables.set(node.name.text, entries);
     }
-  }
-  const context = { repoRoot, source: normalized, sourceFile, text, constants };
+    ts.forEachChild(node, collectBindings);
+  };
+  collectBindings(sourceFile);
+  const context = {
+    repoRoot,
+    source: normalized,
+    sourceFile,
+    text,
+    constants,
+    callables,
+  };
   cache.set(normalized, context);
   return context;
 }
@@ -599,6 +634,13 @@ function discoverRegisteredSurfaces(repoRoot, cache) {
   return [...unique.values()].sort((a, b) => compareText(a.id, b.id));
 }
 
+/** Discovers app-shell and overlay registrations independently of the ledger. */
+export function discoverRegisteredSurfaceInventory({ repoRoot }) {
+  return discoverRegisteredSurfaces(repoRoot, new Map()).map(
+    ({ root, ...surface }) => surface,
+  );
+}
+
 function jsxAttribute(opening, name) {
   return opening.attributes.properties.find(
     (property) => ts.isJsxAttribute(property) && property.name.text === name,
@@ -651,10 +693,9 @@ function viewOnlyJustificationCode({
   handler,
   identity,
   tag,
-  surfaceId,
+  hasHandler,
 }) {
   const text = `${identity} ${handler}`;
-  if (surfaceId === "chat") return "chat-native";
   if (/drag|drop|pointer|mouse|key/i.test(eventName))
     return "dense-manipulation";
   if (/\b(refresh|retry|reload|poll)\b/i.test(text)) return "data-refresh";
@@ -672,25 +713,96 @@ function viewOnlyJustificationCode({
       ? "local-draft"
       : "local-selection";
   }
-  return "visual-command";
+  return hasHandler ? "ast-proven-local" : "native-control";
 }
 
-function businessMutationRisk(identity, handler) {
+function callableForIdentifier(identifier, context) {
+  const entries = context.callables.get(identifier.text) ?? [];
+  const scope = scopeName(identifier);
+  return (
+    entries.find((entry) => entry.scope === scope)?.expression ??
+    entries.find((entry) => entry.scope === "module")?.expression ??
+    null
+  );
+}
+
+function fetchWrites(call, context) {
+  if (callName(call) !== "fetch") return false;
+  const options = call.arguments[1]
+    ? literalObject(call.arguments[1], context)
+    : null;
+  if (!options) return false;
+  const method = objectLiteralValue(options, "method", context);
+  return typeof method === "string" && method.toUpperCase() !== "GET";
+}
+
+function analyzeHandlerExpression(expression, context, seen = new Set()) {
+  const result = { mutation: false, unresolved: false };
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      if (fetchWrites(node, context)) result.mutation = true;
+      const callee = unwrap(node.expression);
+      if (ts.isIdentifier(callee)) {
+        if (/^set[A-Z0-9_]/.test(callee.text)) {
+          ts.forEachChild(node, visit);
+          return;
+        }
+        const local = callableForIdentifier(callee, context);
+        if (local && !seen.has(local)) {
+          seen.add(local);
+          const nested = analyzeHandlerExpression(local, context, seen);
+          result.mutation ||= nested.mutation;
+          result.unresolved ||= nested.unresolved;
+        } else {
+          const name = callee.text.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+          if (BUSINESS_MUTATION_PATTERN.test(name)) result.mutation = true;
+          if (/\b(?:handle|perform|request) action\b|\bmutate\b/i.test(name)) {
+            result.unresolved = true;
+          }
+        }
+      } else if (ts.isPropertyAccessExpression(callee)) {
+        const receiver = callee.expression.getText(context.sourceFile);
+        const method = callee.name.text.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+        const knownMutationReceiver =
+          /(?:^|\.)(?:api|client|service|mutation|mutations)$/i.test(receiver);
+        if (
+          knownMutationReceiver &&
+          !/\b(?:get|list|read|search|status|fetch|query|preview)\b/i.test(
+            method,
+          )
+        ) {
+          result.mutation = true;
+        }
+        if (
+          /(?:^|\.)props$/i.test(receiver) &&
+          BUSINESS_MUTATION_PATTERN.test(method)
+        ) {
+          result.unresolved = true;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(expression);
+  return result;
+}
+
+function businessMutationRisk(identity, handlerExpression, context) {
+  const handler = handlerExpression?.getText(context.sourceFile) ?? "";
   const executableHandler = handler
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/\/\/[^\n\r]*/g, " ");
   const semanticText = `${identity} ${executableHandler}`;
-  if (/\binspect(?:ion)?[-_ ]block\b/i.test(semanticText)) return false;
-  return BUSINESS_MUTATION_PATTERN.test(semanticText);
-}
-
-function mutationWords(value) {
-  return new Set(
-    value
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((word) => BUSINESS_MUTATION_PATTERN.test(word)),
-  );
+  const analysis = handlerExpression
+    ? analyzeHandlerExpression(handlerExpression, context)
+    : { mutation: false, unresolved: false };
+  return {
+    mutation:
+      analysis.mutation ||
+      (!/\binspect(?:ion)?[-_ ]block\b/i.test(semanticText) &&
+        BUSINESS_MUTATION_PATTERN.test(semanticText)),
+    unresolved: analysis.unresolved,
+  };
 }
 
 function elementContract({
@@ -1021,19 +1133,25 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
                   initializer: null,
                 },
               ]) {
-            const handler = ts.isJsxAttribute(event)
-              ? (jsxAttributeExpression(event)?.getText(context.sourceFile) ??
-                "")
-              : "";
+            const handlerExpression = ts.isJsxAttribute(event)
+              ? jsxAttributeExpression(event)
+              : null;
+            const handler =
+              handlerExpression?.getText(context.sourceFile) ?? "";
             const eventName = event.name.text;
             const justificationCode = viewOnlyJustificationCode({
               eventName,
               handler,
               identity: identity.value,
               tag,
-              surfaceId: surface.id,
+              hasHandler: Boolean(handlerExpression),
             });
-            const mutationRisk = businessMutationRisk(identity.value, handler);
+            const semanticAnalysis = businessMutationRisk(
+              identity.value,
+              handlerExpression,
+              context,
+            );
+            const mutationRisk = semanticAnalysis.mutation;
             rawControls.push({
               operationId: `${surface.id}.view-only.${scopeName(node)}.${identity.value}.${eventName}.${siteDiscriminator(node, context)}-L${lineOf(context, ts.isJsxAttribute(event) ? event : node)}`,
               surfaceId: surface.id,
@@ -1081,6 +1199,7 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
                 : VIEW_ONLY_JUSTIFICATIONS[justificationCode],
               semanticMutation: mutationRisk,
               mutationRisk,
+              unresolvedMutation: semanticAnalysis.unresolved,
               source: {
                 file: source,
                 line: lineOf(context, ts.isJsxAttribute(event) ? event : node),
@@ -1092,59 +1211,6 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
       ts.forEachChild(node, visit);
     };
     visit(context.sourceFile);
-  }
-  for (const control of rawControls) {
-    if (surface.id === "chat" && control.mutationRisk && !control.sensitive) {
-      control.classification = "chat-native-operation";
-      control.authorization = "authenticated-owner+chat-boundary";
-      control.idempotency = "operation-defined";
-      control.channels = { view: true, widget: true, chat: true, voice: true };
-      control.mutationRisk = false;
-      delete control.justificationCode;
-      delete control.viewOnlyReason;
-      continue;
-    }
-    if (!control.mutationRisk) continue;
-    const capabilityIds = surface.view?.operationIds ?? [];
-    const searchable = `${control.control.id} ${control.useCase}`.toLowerCase();
-    const controlMutationWords = mutationWords(searchable);
-    const capability = capabilityIds.find((id) => {
-      const capabilityMutationWords = mutationWords(id);
-      if (
-        [...capabilityMutationWords].some((word) =>
-          controlMutationWords.has(word),
-        )
-      ) {
-        return true;
-      }
-      return /restart/.test(searchable) && /update/.test(id);
-    });
-    if (capability) {
-      control.classification = "capability-backed-control";
-      control.capability = capability;
-      control.authorization = surface.view?.minRole
-        ? `role>=${surface.view.minRole}`
-        : "authenticated-owner";
-      control.idempotency = "operation-defined";
-      control.channels = { view: true, widget: true, chat: true, voice: true };
-      control.input = {
-        type: "ViewCapabilityInput",
-        fields: "declaration-params",
-      };
-      control.output = {
-        type: "OperationReceipt",
-        fields: { ok: "boolean", reason: "string", receiptId: "string?" },
-      };
-      control.errors = [
-        "UNAUTHORIZED",
-        "CAPABILITY_UNAVAILABLE",
-        "INVALID_INPUT",
-        "OPERATION_FAILED",
-      ];
-      control.mutationRisk = false;
-      delete control.justificationCode;
-      delete control.viewOnlyReason;
-    }
   }
   return { operations, rawControls };
 }
@@ -1260,6 +1326,16 @@ function assertLedger(ledger) {
       });
     }
     if (
+      operation.classification === "view-only" &&
+      operation.unresolvedMutation
+    ) {
+      findings.push({
+        code: "unresolved-semantic-mutation",
+        operationId: operation.operationId,
+        message: `${operation.source.file}:${operation.source.line} delegates to a generic mutation callback without a canonical operation link`,
+      });
+    }
+    if (
       operation.semanticMutation &&
       !operation.sensitive &&
       (!operation.channels.widget ||
@@ -1313,6 +1389,11 @@ function assertLedger(ledger) {
       `[view-operation-ledger] ${findings.length} finding(s)\n${detail}${remaining}`,
     );
   }
+}
+
+/** Applies fail-closed operation and inventory validation to a derived ledger. */
+export function validateViewOperationLedger(ledger) {
+  assertLedger(ledger);
 }
 
 /** Discover and fail-closed validate the runtime-derived view operation ledger. */
@@ -1560,6 +1641,45 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
           operation.classification === "view-only",
       ).length,
     },
+    controlRiskCounts: {
+      businessMutation: operations.filter(
+        (operation) =>
+          operation.classification === "view-only" && operation.mutationRisk,
+      ).length,
+      genericIndirection: operations.filter(
+        (operation) =>
+          operation.classification === "view-only" &&
+          operation.unresolvedMutation &&
+          !operation.mutationRisk,
+      ).length,
+      sensitiveBoundary: operations.filter(
+        (operation) => operation.classification === "secure-sensitive",
+      ).length,
+      localPresentation: operations.filter(
+        (operation) =>
+          operation.classification === "view-only" &&
+          !operation.mutationRisk &&
+          !operation.unresolvedMutation,
+      ).length,
+    },
+    unresolvedControls: operations
+      .filter(
+        (operation) =>
+          operation.classification === "view-only" &&
+          (operation.mutationRisk || operation.unresolvedMutation),
+      )
+      .map((operation) => ({
+        operationId: operation.operationId,
+        surfaceId: operation.surfaceId,
+        owner: operation.owner,
+        domain: sourceDomain(operation.source.file),
+        risk: operation.sensitive
+          ? "sensitive"
+          : operation.mutationRisk
+            ? "business-mutation"
+            : "generic-indirection",
+        source: operation.source,
+      })),
     registeredSurfaces: registered.map(({ root, ...surface }) => surface),
     surfaces: surfaces.map(({ view, root, roots, ...surface }) => ({
       ...surface,
@@ -1582,12 +1702,22 @@ export function renderViewOperationLedgerMarkdown(ledger) {
     `- Operations and controls: ${ledger.operationCount}`,
     `- Channel coverage: view ${ledger.channelCounts.view}; widget ${ledger.channelCounts.widget}; chat ${ledger.channelCounts.chat}; voice ${ledger.channelCounts.voice}`,
     `- Semantic mutations: ${ledger.semanticMutationCounts.total}; agent-delivered ${ledger.semanticMutationCounts.agentDelivered}; secure exceptions ${ledger.semanticMutationCounts.secureExceptions}; view-only violations ${ledger.semanticMutationCounts.viewOnlyViolations}`,
+    `- Control risks: business mutation ${ledger.controlRiskCounts.businessMutation}; generic indirection ${ledger.controlRiskCounts.genericIndirection}; sensitive boundary ${ledger.controlRiskCounts.sensitiveBoundary}; local presentation ${ledger.controlRiskCounts.localPresentation}`,
     "",
     "## Bounded view-only justifications",
     "",
     ...Object.entries(ledger.viewOnlyJustificationCounts).map(
       ([code, count]) => `- ${code}: ${count}`,
     ),
+    "",
+    "## Unresolved production controls",
+    "",
+    ...(ledger.unresolvedControls.length === 0
+      ? ["None."]
+      : ledger.unresolvedControls.map(
+          (gap) =>
+            `- ${gap.domain} / ${gap.owner} / ${gap.surfaceId} / ${gap.risk}: ${gap.operationId} (${gap.source.file}:${gap.source.line})`,
+        )),
     "",
     "| Operation | Surface | Classification | Owner / use case | Auth | Idempotency / confirmation | Channels | Source |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",

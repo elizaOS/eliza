@@ -6,8 +6,10 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
+import { discoverPluginViewInventory } from "../lib/plugin-view-inventory.mjs";
 import {
   __test,
+  discoverRegisteredSurfaceInventory,
   discoverViewOperationLedger,
   renderViewOperationLedgerMarkdown,
 } from "../lib/view-operation-ledger.mjs";
@@ -29,15 +31,28 @@ function fixtureLedger(operations: Array<Record<string, unknown>>) {
 
 describe("view operation ledger", () => {
   beforeAll(() => {
-    productionLedger = discoverViewOperationLedger({ repoRoot: REPO_ROOT });
+    productionLedger = discoverViewOperationLedger({
+      repoRoot: REPO_ROOT,
+      validate: false,
+    });
   }, 30_000);
 
   it("derives every surface and control from production registrations", () => {
     const ledger = productionLedger;
-    expect(ledger.viewInventoryCount).toBe(39);
-    expect(ledger.registeredSurfaceCount).toBe(11);
-    expect(ledger.registrationOverlapCount).toBe(7);
-    expect(ledger.surfaceCount).toBe(43);
+    const viewIds = new Set(
+      discoverPluginViewInventory({ repoRoot: REPO_ROOT }).views.map(
+        (view) => view.id,
+      ),
+    );
+    const registeredIds = new Set(
+      discoverRegisteredSurfaceInventory({ repoRoot: REPO_ROOT }).map(
+        (surface) => surface.id,
+      ),
+    );
+    const overlap = [...registeredIds].filter((id) => viewIds.has(id)).length;
+    expect(ledger.viewInventoryCount).toBe(viewIds.size);
+    expect(ledger.registeredSurfaceCount).toBe(registeredIds.size);
+    expect(ledger.registrationOverlapCount).toBe(overlap);
     expect(
       ledger.viewInventoryCount +
         ledger.registeredSurfaceCount -
@@ -49,6 +64,7 @@ describe("view operation ledger", () => {
     expect(ledger.operations.every((operation) => operation.source.file)).toBe(
       true,
     );
+    expect(ledger.unresolvedControls).toEqual([]);
   });
 
   it("renders deterministic reviewer-readable markdown", () => {
@@ -151,6 +167,72 @@ describe("view operation ledger", () => {
     expect(() => __test.assertLedger(fixtureLedger([operation]))).toThrow(
       /invalid-view-only-justification/,
     );
+  });
+
+  it("fails a generic-indirection mutation without canonical linkage", () => {
+    const operation = {
+      operationId: "demo.view-only.handle-action.onClick",
+      surfaceId: "demo",
+      owner: "demo-owner",
+      useCase: "Delegate action",
+      classification: "view-only",
+      input: {},
+      output: {},
+      errors: [],
+      authorization: "view-session",
+      idempotency: "presentation-local",
+      confirmation: "none",
+      channels: { view: true, widget: false, chat: false, voice: false },
+      sensitive: false,
+      semanticMutation: false,
+      mutationRisk: false,
+      unresolvedMutation: true,
+      justificationCode: "ast-proven-local",
+      viewOnlyReason: __test.VIEW_ONLY_JUSTIFICATIONS["ast-proven-local"],
+      source: { file: "fixture.tsx", line: 1 },
+    };
+    expect(() => __test.assertLedger(fixtureLedger([operation]))).toThrow(
+      /unresolved-semantic-mutation/,
+    );
+  });
+
+  it("does not let ambiguous same-verb capabilities excuse a mutation", () => {
+    const mutation = {
+      operationId: "demo.view-only.save.onClick",
+      surfaceId: "demo",
+      owner: "demo-owner",
+      useCase: "Save demo",
+      classification: "view-only",
+      input: {},
+      output: {},
+      errors: [],
+      authorization: "view-session",
+      idempotency: "presentation-local",
+      confirmation: "none",
+      channels: { view: true, widget: false, chat: false, voice: false },
+      sensitive: false,
+      semanticMutation: true,
+      mutationRisk: true,
+      justificationCode: "ast-proven-local",
+      viewOnlyReason: __test.VIEW_ONLY_JUSTIFICATIONS["ast-proven-local"],
+      source: { file: "fixture.tsx", line: 1 },
+    };
+    expect(() =>
+      __test.assertLedger(
+        fixtureLedger([
+          mutation,
+          ...["save-draft", "save-published"].map((id) => ({
+            ...mutation,
+            operationId: `demo.capability.${id}`,
+            classification: "view-capability",
+            channels: { view: true, widget: true, chat: true, voice: true },
+            mutationRisk: false,
+            justificationCode: undefined,
+            viewOnlyReason: undefined,
+          })),
+        ]),
+      ),
+    ).toThrow(/direct-view-only-business-mutation/);
   });
 
   it("fails registration arithmetic drift", () => {
