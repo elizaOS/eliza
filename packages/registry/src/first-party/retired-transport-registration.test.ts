@@ -242,6 +242,14 @@ describe("retired transport registration", () => {
         /["']signal["']|\bSignal\b|\/api\/signal\//,
       ],
       [
+        "plugins/plugin-personal-assistant/src/actions/entity.ts",
+        /\bsignal\b/i,
+      ],
+      [
+        "plugins/plugin-personal-assistant/src/lifeops/connectors/mockoon-redirect.ts",
+        /\bsignal\b/i,
+      ],
+      [
         "plugins/plugin-personal-assistant/src/lifeops/cross-channel-search.ts",
         /["']signal["']|\bSignal\b/,
       ],
@@ -260,6 +268,14 @@ describe("retired transport registration", () => {
       [
         "packages/scenario-runner/test/mocks/scripts/lifeops-readonly-connector-snapshot.ts",
         /lifeops\/connectors\/signal|signal\.status/i,
+      ],
+      [
+        "packages/scenario-runner/test/mocks/__tests__/provider-coverage-contract.test.ts",
+        /service-mixin-signal/i,
+      ],
+      [
+        "packages/scenario-runner/test/mocks/environments/lifeops-presence-active.json",
+        /"provider":\s*"signal"/i,
       ],
     ];
     for (const [authority, forbidden] of inactiveAuthorities) {

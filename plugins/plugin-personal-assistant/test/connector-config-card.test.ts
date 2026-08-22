@@ -1,7 +1,7 @@
 /**
  * CONNECTOR action emits the in-chat `[CONFIG:<pluginId>]` setup-card marker on
- * `connect` for each chat-set-up connector (discord, telegram, signal,
- * imessage, whatsapp, wechat) when the connector is not yet connected, and
+ * `connect` for each chat-set-up connector (discord, telegram, imessage,
+ * whatsapp, wechat) when the connector is not yet connected, and
  * omits it once the connector reports connected. The UI parses this marker into
  * the InlinePluginConfig widget (packages/ui message-parser-helpers), so this
  * is the server half of "set up <connector> in chat → a setup widget".
