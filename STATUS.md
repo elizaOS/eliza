@@ -14,7 +14,9 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Shared contracts checkpoint: `8f89c8b38d146660e3bb3a176ddb7b305df02188`, tag `lifeops-connection-contracts-20260822`
 - Provider-neutral backend checkpoint: `6a112ea122152d656c011f4590463a14c82de5c6`, tag `lifeops-connection-backend-20260822`
 - Connection UI implementation head: `044eece51502c8a59fb82a70f16b4ceb75a88717`, tag `lifeops-connection-ui-20260822`
-- The annotated UI tag resolves to the implementation head above. This ledger is the immediate follow-on documentation checkpoint.
+- Clean aggregate starting head for this acceptance pass: `24a49ebc24352a967e8e16bfc6438871f888bccd`
+- Exhaustive local/browser recovery checkpoint: `e2454b40fae902124ad5430ede46ab121bf82128`, tag `lifeops-connections-local-qa-20260822`
+- The annotated local-QA tag resolves to the implementation head above. This ledger is the immediate follow-on documentation checkpoint.
 - `packages/app-core/platforms/electrobun/native/macos/window-effects.mm` is byte-for-byte unchanged by this lane.
 - No push, PR mutation, merge, deployment, OAuth consent, native permission prompt, or real provider mutation occurred.
 
@@ -25,6 +27,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 | Shared contracts | `8f89c8b38d` | Explicit Gmail History health, calendar source/change-delivery health, stable provider provenance, and provider-safe imported-data purge receipts |
 | Provider-neutral backend | `6a112ea122` | Durable Gmail/calendar projections, bounded resync and purge paths, source selection, exact-account identity, retries, and partial-failure receipts |
 | Connection UI/tests/docs | `044eece515` | Focused first-five-minutes and ongoing-management surface, no-provider browser harness, view registration/bundle, component tests, and contributor documentation |
+| Local/browser recovery | `e2454b40fa` | Multi-account isolation, Apple-only seeding, permission/settings recovery, destructive-dialog focus safety, count-aware receipts, and exhaustive deterministic browser scenarios |
 | macOS native handoff | Existing bounded artifact | `plugins/plugin-calendar/docs/MACOS_EVENTKIT_PROVENANCE_CONTRACT.md`; native implementation remains with the macOS owner |
 
 ## Current capability matrix
@@ -55,23 +58,30 @@ Legend: deterministic means fixture/unit/integration/local-browser evidence. Rea
 - Added separate disconnect and imported-data purge confirmations with honest non-provider-mutation receipts.
 - Added provenance/dedup explanation and deterministic disconnect/reconnect/no-duplicate acceptance.
 - Added a real-Chromium no-provider harness on isolated port 41873 with temporary state/evidence outside the repository.
-- Physically inspected final desktop initial, seeded, disconnected, and mobile captures.
+- Corrected cross-account calendar selection so changing the active Google account cannot seed a hidden calendar from another account.
+- Enabled bounded Apple-only calendar seeding with a truthful null Google grant and an explicit no-Gmail request.
+- Converted Apple permission and System Settings launch failures into visible, retryable UI states without unhandled browser errors.
+- Hardened destructive confirmation dialogs with Cancel-first focus, a keyboard focus trap, Escape cancellation, prior-focus restoration, and exact-account/provider titles.
+- Added count-aware source and duplicate-delivery receipt grammar.
+- Physically inspected final desktop initial, Apple-only seeded, disconnected, and 390px mobile captures.
+- Documented the exact supervised live-provider acceptance sequence in `plugins/plugin-personal-assistant/docs/LIFEOPS_LIVE_VALIDATION.md`.
 - Preserved the macOS EventKit provenance contract and left the owned native bridge unchanged.
 
 ## Verification evidence
 
-- Final no-provider browser acceptance: 13/13 assertions passed in real headless Chromium.
-  - Partial source error, Gmail History cursor, Apple denial recovery, bounded seed/count receipt, explicit retry, purge confirmation, `providerMutation: false`, disconnect stale-grant clearing, reconnect/no duplicates, desktop page errors, mobile overflow, 44px touch targets, and mobile page errors.
-  - Redacted temporary captures: `/var/folders/h3/hz68shz96gz0h9lnyctghppc0000gn/T/eliza-lifeops-e2e-6uzJrn`
-- Focused UI/registration/boundary Vitest: 4 files, 23 tests passed.
+- Final no-provider browser acceptance: 48/48 assertions passed in real headless Chromium.
+  - Covered partial source failure, Gmail History health, every Apple permission state, bounded seed/count receipts, retry recovery, provider-safe purge, disconnect/reconnect/no duplicates, drafts versus effects, multi-account isolation, Apple-only seed, capability defaults, injected load/seed/calendar/permission/settings/purge/disconnect/connect failures, zero uncaught page errors, 390px overflow, and 44px touch targets.
+  - Redacted temporary captures: `/var/folders/h3/hz68shz96gz0h9lnyctghppc0000gn/T/eliza-lifeops-e2e-tTOShh`
+- In-app Browser inspection against the rebuilt isolated fixture confirmed exact second-account seed provenance, exclusion of the first account's hidden calendar, Apple-only `grantId: null`, Cancel-first modal focus/trap/Escape behavior, visible seed-failure recovery, no page errors, and a clean 390x844 layout.
+- Focused UI/registration/boundary Vitest: 4 files, 27 tests passed.
 - Focused provider-neutral backend/component/boundary Vitest: 6 files, 50 tests passed.
 - Calendar package unit lane: 67 files passed, 2 skipped; 645 tests passed, 4 skipped.
 - Calendar integration lane through the repository integration config: 2 files, 18 tests passed.
-- Personal Assistant production build passed, including the 34.84 kB focused view bundle and declaration emission.
+- Personal Assistant production build passed, including the 36.26 kB focused view bundle and declaration emission.
 - Focused production connection UI TypeScript check passed with no diagnostics.
 - Biome passed all 15 changed TypeScript/TSX/MJS/JSON source files with no fixes.
 - Repository CLAUDE/AGENTS parity passed for all 160 tracked pairs.
-- App audit passed: 224 views reviewed, 211 verified, 0 broken, and 13 audit entries left for human eyeballing; final LifeOps desktop/mobile captures were manually inspected separately.
+- App audit passed: 227 tests passed; 224 views reviewed, 211 verified, 0 broken, 0 needs-work, and 13 audit entries left for human eyeballing; final LifeOps desktop/mobile captures were manually inspected separately.
 - `git diff --check` passed before the UI commit.
 - No test or harness contacted Google, Gmail, Google Calendar, Apple Calendar, OAuth, or a native permission surface.
 
@@ -83,7 +93,7 @@ Legend: deterministic means fixture/unit/integration/local-browser evidence. Rea
 
 ## Doing
 
-- No local implementation work remains in the bounded Gmail/Google Calendar/Apple Calendar connection UI checkpoint.
+- No safe local implementation or browser-fixture work remains in the bounded Gmail/Google Calendar/Apple Calendar acceptance scope.
 
 ## Next: true external gates only
 
