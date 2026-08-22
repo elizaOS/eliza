@@ -299,24 +299,28 @@ function finalizeEvaluatorOutput(
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
 	return sanitizeOutputMessage(
-		repairFinishWithProgressPromise(
-			repairFinishedToolTurnWithoutUserMessage(
-				repairMissingEvaluatorMessage(
-					repairMissingEvaluatorSuccess(
-						rejectEvaluatorInvocationMessage(
-							recoverEvaluatorTextOutput(
-								parseEvaluatorOutput(raw),
-								raw,
-								trajectory,
+		repairFinishWithUnservedDeclaredIntents(
+			repairFinishWithProgressPromise(
+				repairFinishedToolTurnWithoutUserMessage(
+					repairMissingEvaluatorMessage(
+						repairMissingEvaluatorSuccess(
+							rejectEvaluatorInvocationMessage(
+								recoverEvaluatorTextOutput(
+									parseEvaluatorOutput(raw),
+									raw,
+									trajectory,
+								),
 							),
+							trajectory,
 						),
+						context,
 						trajectory,
 					),
-					context,
 					trajectory,
 				),
 				trajectory,
 			),
+			context,
 			trajectory,
 		),
 	);
@@ -1378,6 +1382,65 @@ const FINISH_BARE_PROGRESS_ACK_RE =
 	/^(?:checking|fetching|gathering|reading|scanning|looking (?:up|into)|working on it|on it|one (?:moment|sec(?:ond)?)|give me a (?:sec(?:ond)?|moment)|let me (?!know\b)[a-z]+)[.…!\s]*$/i;
 const FINISH_PROGRESS_PROMISE_TAIL_RE =
 	/(?:^|[.!?…]\s+|\n\s*)(?:checking|reading|opening|fetching|scanning|pulling(?: up)?|going through|digging into|looking (?:up|into)|working on)\s+(?:this|that|these|those|it\b|the\b)[^.!?\n]{0,80}[.!?…]?\s*$/i;
+
+/**
+ * A FINISH that leaves declared multi-step work unserved is a broken promise:
+ * Stage 1 explicitly listed the turn's intents ("delete reminder", "create
+ * reminder", "list reminders"), the planner served the first and quit, and
+ * the reminder stayed deleted (live 2026-08-18, three times — the context
+ * instruction alone did not move a small planner model). When the context
+ * carries the declared-intents instruction and fewer successful non-terminal
+ * operations exist than declared intents, coerce ONE CONTINUE so the loop
+ * gets the iterations the declaration promised; the marker thought makes the
+ * coercion once-per-turn so an intent genuinely unservable cannot loop.
+ */
+const UNSERVED_INTENTS_THOUGHT_MARKER = "unserved declared intents";
+
+function declaredIntentsFromContext(context: ContextObject): string[] {
+	const events = Array.isArray(context.events) ? context.events : [];
+	for (const event of events) {
+		if (
+			event &&
+			typeof event === "object" &&
+			(event as { id?: unknown }).id === "stage1-declared-intents"
+		) {
+			const content = (event as { content?: unknown }).content;
+			if (typeof content !== "string") return [];
+			return content
+				.split("\n")
+				.filter((line) => line.startsWith("- "))
+				.map((line) => line.slice(2).trim())
+				.filter(Boolean);
+		}
+	}
+	return [];
+}
+
+function repairFinishWithUnservedDeclaredIntents(
+	output: EvaluatorOutput,
+	context: ContextObject,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.decision !== "FINISH") return output;
+	const intents = declaredIntentsFromContext(context);
+	if (intents.length < 2) return output;
+	const priorCoercion = (trajectory.evaluatorOutputs ?? []).some((prior) =>
+		(prior?.thought ?? "").includes(UNSERVED_INTENTS_THOUGHT_MARKER),
+	);
+	if (priorCoercion) return output;
+	const served = [
+		...(trajectory.archivedSteps ?? []),
+		...trajectory.steps,
+	].filter((step) => step.toolCall && step.result?.success === true).length;
+	if (served >= intents.length) return output;
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		messageToUser: undefined,
+		thought: `Stage 1 declared ${intents.length} intents (${intents.join("; ")}) but only ${served} tool operation(s) succeeded — continuing with the ${UNSERVED_INTENTS_THOUGHT_MARKER}.`,
+	};
+}
 
 function repairFinishWithProgressPromise(
 	output: EvaluatorOutput,

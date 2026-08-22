@@ -221,7 +221,33 @@ describe("promoteSubactionsToActions parameter slicing", () => {
 });
 
 describe("promoteSubactionsToActions virtual dispatch consistency", () => {
-	it("rejects a conflicting canonical discriminator without invoking the parent", async () => {
+	it("executes a conflicting DECLARED discriminator via the parent instead of stranding the turn", async () => {
+		// Live regression: the planner called the SPAWN virtual with an explicit
+		// subaction=create, the refusal named a replacement tool that was not on
+		// the turn's surface, and the request died. A declared value is the
+		// model's explicit operation choice — run it.
+		const handler = vi.fn(async () => undefined);
+		const [, ...virtuals] = promoteSubactionsToActions(
+			makeUmbrella({ handler }),
+		);
+		const read = findVirtual(virtuals, "WIDGET_READ");
+
+		await read.handler(
+			{ logger: { info: () => undefined } } as never,
+			{} as never,
+			undefined,
+			{ parameters: { action: "delete", widgetId: "w-1" } },
+		);
+
+		const options = handler.mock.calls[0]?.[3] as HandlerOptions;
+		expect(options.parameters).toMatchObject({
+			action: "delete",
+			subaction: "delete",
+			widgetId: "w-1",
+		});
+	});
+
+	it("still rejects an UNDECLARED conflicting discriminator without invoking the parent", async () => {
 		const handler = vi.fn(async () => undefined);
 		const [, ...virtuals] = promoteSubactionsToActions(
 			makeUmbrella({ handler }),
@@ -229,18 +255,18 @@ describe("promoteSubactionsToActions virtual dispatch consistency", () => {
 		const read = findVirtual(virtuals, "WIDGET_READ");
 
 		const result = await read.handler({} as never, {} as never, undefined, {
-			parameters: { action: "delete" },
+			parameters: { action: "explode" },
 		});
 
 		expect(result).toMatchObject({
 			success: false,
-			text: expect.stringContaining("Call WIDGET_DELETE"),
+			text: expect.stringContaining("Call WIDGET_EXPLODE"),
 		});
 		expect((result as { error?: unknown }).error).toBeInstanceOf(Error);
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it("rejects a conflicting declared alias that carries the pinned vocabulary", async () => {
+	it("executes a conflicting declared alias that carries the pinned vocabulary", async () => {
 		const handler = vi.fn(async () => undefined);
 		const umbrella = makeUmbrella({
 			handler,
@@ -256,18 +282,16 @@ describe("promoteSubactionsToActions virtual dispatch consistency", () => {
 		});
 		const [, ...virtuals] = promoteSubactionsToActions(umbrella);
 
-		const result = await findVirtual(virtuals, "WIDGET_READ").handler(
-			{} as never,
+		await findVirtual(virtuals, "WIDGET_READ").handler(
+			{ logger: { info: () => undefined } } as never,
 			{} as never,
 			undefined,
 			{ parameters: { op: "delete" } },
 		);
 
-		expect(result).toMatchObject({
-			success: false,
-			text: expect.stringContaining("'op: delete' contradicts it"),
-		});
-		expect(handler).not.toHaveBeenCalled();
+		// Declared alias value → executes the requested operation (new contract).
+		const options = handler.mock.calls[0]?.[3] as HandlerOptions;
+		expect(options.parameters).toMatchObject({ subaction: "delete" });
 	});
 
 	it("accepts a normalized matching alias and delegates with the virtual pin", async () => {

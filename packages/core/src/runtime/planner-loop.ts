@@ -188,9 +188,9 @@ function isCodingFullSurfaceMode(): boolean {
  * a real single-file app (the reference `tetris.html` is ~4.6k tokens once
  * escaped) blows straight past the chat default of {@link DEFAULT_PLANNER_MAX_TOKENS}
  * (1024), which truncates the tool-call argument mid-stream so the model either
- * narrates without ever completing the call or the provider 400s. opencode on
- * the same Cerebras `zai-glm-4.7` builds the same app reliably precisely because
- * it does not clamp the file-emitting completion to a chat-sized budget.
+ * narrates without ever completing the call or the provider 400s. Coding CLIs
+ * on the same Cerebras `zai-glm-4.7` build the same app reliably precisely
+ * because they do not clamp the file-emitting completion to a chat-sized budget.
  * Overridable via `ELIZA_CODING_PLANNER_MAX_TOKENS`. See issue #10132.
  */
 const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
@@ -557,7 +557,39 @@ async function runPlannerLoopIterations(
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
 			const synthesizingRequiredModelReply = pendingRequiredModelReply;
-			const plannerOutput = await callPlanner({
+			// Providers occasionally 400 with "Failed to generate tool_calls …
+			// tool_choice = 'required'": the model simply failed to emit a call
+			// this sample (Cerebras/gemma, live 2026-08-20 — a casual "surprise
+			// me" ask died to a canned apology). One bounded retry recovers it;
+			// a second identical failure propagates as before.
+			const callPlannerWithToolChoiceRetry = async (
+				args: Parameters<typeof callPlanner>[0],
+			): ReturnType<typeof callPlanner> => {
+				try {
+					return await callPlanner(args);
+				} catch (error) {
+					// The AI SDK often masks the cause: message says "Bad Request"
+					// while the actionable text lives on responseBody / cause. Match
+					// across all of them or the retry never engages (live 2026-08-20:
+					// two identical 400s, zero retries logged).
+					const detailParts = [
+						error instanceof Error ? error.message : String(error),
+						String((error as { responseBody?: unknown }).responseBody ?? ""),
+						String(
+							(error as { cause?: { message?: unknown } }).cause?.message ?? "",
+						),
+					];
+					if (!/failed to generate tool_call/i.test(detailParts.join(" "))) {
+						throw error;
+					}
+					params.runtime.logger?.warn?.(
+						{ src: "planner-loop", iteration },
+						"provider failed to generate a required tool call; retrying once",
+					);
+					return await callPlanner(args);
+				}
+			};
+			const plannerOutput = await callPlannerWithToolChoiceRetry({
 				runtime: params.runtime,
 				context: trajectory.context,
 				trajectory,
@@ -3574,15 +3606,104 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
+		// A tool-declared read-only failure (FILE ls/read/grep/glob miss) leaves
+		// no broken state and must not own the turn's terminal message: an
+		// exploratory first-step miss otherwise reads as "the last step failed"
+		// over a finished deliverable (live 2026-08-20).
+		if (
+			step.result.success === false &&
+			(step.result.data as { readOnlyOperation?: unknown } | undefined)
+				?.readOnlyOperation === true
+		) {
+			continue;
+		}
+		// A tool-declared COACHING failure (read-before-write guard) steers the
+		// model and leaves no broken state either — same authority rule.
+		if (
+			step.result.success === false &&
+			(step.result.data as { coachingFailure?: unknown } | undefined)
+				?.coachingFailure === true
+		) {
+			continue;
+		}
 		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
 			unresolvedByOperation.set(operationKey, step);
 		} else if (step.result.success === true) {
 			unresolvedByOperation.delete(operationKey);
+			resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+/**
+ * A successful SHELL run also resolves an earlier failed run whose exact
+ * command it re-executes with a corrective prefix. The operation key includes
+ * the command payload, so the canonical shell recovery shape — fail on
+ * `git commit …`, retry as `git config … && git commit …` — never matches by
+ * key, the recovered failure stayed "unresolved", and failure authority
+ * replaced the model's truthful terminal REPLY with the generic failed-step
+ * sentence (live 2026-08-18: the sub-agent committed its README change and
+ * the user was told the runtime step failed). Verbatim containment of the
+ * failed command at a token boundary, in the same cwd, is evidence the same
+ * operation re-ran and succeeded; unrelated sibling work still cannot
+ * launder a failure it did not re-execute.
+ */
+function resolveShellFailuresSubsumedBy(
+	step: PlannerStep,
+	unresolvedByOperation: Map<string, PlannerStep>,
+): void {
+	const call = step.toolCall;
+	if (!call || call.name.toUpperCase() !== "SHELL") return;
+	const command = shellCommandParam(call);
+	if (!command) return;
+	const cwd = shellCwdParam(call);
+	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
+		const failedCall = failed.toolCall;
+		if (!failedCall || failedCall.name.toUpperCase() !== "SHELL") continue;
+		const failedCommand = shellCommandParam(failedCall);
+		if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
+		if (containsCommandVerbatim(command, failedCommand)) {
+			unresolvedByOperation.delete(key);
+		}
+	}
+}
+
+function shellCommandParam(call: PlannerToolCall): string {
+	const value = (call.params as Record<string, unknown> | undefined)?.command;
+	return typeof value === "string" ? value.trim() : "";
+}
+
+function shellCwdParam(call: PlannerToolCall): string {
+	const value = (call.params as Record<string, unknown> | undefined)?.cwd;
+	return typeof value === "string" ? value.trim() : "";
+}
+
+/** True when `needle` appears in `haystack` verbatim on shell token
+ *  boundaries (start/end, whitespace, or a control operator), so a failed
+ *  `git` cannot be "resolved" by an unrelated command that merely contains
+ *  those letters inside a longer word. */
+function containsCommandVerbatim(haystack: string, needle: string): boolean {
+	if (haystack === needle) return true;
+	const BOUNDARY = new Set([" ", "\t", "\n", ";", "&", "|", "(", ")"]);
+	let from = 0;
+	for (;;) {
+		const at = haystack.indexOf(needle, from);
+		if (at === -1) return false;
+		const before = at === 0 ? undefined : haystack[at - 1];
+		const afterIndex = at + needle.length;
+		const after =
+			afterIndex >= haystack.length ? undefined : haystack[afterIndex];
+		if (
+			(before === undefined || BOUNDARY.has(before)) &&
+			(after === undefined || BOUNDARY.has(after))
+		) {
+			return true;
+		}
+		from = at + 1;
+	}
 }
 
 /**

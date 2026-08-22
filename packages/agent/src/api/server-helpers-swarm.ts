@@ -18,6 +18,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_CODING_AGENT,
   type Media,
+  ModelType,
   requireConfirmedSendHandlerDelivery,
   type SwarmCoordinatorTaskContext,
   type SwarmEvent,
@@ -294,7 +295,7 @@ export async function handleSwarmSynthesis(
   );
 
   for (const groupedPayload of splitSynthesisPayloadByReplyTarget(payload)) {
-    const resultText = await buildSynthesisResultText(groupedPayload);
+    const resultText = await buildSynthesisResultText(runtime, groupedPayload);
     const attachments = await collectSynthesisAttachments(
       groupedPayload,
       resultText,
@@ -403,8 +404,105 @@ function selectConnectorFallback(payload: {
   return { roomId, replyToExternalMessageId };
 }
 
-async function buildSynthesisResultText(payload: {
-  tasks: Array<{
+async function buildSynthesisResultText(
+  runtime: AgentRuntime,
+  payload: {
+    tasks: Array<{
+      label?: string;
+      originalTask: string;
+      completionSummary: string;
+      validationSummary?: string;
+      status: string;
+      agentType: string;
+      workdir?: string;
+    }>;
+    total: number;
+  },
+): Promise<string> {
+  const parts = await Promise.all(
+    payload.tasks.map((task) => buildTaskResultLine(runtime, task)),
+  );
+  return parts.length === 1
+    ? parts[0]
+    : `${payload.total} tasks:\n${parts.map((p) => `- ${p}`).join("\n")}`;
+}
+
+// ── model-phrased lifecycle line ─────────────────────────────────────────────
+// Local mirror of the orchestrator plugin's `phraseForUser` contract (the
+// package boundary blocks importing the plugin's src/voice module): one
+// TEXT_SMALL call raced against a hard timeout, post-validation on the output
+// (required facts present, no internal-mechanism vocabulary, bounded length),
+// and the caller's deterministic literal as the fallback on ANY failure. Never
+// throws, never retries, never a second model call.
+const LIFECYCLE_PHRASE_TIMEOUT_MS = 1200;
+const LIFECYCLE_PHRASE_MAX_CHARS = 320;
+const LIFECYCLE_BANNED_VOCAB =
+  /\b(session|acp|receipt|callback|uuid|orchestrator|planner)\b/i;
+
+async function phraseLifecycleLine(
+  runtime: AgentRuntime,
+  facts: { ask: string; status: string },
+  fallback: string,
+): Promise<string> {
+  const useModel = (
+    runtime as {
+      useModel?: (
+        type: string,
+        params: Record<string, unknown>,
+      ) => Promise<unknown>;
+    }
+  ).useModel;
+  if (typeof useModel !== "function") return fallback;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const name = runtime.character?.name?.trim() || "the assistant";
+    const prompt = [
+      `You are ${name}. A background coding task you kicked off for the user ended early, before it finished. Write ONE short sentence, in your own natural voice, telling the user what happened.`,
+      "Facts:",
+      `- task: ${facts.ask}`,
+      `- it ${facts.status} before completion`,
+      "Hard rules:",
+      `- Include this exact task name verbatim: "${facts.ask}"`,
+      "- Do NOT claim the task completed, finished, or succeeded.",
+      "- One sentence, sentence case, no emoji, no markdown, no preamble.",
+      "Your sentence:",
+    ].join("\n");
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), LIFECYCLE_PHRASE_TIMEOUT_MS);
+      (timer as { unref?: () => void }).unref?.();
+    });
+    const raw = await Promise.race([
+      Promise.resolve(
+        useModel.call(runtime, ModelType.TEXT_SMALL, {
+          prompt,
+          maxTokens: 96,
+        }),
+        // error-policy:J4 phrasing is cosmetic; any model failure degrades to
+        // the deterministic fallback literal below.
+      ).catch(() => null),
+      timeout,
+    ]);
+    const text = typeof raw === "string" ? raw.trim() : "";
+    if (
+      text.length === 0 ||
+      text.length > LIFECYCLE_PHRASE_MAX_CHARS ||
+      !text.includes(facts.ask) ||
+      LIFECYCLE_BANNED_VOCAB.test(text)
+    ) {
+      return fallback;
+    }
+    return text;
+  } catch {
+    // error-policy:J4 same degrade: the fallback literal carries every fact.
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function buildTaskResultLine(
+  runtime: AgentRuntime,
+  task: {
     label?: string;
     originalTask: string;
     completionSummary: string;
@@ -412,24 +510,8 @@ async function buildSynthesisResultText(payload: {
     status: string;
     agentType: string;
     workdir?: string;
-  }>;
-  total: number;
-}): Promise<string> {
-  const parts = await Promise.all(payload.tasks.map(buildTaskResultLine));
-  return parts.length === 1
-    ? parts[0]
-    : `${payload.total} tasks:\n${parts.map((p) => `- ${p}`).join("\n")}`;
-}
-
-async function buildTaskResultLine(task: {
-  label?: string;
-  originalTask: string;
-  completionSummary: string;
-  validationSummary?: string;
-  status: string;
-  agentType: string;
-  workdir?: string;
-}): Promise<string> {
+  },
+): Promise<string> {
   const validationSummary = task.validationSummary?.trim();
   // Lifecycle-only relay for any task that did not complete cleanly. A
   // stopped/errored session's transcript tail is mid-task inner monologue and
@@ -451,7 +533,13 @@ async function buildTaskResultLine(task: {
       (task.originalTask.includes("--- Swarm Coordination ---")
         ? "coding task"
         : firstLine || "coding task");
-    return `${ask} — ${task.status} before completion.`;
+    // Model-phrased stop notice (owner directive: user-facing text is
+    // LLM-written); the deterministic literal stays as the fallback shape.
+    return phraseLifecycleLine(
+      runtime,
+      { ask, status: task.status },
+      `${ask} — ${task.status} before completion.`,
+    );
   }
   // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
   // `[tool output: …]` envelope blocks from the completionSummary before it is

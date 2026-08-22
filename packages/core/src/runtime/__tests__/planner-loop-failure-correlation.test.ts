@@ -441,6 +441,132 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(result.finalMessage).not.toContain("Project B tests passed");
 	});
 
+	it("resolves a failed SHELL command re-run verbatim inside a corrective retry (fail git commit -> succeed git config && git commit)", async () => {
+		const failedCommand =
+			'git add README.md && git commit -m "Add description"';
+		const retryCommand = `git config user.email "e@x" && ${failedCommand}`;
+		const replyText = "Added the description and committed the change.";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-fail", "SHELL", {
+						command: failedCommand,
+						cwd: "/workspace/repo",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-retry", "SHELL", {
+						command: retryCommand,
+						cwd: "/workspace/repo",
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "reply", name: "REPLY", arguments: { text: replyText } },
+					],
+				}),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "command exited with code 128",
+					text: "command exited with code 128",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "[exit 0]",
+					userFacingText: "[exit 0]",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Retry with git identity configured.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "Committed.",
+					messageToUser: replyText,
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(replyText);
+		expect(result.finalMessage).not.toContain("runtime step failed");
+	});
+
+	it("does not resolve a failed SHELL command from a word-substring match in a later command", async () => {
+		const shellFailure = "git is not installed.";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-fail", "SHELL", {
+						command: "git",
+						cwd: "/workspace/repo",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-other", "SHELL", {
+						command: "github-audit run",
+						cwd: "/workspace/repo",
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: "All done." },
+						},
+					],
+				}),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "missing-git",
+					text: shellFailure,
+					userFacingText: shellFailure,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "audit ok",
+					userFacingText: "audit ok",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Try the audit tool.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Invalid evaluator envelope.",
+					protocolFailure: true,
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(shellFailure);
+		expect(result.finalMessage).not.toContain("All done");
+	});
+
 	it("keeps a failed VIEWS operation authoritative over an unrelated evaluator FINISH", async () => {
 		const runtime = {
 			useModel: vi

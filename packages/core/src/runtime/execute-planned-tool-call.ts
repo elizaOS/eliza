@@ -356,6 +356,12 @@ export function projectActionResultForClipboard(
 		...(result.data?.reconciliationRequired === true
 			? { reconciliationRequired: true }
 			: {}),
+		// Turn-delivery contract, not payload: tells the reply gate this turn's
+		// answer already went out (out-of-band ack). Projecting it away
+		// re-enabled the evaluator's mimicked ack (live 2026-08-19).
+		...(result.data?.suppressPlannerReply === true
+			? { suppressPlannerReply: true }
+			: {}),
 	};
 	return {
 		success: result.success,
@@ -411,6 +417,12 @@ function projectSettledResultForObserver(
 		...(result.data?.retryable === false ? { retryable: false } : {}),
 		...(result.data?.reconciliationRequired === true
 			? { reconciliationRequired: true }
+			: {}),
+		// Turn-delivery contract, not payload: tells the reply gate this turn's
+		// answer already went out (out-of-band ack). Projecting it away
+		// re-enabled the evaluator's mimicked ack (live 2026-08-19).
+		...(result.data?.suppressPlannerReply === true
+			? { suppressPlannerReply: true }
 			: {}),
 	};
 
