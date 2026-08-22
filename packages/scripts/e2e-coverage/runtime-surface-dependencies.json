@@ -135,7 +135,7 @@
       "kinds": ["action", "route"],
       "surfaceIds": [
         "@elizaos/plugin-anthropic-proxy:action:proxy_status",
-        "@elizaos/plugin-anthropic-proxy:route:/api/anthropic-proxy/status"
+        "@elizaos/plugin-anthropic-proxy:route:get-/api/anthropic-proxy/status"
       ],
       "externalServices": [
         {
@@ -260,7 +260,7 @@
       "packageName": "@elizaos/plugin-calendar",
       "kinds": ["route"],
       "surfaceIds": [
-        "@elizaos/plugin-calendar:route:/api/lifeops/calendar/google/webhook"
+        "@elizaos/plugin-calendar:route:post-/api/lifeops/calendar/google/webhook"
       ],
       "externalServices": [
         {
@@ -613,10 +613,10 @@
       "kinds": ["provider", "route", "service"],
       "surfaceIds": [
         "@elizaos/plugin-vision:provider:vision_perception",
-        "@elizaos/plugin-vision:route:/api/vision/capture-requests",
-        "@elizaos/plugin-vision:route:/api/vision/ocr-requests",
-        "@elizaos/plugin-vision:route:/api/vision/ocr-result",
-        "@elizaos/plugin-vision:route:/api/vision/screen-frame",
+        "@elizaos/plugin-vision:route:get-/api/vision/capture-requests",
+        "@elizaos/plugin-vision:route:get-/api/vision/ocr-requests",
+        "@elizaos/plugin-vision:route:post-/api/vision/ocr-result",
+        "@elizaos/plugin-vision:route:post-/api/vision/screen-frame",
         "@elizaos/plugin-vision:service:vision-ocr-bridge",
         "@elizaos/plugin-vision:service:vision-screen-capture-bridge"
       ],

@@ -22,6 +22,7 @@ import {
 } from "./check-runtime-surface-coverage.ts";
 import {
   buildRuntimeSurfaceInventory,
+  classifyRuntimeSurfaceStatus,
   isDeterministicScenarioSource,
   isExecutableBoundaryEvidence,
   packageEntryPoints,
@@ -284,9 +285,29 @@ describe("runtime-surface production inventory", () => {
     expect(
       has(
         (entry) =>
-          entry.packageName === "@elizaos/plugin-app-manager" &&
-          entry.kind === "route" &&
-          entry.surfaceName === "handleAppsRoutes",
+          entry.id ===
+          "@elizaos/plugin-browser:route:get-/api/browser-workspace/tabs",
+      ),
+    ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.id ===
+          "@elizaos/plugin-browser:route:post-/api/browser-workspace/tabs",
+      ),
+    ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.id ===
+          "@elizaos/plugin-computeruse:route:get-/api/computer-use/sessions",
+      ),
+    ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.id ===
+          "@elizaos/plugin-computeruse:route:post-/api/computer-use/sessions",
       ),
     ).toBe(true);
     expect(
@@ -474,7 +495,7 @@ describe("runtime-surface production inventory", () => {
     expect(
       byId
         .get(
-          "@elizaos/plugin-calendar:route:/api/lifeops/calendar/google/webhook",
+          "@elizaos/plugin-calendar:route:post-/api/lifeops/calendar/google/webhook",
         )
         ?.externalServiceDependencies.map((entry) => entry.id),
     ).toEqual(["google-calendar-api"]);
@@ -612,6 +633,29 @@ describe("runtime-surface adversarial ratchet", () => {
       runtimeSurfaceIds: ["@elizaos/plugin-real:service:real"],
       lane: "pr-deterministic",
     });
+    expect(
+      scenarioMetadataFromSource(`
+        export const scenario = defineScenario({
+          id: 'named-canonical',
+          lane: 'pr-deterministic',
+          requires: { plugins: ['@elizaos/plugin-real'] },
+          runtimeSurfaceIds: ['@elizaos/plugin-real:action:real'],
+        });
+      `),
+    ).toEqual({
+      id: "named-canonical",
+      plugins: ["@elizaos/plugin-real"],
+      runtimeSurfaceIds: ["@elizaos/plugin-real:action:real"],
+      lane: "pr-deterministic",
+    });
+    expect(
+      scenarioMetadataFromSource(`
+        export const unrelated = {
+          id: 'not-loadable', lane: 'pr-deterministic',
+          runtimeSurfaceIds: ['@elizaos/plugin-real:action:real'],
+        };
+      `),
+    ).toEqual({ id: null, plugins: [], runtimeSurfaceIds: [], lane: null });
   });
 
   test("requires an explicit full id and exact executable boundary signal", () => {
@@ -724,10 +768,24 @@ describe("runtime-surface adversarial ratchet", () => {
     expect(
       isExecutableBoundaryEvidence(
         { kind: "route", name: "GET /api/messages" },
-        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', async () => { expect(await request.get('/api/messages')).toBeDefined(); });",
+        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', async () => { expect(await fetch(new URL('/api/messages', baseUrl), { method: 'GET' })).toBeDefined(); });",
         "@elizaos/cloud-api:route:get-/api/messages",
       ),
     ).toBe(true);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "route", name: "GET /api/messages" },
+        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', async () => { expect(await fetch(new URL('/api/messages', baseUrl), { method: 'POST' })).toBeDefined(); });",
+        "@elizaos/cloud-api:route:get-/api/messages",
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "route", name: "GET /api/messages" },
+        "test('runtime-surface:@elizaos/cloud-api:route:get-/api/messages', async () => { expect(await requestCanonicalRoute('/api/messages', baseUrl)).toBeDefined(); });",
+        "@elizaos/cloud-api:route:get-/api/messages",
+      ),
+    ).toBe(false);
     expect(
       isExecutableBoundaryEvidence(
         action,
@@ -737,6 +795,19 @@ describe("runtime-surface adversarial ratchet", () => {
         actionId,
       ),
     ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        `export const scenario = defineScenario({
+          id: 'named-action', lane: 'pr-deterministic',
+          runtimeSurfaceIds: ['${actionId}'],
+          finalChecks() {
+            assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' });
+          },
+        });`,
+        actionId,
+      ),
+    ).toBe(true);
     expect(
       isExecutableBoundaryEvidence(
         action,
@@ -1186,6 +1257,46 @@ export const ROUTE_MOUNTS = [
     expect(result.invalidCoverage).toContain("covered");
     expect(result.coveredWithoutMockOwner).toContain("covered-without-mock");
     expect(result.duplicateRows).toContain("duplicate");
+  });
+
+  test("never classifies missing or unresolved dependencies as covered", () => {
+    for (const dependencyDisposition of [
+      "mock-missing",
+      "unresolved",
+    ] as const) {
+      expect(
+        classifyRuntimeSurfaceStatus({
+          kind: "route",
+          nativeHostRequired: false,
+          hasBoundaryEvidence: true,
+          dependencyDisposition,
+        }),
+      ).toBe("uncovered");
+      expect(
+        classifyRuntimeSurfaceStatus({
+          kind: "provider",
+          nativeHostRequired: false,
+          hasBoundaryEvidence: true,
+          dependencyDisposition,
+        }),
+      ).toBe("provider-qualified-only");
+    }
+    expect(
+      classifyRuntimeSurfaceStatus({
+        kind: "route",
+        nativeHostRequired: false,
+        hasBoundaryEvidence: true,
+        dependencyDisposition: "local-only",
+      }),
+    ).toBe("covered");
+    expect(
+      classifyRuntimeSurfaceStatus({
+        kind: "route",
+        nativeHostRequired: false,
+        hasBoundaryEvidence: true,
+        dependencyDisposition: "mock-owned",
+      }),
+    ).toBe("covered");
   });
 
   test("diffs only explicit package scopes instead of freezing the repository", () => {
