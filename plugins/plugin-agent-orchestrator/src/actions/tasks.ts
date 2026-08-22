@@ -1131,7 +1131,7 @@ async function runCreateLegacy(
   // web-app-2 as a published URL (live 2026-08-19). Treat them like absent
   // labels so labelFrom derives identity from the task text.
   const GENERIC_LABEL_RE =
-    /^(?:web\s*app|webapp|web\s*page|webpage|app|page|site|website|task|build|project)$/i;
+    /^(?:(?:interactive[- ])?(?:web\s*apps?|webapps?|web\s*pages?|webpages?|apps?|pages?|sites?|websites?)|tasks?|builds?|projects?|scripts?)$/i;
   const baseLabelSane =
     baseLabelParam &&
     /[a-z0-9]/i.test(baseLabelParam) &&
@@ -7715,7 +7715,7 @@ export const tasksAction: Action & {
     {
       name: "agents",
       description:
-        "Pipe-delimited multi-agent task list for action=create. When lane planner is enabled, each part becomes lane-N in order.",
+        'Pipe-delimited multi-agent task list for action=create: ONE part per INDEPENDENT deliverable the user asked for ("two pages: a coin flip page and a dice roll page" → two parts, each a complete page). Never split one deliverable into phases (logic | styling | tests) — phases are the sub-agent\'s own plan. Omit for a single deliverable and use `task`. When lane planner is enabled, each part becomes lane-N in order.',
       required: false,
       schema: { type: "string" as const },
     },
@@ -7757,7 +7757,7 @@ export const tasksAction: Action & {
     {
       name: "label",
       description:
-        "Task label for action=create / action=spawn_agent / action=send.",
+        'Task label for action=create / action=spawn_agent / action=send: a short kebab-case name of THE deliverable ("dice-roll-page"), never a generic word ("pages", "app") — it becomes the served slug.',
       required: false,
       schema: { type: "string" as const },
     },
