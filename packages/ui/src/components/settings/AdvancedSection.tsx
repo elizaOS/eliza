@@ -9,6 +9,7 @@ import { Bell, Download, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type LocalAgentBackupMetadata } from "../../api";
+import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import {
   setDeveloperMode,
   setPreviewMode,
@@ -101,6 +102,7 @@ export function AdvancedSection() {
   }));
   const developerMode = useIsDeveloperMode();
   const previewMode = useIsPreviewMode();
+  const dedicatedCloudAgent = isDedicatedCloudAgentBase(client.getBaseUrl());
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [backupList, setBackupList] = useState<LocalAgentBackupMetadata[]>([]);
@@ -273,27 +275,34 @@ export function AdvancedSection() {
   return (
     <>
       <SettingsStack>
-        <SettingsGroup
-          title="Backups"
-          description="Save a snapshot of this agent, or restore it from an earlier one."
-        >
-          <SettingsRow
-            icon={Download}
-            label="Back up agent"
-            description="Create a snapshot you can restore later."
-            onClick={openExportModal}
-            buttonRef={exportOpenRef}
-            buttonProps={exportOpenAgentProps}
+        {dedicatedCloudAgent ? (
+          <SettingsGroup
+            title="Backups"
+            description="Manual backups are not available for Dedicated agents. Your conversations remain stored across reloads and restarts."
           />
-          <SettingsRow
-            icon={Upload}
-            label="Restore agent"
-            description="Roll back to a saved snapshot."
-            onClick={openImportModal}
-            buttonRef={importOpenRef}
-            buttonProps={importOpenAgentProps}
-          />
-        </SettingsGroup>
+        ) : (
+          <SettingsGroup
+            title="Backups"
+            description="Save a snapshot of this agent, or restore it from an earlier one."
+          >
+            <SettingsRow
+              icon={Download}
+              label="Back up agent"
+              description="Create a snapshot you can restore later."
+              onClick={openExportModal}
+              buttonRef={exportOpenRef}
+              buttonProps={exportOpenAgentProps}
+            />
+            <SettingsRow
+              icon={Upload}
+              label="Restore agent"
+              description="Roll back to a saved snapshot."
+              onClick={openImportModal}
+              buttonRef={importOpenRef}
+              buttonProps={importOpenAgentProps}
+            />
+          </SettingsGroup>
+        )}
 
         <SettingsGroup
           title="View visibility"
