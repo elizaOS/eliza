@@ -2238,7 +2238,10 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
   // the target tab never opened. (Chat-launch deep links below stay on the
   // hash — the always-mounted ChatOverlay claims the launch payload
   // from the hash directly.)
-  const navigationIntent = resolveDeepLinkNavigationIntent(path);
+  const navigationIntent = resolveDeepLinkNavigationIntent(
+    path,
+    parsed.searchParams,
+  );
   if (navigationIntent) {
     return dispatchDeepLinkNavigation(navigationIntent);
   }

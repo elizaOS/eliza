@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { assertAndroidPlayManifestPolicyEvidence } from "./lib/android-cloud-artifact-audit.mjs";
 import {
+  ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
@@ -12,6 +13,7 @@ import {
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
+  ANDROID_PLAY_ALLOWED_PERMISSIONS,
   androidPlayManifestEvidenceFromAapt,
   createAndroidPlayManifestPolicy,
   findAndroidPlayIndexHtmlFindings,
@@ -134,6 +136,13 @@ describe("Android Play manifest policy", () => {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
     expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([]);
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
+      "android.permission.MODIFY_AUDIO_SETTINGS",
+    );
+    expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
+      "agent",
+      "runners",
+    ]);
     expect(ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES).toEqual([
       "@capacitor/app",
       "@capacitor/browser",
@@ -144,6 +153,8 @@ describe("Android Play manifest policy", () => {
       "@capacitor/preferences",
       "@capacitor/share",
       "@capacitor/status-bar",
+      "@elizaos/capacitor-browser-surface",
+      "@elizaos/capacitor-secure-store",
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([
@@ -156,6 +167,9 @@ describe("Android Play manifest policy", () => {
         "llama-cpp-capacitor",
       ]),
     );
+    expect(
+      ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg),
+    ).not.toContain("@elizaos/capacitor-browser-surface");
     expect(ANDROID_CLOUD_STRIPPED_RESOURCE_FILES).toEqual(
       expect.arrayContaining([
         "drawable/eliza_ime_mic_bg.xml",

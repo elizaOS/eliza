@@ -102,7 +102,10 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
     // apps/deploy). Dispatched on the `eliza:navigate:view` bus — same as the
     // live main.tsx handler — because a hash write never opens a tab on the
     // mobile/Capacitor entrypoint (see resolveDeepLinkNavigationIntent).
-    const navigationIntent = resolveDeepLinkNavigationIntent(path);
+    const navigationIntent = resolveDeepLinkNavigationIntent(
+      path,
+      parsed.searchParams,
+    );
     if (navigationIntent) {
       (ctx.dispatchNavigationIntent ?? defaultDispatchNavigationIntent)(
         navigationIntent,

@@ -1276,6 +1276,49 @@ describe("cloud-api worker entrypoint", () => {
     });
   });
 
+  test("binds Browser Run and the DoorDash checkout gate in every Worker environment", async () => {
+    type DurableBinding = { name?: string; class_name?: string };
+    type DurableConfig = { bindings?: DurableBinding[] };
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      browser?: { binding?: string };
+      durable_objects?: DurableConfig;
+      env?: {
+        staging?: {
+          browser?: { binding?: string };
+          durable_objects?: DurableConfig;
+        };
+        production?: {
+          browser?: { binding?: string };
+          durable_objects?: DurableConfig;
+        };
+      };
+      exports?: Record<string, { type?: string; storage?: string }>;
+      migrations?: unknown;
+    };
+
+    expect(config.browser?.binding).toBe("BROWSER");
+    expect(config.env?.staging?.browser?.binding).toBe("BROWSER");
+    expect(config.env?.production?.browser?.binding).toBe("BROWSER");
+
+    for (const durableObjects of [
+      config.durable_objects,
+      config.env?.staging?.durable_objects,
+      config.env?.production?.durable_objects,
+    ]) {
+      expect(durableObjects?.bindings).toContainEqual({
+        name: "DOORDASH_CHECKOUT_GATES",
+        class_name: "DoorDashCheckoutGate",
+      });
+    }
+    expect(config.exports?.DoorDashCheckoutGate).toEqual({
+      type: "durable-object",
+      storage: "sqlite",
+    });
+    expect(config.migrations).toBeUndefined();
+  });
+
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
     type RateLimitBinding = {
       name?: string;

@@ -33,6 +33,7 @@ const PROXY_PROVIDERS = [
   "airtable",
   "asana",
   "dropbox",
+  "doordash",
   "github",
   "google",
   "hubspot",
