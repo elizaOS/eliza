@@ -36,11 +36,14 @@ import type {
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
 	DocumentDeleteParams,
+	DocumentDirectGrantUpdateParams,
 	DocumentFragmentQueryParams,
 	DocumentGetQueryParams,
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentRangeReadParams,
+	DocumentRangeReadResult,
 	DocumentRevisionReplaceParams,
 	EntitiesForRoomsResult,
 	Entity,
@@ -80,18 +83,21 @@ import type {
 import { MemoryType } from "../types";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
+import { createHash } from "../utils/crypto-compat";
 import { isPlainObject } from "../utils/type-guards";
 import {
 	cloneConnectorJsonObject,
 	redactConnectorJsonAudit,
 } from "./connector-json";
 import {
+	canRequesterManageDocumentDirectGrants,
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
+	validateDocumentDirectGrantEntityIds,
 	validateDocumentRevisionReplacement,
 } from "./document-list-query";
 
@@ -262,6 +268,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
+	readonly documentRangeReadCapability = 1 as const;
 	db: Record<string, never> = {};
 
 	private ready = false;
@@ -846,13 +853,75 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return memory;
 	}
 
+	async readDocumentRange(
+		params: DocumentRangeReadParams,
+	): Promise<DocumentRangeReadResult | null> {
+		const memory = await this.getDocument(params);
+		if (!memory) return null;
+		const source = memory.content.text ?? "";
+		const lines = source.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
+		const units =
+			params.unit === "line"
+				? lines
+				: lines
+						.reduce<string[]>((fragments, line) => {
+							const last = fragments.length - 1;
+							if (last < 0) fragments.push(line);
+							else fragments[last] += line;
+							if (line.replace(/[\r\n]/gu, "").trim().length === 0) {
+								fragments.push("");
+							}
+							return fragments;
+						}, [])
+						.filter((fragment) => fragment.length > 0);
+		const text = units
+			.slice(params.offset, params.offset + params.limit)
+			.join("");
+		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+		return {
+			text,
+			start: params.offset,
+			end: Math.min(params.offset + params.limit, units.length),
+			total: units.length,
+			documentRevision:
+				typeof metadata.documentRevision === "number"
+					? metadata.documentRevision
+					: 0,
+			...(typeof metadata.revisionAttemptId === "string"
+				? { revisionAttemptId: metadata.revisionAttemptId }
+				: {}),
+			sourceFingerprint: `md5:${createHash("md5").update(source).digest("hex")}`,
+		};
+	}
+
 	async queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]> {
-		return queryDocumentFragmentsInMemory(
+		const fragments = queryDocumentFragmentsInMemory(
 			Array.from(this.memoriesById.values()),
 			params,
 		);
+		return fragments.map((fragment) => {
+			const documentId = (
+				fragment.metadata as { documentId?: unknown } | undefined
+			)?.documentId;
+			const parent =
+				typeof documentId === "string"
+					? this.memoriesById.get(documentId)
+					: undefined;
+			const source = parent?.content.text;
+			return typeof source === "string"
+				? {
+						...fragment,
+						metadata: {
+							...(fragment.metadata ?? {}),
+							sourceFingerprint: `md5:${createHash("md5")
+								.update(source)
+								.digest("hex")}`,
+						} as Memory["metadata"],
+					}
+				: fragment;
+		});
 	}
 
 	async compareAndSwapDocument(
@@ -870,6 +939,47 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		await this.updateMemories([
 			{ ...params.replacement, id: params.documentId },
+		]);
+		const updated = this.memoriesById.get(String(params.documentId));
+		return updated
+			? { status: "updated", document: updated }
+			: { status: "conflict" };
+	}
+
+	async updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
+	): Promise<DocumentMutationResult> {
+		const directGrantEntityIds = validateDocumentDirectGrantEntityIds(
+			params.directGrantEntityIds,
+		);
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!canRequesterManageDocumentDirectGrants(existing, params)) {
+			return { status: "forbidden" };
+		}
+		for (const entityId of directGrantEntityIds) {
+			const entity = this.entities.get(String(entityId));
+			if (!entity || entity.agentId !== params.agentId) {
+				return { status: "not_found" };
+			}
+		}
+		const metadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
+		if (directGrantEntityIds.length > 0) {
+			metadata.directGrantEntityIds = directGrantEntityIds;
+		} else {
+			delete metadata.directGrantEntityIds;
+		}
+		await this.updateMemories([
+			{
+				...existing,
+				id: params.documentId,
+				metadata: metadata as Memory["metadata"],
+			},
 		]);
 		const updated = this.memoriesById.get(String(params.documentId));
 		return updated
@@ -1006,9 +1116,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
 		}
-		if (params.entityId) {
-			all = all.filter((memory) => memory.entityId === params.entityId);
-		}
+		// `entityId` selects the SQL/RLS isolation context; it is not a memory-row
+		// predicate. Process-local storage has no RLS session to establish, so the
+		// agent boundary above is the matching isolation behavior.
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);
 		}
@@ -1863,6 +1973,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (task) tasks.push(task);
 		}
 		return tasks;
+	}
+
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const existing = this.tasks.get(String(id));
+		if (
+			!existing?.tags?.includes("queue") ||
+			(existing.metadata?.status != null &&
+				existing.metadata.status !== "pending")
+		) {
+			return false;
+		}
+		this.tasks.set(String(id), { ...existing, ...task, id });
+		return true;
 	}
 
 	async updateTasks(

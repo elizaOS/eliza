@@ -34,7 +34,6 @@ For per-connector endpoint inventories, base URLs, and env-var overrides see
 | cerebras        | 18815 | OpenAI-compatible chat.completions + embeddings (Cerebras deployment)                     | every scenario uses this through `OPENAI_BASE_URL` when LIFEOPS_USE_MOCKOON=1 and Cerebras is the planner/eval model |
 | eliza-cloud     | 18816 | Eliza Cloud relay (auth/token, agents/me, billing/balance, plaid/paypal/schedule mirrors) | `test/scenarios/gateway/billing.*`, any scenario using cloud-managed clients |
 | spotify         | 18817 | Spotify Web API (`/v1/me`, `/v1/me/player/currently-playing`)                             | reserved for future spotify connector tests |
-| signal          | 18818 | signal-cli REST (`/v1/receive/{account}`, `/v2/send`)                                     | `lifeops.morning-brief/morning-brief.empty-inbox`, `lifeops.planner/planner.action-timeout`, `lifeops.reminders/reminders.apple-permission-denied`, `lifeops.sleep/sleep.apple-vs-oura-conflict`, `test/scenarios/messaging.signal/` (2 scenarios) |
 
 ## W2-1 calendar/scheduling/travel-buffer additions (Wave-2)
 

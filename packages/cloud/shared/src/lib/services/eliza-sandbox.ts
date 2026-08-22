@@ -9176,9 +9176,6 @@ export class ElizaSandboxService {
         reprovisioned: false,
         error: "Agent not found",
       };
-    if (rec.status === "running")
-      return { success: true, containerStarted: true, reprovisioned: false };
-
     const tierRejection = rejectNonContainerBackedProvision(rec);
     if (tierRejection) {
       return {
@@ -9188,6 +9185,9 @@ export class ElizaSandboxService {
         error: tierRejection.error,
       };
     }
+
+    if (rec.status === "running")
+      return { success: true, containerStarted: true, reprovisioned: false };
 
     const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
       agentId,

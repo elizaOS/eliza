@@ -90,6 +90,7 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
+import { isProgressiveContentProjectionEnabled } from "../runtime/content-projection-policy";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -161,6 +162,7 @@ import {
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
 } from "../runtime/planner-loop";
+import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,
@@ -2721,7 +2723,7 @@ function appendStateProviderEvents(
 }
 
 type V5PlannerActionSurfaceSummary = {
-	mode: "full" | "tiered";
+	mode: "full" | "tiered" | "relay-delivery";
 	candidateActionCount: number;
 	catalogParentCount: number;
 	exposedActionCount: number;
@@ -2954,11 +2956,23 @@ async function collectV5PlannerCandidateActions(args: {
 		// parent is admitted under ITS OWN contexts — still gated on
 		// role/private/context via appendIfAllowed (#14622).
 		const direct = resolveRuntimeAction(actionLookup, candidateName);
-		const resolved = direct
+		let resolved = direct
 			? [direct]
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) {
+			// Stage-1 models emit reversed compound names (live 2026-08-19:
+			// `CANCEL_TASKS` for `TASKS_CANCEL`). Same tokens, any order — admit
+			// only an unambiguous single match; ambiguity keeps the warn below.
+			const candidateTokenKey = actionNameTokenKey(candidateName);
+			const tokenMatches = allRuntimeActions.filter(
+				(action) => actionNameTokenKey(action.name) === candidateTokenKey,
+			);
+			if (tokenMatches.length === 1) {
+				resolved = tokenMatches;
+			}
+		}
 		if (resolved.length === 0) {
 			const normalizedCandidate = normalizeActionIdentifier(candidateName);
 			if (normalizedCandidate) {
@@ -3078,6 +3092,14 @@ const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
 	// stripped), since that is what the filter compares against.
 	["VIEWS", "CLOSEVIEW", "CLOSEALLVIEWS", "TASKS"],
 );
+
+function actionNameTokenKey(name: string): string {
+	return normalizeActionIdentifier(name)
+		.split("_")
+		.filter(Boolean)
+		.sort()
+		.join("_");
+}
 
 function getMessageHandlerCandidateActions(
 	messageHandler: MessageHandlerResult,
@@ -3255,6 +3277,37 @@ function buildV5PlannerActionSurface(params: {
 		typeof process !== "undefined"
 			? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
 			: undefined;
+	// A task_complete relay's only job is delivering the finished result. Any
+	// catalog tool on this synthetic turn invites task-management
+	// improvisation over the completed work (live 2026-08-19: the planner
+	// ARCHIVED the just-completed task and told the user "Archived" instead
+	// of relaying the result). Protocol tools (REPLY/IGNORE/STOP) remain.
+	// Blocked/question/coordination relays keep the full surface — those turns
+	// may legitimately act (answer a child, coordinate a sibling).
+	if (
+		isSubAgentCompletionArtifact(params.message) &&
+		String(params.message.content?.text ?? "").includes("task_complete")
+	) {
+		return {
+			exposedActionNames: new Set<string>(),
+			summary: {
+				mode: "relay-delivery",
+				candidateActionCount: params.actions.length,
+				catalogParentCount: 0,
+				exposedActionCount: 0,
+				tierAParents: [],
+				tierAChildrenByParent: {},
+				tierBParents: [],
+				omittedParentCount: 0,
+				omittedParentNamesPreview: [],
+				actionSurfaceHash: "relay-delivery",
+				warnings: 0,
+				queryTokens: [],
+				candidateActions: [],
+				parentActionHints: [],
+			},
+		};
+	}
 	const forceFullSurface =
 		fullSurfaceFlag === "1" ||
 		fullSurfaceFlag === "true" ||
@@ -3624,7 +3677,7 @@ async function createV5MessageContextObject(args: {
 			source: "message-service",
 			stable: false,
 			content:
-				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user — phrase it in your voice so it reads as a reminder arriving (lead with something like "reminder:" or equivalent), never a bare echo of the item text alone; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
 		});
 	}
 
@@ -3665,7 +3718,7 @@ async function createV5MessageContextObject(args: {
 			source: "message-service",
 			stable: false,
 			content:
-				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user — phrase it in your voice so it reads as a reminder arriving (lead with something like "reminder:" or equivalent), never a bare echo of the item text alone; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
 		});
 	}
 
@@ -5554,13 +5607,27 @@ export function messageHandlerFromFieldResult(
 		directCurrentCandidateActions.length > 0
 			? directCurrentCandidateActions
 			: [];
-	const effectiveCandidateActions = preferDirectCurrentCandidateActions
+	const candidateActionsBeforeSnippetGate = preferDirectCurrentCandidateActions
 		? directCurrentCandidateActions
 		: uniqueActionNames([
 				...candidateActions,
 				...inferredAckCandidateActions,
 				...inferredDirectCandidateActions,
 			]);
+	// The planner answers a one-line snippet ask itself (inline code, or a
+	// quick local FILE/SHELL); a delegation-class candidate would hand it to a
+	// coding sub-agent instead. Stripped structurally, never by regex on the
+	// reply (see inlineSnippetAsk below for the routing side).
+	const effectiveCandidateActions =
+		looksLikeInlineCodeSnippetRequest(currentMessageText) &&
+		!looksLikeExplicitDelegationRequest(currentMessageText)
+			? candidateActionsBeforeSnippetGate.filter(
+					(name) =>
+						!delegationCandidateNames(runtimeContext?.actions ?? []).has(
+							normalizeActionIdentifier(name),
+						),
+				)
+			: candidateActionsBeforeSnippetGate;
 	const runnableCandidateActions = filterRunnableCandidateActions(
 		effectiveCandidateActions,
 		runtimeContext,
@@ -5671,8 +5738,15 @@ export function messageHandlerFromFieldResult(
 	// ("Let me take another pass…") as the whole turn. In the contradictory
 	// contexts=[simple] shape the candidate is the only signal, so the message
 	// itself must still look like coding work.
+	// A one-line snippet ask is a class delegation never serves: a 25s
+	// sub-agent build for `print("nubs")` whose code the user never even saw
+	// (live 2026-08-22). Without an explicit "spawn/delegate" ask the model's
+	// routing does not commit the turn to delegation.
+	const inlineSnippetAsk =
+		looksLikeInlineCodeSnippetRequest(currentMessageText) &&
+		!looksLikeExplicitDelegationRequest(currentMessageText);
 	const delegationTextGate = modelRoutedPlanningContext
-		? !looksLikeDelegationExcludedAsk(currentMessageText)
+		? !looksLikeDelegationExcludedAsk(currentMessageText) && !inlineSnippetAsk
 		: looksLikeCodingWorkRequest(currentMessageText);
 	const modelCommittedToDelegation =
 		!preemptDirect &&
@@ -6131,26 +6205,33 @@ function shouldPreferCompleteDirectReply(args: {
 // TASKS_SPAWN_AGENT (or simile) counts and a bogus/unexposed name does not. Used
 // to detect that the model committed to delegation on purpose, so a verbose ack
 // is not mistaken for a finished direct reply.
+/** Normalized names that hand a turn to a coding sub-agent: the registered
+ *  delegation action plus the legacy aliases. Bare "TASKS" is the one alias
+ *  that is ambiguous (task-list management as readily as delegation); callers
+ *  that need an unambiguous commitment drop it. */
+function delegationCandidateNames(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	opts?: { requireUnambiguous?: boolean },
+): Set<string> {
+	const delegationActionName = findCodingDelegationActionName(actions);
+	if (!delegationActionName) return new Set();
+	const legacyNames = opts?.requireUnambiguous
+		? LEGACY_CODING_DELEGATION_ACTION_NAMES.filter((name) => name !== "TASKS")
+		: LEGACY_CODING_DELEGATION_ACTION_NAMES;
+	return new Set<string>([
+		normalizeActionIdentifier(delegationActionName),
+		...legacyNames.map(normalizeActionIdentifier),
+	]);
+}
+
 function modelProvidedRunnableDelegationCandidate(
 	candidateActions: readonly string[],
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	opts?: { requireUnambiguous?: boolean },
 ): boolean {
 	if (candidateActions.length === 0) return false;
-	const delegationActionName = findCodingDelegationActionName(actions);
-	if (!delegationActionName) return false;
-	// Bare "TASKS" is the one legacy alias that is ambiguous — it names task-list
-	// management as readily as coding delegation. When the caller needs an
-	// unambiguous commitment (no planning context backing the candidate), it only
-	// counts if the REGISTERED delegation action is itself named TASKS (then the
-	// model named the real action, not the ambiguous alias).
-	const legacyNames = opts?.requireUnambiguous
-		? LEGACY_CODING_DELEGATION_ACTION_NAMES.filter((name) => name !== "TASKS")
-		: LEGACY_CODING_DELEGATION_ACTION_NAMES;
-	const wanted = new Set<string>([
-		normalizeActionIdentifier(delegationActionName),
-		...legacyNames.map(normalizeActionIdentifier),
-	]);
+	const wanted = delegationCandidateNames(actions, opts);
+	if (wanted.size === 0) return false;
 	return candidateActions.some((name) =>
 		wanted.has(normalizeActionIdentifier(name)),
 	);
@@ -7441,7 +7522,17 @@ function collectPreviousActionResults(
 								step.result.userFacingEffectReceiptIds,
 						}
 					: {}),
-				data: { actionName },
+				// Clipboard suppression drops the planner-facing data payload, but
+				// suppressPlannerReply is a turn-delivery contract, not clipboard
+				// content — dropping it here re-enabled the evaluator's mimicked
+				// ack on out-of-band-acked TASKS_CREATE turns (live 2026-08-19,
+				// trajectory data reduced to {actionName} with the flag gone).
+				data: {
+					actionName,
+					...(step.result.data?.suppressPlannerReply === true
+						? { suppressPlannerReply: true }
+						: {}),
+				},
 				...(step.result.turnComplete !== undefined
 					? { turnComplete: step.result.turnComplete }
 					: {}),
@@ -7626,7 +7717,7 @@ export async function runShortcutGate(args: {
 		};
 	}
 	const resultState = actionResult
-		? withActionResultsForPrompt(args.state, [actionResult])
+		? withActionResultsForPrompt(args.state, [actionResult], args.runtime)
 		: args.state;
 	const shortcutActionResults = actionResult ? [actionResult] : [];
 	const shortcutReplyDecision = evaluatePlannedReplyEgress({
@@ -9342,6 +9433,41 @@ export async function runV5MessageRuntimeStage1(args: {
 					}
 				}
 
+				if (
+					!callbackDelivered &&
+					result.success === true &&
+					result.modelReplyRequired === true
+				) {
+					return runPlannerLoop({
+						runtime: plannerRuntime,
+						context: plannerContextAfterEarlyReply,
+						config: args.plannerLoopConfig,
+						postToolReplySeed: { toolCall, result },
+						executeToolCall: () => {
+							throw new Error(
+								"Post-tool reply synthesis cannot execute another tool",
+							);
+						},
+						evaluate: ({
+							runtime: plannerRuntimeForEval,
+							context,
+							trajectory,
+						}) =>
+							runEvaluator({
+								runtime: plannerRuntimeForEval,
+								context,
+								trajectory,
+								effects: evaluatorEffects,
+								recorder,
+								trajectoryId,
+							}),
+						evaluatorEffects,
+						recorder,
+						trajectoryId,
+						providerAttributionState: plannerState,
+					});
+				}
+
 				const reportableResultText = result.userFacingText?.trim();
 				const finalMessage =
 					!callbackDelivered &&
@@ -9396,6 +9522,21 @@ export async function runV5MessageRuntimeStage1(args: {
 							postPatch !== prePatchStageOneReply &&
 							!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 							PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
+						) {
+							return prePatchStageOneReply;
+						}
+						// A promotion patch that CLEARED the answer outright (clearReply,
+						// e.g. core.simple_registered_action_request keyword-matching a
+						// conversational remark to TASKS) is the same disarm with a worse
+						// outcome: the planner sanely refuses the forced tool, the miss
+						// cap exhausts with no captured text, and the user gets the
+						// canned apology in place of the good answer Stage 1 already
+						// wrote ("test the cloud app version" in a group chat → "i'm
+						// sorry, i couldn't quite finish that", live 2026-08-21).
+						if (
+							prePatchStageOneReply &&
+							postPatch === undefined &&
+							!prePatchStageOneReplyIsUngroundedAppliedClaim
 						) {
 							return prePatchStageOneReply;
 						}
@@ -9646,7 +9787,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 		const finalPlannerState =
 			actionResults.length > 0
-				? withActionResultsForPrompt(plannerState, actionResults)
+				? withActionResultsForPrompt(plannerState, actionResults, args.runtime)
 				: plannerState;
 		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
 		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
@@ -9760,7 +9901,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		// user delivery — deliver that body instead of the canned line. Every
 		// other failed turn keeps the canned fallback, and the replacement
 		// still flows through the egress/dedupe checks below.
-		if (effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE) {
+		if (
+			effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE ||
+			// Same rescue for the answerless variant: a relay turn whose planner
+			// misfired into a rejected tool otherwise shipped "ran that, but no
+			// result came back" while the finished result sat in the message body
+			// (live 2026-08-19: maze-runner relay → deterministic MODEL_SWITCH
+			// role-rejected → filler instead of the build result).
+			effectiveReplyText === NO_REPORTABLE_TOOL_OUTCOME_MESSAGE
+		) {
 			const relayBody = subAgentCompletionRelayBody(
 				args.message?.content?.text,
 			);
@@ -9882,6 +10031,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			strippedPlannedReplyText || effectiveReplyText;
 		let shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
+			// suppressPlannerReply is the action's declaration that this turn's
+			// answer was already delivered outside the planner (out-of-band ack,
+			// IGNORE/STOP-style terminal). The flag gated the fallbacks but not
+			// the evaluator's own FINISH text, so a mimicked "On it — building
+			// that now." trailed the real result (live 2026-08-19, trajectory
+			// eval-FINISH evidence across four runs).
+			!suppressesPlannerReply &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
@@ -9929,7 +10085,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			zeroDeliveryRecovery.recover &&
 			deliveredVisibleTexts.size === 0 &&
 			deliveredMediaUrls.length === 0 &&
-			actionResults.length > 0
+			// Toolless planner deaths on an ADDRESSED turn are the same
+			// recoverable silence: the planner exhausted its retries with no
+			// tool call and no usable terminal text, every fallback above
+			// rejected the ack-shaped Stage-1 reply, and the user saw nothing
+			// (live 2026-08-17: casual-phrased coding asks after the
+			// gpt-oss-120b cutover ended [messageHandler, toolSearch, planner]
+			// with zero deliveries). Ambient turns keep their silence contract.
+			(actionResults.length > 0 || !ambientTurn)
 		) {
 			args.runtime.logger.warn(
 				{
@@ -10808,7 +10971,7 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 		return false;
 	}
 	if (
-		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]?code|opencode|codex|claude)\b/iu.test(
 			normalized,
 		)
 	) {
@@ -10832,14 +10995,30 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 
 const LEGACY_CODING_WORK_VERB_PATTERN =
 	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/giu;
+// Add-family verbs are everyday mutation words ("add a reminder", "delete the
+// weather app"), so they pair ONLY with strong code artifacts — never the
+// legacy artifact set whose app/site/page tokens belong to view and app
+// management asks. Live gap 2026-08-18: "yo can u add a lil one-line
+// description to the readme in my <name> repo and put up a pr" carried
+// repo+pr artifacts but no legacy verb; no deterministic coding candidate
+// fired and Stage-1 answered ["simple"] from stale room history, fabricating
+// "a PR is up".
+const ADD_FAMILY_CODING_VERB_PATTERN =
+	/\b(?:add|append|insert|rename|remove|delete)\b/giu;
 const LEGACY_CODING_ARTIFACT_PATTERN =
 	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
 const CODING_OPERATION_VERB_PATTERN =
 	/\b(?:refactor|debug|deploy|patch|optimize|migrate|profile)\b/giu;
+// Repo-submission verbs pair ONLY with the strong code artifacts: "put up a
+// pr", "push a branch", "open a pull request". "open" lives here and NOT in
+// the legacy verb set because anchored to pr/repo/branch it is unambiguous,
+// while "open the app/page" is view navigation.
+const REPO_SUBMIT_VERB_PATTERN =
+	/\b(?:put\s+up|open|submit|push|raise|file)\b/giu;
 const REVIEW_WORK_VERB_PATTERN =
 	/\b(?:review|audit|investigate|analyze|inspect|test|trace|diagnose)\b/giu;
 const STRONG_CODE_ARTIFACT_PATTERN =
-	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
+	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci|readme|changelog)\b/giu;
 const EXPANDED_WORK_ARTIFACT_PATTERN =
 	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
 const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>()]+/iu;
@@ -10910,6 +11089,22 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 			STRONG_CODE_ARTIFACT_PATTERN,
 			160,
 		) ||
+		// Submission verbs anchored to strong code artifacts: "put up a pr",
+		// "push the branch", "open a pull request".
+		hasNearbyTerms(
+			normalized,
+			REPO_SUBMIT_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// Add-family mutations anchored to strong code artifacts: "add a line
+		// to the readme", "rename the branch", "delete the stale commit".
+		hasNearbyTerms(
+			normalized,
+			ADD_FAMILY_CODING_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
 		// A URL plus a nearby review-family verb and work artifact is the
 		// deterministic work-order shape reported in #18108. Without the URL,
 		// generic nouns such as issue, test, log, or documentation remain planner
@@ -10927,10 +11122,10 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 function looksLikeExplicitDelegationRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	return (
-		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]?code|opencode|codex|claude)\b/iu.test(
 			normalized,
 		) ||
-		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|eliza[- ]?code|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
 		)
 	);
@@ -10945,7 +11140,17 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	) {
 		return false;
 	}
+	// A script whose whole body is one constant statement ("a python script
+	// that just prints nubs") is a snippet the reply can carry inline; routing
+	// it through a coding sub-agent spent a 27s build and the user never saw
+	// the one line (live 2026-08-22). Scoped by the just/only/simply marker so
+	// computed deliverables ("prints a random card") still get built and run.
+	const constantOutputScript =
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\b/iu.test(
+			normalized,
+		);
 	const asksForSnippet =
+		constantOutputScript ||
 		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
 			normalized,
 		) ||
@@ -10953,6 +11158,7 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 			normalized,
 		);
 	const hasSmallScope =
+		constantOutputScript ||
 		/\b(?:hello world|fibonacci|fib|single|simple|short|small|tiny|example|snippet|function|code block|one[- ]?liner|\d+\s*[- ]?line)\b/iu.test(
 			normalized,
 		);
@@ -11658,6 +11864,34 @@ export function wrapSingleTurnVisibleCallback(
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
+	// Turn-scoped paraphrase suppression: a relay turn can REPLY, run another
+	// tool, then REPLY again with a light rewording of the same completion
+	// ("added an Install section … (15 lines added)." then "added an
+	// **Install** section … (15 insertions)." — live 2026-08-18, double
+	// message in the channel). Exact-dupe recording already exists downstream;
+	// this catches the paraphrase class at the one funnel every visible
+	// delivery passes through. Guarded tightly — ≥8 shared-vocabulary tokens
+	// and ≥0.85 Jaccard — so progress updates that differ in the numbers or
+	// content keep flowing.
+	const deliveredTokenSetsThisTurn: Array<Set<string>> = [];
+	const nearDuplicateOfDeliveredThisTurn = (text: string): boolean => {
+		const tokens = new Set(
+			text
+				.toLowerCase()
+				.replace(/[*_`~#>]+/g, " ")
+				.split(/[^a-z0-9%.]+/)
+				.filter((token) => token.length > 0),
+		);
+		if (tokens.size < 8) return false;
+		for (const prior of deliveredTokenSetsThisTurn) {
+			if (prior.size < 8) continue;
+			let shared = 0;
+			for (const token of tokens) if (prior.has(token)) shared++;
+			const union = prior.size + tokens.size - shared;
+			if (union > 0 && shared / union >= 0.85) return true;
+		}
+		return false;
+	};
 	const deliver = async (response: Content, actionName?: string) => {
 		const fullMessage = message as Memory;
 		response = await enforceTrustedDeliveryAudienceAtEgress(
@@ -11722,6 +11956,25 @@ export function wrapSingleTurnVisibleCallback(
 			response,
 			actionName,
 		);
+		if (typeof response?.text === "string" && response.text.trim()) {
+			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
+				fullRuntime.logger?.debug?.(
+					{ actionName, text: response.text.slice(0, 120) },
+					"[message] suppressed near-duplicate delivery within the turn",
+				);
+				recordDeliveredVisibleText?.(response.text);
+				return [];
+			}
+			deliveredTokenSetsThisTurn.push(
+				new Set(
+					response.text
+						.toLowerCase()
+						.replace(/[*_`~#>]+/g, " ")
+						.split(/[^a-z0-9%.]+/)
+						.filter((token) => token.length > 0),
+				),
+			);
+		}
 		const delivered = await callback(response, actionName);
 		if (rawUnsanitizedText) {
 			recordDeliveredVisibleText?.(rawUnsanitizedText);
@@ -11948,12 +12201,18 @@ async function rewriteActionCallbackInCharacter(args: {
 export function withActionResultsForPrompt(
 	state: State,
 	actionResults: ActionResult[],
+	runtime?: IAgentRuntime,
 ): State {
+	const promptActionResults = isProgressiveContentProjectionEnabled(runtime)
+		? renderActionResultsForModel(actionResults, {
+				omitRecoverableText: true,
+			}).text
+		: formatActionResultsForPrompt(actionResults);
 	return {
 		...state,
 		values: {
 			...state.values,
-			actionResults: formatActionResultsForPrompt(actionResults),
+			actionResults: promptActionResults,
 		},
 		data: {
 			...state.data,

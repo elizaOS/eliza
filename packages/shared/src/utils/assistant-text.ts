@@ -167,8 +167,7 @@ function stripWrappedStageDirections(input: string, pattern: RegExp): string {
 }
 
 function tidyAssistantTextSpacing(input: string): string {
-  const safe = input.length > 200_000 ? input.slice(0, 200_000) : input;
-  return safe
+  return input
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n[ \t]+/g, "\n")
     .replace(/[ \t]{2,}/g, " ")

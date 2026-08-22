@@ -312,7 +312,6 @@ async function loadInboxFromTriage(args: {
     const { start } = periodWindow(args.period);
     const refs = await getDefaultTriageService().triage(args.runtime, {
       sinceMs: start.getTime(),
-      limit: 25,
     });
     return refs.map(mapMessageRefToBriefingItem);
   } catch (error) {
@@ -334,7 +333,7 @@ async function loadLifeFromOverview(args: {
       ...(Array.isArray(overview.reminders) ? overview.reminders : []),
       ...(Array.isArray(overview.goals) ? overview.goals : []),
     ];
-    return records.slice(0, 25).map((item) => {
+    return records.map((item) => {
       const record = asRecord(item);
       const metadata = asRecord(record.metadata);
       return {
@@ -375,7 +374,7 @@ async function loadCompletedTodayFromService(args: {
   try {
     const service = await getBriefLifeOpsService(args.runtime);
     const completed = await service.listOwnerOccurrencesCompletedToday();
-    return completed.slice(0, 25).map((occurrence) => ({
+    return completed.map((occurrence) => ({
       id: occurrence.id,
       kind: normalizeLifeKind(occurrence.definitionKind),
       title: occurrence.title,
@@ -402,7 +401,7 @@ async function loadMoneyFromPayments(args: {
     // (@elizaos/plugin-finances); call it there directly.
     const finances = new FinancesService(args.runtime);
     const charges = await finances.getRecurringCharges({});
-    return charges.slice(0, 25).map((charge) => ({
+    return charges.map((charge) => ({
       id: `${charge.merchantNormalized}:${charge.cadence}`,
       merchant: charge.merchantDisplay,
       amountUsd: charge.averageAmountUsd,
@@ -416,8 +415,6 @@ async function loadMoneyFromPayments(args: {
     return [];
   }
 }
-
-const MAX_BRIEF_COMMITMENT_ITEMS = 10;
 
 /** Map one regret-audit item onto the briefing's commitment shape. */
 export function mapRegretAuditItemToBriefingItem(
@@ -455,9 +452,7 @@ async function loadCommitmentsFromLedger(args: {
     const audit = buildCommitmentRegretAudit(records, {
       nowIso: new Date().toISOString(),
     });
-    return audit.items
-      .slice(0, MAX_BRIEF_COMMITMENT_ITEMS)
-      .map(mapRegretAuditItemToBriefingItem);
+    return audit.items.map(mapRegretAuditItemToBriefingItem);
   } catch (error) {
     // error-policy:J4 the brief composes from independent optional sources;
     // a broken ledger read must not kill the whole brief. The degrade is

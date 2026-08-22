@@ -178,6 +178,29 @@ List any command failure, missing artifact, unavailable device, unavailable live
 service, or evidence row marked N/A. Include the exact reason and why it is not a
 blocker for this PR.
 
+## Maintainer CI exception record
+
+Write `N/A - no exception requested` unless a maintainer is invoking the narrow
+[Maintainer CI exception](../CONTRIBUTING.md#maintainer-ci-exception). When it
+applies, preserve every field below and link the exact evidence.
+
+- PR head SHA: `N/A - no exception requested`
+- Validated `origin/develop` SHA: `N/A - no exception requested`
+- Live ruleset readback and named bypass eligibility:
+  `N/A - no exception requested`
+- Queued or failing checks and run URLs: `N/A - no exception requested`
+- Infrastructure-only or unrelated-failure proof: `N/A - no exception requested`
+- Exact-head commands, exit status, and artifacts: `N/A - no exception requested`
+- Exact-head security, secret-scan, and provenance results:
+  `N/A - no exception requested`
+- Conflict-free and affected-path failure attestation:
+  `N/A - no exception requested`
+- Independent approving reviewer: `N/A - no exception requested`
+- Bypass authorizer: `N/A - no exception requested`
+- Merge method: `N/A - no exception requested`
+- Rollback owner: `N/A - no exception requested`
+- Post-merge `develop` validation: `N/A - no exception requested`
+
 <!-- If there is anything about the deployment, please make a note. -->
 <!--
 # Deploy Notes

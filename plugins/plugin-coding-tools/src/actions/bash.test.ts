@@ -3573,6 +3573,47 @@ describe("destructive-bulk confirm gate", () => {
     );
   });
 
+  it("rejects a confirmation when the resolved execution directory changes", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime, session } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const command = "rm -rf ./relative-target";
+    const originalDirectory = process.cwd();
+    const changedDirectory = path.join(process.cwd(), "src");
+    const original = makeMessage(
+      undefined,
+      `remove the relative target in ${originalDirectory}`,
+    );
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, {
+        command,
+        cwd: originalDirectory,
+      }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    session.setCwd(String(original.roomId), changedDirectory);
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        confirmationMessage(original, challenge),
+        undefined,
+        { command, confirm: true, confirmation_challenge: challenge },
+      ),
+    );
+
+    expect(result.success).toBe(false);
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "cwd_mismatch",
+    );
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it("expires challenges and consumes a successful challenge exactly once", async () => {
     const runCommand = vi.fn(async () => ({
       output: "executed",
