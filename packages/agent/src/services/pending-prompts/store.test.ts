@@ -5,7 +5,9 @@
  * `resolve()`, `forgetTask()`), so an unconditional re-register meant the index
  * only ever grew and `listAll()` paid one `getCache` per historical room
  * forever. These tests pin the retirement of emptied rooms, and pin that rooms
- * with live prompts are untouched.
+ * with live prompts are untouched. A separate regression seeds the pre-fix
+ * persisted state (index entry + empty row, never recorded on this
+ * implementation) so `listAll()` still retires historical rooms.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
@@ -138,6 +140,28 @@ describe("pending-prompts room index", () => {
 
   // ---- no over-rejection: rooms with live prompts are untouched ----
 
+  test("listAll lookback does not retire a live room outside the window", async () => {
+    const cache = makeCache();
+    const store = createPendingPromptsStore(cache.runtime);
+
+    await store.record({
+      roomId: "room-a",
+      taskId: "task-a",
+      promptSnippet: "still retained",
+      firedAt,
+    });
+
+    const later = new Date(Date.parse(firedAt) + 2 * 3_600_000);
+    await expect(
+      store.listAll({ lookbackMinutes: 30, now: later }),
+    ).resolves.toEqual([]);
+
+    expect(cache.index()).toEqual(["room-a"]);
+    expect((await store.list("room-a")).map((p) => p.taskId)).toEqual([
+      "task-a",
+    ]);
+  });
+
   test("a room keeps its index entry while any prompt remains", async () => {
     const cache = makeCache();
     const store = createPendingPromptsStore(cache.runtime);
@@ -243,6 +267,57 @@ describe("pending-prompts room index", () => {
     expect((await store.list("room-a")).map((p) => p.taskId)).toEqual([
       "task-a",
     ]);
+  });
+
+  test("listAll retires rooms that were already empty in persisted pre-fix state", async () => {
+    const cache = makeCache();
+    const store = createPendingPromptsStore(cache.runtime);
+
+    // Seed the exact pre-fix residue: an index of historical rooms whose
+    // rows are already `[]`, plus an index-only ghost (row deleted before
+    // the index update). Nothing here is written through `record()`.
+    const legacyRooms = Array.from({ length: 500 }, (_, i) => `legacy-${i}`);
+    await cache.runtime.setCache(ROOM_INDEX_KEY, [
+      ...legacyRooms,
+      "ghost-room",
+    ]);
+    for (const roomId of legacyRooms) {
+      await cache.runtime.setCache(roomCacheKey(roomId), []);
+    }
+
+    await store.record({
+      roomId: "live-room",
+      taskId: "task-live",
+      promptSnippet: "still open",
+      firedAt,
+    });
+
+    const listed = await store.listAll();
+    expect(listed.map((p) => [p.roomId, p.taskId])).toEqual([
+      ["live-room", "task-live"],
+    ]);
+    expect(cache.index()).toEqual(["live-room"]);
+    expect(cache.store.has(roomCacheKey("legacy-0"))).toBe(false);
+    expect(cache.store.has(roomCacheKey("legacy-499"))).toBe(false);
+    expect(cache.store.has(roomCacheKey("ghost-room"))).toBe(false);
+    expect(cache.store.has(roomCacheKey("live-room"))).toBe(true);
+
+    cache.getCalls.length = 0;
+    await expect(store.listAll()).resolves.toEqual(listed);
+    expect(cache.getCalls).toEqual([ROOM_INDEX_KEY, roomCacheKey("live-room")]);
+  });
+
+  test("resolve retires a persisted empty room left in the index", async () => {
+    const cache = makeCache();
+    const store = createPendingPromptsStore(cache.runtime);
+
+    await cache.runtime.setCache(ROOM_INDEX_KEY, ["legacy-room"]);
+    await cache.runtime.setCache(roomCacheKey("legacy-room"), []);
+
+    await store.resolve("legacy-room", "any-task");
+
+    expect(cache.index()).toEqual([]);
+    expect(cache.store.has(roomCacheKey("legacy-room"))).toBe(false);
   });
 
   test("clearAll still empties everything", async () => {

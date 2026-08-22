@@ -15,7 +15,11 @@
  * expired entries without discarding live prompts or changing their content,
  * and a room is retired from the room index (and its cache row deleted) by the
  * write that leaves it with no open prompts, so `listAll()` costs one read per
- * room with LIVE prompts rather than per room ever prompted in.
+ * room with LIVE prompts rather than per room ever prompted in. Indexed rooms
+ * whose stored entry list is already empty — pre-fix rows, or a partial forget
+ * that deleted the row but left the index — are retired on `listAll()` and on
+ * `resolve` / `forgetTask` against that empty list, so long-lived agents do not
+ * keep paying for historical rooms forever.
  */
 
 import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
@@ -296,7 +300,10 @@ export function createPendingPromptsStore(
           : null;
 
       const live = await withLock(MUTATION_LOCK_KEY, async () => {
-        const stored = await loadRoom(cache, roomId);
+        const raw = await cache.getCache<RecordedPendingPrompt[]>(
+          roomCacheKey(roomId),
+        );
+        const stored = Array.isArray(raw) ? raw : [];
         let mutated = false;
         const kept: RecordedPendingPrompt[] = [];
         for (const entry of stored) {
@@ -307,7 +314,11 @@ export function createPendingPromptsStore(
           }
           kept.push(entry);
         }
-        if (mutated) {
+        // Retire a persisted empty row (`[]`) even when nothing was purged
+        // this call. Missing rows stay untouched here so inbound `list()` of a
+        // never-prompted room does not write; `listAll()` heals index-only
+        // ghosts because it only walks known index entries.
+        if (mutated || (Array.isArray(raw) && raw.length === 0)) {
           await saveRoom(cache, roomId, kept);
         }
         return kept;
@@ -341,15 +352,37 @@ export function createPendingPromptsStore(
     ): Promise<PendingPromptWithRoom[]> {
       const rooms = await listRooms(cache);
       const perRoom = await Promise.all(
-        rooms.map(async (roomId) =>
-          (await store.list(roomId, opts)).map((prompt) => ({
+        rooms.map(async (roomId) => {
+          const prompts = (await store.list(roomId, opts)).map((prompt) => ({
             ...prompt,
             roomId,
-          })),
-        ),
+          }));
+          return { roomId, prompts };
+        }),
       );
+
+      // Known-index healing: a pre-fix empty row, or a partial forget that
+      // deleted the row but left the index, makes `list()` return [] without
+      // taking the `saveRoom` empty branch. Re-check storage and retire those
+      // rooms so `listAll()` does not keep paying one read per historical id.
+      // Live rooms that merely fell out of a lookback window still have a
+      // non-empty stored list and are left alone.
+      const staleRoomIds = perRoom
+        .filter(({ prompts }) => prompts.length === 0)
+        .map(({ roomId }) => roomId);
+      if (staleRoomIds.length > 0) {
+        await withLock(MUTATION_LOCK_KEY, async () => {
+          for (const roomId of staleRoomIds) {
+            const stored = await loadRoom(cache, roomId);
+            if (stored.length === 0) {
+              await forgetRoom(cache, roomId);
+            }
+          }
+        });
+      }
+
       return perRoom
-        .flat()
+        .flatMap(({ prompts }) => prompts)
         .sort((a, b) => Date.parse(b.firedAt) - Date.parse(a.firedAt));
     },
 
@@ -357,7 +390,10 @@ export function createPendingPromptsStore(
       await withLock(MUTATION_LOCK_KEY, async () => {
         const existing = await loadRoom(cache, roomId);
         const next = existing.filter((entry) => entry.taskId !== taskId);
-        if (next.length !== existing.length) {
+        // An already-empty list (pre-fix row or deleted row still in the
+        // index) must still run `saveRoom`, or a retry after a partial
+        // forget never retires the index entry.
+        if (next.length !== existing.length || existing.length === 0) {
           await saveRoom(cache, roomId, next);
         }
       });
@@ -369,7 +405,7 @@ export function createPendingPromptsStore(
         for (const roomId of rooms) {
           const existing = await loadRoom(cache, roomId);
           const next = existing.filter((entry) => entry.taskId !== taskId);
-          if (next.length !== existing.length) {
+          if (next.length !== existing.length || existing.length === 0) {
             await saveRoom(cache, roomId, next);
           }
         }
