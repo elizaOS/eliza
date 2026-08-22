@@ -318,7 +318,14 @@ async function uploadMedia(accessToken: string, media: MediaAttachment): Promise
 
     const finalizeData = (await finalizeResponse.json()) as { processing_info?: unknown };
 
-    if (finalizeData.processing_info) {
+    if (finalizeData.processing_info !== undefined) {
+      if (
+        typeof finalizeData.processing_info !== "object" ||
+        finalizeData.processing_info === null ||
+        Array.isArray(finalizeData.processing_info)
+      ) {
+        throw new Error("Media upload FINALIZE returned malformed processing_info");
+      }
       await waitForProcessing(accessToken, mediaId, 60_000, deadline.signal);
     }
 
@@ -376,10 +383,14 @@ export async function waitForProcessing(
 
       const data = (await response.json()) as { processing_info?: unknown };
 
-      if (!data.processing_info) {
+      if (data.processing_info === undefined) {
         return; // Processing complete
       }
-      if (typeof data.processing_info !== "object" || Array.isArray(data.processing_info)) {
+      if (
+        typeof data.processing_info !== "object" ||
+        data.processing_info === null ||
+        Array.isArray(data.processing_info)
+      ) {
         throw new Error("Media processing returned malformed processing_info");
       }
       const processingInfo = data.processing_info as {

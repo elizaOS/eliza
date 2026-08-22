@@ -392,6 +392,30 @@ describe("twitterFetch — bounded hops fail closed and keep caller signals", ()
       clearTimer.mockRestore();
     }
   });
+
+  it("rejects every present non-record FINALIZE processing_info before posting", async () => {
+    for (const malformed of [null, false, 0, ""] as const) {
+      let posted = false;
+      fetchImpl = async (url) => {
+        if (url.includes("command=INIT")) return okJson({ media_id_string: "media-1" });
+        if (url.includes("command=APPEND")) return okJson({});
+        if (url.includes("command=FINALIZE")) {
+          return okJson({ processing_info: malformed });
+        }
+        if (url.endsWith("/tweets")) posted = true;
+        return okJson({ data: { id: "post-1", text: "hello" } });
+      };
+
+      const result = await twitterProvider.createPost(CREDS, {
+        text: "hello",
+        media: [{ type: "video", mimeType: "video/mp4", data: Buffer.from([1]) }],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("malformed processing_info");
+      expect(posted).toBe(false);
+    }
+  });
 });
 
 describe("waitForProcessing — one wall-clock budget bounds provider polling", () => {
@@ -408,6 +432,10 @@ describe("waitForProcessing — one wall-clock budget bounds provider polling", 
   it("rejects malformed and unknown processing states", async () => {
     const payloads = [
       { processing_info: [] },
+      { processing_info: null },
+      { processing_info: false },
+      { processing_info: 0 },
+      { processing_info: "" },
       { processing_info: { state: "mystery" } },
       { processing_info: { state: "pending", check_after_secs: "soon" } },
     ];

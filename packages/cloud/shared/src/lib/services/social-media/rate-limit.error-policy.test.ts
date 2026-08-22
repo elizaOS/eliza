@@ -12,7 +12,7 @@
  * it deterministic `Response` objects.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 
 const warn = mock((_message: string) => undefined);
 
@@ -68,6 +68,26 @@ describe("withRetry — internal failure propagates vs designed-empty passes thr
     const parser = async (r: Response) => r.json();
     const err = await withRetry(fn, parser, NO_WAIT).catch((e) => e);
     expect(err).toMatchObject({ rateLimited: true, platform: "twitter", retryAfter: 0 });
+  });
+
+  it("preserves the final typed 429 when its remaining budget falls below retry minimum", async () => {
+    const now = spyOn(Date, "now").mockReturnValueOnce(1_000).mockReturnValueOnce(1_095);
+    try {
+      const err = await withRetry(
+        async () => new Response("", { status: 429, headers: { "retry-after": "7" } }),
+        async (response) => response.json(),
+        {
+          platform: "twitter",
+          maxRetries: 0,
+          deadlineAt: 1_100,
+          minimumAttemptBudgetMs: 10,
+        },
+      ).catch((error) => error);
+
+      expect(err).toMatchObject({ rateLimited: true, platform: "twitter", retryAfter: 7 });
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("uses a valid Retry-After value of zero for an immediate retry", async () => {

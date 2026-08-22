@@ -181,14 +181,14 @@ export async function withRetry<T>(
 
       if (isRateLimitResponse(response)) {
         const retryAfter = parseRetryAfter(response);
-        const waitMs = boundedRetryWaitMs(
-          retryAfter ?? baseDelayMs * 2 ** attempt,
-          platform,
-          deadlineAt,
-          minimumAttemptBudgetMs,
-        );
 
         if (attempt < maxRetries) {
+          const waitMs = boundedRetryWaitMs(
+            retryAfter ?? baseDelayMs * 2 ** attempt,
+            platform,
+            deadlineAt,
+            minimumAttemptBudgetMs,
+          );
           logger.warn(
             `[${platform}] Rate limited, waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`,
           );
