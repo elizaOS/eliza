@@ -779,6 +779,28 @@ describe("aospAsrAssetsPresent (TRANSCRIPTION registration gate)", () => {
 });
 
 describe("resolveAospGenerateTokenBudget", () => {
+  it("ignores a prefix-parsed output-token cap instead of applying it", () => {
+    // parseInt("384junk") is 384, so a typo silently capped generation at 384
+    // tokens; readEnvInt must fall back to the documented 256 default instead.
+    expect(
+      resolveAospGenerateTokenBudget({
+        requestedMaxTokens: 1024,
+        nCtx: 4096,
+        nBatch: 64,
+        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: "384junk" },
+      }).envCap,
+    ).toBe(256);
+    // A signed value was accepted by parseInt and must stay accepted.
+    expect(
+      resolveAospGenerateTokenBudget({
+        requestedMaxTokens: 1024,
+        nCtx: 4096,
+        nBatch: 64,
+        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: "+384" },
+      }).envCap,
+    ).toBe(384);
+  });
+
   it("caps oversized caller budgets with the Android debug env cap", () => {
     expect(
       resolveAospGenerateTokenBudget({
@@ -852,6 +874,24 @@ describe("AOSP embedding gate", () => {
     expect(disabledAospEmbeddingVector({})).toHaveLength(384);
     expect(
       disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024" }),
+    ).toHaveLength(1024);
+  });
+
+  it("ignores a prefix-parsed embedding dimension instead of sizing the vector from it", () => {
+    // parseInt("1024junk") is 1024, so a typo silently produced a vector of a
+    // width the operator never configured — and the width must match the SQL
+    // column, so this is not a cosmetic difference.
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024junk" }),
+    ).toHaveLength(384);
+    expect(
+      disabledAospEmbeddingVector({
+        LOCAL_EMBEDDING_DIMENSIONS: "9007199254740993",
+      }),
+    ).toHaveLength(384);
+    // A signed value was accepted by parseInt and must stay accepted.
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "+1024" }),
     ).toHaveLength(1024);
   });
 });
