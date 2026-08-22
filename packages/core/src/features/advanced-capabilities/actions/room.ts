@@ -573,7 +573,7 @@ async function applyServerScopedOp(args: {
 		world.id,
 		op === "mute" ? { ...(untilIso ? { untilIso } : {}) } : null,
 	);
-	const serverName = world.name ?? `Server-${String(world.id).substring(0, 8)}`;
+	const serverName = world.name ?? `Server-${String(world.id)}`;
 	await runtime.createMemory(
 		{
 			entityId: message.entityId,
@@ -860,9 +860,7 @@ export const roomOpAction: Action = {
 				});
 			}
 			const roomName =
-				targetRoom.name ??
-				chatName ??
-				`Room-${String(targetRoom.id).substring(0, 8)}`;
+				targetRoom.name ?? chatName ?? `Room-${String(targetRoom.id)}`;
 			const result = await applyOp({
 				runtime,
 				message,
@@ -930,7 +928,7 @@ export const roomOpAction: Action = {
 			};
 		}
 
-		const roomName = room.name ?? `Room-${String(roomId).substring(0, 8)}`;
+		const roomName = room.name ?? `Room-${String(roomId)}`;
 
 		if (!proceed) {
 			return {

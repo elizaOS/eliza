@@ -49,6 +49,7 @@ import {
   searchProfiles,
   searchQuotedTweets,
   searchTweets,
+  searchTweetsPage,
 } from "./search";
 
 import {
@@ -330,27 +331,17 @@ export class Client {
     query: string,
     maxTweets: number,
     searchMode: SearchMode,
-    _cursor?: string,
+    cursor?: string,
   ): Promise<QueryTweetsResponse> {
-    return this.withAuthenticatedSession(async () => {
-      const tweets: Tweet[] = [];
-      const generator = searchTweets(
+    return this.withAuthenticatedSession(() =>
+      searchTweetsPage(
         query,
         maxTweets,
         searchMode,
         this.requireAuth(),
-      );
-
-      for await (const tweet of generator) {
-        tweets.push(tweet);
-      }
-
-      return {
-        tweets,
-        // v2 API doesn't provide cursor-based pagination for search
-        next: undefined,
-      };
-    });
+        cursor,
+      ),
+    );
   }
 
   /**
@@ -1049,14 +1040,15 @@ export class Client {
    * Sends a quote tweet.
    * @param text The text of the tweet.
    * @param quotedTweetId The ID of the tweet to quote.
-   * @param options Optional parameters, such as media data.
+   * @param options Optional uploaded media identifiers.
    * @returns The response from the Twitter API.
    */
   public async sendQuoteTweet(
     text: string,
     quotedTweetId: string,
     options?: {
-      mediaData: { data: Buffer; mediaType: string }[];
+      mediaData?: { data: Buffer; mediaType: string }[];
+      mediaIds?: string[];
     },
   ) {
     return this.withAuthenticatedSession(() =>
@@ -1065,6 +1057,7 @@ export class Client {
         quotedTweetId,
         this.requireAuth(),
         options?.mediaData,
+        options?.mediaIds,
       ),
     );
   }

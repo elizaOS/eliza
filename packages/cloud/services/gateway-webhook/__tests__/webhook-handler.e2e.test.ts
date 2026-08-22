@@ -102,6 +102,7 @@ const envKeys = [
   "ELIZA_APP_TWILIO_AUTH_TOKEN",
   "ELIZA_APP_TWILIO_PHONE_NUMBER",
   "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_BLOOIO_PHONE_NUMBER",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -243,6 +244,7 @@ describe("gateway webhook handler e2e routing", () => {
       message: "My name is Ada",
       platform: "twilio",
       project: "eliza-app",
+      connectorAccountId: "+15550000000",
       phoneNumber: "+15551234567",
       messageId: `twilio:eliza-app:${event.messageId}`,
     });
@@ -257,6 +259,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("routes an unresolved Blooio iMessage to the same phone Shared path", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
     const redis = new MemoryRedis();
     const event: ChatEvent = {
       platform: "blooio",
@@ -318,11 +321,527 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "blooio",
       project: "eliza-app",
+      connectorAccountId: "+15550000001",
       phoneNumber: "+15551234567",
       messageId: "blooio:eliza-app:blooio-message-1",
       message: "hello from iMessage",
     });
     expect(replies).toEqual(["hello from personal Eliza"]);
+  });
+
+  test("revalidates and records a Blooio Dedicated group reply", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "blooio",
+      messageId: "blooio-group-message-1",
+      chatId: "chat_group_123",
+      chatType: "group",
+      senderId: "+15551234567",
+      senderName: "Ada",
+      text: "following up",
+      replyToMessageId: "provider-eliza-reply-0",
+      rawPayload: {},
+    };
+    const sendReplyWithReceipt = mock(async () => ({
+      providerMessageIds: ["provider-eliza-reply-1"],
+    }));
+    const stopTypingIndicator = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "blooio",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      stopTypingIndicator,
+      sendReply: mock(async () => undefined),
+      sendReplyWithReceipt,
+    };
+    let turnBody: Record<string, unknown> | null = null;
+    let authorizationBody: Record<string, unknown> | null = null;
+    let receiptBody: Record<string, unknown> | null = null;
+    const authority = {
+      bindingId: "00000000-0000-4000-8000-000000000030",
+      ownerUserId: "00000000-0000-4000-8000-000000000002",
+      personalAgentId: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+      version: 7,
+    };
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        const body = (await request.json()) as Record<string, unknown>;
+        if (body.eventType === "delivery_authorization") {
+          authorizationBody = body;
+          return Response.json({
+            success: true,
+            data: {
+              code: "group_delivery_authorization",
+              authorized: true,
+              leaseToken: body.leaseToken,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          });
+        }
+        if (body.eventType === "delivery_commit") {
+          return Response.json({
+            success: true,
+            data: { code: "group_delivery_committed", committed: true },
+          });
+        }
+        if (body.eventType === "delivery_receipt") {
+          receiptBody = body;
+          return Response.json({
+            success: true,
+            data: {
+              code: "group_delivery_receipt_recorded",
+              recorded: true,
+              inserted: 1,
+            },
+          });
+        }
+        turnBody = body;
+        return Response.json({
+          success: true,
+          data: {
+            identity: { runtime: "dedicated" },
+            reply: "group reply",
+            groupDelivery: { kind: "binding", authority },
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/blooio", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => receiptBody !== null, "group provider receipt");
+    expect(turnBody).toEqual({
+      platform: "blooio",
+      chatType: "group",
+      project: "eliza-app",
+      connectorAccountId: "+15550000001",
+      chatId: "chat_group_123",
+      actor: {
+        platformUserId: "+15551234567",
+        displayName: "Ada",
+        role: "possessor",
+      },
+      messageId: "blooio:eliza-app:blooio-group-message-1",
+      message: "following up",
+      invocation: "reply",
+      replyToMessageId: "provider-eliza-reply-0",
+    });
+    expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
+    expect(stopTypingIndicator).toHaveBeenCalledTimes(1);
+    expect(receiptBody).toEqual({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+15550000001",
+      chatId: "chat_group_123",
+      sourceMessageId: "blooio:eliza-app:blooio-group-message-1",
+      providerMessageIds: ["provider-eliza-reply-1"],
+      authority,
+      leaseToken: expect.any(String),
+    });
+    expect(authorizationBody).toEqual({
+      eventType: "delivery_authorization",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+15550000001",
+      chatId: "chat_group_123",
+      sourceMessageId: "blooio:eliza-app:blooio-group-message-1",
+      leaseToken: expect.any(String),
+      invocation: "reply",
+      authority,
+    });
+  });
+
+  test.each([
+    "group_admin_required",
+    "group_claim_invalid",
+    "group_claim_expired",
+    "group_claim_already_used",
+    "group_claim_already_bound",
+    "group_binding_suspended",
+    "group_not_bound",
+    "group_binding_changed",
+    "group_binding_revoked",
+  ])(
+    "delivers the explicit %s control reply without inference authority",
+    async (code) => {
+      process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+      const redis = new MemoryRedis();
+      const event: ChatEvent = {
+        platform: "blooio",
+        messageId: `blooio-control-${code}`,
+        chatId: "chat_group_123",
+        chatType: "group",
+        senderId: "+15551234567",
+        text: "Eliza control",
+        rawPayload: {},
+      };
+      const sendReplyWithReceipt = mock(async () => ({
+        providerMessageIds: [`provider-${code}`],
+      }));
+      const adapter: PlatformAdapter = {
+        platform: "blooio",
+        verifyWebhook: mock(async () => true),
+        extractEvent: mock(async () => event),
+        sendTypingIndicator: mock(async () => undefined),
+        sendReply: mock(async () => undefined),
+        sendReplyWithReceipt,
+      };
+      let cloudRequests = 0;
+      globalThis.fetch = mock(async () => {
+        cloudRequests += 1;
+        return Response.json({
+          success: true,
+          data: {
+            code,
+            reply: `control reply for ${code}`,
+            groupDelivery: { kind: "control" },
+          },
+        });
+      }) as typeof fetch;
+
+      expect(
+        (
+          await handleWebhook(
+            new Request("https://gateway.example/webhook/eliza-app/blooio", {
+              method: "POST",
+              body: "{}",
+            }),
+            adapter,
+            {
+              redis,
+              cloudBaseUrl: "https://api.elizacloud.ai",
+              getAuthHeader: () => ({
+                Authorization: "Bearer internal-secret",
+              }),
+            },
+            "eliza-app",
+          )
+        ).status,
+      ).toBe(200);
+      await waitFor(
+        () => sendReplyWithReceipt.mock.calls.length === 1,
+        `${code} control delivery`,
+      );
+      expect(cloudRequests).toBe(1);
+    },
+  );
+
+  test.each([
+    "revoke",
+    "membership removal",
+    "ambient off",
+    "lease expiry and reacquire before egress",
+  ])(
+    "suppresses provider egress when %s invalidates an in-flight group turn",
+    async (_invalidation) => {
+      process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+      const redis = new MemoryRedis();
+      const event: ChatEvent = {
+        platform: "blooio",
+        messageId: "blooio-group-race-1",
+        chatId: "chat_group_123",
+        chatType: "group",
+        senderId: "+15551234567",
+        text: "ambient thought",
+        rawPayload: {},
+      };
+      const sendReplyWithReceipt = mock(async () => ({
+        providerMessageIds: ["must-not-send"],
+      }));
+      const adapter: PlatformAdapter = {
+        platform: "blooio",
+        verifyWebhook: mock(async () => true),
+        extractEvent: mock(async () => event),
+        sendTypingIndicator: mock(async () => undefined),
+        sendReply: mock(async () => undefined),
+        sendReplyWithReceipt,
+      };
+      let authorizationChecks = 0;
+      let commitChecks = 0;
+      globalThis.fetch = mock(async (input, init) => {
+        const request = new Request(input, init);
+        const body = (await request.json()) as Record<string, unknown>;
+        if (body.eventType === "delivery_authorization") {
+          authorizationChecks += 1;
+          return Response.json({
+            success: true,
+            data: {
+              code: "group_delivery_authorization",
+              authorized: true,
+              leaseToken: body.leaseToken,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          });
+        }
+        if (body.eventType === "delivery_commit") {
+          commitChecks += 1;
+          return Response.json({
+            success: true,
+            data: { code: "group_delivery_committed", committed: false },
+          });
+        }
+        return Response.json({
+          success: true,
+          data: {
+            reply: "stale reply",
+            groupDelivery: {
+              kind: "binding",
+              authority: {
+                bindingId: "00000000-0000-4000-8000-000000000030",
+                ownerUserId: "00000000-0000-4000-8000-000000000002",
+                personalAgentId:
+                  "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+                version: 7,
+              },
+            },
+          },
+        });
+      }) as typeof fetch;
+
+      expect(
+        (
+          await handleWebhook(
+            new Request("https://gateway.example/webhook/eliza-app/blooio", {
+              method: "POST",
+              body: "{}",
+            }),
+            adapter,
+            {
+              redis,
+              cloudBaseUrl: "https://api.elizacloud.ai",
+              getAuthHeader: () => ({
+                Authorization: "Bearer internal-secret",
+              }),
+            },
+            "eliza-app",
+          )
+        ).status,
+      ).toBe(200);
+      await waitFor(
+        () => authorizationChecks === 1 && commitChecks === 1,
+        "stale group turn completion",
+      );
+      expect(sendReplyWithReceipt).not.toHaveBeenCalled();
+      expect(commitChecks).toBe(1);
+    },
+  );
+
+  test("does not resend after provider success when the exact receipt response is lost", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "blooio",
+      messageId: "blooio-group-zero-receipt",
+      chatId: "chat_group_123",
+      chatType: "group",
+      senderId: "+15551234567",
+      text: "hello",
+      rawPayload: {},
+    };
+    const sendReplyWithReceipt = mock(async () => ({
+      providerMessageIds: ["provider-reply-1"],
+    }));
+    const adapter: PlatformAdapter = {
+      platform: "blooio",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply: mock(async () => undefined),
+      sendReplyWithReceipt,
+    };
+    let committed = false;
+    let receiptPersisted = false;
+    let authorizationChecks = 0;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      const body = (await request.json()) as Record<string, unknown>;
+      if (body.eventType === "delivery_authorization") {
+        authorizationChecks += 1;
+        return Response.json({
+          success: true,
+          data:
+            committed || receiptPersisted
+              ? {
+                  code: "group_delivery_authorization",
+                  authorized: false,
+                  leaseToken: null,
+                  expiresAt: null,
+                }
+              : {
+                  code: "group_delivery_authorization",
+                  authorized: true,
+                  leaseToken: body.leaseToken,
+                  expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                },
+        });
+      }
+      if (body.eventType === "delivery_commit") {
+        committed = true;
+        return Response.json({
+          success: true,
+          data: { code: "group_delivery_committed", committed: true },
+        });
+      }
+      if (body.eventType === "delivery_receipt") {
+        receiptPersisted = true;
+        committed = false;
+        return Response.json(
+          { success: false, code: "response_lost_after_commit" },
+          { status: 503 },
+        );
+      }
+      return Response.json({
+        success: true,
+        data: {
+          reply: "reply",
+          groupDelivery: {
+            kind: "binding",
+            authority: {
+              bindingId: "00000000-0000-4000-8000-000000000030",
+              ownerUserId: "00000000-0000-4000-8000-000000000002",
+              personalAgentId: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+              version: 7,
+            },
+          },
+        },
+      });
+    }) as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/blooio", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(
+      () => sendReplyWithReceipt.mock.calls.length === 1,
+      "provider receipt send",
+    );
+    await waitFor(
+      () =>
+        !redis.store.has(
+          "webhook:blooio:+15550000001:message:blooio-group-zero-receipt",
+        ),
+      "recoverable receipt retry reopening",
+    );
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/blooio", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(
+      () => authorizationChecks === 2,
+      "committed delivery retry fence",
+    );
+    expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test("forwards Telegram membership removal without model or provider egress", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "membership-update-1",
+      chatId: "-100123456789",
+      chatType: "supergroup",
+      senderId: "123456789",
+      text: "",
+      membershipChange: "removed",
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const sendTypingIndicator = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator,
+      sendReply,
+      sendReplyWithReceipt: mock(async () => ({ providerMessageIds: [] })),
+    };
+    let membershipBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        membershipBody = (await request.json()) as Record<string, unknown>;
+        return Response.json({ success: true, data: { reply: "" } });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => membershipBody !== null, "membership delivery");
+    expect(membershipBody).toEqual({
+      eventType: "membership",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId:
+        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      chatId: "-100123456789",
+      messageId: "telegram:eliza-app:membership-update-1",
+      membershipChange: "removed",
+    });
+    expect(sendReply).not.toHaveBeenCalled();
+    expect(sendTypingIndicator).not.toHaveBeenCalled();
   });
 
   test("refuses Telegram egress when another worker atomically claimed delivery", async () => {
@@ -530,6 +1049,8 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId:
+        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
       chatId: "chat-1",
       telegramUserId: "123456789",
       displayName: "Ada",
@@ -744,6 +1265,8 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId:
+        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
       chatId: "chat-1",
       telegramUserId: "123456789",
       displayName: "Ada",
@@ -953,6 +1476,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(personalBody).toEqual({
       platform: "twilio",
       project: "eliza-app",
+      connectorAccountId: "+15550000000",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_linked_1",
       message: "Are you running?",

@@ -11,7 +11,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "identity.merge-4-platforms-same-person",
-  title: "Merge gmail + signal + telegram + discord handles into one entity",
+  title: "Merge gmail + WhatsApp + telegram + discord handles into one entity",
   domain: "lifeops.identity",
   tags: ["lifeops", "identity", "merge", "multi-platform"],
   description:
@@ -45,8 +45,8 @@ export default scenario({
       roomId: "main",
       content: {
         kind: "rolodex-entity",
-        id: "ent-jordan-signal",
-        platform: "signal",
+        id: "ent-jordan-whatsapp",
+        platform: "whatsapp",
         handle: "+14155550199",
         displayName: "Jordan",
       },
@@ -79,7 +79,7 @@ export default scenario({
       kind: "message",
       name: "merge-four",
       room: "main",
-      text: "jordan.kim@nova.io, +14155550199 on Signal, @jkimnova on Telegram, and jkim#4421 on Discord are all Jordan Kim. Consolidate.",
+      text: "jordan.kim@nova.io, +14155550199 on WhatsApp, @jkimnova on Telegram, and jkim#4421 on Discord are all Jordan Kim. Consolidate.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: ["RELATIONSHIP", "LIFE"],
         description: "4-platform identity merge",
@@ -87,7 +87,7 @@ export default scenario({
           "Jordan",
           "merge",
           "gmail",
-          "signal",
+          "whatsapp",
           "telegram",
           "discord",
         ],
@@ -126,7 +126,7 @@ export default scenario({
         contentIncludesAny: [
           "Jordan",
           "gmail",
-          "signal",
+          "whatsapp",
           "telegram",
           "discord",
         ],

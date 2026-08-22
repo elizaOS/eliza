@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_deployed_renderer_staging:
+        description: Run the credentialed deployed-Pages renderer proof for this staging release
+        required: false
+        type: boolean
+        default: false
     outputs:
       superseded:
         description: >-
@@ -1311,6 +1316,13 @@ jobs:
           # unset-toggle deletions in the queue loop above have already run.
           verify_webhook_gateway_binding_candidates || exit 1
 
+          # STEWARD_API_URL is environment-scoped auth routing authority. A
+          # stale protected staging candidate must never overwrite the recovered
+          # staging Worker with production Steward while all health probes keep
+          # returning 200. Blank means preserve the unreadable existing Worker
+          # binding; a configured candidate must match the canonical upstream.
+          node "$CHECKOUT_DIR/packages/cloud/scripts/verify-steward-upstream-binding.mjs"
+
           # Wrangler deploy accepts this JSON additively: named values are
           # committed in the same Worker version as the exact source, while
           # omitted preserve-only bindings remain untouched. This also recovers
@@ -1907,6 +1919,8 @@ jobs:
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
+    outputs:
+      pages_deployed: ${{ steps.pages-deploy.outputs.deployed }}
     steps:
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
@@ -2257,13 +2271,17 @@ jobs:
           node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
+        id: pages-deploy
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_AUTHORITY_FILE: ${{ runner.temp }}/pages-deployment-authority/pages-deployment-authority.json
           PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
           PAGES_PROJECT: eliza-app
+          PAGES_ALIAS: https://develop.eliza-app.pages.dev
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
           EVENT_NAME: ${{ github.event_name }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
@@ -2272,6 +2290,18 @@ jobs:
         # ignore wrangler.toml — which silently drops the `functions/` upload.
         run: |
           set -euo pipefail
+          umask 077
+          wrangler_output="$RUNNER_TEMP/pages-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.ndjson"
+          mkdir -p "$(dirname "$PAGES_AUTHORITY_FILE")"
+          chmod 700 "$(dirname "$PAGES_AUTHORITY_FILE")"
+          : > "$wrangler_output"
+          chmod 600 "$wrangler_output"
+          cleanup_wrangler_output() {
+            : > "$wrangler_output" 2>/dev/null || true
+            rm -f -- "$wrangler_output"
+          }
+          trap cleanup_wrangler_output EXIT
+          trap 'exit 1' HUP INT TERM
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
@@ -2285,7 +2315,47 @@ jobs:
           fi
           for attempt in 1 2 3; do
             recheck_canonical_source
-            if bunx wrangler@4.100.0 pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
+            : > "$wrangler_output"
+            chmod 600 "$wrangler_output"
+            deploy_succeeded=false
+            if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+              if WRANGLER_OUTPUT_FILE_PATH="$wrangler_output" \
+                bunx wrangler@4.100.0 pages deploy \
+                  --project-name="$PAGES_PROJECT" \
+                  --branch="$PAGES_BRANCH" \
+                  --commit-hash="$GITHUB_SHA" \
+                  --commit-dirty=false; then
+                deploy_succeeded=true
+              fi
+            else
+              if bunx wrangler@4.100.0 pages deploy \
+                --project-name="$PAGES_PROJECT" \
+                --branch="$PAGES_BRANCH" \
+                --commit-hash="$GITHUB_SHA" \
+                --commit-dirty=false; then
+                deploy_succeeded=true
+              fi
+            fi
+            if [ "$deploy_succeeded" = "true" ]; then
+              if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+                pages_alias="$(node "$CHECKOUT_DIR/packages/cloud/scripts/pages-deployment-authority.mjs" parse \
+                  --input "$wrangler_output" \
+                  --output "$PAGES_AUTHORITY_FILE" \
+                  --expected-project "$PAGES_PROJECT" \
+                  --expected-commit "$GITHUB_SHA" \
+                  --expected-branch "$PAGES_BRANCH" \
+                  --expected-alias "$PAGES_ALIAS" \
+                  --expected-environment preview \
+                  --expected-production-branch main \
+                  --run-id "$GITHUB_RUN_ID" \
+                  --run-attempt "$GITHUB_RUN_ATTEMPT")"
+                [ "$pages_alias" = "$PAGES_ALIAS" ] || {
+                  echo "::error::Closed Pages authority returned an unexpected alias"
+                  exit 1
+                }
+                echo "alias=$pages_alias" >> "$GITHUB_OUTPUT"
+              fi
+              echo "deployed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             if [ "$attempt" = "3" ]; then
@@ -2304,10 +2374,19 @@ jobs:
           MARKETING_URL: ${{ (inputs.target_environment == 'production') && 'https://eliza.app' || 'https://staging.eliza.app' }}
           CLOUD_APP_URL: ${{ (inputs.target_environment == 'production') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
           API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          PAGES_ALIAS: ${{ steps.pages-deploy.outputs.alias }}
         run: |
           set -euo pipefail
 
-          for served_url in "$MARKETING_URL" "$CLOUD_APP_URL"; do
+          served_frontends=("$MARKETING_URL" "$CLOUD_APP_URL")
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            if [ "$PAGES_ALIAS" != "https://develop.eliza-app.pages.dev" ]; then
+              echo "::error::Staging byte verification requires the canonical Pages alias"
+              exit 1
+            fi
+            served_frontends+=("$PAGES_ALIAS")
+          fi
+          for served_url in "${served_frontends[@]}"; do
             node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
               --served-url "$served_url" \
               --dist packages/app/dist \
@@ -2371,8 +2450,18 @@ jobs:
             node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs \
               --base-url "$served_url" \
               --callback-url "$served_url/login" \
+              --environment "$DEPLOY_ENVIRONMENT" \
               --tenant-id "$tenant_id"
           done
+
+      - name: Publish closed Pages deployment authority
+        if: steps.cf.outputs.configured == 'true' && inputs.target_environment == 'staging' && steps.freshness.outputs.should_deploy == 'true' && steps.pages-deploy.outputs.deployed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pages-deployment-authority/pages-deployment-authority.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Clean temp checkout
         if: always()
@@ -2440,3 +2529,177 @@ jobs:
           node packages/cloud/scripts/verify-environment-routing-cli.mjs \
             --environment "${{ steps.env.outputs.environment }}" \
             --require-beacon
+
+  deployed-renderer-staging:
+    name: Verify deployed staging renderer (Pages alias)
+    needs: [deploy-app, verify-routing]
+    if: ${{ !cancelled() && inputs.target_environment == 'staging' && ((vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) }}
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    steps:
+      - name: Require one-shot staging release prerequisites
+        if: ${{ inputs.run_deployed_renderer_staging == true }}
+        env:
+          DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
+          PAGES_DEPLOYED: ${{ needs.deploy-app.outputs.pages_deployed }}
+          VERIFY_ROUTING_RESULT: ${{ needs.verify-routing.result }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_APP_RESULT" != "success" ] \
+            || [ "$PAGES_DEPLOYED" != "true" ] \
+            || [ "$VERIFY_ROUTING_RESULT" != "success" ]; then
+            echo "::error::One-shot deployed-renderer proof requires a successful fresh Pages deployment and routing verification. deploy-app=$DEPLOY_APP_RESULT pages-deployed=$PAGES_DEPLOYED verify-routing=$VERIFY_ROUTING_RESULT"
+            exit 1
+          fi
+
+      - name: Checkout exact released source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Initialize private proof paths
+        run: |
+          set -euo pipefail
+          umask 077
+          proof_dir="$RUNNER_TEMP/deployed-renderer-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$proof_dir"
+          chmod 700 "$proof_dir"
+          {
+            printf 'PROOF_DIR=%s\n' "$proof_dir"
+            printf 'AUTHORITY_PATH=%s/authority/pages-deployment-authority.json\n' "$proof_dir"
+            printf 'PREFLIGHT_PATH=%s/preflight.json\n' "$proof_dir"
+            printf 'REMOTE_SMOKE_PATH=%s/remote-smoke.json\n' "$proof_dir"
+            printf 'LATENCY_PATH=%s/latency.json\n' "$proof_dir"
+            printf 'CONTINUITY_PATH=%s/continuity.json\n' "$proof_dir"
+            printf 'POSTFLIGHT_PATH=%s/postflight.json\n' "$proof_dir"
+            printf 'DEPLOYED_PROOF_PATH=%s/deployed-proof.json\n' "$proof_dir"
+            printf 'RECEIPT_PATH=%s/cloud-staging-deployed-receipt.json\n' "$proof_dir"
+          } >> "$GITHUB_ENV"
+
+      - name: Download exact Pages deployment authority
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/deployed-renderer-proof-${{ github.run_id }}-${{ github.run_attempt }}/authority
+
+      - name: Verify public deployment before browser auth
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/pages-deployment-authority.mjs verify \
+            --authority "$AUTHORITY_PATH" \
+            --api-base https://api-staging.eliza.app \
+            --phase preflight \
+            --output "$PREFLIGHT_PATH"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
+
+      - name: Run deployed Personal identity, chat, and continuity trajectory
+        id: deployed-browser
+        working-directory: packages/app
+        env:
+          ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
+          ELIZA_UI_SMOKE_LIVE_STACK: "1"
+          ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
+          ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
+          ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
+          ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ github.sha }}
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          PLAYWRIGHT_NO_COPY_PROMPT: "1"
+        run: |
+          set -euo pipefail
+          key_without_whitespace="${ELIZAOS_CLOUD_API_KEY:-}"
+          key_without_whitespace="${key_without_whitespace//[[:space:]]/}"
+          if [ -z "$key_without_whitespace" ]; then
+            echo "::error::The deployed staging browser lane requires the staging Environment's ELIZAOS_CLOUD_API_KEY; refusing a green-by-skip run."
+            exit 1
+          fi
+          unset key_without_whitespace
+          mkdir -p "$PROOF_DIR"
+          chmod 700 "$PROOF_DIR"
+          rm -f -- "$REMOTE_SMOKE_PATH" "$LATENCY_PATH" "$CONTINUITY_PATH"
+          export ELIZA_UI_SMOKE_DEPLOYED_BROWSER_EVIDENCE_PATH="$REMOTE_SMOKE_PATH"
+          export ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH="$LATENCY_PATH"
+          export ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH="$CONTINUITY_PATH"
+          started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
+          set +e
+          bunx playwright test \
+            --config playwright.cloud-deployed.config.ts \
+            --project chromium \
+            test/ui-smoke/cloud-live.spec.ts
+          smoke_status=$?
+          set -e
+          completed_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
+          exit "$smoke_status"
+
+      - name: Verify public deployment after browser auth
+        if: ${{ always() && steps.deployed-browser.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/pages-deployment-authority.mjs verify \
+            --authority "$AUTHORITY_PATH" \
+            --api-base https://api-staging.eliza.app \
+            --phase postflight \
+            --output "$POSTFLIGHT_PATH"
+
+      - name: Close deployed renderer proof
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/pages-deployment-authority.mjs combine \
+            --authority "$AUTHORITY_PATH" \
+            --preflight "$PREFLIGHT_PATH" \
+            --remote-smoke "$REMOTE_SMOKE_PATH" \
+            --latency "$LATENCY_PATH" \
+            --continuity "$CONTINUITY_PATH" \
+            --postflight "$POSTFLIGHT_PATH" \
+            --output "$DEPLOYED_PROOF_PATH"
+
+      - name: Write deployed staging receipt
+        run: |
+          set -euo pipefail
+          latency_ms="$(bun packages/app/test/staging-cloud-chat-latency-evidence.ts "$LATENCY_PATH")"
+          continuity="$(bun packages/app/test/cloud-live-continuity-contract.ts "$CONTINUITY_PATH")"
+          [ "$continuity" = "verified" ] || {
+            echo "::error::Continuity evidence did not close"
+            exit 1
+          }
+          node packages/scripts/write-staging-cloud-receipt.mjs \
+            --output "$RECEIPT_PATH" \
+            --source-sha "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --outcome success \
+            --started-ms "${{ steps.deployed-browser.outputs.started_ms }}" \
+            --completed-ms "${{ steps.deployed-browser.outputs.completed_ms }}" \
+            --first-turn-latency-ms "$latency_ms" \
+            --continuity-evidence verified \
+            --deployed-proof-file "$DEPLOYED_PROOF_PATH"
+
+      - name: Upload closed deployed staging receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-cloud-staging-deployed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/deployed-renderer-proof-${{ github.run_id }}-${{ github.run_attempt }}/cloud-staging-deployed-receipt.json
+          if-no-files-found: error
+          retention-days: 7

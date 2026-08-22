@@ -302,10 +302,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   // Telegram
   { type: "GET", path: "/api/lifeops/connectors/telegram/status" },
   { type: "POST", path: "/api/lifeops/connectors/telegram/verify" },
-  // Signal
-  { type: "GET", path: "/api/lifeops/connectors/signal/status" },
-  { type: "GET", path: "/api/lifeops/connectors/signal/messages" },
-  { type: "POST", path: "/api/lifeops/connectors/signal/send" },
   // Discord
   { type: "GET", path: "/api/lifeops/connectors/discord/status" },
   { type: "POST", path: "/api/lifeops/connectors/discord/send" },

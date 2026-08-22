@@ -162,4 +162,47 @@ describe("POST trusted connector account routing", () => {
 		});
 		expect(postHandler).not.toHaveBeenCalled();
 	});
+
+	it("rejects an overlong post without truncating or dispatching it", async () => {
+		const postHandler = vi.fn(async () => undefined);
+		const runtime = {
+			agentId: "00000000-0000-0000-0000-000000000001",
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getPostConnectors: () => [
+				{
+					source: "bounded",
+					label: "Bounded feed",
+					capabilities: ["post"],
+					contexts: [],
+					contentShaping: { constraints: { maxLength: 12 } },
+					postHandler,
+				},
+			],
+		} as unknown as IAgentRuntime;
+		const message = {
+			id: "00000000-0000-0000-0000-0000000000aa",
+			roomId: "00000000-0000-0000-0000-0000000000bb",
+			entityId: "00000000-0000-0000-0000-0000000000cc",
+			agentId: runtime.agentId,
+			content: { text: "complete post with a required tail" },
+			createdAt: 1,
+		} as Memory;
+
+		const result = await postAction.handler(runtime, message, undefined, {
+			parameters: {
+				action: "send",
+				text: "complete post with a required tail",
+			},
+		});
+
+		expect(result).toMatchObject({
+			success: false,
+			data: {
+				error: "POST_CONTENT_TOO_LONG",
+				maxLength: 12,
+				actualLength: 34,
+			},
+		});
+		expect(postHandler).not.toHaveBeenCalled();
+	});
 });

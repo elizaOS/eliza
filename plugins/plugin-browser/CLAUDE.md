@@ -166,6 +166,7 @@ Plugin activation: `config.features.browser` must be truthy (object with `enable
 - **Bridge target availability** depends on `BrowserBridgeRouteService` being registered (by a plugin like plugin-personal-assistant) AND at least one companion being paired. The bridge target returns score `null` on mobile — it will not be selected there.
 - **Autofill-login is vault-gated.** The agent cannot bypass the `creds.<domain>.:autoallow` flag. Do not add fallback flows that prompt the user interactively — the action is designed for autonomous use only when pre-authorized.
 - **Companion auth headers.** Companion-scoped routes require `X-Browser-Bridge-Companion-Id` and `Authorization: Bearer <pairing-token>`. Legacy header names (`X-LifeOps-Browser-Companion-Id`, `x-eliza-browser-companion-id`) are not accepted.
+- **Companion status is complete.** `MANAGE_BROWSER_BRIDGE action=refresh` returns every paired companion and an exact count; do not silently cap or slice this model-facing inventory.
 - **Schema is in `browser` pg schema.** Do not use the `public` schema — the runtime migrator issues `CREATE SCHEMA IF NOT EXISTS browser` automatically.
 - **Bundle-safety guard in `src/index.ts`.** The double-import pattern (re-export + local binding in `__bundle_safety_*`) prevents Bun's tree-shaker from collapsing barrel `init` functions into empty functions on mobile. Do not remove it.
 - **`auto-enable.ts` must stay import-free.** The elizaOS auto-enable engine loads this module for every plugin at boot; it must not transitively import the plugin runtime.

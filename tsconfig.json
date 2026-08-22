@@ -76,7 +76,6 @@
       "@elizaos/plugin-phone": ["./plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["./plugins/plugin-phone/src/*"],
       "@elizaos/plugin-registry": ["./plugins/plugin-registry/src/index.ts"],
-      "@elizaos/plugin-signal": ["./plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "./plugins/plugin-task-coordinator/src/index.ts"
@@ -106,6 +105,9 @@
       ],
       "@elizaos/capacitor-appblocker": [
         "./plugins/plugin-native-appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-secure-store": [
+        "./plugins/plugin-native-secure-store/src/index.ts"
       ],
       "@elizaos/capacitor-bun-runtime": [
         "./plugins/plugin-native-bun-runtime/src/index.ts"

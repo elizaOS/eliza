@@ -3,8 +3,9 @@
  * section (`/settings#cloud-billing`) and the standalone `dashboard/billing`
  * console page.
  *
- * Fetches the current user/account (the `BillingTab` needs the billing identity
- * and seed credit balance), then renders the consumer billing controls. Internal
+ * Fetches the current user/account (the `BillingTab` needs a freshly confirmed
+ * billing identity), then renders the consumer billing controls. Balance and
+ * active compute come from the canonical billing snapshot v2. Internal
  * infrastructure quotas remain available to their owning diagnostics surfaces;
  * they are not part of the normal billing experience.
  * Wraps the subtree in {@link ConditionalWalletProviders} so the crypto
@@ -20,8 +21,9 @@ import {
   DashboardErrorState,
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
+import { useRef } from "react";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { BillingTab } from "./components/billing-tab";
+import { BillingTab, type CardCheckoutIntent } from "./components/billing-tab";
 import { useBillingUser } from "./data/billing-data";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
 
@@ -33,6 +35,10 @@ function wasCheckoutCanceled(): boolean {
 /** The billing surface, rendered by the Settings → Cloud billing section. */
 export function BillingSectionBody() {
   const t = useCloudT();
+  // This owner stays mounted while a membership refresh temporarily replaces
+  // BillingTab with its loading state. Keeping the checkout intent here lets an
+  // ambiguous Stripe request replay the same key after that normal remount.
+  const checkoutIntentStore = useRef<CardCheckoutIntent | null>(null);
   const {
     user,
     isLoading,
@@ -91,7 +97,7 @@ export function BillingSectionBody() {
           })}
         </div>
       ) : null}
-      <BillingTab user={user} />
+      <BillingTab user={user} checkoutIntentStore={checkoutIntentStore} />
     </ConditionalWalletProviders>
   );
 }

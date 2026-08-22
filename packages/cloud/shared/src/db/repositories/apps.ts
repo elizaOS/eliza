@@ -546,29 +546,73 @@ export class AppsRepository {
   }
 
   /**
-   * Creates a new app only if the owning organization is still under its app cap.
+   * Creates a provisional app only if the owning organization is still under its app cap.
    *
    * The organization row lock serializes concurrent app creates for one org in
    * Postgres, so parallel requests cannot all observe the same pre-insert count.
+   * The initial API key stays null until the admitted transaction mints and
+   * attaches it, so a quota loser cannot generate a credential first.
    */
-  async createIfOrganizationBelowLimit(data: NewApp, maxApps: number): Promise<App | undefined> {
-    return dbWrite.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${data.organization_id} FOR UPDATE`,
-      );
+  async createIfOrganizationBelowLimit(
+    data: Omit<NewApp, "api_key_id">,
+    maxApps: number,
+    tx: DbTransaction,
+  ): Promise<App | undefined> {
+    await tx.execute(
+      sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${data.organization_id} FOR NO KEY UPDATE`,
+    );
 
-      const [row] = await tx
-        .select({ count: count() })
-        .from(apps)
-        .where(eq(apps.organization_id, data.organization_id));
+    const [row] = await tx
+      .select({ count: count() })
+      .from(apps)
+      .where(eq(apps.organization_id, data.organization_id));
 
-      if ((row?.count ?? 0) >= maxApps) {
-        return undefined;
-      }
+    if ((row?.count ?? 0) >= maxApps) {
+      return undefined;
+    }
 
-      const [app] = await tx.insert(apps).values(data).returning();
-      return app;
-    });
+    const [app] = await tx
+      .insert(apps)
+      .values({ ...data, api_key_id: null })
+      .returning();
+    return app;
+  }
+
+  /**
+   * Attaches one usable ordinary key owned by the admitted app's creator.
+   *
+   * The correlated ownership and lifecycle predicates keep this repository
+   * boundary fail-closed even when it is called outside `AppsService.create`.
+   */
+  async attachInitialApiKey(
+    appId: string,
+    organizationId: string,
+    apiKeyId: string,
+    tx: DbTransaction,
+  ): Promise<App | undefined> {
+    const [app] = await tx
+      .update(apps)
+      .set({ api_key_id: apiKeyId })
+      .where(
+        and(
+          eq(apps.id, appId),
+          eq(apps.organization_id, organizationId),
+          isNull(apps.api_key_id),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${apiKeys}
+            WHERE ${apiKeys.id} = ${apiKeyId}
+              AND ${apiKeys.organization_id} = ${apps.organization_id}
+              AND ${apiKeys.user_id} = ${apps.created_by_user_id}
+              AND ${apiKeys.is_active} = TRUE
+              AND ${apiKeys.deleted_at} IS NULL
+              AND ${apiKeys.source_app_id} IS NULL
+              AND (${apiKeys.expires_at} IS NULL OR ${apiKeys.expires_at} > CURRENT_TIMESTAMP)
+          )`,
+        ),
+      )
+      .returning();
+    return app;
   }
 
   /**
