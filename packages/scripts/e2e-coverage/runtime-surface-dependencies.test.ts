@@ -621,6 +621,22 @@ describe("runtime surface dependency catalog", () => {
         "@elizaos/plugin-anthropic-proxy:service:anthropic-proxy",
       ).dependencyDisposition,
     ).toBe("mock-missing");
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-anthropic",
+        "model-handler",
+        undefined,
+        "@elizaos/plugin-anthropic:model-handler:text_small",
+      ).dependencyDisposition,
+    ).toBe("mock-missing");
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-anthropic",
+        "model-handler",
+        undefined,
+        "@elizaos/plugin-anthropic:model-handler:image_description",
+      ).dependencyDisposition,
+    ).toBe("mock-owned");
   });
 
   test("the committed catalog is versioned and records its closed design reference", () => {
@@ -630,7 +646,7 @@ describe("runtime surface dependency catalog", () => {
       pullRequest: 23185,
       head: "0f14c26c6ae4b28771d984c32e8d1fd79c7929ee",
     });
-    expect(committed.rules).toHaveLength(55);
+    expect(committed.rules).toHaveLength(56);
     expect(Object.keys(committed.localPackages)).toHaveLength(0);
     expect(committed.rules.every((rule) => Array.isArray(rule.kinds))).toBe(
       true,

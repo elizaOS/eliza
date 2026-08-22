@@ -149,8 +149,26 @@
       "packageName": "@elizaos/plugin-anthropic",
       "kinds": ["model-handler"],
       "surfaceIds": [
+        "@elizaos/plugin-anthropic:model-handler:image_description"
+      ],
+      "externalServices": [
+        {
+          "id": "anthropic-api",
+          "protocol": "Anthropic Messages API v1",
+          "mockOwner": "anthropic",
+          "mockSource": "packages/scenario-runner/test/mocks/environments/anthropic.json",
+          "mockContract": {
+            "kind": "mockoon-http",
+            "operations": [{ "method": "POST", "path": "v1/messages" }]
+          }
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-anthropic",
+      "kinds": ["model-handler"],
+      "surfaceIds": [
         "@elizaos/plugin-anthropic:model-handler:action_planner",
-        "@elizaos/plugin-anthropic:model-handler:image_description",
         "@elizaos/plugin-anthropic:model-handler:reasoning_large",
         "@elizaos/plugin-anthropic:model-handler:reasoning_small",
         "@elizaos/plugin-anthropic:model-handler:response_handler",
@@ -170,6 +188,11 @@
             "kind": "mockoon-http",
             "operations": [{ "method": "POST", "path": "v1/messages" }]
           }
+        },
+        {
+          "id": "claude-code-cli",
+          "protocol": "Claude Code CLI subprocess transport",
+          "missingMockReason": "The text-family handlers can invoke the production claude CLI, which the HTTP Mockoon fixture cannot own or reset."
         }
       ]
     },
