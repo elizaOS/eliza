@@ -15710,10 +15710,11 @@ export class DefaultMessageService implements IMessageService {
 		// in-memory adapter defaults that read to 20 rows, so a successful
 		// per-id loop left the rest of the channel intact. deleteAllMemories
 		// is the adapter contract for "this room, this table, all rows".
-		const totalCount = await runtime.countMemories({
+		const observedCountBeforeDelete = await runtime.countMemories({
 			roomIds: [roomId],
 			tableName: "messages",
 			unique: false,
+			agentId: runtime.agentId,
 		});
 		await runtime.deleteAllMemories([roomId], "messages");
 
@@ -15722,8 +15723,7 @@ export class DefaultMessageService implements IMessageService {
 				src: "service:message",
 				agentId: runtime.agentId,
 				channelId,
-				deletedCount: totalCount,
-				totalCount,
+				observedCountBeforeDelete,
 			},
 			"Cleared message memories from channel",
 		);
