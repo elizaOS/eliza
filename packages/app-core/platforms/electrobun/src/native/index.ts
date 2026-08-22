@@ -11,7 +11,6 @@ import { getFusedWakeManager } from "./fused-wake";
 import { getGatewayDiscovery } from "./gateway";
 import { getGpuWindowManager } from "./gpu-window";
 import { getLocationManager } from "./location";
-import { getMusicPlayerManager } from "./music-player";
 import { getPermissionManager } from "./permissions";
 import { getScreenCaptureManager } from "./screencapture";
 import { isStewardLocalEnabled, stopSteward } from "./steward";
@@ -65,7 +64,6 @@ async function disposeNativeModulesOnce(): Promise<void> {
     ["swabble", getSwabbleManager()],
     ["fused-wake", getFusedWakeManager()],
     ["talkmode", getTalkModeManager()],
-    ["music-player", getMusicPlayerManager()],
   ] as const;
 
   // Stop steward sidecar if it was running

@@ -119,9 +119,7 @@ async function installAuthenticatedPersonalRoutes(
               ? { views: [] }
               : pathname.endsWith("/api/browser-workspace")
                 ? { mode: "web", tabs: [] }
-                : pathname.endsWith("/music-player/status")
-                  ? { available: false }
-                  : [];
+                : [];
     await route.fulfill({
       status: 200,
       contentType: "application/json",
