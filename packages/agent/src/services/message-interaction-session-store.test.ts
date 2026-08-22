@@ -709,6 +709,7 @@ describe("FileMessageInteractionSessionStore", () => {
     });
     await expect(store.deleteExpired(now)).rejects.toMatchObject({
       code: "INTERACTION_STORE_RECOVERY_REQUIRED",
+      context: { markerPath: `${lockPath}.transition` },
     });
     expect(await fs.readFile(`${lockPath}.transition`, "utf8")).toBe(marker);
     await expect(
@@ -758,11 +759,17 @@ describe("FileMessageInteractionSessionStore", () => {
     await expect(Promise.allSettled([first, second])).resolves.toMatchObject([
       {
         status: "rejected",
-        reason: { code: "INTERACTION_STORE_RECOVERY_REQUIRED" },
+        reason: {
+          code: "INTERACTION_STORE_RECOVERY_REQUIRED",
+          context: { markerPath: `${lockPath}.transition` },
+        },
       },
       {
         status: "rejected",
-        reason: { code: "INTERACTION_STORE_RECOVERY_REQUIRED" },
+        reason: {
+          code: "INTERACTION_STORE_RECOVERY_REQUIRED",
+          context: { markerPath: `${lockPath}.transition` },
+        },
       },
     ]);
     expect(await fs.readFile(`${lockPath}.transition`, "utf8")).toBe(marker);
@@ -856,7 +863,11 @@ describe("FileMessageInteractionSessionStore", () => {
     });
     await expect(store.deleteExpired(now)).rejects.toMatchObject({
       code: "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED",
-      context: { committed: false, retrySafeAfterRecovery: true },
+      context: {
+        committed: false,
+        markerPath: `${lockPath}.transition`,
+        retrySafeAfterRecovery: true,
+      },
     });
     await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();
@@ -865,6 +876,91 @@ describe("FileMessageInteractionSessionStore", () => {
         path.join(stateDirectory, "message-interaction-sessions.v1.json"),
       ),
     ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves validation failure when transition cleanup also fails", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "dead-owner-validation-error",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeTransitionValidation: async () => {
+          throw new Error("primary validation failure");
+        },
+        beforeTransitionAbortCleanup: async () => {
+          throw new Error("secondary marker cleanup failure");
+        },
+      },
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED",
+      cause: { message: "primary validation failure" },
+      context: {
+        cleanupError: "secondary marker cleanup failure",
+        committed: false,
+        markerPath: `${lockPath}.transition`,
+        retrySafeAfterRecovery: true,
+      },
+    });
+    expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();
+  });
+
+  it("types cleanup failure after transition validation mismatch", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const staleIdentity = await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "dead-owner-validation-mismatch",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
+    let replacementIdentity = "";
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeTransitionValidation: async () => {
+          await fs.rename(lockPath, `${lockPath}.retired-${staleIdentity}`);
+          replacementIdentity = await writeLock(lockPath, {
+            pid: process.pid,
+            processIdentity: null,
+            token: "replacement-owner",
+            createdAt: now,
+            expiresAt: now + 30_000,
+          });
+        },
+        beforeTransitionAbortCleanup: async () => {
+          throw new Error("mismatch marker cleanup failure");
+        },
+      },
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED",
+      context: {
+        cleanupError: "mismatch marker cleanup failure",
+        committed: false,
+        markerPath: `${lockPath}.transition`,
+      },
+    });
+    expect(await lockIdentity(lockPath)).toBe(replacementIdentity);
+    expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();
   });
 
   it("reports a committed mutation whose transition cleanup fails", async () => {
@@ -894,7 +990,11 @@ describe("FileMessageInteractionSessionStore", () => {
       code: "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED",
       message:
         "Interaction transaction committed but transition cleanup failed; stop all store users before recovery.",
-      context: { committed: true, retrySafeAfterRecovery: false },
+      context: {
+        committed: true,
+        markerPath: `${lockPath}.transition`,
+        retrySafeAfterRecovery: false,
+      },
     });
     await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();
@@ -913,6 +1013,7 @@ describe("FileMessageInteractionSessionStore", () => {
       }),
     ).rejects.toMatchObject({
       code: "INTERACTION_STORE_RECOVERY_REQUIRED",
+      context: { markerPath: `${lockPath}.transition` },
     });
     expect(await fs.readFile(filePath, "utf8")).toBe(committedState);
   });

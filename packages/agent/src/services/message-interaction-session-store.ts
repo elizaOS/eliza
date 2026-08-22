@@ -45,6 +45,8 @@ interface LockRaceHooks {
   beforePublicationCandidateValidation?: () => Promise<void>;
   beforeStaleRetire?: () => Promise<void>;
   beforeReleaseRetire?: () => Promise<void>;
+  beforeTransitionValidation?: () => Promise<void>;
+  beforeTransitionAbortCleanup?: () => Promise<void>;
   beforeLockUnlink?: () => Promise<void>;
   beforeTransitionMarkerCleanup?: () => Promise<void>;
 }
@@ -455,6 +457,39 @@ export class FileMessageInteractionSessionStore
     return `${entry.dev}-${entry.ino}`;
   }
 
+  private transitionRecoveryContext(marker: string): Record<string, unknown> {
+    return {
+      markerPath: marker,
+      recovery:
+        "Stop all store users, verify no process owns the lock, remove markerPath, fsync its parent directory, then restart.",
+    };
+  }
+
+  private transitionCleanupError(
+    marker: string,
+    phase: "recovery" | "release",
+    cleanupError: unknown,
+    primaryError?: unknown,
+  ): ElizaError {
+    return new ElizaError("Interaction transition marker cleanup failed.", {
+      code:
+        phase === "recovery"
+          ? "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED"
+          : "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
+      cause: primaryError ?? cleanupError,
+      context: {
+        ...this.transitionRecoveryContext(marker),
+        ...(phase === "recovery"
+          ? { committed: false, retrySafeAfterRecovery: true }
+          : {}),
+        cleanupError:
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError),
+      },
+    });
+  }
+
   private async beginLockTransition(
     lockIdentity: string,
   ): Promise<string | null> {
@@ -510,13 +545,33 @@ export class FileMessageInteractionSessionStore
     if (!marker) return false;
     let valid: boolean;
     try {
+      await this.lockRaceHooks.beforeTransitionValidation?.();
       valid = await validate();
-    } catch (error) {
-      await fs.rm(marker, { force: true });
-      throw error;
+    } catch (primaryError) {
+      try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
+        await fs.rm(marker, { force: true });
+      } catch (cleanupError) {
+        // error-policy:J2 Preserve the validation failure while exposing the
+        // fail-closed marker and its exact offline recovery procedure.
+        throw this.transitionCleanupError(
+          marker,
+          phase,
+          cleanupError,
+          primaryError,
+        );
+      }
+      throw primaryError;
     }
     if (!valid) {
-      await fs.rm(marker, { force: true });
+      try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
+        await fs.rm(marker, { force: true });
+      } catch (cleanupError) {
+        // error-policy:J2 A failed validation grants no detach authority; an
+        // uncleared marker is a typed outage rather than a raw teardown error.
+        throw this.transitionCleanupError(marker, phase, cleanupError);
+      }
       return false;
     }
     try {
@@ -537,20 +592,7 @@ export class FileMessageInteractionSessionStore
     } catch (error) {
       // error-policy:J2 The lock is already detached, so acquisition or release
       // must surface the fail-closed marker instead of permitting a successor.
-      throw new ElizaError(
-        "Interaction lock detached but transition cleanup failed.",
-        {
-          code:
-            phase === "recovery"
-              ? "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED"
-              : "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
-          cause: error,
-          context:
-            phase === "recovery"
-              ? { committed: false, retrySafeAfterRecovery: true }
-              : undefined,
-        },
-      );
+      throw this.transitionCleanupError(marker, phase, error);
     }
     return true;
   }
@@ -818,9 +860,11 @@ export class FileMessageInteractionSessionStore
       }
     }
     if (await existsLstat(`${this.lockPath}.transition`)) {
+      const marker = `${this.lockPath}.transition`;
       storeError(
         "INTERACTION_STORE_RECOVERY_REQUIRED",
         "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+        this.transitionRecoveryContext(marker),
       );
     }
     return storeError(
@@ -855,9 +899,11 @@ export class FileMessageInteractionSessionStore
       await delay(this.pollMs);
     }
     if (await existsLstat(`${this.lockPath}.transition`)) {
+      const marker = `${this.lockPath}.transition`;
       storeError(
         "INTERACTION_STORE_RECOVERY_REQUIRED",
         "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+        this.transitionRecoveryContext(marker),
       );
     }
     storeError(
@@ -1090,7 +1136,11 @@ export class FileMessageInteractionSessionStore
         {
           code: "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED",
           cause: releaseError,
-          context: { committed: true, retrySafeAfterRecovery: false },
+          context: {
+            ...releaseError.context,
+            committed: true,
+            retrySafeAfterRecovery: false,
+          },
         },
       );
     }

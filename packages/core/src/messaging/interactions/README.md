@@ -126,7 +126,10 @@ have an absolute recovery ceiling and unqualified live PIDs fail closed. An
 abandoned transition marker reports `INTERACTION_STORE_RECOVERY_REQUIRED` and
 requires operator recovery after stopping every store user and verifying that
 no host process owns the store; it is never reclaimed through a racy pathname
-unlink and has no bounded automatic recovery.
+unlink and has no bounded automatic recovery. The typed error reports the exact
+marker in `context.markerPath`. Offline recovery is: stop every store user,
+verify no process owns the adjacent `.lock` file, remove exactly the reported
+`.transition` path, fsync its parent directory, then restart.
 Cleanup failures distinguish pre-operation recovery (`committed: false`) from
 post-commit release (`committed: true`) with separate error codes so a caller
 never retries an already committed mutation.
