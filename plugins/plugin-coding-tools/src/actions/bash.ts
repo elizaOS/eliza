@@ -39,7 +39,9 @@ import {
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import {
   persistShellOutputArtifact,
+  readShellOutputArtifactPage,
   type ShellOutputArtifact,
+  type ShellOutputArtifactStream,
 } from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
@@ -76,7 +78,8 @@ type ShellActionSubaction =
   | "poll_background"
   | "write_background"
   | "kill_background"
-  | "list_background";
+  | "list_background"
+  | "read_output_artifact";
 
 interface CryptoSpotAsset {
   symbol: string;
@@ -312,6 +315,10 @@ function normalizeShellSubaction(
     case "background_list":
     case "sessions":
       return "list_background";
+    case "artifact":
+    case "read_artifact":
+    case "read_output_artifact":
+      return "read_output_artifact";
     default:
       return "run";
   }
@@ -1158,12 +1165,15 @@ function shellArtifactResultData(
   if (!artifact) return {};
   return {
     output_artifact_handle: artifact.handle,
-    output_artifact_path: artifact.manifestPath,
-    output_artifact_stdout_path: artifact.stdoutPath,
-    output_artifact_stderr_path: artifact.stderrPath,
     output_artifact_created_at: artifact.createdAt,
     output_artifact_expires_at: artifact.expiresAt,
     output_artifact_retention_ms: artifact.retentionMs,
+    output_artifact_retrieval: {
+      action: "read_output_artifact",
+      handle: artifact.handle,
+      streams: ["stdout", "stderr"],
+      max_characters_per_page: 20_000,
+    },
     output_truncation: {
       model_character_limit: MODEL_FACING_SHELL_OUTPUT_CHARS,
       stdout: artifact.stdout,
@@ -1202,13 +1212,13 @@ export function boundedShellText(
   }
   const notice = [
     `[output truncated; complete redacted artifact ${artifact.handle}]`,
-    `manifest: ${artifact.manifestPath}`,
-    `stdout: ${artifact.stdoutPath} (${artifact.stdout.bytes} bytes, ${artifact.stdout.lines} lines)`,
-    `stderr: ${artifact.stderrPath} (${artifact.stderr.bytes} bytes, ${artifact.stderr.lines} lines)`,
+    `retrieve: SHELL action=read_output_artifact handle=${artifact.handle} artifact_stream=stdout artifact_offset=0`,
+    `stdout: ${artifact.stdout.bytes} bytes, ${artifact.stdout.lines} lines`,
+    `stderr: ${artifact.stderr.bytes} bytes, ${artifact.stderr.lines} lines`,
     `expires: ${artifact.expiresAt}`,
   ].join("\n");
-  // State roots are operator-configurable. Bound an unusually long notice
-  // independently while the structured result retains every complete path.
+  // Bound the notice independently so even future opaque-handle formats cannot
+  // consume the planner's entire model-facing shell-output budget.
   const boundedNotice = truncateToHardLimit(
     notice,
     Math.floor(MODEL_FACING_SHELL_OUTPUT_CHARS / 2),
@@ -1232,19 +1242,20 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands, retrieve complete redacted foreground output by artifact handle, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
   descriptionCompressed:
-    "Run shell commands; start/poll/write/kill/list background sessions; clear/view history.",
+    "Run shell commands; page output artifacts; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
     {
       name: "action",
       description:
-        "Shell operation: run | start_background | poll_background | write_background | kill_background | list_background | clear_history | view_history.",
+        "Shell operation: run | read_output_artifact | start_background | poll_background | write_background | kill_background | list_background | clear_history | view_history.",
       required: false,
       schema: {
         type: "string",
         enum: [
           "run",
+          "read_output_artifact",
           "start_background",
           "poll_background",
           "write_background",
@@ -1305,9 +1316,30 @@ export const shellAction: Action = {
     {
       name: "handle",
       description:
-        "Stable background shell handle returned by action=start_background.",
+        "Opaque handle returned by action=start_background or by a truncated foreground output artifact.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "artifact_stream",
+      description:
+        "For action=read_output_artifact: redacted stream to retrieve.",
+      required: false,
+      schema: { type: "string", enum: ["stdout", "stderr"] },
+    },
+    {
+      name: "artifact_offset",
+      description:
+        "For action=read_output_artifact: next character offset returned by the prior page; defaults to 0.",
+      required: false,
+      schema: { type: "number", minimum: 0 },
+    },
+    {
+      name: "artifact_limit",
+      description:
+        "For action=read_output_artifact: page size in characters, capped at 20000.",
+      required: false,
+      schema: { type: "number", minimum: 2, maximum: 20000 },
     },
     {
       name: "stdin",
@@ -1355,6 +1387,63 @@ export const shellAction: Action = {
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)
       : "run";
+
+    if (subaction === "read_output_artifact") {
+      if (!message.roomId) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "no roomId",
+        });
+      }
+      const handle = readStringParam(options, "handle");
+      if (!handle) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "read_output_artifact requires 'handle'",
+        });
+      }
+      const requestedStream = readStringParam(options, "artifact_stream");
+      if (requestedStream !== "stdout" && requestedStream !== "stderr") {
+        return failureToActionResult({
+          reason: "invalid_param",
+          message:
+            "read_output_artifact requires artifact_stream=stdout or stderr",
+        });
+      }
+      const page = await readShellOutputArtifactPage({
+        handle,
+        stream: requestedStream as ShellOutputArtifactStream,
+        offset: readNonNegativeOffset(options, "artifact_offset"),
+        limit: readNumberParam(options, "artifact_limit"),
+        requesterAgentId: String(runtime.agentId),
+        requesterConversationId: String(message.roomId),
+      });
+      if (!page.ok) {
+        return failureToActionResult({
+          reason:
+            page.reason === "invalid_handle" ? "invalid_param" : "path_blocked",
+          message: page.message,
+        });
+      }
+      const value = page.value;
+      const text = [
+        `Shell artifact ${value.handle} ${value.stream} characters ${value.startOffset}..${value.endOffset} of ${value.totalCharacters} complete=${value.complete}`,
+        value.text
+          ? `--- ${value.stream} ---\n${value.text}`
+          : `--- ${value.stream} ---\n(empty)`,
+      ].join("\n");
+      if (callback) {
+        await callback({
+          text: fencePreformatted(capTranscriptForChat(text)),
+          source: "coding-tools",
+        });
+      }
+      return successActionResult(text, {
+        actionName: "SHELL",
+        [CANONICAL_SUBACTION_KEY]: "read_output_artifact",
+        ...value,
+      });
+    }
 
     if (subaction === "clear_history" || subaction === "view_history") {
       const shellHistoryService = getShellHistoryService(runtime);
@@ -1969,6 +2058,8 @@ export const shellAction: Action = {
           signal,
           modelCharacterLimit: MODEL_FACING_SHELL_OUTPUT_CHARS,
           modelCharacters: MODEL_FACING_SHELL_OUTPUT_CHARS,
+          ownerAgentId: String(runtime.agentId),
+          ownerConversationId: conversationId,
         });
       } catch (err) {
         // error-policy:J1 artifact persistence is part of the SHELL result

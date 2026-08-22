@@ -12,7 +12,7 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 - **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
 - **READ / WRITE / EDIT** — strict, operation-specific schemas for direct coding loops. They delegate to the same FILE handlers and preserve its sandbox, stale-file, secret, and size checks.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **SHELL** — `action=run` executes a command via `/bin/bash -c`; oversized foreground results return an opaque handle whose complete redacted stdout/stderr can be paged with `read_output_artifact` only by the same agent and conversation; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Providers
@@ -127,8 +127,11 @@ Foreground SHELL transcripts shown to the planner are capped at 50,000
 characters. When that cap is reached, the action writes the complete redacted
 stdout and stderr plus a manifest under
 `ELIZA_STATE_DIR/coding-tools/shell-output/<handle>/`, returns the handle and
-paths with byte/line counts, and leaves the bounded preview in the tool result.
-Artifact directories are owner-only (`0700`) and files are `0600`. They use
+byte/line counts, and leaves the bounded preview in the tool result. The action
+does not disclose state-root paths. `action=read_output_artifact` retrieves a
+bounded stdout or stderr page only when the opaque handle's persisted agent and
+conversation scope match the requesting turn. Artifact directories are
+owner-only (`0700`) and files are `0600`. They use
 `SHELL_JOB_TTL_MS` (30 minutes by default) and expired handles are removed
 opportunistically when the next truncated foreground result is persisted.
 

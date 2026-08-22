@@ -121,6 +121,7 @@ async function withShellTimeoutEnv<T>(
 
 interface RuntimeOptions {
   blockedPaths?: string;
+  workspaceRoots?: string;
   shellTimeoutMs?: unknown;
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
@@ -151,6 +152,8 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const settings: Record<string, unknown> = {};
   if (opts.blockedPaths)
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
+  if (opts.workspaceRoots)
+    settings.CODING_TOOLS_WORKSPACE_ROOTS = opts.workspaceRoots;
   if (opts.shellTimeoutMs !== undefined)
     settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
   if (opts.backgroundBufferChars !== undefined) {
@@ -643,10 +646,11 @@ describeIfPosix("shellAction", () => {
     expect(bounded.truncated).toBe(true);
     expect(bounded.text.length).toBeLessThanOrEqual(50_000);
     expect(bounded.text).toContain("shell_worst_case_notice");
-    expect(bounded.text).toContain("manifest: /state/nested-segment/");
+    expect(bounded.text).toContain("action=read_output_artifact");
+    expect(bounded.text).not.toContain("/state/nested-segment/");
   });
 
-  it("persists complete redacted output for a truncated real foreground shell", async () => {
+  it("retrieves complete redacted output through an authorized opaque handle", async () => {
     const stateDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-shell-artifact-"),
     );
@@ -655,29 +659,38 @@ describeIfPosix("shellAction", () => {
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.SHELL_JOB_TTL_MS = "60000";
     const artifactRoot = path.join(stateDir, "coding-tools", "shell-output");
+    const workspace = path.join(stateDir, "workspace");
     const staleArtifact = path.join(artifactRoot, "shell_stale");
     const secret = "marigold9-artifact-secret";
     try {
+      await fs.mkdir(workspace, { recursive: true });
       await fs.mkdir(staleArtifact, { recursive: true });
       await fs.writeFile(path.join(staleArtifact, "stdout.txt"), "stale");
       const staleDate = new Date(Date.now() - 120_000);
       await fs.utimes(staleArtifact, staleDate, staleDate);
-      const { runtime } = await makeRuntime({ configuredSecret: secret });
+      const { runtime, sandbox } = await makeRuntime({
+        configuredSecret: secret,
+        workspaceRoots: workspace,
+      });
       const script = [
         `process.stdout.write(${JSON.stringify("row\n")}.repeat(14000));`,
         `process.stdout.write(${JSON.stringify(secret)});`,
         `process.stderr.write(${JSON.stringify("stderr-tail\n")});`,
       ].join("");
 
+      const message = makeMessage();
       const result = requireActionResult(
-        await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        await shellAction.handler?.(runtime, message, undefined, {
           command: `node -e ${JSON.stringify(script)}`,
+          cwd: workspace,
         }),
       );
       const data = result.data as Record<string, unknown>;
-      const manifestPath = data.output_artifact_path as string;
-      const stdoutPath = data.output_artifact_stdout_path as string;
-      const stderrPath = data.output_artifact_stderr_path as string;
+      const handle = data.output_artifact_handle as string;
+      const artifactDirectory = path.join(artifactRoot, handle);
+      const manifestPath = path.join(artifactDirectory, "manifest.json");
+      const stdoutPath = path.join(artifactDirectory, "stdout.txt");
+      const stderrPath = path.join(artifactDirectory, "stderr.txt");
       const stdout = await fs.readFile(stdoutPath, "utf8");
       const stderr = await fs.readFile(stderrPath, "utf8");
       const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
@@ -691,6 +704,9 @@ describeIfPosix("shellAction", () => {
       expect(result.text).toContain("complete redacted artifact shell_");
       expect(data.output_truncated).toBe(true);
       expect(data.output_artifact_handle).toMatch(/^shell_/);
+      expect(data).not.toHaveProperty("output_artifact_path");
+      expect(data).not.toHaveProperty("output_artifact_stdout_path");
+      expect(data).not.toHaveProperty("output_artifact_stderr_path");
       expect(stdout).toBe(`${"row\n".repeat(14000)}[REDACTED:TEST_SECRET]`);
       expect(stderr).toBe("stderr-tail\n");
       expect(JSON.stringify(result)).not.toContain(secret);
@@ -711,6 +727,62 @@ describeIfPosix("shellAction", () => {
       expect(manifest.truncation.completeBytes).toBe(
         Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
       );
+      await expect(
+        sandbox.validatePath(String(message.roomId), manifestPath),
+      ).resolves.toMatchObject({ ok: false });
+
+      const retrieveStream = async (stream: "stdout" | "stderr") => {
+        let offset = 0;
+        let complete = false;
+        let retrieved = "";
+        while (!complete) {
+          const page = requireActionResult(
+            await shellAction.handler?.(runtime, message, undefined, {
+              action: "read_output_artifact",
+              handle,
+              artifact_stream: stream,
+              artifact_offset: offset,
+              artifact_limit: 20_000,
+            }),
+          );
+          expect(page.success).toBe(true);
+          const pageData = page.data as Record<string, unknown>;
+          expect(pageData.handle).toBe(handle);
+          expect(pageData.stream).toBe(stream);
+          expect(pageData.startOffset).toBe(offset);
+          retrieved += pageData.text as string;
+          offset = pageData.nextOffset as number;
+          complete = pageData.complete as boolean;
+        }
+        return retrieved;
+      };
+
+      expect(await retrieveStream("stdout")).toBe(stdout);
+      expect(await retrieveStream("stderr")).toBe(stderr);
+
+      const crossRoom = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("99999999-aaaa-bbbb-cccc-222222222222"),
+          undefined,
+          {
+            action: "read_output_artifact",
+            handle,
+            artifact_stream: "stdout",
+          },
+        ),
+      );
+      expect(crossRoom.success).toBe(false);
+      expect(JSON.stringify(crossRoom)).not.toContain("row\n");
+
+      const malformed = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "read_output_artifact",
+          handle: "../manifest.json",
+          artifact_stream: "stdout",
+        }),
+      );
+      expect(malformed.success).toBe(false);
       expect((await fs.stat(manifestPath)).mode & 0o777).toBe(0o600);
       expect((await fs.stat(path.dirname(manifestPath))).mode & 0o777).toBe(
         0o700,
