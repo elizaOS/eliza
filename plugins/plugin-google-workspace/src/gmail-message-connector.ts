@@ -26,6 +26,8 @@ import {
   type IAgentRuntime,
   type MessageConnectorRegistration,
   type MessageConnectorTarget,
+  renderContentInteractionsForConnector,
+  resolveFirstPartyInteractionProfile,
   type SendHandlerOutcome,
   type TargetInfo,
   toWellFormedUnicode,
@@ -259,11 +261,11 @@ async function sendGmailFromTarget(
     return account.error;
   }
 
-  const bodyText = String(content.text ?? "");
+  const bodyText = renderContentInteractionsForConnector(runtime, content).text;
   const sent = await service.sendGmailMessage({
     accountId: account.accountId,
     to: [recipient],
-    subject: subjectFromContent(content),
+    subject: subjectFromContent({ ...content, text: bodyText }),
     bodyText,
   });
 
@@ -304,6 +306,14 @@ export function createGmailMessageConnector(_runtime: IAgentRuntime): MessageCon
       aliases: ["email", "mail", "google mail"],
       service: GOOGLE_SERVICE_NAME,
     },
+    resolveInteractionProfile: (target, context) =>
+      resolveFirstPartyInteractionProfile({
+        source: GMAIL_MESSAGE_SOURCE,
+        defaultAccountId: context.accountId ?? target.accountId ?? "",
+        defaultTargetKind: "email",
+        target,
+        accountId: context.accountId,
+      }),
     resolveTargets: async (query): Promise<MessageConnectorTarget[]> => {
       const literal = emailLiteral(query);
       if (!literal) return [];

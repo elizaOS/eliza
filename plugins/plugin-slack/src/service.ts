@@ -27,6 +27,7 @@ import {
   type Content,
   checkPairingAllowed,
   createUniqueUuid,
+  decodeCallback,
   ElizaError,
   type EventPayload,
   EventType,
@@ -44,6 +45,7 @@ import {
   type MessagePayload,
   type Room,
   resolveAttachmentBytes,
+  resolveFirstPartyInteractionProfile,
   Service,
   stringToUuid,
   type TargetInfo,
@@ -414,6 +416,7 @@ import {
   resolveDefaultSlackAccountId,
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
+import { buildSlackInteractionPayload } from "./interactions";
 import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
@@ -645,6 +648,14 @@ export class SlackService extends Service implements ISlackService {
           maxMessageLength: MAX_SLACK_MESSAGE_LENGTH,
           ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
         },
+        resolveInteractionProfile: (target, context) =>
+          resolveFirstPartyInteractionProfile({
+            source: "slack",
+            defaultAccountId: normalizedAccountId ?? DEFAULT_ACCOUNT_ID,
+            defaultTargetKind: "channel",
+            target,
+            accountId: normalizedAccountId ?? context.accountId,
+          }),
         resolveTargets: (query, context) =>
           serviceInstance.resolveConnectorTargets(
             query,
@@ -977,6 +988,45 @@ export class SlackService extends Service implements ISlackService {
       }
       await this.handleMessage(
         message as SlackMessageEventType,
+        client,
+        accountId,
+        body,
+      );
+    });
+
+    app.action(/^eliza_interaction_/, async ({ action, ack, body, client }) => {
+      await ack();
+      const actionRecord = action as { value?: unknown };
+      const bodyRecord = body as {
+        user?: { id?: unknown };
+        channel?: { id?: unknown };
+        message?: { ts?: unknown; thread_ts?: unknown };
+      };
+      const decoded = decodeCallback(actionRecord.value);
+      const userId =
+        typeof bodyRecord.user?.id === "string" ? bodyRecord.user.id : "";
+      const channelId =
+        typeof bodyRecord.channel?.id === "string" ? bodyRecord.channel.id : "";
+      const messageTs =
+        typeof bodyRecord.message?.ts === "string" ? bodyRecord.message.ts : "";
+      if (!decoded || !userId || !channelId || !messageTs) {
+        this.runtime.logger.warn(
+          { src: "plugin:slack", accountId, channelId, userId },
+          "Ignoring malformed Slack interaction callback",
+        );
+        return;
+      }
+      await this.handleMessage(
+        {
+          channel: channelId,
+          user: userId,
+          text: decoded.value,
+          ts: messageTs,
+          thread_ts:
+            typeof bodyRecord.message?.thread_ts === "string"
+              ? bodyRecord.message.thread_ts
+              : undefined,
+        } as SlackMessageEventType,
         client,
         accountId,
         body,
@@ -2587,7 +2637,8 @@ export class SlackService extends Service implements ISlackService {
       throw new Error("Slack client not initialized");
     }
 
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const interactionPayload = buildSlackInteractionPayload(runtime, content);
+    const text = interactionPayload.text.trim();
     const outboundAttachments = Array.isArray(content.attachments)
       ? content.attachments.filter((media) => Boolean(media?.url))
       : [];
@@ -2633,21 +2684,39 @@ export class SlackService extends Service implements ISlackService {
       );
     }
 
-    if (text) {
-      await this.sendMessage(
-        channelId,
-        text,
-        {
-          threadTs,
-          replyBroadcast: undefined,
-          unfurlLinks: undefined,
-          unfurlMedia: undefined,
-          mrkdwn: undefined,
-          attachments: undefined,
-          blocks: undefined,
-        },
-        accountId,
-      );
+    if (text || interactionPayload.blocks.length > 0) {
+      try {
+        await this.sendMessage(
+          channelId,
+          text || "Choose an option.",
+          {
+            threadTs,
+            replyBroadcast: undefined,
+            unfurlLinks: undefined,
+            unfurlMedia: undefined,
+            mrkdwn: undefined,
+            attachments: undefined,
+            blocks:
+              interactionPayload.blocks.length > 0
+                ? interactionPayload.blocks
+                : undefined,
+          },
+          accountId,
+        );
+      } catch (cause) {
+        if (interactionPayload.blocks.length === 0) throw cause;
+        // error-policy:J2 Preserve provider rejection while identifying the
+        // interaction-specific delivery boundary for an actionable fallback.
+        throw new ElizaError("Slack rejected the native interaction payload.", {
+          code: "SLACK_INTERACTION_PROVIDER_REJECTED",
+          context: {
+            accountId,
+            channelId,
+            outcome: interactionPayload.outcome,
+          },
+          cause,
+        });
+      }
     }
 
     if (outboundAttachments.length > 0) {
@@ -3678,7 +3747,7 @@ export class SlackService extends Service implements ISlackService {
     let lastTs = "";
     const sentMessages: Array<{ ts: string; text: string }> = [];
 
-    for (const msg of messages) {
+    for (const [messageIndex, msg] of messages.entries()) {
       type SlackPostMessageArgs = Parameters<
         typeof client.chat.postMessage
       >[0] & {
@@ -3705,7 +3774,7 @@ export class SlackService extends Service implements ISlackService {
       if (options?.attachments) {
         messageArgs.attachments = options.attachments;
       }
-      if (options?.blocks) {
+      if (options?.blocks && messageIndex === messages.length - 1) {
         messageArgs.blocks = options.blocks;
       }
 

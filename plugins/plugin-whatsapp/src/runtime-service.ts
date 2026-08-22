@@ -19,15 +19,20 @@
 import {
   ChannelType,
   type Content,
+  createConnectorInteractionCapabilityProfile,
   createUniqueUuid,
+  decodeCallback,
   ElizaError,
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
   type Media,
   type Memory,
   type Room,
+  renderContentInteractionsForConnector,
+  resolveFirstPartyInteractionProfile,
   Service,
   type UUID,
+  WHATSAPP_CONVERSATIONAL_INTERACTION_PROFILE,
 } from "@elizaos/core";
 import {
   assertUniqueWhatsAppAccountIds,
@@ -48,6 +53,7 @@ import {
   type InboundClaimState,
   tryClaim,
 } from "./inbound-claim";
+import { renderWhatsAppInteractions } from "./interactions";
 import {
   chunkWhatsAppText,
   isWhatsAppGroupJid,
@@ -63,6 +69,7 @@ import type {
   ConnectionStatus,
   NormalizedMessage,
   WhatsAppIncomingMessage,
+  WhatsAppInteractiveMessage,
   WhatsAppMediaMessage,
   WhatsAppMessageResponse,
   WhatsAppWebhookEvent,
@@ -525,18 +532,22 @@ function extractWebhookText(message: WhatsAppIncomingMessage): string {
     return message.text.body.trim();
   }
 
-  if (
-    typeof message.interactive?.button_reply?.title === "string" &&
-    message.interactive.button_reply.title.trim()
-  ) {
-    return message.interactive.button_reply.title.trim();
+  const buttonReply = message.interactive?.button_reply;
+  if (buttonReply) {
+    const decoded = decodeCallback(buttonReply.id);
+    if (decoded) return decoded.value;
+    if (typeof buttonReply.title === "string" && buttonReply.title.trim()) {
+      return buttonReply.title.trim();
+    }
   }
 
-  if (
-    typeof message.interactive?.list_reply?.title === "string" &&
-    message.interactive.list_reply.title.trim()
-  ) {
-    return message.interactive.list_reply.title.trim();
+  const listReply = message.interactive?.list_reply;
+  if (listReply) {
+    const decoded = decodeCallback(listReply.id);
+    if (decoded) return decoded.value;
+    if (typeof listReply.title === "string" && listReply.title.trim()) {
+      return listReply.title.trim();
+    }
   }
 
   if (
@@ -741,18 +752,42 @@ export class WhatsAppConnectorService extends Service {
           transport: config?.transport ?? service.config?.transport ?? "unconfigured",
           connected: service.connected,
         },
+        resolveInteractionProfile: (target, context) =>
+          config?.transport === "cloudapi"
+            ? resolveFirstPartyInteractionProfile({
+                source: "whatsapp",
+                defaultAccountId: connectorAccountId,
+                defaultTargetKind: "phone",
+                target,
+                accountId: registrationAccountId ?? context.accountId,
+              })
+            : createConnectorInteractionCapabilityProfile({
+                template: WHATSAPP_CONVERSATIONAL_INTERACTION_PROFILE,
+                source: "whatsapp",
+                accountId: registrationAccountId ?? context.accountId ?? connectorAccountId,
+                targetKind: "phone",
+                targetId: String(
+                  target.threadId ?? target.channelId ?? target.entityId ?? target.roomId ?? ""
+                ),
+              }),
         sendHandler: async (
           _runtime: IAgentRuntime,
           target: ConnectorTargetInfo,
           content: ConnectorContent
         ) => {
-          const text = typeof content.text === "string" ? content.text.trim() : "";
+          const interaction =
+            config?.transport === "cloudapi"
+              ? renderWhatsAppInteractions(runtime, content)
+              : undefined;
+          const text = (
+            interaction?.text ?? renderContentInteractionsForConnector(runtime, content).text
+          ).trim();
           const attachments = Array.isArray(content.attachments)
             ? content.attachments.filter(
                 (media) => typeof media?.url === "string" && media.url.trim().length > 0
               )
             : [];
-          if (!text && attachments.length === 0) {
+          if (!text && !interaction?.interactive && attachments.length === 0) {
             return;
           }
 
@@ -777,7 +812,14 @@ export class WhatsAppConnectorService extends Service {
             }
           }
 
-          if (text) {
+          if (interaction?.interactive) {
+            await service.sendInteractiveMessage(
+              resolved.accountId,
+              resolved.chatId,
+              interaction.interactive,
+              replyToMessageId
+            );
+          } else if (text) {
             for (const chunk of chunkWhatsAppText(text)) {
               await service.sendMessage({
                 accountId: resolved.accountId,
@@ -1399,7 +1441,7 @@ export class WhatsAppConnectorService extends Service {
       };
 
       const callback = async (content: Content): Promise<Memory[]> => {
-        const text = typeof content.text === "string" ? content.text.trim() : "";
+        const text = renderContentInteractionsForConnector(this.runtime, content).text.trim();
         if (!text) {
           return [];
         }
@@ -1565,6 +1607,44 @@ export class WhatsAppConnectorService extends Service {
       message.replyToMessageId,
       message.accountId
     );
+  }
+
+  async sendInteractiveMessage(
+    accountId: string | null | undefined,
+    to: string,
+    content: WhatsAppInteractiveMessage,
+    replyToMessageId?: string
+  ): Promise<WhatsAppMessageResponse> {
+    const normalizedAccountId = this.resolveAccountId(accountId);
+    const client = this.getClientForAccount(normalizedAccountId);
+    const config = this.getConfigForAccount(normalizedAccountId);
+    if (!client || !config) throw new Error("WhatsApp client is not initialized");
+    if (config.transport !== "cloudapi") {
+      throw new ElizaError("WhatsApp interactive controls require Cloud API transport.", {
+        code: "WHATSAPP_INTERACTION_TRANSPORT_UNAVAILABLE",
+        context: { accountId: normalizedAccountId, transport: config.transport },
+      });
+    }
+    let response: unknown;
+    try {
+      response = await client.sendMessage({
+        type: "interactive",
+        to: normalizeCloudApiSendTarget(to),
+        content,
+        replyToMessageId,
+      });
+    } catch (cause) {
+      // error-policy:J2 Preserve the Cloud API failure as a typed native-render
+      // outcome so callers can choose the semantic text fallback deliberately.
+      throw new ElizaError("WhatsApp rejected the native interaction payload.", {
+        code: "WHATSAPP_INTERACTION_PROVIDER_REJECTED",
+        context: { accountId: normalizedAccountId },
+        cause,
+      });
+    }
+    return "data" in (response as { data?: unknown })
+      ? (response as { data: WhatsAppMessageResponse }).data
+      : (response as WhatsAppMessageResponse);
   }
 
   /** Coarse content type → WhatsApp media message kind. */

@@ -33,6 +33,7 @@ import {
   type MessageConnectorUserContext,
   readResponseWithLimit,
   resolveAttachmentBytes,
+  resolveFirstPartyInteractionProfile,
   Service,
   ServiceType,
   type TargetInfo,
@@ -703,6 +704,13 @@ export class IMessageService extends Service implements IIMessageService {
         accountSemantics: "local-macos-messages-single-account",
         status: statusMetadata(service.getStatus()),
       },
+      resolveInteractionProfile: (target) =>
+        resolveFirstPartyInteractionProfile({
+          source: "imessage",
+          defaultAccountId: IMESSAGE_LOCAL_ACCOUNT_ID,
+          defaultTargetKind: "user",
+          target,
+        }),
       sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
         const accountId = assertLocalIMessageAccount(readTargetAccountId(target));
         const text = renderIMessageInteractionText(content, resolveInteractionAppBaseUrl(runtime));
