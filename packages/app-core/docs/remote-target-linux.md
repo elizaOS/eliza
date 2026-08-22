@@ -1,14 +1,16 @@
-# Linux remote-control target
+# Desktop remote-control target
 
-The Electrobun Linux app can enroll itself as an account-owned remote target,
-activate a controller session with the six-digit pairing code, and process
-opaque Cloud relay commands without giving Cloud access to command plaintext.
+The Electrobun desktop app can enroll macOS, Windows, or Linux as an
+account-owned remote target, activate a controller session with the six-digit
+pairing code, and process opaque Cloud relay commands without giving Cloud
+access to command plaintext. This filename is retained for documentation-link
+compatibility; it no longer defines a Linux-only identity model.
 
 ## Native trust boundary
 
 Enrollment runs in the Electrobun main process. The owner access token is used
 only for the enrollment request and owner/host confirmation. The one-time host
-bearer returned by Cloud is written directly to the Linux Secret Service with
+bearer returned by Cloud is written directly to platform secure storage with
 the target's private P-256 signing and encryption keys. None of those values is
 returned to the renderer, placed in a URL, or written to the durable journal.
 
@@ -18,7 +20,8 @@ or fragments are rejected. Requests have a ten-second deadline and response
 bodies are streamed into a one-MiB bound. Host enrollment recovery first lists
 the authenticated owner's hosts and requests credential rotation only when the
 device id, name, platform, connection mode, key id, and both public JWKs match
-exactly.
+exactly. A legacy identity record with no platform reads as Linux, but an
+existing identity cannot silently move between desktop platforms.
 
 ## Command lifecycle
 

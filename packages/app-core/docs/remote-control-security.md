@@ -153,3 +153,41 @@ Cloud relays store only the opaque encrypted envelope plus routing metadata.
 They must validate the shared envelope shape and account/session ownership, but
 they do not decrypt messages and must not infer execution success from mailbox
 delivery.
+
+## SSH gateway and remote-host custody
+
+The remote Eliza API listens only on `127.0.0.1:2138`. The Mac gateway forwards
+only the allowlisted agent API path and strips renderer-supplied authorization
+and forwarded-host headers; settings and arbitrary local APIs are denied.
+
+A `SHA256:` SSH host fingerprint verified through an independent channel is
+mandatory. There is no trust-on-first-use fallback, and a changed host key is
+rejected. Private keys remain in the Mac secure store and are never copied to
+the controller phone, Cloud, lifecycle receipts, logs, or managed-network
+records.
+
+SSH setup and removal are serialized and restart-safe. Public lifecycle
+receipts contain only the version, profile identifier, phase, and timestamps
+needed to resume cleanup. They never contain a private key path, credential,
+fingerprint, or target address. An active profile cannot be removed underneath
+a running tunnel.
+
+## Managed-network compensation
+
+Headscale configuration accepts HTTPS endpoints, or loopback HTTP for local
+tests only. Pre-auth keys are one-use, non-ephemeral, tagged, and limited to 15
+minutes. Only the numeric pre-auth key identifier and cleanup status are stored;
+the secret key is not persisted.
+
+Database success followed by Headscale failure revokes host authority and
+records retryable compensation. Repeated cleanup, missing keys or nodes, and
+process restart are idempotent. Transport cleanup can lag without restoring
+revoked command authority.
+
+## Evidence boundary
+
+Mocks, PGlite, disposable PostgreSQL or `sshd`, Simulator, an HTTP health check,
+and a successful build each prove a distinct local boundary. None proves a
+deployed isolated tenant, real Headscale compensation, signing, a physical
+phone, a second Mac, or a user VPS. Native port 50001 belongs to the separate
+macOS candidate and is outside this lane.
