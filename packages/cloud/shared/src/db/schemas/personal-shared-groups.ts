@@ -16,6 +16,7 @@ import { users } from "./users";
 export type PersonalSharedGroupPlatform = "telegram" | "blooio";
 export type PersonalSharedGroupBindingState = "active" | "suspended" | "revoked";
 export type PersonalSharedGroupResponsePolicy = "mention_only" | "ambient";
+export type PersonalSharedGroupDeliveryAttemptState = "committed" | "uncertain" | "reconciled";
 
 export const personalSharedGroupClaims = pgTable(
   "personal_shared_group_claims",
@@ -147,10 +148,60 @@ export const personalSharedGroupDeliveryReceipts = pgTable(
   }),
 );
 
+export const personalSharedGroupDeliveryAttempts = pgTable(
+  "personal_shared_group_delivery_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    binding_id: uuid("binding_id")
+      .notNull()
+      .references(() => personalSharedGroupBindings.id, { onDelete: "cascade" }),
+    platform: text("platform").$type<PersonalSharedGroupPlatform>().notNull(),
+    project: text("project").notNull(),
+    connector_account_id: text("connector_account_id").notNull(),
+    provider_chat_id: text("provider_chat_id").notNull(),
+    source_message_id: text("source_message_id").notNull(),
+    lease_token: uuid("lease_token").notNull(),
+    state: text("state").$type<PersonalSharedGroupDeliveryAttemptState>().notNull(),
+    committed_at: timestamp("committed_at", { withTimezone: true }).notNull(),
+    uncertain_at: timestamp("uncertain_at", { withTimezone: true }),
+    reconciled_at: timestamp("reconciled_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    platform_check: check(
+      "personal_shared_group_delivery_attempts_platform_check",
+      sql`${table.platform} IN ('telegram', 'blooio')`,
+    ),
+    state_check: check(
+      "personal_shared_group_delivery_attempts_state_check",
+      sql`${table.state} IN ('committed', 'uncertain', 'reconciled')`,
+    ),
+    state_timestamps_check: check(
+      "personal_shared_group_delivery_attempts_state_timestamps_check",
+      sql`(${table.state} = 'committed' AND ${table.uncertain_at} IS NULL AND ${table.reconciled_at} IS NULL)
+        OR (${table.state} = 'uncertain' AND ${table.uncertain_at} IS NOT NULL AND ${table.reconciled_at} IS NULL)
+        OR (${table.state} = 'reconciled' AND ${table.reconciled_at} IS NOT NULL)`,
+    ),
+    binding_source_unique: uniqueIndex(
+      "personal_shared_group_delivery_attempts_binding_source_uidx",
+    ).on(table.binding_id, table.source_message_id),
+    binding_token_unique: uniqueIndex(
+      "personal_shared_group_delivery_attempts_binding_token_uidx",
+    ).on(table.binding_id, table.lease_token),
+    state_committed_idx: index("personal_shared_group_delivery_attempts_state_committed_idx").on(
+      table.state,
+      table.committed_at,
+    ),
+  }),
+);
+
 export type PersonalSharedGroupClaim = InferSelectModel<typeof personalSharedGroupClaims>;
 export type NewPersonalSharedGroupClaim = InferInsertModel<typeof personalSharedGroupClaims>;
 export type PersonalSharedGroupBinding = InferSelectModel<typeof personalSharedGroupBindings>;
 export type NewPersonalSharedGroupBinding = InferInsertModel<typeof personalSharedGroupBindings>;
 export type PersonalSharedGroupDeliveryReceipt = InferSelectModel<
   typeof personalSharedGroupDeliveryReceipts
+>;
+export type PersonalSharedGroupDeliveryAttempt = InferSelectModel<
+  typeof personalSharedGroupDeliveryAttempts
 >;
