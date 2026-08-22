@@ -256,6 +256,67 @@ describe("gateway webhook handler e2e routing", () => {
     );
     await waitFor(() => adapter.replies.length === 1, "personal Shared reply");
     expect(adapter.replies).toEqual(["same personal Eliza"]);
+    await waitFor(
+      () => [...redis.store.values()].includes("delivered"),
+      "durable delivered state",
+    );
+  });
+
+  test("persists an ambiguous provider failure and refuses an unsafe replay", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM-uncertain-egress" });
+    const adapter = createAdapter(event);
+    adapter.sendReply = mock(async () => {
+      throw new DOMException("provider receipt timed out", "TimeoutError");
+    });
+    let sharedRequests = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        sharedRequests += 1;
+        return Response.json({ success: true, data: { reply: "send once" } });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const first = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+    expect(first.status).toBe(200);
+
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+    await waitFor(
+      () => redis.store.get(dedupKey) === "uncertain",
+      "durable uncertain state",
+    );
+
+    const replay = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+    expect(replay.status).toBe(503);
+    expect(await replay.json()).toEqual({
+      error: "delivery outcome uncertain",
+    });
+    expect(adapter.sendReply).toHaveBeenCalledTimes(1);
+    expect(sharedRequests).toBe(1);
   });
 
   test("routes an unresolved Blooio iMessage to the same phone Shared path", async () => {
