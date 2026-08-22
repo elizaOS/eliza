@@ -10,6 +10,7 @@
  * @module api/orchestrator-routes
  */
 
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   deleteBuiltApp,
@@ -33,7 +34,10 @@ import type {
   TaskProviderPolicy,
 } from "../services/orchestrator-task-types.js";
 import { buildOrchestratorWidgetSnapshot } from "../services/orchestrator-widget-contract.js";
-import { AdmissionQueueFullError } from "../services/types.js";
+import {
+  AdmissionQueueFullError,
+  createSubscriptionExecutionAuthorization,
+} from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import {
   asBoolean,
@@ -1130,6 +1134,13 @@ async function dispatchOrchestratorRoutes(
         let task: TaskThreadDetailDto | null;
         try {
           task = await service.spawnAgentForTask(taskId, {
+            subscriptionExecutionAuthorization:
+              createSubscriptionExecutionAuthorization(
+                "interactive-task-control",
+                typeof req.headers?.["x-request-id"] === "string"
+                  ? req.headers["x-request-id"]
+                  : randomUUID(),
+              ),
             framework: asString(body.framework),
             providerSource: asString(body.providerSource),
             model: asString(body.model),

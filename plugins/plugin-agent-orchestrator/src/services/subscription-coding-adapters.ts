@@ -8,6 +8,7 @@ import { accessSync, constants, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { ElizaError } from "@elizaos/core";
+import { parse as parseToml } from "smol-toml";
 import type { SubscriptionExecutionMode } from "./types.js";
 
 export const SUBSCRIPTION_CODING_ADAPTER_IDS = ["kimi", "grok"] as const;
@@ -83,6 +84,14 @@ export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<
       "ELIZA_KIMI_API_KEY",
       "ELIZA_KIMI_CODING_API_KEY",
       "ELIZA_MOONSHOT_API_KEY",
+      "KIMI_CODE_BASE_URL",
+      "KIMI_CODE_OAUTH_HOST",
+      "KIMI_OAUTH_HOST",
+      "KIMI_CODE_CUSTOM_HEADERS",
+      "KIMI_WEB_SEARCH_API_KEY",
+      "KIMI_WEB_SEARCH_BASE_URL",
+      "KIMI_WEB_FETCH_API_KEY",
+      "KIMI_WEB_FETCH_BASE_URL",
     ],
     requiresUserAttended: true,
   },
@@ -115,6 +124,21 @@ export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<
       "OPENAI_MODEL",
       "ELIZA_XAI_API_KEY",
       "ELIZA_GROK_API_KEY",
+      "GROK_AUTH",
+      "GROK_AUTH_PATH",
+      "GROK_AUTH_PROVIDER_COMMAND",
+      "GROK_AUTH_PROVIDER_LABEL",
+      "GROK_OIDC_ISSUER",
+      "GROK_OIDC_CLIENT_ID",
+      "GROK_OIDC_SCOPES",
+      "GROK_OIDC_AUDIENCE",
+      "GROK_OAUTH2_ISSUER",
+      "GROK_OAUTH2_CLIENT_ID",
+      "GROK_OAUTH2_SCOPES",
+      "GROK_OAUTH2_PRINCIPAL_TYPE",
+      "GROK_OAUTH2_PRINCIPAL_ID",
+      "GROK_OAUTH2_REFERRER",
+      "GROK_LOCAL_AUTH",
     ],
     requiresUserAttended: false,
   },
@@ -126,6 +150,7 @@ export type SubscriptionAdapterProbeStatus =
   | "platform-unsupported"
   | "auth-required"
   | "auth-expired"
+  | "billing-conflict"
   | "execution-policy-blocked"
   | "transport-unsupported";
 
@@ -145,6 +170,7 @@ export type SubscriptionCodingAdapterErrorCode =
   | "CODING_SUBSCRIPTION_PLATFORM_UNSUPPORTED"
   | "CODING_SUBSCRIPTION_AUTH_REQUIRED"
   | "CODING_SUBSCRIPTION_AUTH_EXPIRED"
+  | "CODING_SUBSCRIPTION_BILLING_CONFLICT"
   | "CODING_SUBSCRIPTION_EXECUTION_POLICY_BLOCKED"
   | "CODING_SUBSCRIPTION_TRANSPORT_UNSUPPORTED"
   | "CODING_SUBSCRIPTION_LOGIN_REVOKED"
@@ -183,11 +209,19 @@ export interface SubscriptionCodingAdapterProbeOptions {
 }
 
 interface LocalAuthProbe {
-  status: "authenticated" | "required" | "expired";
+  status: "authenticated" | "required" | "expired" | "billing-conflict";
   detail: string;
 }
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
+const GROK_EARLY_INVALIDATION_MS = 5 * 60 * 1_000;
+const GROK_DEFAULT_AUTH_SCOPE =
+  "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828";
+const GROK_LEGACY_AUTH_SCOPE = "https://accounts.x.ai/sign-in";
+const MAX_LOCAL_CONFIG_BYTES = 1024 * 1024;
+const KIMI_MANAGED_PROVIDER = "managed:kimi-code";
+const KIMI_MANAGED_OAUTH_KEY = "oauth/kimi-code";
+const KIMI_INCLUDED_PLAN_BASE_URL = "https://api.kimi.com/coding/v1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -209,6 +243,95 @@ function readJsonRecord(filePath: string): Record<string, unknown> | undefined {
   }
 }
 
+function readTomlRecord(filePath: string): Record<string, unknown> | undefined {
+  try {
+    if (statSync(filePath).size > MAX_LOCAL_CONFIG_BYTES) return undefined;
+    const parsed: unknown = parseToml(readFileSync(filePath, "utf8"));
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    // error-policy:J3 CLI configuration is untrusted local input. A missing,
+    // oversized, or malformed file is an explicit unusable-login result.
+    return undefined;
+  }
+}
+
+function recordString(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  return nonEmptyString(record[key]);
+}
+
+function hasNonEmptyRecordValue(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return Object.values(value).some((candidate) => {
+    if (typeof candidate === "string") return Boolean(candidate.trim());
+    return candidate !== undefined && candidate !== null;
+  });
+}
+
+function normalizedEndpoint(value: string | undefined): string | undefined {
+  return value?.replace(/\/+$/u, "");
+}
+
+function probeKimiManagedConfiguration(
+  root: string,
+):
+  | { status: "managed"; credentialKey: string }
+  | { status: "required" | "billing-conflict"; detail: string } {
+  const config = readTomlRecord(join(root, "config.toml"));
+  if (!config) {
+    return {
+      status: "required",
+      detail:
+        "Kimi Code config.toml is missing or invalid; run kimi login again.",
+    };
+  }
+  const defaultModel = recordString(config, "default_model");
+  const models = config.models;
+  const model =
+    defaultModel && isRecord(models) ? models[defaultModel] : undefined;
+  const providerName = isRecord(model)
+    ? recordString(model, "provider")
+    : undefined;
+  const providers = config.providers;
+  const provider =
+    providerName && isRecord(providers) ? providers[providerName] : undefined;
+  if (!defaultModel || !providerName || !isRecord(provider)) {
+    return {
+      status: "required",
+      detail:
+        "Kimi Code has no complete default model/provider selection; run kimi login again.",
+    };
+  }
+  const oauth = provider.oauth;
+  const credentialKey = isRecord(oauth)
+    ? recordString(oauth, "key")
+    : undefined;
+  const oauthStorage = isRecord(oauth)
+    ? recordString(oauth, "storage")
+    : undefined;
+  const directApiConfigured =
+    Boolean(recordString(provider, "api_key")) ||
+    hasNonEmptyRecordValue(provider.env) ||
+    hasNonEmptyRecordValue(provider.custom_headers) ||
+    normalizedEndpoint(recordString(provider, "base_url")) !==
+      KIMI_INCLUDED_PLAN_BASE_URL;
+  const managedOAuthSelected =
+    providerName === KIMI_MANAGED_PROVIDER &&
+    recordString(provider, "type") === "kimi" &&
+    oauthStorage === "file" &&
+    credentialKey === KIMI_MANAGED_OAUTH_KEY;
+  if (directApiConfigured || !managedOAuthSelected || !credentialKey) {
+    return {
+      status: "billing-conflict",
+      detail:
+        "Kimi Code's selected default model is not pinned to the managed OAuth provider; select the Kimi Code login model before spawning.",
+    };
+  }
+  return { status: "managed", credentialKey };
+}
+
 function probeKimiAuth(
   env: NodeJS.ProcessEnv,
   homeDir: string,
@@ -216,8 +339,11 @@ function probeKimiAuth(
 ): LocalAuthProbe {
   const root =
     nonEmptyString(env.KIMI_CODE_HOME) ?? join(homeDir, ".kimi-code");
+  const managed = probeKimiManagedConfiguration(root);
+  if (managed.status !== "managed") return managed;
+  const credentialName = managed.credentialKey.slice("oauth/".length);
   const credentials = readJsonRecord(
-    join(root, "credentials", "kimi-code.json"),
+    join(root, "credentials", `${credentialName}.json`),
   );
   const accessToken = nonEmptyString(credentials?.access_token);
   const refreshToken = nonEmptyString(credentials?.refresh_token);
@@ -242,12 +368,42 @@ function probeKimiAuth(
   };
 }
 
+function isGrokAuthRecord(value: unknown): value is Record<string, unknown> {
+  if (
+    !isRecord(value) ||
+    !nonEmptyString(value.key) ||
+    typeof value.user_id !== "string" ||
+    !nonEmptyString(value.create_time) ||
+    !Number.isFinite(Date.parse(String(value.create_time)))
+  ) {
+    return false;
+  }
+  const mode = nonEmptyString(value.auth_mode)?.toLowerCase();
+  if (
+    !mode ||
+    !["oidc", "web_login", "grok", "external", "api_key"].includes(mode)
+  ) {
+    return false;
+  }
+  const expiresAt = value.expires_at;
+  if (
+    expiresAt !== undefined &&
+    (typeof expiresAt !== "string" || !Number.isFinite(Date.parse(expiresAt)))
+  ) {
+    return false;
+  }
+  return (
+    value.refresh_token === undefined || typeof value.refresh_token === "string"
+  );
+}
+
 function isGrokSubscriptionAuth(
   value: unknown,
 ): value is Record<string, unknown> {
-  if (!isRecord(value) || !nonEmptyString(value.key)) return false;
-  const mode = nonEmptyString(value.auth_mode)?.toLowerCase();
-  return mode === "oidc" || mode === "web_login" || mode === "grok";
+  return (
+    isGrokAuthRecord(value) &&
+    nonEmptyString(value.auth_mode)?.toLowerCase() === "oidc"
+  );
 }
 
 function grokEntryExpired(
@@ -258,12 +414,17 @@ function grokEntryExpired(
   const expiresAt = nonEmptyString(entry.expires_at);
   if (expiresAt) {
     const parsed = Date.parse(expiresAt);
-    return Number.isFinite(parsed) && parsed <= nowMs;
+    return (
+      Number.isFinite(parsed) && parsed - GROK_EARLY_INVALIDATION_MS <= nowMs
+    );
   }
   const createdAt = nonEmptyString(entry.create_time);
   if (!createdAt) return false;
   const parsed = Date.parse(createdAt);
-  return Number.isFinite(parsed) && parsed + THIRTY_DAYS_MS <= nowMs;
+  return (
+    Number.isFinite(parsed) &&
+    parsed + THIRTY_DAYS_MS - GROK_EARLY_INVALIDATION_MS <= nowMs
+  );
 }
 
 function probeGrokAuth(
@@ -273,14 +434,29 @@ function probeGrokAuth(
 ): LocalAuthProbe {
   const root = nonEmptyString(env.GROK_HOME) ?? join(homeDir, ".grok");
   const authMap = readJsonRecord(join(root, "auth.json"));
-  const sessions = Object.values(authMap ?? {}).filter(isGrokSubscriptionAuth);
-  if (sessions.length === 0) {
+  if (!authMap) {
     return {
       status: "required",
       detail: "Run grok login or grok login --device-auth.",
     };
   }
-  if (sessions.every((entry) => grokEntryExpired(entry, nowMs))) {
+  if (Object.values(authMap).some((entry) => !isGrokAuthRecord(entry))) {
+    return {
+      status: "required",
+      detail:
+        "Grok auth.json contains an invalid credential record; run grok login again.",
+    };
+  }
+  const selected =
+    authMap[GROK_DEFAULT_AUTH_SCOPE] ?? authMap[GROK_LEGACY_AUTH_SCOPE];
+  if (!isGrokSubscriptionAuth(selected)) {
+    return {
+      status: "required",
+      detail:
+        "The selected Grok OAuth record is missing, legacy, or invalid; run grok login again.",
+    };
+  }
+  if (grokEntryExpired(selected, nowMs)) {
     return {
       status: "expired",
       detail: "The local Grok login expired; run grok login again.",
@@ -424,7 +600,12 @@ export function probeSubscriptionCodingAdapter(
   if (auth.status !== "authenticated") {
     return {
       ...base,
-      status: auth.status === "expired" ? "auth-expired" : "auth-required",
+      status:
+        auth.status === "expired"
+          ? "auth-expired"
+          : auth.status === "billing-conflict"
+            ? "billing-conflict"
+            : "auth-required",
       installed: true,
       authenticated: false,
       spawnable: false,
@@ -453,6 +634,8 @@ function probeErrorCode(
       return "CODING_SUBSCRIPTION_AUTH_REQUIRED";
     case "auth-expired":
       return "CODING_SUBSCRIPTION_AUTH_EXPIRED";
+    case "billing-conflict":
+      return "CODING_SUBSCRIPTION_BILLING_CONFLICT";
     case "execution-policy-blocked":
       return "CODING_SUBSCRIPTION_EXECUTION_POLICY_BLOCKED";
     case "transport-unsupported":
@@ -501,6 +684,11 @@ export function stripSubscriptionApiEnvironment(
     removed.push(key);
   }
   for (const key of Object.keys(env)) {
+    if (adapterId === "kimi" && key.startsWith("KIMI_MODEL_")) {
+      delete env[key];
+      removed.push(key);
+      continue;
+    }
     if (!key.startsWith("ELIZA_MODEL_GATEWAY_")) continue;
     delete env[key];
     removed.push(key);

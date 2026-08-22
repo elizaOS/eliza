@@ -227,6 +227,9 @@ import {
   SessionCapError,
   type SessionInfo,
   type SpawnResult,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  type SubscriptionExecutionAuthorization,
+  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
@@ -404,6 +407,8 @@ export interface SpawnAgentForTaskOptions {
    * enqueuedAt and push the task to the back of its band.
    */
   parkOnCap?: boolean;
+  /** Interactive authority minted by the route/action boundary and persisted. */
+  subscriptionExecutionAuthorization?: SubscriptionExecutionAuthorization;
 }
 
 /**
@@ -555,6 +560,15 @@ function isSerializableSpawnOpts(
   ] as const) {
     const field = value[key];
     if (field !== undefined && typeof field !== "string") return false;
+  }
+  if (
+    value.subscriptionExecutionAuthorization !== undefined &&
+    !subscriptionExecutionAuthorizationFromMetadata({
+      subscriptionExecutionAuthorization:
+        value.subscriptionExecutionAuthorization,
+    })
+  ) {
+    return false;
   }
   return true;
 }
@@ -1396,6 +1410,8 @@ export class OrchestratorTaskService extends Service {
         workdir: persisted.workdir,
         model: link.model,
         approvalPreset: link.approvalPreset,
+        subscriptionExecutionAuthorization:
+          subscriptionExecutionAuthorizationFromMetadata(persisted.metadata),
         metadata: {
           ...persisted.metadata,
           taskId: link.orchestratorTaskId,
@@ -5272,6 +5288,20 @@ export class OrchestratorTaskService extends Service {
     // ambiguous value to the child.
     const traceEnv = this.buildChildTraceEnv(taskId);
 
+    const subscriptionExecutionAuthorization =
+      opts.subscriptionExecutionAuthorization ??
+      [...doc.sessions]
+        .reverse()
+        .map((session) =>
+          subscriptionExecutionAuthorizationFromMetadata(session.metadata),
+        )
+        .find(
+          (
+            authorization,
+          ): authorization is SubscriptionExecutionAuthorization =>
+            authorization !== undefined,
+        );
+
     const framework =
       opts.framework ??
       policy.preferredFramework ??
@@ -5304,6 +5334,7 @@ export class OrchestratorTaskService extends Service {
           task: opts.task,
           approvalPreset: opts.approvalPreset,
           providerSource: opts.providerSource ?? policy.providerSource,
+          subscriptionExecutionAuthorization,
         });
       }
       throw new WaveConcurrencyCapError(
@@ -5325,6 +5356,7 @@ export class OrchestratorTaskService extends Service {
         // vendored CLI. opencode remains available only as an explicit
         // selection (settings/routing/request).
         agentType: framework,
+        subscriptionExecutionAuthorization,
         workdir,
         initialTask: goalPrompt,
         model: opts.model ?? policy.model,
@@ -5383,6 +5415,7 @@ export class OrchestratorTaskService extends Service {
           task: opts.task,
           approvalPreset: opts.approvalPreset,
           providerSource: opts.providerSource ?? policy.providerSource,
+          subscriptionExecutionAuthorization,
         });
       }
       throw err;
@@ -5439,13 +5472,20 @@ export class OrchestratorTaskService extends Service {
       ...(traceEnv[TRACE_ENV.PARENT_STEP_ID]
         ? { parentTrajectoryStepId: traceEnv[TRACE_ENV.PARENT_STEP_ID] }
         : {}),
-      metadata:
-        orchestratorOwnedArtifacts.length > 0
+      metadata: {
+        ...(orchestratorOwnedArtifacts.length > 0
           ? {
               [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
                 orchestratorOwnedArtifacts,
             }
-          : {},
+          : {}),
+        ...(subscriptionExecutionAuthorization
+          ? {
+              [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+                subscriptionExecutionAuthorization,
+            }
+          : {}),
+      },
       createdAt: ts,
       updatedAt: ts,
     };
