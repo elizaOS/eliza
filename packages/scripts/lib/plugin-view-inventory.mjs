@@ -53,6 +53,119 @@ function repositoryFiles(repoRoot) {
     .sort(compareText);
 }
 
+function pluginPackageDirectory(source) {
+  const match = /^(plugins\/[^/]+)\//.exec(source);
+  return match?.[1] ?? null;
+}
+
+function elizaSourceTarget(value) {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return null;
+  if ("eliza-source" in value) return elizaSourceTarget(value["eliza-source"]);
+  for (const condition of ["import", "default", "types"]) {
+    const target = elizaSourceTarget(value[condition]);
+    if (target) return target;
+  }
+  return null;
+}
+
+function pluginSourceEntrypoints(repoRoot, directory, candidates) {
+  const manifestPath = path.resolve(repoRoot, directory, "package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const declared = new Set();
+  for (const [exportName, value] of Object.entries(manifest.exports ?? {})) {
+    if (exportName.includes("*")) continue;
+    const target = elizaSourceTarget(value);
+    if (target?.match(/\.(?:ts|tsx)$/)) declared.add(target);
+  }
+  if (typeof manifest.source === "string") declared.add(manifest.source);
+  if (typeof manifest.elizaos?.appRegister === "string") {
+    const register = manifest.elizaos.appRegister.replace(/^\.\//, "");
+    declared.add(
+      register.match(/\.(?:ts|tsx)$/) ? register : `./src/${register}.ts`,
+    );
+  }
+  const conventional = [
+    "./src/index.ts",
+    "./src/index.tsx",
+    "./src/index.node.ts",
+    "./index.ts",
+    "./index.node.ts",
+  ];
+  const entries = [];
+  const appendExisting = (targets) => {
+    for (const target of targets) {
+      const normalized = path.posix.normalize(
+        path.posix.join(directory, target.replace(/^\.\//, "")),
+      );
+      if (!normalized.startsWith(`${directory}/`)) {
+        throw new Error(
+          `[plugin-view-inventory] ${directory}/package.json source entrypoint escapes its package`,
+        );
+      }
+      if (
+        existsSync(path.resolve(repoRoot, normalized)) &&
+        !entries.includes(normalized)
+      ) {
+        entries.push(normalized);
+      }
+    }
+  };
+  appendExisting(declared);
+  if (entries.length === 0) appendExisting(conventional);
+  if (entries.length > 0) return entries;
+  if (candidates.length === 1) return candidates;
+  throw new Error(
+    `[plugin-view-inventory] ${directory}/package.json has no statically discoverable source entrypoint`,
+  );
+}
+
+function moduleDependencies(context) {
+  const dependencies = [];
+  for (const statement of context.sourceFile.statements) {
+    if (
+      (ts.isImportDeclaration(statement) ||
+        ts.isExportDeclaration(statement)) &&
+      statement.moduleSpecifier &&
+      ts.isStringLiteralLike(statement.moduleSpecifier)
+    ) {
+      const resolved = resolveRelativeImport(
+        context,
+        statement.moduleSpecifier.text,
+      );
+      if (resolved) dependencies.push(resolved);
+    }
+  }
+  return dependencies;
+}
+
+function runtimeReachablePluginFiles(repoRoot, files, cache) {
+  const byPackage = new Map();
+  for (const source of files.filter((file) => PLUGIN_SOURCE.test(file))) {
+    const directory = pluginPackageDirectory(source);
+    if (!directory) continue;
+    const candidates = byPackage.get(directory) ?? [];
+    candidates.push(source);
+    byPackage.set(directory, candidates);
+  }
+
+  const reachable = new Set();
+  for (const [directory, candidates] of byPackage) {
+    const pending = pluginSourceEntrypoints(repoRoot, directory, candidates);
+    while (pending.length > 0) {
+      const source = pending.pop();
+      if (!source || reachable.has(source)) continue;
+      if (!source.startsWith(`${directory}/`) || !PLUGIN_SOURCE.test(source)) {
+        continue;
+      }
+      reachable.add(source);
+      const context = parseSourceContext(repoRoot, source, cache);
+      pending.push(...moduleDependencies(context));
+    }
+  }
+  return reachable;
+}
+
 function unwrap(expression) {
   let current = expression;
   while (
@@ -187,6 +300,7 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
   ) {
     const declaration = context.functions.get(value.expression.text);
     const statements = declaration?.body?.statements;
+    const hasParameters = (declaration?.parameters.length ?? 0) > 0;
     const returns = statements?.filter((statement) =>
       ts.isReturnStatement(statement),
     );
@@ -210,7 +324,8 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
     if (
       returned &&
       ts.isObjectLiteralExpression(returned) &&
-      !hasExecutableStatement
+      !hasExecutableStatement &&
+      !(returnsViewComposition && hasParameters)
     ) {
       const key = `${context.source}:function:${value.expression.text}`;
       if (resolving.has(key)) {
@@ -599,6 +714,14 @@ function pluginOwner(repoRoot, source) {
 }
 
 function parseView(object, context, owner, builtin) {
+  const spread = object.properties.find((property) =>
+    ts.isSpreadAssignment(property),
+  );
+  if (spread) {
+    throw new Error(
+      `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, spread)} view entries may not use object spreads because runtime overwrite order must remain auditable`,
+    );
+  }
   const id = literalString(object, "id", context, { required: true });
   const label = literalString(object, "label", context, { required: true });
   const route = literalString(object, "path", context);
@@ -802,8 +925,10 @@ export function discoverPluginViewInventory({
 }) {
   const cache = new Map();
   const inventory = { views: [], sources: [] };
+  const reachablePlugins = runtimeReachablePluginFiles(repoRoot, files, cache);
   for (const source of files) {
     if (source !== BUILTIN_SOURCE && !PLUGIN_SOURCE.test(source)) continue;
+    if (source !== BUILTIN_SOURCE && !reachablePlugins.has(source)) continue;
     const context = parseSourceContext(repoRoot, source, cache);
     const parsed =
       source === BUILTIN_SOURCE

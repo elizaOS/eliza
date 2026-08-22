@@ -50,7 +50,7 @@ function addPlugin(
   write(
     root,
     `${directory}/package.json`,
-    `${JSON.stringify({ name: `@fixture/${name}` })}\n`,
+    `${JSON.stringify({ name: `@fixture/${name}`, source: "./src/plugin.ts" })}\n`,
   );
   const source = `${directory}/src/plugin.ts`;
   write(
@@ -66,7 +66,7 @@ function addPluginSource(root: string, name: string, contents: string) {
   write(
     root,
     `${directory}/package.json`,
-    `${JSON.stringify({ name: `@fixture/${name}` })}\n`,
+    `${JSON.stringify({ name: `@fixture/${name}`, source: "./src/plugin.ts" })}\n`,
   );
   const source = `${directory}/src/plugin.ts`;
   write(root, source, contents);
@@ -501,6 +501,113 @@ export const factoryPlugin: Plugin = createPlugin();\n`,
     expect(() => discover(root, [source])).toThrow(
       /exported Plugin factoryPlugin must resolve statically to an object literal/,
     );
+  });
+
+  test("rejects a zero-argument call whose factory has an effectful default parameter", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-default-parameter-factory",
+      `let activeViews = [${view("pre-default")}];
+function switchViews() { activeViews = [${view("runtime-default")}]; }
+function createPlugin(_effect = switchViews()): Plugin {
+  return {
+    name: "factory",
+    description: "fixture",
+    views: activeViews,
+  };
+}
+export const factoryPlugin: Plugin = createPlugin();\n`,
+    );
+
+    expect(() => discover(root, [source])).toThrow(
+      /exported Plugin factoryPlugin must resolve statically to an object literal/,
+    );
+  });
+
+  test("rejects view-entry spreads before or after audited identity fields", () => {
+    for (const declaration of [
+      `{
+        ...runtimeFields,
+        id: "audited-after-spread",
+        label: "audited-after-spread",
+        path: "/audited-after-spread",
+        modalities: ["gui"],
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "FixtureView",
+      }`,
+      `{
+        id: "audited-before-spread",
+        label: "audited-before-spread",
+        path: "/audited-before-spread",
+        modalities: ["gui"],
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "FixtureView",
+        ...runtimeFields,
+      }`,
+    ]) {
+      const root = makeRoot();
+      const source = addPluginSource(
+        root,
+        "plugin-view-spread",
+        `const runtimeFields = { id: "runtime", path: "/runtime" };
+export const plugin: Plugin = {
+  name: "view-spread",
+  description: "fixture",
+  views: [${declaration}],
+};\n`,
+      );
+      expect(() => discover(root, [source])).toThrow(
+        /view entries may not use object spreads/,
+      );
+    }
+  });
+
+  test("inventories only plugin manifests reachable from the package source entrypoint", () => {
+    const root = makeRoot();
+    const directory = "plugins/plugin-entry-reachability";
+    write(
+      root,
+      `${directory}/package.json`,
+      JSON.stringify({
+        name: "@fixture/plugin-entry-reachability",
+        exports: {
+          ".": {
+            "eliza-source": {
+              import: "./src/index.ts",
+            },
+          },
+        },
+      }),
+    );
+    const index = `${directory}/src/index.ts`;
+    const runtime = `${directory}/src/runtime.ts`;
+    const legacy = `${directory}/src/legacy.ts`;
+    write(root, index, 'export { runtimePlugin } from "./runtime.js";\n');
+    write(
+      root,
+      runtime,
+      `export const runtimePlugin: Plugin = {
+  name: "runtime",
+  description: "fixture",
+  views: [${view("runtime-reachable")}],
+};\n`,
+    );
+    write(
+      root,
+      legacy,
+      `export const legacyPlugin: Plugin = {
+  name: "legacy",
+  description: "fixture",
+  views: [${view("legacy-unreachable")}],
+};\n`,
+    );
+
+    const inventory = discover(root, [index, runtime, legacy]);
+    expect(inventory.views.map((entry) => entry.id)).toEqual([
+      "builtin",
+      "runtime-reachable",
+    ]);
   });
 
   test("rejects plugin composition that could hide runtime views", () => {
