@@ -40,9 +40,7 @@ function shouldUseMemoryTestProvider(): boolean {
   );
 }
 
-export function usesLocalDockerSandboxProvider(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
+export function usesLocalDockerSandboxProvider(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.ELIZA_LOCAL_DOCKER_PROVIDER === "1") return true;
   if (env.ENVIRONMENT === "local") {
     const hasSshKey =

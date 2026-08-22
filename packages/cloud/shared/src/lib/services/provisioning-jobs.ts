@@ -115,8 +115,8 @@ import {
   type ProvisioningJobType,
   requiresContainerBackedTarget,
 } from "./provisioning-job-types";
-import { usesLocalDockerSandboxProvider } from "./sandbox-provider";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
+import { usesLocalDockerSandboxProvider } from "./sandbox-provider";
 import {
   isWaifuWebhookTargetUrl,
   resolveWaifuWebhookTarget,
@@ -3535,12 +3535,7 @@ export class ProvisioningJobService {
           }
         : updates;
     await this.retryOwnedWrite(job, "settle", () =>
-      jobsRepository.settleExecution(
-        job,
-        status,
-        settledUpdates,
-        this.executionOwnerId,
-      ),
+      jobsRepository.settleExecution(job, status, settledUpdates, this.executionOwnerId),
     );
   }
 
