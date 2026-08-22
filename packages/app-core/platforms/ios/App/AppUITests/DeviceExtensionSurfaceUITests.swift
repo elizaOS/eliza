@@ -15,6 +15,7 @@ import XCTest
 final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    private let shortcuts = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -105,6 +106,39 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
                 ["deepLinkOnTap": 42]["deepLinkOnTap"]
             )
         )
+    }
+
+    func testAppShortcutsListsV1Actions() throws {
+        shortcuts.launch()
+        XCTAssertTrue(
+            shortcuts.wait(for: .runningForeground, timeout: 15),
+            "Apple Shortcuts must launch before the installed Eliza App Shortcuts can be inspected."
+        )
+
+        let search = shortcuts.searchFields.firstMatch
+        XCTAssertTrue(
+            search.waitForExistence(timeout: 10),
+            "Apple Shortcuts must expose its library search field."
+        )
+        search.tap()
+        let clearText = search.buttons["Clear text"]
+        if clearText.waitForExistence(timeout: 1) {
+            clearText.tap()
+        }
+        search.typeText("Eliza")
+
+        XCTAssertTrue(
+            shortcuts.staticTexts["Message Eliza"].firstMatch.waitForExistence(timeout: 10),
+            "The installed app must publish the Message Eliza App Shortcut."
+        )
+        XCTAssertTrue(
+            shortcuts.staticTexts["Talk to Eliza"].firstMatch.waitForExistence(timeout: 10),
+            "The installed app must publish the Talk to Eliza App Shortcut."
+        )
+
+        attachScreenshot(named: "shortcuts-00-v1-actions")
+        attachAccessibilitySnapshot(of: shortcuts, named: "shortcuts-v1-actions")
+        XCUIDevice.shared.press(.home)
     }
 
     func testControlCenterGalleryListsElizaControls() throws {
@@ -403,6 +437,16 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     private func attachAccessibilitySnapshot(named name: String) {
         let attachment = XCTAttachment(string: springboard.debugDescription)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func attachAccessibilitySnapshot(
+        of application: XCUIApplication,
+        named name: String
+    ) {
+        let attachment = XCTAttachment(string: application.debugDescription)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
