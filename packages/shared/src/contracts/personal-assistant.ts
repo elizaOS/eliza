@@ -311,6 +311,7 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.calendar.read",
   "google.calendar.write",
   "google.gmail.triage",
+  "google.gmail.compose",
   "google.gmail.send",
   "google.gmail.manage",
 ] as const;
@@ -2299,6 +2300,9 @@ export interface ManageLifeOpsGmailMessagesRequest {
   query?: string;
   maxResults?: number;
   labelIds?: string[];
+  /** Approval captured immediately before any provider-side mailbox mutation. */
+  confirmAction?: boolean;
+  /** Legacy destructive-only confirmation; prefer confirmAction for new callers. */
   confirmDestructive?: boolean;
   executionMode?: LifeOpsGmailManageExecutionMode;
   reason?: string;
@@ -2311,7 +2315,7 @@ export interface ManageLifeOpsGmailMessagesRequest {
 }
 
 export interface LifeOpsGmailManageResult {
-  ok: true;
+  ok: boolean;
   operation: LifeOpsGmailBulkOperation;
   messageIds: string[];
   affectedCount: number;
@@ -2328,6 +2332,15 @@ export interface LifeOpsGmailManageResult {
   chunk?: LifeOpsGmailManageChunkStatus;
   audit?: LifeOpsGmailManageAuditState;
   undo?: LifeOpsGmailManageUndoState;
+  providerReceipt?: {
+    requestedMessageIds: string[];
+    succeededMessageIds: string[];
+    failures: Array<{
+      messageId: string;
+      code: number | null;
+      retryable: boolean;
+    }>;
+  };
 }
 
 export interface LifeOpsGmailRecommendationMessage {
@@ -2509,6 +2522,8 @@ export interface CreateLifeOpsGmailReplyDraftRequest {
   tone?: LifeOpsGmailDraftTone;
   intent?: string;
   includeQuotedOriginal?: boolean;
+  /** Persist the reviewed draft in Gmail without sending it. */
+  persistToProvider?: boolean;
   conversationContext?: string[];
   actionHistory?: string[];
   trajectorySummary?: string | null;
@@ -2524,6 +2539,9 @@ export interface LifeOpsGmailReplyDraft {
   previewLines: string[];
   sendAllowed: boolean;
   requiresConfirmation: boolean;
+  providerDraftId?: string;
+  providerDraftMessageId?: string | null;
+  persistence?: "local_preview" | "gmail_draft";
 }
 
 export interface CreateLifeOpsGmailBatchReplyDraftsRequest {

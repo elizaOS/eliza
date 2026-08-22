@@ -130,6 +130,37 @@ function externalMessageIdFromInput(messageId: string): string {
     : messageId;
 }
 
+function gmailHeader(
+  message: LifeOpsGmailMessageSummary,
+  name: string,
+): string | null {
+  const target = name.toLowerCase();
+  const richHeader =
+    target === "message-id"
+      ? message.metadata.messageIdHeader
+      : target === "references"
+        ? message.metadata.referencesHeader
+        : null;
+  if (typeof richHeader === "string" && richHeader.trim()) {
+    return richHeader.trim();
+  }
+  const headers = message.metadata.headers;
+  if (!headers || typeof headers !== "object" || Array.isArray(headers))
+    return null;
+  for (const [key, value] of Object.entries(
+    headers as Record<string, unknown>,
+  )) {
+    if (
+      key.toLowerCase() === target &&
+      typeof value === "string" &&
+      value.trim()
+    ) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
 /** Canonical source id emitted by GoogleGmailAdapter into BRIEF's MessageRef. */
 export function gmailBriefSourceId(externalMessageId: string): string {
   return `gmail:${externalMessageIdFromInput(externalMessageId)}`;
@@ -271,15 +302,135 @@ export class GmailDomain {
       args.side,
       args.grantId,
     );
+    const accountId = accountIdForGrant(grant);
     const searchMessages = requireGoogleServiceMethod(
       this.ctx.runtime,
-      "searchMessages",
+      "searchGmailMessages",
+    );
+    const getGmailMessage = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "getGmailMessage",
+    );
+    const getGmailHistoryId = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "getGmailHistoryId",
+    );
+    const listGmailHistoryPage = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "listGmailHistoryPage",
     );
     const syncedAt = (args.now ?? new Date()).toISOString();
+    const previousState = await this.ctx.repository.getGmailSyncState(
+      this.ctx.agentId(),
+      "google",
+      GOOGLE_GMAIL_MAILBOX,
+      grant.side,
+      grant.id,
+    );
+    let historyId = previousState?.historyId ?? null;
+    let cursorStatus: "seeded" | "incremental" | "resynced" = historyId
+      ? "incremental"
+      : "seeded";
+    let fullResyncReason: string | null = null;
+
+    if (historyId) {
+      const startHistoryId = historyId;
+      let nextHistoryId = historyId;
+      const actions = new Map<string, "upsert" | "delete">();
+      const seenPageTokens = new Set<string>();
+      let pageToken: string | undefined;
+      try {
+        do {
+          const page = await listGmailHistoryPage({
+            accountId,
+            startHistoryId,
+            pageToken,
+          });
+          for (const change of page.changes) {
+            for (const item of [
+              ...change.messagesAdded,
+              ...change.labelsAdded,
+              ...change.labelsRemoved,
+            ]) {
+              actions.set(item.messageId, "upsert");
+            }
+            for (const item of change.messagesDeleted) {
+              actions.set(item.messageId, "delete");
+            }
+          }
+          nextHistoryId = page.historyId;
+          pageToken = page.nextPageToken ?? undefined;
+          if (pageToken) {
+            if (seenPageTokens.has(pageToken)) {
+              throw new Error(
+                "Gmail history pagination repeated a page token.",
+              );
+            }
+            seenPageTokens.add(pageToken);
+          }
+        } while (pageToken);
+
+        historyId = nextHistoryId;
+
+        for (const [externalId, action] of actions) {
+          const canonicalId = `${this.ctx.agentId()}:google:${grant.side}:gmail:${externalId}`;
+          if (action === "delete") {
+            await this.ctx.repository.deleteGmailMessages(
+              this.ctx.agentId(),
+              "google",
+              [canonicalId],
+              grant.side,
+              grant.id,
+            );
+            continue;
+          }
+          const changed = await getGmailMessage({
+            accountId,
+            messageId: externalId,
+            selfEmail: grant.identityEmail,
+          });
+          if (!changed) {
+            await this.ctx.repository.deleteGmailMessages(
+              this.ctx.agentId(),
+              "google",
+              [canonicalId],
+              grant.side,
+              grant.id,
+            );
+            continue;
+          }
+          await this.ctx.repository.upsertGmailMessage(
+            lifeOpsGmailMessageFromGoogle({
+              message: changed,
+              grant,
+              agentId: this.ctx.agentId(),
+              syncedAt,
+            }),
+            grant.side,
+          );
+        }
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? (error as { code?: unknown }).code
+            : null;
+        if (code !== "GOOGLE_GMAIL_HISTORY_CURSOR_EXPIRED") {
+          throw error;
+        }
+        historyId = null;
+        cursorStatus = "resynced";
+        fullResyncReason = "history_cursor_expired";
+      }
+    }
+
+    if (!historyId) {
+      historyId = await getGmailHistoryId({ accountId });
+    }
     const googleMessages = await searchMessages({
-      accountId: accountIdForGrant(grant),
+      accountId,
       query: args.query,
-      limit: args.maxResults,
+      maxResults: args.maxResults,
+      selfEmail: grant.identityEmail,
     });
     const messages = googleMessages.map((message) =>
       lifeOpsGmailMessageFromGoogle({
@@ -300,6 +451,9 @@ export class GmailDomain {
         mailbox: GOOGLE_GMAIL_MAILBOX,
         grantId: grant.id,
         maxResults: args.maxResults,
+        historyId,
+        cursorStatus,
+        fullResyncReason,
         syncedAt,
       }),
     );
@@ -594,14 +748,24 @@ export class GmailDomain {
     const labelIds =
       normalizeOptionalGmailLabelIdArray(request.labelIds, "labelIds") ?? [];
     const destructive = isDestructiveGmailOperation(operation);
+    const executionMode = request.executionMode ?? "execute";
+    const confirmAction =
+      normalizeOptionalBoolean(request.confirmAction, "confirmAction") ?? false;
     const confirmDestructive =
       normalizeOptionalBoolean(
         request.confirmDestructive,
         "confirmDestructive",
       ) ?? false;
 
-    if (destructive && !confirmDestructive) {
-      fail(409, `${operation} requires explicit destructive confirmation.`);
+    if (
+      executionMode === "execute" &&
+      !confirmAction &&
+      !(destructive && confirmDestructive)
+    ) {
+      fail(
+        409,
+        `${operation} requires explicit confirmation immediately before execution.`,
+      );
     }
     if (
       (operation === "apply_label" || operation === "remove_label") &&
@@ -691,36 +855,49 @@ export class GmailDomain {
       fail(404, "No Gmail messages matched the requested operation.");
     }
 
-    const executionMode = request.executionMode ?? "execute";
-    const status =
+    let status: NonNullable<LifeOpsGmailManageResult["status"]> =
       executionMode === "proposal"
         ? "proposed"
         : executionMode === "dry_run"
           ? "dry_run"
           : "executed";
+    let providerReceipt: LifeOpsGmailManageResult["providerReceipt"];
+    let affectedMessages = messages;
 
     if (executionMode === "execute") {
       const modifyGmailMessages = requireGoogleServiceMethod(
         this.ctx.runtime,
         "modifyGmailMessages",
       );
-      await modifyGmailMessages({
+      const receipt = await modifyGmailMessages({
         accountId: accountIdForGrant(grant),
         messageIds: messages.map((message) => message.externalId),
         operation,
         labelIds,
       });
+      providerReceipt = {
+        requestedMessageIds: receipt.requestedMessageIds,
+        succeededMessageIds: receipt.succeededMessageIds,
+        failures: receipt.failures,
+      };
+      const succeeded = new Set(receipt.succeededMessageIds);
+      affectedMessages = messages.filter((message) =>
+        succeeded.has(message.externalId),
+      );
+      if (receipt.failures.length > 0) {
+        status = affectedMessages.length > 0 ? "partial" : "failed";
+      }
 
       if (operation === "delete") {
         await this.ctx.repository.deleteGmailMessages(
           this.ctx.agentId(),
           "google",
-          messages.map((message) => message.id),
+          affectedMessages.map((message) => message.id),
           grant.side,
           grant.id,
         );
       } else {
-        for (const message of messages) {
+        for (const message of affectedMessages) {
           const labels = labelsAfterGmailManage(
             message.labels,
             operation,
@@ -750,14 +927,15 @@ export class GmailDomain {
         executionMode,
       },
       {
-        affectedCount: messages.length,
+        affectedCount: affectedMessages.length,
+        failedCount: providerReceipt?.failures.length ?? 0,
         destructive,
         connectorAccountId: grant.connectorAccountId ?? null,
       },
     );
 
     if (executionMode === "execute" && operation === "mark_read") {
-      for (const message of messages) {
+      for (const message of affectedMessages) {
         await this.attributeBriefMessageOutcome({
           messageId: gmailBriefSourceId(message.externalId),
           eventType: "opened",
@@ -768,10 +946,10 @@ export class GmailDomain {
     }
 
     return {
-      ok: true,
+      ok: status !== "failed",
       operation,
       messageIds: messages.map((message) => message.id),
-      affectedCount: messages.length,
+      affectedCount: affectedMessages.length,
       labelIds,
       destructive,
       grantId: grant.id,
@@ -787,9 +965,9 @@ export class GmailDomain {
             chunkId: request.chunk.chunkId,
             chunkIndex: request.chunk.chunkIndex,
             chunkCount: request.chunk.chunkCount,
-            processedCount: messages.length,
-            remainingCount: 0,
-            nextCursor: null,
+            processedCount: affectedMessages.length,
+            remainingCount: messages.length - affectedMessages.length,
+            nextCursor: providerReceipt?.failures[0]?.messageId ?? null,
           }
         : undefined,
       audit: request.audit
@@ -800,6 +978,7 @@ export class GmailDomain {
             recordedAt: new Date().toISOString(),
           }
         : undefined,
+      providerReceipt,
       undo: request.undo
         ? {
             status: "not_available",
@@ -862,11 +1041,46 @@ export class GmailDomain {
       grantId: request.grantId,
       messageId: request.messageId,
     });
-    return draftForMessage(read.message, {
+    const draft = draftForMessage(read.message, {
       tone,
       intent,
       includeQuotedOriginal,
     });
+    if (request.persistToProvider !== true) {
+      return { ...draft, persistence: "local_preview" };
+    }
+    const grant = await this.deps.requireGoogleGmailGrant(
+      requestUrl,
+      request.mode,
+      request.side,
+      request.grantId,
+    );
+    if (!grant.capabilities.includes("google.gmail.compose")) {
+      fail(
+        403,
+        "Gmail draft access has not been granted. Reconnect Google with Draft Gmail enabled.",
+      );
+    }
+    const createGmailDraft = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "createGmailDraft",
+    );
+    const receipt = await createGmailDraft({
+      accountId: accountIdForGrant(grant),
+      to: draft.to,
+      cc: draft.cc,
+      subject: draft.subject,
+      bodyText: draft.bodyText,
+      threadId: read.message.threadId,
+      inReplyTo: gmailHeader(read.message, "Message-Id"),
+      references: gmailHeader(read.message, "References"),
+    });
+    return {
+      ...draft,
+      providerDraftId: receipt.draftId,
+      providerDraftMessageId: receipt.messageId,
+      persistence: "gmail_draft",
+    };
   }
 
   async createGmailBatchReplyDrafts(

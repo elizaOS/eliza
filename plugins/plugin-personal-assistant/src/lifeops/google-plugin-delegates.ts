@@ -13,6 +13,7 @@ import {
 import type {
   GoogleDriveFile,
   GoogleEmailAddress,
+  GoogleGmailMessageSummary,
   GoogleMessageSummary,
   GoogleSendEmailInput,
   IGoogleWorkspaceService,
@@ -89,6 +90,9 @@ function mapCapability(value: string): LifeOpsGoogleCapability | null {
     case "google.gmail.send":
     case "gmail.send":
       return "google.gmail.send";
+    case "google.gmail.compose":
+    case "gmail.compose":
+      return "google.gmail.compose";
     case "google.gmail.manage":
     case "gmail.manage":
       return "google.gmail.manage";
@@ -144,6 +148,9 @@ export function googleCapabilitiesForAccount(
   }
   if (scopes.some((scope) => scope.includes("gmail.send"))) {
     values.push("google.gmail.send");
+  }
+  if (scopes.some((scope) => scope.includes("gmail.compose"))) {
+    values.push("google.gmail.compose");
   }
   if (
     scopes.some(
@@ -208,6 +215,9 @@ export function googleScopesForAccount(
   }
   if (capabilities.includes("google.gmail.send")) {
     derived.add("https://www.googleapis.com/auth/gmail.send");
+  }
+  if (capabilities.includes("google.gmail.compose")) {
+    derived.add("https://www.googleapis.com/auth/gmail.compose");
   }
   if (capabilities.includes("google.gmail.manage")) {
     derived.add("https://www.googleapis.com/auth/gmail.modify");
@@ -468,52 +478,70 @@ export function mapGoogleEmailAddress(
 }
 
 export function lifeOpsGmailMessageFromGoogle(args: {
-  message: GoogleMessageSummary;
+  message: GoogleMessageSummary | GoogleGmailMessageSummary;
   grant: LifeOpsConnectorGrant;
   agentId: string;
   syncedAt?: string;
 }): LifeOpsGmailMessageSummary {
   const { message, grant, agentId } = args;
   const syncedAt = args.syncedAt ?? new Date().toISOString();
-  const labels = message.labelIds ?? [];
-  const fromName = message.from?.name?.trim();
-  const fromEmail = message.from?.email?.trim() ?? null;
+  const rich = "externalId" in message ? message : null;
+  const labels =
+    rich?.labels ?? ("labelIds" in message ? (message.labelIds ?? []) : []);
+  const fromName =
+    rich?.from.trim() || (!rich ? message.from?.name?.trim() : undefined);
+  const fromEmail =
+    rich?.fromEmail ?? (!rich ? (message.from?.email?.trim() ?? null) : null);
   const receivedAt = message.receivedAt ?? syncedAt;
-  const externalId = message.id;
+  const externalId = rich?.externalId ?? (!rich ? message.id : "");
   return {
     id: `${agentId}:google:${grant.side}:gmail:${externalId}`,
     externalId,
     agentId,
     provider: "google",
     side: grant.side,
-    threadId: message.threadId ?? externalId,
+    threadId: message.threadId || externalId,
     subject: message.subject ?? "(no subject)",
     from: fromName || fromEmail || "Unknown sender",
     fromEmail,
-    replyTo: message.replyTo?.email ?? null,
-    to: (message.to ?? []).map((item: GoogleEmailAddress) => item.email),
-    cc: (message.cc ?? []).map((item: GoogleEmailAddress) => item.email),
-    snippet: message.snippet ?? message.bodyText ?? "",
+    replyTo: rich?.replyTo ?? (!rich ? (message.replyTo?.email ?? null) : null),
+    to:
+      rich?.to ??
+      (!rich
+        ? (message.to ?? []).map((item: GoogleEmailAddress) => item.email)
+        : []),
+    cc:
+      rich?.cc ??
+      (!rich
+        ? (message.cc ?? []).map((item: GoogleEmailAddress) => item.email)
+        : []),
+    snippet:
+      rich?.snippet ??
+      (!rich ? (message.snippet ?? message.bodyText ?? "") : ""),
     receivedAt,
-    isUnread: labels.includes("UNREAD"),
-    isImportant: labels.includes("IMPORTANT"),
-    likelyReplyNeeded: labels.includes("INBOX") && !labels.includes("SENT"),
-    triageScore: labels.includes("IMPORTANT")
-      ? 90
-      : labels.includes("UNREAD")
-        ? 70
-        : 40,
-    triageReason: labels.includes("IMPORTANT")
-      ? "Marked important in Gmail."
-      : labels.includes("UNREAD")
-        ? "Unread inbox message."
-        : "Recent Gmail message.",
+    isUnread: rich?.isUnread ?? labels.includes("UNREAD"),
+    isImportant: rich?.isImportant ?? labels.includes("IMPORTANT"),
+    likelyReplyNeeded:
+      rich?.likelyReplyNeeded ??
+      (labels.includes("INBOX") && !labels.includes("SENT")),
+    triageScore:
+      rich?.triageScore ??
+      (labels.includes("IMPORTANT") ? 90 : labels.includes("UNREAD") ? 70 : 40),
+    triageReason:
+      rich?.triageReason ??
+      (labels.includes("IMPORTANT")
+        ? "Marked important in Gmail."
+        : labels.includes("UNREAD")
+          ? "Unread inbox message."
+          : "Recent Gmail message."),
     labels,
-    htmlLink: null,
+    htmlLink: rich?.htmlLink ?? null,
     metadata: {
       googlePlugin: true,
-      headers: message.headers ?? {},
-      bodyHtml: message.bodyHtml,
+      ...(rich?.metadata ?? {}),
+      ...(!rich
+        ? { headers: message.headers ?? {}, bodyHtml: message.bodyHtml }
+        : {}),
     },
     syncedAt,
     updatedAt: syncedAt,

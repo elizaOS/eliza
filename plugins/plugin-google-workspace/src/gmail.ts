@@ -22,9 +22,14 @@ import type {
   GoogleAccountRef,
   GoogleEmailAddress,
   GoogleGmailBulkOperation,
+  GoogleGmailDraftResult,
   GoogleGmailFilterCreateResult,
+  GoogleGmailHistoryChange,
+  GoogleGmailHistoryMessageRef,
+  GoogleGmailHistoryPage,
   GoogleGmailMessageDetail,
   GoogleGmailMessageSummary,
+  GoogleGmailMutationReceipt,
   GoogleGmailSendResult,
   GoogleGmailSubscriptionMessageHeaders,
   GoogleGmailUnrespondedThread,
@@ -92,6 +97,55 @@ function nextGmailPageToken(
 
 export class GoogleGmailClient {
   constructor(private readonly clientFactory: GoogleApiClientFactory) {}
+
+  async getGmailHistoryId(params: GoogleAccountRef): Promise<string> {
+    const gmail = await this.clientFactory.gmail(params, ["gmail.read"], "gmail.getHistoryId");
+    const response = await gmail.users.getProfile({ userId: "me" });
+    const historyId = response.data.historyId?.trim();
+    if (!historyId) {
+      throw new ElizaError("Gmail profile did not include a history cursor.", {
+        code: "GOOGLE_GMAIL_HISTORY_CURSOR_MISSING",
+        severity: "fatal",
+      });
+    }
+    return historyId;
+  }
+
+  async listGmailHistoryPage(
+    params: GoogleAccountRef & {
+      startHistoryId: string;
+      pageToken?: string;
+      maxResults?: number;
+    }
+  ): Promise<GoogleGmailHistoryPage> {
+    const startHistoryId = params.startHistoryId.trim();
+    if (!startHistoryId) {
+      throw new ElizaError("Gmail incremental sync requires a history cursor.", {
+        code: "GOOGLE_GMAIL_HISTORY_CURSOR_REQUIRED",
+        severity: "fatal",
+      });
+    }
+    const gmail = await this.clientFactory.gmail(params, ["gmail.read"], "gmail.listHistory");
+    try {
+      const response = await gmail.users.history.list({
+        userId: "me",
+        startHistoryId,
+        pageToken: params.pageToken,
+        maxResults: normalizedLimit(params.maxResults, 500, 500),
+      });
+      const historyId = response.data.historyId?.trim() || startHistoryId;
+      return {
+        changes: (response.data.history ?? []).map(mapGmailHistoryChange),
+        nextPageToken: response.data.nextPageToken?.trim() || null,
+        historyId,
+      };
+    } catch (error) {
+      if (googleErrorStatus(error) === 404) {
+        throw new GoogleGmailHistoryExpiredError(startHistoryId, error);
+      }
+      throw error;
+    }
+  }
 
   async searchMessages(
     params: GoogleAccountRef & { query: string; limit?: number }
@@ -345,26 +399,53 @@ export class GoogleGmailClient {
       operation: GoogleGmailBulkOperation;
       labelIds?: readonly string[];
     }
-  ): Promise<void> {
+  ): Promise<GoogleGmailMutationReceipt> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.manage"], "gmail.modifyMessages");
-    const ids = params.messageIds.map((messageId) => messageId.trim()).filter(Boolean);
+    const ids = [
+      ...new Set(params.messageIds.map((messageId) => messageId.trim()).filter(Boolean)),
+    ];
     if (ids.length === 0) {
       throw new Error("Gmail operation requires message ids");
     }
     const labelIds = requireLabelIdsForOperation(params.operation, params.labelIds);
 
     if (params.operation === "trash") {
-      await Promise.all(
-        ids.map((id) => gmail.users.messages.trash({ userId: "me", id }).then(() => undefined))
+      const outcomes = await Promise.allSettled(
+        ids.map((id) => gmail.users.messages.trash({ userId: "me", id }))
       );
-      return;
+      const succeededMessageIds: string[] = [];
+      const failures: GoogleGmailMutationReceipt["failures"] = [];
+      for (const [index, outcome] of outcomes.entries()) {
+        const messageId = ids[index] as string;
+        if (outcome.status === "fulfilled") {
+          succeededMessageIds.push(messageId);
+          continue;
+        }
+        const code = googleErrorStatus(outcome.reason) ?? null;
+        failures.push({
+          messageId,
+          code,
+          retryable: code === null || code === 408 || code === 429 || code >= 500,
+        });
+      }
+      return {
+        operation: params.operation,
+        requestedMessageIds: ids,
+        succeededMessageIds,
+        failures,
+      };
     }
     if (params.operation === "delete") {
       await gmail.users.messages.batchDelete({
         userId: "me",
         requestBody: { ids },
       });
-      return;
+      return {
+        operation: params.operation,
+        requestedMessageIds: ids,
+        succeededMessageIds: ids,
+        failures: [],
+      };
     }
 
     const labelPatch = labelsForOperation(params.operation, labelIds);
@@ -376,6 +457,12 @@ export class GoogleGmailClient {
         removeLabelIds: labelPatch.removeLabelIds,
       },
     });
+    return {
+      operation: params.operation,
+      requestedMessageIds: ids,
+      succeededMessageIds: ids,
+      failures: [],
+    };
   }
 
   async sendGmailReply(
@@ -428,6 +515,50 @@ export class GoogleGmailClient {
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
     return this.sendRawGmailMessage(params, raw, "gmail.sendGmailMessage");
+  }
+
+  async createGmailDraft(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      bcc?: string[];
+      subject: string;
+      bodyText: string;
+      threadId?: string;
+      inReplyTo?: string | null;
+      references?: string | null;
+    }
+  ): Promise<GoogleGmailDraftResult> {
+    const gmail = await this.clientFactory.gmail(params, ["gmail.compose"], "gmail.createDraft");
+    const raw = encodeRawGmailMessage([
+      `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
+      ...(params.cc?.length ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`] : []),
+      ...(params.bcc?.length ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`] : []),
+      `Subject: ${sanitizeMailHeaderValue(params.subject.trim()) || "(no subject)"}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=UTF-8",
+      ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
+      ...(params.references ? [`References: ${sanitizeMailHeaderValue(params.references)}`] : []),
+      "",
+      params.bodyText.replace(/\r?\n/g, "\r\n"),
+    ]);
+    const response = await gmail.users.drafts.create({
+      userId: "me",
+      requestBody: { message: { raw, threadId: params.threadId } },
+    });
+    const draftId = response.data.id?.trim();
+    if (!draftId) {
+      throw new ElizaError("Gmail draft creation returned no provider draft id.", {
+        code: "GOOGLE_GMAIL_DRAFT_RECEIPT_MISSING",
+        severity: "fatal",
+      });
+    }
+    return {
+      draftId,
+      messageId: response.data.message?.id ?? null,
+      threadId: response.data.message?.threadId ?? null,
+      labelIds: response.data.message?.labelIds ?? [],
+    };
   }
 
   async getGmailSubscriptionHeaders(
@@ -602,6 +733,65 @@ export class GoogleGmailClient {
       labelIds: response.data.labelIds ?? [],
     };
   }
+}
+
+export class GoogleGmailHistoryExpiredError extends ElizaError {
+  constructor(startHistoryId: string, cause: unknown) {
+    super("Gmail history cursor expired; a bounded full resync is required.", {
+      code: "GOOGLE_GMAIL_HISTORY_CURSOR_EXPIRED",
+      context: { startHistoryId },
+      cause,
+      severity: "ephemeral",
+    });
+  }
+}
+
+function mapGmailHistoryMessageRef(
+  message: gmail_v1.Schema$Message | null | undefined
+): GoogleGmailHistoryMessageRef | null {
+  const messageId = message?.id?.trim();
+  if (!messageId) return null;
+  return {
+    messageId,
+    threadId: message?.threadId?.trim() || null,
+    labelIds: message?.labelIds ?? [],
+  };
+}
+
+function mapGmailHistoryChange(history: gmail_v1.Schema$History): GoogleGmailHistoryChange {
+  const historyId = history.id?.trim();
+  if (!historyId) {
+    throw new ElizaError("Gmail history response contained an entry without an id.", {
+      code: "GOOGLE_GMAIL_HISTORY_ENTRY_INVALID",
+      severity: "fatal",
+    });
+  }
+  const refs = (values: Array<{ message?: gmail_v1.Schema$Message }> | null | undefined) =>
+    (values ?? [])
+      .map((value) => mapGmailHistoryMessageRef(value.message))
+      .filter((value): value is GoogleGmailHistoryMessageRef => value !== null);
+  const labelChanges = (
+    values:
+      | Array<{ message?: gmail_v1.Schema$Message; labelIds?: string[] | null }>
+      | null
+      | undefined
+  ) =>
+    (values ?? [])
+      .map((value) => {
+        const message = mapGmailHistoryMessageRef(value.message);
+        return message ? { ...message, changedLabelIds: value.labelIds ?? [] } : null;
+      })
+      .filter(
+        (value): value is GoogleGmailHistoryMessageRef & { changedLabelIds: string[] } =>
+          value !== null
+      );
+  return {
+    historyId,
+    messagesAdded: refs(history.messagesAdded),
+    messagesDeleted: refs(history.messagesDeleted),
+    labelsAdded: labelChanges(history.labelsAdded),
+    labelsRemoved: labelChanges(history.labelsRemoved),
+  };
 }
 
 function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): GoogleMessageSummary {
