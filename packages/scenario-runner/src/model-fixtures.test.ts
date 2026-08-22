@@ -110,7 +110,13 @@ describe("scenario model fixture manifests", () => {
     ]);
 
     expect(() =>
-      registry.resolve({ ...call("hello"), toolNames: ["ONE", "THREE"] }),
+      registry.resolve({ ...call("hello"), toolNames: ["ONE"] }),
+    ).toThrow(/no fixture matched/);
+    expect(() =>
+      registry.resolve({
+        ...call("hello"),
+        toolNames: ["ONE", "TWO", "THREE"],
+      }),
     ).toThrow(/no fixture matched/);
     expect(registry.resolve(call("hello")).response).toBe("done");
     expect(() => registry.resolve(call("hello"))).toThrow(/over-consumed/);
