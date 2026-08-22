@@ -52,7 +52,7 @@ describe("shouldForwardEnv", () => {
   // Regression: the repo runtime is Bun, and Bun on Windows reports the search
   // path as `Path` (and other OS vars with native casing), so a case-sensitive
   // `=== "PATH"` forwarded NONE of them — the child spawned with no PATH and the
-  // opencode shim died with "'bun' is not recognized". Match case-insensitively.
+  // spawned CLI died with "'bun' is not recognized". Match case-insensitively.
   it("forwards PATH regardless of OS casing (Windows reports `Path`)", () => {
     expect(shouldForwardEnv("Path")).toBe(true);
     expect(shouldForwardEnv("path")).toBe(true);

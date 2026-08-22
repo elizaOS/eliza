@@ -57,6 +57,10 @@ function runtimeWithServices(opts: {
       return null;
     }),
     hasService: vi.fn(() => true),
+    agentId: "agent1",
+    getSetting: vi.fn(() => undefined),
+    getRoom: vi.fn(async () => ({ id: "room1" })),
+    reportError: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as never;
 }
@@ -86,7 +90,7 @@ describe("TASKS:create durable-task widget emission", () => {
           workdir,
           model: "gpt-5.5",
           approvalPreset: "readonly",
-          timeout_ms: 1000,
+          timeout_ms: 30_000,
           acceptanceCriteria: ["tests green", "no lint"],
         },
       },
@@ -104,11 +108,12 @@ describe("TASKS:create durable-task widget emission", () => {
     expect(arg.priority).toBe("normal");
     expect(arg.acceptanceCriteria).toEqual(["tests green", "no lint"]);
 
+    // The single visible callback is the early ack, deliberately posted
+    // BEFORE createTask so slow lanes cannot outrun it — the widget block
+    // rides on result.text for the app UI instead of the chat callback.
     expect(cb).toHaveBeenCalledTimes(1);
     const cbArg = cb.mock.calls[0]?.[0] as { text?: string };
-    expect(cbArg?.text ?? "").toContain(
-      `[TASK:${THREAD_ID}]Build planner[/TASK]`,
-    );
+    expect(cbArg?.text ?? "").not.toContain("[TASK:");
   });
 
   it("direct runner still succeeds without the widget when createTask throws", async () => {
@@ -119,27 +124,43 @@ describe("TASKS:create durable-task widget emission", () => {
     const runtime = runtimeWithServices({ acp, taskService: { createTask } });
     const cb = callback();
     const workdir = os.tmpdir();
+    const previousSmithers = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
 
-    const result = await createTaskAction.handler(
-      runtime,
-      memory({}),
-      state,
-      {
-        parameters: {
-          action: "create",
-          task: "fix bug",
-          agentType: "codex",
-          workdir,
-          approvalPreset: "readonly",
-          timeout_ms: 1000,
+    let result: Awaited<ReturnType<typeof createTaskAction.handler>>;
+    try {
+      // Smithers refuses before spawn when the durable owner cannot be
+      // created (covered below); the widget-less degrade under test here is
+      // the direct-prompt path.
+      process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
+      result = await createTaskAction.handler(
+        runtime,
+        memory({}),
+        state,
+        {
+          parameters: {
+            action: "create",
+            task: "fix bug",
+            agentType: "codex",
+            workdir,
+            approvalPreset: "readonly",
+            timeout_ms: 30_000,
+          },
         },
-      },
-      cb,
-    );
+        cb,
+      );
+    } finally {
+      if (previousSmithers === undefined) {
+        delete process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+      } else {
+        process.env.ELIZA_ORCHESTRATOR_SMITHERS = previousSmithers;
+      }
+    }
 
     expect(result?.success).toBe(true);
     expect(result?.text).not.toContain("[TASK:");
-    expect(result?.text).toContain("Created task agent");
+    // "Created task agent" was dev-speak; the no-model ack reads like a
+    // person now (owner directive 2026-08-19).
+    expect(result?.text).toContain("On it");
     expect(result?.data?.taskId).toBeNull();
     expect(cb).toHaveBeenCalledTimes(1);
     const cbArg = cb.mock.calls[0]?.[0] as { text?: string };
@@ -187,7 +208,13 @@ describe("TASKS:create durable-task widget emission", () => {
     expect(acp.spawnSession).not.toHaveBeenCalled();
     expect(acp.sendPrompt).not.toHaveBeenCalled();
     expect(acp.stopSession).not.toHaveBeenCalled();
+    // The early ack fires once BEFORE createTask (by design); the refusal
+    // itself stays planner-facing — no second canned callback claims failure,
+    // the planner phrases it from the truth-critical text + {nothingStarted}.
     expect(cb).toHaveBeenCalledTimes(1);
+    const refusalCbArg = cb.mock.calls[0]?.[0] as { text?: string };
+    expect(refusalCbArg?.text ?? "").toContain("On it");
+    expect(result?.data).toMatchObject({ nothingStarted: true });
   });
 
   it("preserves a durable-link failure when unprompted-session teardown also fails", async () => {
@@ -233,8 +260,18 @@ describe("TASKS:create durable-task widget emission", () => {
     }
 
     expect(result?.success).toBe(false);
-    expect(result?.text).toContain("durable store offline");
+    // The visible launch-failure message is now composed from structured
+    // facts; the authoritative durable-link error rides in data.agents (and
+    // logs), never as raw prose — and the secondary teardown error must not
+    // displace it there.
+    expect(result?.text).toContain("failed");
     expect(result?.text).not.toContain("stop transport failed");
+    const failedAgents = (
+      result?.data as { agents?: Array<{ error?: string }> }
+    )?.agents?.filter((agent) => typeof agent.error === "string");
+    expect(failedAgents).toHaveLength(1);
+    expect(failedAgents?.[0]?.error).toContain("durable store offline");
+    expect(failedAgents?.[0]?.error).not.toContain("stop transport failed");
     expect(attachSession).toHaveBeenCalledTimes(1);
     expect(acp.stopSession).toHaveBeenCalledTimes(1);
     expect(acp.sendPrompt).not.toHaveBeenCalled();

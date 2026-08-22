@@ -51,7 +51,6 @@ function installedProbe(): TaskAgentFrameworkProbe {
     checkAvailableAgents: vi.fn(async () => [
       { adapter: "Claude Code", installed: true },
       { adapter: "OpenAI Codex", installed: true },
-      { adapter: "OpenCode", installed: true },
     ]),
   };
 }
@@ -65,7 +64,6 @@ function delayedInstalledProbe(): TaskAgentFrameworkProbe {
             resolve([
               { adapter: "Claude Code", installed: true },
               { adapter: "OpenAI Codex", installed: true },
-              { adapter: "OpenCode", installed: true },
             ]);
           }, 10);
         }),
@@ -130,6 +128,8 @@ describe("getTaskAgentFrameworkState", () => {
   });
 
   it("prefers eliza-code as the BYO default once eliza-code is installed", async () => {
+    // With a native ElizaOS ACP command configured and no Claude/Codex key set,
+    // eliza-code (elizaos) is the BYO default.
     writeExecutable(path.join(tempHome, "eliza-code-acp"));
     setEnv({
       ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
@@ -143,6 +143,9 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "elizaos")?.installed,
     ).toBe(true);
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.authReady,
+    ).toBe(false);
     expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
   });
 
@@ -224,7 +227,9 @@ describe("getTaskAgentFrameworkState", () => {
   });
 
   it("does not treat a Cerebras-mirrored OpenAI key as Codex auth", async () => {
+    writeExecutable(path.join(tempHome, "eliza-code-acp"));
     setEnv({
+      ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
       BENCHMARK_MODEL_PROVIDER: "cerebras",
       CEREBRAS_API_KEY: "csk-test",
       OPENAI_API_KEY: "csk-test",
@@ -233,6 +238,7 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
+    expect(state.preferred.id).toBe("elizaos");
     expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
@@ -421,7 +427,7 @@ describe("getTaskAgentFrameworkState", () => {
 
 // Model prefs must honor a freshly-saved config-file value on the NEXT spawn:
 // runtime.getSetting snapshots character settings at boot, so config-env is
-// checked first (matching how the codex/opencode prefs already behave).
+// checked first (matching how the codex/claude prefs already behave).
 describe("getTaskAgentModelPrefs", () => {
   const PREF_ENV_KEYS = [
     "ELIZA_CONFIG_PATH",

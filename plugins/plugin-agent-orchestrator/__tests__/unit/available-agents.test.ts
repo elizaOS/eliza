@@ -2,15 +2,7 @@
  * Verifies availableAgentsProvider.
  * Deterministic unit test of pure helpers; no runtime, no live model.
  */
-import { describe, expect, it, vi } from "vitest";
-
-// Control the framework-state probe so we can drive its failure path
-// deterministically without touching the filesystem / env discovery it does.
-const getTaskAgentFrameworkStateMock = vi.fn();
-vi.mock("../../src/services/task-agent-frameworks.js", () => ({
-  getTaskAgentFrameworkState: (...args: unknown[]) =>
-    getTaskAgentFrameworkStateMock(...args),
-}));
+import { describe, expect, it } from "vitest";
 
 import {
   memory,
@@ -23,10 +15,6 @@ import {
 const { availableAgentsProvider } = await import(
   "../../src/providers/available-agents.js"
 );
-
-// Default: an empty, healthy framework state (probe succeeded, nothing extra
-// installed) so the pre-existing behavioural assertions below are unaffected.
-getTaskAgentFrameworkStateMock.mockResolvedValue({ frameworks: [] });
 
 describe("availableAgentsProvider", () => {
   it("returns service unavailable data", async () => {
@@ -64,48 +52,10 @@ describe("availableAgentsProvider", () => {
     ]);
   });
 
-  it("surfaces a thrown framework probe as a visible degrade instead of silent absence", async () => {
-    // A framework probe THROW = broken backend, not "opencode absent".
-    // Swallowing it into a healthy-looking null (old `.catch(() => null)`)
-    // let the planner read the same slate as genuine absence and silently
-    // drop opencode with no signal (#12273 healthy-empty-from-catch).
-    const probeError = new Error("framework discovery filesystem walk failed");
-    getTaskAgentFrameworkStateMock.mockRejectedValueOnce(probeError);
-    const reportError = vi.fn();
-    const runtime = runtimeWith(serviceMock());
-    (runtime as unknown as { reportError: unknown }).reportError = reportError;
-
-    const result = await availableAgentsProvider.get(runtime, memory(), state);
-
-    // Failure is observable to the RECENT_ERRORS provider / developer, not
-    // swallowed.
-    expect(reportError).toHaveBeenCalledTimes(1);
-    expect(reportError.mock.calls[0]?.[0]).toBe(
-      "AgentOrchestrator.AVAILABLE_AGENTS",
-    );
-    expect(reportError.mock.calls[0]?.[1]).toBe(probeError);
-    // The context is flagged degraded so a probe crash is distinct from a
-    // healthy "nothing extra installed" state.
-    expect(result.data?.frameworkProbeFailed).toBe(true);
-    // The planner sees the degrade in-band, not a clean slate.
-    expect(result.text).toContain("framework probe unavailable");
-    // Still returns a usable result (no crash); adapter inventory + sessions
-    // from the service side are unaffected.
-    expect(result.data?.serviceAvailable).toBe(true);
-  });
-
-  it("does not flag degraded when the framework probe succeeds", async () => {
-    getTaskAgentFrameworkStateMock.mockResolvedValueOnce({ frameworks: [] });
-    const result = await availableAgentsProvider.get(
-      runtimeWith(serviceMock()),
-      memory(),
-      state,
-    );
-    expect(result.data?.frameworkProbeFailed).toBe(false);
-    expect(result.text).not.toContain("framework probe unavailable");
-  });
-
-  it("caps rendered sessions while keeping all structured session data", async () => {
+  it("renders every session while keeping all structured session data", async () => {
+    // Develop's #24134/#24232 (preserve complete model context) removed the
+    // MAX_RENDERED_ACTIVE_SESSIONS cap: the model view lists every session,
+    // active-first then most-recent-first, with no hidden omission.
     const sessions = Array.from({ length: 12 }, (_, index) =>
       session({
         id: `session-${String(index).padStart(2, "0")}`,
@@ -124,10 +74,23 @@ describe("availableAgentsProvider", () => {
 
     expect(result.data?.activeSessions).toHaveLength(12);
     expect(result.text).toContain("Active sessions (12)");
-    expect(result.text).toContain("... (+4 older sessions omitted)");
-    expect(result.text?.match(/- demo-/g)).toHaveLength(8);
-    expect(result.text).toContain("demo-2");
-    expect(result.text).toContain("demo-0");
-    expect(result.text).not.toContain("demo-3");
+    expect(result.text).not.toContain("older sessions omitted");
+    const rendered = [...(result.text ?? "").matchAll(/- (demo-\d+) \[/g)].map(
+      (match) => match[1],
+    );
+    expect(rendered).toEqual([
+      "demo-2",
+      "demo-1",
+      "demo-0",
+      "demo-11",
+      "demo-10",
+      "demo-9",
+      "demo-8",
+      "demo-7",
+      "demo-6",
+      "demo-5",
+      "demo-4",
+      "demo-3",
+    ]);
   });
 });

@@ -4,7 +4,7 @@
  */
 import * as os from "node:os";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // CREATE_AGENT_TASK is `TASKS { action: "create" }` (the default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
 import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";
@@ -17,7 +17,27 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:create", () => {
+  // These pins exercise the direct-prompt spawn shapes. Under the default
+  // Smithers path a create without an OrchestratorTaskService fails closed
+  // by contract (durable owner required before ACP spawn), which is covered
+  // by the widget-emission suite.
+  let previousSmithers: string | undefined;
+  beforeEach(() => {
+    previousSmithers = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+    process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
+  });
+  afterEach(() => {
+    if (previousSmithers === undefined) {
+      delete process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+    } else {
+      process.env.ELIZA_ORCHESTRATOR_SMITHERS = previousSmithers;
+    }
+  });
   it("rejects a history operation alias on the promoted create tool", async () => {
+    // Core's virtual-pin contract (promote-subactions): the plugin declares
+    // `operation` with the full ops enum (it carries the "create" pin), so a
+    // conflicting discriminator on the pinned virtual is rejected with a
+    // structured redirect instead of silently executing another operation.
     const create = promoteSubactionsToActions(createTaskAction).find(
       (action) => action.name === "TASKS_CREATE",
     );
@@ -149,7 +169,7 @@ describe("TASKS:create", () => {
     expect(result?.success).toBe(true);
     // Without an OrchestratorTaskService, no [TASK:…] widget block is appended;
     // the callback still receives the prose summary.
-    expect(result?.text).toBe("Created task agent.");
+    expect(result?.text).toBe("On it — building that now.");
     expect(result?.data?.taskId).toBeNull();
     expect(result?.data?.agents).toEqual([
       {
@@ -169,6 +189,99 @@ describe("TASKS:create", () => {
     );
     expect(svc.stopSession).toHaveBeenCalledWith("abcdef123456");
   });
+  it("stamps a distinct requestVoicePart per part on a multi-part fan-out, none on a single-part create", async () => {
+    // Fan-out voice scoping: genuinely parallel parts spawned from ONE user
+    // message each get their own request-voice slot (part:<index>), so the
+    // first part's terminal cannot gag the siblings' genuine results. A
+    // single-part create keeps the bare request key — retries/cascades of a
+    // single task still share one voice.
+    const svc = serviceMock();
+    const workdir = os.tmpdir();
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({}),
+      state,
+      {
+        parameters: {
+          action: "create",
+          agents: "build the API | build the UI",
+          agentType: "codex",
+          workdir,
+        },
+      },
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    const parts = svc.spawnSession.mock.calls
+      .map(
+        (call) =>
+          (call[0] as { metadata?: Record<string, unknown> }).metadata
+            ?.requestVoicePart,
+      )
+      .sort();
+    expect(parts).toEqual(["part:0", "part:1"]);
+
+    const single = serviceMock();
+    const singleResult = await createTaskAction.handler(
+      runtimeWith(single),
+      memory({}),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task: "fix bug",
+          agentType: "codex",
+          workdir,
+        },
+      },
+      callback(),
+    );
+    expect(singleResult?.success).toBe(true);
+    expect(
+      (
+        single.spawnSession.mock.calls[0]?.[0] as
+          | { metadata?: Record<string, unknown> }
+          | undefined
+      )?.metadata?.requestVoicePart,
+    ).toBeUndefined();
+  });
+
+  it("an inherited requestVoicePart (lane respawn) overrides the per-part mint", async () => {
+    // Respawn-shares-key per lane: a synthetic respawn inbound carries its
+    // predecessor's part in content.metadata — the create must inherit it
+    // verbatim instead of minting a fresh one, or the respawned lane would
+    // claim a different voice slot and double-post.
+    const svc = serviceMock();
+    const workdir = os.tmpdir();
+    const result = await createTaskAction.handler(
+      runtimeWith(svc),
+      memory({
+        text: "continue the lane",
+        metadata: {
+          subAgent: true,
+          spawnRootMessageId: "root-1",
+          requestVoicePart: "lane:w1:a",
+        },
+      }),
+      state,
+      {
+        parameters: {
+          action: "create",
+          task: "continue the lane",
+          agentType: "codex",
+          workdir,
+        },
+      },
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    const spawnCall = svc.spawnSession.mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(spawnCall?.metadata?.requestVoicePart).toBe("lane:w1:a");
+    expect(spawnCall?.metadata?.spawnRootMessageId).toBe("root-1");
+  });
+
   it("handles missing service, auth error, generic failure", async () => {
     expect(
       (
