@@ -371,6 +371,10 @@ export class MemoryService extends Service {
 		}
 
 		const checkpoint = await this.runtime.getCache<number>(key);
+		const concurrentlyWritten = this.lastExtractionCheckpoints.get(key);
+		if (concurrentlyWritten !== undefined) {
+			return concurrentlyWritten;
+		}
 		const messageCount = checkpoint ?? 0;
 		this.lastExtractionCheckpoints.set(key, messageCount);
 		this.capSessionMap(this.lastExtractionCheckpoints);
