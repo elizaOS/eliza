@@ -155,3 +155,8 @@ export {
   VaultDecryptionError,
   VaultMissError,
 } from "./vault.js";
+export {
+  VaultWriteVerificationError,
+  writeSensitiveValueIfAbsentVerified,
+  writeSensitiveValueVerified,
+} from "./verified-write.js";

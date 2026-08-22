@@ -20,6 +20,7 @@ import {
   type SecretsManager,
   type Vault,
   VaultDecryptionError,
+  writeSensitiveValueVerified,
 } from "@elizaos/vault";
 import type { OperationErrorCode } from "./types.ts";
 
@@ -299,8 +300,7 @@ export async function persistProviderApiKey(opts: {
   caller: string;
 }): Promise<string> {
   const ref = vaultKeyForProviderApiKey(opts.normalizedProvider);
-  await opts.secrets.vault.set(ref, opts.apiKey, {
-    sensitive: true,
+  await writeSensitiveValueVerified(opts.secrets.vault, ref, opts.apiKey, {
     caller: opts.caller,
   });
   return ref;
