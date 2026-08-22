@@ -58,6 +58,7 @@ import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 import { mergeElizaTurnStopSequences } from "./services/eliza-turn-stops.js";
+import { ramHeadroomReserveMb } from "./services/ram-budget.js";
 import { augmentVisionRequest } from "./services/vision/augmenter.js";
 import { prepareVisionImageInput } from "./services/vision/image-input.js";
 import type { VisionImageInput } from "./services/vision/types.js";
@@ -1244,6 +1245,10 @@ export const localInferencePlugin: Plugin = {
 	// app come online.
 	models: createStaticPluginModelHandlers(),
 	async init(_config: unknown, runtime: IAgentRuntime) {
+		// Validate explicit resource policy before advertising provider readiness.
+		// An absent override retains the default; malformed configuration throws a
+		// typed fatal error through the runtime's plugin-startup boundary.
+		ramHeadroomReserveMb();
 		const service = serviceFromRuntime(runtime);
 		if (!service) {
 			logger.info(
