@@ -2940,14 +2940,6 @@
       "source": "src/components/chat/widgets/model-download.tsx"
     },
     {
-      "specifier": "@elizaos/ui/components/chat/widgets/music-player",
-      "source": "src/components/chat/widgets/music-player.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/chat/widgets/music-player.helpers",
-      "source": "src/components/chat/widgets/music-player.helpers.ts"
-    },
-    {
       "specifier": "@elizaos/ui/components/chat/widgets/needs-attention",
       "source": "src/components/chat/widgets/needs-attention.tsx"
     },

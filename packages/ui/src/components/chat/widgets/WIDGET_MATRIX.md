@@ -131,11 +131,6 @@ the inbox.
 
 | Widget id | Slot | Data source / updates | Component | Host mount | Status |
 |---|---|---|---|---|---|
-| `agent-orchestrator.activity` | chat-sidebar | `useActivityEvents` <- WS `pty-session-event` / `proactive-message` / `agent_event` | `agent-orchestrator.tsx` `OrchestratorActivityWidget` | TasksEventsPanel | wired |
-| `agent-orchestrator.apps` | chat-sidebar | poll `listAppRuns()` 5s | `agent-orchestrator.tsx` `AppRunsWidget` | TasksEventsPanel | wired |
-| `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator.tsx` `OrchestratorAccountsWidget` + `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
-| `browser.status` | chat-sidebar | browser-workspace status | `browser-status.tsx` | TasksEventsPanel | wired |
-| `music-player.stream` | chat-sidebar | music-player state | `music-player.tsx` | TasksEventsPanel | wired |
 | `todo.items` | home | todo store + goals store (one at-risk goal row) | `todo.tsx` | ViewCatalog | wired |
 | `calendar.upcoming` | home | calendar store | `calendar-upcoming.tsx` | ViewCatalog | wired |
 | `music-library.playlists` | character | music-library state | n/a | CharacterHubView | wired |
@@ -150,15 +145,16 @@ home because its at-risk row is rendered inside `todo.items`.
 | Slot | Host mounted? | Widgets registered? | Verdict |
 |---|---|---|---|
 | `home` | yes, HomeScreen | yes, curated ≤5 residents (tutorial launcher removed) | active |
-| `chat-sidebar` | yes, TasksEventsPanel | yes, 5 | active |
+| `chat-sidebar` | no | no bundled widgets | compatibility-only registry slot |
 | `character` | yes, CharacterHubView | yes, 1 | active |
 | `nav-page` | no WidgetHost mount | no component widgets | active app-navigation contract |
 
 
 Retired slots pruned in #9448: `chat-inline`, `wallet`, `browser`,
-`heartbeats`, `settings`, `automations`. Browser status now renders through the
-active `chat-sidebar` declaration. Wallet remains a routed surface; its home
-resident was demoted by the home surface spec because balance state is not
+`heartbeats`, `settings`, `automations`. The permanent `chat-sidebar` host is
+also unmounted: Browser, orchestration, and other plugin capabilities live in
+their routed apps or inline chat surfaces. Wallet remains a routed surface; its
+home resident was demoted by the home surface spec because balance state is not
 resting urgency.
 
 ---
@@ -212,10 +208,10 @@ only navigation affordance).
   here only as a pointer; there is no remaining segment-kind divergence.
 - **D2 - per-message rail.** ChatView owns edit/delete/speak/retry/suggest;
   the overlay exposes press-and-hold copy only (mobile-first). Intentional.
-- **D3 - topic chips / grouped transcript.** Overlay-only. Intentional.
-- **D4 - chat-sidebar host.** Neither surface mounts it; it lives in the
-  desktop layout wrapper (`TasksEventsPanel`). The overlay has no side rail by
-  design (pull-up sheet).
+- **D3 - transcript topics.** Per-message topic metadata remains available to
+  search and memory consumers, but normal chat renders one chronological list.
+- **D4 - chat-sidebar host.** No normal chat or Home surface mounts a permanent
+  widget rail. Plugin features use inline chat or their routed app surfaces.
 
 ---
 
