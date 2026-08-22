@@ -82,6 +82,25 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
 	],
+	"packages/agent/src/actions/files.ts": [
+		/clampLimit/,
+		/filtered\.slice\(0,\s*limit\)/,
+	],
+	"packages/agent/src/actions/knowledge.ts": [
+		/DOCUMENT_SCAN_MAX/,
+		/\.slice\(0,\s*limit\)/,
+	],
+	"packages/agent/src/actions/memories.ts": [
+		/clampLimit/,
+		/scanWindowSaturated/,
+	],
+	"packages/core/src/features/documents/service.ts": [
+		/queryDocumentFragments\([\s\S]{0,360}limit:\s*(?:20|40|1_000)/,
+	],
+	"packages/core/src/features/documents/actions.ts": [
+		/filteredMatches\.slice\(/,
+		/unknown_beyond_ranked_window/,
+	],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,

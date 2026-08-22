@@ -245,6 +245,22 @@ describe("SEARCH_KNOWLEDGE", () => {
     ).rejects.toMatchObject({ code: "KNOWLEDGE_TRAVERSAL_NON_ADVANCING" });
   });
 
+  it("rejects content mutation between stable facet traversal passes", async () => {
+    const first = doc(DOC_GLOBAL, "global");
+    const second = { ...first, content: { text: "changed complete text" } };
+    const service = makeService([first]);
+    service.getMemories
+      .mockResolvedValueOnce([first])
+      .mockResolvedValueOnce([second]);
+    const runtime = makeRuntime({ service });
+
+    await expect(
+      call(searchKnowledgeAction, runtime, msg(OWNER_ENTITY, DM_ROOM), {
+        tags: ["media-format:pdf"],
+      }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_TRAVERSAL_INVENTORY_CHANGED" });
+  });
+
   it("free-text search composes with the help tag on fragment metadata", async () => {
     const helpFragment = doc(DOC_GLOBAL, "global", {
       documentId: DOC_GLOBAL,

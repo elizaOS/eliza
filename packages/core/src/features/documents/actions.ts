@@ -684,13 +684,10 @@ async function handleSearch(
 			: undefined,
 		getSearchMode(params.searchMode),
 	);
-	const limit = getLimit(params.limit, Number.MAX_SAFE_INTEGER);
 	const filteredMatches = matches.filter((item) =>
 		storedDocumentMatchesFilters(item, filters),
 	);
-	const hasMoreInWindow = filteredMatches.length > limit;
-	const visible = filteredMatches.slice(0, limit);
-	const projected = visible.map((item) => {
+	const projected = filteredMatches.map((item) => {
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
 			...item,
@@ -714,18 +711,14 @@ async function handleSearch(
 		startMs: item.startMs,
 		endMs: item.endMs,
 	}));
-	const retrievalScope = `Searched a bounded ranked retrieval window of ${matches.length} fragment(s); completeness beyond that window is unknown.`;
+	const retrievalScope = `Searched all ${matches.length} authorized fragment(s).`;
 	const text = `${
 		projected.length === 0
 			? `No document fragments matching ${describeQuery(query)} were returned from that window.`
 			: `Found ${projected.length} document fragment(s) for ${describeQuery(query)}:\n\n${projected
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
 					.join("\n\n")}`
-	} ${retrievalScope}${
-		hasMoreInWindow
-			? ` More filtered matches exist within the retrieved window beyond the ${limit} shown.`
-			: ""
-	}`;
+	} ${retrievalScope}`;
 	const filtersApplied = [
 		filters.scope ? "scope" : undefined,
 		filters.scopedToEntityId ? "scopedToEntityId" : undefined,
@@ -742,11 +735,9 @@ async function handleSearch(
 			results: projectedData,
 			scope: {
 				retrieved: matches.length,
-				matchedInWindow: filteredMatches.length,
+				matched: filteredMatches.length,
 				shown: projected.length,
-				limit,
-				hasMoreInWindow,
-				retrievalCompleteness: "unknown_beyond_ranked_window",
+				retrievalCompleteness: "complete_authorized_matches",
 				filtersApplied,
 			},
 		},
@@ -755,11 +746,9 @@ async function handleSearch(
 			results: projectedData,
 			scope: {
 				retrieved: matches.length,
-				matchedInWindow: filteredMatches.length,
+				matched: filteredMatches.length,
 				shown: projected.length,
-				limit,
-				hasMoreInWindow,
-				retrievalCompleteness: "unknown_beyond_ranked_window",
+				retrievalCompleteness: "complete_authorized_matches",
 				filtersApplied,
 			},
 		},
