@@ -435,7 +435,13 @@ setInterval(() => {}, 1000);
     child,
     `import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-spawn(process.execPath, [${JSON.stringify(descendant)}], { stdio: "ignore" });
+// Windows only guarantees post-parent lifetime for a detached child. The
+// process still inherits the wrapper's Job Object, so closing a job whose
+// kill-on-close flag remains armed would terminate this fixture.
+spawn(process.execPath, [${JSON.stringify(descendant)}], {
+  stdio: "ignore",
+  detached: true,
+});
 const ready = setInterval(() => {
   if (existsSync(${JSON.stringify(readyFile)})) {
     clearInterval(ready);
@@ -631,7 +637,12 @@ setInterval(() => {}, 1000);
     `import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 writeFileSync(${JSON.stringify(childPidFile)}, String(process.pid));
-spawn(process.execPath, [${JSON.stringify(descendant)}], { stdio: "ignore" });
+// Keep libuv's parent-owned job from reaping this process when the leader
+// dies; the deadline wrapper's Job Object must own the cleanup proof.
+spawn(process.execPath, [${JSON.stringify(descendant)}], {
+  stdio: "ignore",
+  detached: true,
+});
 process.on("SIGTERM", () => {});
 setInterval(() => {}, 1000);
 `,
