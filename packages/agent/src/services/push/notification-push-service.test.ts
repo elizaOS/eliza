@@ -12,8 +12,8 @@ import type {
   AgentNotification,
   IAgentRuntime,
 } from "@elizaos/core";
-import { NOTIFICATION_STREAM, ServiceType } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { logger, NOTIFICATION_STREAM, ServiceType } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPushService } from "./notification-push-service.ts";
 import { PushTokenRegistry } from "./push-token-registry.ts";
 import {
@@ -73,6 +73,7 @@ function makeHarness(): Harness {
     },
     deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
     getService: (t: string) => (t === ServiceType.AGENT_EVENT ? bus : null),
+    reportError: () => {},
   } as unknown as IAgentRuntime;
 
   const emitRaw = (event: AgentEventPayload) => {
@@ -253,9 +254,9 @@ describe("NotificationPushService", () => {
       providers: { ios, android },
     });
     await service.attach();
-    const listSpy = vi.spyOn(h.registry, "list").mockRejectedValueOnce(
-      new Error("db down"),
-    );
+    const listSpy = vi
+      .spyOn(h.registry, "list")
+      .mockRejectedValueOnce(new Error("db down"));
     const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
     const reportErrorSpy = vi
       .spyOn(h.runtime, "reportError")
