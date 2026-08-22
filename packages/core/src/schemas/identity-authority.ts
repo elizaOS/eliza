@@ -235,6 +235,13 @@ export const identityClaimJournalSchema: SchemaTable = {
 			type: "uuid",
 			notNull: true,
 		},
+		event_kind: { name: "event_kind", type: "text", notNull: true },
+		prior_version: { name: "prior_version", type: "bigint" },
+		resulting_version: {
+			name: "resulting_version",
+			type: "bigint",
+			notNull: true,
+		},
 		actor_principal_id: {
 			name: "actor_principal_id",
 			type: "uuid",

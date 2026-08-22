@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { SchemaTable } from "../types/schema";
 import {
 	identityAuthorityStateSchema,
 	identityCanonicalRedirectSchema,
@@ -12,6 +13,67 @@ import {
 	identityMergeConfirmationSchema,
 	identityMergeJournalSchema,
 } from "./identity-authority";
+
+const CHECK_CONSTRAINT_KEYWORDS = new Set([
+	"and",
+	"in",
+	"is",
+	"not",
+	"null",
+	"or",
+]);
+
+function findMissingColumnReferences(schema: SchemaTable): string[] {
+	const columnNames = new Set(Object.keys(schema.columns));
+	const references: Array<{ owner: string; column: string }> = [];
+
+	for (const index of Object.values(schema.indexes)) {
+		for (const column of index.columns) {
+			if (!column.isExpression) {
+				references.push({
+					owner: `index:${index.name}`,
+					column: column.expression,
+				});
+			}
+		}
+	}
+	for (const foreignKey of Object.values(schema.foreignKeys)) {
+		for (const column of foreignKey.columnsFrom) {
+			references.push({ owner: `foreign-key:${foreignKey.name}`, column });
+		}
+	}
+	for (const primaryKey of Object.values(schema.compositePrimaryKeys)) {
+		for (const column of primaryKey.columns) {
+			references.push({ owner: `primary-key:${primaryKey.name}`, column });
+		}
+	}
+	for (const uniqueConstraint of Object.values(schema.uniqueConstraints)) {
+		for (const column of uniqueConstraint.columns) {
+			references.push({ owner: `unique:${uniqueConstraint.name}`, column });
+		}
+	}
+	for (const checkConstraint of Object.values(schema.checkConstraints)) {
+		const expressionWithoutLiterals = checkConstraint.value.replace(
+			/'(?:''|[^'])*'/g,
+			"",
+		);
+		for (const identifier of expressionWithoutLiterals.match(
+			/[a-z_][a-z0-9_]*/gi,
+		) ?? []) {
+			if (!CHECK_CONSTRAINT_KEYWORDS.has(identifier.toLowerCase())) {
+				references.push({
+					owner: `check:${checkConstraint.name}`,
+					column: identifier,
+				});
+			}
+		}
+	}
+
+	return references
+		.filter(({ column }) => !columnNames.has(column))
+		.map(({ owner, column }) => `${owner}:${column}`)
+		.sort();
+}
 
 describe("portable identity authority schemas", () => {
 	it("allows historical claims while uniquely fencing active scoped subjects", () => {
@@ -53,6 +115,53 @@ describe("portable identity authority schemas", () => {
 			identityClaimJournalSchema.foreignKeys.fk_identity_claim_journal_agent
 				?.onDelete,
 		).toBe("cascade");
+	});
+
+	it("keeps the portable journal columns in parity with persisted lifecycle rows", () => {
+		expect(Object.keys(identityClaimJournalSchema.columns)).toEqual([
+			"id",
+			"agent_id",
+			"claim_id",
+			"principal_entity_id",
+			"event_kind",
+			"prior_version",
+			"resulting_version",
+			"actor_principal_id",
+			"idempotency_key",
+			"request_digest",
+			"reason",
+			"provenance",
+			"evidence",
+			"before_claim",
+			"after_claim",
+			"created_at",
+		]);
+		expect(identityClaimJournalSchema.columns.event_kind).toEqual({
+			name: "event_kind",
+			type: "text",
+			notNull: true,
+		});
+		expect(identityClaimJournalSchema.columns.prior_version).toEqual({
+			name: "prior_version",
+			type: "bigint",
+		});
+		expect(identityClaimJournalSchema.columns.resulting_version).toEqual({
+			name: "resulting_version",
+			type: "bigint",
+			notNull: true,
+		});
+	});
+
+	it("rejects portable journal constraints that reference absent columns", () => {
+		expect(findMissingColumnReferences(identityClaimJournalSchema)).toEqual([]);
+
+		const { resulting_version: _omitted, ...columns } =
+			identityClaimJournalSchema.columns;
+		const malformedSchema = { ...identityClaimJournalSchema, columns };
+		expect(findMissingColumnReferences(malformedSchema)).toEqual([
+			"check:identity_claim_journal_version_check:resulting_version",
+			"index:identity_claim_journal_claim_version_idx:resulting_version",
+		]);
 	});
 
 	it("binds a bounded confirmation to the exact plan and generation", () => {
