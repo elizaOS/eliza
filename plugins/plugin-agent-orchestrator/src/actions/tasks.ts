@@ -1708,7 +1708,10 @@ async function runCreateLegacy(
             .interruptTask(threadId, "user_interrupt")
             .catch(() => undefined);
         }
-        throw new ElizaError("the build was cancelled before it started", {
+        // "Lane interrupted" is the typed marker the launch summary reads as
+        // a cancellation (see interruptCancelled), so no launch-failed
+        // notice follows the cancel confirmation.
+        throw new ElizaError("Lane interrupted: cancelled before it started", {
           code: "CODING_SESSION_CANCELLED",
           context: { sessionId: session.sessionId },
           severity: "ephemeral",
@@ -1953,15 +1956,21 @@ async function runCreateLegacy(
       `[TASKS:create] worker exit after completion already reported; suppressing launch-failed notice (labels=${failed.map((f) => f.label).join(",")})`,
     );
   } else if (failed.length > 0 && turnAborted) {
-    const text = "stopped the launch — you cancelled it before it got going.";
-    await callbackText(callback, text);
+    // The user's stop already got its confirmation (stage-1's "stopping…"
+    // on the interrupt path, the cancel action's on the planner path); a
+    // second "stopped the launch" line from this turn was a double notice
+    // (live 2026-08-22). Planner-facing text only.
+    const text =
+      "stopped the launch — the user cancelled it before it started.";
     return {
       success: true,
       text,
-      userFacingText: text,
-      verifiedUserFacing: true,
       turnComplete: true,
-      data: { cancelled: true, failedLabels: failed.map((f) => f.label) },
+      data: {
+        cancelled: true,
+        failedLabels: failed.map((f) => f.label),
+        suppressPlannerReply: true,
+      },
     };
   }
   if (failed.length > 0 && !completionAlreadyReported && !turnAborted) {
