@@ -18,10 +18,11 @@ import {
 	getLiveEntityMetadataFromMessage,
 	normalizeRole,
 	type RoleName,
+	type RolesWorldMetadata,
+	recordRoleGrant,
 	resolveCanonicalOwnerId,
 	resolveEntityRole,
 	resolveWorldForMessage,
-	setEntityRole,
 } from "../../../roles.ts";
 import type {
 	Action,
@@ -110,6 +111,18 @@ interface RoleHandlerParams {
 	role?: string;
 	label?: string;
 	assignments?: unknown;
+}
+
+type ResolvedRoleWorldResult = NonNullable<
+	Awaited<ReturnType<typeof resolveWorldForMessage>>
+>;
+type ResolvedRoleWorld = ResolvedRoleWorldResult & {
+	world: NonNullable<ResolvedRoleWorldResult["world"]>;
+};
+
+interface RoleManagerAuthorization {
+	resolved: ResolvedRoleWorld;
+	requesterRole: RoleName;
 }
 
 function readParams(
@@ -423,59 +436,27 @@ async function applyAssignments(args: {
 	message: Memory;
 	assignments: RoleAssignment[];
 	op: "assign" | "revoke";
+	authorization: RoleManagerAuthorization;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const { runtime, message, assignments, op, callback } = args;
-
-	const resolved = await resolveWorldForMessage(runtime, message);
-	// Planner-facing only: the canned "no world context" boilerplate shipped
-	// visibly next to the evaluator's own error reply. The evaluator owns
-	// phrasing the failure to the user, in voice.
-	if (!resolved) {
-		return {
-			success: false,
-			text: "Cannot manage roles — no world context for this room; tell the user roles are unavailable here.",
-			error: "WORLD_NOT_FOUND",
-			data: { actionName: "ROLE", op },
-		};
-	}
-
-	const { world, metadata } = resolved;
-	if (!world) {
-		return {
-			success: false,
-			text: "Cannot manage roles — no world context for this room; tell the user roles are unavailable here.",
-			error: "WORLD_NOT_FOUND",
-			data: { actionName: "ROLE", op },
-		};
-	}
-	const requesterRole = await resolveEntityRole(
-		runtime,
-		world,
-		metadata,
-		message.entityId,
-		{ liveEntityMetadata: getLiveEntityMetadataFromMessage(message) },
-	);
-
-	// #12087 Item 17: the declared `roleGate: { minRole: "OWNER" }` is the
-	// enforced entry gate (canActionRun blocks anyone below OWNER before the
-	// handler runs on every exposure/execution path). This assertion agrees with
-	// it — the previous `|| requesterRole === "ADMIN"` branch was dead under the
-	// gate and contradicted the declaration. Per-assignment `canModifyRole` below
-	// still bounds which target roles an OWNER may set.
-	if (requesterRole !== "OWNER") {
-		return {
-			success: false,
-			text: "Only OWNERs can manage roles; tell the user they lack permission.",
-			error: "INSUFFICIENT_PERMISSIONS",
-			data: { actionName: "ROLE", op, requesterRole },
-		};
-	}
+	const { runtime, message, assignments, op, authorization, callback } = args;
 
 	const successes: Array<{ entityId: UUID; newRole: RoleName }> = [];
 	const failures: Array<{ entityId: UUID; reason: string }> = [];
 
-	for (const { entityId, newRole } of assignments) {
+	for (const [index, { entityId, newRole }] of assignments.entries()) {
+		// The first assignment uses the handler's final authorization snapshot.
+		// Reauthorize every later batch item so a demotion between writes stops the
+		// batch before another mutation. The authorized snapshot is also the exact
+		// world passed to updateWorld; no role helper may refetch behind this fence.
+		const currentAuthorization =
+			index === 0
+				? authorization
+				: await authorizeRoleManager({ runtime, message, op });
+		if (!("resolved" in currentAuthorization)) return currentAuthorization;
+		const { world, metadata } = currentAuthorization.resolved;
+		const { requesterRole } = currentAuthorization;
+
 		if (entityId === runtime.agentId) {
 			failures.push({ entityId, reason: "Cannot change agent's own role" });
 			continue;
@@ -524,7 +505,9 @@ async function applyAssignments(args: {
 			continue;
 		}
 
-		await setEntityRole(runtime, message, entityId, newRole);
+		recordRoleGrant(metadata, entityId, newRole);
+		(world as { metadata: RolesWorldMetadata }).metadata = metadata;
+		await runtime.updateWorld(world);
 		successes.push({ entityId, newRole });
 		logger.info(
 			{
@@ -562,28 +545,17 @@ async function applyAssignments(args: {
 			op,
 			successCount: successes.length,
 			failureCount: failures.length,
-			worldId: world.id,
+			worldId: authorization.resolved.world.id,
 		},
 	};
 }
 
 async function handleList(args: {
 	runtime: IAgentRuntime;
-	message: Memory;
+	resolved: ResolvedRoleWorld;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const { runtime, message, callback } = args;
-	const resolved = await resolveWorldForMessage(runtime, message);
-	// Planner-facing only: "No world context found." is internal-state
-	// tool-speak; the evaluator owns phrasing the failure to the user.
-	if (!resolved) {
-		return {
-			success: false,
-			text: "No world context found for this room; tell the user roles are unavailable here.",
-			error: "WORLD_NOT_FOUND",
-			data: { actionName: "ROLE", op: "list" },
-		};
-	}
+	const { runtime, resolved, callback } = args;
 	const roles = resolved.metadata.roles ?? {};
 	const entries = Object.entries(roles);
 	// Resolve display names so chat sees "Pat: ADMIN", not a raw UUID dump;
@@ -616,10 +588,46 @@ async function handleList(args: {
 	};
 }
 
+async function authorizeRoleManager(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	op: RoleOp;
+}): Promise<RoleManagerAuthorization | ActionResult> {
+	const { runtime, message, op } = args;
+	const resolved = await resolveWorldForMessage(runtime, message);
+	if (!resolved?.world) {
+		return {
+			success: false,
+			text: "Cannot manage roles — no world context for this room; tell the user roles are unavailable here.",
+			error: "WORLD_NOT_FOUND",
+			data: { actionName: "ROLE", op },
+		};
+	}
+	const requesterRole = await resolveEntityRole(
+		runtime,
+		resolved.world,
+		resolved.metadata,
+		message.entityId,
+		{ liveEntityMetadata: getLiveEntityMetadataFromMessage(message) },
+	);
+	if (requesterRole !== "OWNER" && requesterRole !== "ADMIN") {
+		return {
+			success: false,
+			text: "Only OWNERs and ADMINs can manage roles; tell the user they lack permission.",
+			error: "INSUFFICIENT_PERMISSIONS",
+			data: { actionName: "ROLE", op, requesterRole },
+		};
+	}
+	return {
+		resolved: { ...resolved, world: resolved.world },
+		requesterRole,
+	};
+}
+
 export const roleAction: Action = {
 	name: "ROLE",
 	contexts: ["admin", "settings"],
-	roleGate: { minRole: "OWNER" },
+	roleGate: { minRole: "ADMIN" },
 	suppressPostActionContinuation: true,
 	description:
 		"Manage world roles OWNER/ADMIN/USER/GUEST. Ops assign, revoke, list. Use assignments[] or target name.",
@@ -727,9 +735,15 @@ export const roleAction: Action = {
 				data: { actionName: "ROLE", op: params.op ?? null },
 			};
 		}
+		const authorization = await authorizeRoleManager({ runtime, message, op });
+		if (!("resolved" in authorization)) return authorization;
 
 		if (op === "list") {
-			return handleList({ runtime, message, callback });
+			return handleList({
+				runtime,
+				resolved: authorization.resolved,
+				callback,
+			});
 		}
 
 		const defaultRole: RoleName | null = op === "revoke" ? "GUEST" : null;
@@ -754,12 +768,22 @@ export const roleAction: Action = {
 				data: { actionName: "ROLE", op, errors },
 			};
 		}
+		// Name/assignment resolution can cross storage boundaries. Recheck current
+		// authority immediately before any role write so a concurrent demotion or
+		// owner change cannot reuse the preliminary disclosure gate.
+		const finalAuthorization = await authorizeRoleManager({
+			runtime,
+			message,
+			op,
+		});
+		if (!("resolved" in finalAuthorization)) return finalAuthorization;
 
 		return applyAssignments({
 			runtime,
 			message,
 			assignments,
 			op,
+			authorization: finalAuthorization,
 			callback,
 		});
 	},
