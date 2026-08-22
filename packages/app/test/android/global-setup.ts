@@ -35,6 +35,17 @@ const HOST_AGENT_PORT =
       )
     : AGENT_API_PORT;
 
+export const ANDROID_E2E_RUNTIME_PERMISSIONS = [
+  "android.permission.POST_NOTIFICATIONS",
+  "android.permission.RECORD_AUDIO",
+  "android.permission.CAMERA",
+  "android.permission.READ_CONTACTS",
+  "android.permission.WRITE_CONTACTS",
+  "android.permission.CALL_PHONE",
+  "android.permission.READ_CALL_LOG",
+  "android.permission.READ_PHONE_STATE",
+] as const;
+
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function pollAgentHealth(localPort: number, timeoutMs: number) {
@@ -91,11 +102,7 @@ export default async function globalSetup() {
 
   // Pre-grant the runtime permissions the app requests on launch, so a system
   // GrantPermissionsActivity doesn't cover the WebView and stall route render.
-  for (const perm of [
-    "android.permission.POST_NOTIFICATIONS",
-    "android.permission.RECORD_AUDIO",
-    "android.permission.CAMERA",
-  ]) {
+  for (const perm of ANDROID_E2E_RUNTIME_PERMISSIONS) {
     adbTry(adb, ["-s", serial, "shell", "pm", "grant", APP_ID, perm]);
   }
 

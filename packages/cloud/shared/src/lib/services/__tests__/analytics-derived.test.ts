@@ -2,7 +2,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   deriveCostTrendingFields,
-  deriveQuotaUsage,
   toDistribution,
   toRatePercent,
   toRetentionRates,
@@ -103,25 +102,5 @@ describe("toRetentionRates", () => {
     expect(out[0]?.d1).toBeNull();
     expect(out[0]?.d7).toBeNull();
     expect(out[0]?.d30).toBeNull();
-  });
-});
-
-describe("deriveQuotaUsage", () => {
-  test("returns null percent when no limit", () => {
-    expect(deriveQuotaUsage(10, null)).toEqual({
-      usedPercent: null,
-      usedPercentClamped: 0,
-    });
-  });
-
-  test("computes percent and clamps to 100", () => {
-    expect(deriveQuotaUsage(50, 200)).toEqual({
-      usedPercent: 25,
-      usedPercentClamped: 25,
-    });
-    expect(deriveQuotaUsage(300, 200)).toEqual({
-      usedPercent: 150,
-      usedPercentClamped: 100,
-    });
   });
 });

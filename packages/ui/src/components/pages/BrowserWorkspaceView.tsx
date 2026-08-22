@@ -2849,26 +2849,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                 title={t("browserworkspace.EmptyTitle", {
                   defaultValue: "No page open",
                 })}
-                action={
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="min-h-11 gap-1.5"
-                    onClick={() =>
-                      void runBrowserWorkspaceAction("open:home", async () => {
-                        await openNewBrowserWorkspaceTab(
-                          BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                          "user",
-                        );
-                      })
-                    }
-                  >
-                    <Plus className="h-4 w-4" aria-hidden />
-                    {t("browserworkspace.OpenWebsite", {
-                      defaultValue: "Open a website",
-                    })}
-                  </Button>
-                }
               />
               {/* Bottom + side chat clearance is reserved once, on the scroller
                 above — repeating it on this grid double-counted the inset in
@@ -2952,12 +2932,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               browserBridgeSupported &&
               !browserBridgeUnsupportedInNativeLocalMode ? (
                 <div className="mt-4 flex w-full max-w-xl flex-col gap-2 px-6 pb-4">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
-                    {t("browserworkspace.AgentBrowserSessions", {
-                      defaultValue: "Agent browser sessions",
-                    })}
-                  </div>
-                  <BrowserSessionPolicyPanel api={client} />
+                  <BrowserSessionPolicyPanel api={client} hideWhenEmpty />
                 </div>
               ) : null}
             </div>

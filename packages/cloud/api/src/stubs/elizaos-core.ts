@@ -879,7 +879,7 @@ export async function timeInferenceSpan<T>(
   return fn();
 }
 
-/** Worker-safe `getInferenceTimer`: no timer context exists in the Worker. */
+/** Worker-safe `getInferenceTimer`: timing context lives on the agent sidecar. */
 export function getInferenceTimer(): undefined {
   return undefined;
 }

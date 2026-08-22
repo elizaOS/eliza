@@ -633,6 +633,11 @@ export function appPid(adbBin, serial) {
  * healthy. Branded AOSP devices run the agent privileged and don't need this;
  * for a test emulator we `adb root` + `setenforce 0`. No-op (best-effort) on
  * physical devices, which must already be branded/privileged.
+ *
+ * A fresh emulator also shows Android's one-time immersive-mode confirmation
+ * above the app. That system overlay is outside WebView/CDP and intercepts the
+ * first route-coverage interaction, so acknowledge it through the emulator's
+ * secure setting before the app launches.
  */
 export async function ensureEmulatorPermissive(
   adbBin,
@@ -647,6 +652,30 @@ export async function ensureEmulatorPermissive(
   await delay(2_000);
   adbTry(adbBin, ["-s", serial, "wait-for-device"]);
   adbTry(adbBin, ["-s", serial, "shell", "setenforce", "0"]);
+  adb(adbBin, [
+    "-s",
+    serial,
+    "shell",
+    "settings",
+    "put",
+    "secure",
+    "immersive_mode_confirmations",
+    "confirmed",
+  ]);
+  const immersiveConfirmation = adb(adbBin, [
+    "-s",
+    serial,
+    "shell",
+    "settings",
+    "get",
+    "secure",
+    "immersive_mode_confirmations",
+  ]).trim();
+  if (immersiveConfirmation !== "confirmed") {
+    throw new Error(
+      `failed to acknowledge Android immersive-mode confirmation on ${serial}`,
+    );
+  }
   const mode = adbTry(adbBin, ["-s", serial, "shell", "getenforce"]).trim();
   log(`SELinux mode on ${serial}: ${mode || "unknown"}`);
   return /permissive/i.test(mode);

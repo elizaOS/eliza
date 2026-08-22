@@ -289,7 +289,7 @@ export interface OpenPullRequestSource {
   ): Promise<OpenPullRequestScope[]>;
 }
 
-/** Best-effort GitHub REST reader, using the same token setting as workspace-github. */
+/** GitHub REST reader that exhausts pagination before reporting collision scope. */
 class RuntimeGitHubPullRequestSource implements OpenPullRequestSource {
   constructor(private readonly runtime: IAgentRuntime) {}
 
@@ -303,30 +303,55 @@ class RuntimeGitHubPullRequestSource implements OpenPullRequestSource {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
     const results: OpenPullRequestScope[] = [];
-    for (const rawRepo of [...new Set(repos)].slice(0, 5)) {
+    for (const rawRepo of new Set(repos)) {
       const { owner, repo } = parseOwnerRepo(rawRepo);
-      const pullsResponse = await fetch(
-        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=50`,
-        { headers, signal: AbortSignal.timeout(5_000) },
-      );
-      if (!pullsResponse.ok) continue;
-      const pulls = (await pullsResponse.json()) as unknown;
-      if (!Array.isArray(pulls)) continue;
-      for (const pull of pulls.slice(0, 20)) {
-        if (!isRecord(pull) || typeof pull.number !== "number") continue;
-        const filesResponse = await fetch(
-          `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pull.number}/files?per_page=100`,
+      const pulls: unknown[] = [];
+      for (let page = 1; ; page += 1) {
+        const pullsResponse = await fetch(
+          `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=100&page=${page}`,
           { headers, signal: AbortSignal.timeout(5_000) },
         );
-        if (!filesResponse.ok) continue;
-        const files = (await filesResponse.json()) as unknown;
-        const changedFiles = Array.isArray(files)
-          ? files
-              .map((file) =>
-                isRecord(file) ? nonEmptyString(file.filename) : undefined,
-              )
-              .filter((file): file is string => Boolean(file))
-          : [];
+        if (!pullsResponse.ok) {
+          throw new Error(
+            `GitHub pull-request inventory failed for ${owner}/${repo} page ${page}: HTTP ${pullsResponse.status}`,
+          );
+        }
+        const pagePulls = (await pullsResponse.json()) as unknown;
+        if (!Array.isArray(pagePulls)) {
+          throw new Error(
+            `GitHub pull-request inventory returned a non-array for ${owner}/${repo} page ${page}`,
+          );
+        }
+        pulls.push(...pagePulls);
+        if (pagePulls.length < 100) break;
+      }
+      for (const pull of pulls) {
+        if (!isRecord(pull) || typeof pull.number !== "number") continue;
+        const files: unknown[] = [];
+        for (let page = 1; ; page += 1) {
+          const filesResponse = await fetch(
+            `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pull.number}/files?per_page=100&page=${page}`,
+            { headers, signal: AbortSignal.timeout(5_000) },
+          );
+          if (!filesResponse.ok) {
+            throw new Error(
+              `GitHub changed-file inventory failed for ${owner}/${repo}#${pull.number} page ${page}: HTTP ${filesResponse.status}`,
+            );
+          }
+          const pageFiles = (await filesResponse.json()) as unknown;
+          if (!Array.isArray(pageFiles)) {
+            throw new Error(
+              `GitHub changed-file inventory returned a non-array for ${owner}/${repo}#${pull.number} page ${page}`,
+            );
+          }
+          files.push(...pageFiles);
+          if (pageFiles.length < 100) break;
+        }
+        const changedFiles = files
+          .map((file) =>
+            isRecord(file) ? nonEmptyString(file.filename) : undefined,
+          )
+          .filter((file): file is string => Boolean(file));
         results.push({
           id: `${owner}/${repo}#${pull.number}`,
           repo: `${owner}/${repo}`,

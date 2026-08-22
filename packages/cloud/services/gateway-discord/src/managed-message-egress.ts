@@ -183,7 +183,7 @@ export async function postManagedAgentMessageWithRetry(options: {
       try {
         const responseBody = (await response.text()).trim();
         lastError =
-          responseBody.slice(0, 200) ||
+          responseBody ||
           response.statusText.trim() ||
           `HTTP ${response.status}`;
       } catch (error) {

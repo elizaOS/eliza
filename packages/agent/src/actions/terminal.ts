@@ -24,16 +24,14 @@ import {
   logger,
   redactSensitiveText,
   stringToUuid,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
 import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
-const MAX_TERMINAL_DATA_CHARS = 16000;
 const TERMINAL_TRANSPORT_GRACE_MS = 10_000;
-const MAX_TERMINAL_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_TERMINAL_RESPONSE_BYTES = 8 * 1024 * 1024;
 // Max sanitized stdout, in chars, that may be relayed verbatim as the user-facing
 // message. Small single-line results (a SHA, a count, a path) are useful to
 // echo for "run X and tell me the value" turns; anything larger — or with
@@ -349,37 +347,13 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
 }
 
 /** @internal Exported for deterministic boundary tests. */
-export function buildOutputPreview(content: string, maxLength = 3_000): string {
-  if (maxLength <= 0) return "";
-  const trimmed = content.trimEnd();
-  if (trimmed.length <= maxLength) {
-    return truncateWellFormed(formatOutputBlock(trimmed), maxLength);
-  }
-
-  const suffixFor = (omittedChars: number) =>
-    `\n\n[... ${omittedChars} chars omitted; use the attachment for full output ...]`;
-  const retainedBudget = Math.max(
-    0,
-    maxLength - suffixFor(trimmed.length).length,
-  );
-  const prefix = truncateWellFormed(trimmed, retainedBudget).trimEnd();
-  const suffix = suffixFor(trimmed.length - prefix.length);
-
-  return prefix.length + suffix.length <= maxLength
-    ? `${prefix}${suffix}`
-    : truncateWellFormed(trimmed, maxLength);
+export function completeOutputBlock(content: string): string {
+  return formatOutputBlock(content.trimEnd());
 }
 
 /** @internal Exported for deterministic boundary tests. */
-export function truncateForData(
-  text: string,
-  max = MAX_TERMINAL_DATA_CHARS,
-): string {
-  if (max <= 0) return "";
-  if (text.length <= max) return text;
-  const suffix = "\n…[truncated]";
-  if (max <= suffix.length) return truncateWellFormed(text, max);
-  return `${truncateWellFormed(text, max - suffix.length)}${suffix}`;
+export function normalizeTerminalOutput(text: string): string {
+  return text;
 }
 
 async function createCommandOutputAttachment(
@@ -539,7 +513,7 @@ function buildCapturedResponseText(
         : "No attachment was stored for this output.",
     "",
     "Output preview:",
-    buildOutputPreview(outputContent),
+    completeOutputBlock(outputContent),
     "",
     "Next-step contract for the planner:",
     "- Decide whether to reply to the user, stay silent, or continue with another action.",
@@ -711,10 +685,10 @@ export const terminalAction: Action = {
       stdout: redactCapturedTerminalText(runtime, rawRun.stdout),
       stderr: redactCapturedTerminalText(runtime, rawRun.stderr),
     };
-    const boundedRun = {
+    const completeRun = {
       ...capturedRun,
-      stdout: truncateForData(capturedRun.stdout),
-      stderr: truncateForData(capturedRun.stderr),
+      stdout: normalizeTerminalOutput(capturedRun.stdout),
+      stderr: normalizeTerminalOutput(capturedRun.stderr),
     };
     const outputAttachment = await createCommandOutputAttachment(
       runtime,
@@ -761,7 +735,7 @@ export const terminalAction: Action = {
           }),
       data: {
         actionName: TERMINAL_ACTION_NAME,
-        ...boundedRun,
+        ...completeRun,
         outputAttachment: outputAttachment?.attachment,
         outputAttachmentMemoryId: outputAttachment?.memoryId,
         suppressVisibleCallback: true,

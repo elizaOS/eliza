@@ -498,14 +498,18 @@ describe("shared conversation coordinator", () => {
   });
 
   test("coordinatorFetch preserves Request inputs through the deadline wrapper", async () => {
+    const controller = new AbortController();
     const request = new Request("https://shared-runtime.internal/bridge", {
       method: "POST",
       body: "{}",
+      signal: controller.signal,
     });
     let seenInput: RequestInfo | URL | undefined;
+    let seenSignal: AbortSignal | undefined;
     const stub = {
-      fetch: async (input: RequestInfo | URL) => {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         seenInput = input;
+        seenSignal = init?.signal ?? undefined;
         return Response.json({ ok: true });
       },
     };
@@ -513,6 +517,32 @@ describe("shared conversation coordinator", () => {
     await coordinatorFetch(stub, request);
 
     expect(seenInput).toBe(request);
+    expect(seenSignal).not.toBe(controller.signal);
+    expect(seenSignal?.aborted).toBe(false);
+    controller.abort();
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  test("an explicit init signal overrides a Request-carried signal", async () => {
+    const requestController = new AbortController();
+    const initController = new AbortController();
+    const request = new Request("https://shared-runtime.internal/bridge", {
+      signal: requestController.signal,
+    });
+    let seenSignal: AbortSignal | undefined;
+    const stub = {
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seenSignal = init?.signal ?? undefined;
+        return Response.json({ ok: true });
+      },
+    };
+
+    await coordinatorFetch(stub, request, { signal: initController.signal });
+
+    requestController.abort();
+    expect(seenSignal?.aborted).toBe(false);
+    initController.abort();
+    expect(seenSignal?.aborted).toBe(true);
   });
 
   test("coordinatorFetch still times out when the caller signal never aborts", async () => {

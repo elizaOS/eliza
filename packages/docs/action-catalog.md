@@ -10,12 +10,12 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 
 ## Summary
 
-- **Canonical actions:** 25
+- **Canonical actions:** 24
 - **Core actions:** 14
-- **Plugin overlay actions:** 11
+- **Plugin overlay actions:** 10
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 173
+- **Registered runtime actions:** 172
 
 ## Actions
 
@@ -244,16 +244,6 @@ Show or set the default coding backend
 | --- | --- | --- | --- |
 | `backend` | no | string | default coding backend for new tasks |
 
-### COMPACT_COMMAND
-
-Compact conversation history
-
-- **Aliases:** /compact
-
-| Parameter | Required | Type | Description |
-| --- | --- | --- | --- |
-| `instructions` | no | string | Optional compaction instructions |
-
 ### CONTEXT_COMMAND
 
 Show current context information
@@ -374,7 +364,6 @@ list. Regenerate this document after changing the registered action surface.
 - `CLOUD_ACCOUNT_STATUS` — `plugins/plugin-elizacloud/src/actions/cloud-account-status.ts`
 - `CLOUD_CREATE_API_KEY` — `plugins/plugin-elizacloud/src/actions/create-cloud-api-key.ts`
 - `CLOUD_LIST_AGENTS` — `plugins/plugin-elizacloud/src/actions/list-cloud-agents.ts`
-- `COMPACT_CONVERSATION` — `packages/agent/src/actions/compact-conversation.ts`
 - `COMPUTER_USE` — `plugins/plugin-computeruse/src/actions/use-computer.ts`
 - `COMPUTER_USE_AGENT` — `plugins/plugin-computeruse/src/actions/use-computer-agent.ts`
 - `CONNECT_ACCOUNT` — `packages/agent/src/actions/connect-account.ts`

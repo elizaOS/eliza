@@ -99,7 +99,7 @@ describe("trajectory semantic stages", () => {
 		).toThrow(/semantic stage is invalid/i);
 	});
 
-	it("rejects unknown, non-JSON, cyclic, and over-bounded payloads", () => {
+	it("rejects unknown, non-JSON, and cyclic payloads", () => {
 		const semantic = recordedStageToSemanticStage(toolSearchStage);
 		expect(() =>
 			parseTrajectorySemanticStage({
@@ -122,56 +122,9 @@ describe("trajectory semantic stages", () => {
 				payload: { toolSearch: cyclic },
 			}),
 		).toThrow(/semantic stage is invalid/i);
-		expect(() =>
-			parseTrajectorySemanticStages(
-				Array.from({ length: 251 }, () => semantic),
-			),
-		).toThrow(/semantic stage is invalid/i);
 	});
 
-	it("accepts a planner stage carrying a live-sized tool surface", () => {
-		const semantic = recordedStageToSemanticStage(toolSearchStage);
-		// ~80 tools × ~110 schema nodes: the shape a live planner stage records.
-		const tools = Array.from({ length: 80 }, (_, index) => ({
-			name: `TOOL_${index}`,
-			description: "tool",
-			parameters: {
-				type: "object",
-				properties: Object.fromEntries(
-					Array.from({ length: 25 }, (_, field) => [
-						`param${field}`,
-						{ type: "string", description: "field" },
-					]),
-				),
-				required: ["param0"],
-			},
-		}));
-		const planner = {
-			...semantic,
-			stageId: "planner-1",
-			payload: { model: { tools } },
-		};
-		expect(parseTrajectorySemanticStage(planner).stageId).toBe("planner-1");
-		// A toolSearch query tokenizes the recent conversation too — hundreds
-		// of entries on a busy room; the stage-count cap must not apply here.
-		const tokens = Array.from({ length: 600 }, (_, index) => `tok${index}`);
-		expect(
-			parseTrajectorySemanticStage({
-				...semantic,
-				stageId: "search-1",
-				payload: { toolSearch: { query: { tokens } } },
-			}).stageId,
-		).toBe("search-1");
-		expect(
-			parseTrajectorySemanticStages([
-				planner,
-				{ ...planner, stageId: "planner-2" },
-				{ ...planner, stageId: "planner-3" },
-			]),
-		).toHaveLength(3);
-	});
-
-	it("applies node and byte budgets across the complete stage array", () => {
+	it("rejects duplicate ids while preserving large complete stage arrays", () => {
 		const semantic = recordedStageToSemanticStage(toolSearchStage);
 		expect(() =>
 			parseTrajectorySemanticStages([
@@ -181,18 +134,13 @@ describe("trajectory semantic stages", () => {
 		).toThrow(/semantic stage is invalid/i);
 
 		const largePayload = {
-			model: Object.fromEntries(
-				Array.from({ length: 10 }, (_, index) => [
-					`field-${index}`,
-					"x".repeat(60_000),
-				]),
-			),
+			model: { prompt: "x".repeat(70_000) },
 		};
-		expect(() =>
-			parseTrajectorySemanticStages([
-				{ ...semantic, stageId: "large-1", payload: largePayload },
-				{ ...semantic, stageId: "large-2", payload: largePayload },
-			]),
-		).toThrow(/semantic stage is invalid/i);
+		const stages = Array.from({ length: 260 }, (_, index) => ({
+			...semantic,
+			stageId: `large-${index}`,
+			payload: largePayload,
+		}));
+		expect(parseTrajectorySemanticStages(stages)).toEqual(stages);
 	});
 });

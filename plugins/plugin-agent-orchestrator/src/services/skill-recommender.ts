@@ -28,8 +28,6 @@ import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
 const LOG_PREFIX = "[SkillRecommender]";
-const DEFAULT_MAX = 5;
-const KEYWORD_CANDIDATE_LIMIT = 10;
 const LLM_SHORT_CIRCUIT_SCORE = 0.9;
 const BUILD_MONETIZED_APP_SLUG = "build-monetized-app";
 const ELIZA_CLOUD_SKILL_SLUG = "eliza-cloud";
@@ -432,7 +430,7 @@ export async function recommendSkillsForTask(
   opts: RecommendSkillsOptions,
 ): Promise<RecommendedSkill[]> {
   const log = getLogger(runtime);
-  const max = opts.max ?? DEFAULT_MAX;
+  const max = opts.max ?? Number.POSITIVE_INFINITY;
   if (max <= 0) return [];
 
   const service = runtime.getService("AGENT_SKILLS_SERVICE") as
@@ -479,8 +477,7 @@ export async function recommendSkillsForTask(
       return { candidate, score };
     })
     .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, KEYWORD_CANDIDATE_LIMIT);
+    .sort((a, b) => b.score - a.score);
 
   if (scoredCandidates.length === 0) {
     log.debug(`${LOG_PREFIX} no keyword overlap for task; skipping LLM pass`);

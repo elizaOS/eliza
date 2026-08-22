@@ -487,8 +487,13 @@ async function handleScheduledTasks(
           (req.headers["content-length"] as string | undefined) ?? "0",
           10,
         );
+        const hasTransferEncoding =
+          req.headers["transfer-encoding"] !== undefined;
         let body: unknown;
-        if (Number.isFinite(contentLength) && contentLength > 0) {
+        if (
+          (Number.isFinite(contentLength) && contentLength > 0) ||
+          hasTransferEncoding
+        ) {
           const parsed = await readJsonBody<Record<string, unknown>>(req, res);
           if (parsed === null) return true;
           body = parsed;
@@ -514,6 +519,10 @@ async function handleScheduledTasks(
           // boundary promises for malformed input. A `JSON.parse`-produced own
           // `"__proto__"` key additionally re-parents the task object, because
           // `Object.assign` writes through `[[Set]]`.
+          if (body === undefined) {
+            error(res, "invalid edit payload: request body is required", 400);
+            return true;
+          }
           const raw = (body ?? {}) as Record<string, unknown>;
           // Refuse the read-only keys up front, with the runner's own message
           // and the 409 the boundary already documents for a read-only field.

@@ -448,7 +448,7 @@ const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";
 const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
-const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
+const _MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
@@ -5488,12 +5488,8 @@ function captureTerminalToolOutput(
   if (capturedToolOutputs.has(key)) return undefined;
   capturedToolOutputs.add(key);
   const wellFormed = toWellFormedUnicode(output);
-  const truncated =
-    wellFormed.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
-      ? `${truncateWellFormed(wellFormed, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
-      : wellFormed;
   const title = toolCall.title?.trim() || "tool output";
-  return `[tool output: ${title}]\n${truncated}\n${TOOL_OUTPUT_END_MARKER}`;
+  return `[tool output: ${title}]\n${wellFormed}\n${TOOL_OUTPUT_END_MARKER}`;
 }
 
 // Exported for unit coverage of the exec-record one-liner path (issue #11578).

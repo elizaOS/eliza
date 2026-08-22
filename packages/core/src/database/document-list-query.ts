@@ -26,8 +26,6 @@ export const DOCUMENT_LIST_MAX_QUERY_LENGTH = 512;
 export const DOCUMENT_LIST_MAX_TAGS = 32;
 export const DOCUMENT_LIST_MAX_TAG_LENGTH = 128;
 export const DOCUMENT_LIST_MAX_REQUESTER_ROOMS = 1_000;
-export const DOCUMENT_LIST_MAX_PINNED_PAGES =
-	Math.floor(DOCUMENT_LIST_MAX_OFFSET / DOCUMENT_LIST_MAX_LIMIT) + 1;
 export const DOCUMENT_REVISION_MAX_FRAGMENTS = 10_000;
 
 export interface DocumentListQueryCapableAdapter {

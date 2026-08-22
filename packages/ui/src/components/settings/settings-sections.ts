@@ -460,8 +460,6 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     tone: "warn",
     hue: "amber",
     labelKey: "settings.sections.secrets.label",
-    // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
     Component: SecretsManagerSection,
   },
   {

@@ -45,12 +45,16 @@ function readResultCount(parameters: Record<string, unknown>): number | undefine
     return Number.isFinite(parsed) && parsed > 0 ? Math.min(10, Math.floor(parsed)) : undefined;
 }
 
-async function fail(text: string, callback?: HandlerCallback): Promise<ActionResult> {
+async function fail(
+    text: string,
+    callback?: HandlerCallback,
+    query?: string
+): Promise<ActionResult> {
     await callback?.({ text });
     return {
         success: false,
         text,
-        data: { actionName: "WEB_SEARCH" },
+        data: { actionName: "WEB_SEARCH", ...(query ? { query } : {}) },
         error: text,
     };
 }
@@ -93,7 +97,7 @@ export const webSearchEdgeAction: Action = {
             resultCount: readResultCount(parameters),
         });
         if (!result) {
-            return await fail("Web search is temporarily unavailable.", callback);
+            return await fail("Web search is temporarily unavailable.", callback, query);
         }
         return {
             success: true,

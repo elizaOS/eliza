@@ -24,13 +24,13 @@ export const NOTION_API_VERSION = "2022-06-28";
 export const NOTION_DEFAULT_BASE_URL = "https://api.notion.com";
 /** Maximum time allowed for one Notion API request. */
 export const NOTION_FETCH_TIMEOUT_MS = 20_000;
+/** Maximum wall-clock time for one multi-page Notion operation. */
+export const NOTION_OPERATION_TIMEOUT_MS = 60_000;
 
 const NOTION_MAX_JSON_BYTES = 4_000_000;
 const NOTION_MAX_ERROR_BYTES = 64_000;
 
 const MAX_PAGE_SIZE = 100;
-/** Cap block-children pagination so one pathological page cannot spin forever. */
-const MAX_CONTENT_PAGES = 20;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -38,12 +38,16 @@ export interface NotionClientOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  operationTimeoutMs?: number;
+  now?: () => number;
 }
 
 export class NotionClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly operationTimeoutMs: number;
+  private readonly now: () => number;
 
   constructor(
     private readonly credentialResolver: NotionCredentialResolver,
@@ -56,6 +60,8 @@ export class NotionClient {
     ).replace(/\/$/, "");
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     this.timeoutMs = options.timeoutMs ?? NOTION_FETCH_TIMEOUT_MS;
+    this.operationTimeoutMs = options.operationTimeoutMs ?? NOTION_OPERATION_TIMEOUT_MS;
+    this.now = options.now ?? Date.now;
   }
 
   async search(
@@ -88,11 +94,15 @@ export class NotionClient {
   }
 
   async getPageContent(params: NotionAccountRef & { pageId: string }): Promise<NotionPageContent> {
+    const deadline = this.now() + this.operationTimeoutMs;
     const page = await this.getPage(params);
+    this.assertTraversalDeadline(deadline, params);
     const lines: string[] = [];
     const unsupported = new Set<string>();
+    const seenCursors = new Set<string>();
     let cursor: string | null = null;
-    for (let fetched = 0; fetched < MAX_CONTENT_PAGES; fetched += 1) {
+    while (true) {
+      this.assertTraversalDeadline(deadline, params);
       const query = cursor
         ? `?page_size=${MAX_PAGE_SIZE}&start_cursor=${encodeURIComponent(cursor)}`
         : `?page_size=${MAX_PAGE_SIZE}`;
@@ -101,6 +111,7 @@ export class NotionClient {
         "GET",
         `/v1/blocks/${encodeURIComponent(params.pageId)}/children${query}`
       );
+      this.assertTraversalDeadline(deadline, params);
       for (const block of readArray(payload, "results")) {
         const text = blockPlainText(block);
         if (text !== null) {
@@ -109,8 +120,25 @@ export class NotionClient {
           unsupported.add(typeof block.type === "string" ? block.type : "unknown");
         }
       }
-      cursor = payload.has_more === true ? readNullableString(payload, "next_cursor") : null;
-      if (!cursor) break;
+      if (payload.has_more !== true) break;
+      const nextCursor = readNullableString(payload, "next_cursor");
+      if (!nextCursor) {
+        throw new ElizaError(
+          "NotionClient: block pagination claimed more results without a continuation cursor.",
+          {
+            code: "NOTION_MALFORMED_RESPONSE",
+            context: { pageId: params.pageId, accountId: params.accountId },
+          }
+        );
+      }
+      if (seenCursors.has(nextCursor)) {
+        throw new ElizaError("NotionClient: block pagination repeated a continuation cursor.", {
+          code: "NOTION_MALFORMED_RESPONSE",
+          context: { pageId: params.pageId, accountId: params.accountId, cursor: nextCursor },
+        });
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
     }
     return {
       id: page.id,
@@ -119,6 +147,21 @@ export class NotionClient {
       plainText: lines.join("\n"),
       unsupportedBlockTypes: [...unsupported].sort(),
     };
+  }
+
+  private assertTraversalDeadline(
+    deadline: number,
+    params: NotionAccountRef & { pageId: string }
+  ): void {
+    if (this.now() < deadline) return;
+    throw new ElizaError("NotionClient: block pagination exceeded the operation deadline.", {
+      code: "NOTION_UPSTREAM_FAILURE",
+      context: {
+        pageId: params.pageId,
+        accountId: params.accountId,
+        operationTimeoutMs: this.operationTimeoutMs,
+      },
+    });
   }
 
   async createPage(params: NotionCreatePageInput): Promise<NotionObjectSummary> {

@@ -61,11 +61,7 @@ import {
 } from "../utils/reasoning-tags";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
-import {
-	tailWellFormed,
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed";
+import { toWellFormedUnicode } from "../utils/well-formed";
 import {
 	computePrefixHashes,
 	hashString,
@@ -95,12 +91,10 @@ import {
 } from "./limits";
 import {
 	buildModelInputBudget,
-	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
-	toolMessageContent,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -1558,18 +1552,6 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
-		await maybeCompactBeforeNextModelCall({
-			runtime: params.runtime,
-			trajectory,
-			config,
-			tools: params.tools,
-			recorder: params.recorder,
-			trajectoryId: params.trajectoryId,
-			parentStageId: params.parentStageId,
-			iteration,
-			logger: params.runtime.logger,
-		});
-
 		// Coding mode: the MODEL — not the chat completion-evaluator — owns
 		// termination. After a tool batch is fully drained, re-plan (give the
 		// model another tools round) so it can run the next step (e.g. SHELL
@@ -1803,13 +1785,6 @@ function renderPlannerModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	runtime?: PlannerRuntime;
-	/**
-	 * Optional per-tool-result character cap. Forwarded directly to
-	 * `trajectoryStepsToMessages` — caps the rendered tool-result
-	 * string for each kept-verbatim step without mutating the
-	 * trajectory itself.
-	 */
-	maxToolResultChars?: number;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -1821,7 +1796,6 @@ function renderPlannerModelInput(params: {
 		template.split("context_object:")[0] ?? template,
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
-		maxToolResultChars: params.maxToolResultChars,
 		redactText: composeToolDiagnosticRedactor(params.runtime),
 	});
 	// Action names + parameter schemas now ride directly on the tools array
@@ -2365,14 +2339,13 @@ async function callPlanner(params: {
 	 */
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
-	let renderedInput = renderPlannerModelInput({
+	const renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
 		template: resolveOptimizedPlannerTemplate(params.runtime),
 		runtime: params.runtime,
-		maxToolResultChars: params.config.compactionMaxKeptStepChars,
 	});
-	let modelInputBudget = buildModelInputBudget({
+	const modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: params.tools,
@@ -2387,38 +2360,6 @@ async function callPlanner(params: {
 			: {}),
 		reserveTokens: compactionReserveForBudget(params.config),
 	});
-	if (modelInputBudget.shouldCompact && params.config.compactionEnabled) {
-		const compacted = await maybeCompactPlannerTrajectory({
-			runtime: params.runtime,
-			trajectory: params.trajectory,
-			budget: modelInputBudget,
-			config: params.config,
-			recorder: params.recorder,
-			trajectoryId: params.trajectoryId,
-			parentStageId: params.parentStageId,
-			iteration: params.iteration ?? 1,
-			logger: params.runtime.logger,
-		});
-		if (compacted) {
-			renderedInput = renderPlannerModelInput({
-				context: params.trajectory.context,
-				trajectory: params.trajectory,
-				template: resolveOptimizedPlannerTemplate(params.runtime),
-				runtime: params.runtime,
-				maxToolResultChars: params.config.compactionMaxKeptStepChars,
-			});
-			modelInputBudget = buildModelInputBudget({
-				messages: renderedInput.messages,
-				promptSegments: renderedInput.promptSegments,
-				tools: params.tools,
-				modelName: params.config.contextWindowModelName,
-				...(params.config.contextWindowTokens
-					? { contextWindowTokens: params.config.contextWindowTokens }
-					: {}),
-				reserveTokens: compactionReserveForBudget(params.config),
-			});
-		}
-	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -2599,222 +2540,11 @@ async function callPlanner(params: {
 	return parsed;
 }
 
-async function maybeCompactPlannerTrajectory(args: {
-	runtime?: PlannerRuntime;
-	trajectory: PlannerTrajectory;
-	budget: ModelInputBudget;
-	config: ChainingLoopConfig;
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	parentStageId?: string;
-	iteration: number;
-	logger?: PlannerRuntime["logger"];
-}): Promise<boolean> {
-	const keepSteps = Math.max(0, Math.floor(args.config.compactionKeepSteps));
-	const compactableStepCount = Math.max(
-		0,
-		args.trajectory.steps.length - keepSteps,
-	);
-	if (compactableStepCount === 0) {
-		args.logger?.debug?.(
-			{
-				estimatedInputTokens: args.budget.estimatedInputTokens,
-				compactionThresholdTokens: args.budget.compactionThresholdTokens,
-				stepCount: args.trajectory.steps.length,
-				keepSteps,
-			},
-			"Planner input crossed compaction threshold but no old steps are compactable",
-		);
-		return false;
-	}
-
-	const startedAt = Date.now();
-	const compactedSteps = args.trajectory.steps.slice(0, compactableStepCount);
-	const keptSteps = args.trajectory.steps.slice(compactableStepCount);
-	const summary = buildCompactionSummary({
-		compactedSteps,
-		keptSteps,
-		budget: args.budget,
-		redactDiagnosticText: composeToolDiagnosticRedactor(args.runtime),
-	});
-	args.trajectory.archivedSteps.push(...compactedSteps);
-	args.trajectory.steps = keptSteps;
-	args.trajectory.context = appendContextEvent(args.trajectory.context, {
-		id: `compaction:${args.iteration}:${startedAt}`,
-		type: "segment",
-		source: "planner-loop",
-		createdAt: startedAt,
-		metadata: {
-			reason: "input_budget",
-			iteration: args.iteration,
-			compactedStepCount: compactableStepCount,
-			keptStepCount: keptSteps.length,
-			estimatedInputTokens: args.budget.estimatedInputTokens,
-			contextWindowTokens: args.budget.contextWindowTokens,
-			reserveTokens: args.budget.reserveTokens,
-			compactionThresholdTokens: args.budget.compactionThresholdTokens,
-		},
-		segment: {
-			id: `compaction:${args.iteration}:${startedAt}`,
-			label: "compaction",
-			content: summary,
-			stable: false,
-			metadata: {
-				reason: "input_budget",
-				iteration: args.iteration,
-				compactedStepCount: compactableStepCount,
-				keptStepCount: keptSteps.length,
-			},
-		},
-	});
-	const endedAt = Date.now();
-	await recordCompactionStage({
-		runtime: args.runtime,
-		recorder: args.recorder,
-		trajectoryId: args.trajectoryId,
-		parentStageId: args.parentStageId,
-		iteration: args.iteration,
-		startedAt,
-		endedAt,
-		summary,
-		budget: args.budget,
-		compactedStepCount: compactableStepCount,
-		keptStepCount: keptSteps.length,
-		logger: args.logger,
-	});
-	return true;
+/** Record a gated evaluator outcome without making another model call. */
+function normalizeCompleteText(value: string): string {
+	return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
 }
 
-async function maybeCompactBeforeNextModelCall(args: {
-	runtime?: PlannerRuntime;
-	trajectory: PlannerTrajectory;
-	config: ChainingLoopConfig;
-	tools?: ToolDefinition[];
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	parentStageId?: string;
-	iteration: number;
-	logger?: PlannerRuntime["logger"];
-}): Promise<boolean> {
-	if (!args.config.compactionEnabled) {
-		return false;
-	}
-	const renderedInput = renderPlannerModelInput({
-		context: args.trajectory.context,
-		trajectory: args.trajectory,
-		maxToolResultChars: args.config.compactionMaxKeptStepChars,
-	});
-	const budget = buildModelInputBudget({
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
-		tools: args.tools,
-		modelName: args.config.contextWindowModelName,
-		...(args.config.contextWindowTokens
-			? { contextWindowTokens: args.config.contextWindowTokens }
-			: {}),
-		reserveTokens: compactionReserveForBudget(args.config),
-	});
-	if (!budget.shouldCompact) {
-		return false;
-	}
-	return maybeCompactPlannerTrajectory({
-		runtime: args.runtime,
-		trajectory: args.trajectory,
-		budget,
-		config: args.config,
-		recorder: args.recorder,
-		trajectoryId: args.trajectoryId,
-		parentStageId: args.parentStageId,
-		iteration: args.iteration,
-		logger: args.logger,
-	});
-}
-
-function buildCompactionSummary(args: {
-	compactedSteps: readonly PlannerStep[];
-	keptSteps: readonly PlannerStep[];
-	budget: ModelInputBudget;
-	redactDiagnosticText: ToolDiagnosticTextRedactor;
-}): string {
-	const lines = [
-		"Compacted prior planner trajectory steps because estimated input approached the model context window.",
-		`compacted_steps: ${args.compactedSteps.length}`,
-		`kept_recent_steps_verbatim: ${args.keptSteps.length}`,
-		`estimated_input_tokens_before_compaction: ${args.budget.estimatedInputTokens}`,
-		`compaction_threshold_tokens: ${args.budget.compactionThresholdTokens}`,
-		"",
-		"Compacted step summaries:",
-	];
-	for (const step of args.compactedSteps) {
-		lines.push(`- ${summarizePlannerStep(step, args.redactDiagnosticText)}`);
-	}
-	return lines.join("\n").trim();
-}
-
-function summarizePlannerStep(
-	step: PlannerStep,
-	redactDiagnosticText: ToolDiagnosticTextRedactor,
-): string {
-	const name = step.toolCall?.name ?? (step.terminalOnly ? "terminal" : "step");
-	const status = step.result
-		? step.result.success
-			? "success"
-			: "failed"
-		: "no_result";
-	const args =
-		step.toolCall?.params && Object.keys(step.toolCall.params).length > 0
-			? ` args=${compactText(
-					stringifyToolArgsForDiagnostics(
-						step.toolCall.params,
-						redactDiagnosticText,
-					),
-					180,
-				)}`
-			: "";
-	const result = step.result
-		? ` result=${compactText(
-				toolMessageContent(
-					projectToolDiagnosticValue(
-						step.result,
-						redactDiagnosticText,
-					) as PlannerToolResult,
-				),
-				360,
-			)}`
-		: step.terminalMessage
-			? ` message=${compactText(
-					redactDiagnosticText(step.terminalMessage),
-					240,
-				)}`
-			: "";
-	return `iter ${step.iteration} ${name} ${status}${args}${result}`;
-}
-
-function compactText(value: string, maxLength: number): string {
-	const text = value.replace(/\s+/g, " ").trim();
-	if (text.length <= maxLength) {
-		return text;
-	}
-	const headLength = Math.max(20, Math.floor(maxLength * 0.65));
-	const tailLength = Math.max(20, maxLength - headLength - 24);
-	// Compute the compacted count from the ACTUAL retained code-unit lengths
-	// after surrogate-safe truncation — truncateWellFormed and tailWellFormed
-	// may back off at surrogate boundaries, so the retained length can differ
-	// from the request (#18081).
-	const head = truncateWellFormed(text, headLength);
-	const tail = tailWellFormed(text, tailLength);
-	return `${head} ...[${text.length - head.length - tail.length} chars compacted]... ${tail}`;
-}
-
-/**
- * Synthesized recorder stage for the gated path. Emits a `kind: "evaluation"`
- * entry so the recorder timeline shows the iteration's outcome on the same
- * slot a model-produced evaluation would have occupied. The stage carries
- * `gated: true`, `llmCallSkipped: true`, and a reason that distinguishes an
- * explicit planner reply from a terminal action-owned result. Replay/debug
- * tools can therefore identify both fast paths without string-matching the
- * thought marker. No `model` block is included because no LLM call happened.
- */
 async function recordGatedEvaluationStage(args: {
 	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
@@ -2856,62 +2586,6 @@ async function recordGatedEvaluationStage(args: {
 			"[TrajectoryRecorder] failed to record gated evaluation stage",
 		);
 		args.runtime?.reportError?.("PlannerLoop.recordGatedEvaluation", err, {
-			trajectoryId: args.trajectoryId,
-		});
-	}
-}
-
-async function recordCompactionStage(args: {
-	runtime?: PlannerRuntime;
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	parentStageId?: string;
-	iteration: number;
-	startedAt: number;
-	endedAt: number;
-	summary: string;
-	budget: ModelInputBudget;
-	compactedStepCount: number;
-	keptStepCount: number;
-	logger?: PlannerRuntime["logger"];
-}): Promise<void> {
-	if (!args.recorder || !args.trajectoryId) return;
-	try {
-		const stage: RecordedStage = {
-			stageId: `stage-compaction-iter-${args.iteration}-${args.startedAt}`,
-			kind: "compaction",
-			iteration: args.iteration,
-			parentStageId: args.parentStageId,
-			startedAt: args.startedAt,
-			endedAt: args.endedAt,
-			latencyMs: args.endedAt - args.startedAt,
-			tool: {
-				name: "CONTEXT_COMPACTION",
-				args: {
-					reason: "input_budget",
-					estimatedInputTokens: args.budget.estimatedInputTokens,
-					contextWindowTokens: args.budget.contextWindowTokens,
-					reserveTokens: args.budget.reserveTokens,
-					compactionThresholdTokens: args.budget.compactionThresholdTokens,
-				},
-				result: {
-					summary: args.summary,
-					compactedStepCount: args.compactedStepCount,
-					keptStepCount: args.keptStepCount,
-				},
-				success: true,
-				durationMs: args.endedAt - args.startedAt,
-			},
-		};
-		await args.recorder.recordStage(args.trajectoryId, stage);
-	} catch (err) {
-		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
-		// the compaction decision it records.
-		args.logger?.warn?.(
-			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
-			"[TrajectoryRecorder] failed to record compaction stage",
-		);
-		args.runtime?.reportError?.("PlannerLoop.recordCompaction", err, {
 			trajectoryId: args.trajectoryId,
 		});
 	}
@@ -3152,7 +2826,7 @@ function appendTerminalPlannerOutputEvent(args: {
 	const unsafe = isUnsafeUserVisibleText(args.message);
 	const content = [
 		"planner_terminal_output:",
-		compactText(args.message ?? "", 1_200),
+		normalizeCompleteText(args.message ?? ""),
 		"",
 		unsafe
 			? "note: This output looked like internal planning or attempted tool-call text. It must not be shown directly to the user."
@@ -3489,7 +3163,6 @@ async function recordToolStage(args: {
 				input: io.input,
 				output: io.output,
 				errorText: io.errorText,
-				truncated: io.truncated,
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
@@ -4075,7 +3748,7 @@ function toolOwnedSuccessEvidenceAfter(
 		if (!owned || isUnsafeUserVisibleText(owned)) continue;
 		if (!evidence.includes(owned)) evidence.push(owned);
 	}
-	return evidence.slice(-3);
+	return evidence;
 }
 
 function terminalMessageWithFailureAuthority(
@@ -4275,9 +3948,9 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
  * which either already SUCCEEDED — a repeat cannot return new information — or
  * already FAILED with the structural `data.retryable === false` marker — a
  * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
- * that cannot change within the turn. Neither kind is re-executed. Archived
- * (compacted) steps still count: mid-turn input-budget compaction moves steps
- * to `archivedSteps`, and a settled call must stay settled across that move.
+ * that cannot change within the turn. Neither kind is re-executed. Legacy
+ * archived steps still count, so a settled call stays settled after loading
+ * an older persisted trajectory.
  */
 export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
@@ -4510,37 +4183,17 @@ async function finishWithForcedSynthesis(params: {
 				"user now from the tool results already in this trajectory; if they do not " +
 				"contain the answer, say plainly what you found and what was missing.",
 	});
-	// A final user-wire synthesis must not receive the full archival trajectory:
-	// compaction may hold an unbounded number of old raw diagnostics, and mutation
-	// wrappers are observations rather than authority to claim an effect. Keep a
-	// bounded chronological native suffix. Read/search/list/get tools may provide
-	// a scrubbed observation for synthesis; mutations contribute only their
-	// action-owned user-facing projection and receipt-backed status.
-	const synthesisSteps = [...trajectory.archivedSteps, ...trajectory.steps]
-		.slice(-FINAL_SYNTHESIS_MAX_STEPS)
-		.map(projectStepForFinalSynthesis);
-	const synthesisContext = {
-		...trajectory.context,
-		events: trajectory.context.events.filter(
-			(event) =>
-				!(
-					event.type === "segment" &&
-					event.source === "planner-loop" &&
-					"segment" in event &&
-					(event.segment as { label?: unknown }).label === "compaction"
-				),
-		),
-	};
+	const synthesisSteps = [...trajectory.archivedSteps, ...trajectory.steps];
 	const synthesisTrajectory: PlannerTrajectory = {
 		...trajectory,
-		context: synthesisContext,
+		context: trajectory.context,
 		steps: synthesisSteps,
 		archivedSteps: [],
 		plannedQueue: [],
 	};
 	const synthOutput = await callPlanner({
 		runtime: loop.runtime,
-		context: synthesisContext,
+		context: trajectory.context,
 		trajectory: synthesisTrajectory,
 		config,
 		modelType: loop.modelType,
@@ -4579,65 +4232,6 @@ async function finishWithForcedSynthesis(params: {
 			),
 			trajectory,
 		),
-	};
-}
-
-const SYNTHESIS_OBSERVATION_TOOL =
-	/(?:^|_)(?:READ|SEARCH|LIST|GET|FETCH|LOOKUP|QUERY|STATUS|INSPECT)(?:_|$)/i;
-
-const FINAL_SYNTHESIS_MAX_STEPS = 12;
-const FINAL_SYNTHESIS_MAX_RECEIPTS = 4;
-
-function synthesisReceiptSummary(
-	result: PlannerToolResult,
-): string | undefined {
-	const receipts = result.effectReceipts?.slice(-FINAL_SYNTHESIS_MAX_RECEIPTS);
-	if (!receipts?.length) return undefined;
-	return receipts
-		.map((receipt) => {
-			const operation = compactText(receipt.operation, 120);
-			const resourceKind = compactText(receipt.resource.kind, 80);
-			const resourceId = compactText(receipt.resource.id, 160);
-			return `receipt outcome=${receipt.outcome} operation=${operation} resource_kind=${resourceKind} resource_id=${resourceId}`;
-		})
-		.join("\n");
-}
-
-function projectStepForFinalSynthesis(step: PlannerStep): PlannerStep {
-	if (!step.toolCall || !step.result) {
-		return { ...step, thought: undefined };
-	}
-	const result = step.result;
-	const userFacingText = getNonEmptyString(result.userFacingText);
-	const observation =
-		result.success === true &&
-		SYNTHESIS_OBSERVATION_TOOL.test(step.toolCall.name)
-			? getNonEmptyString(result.text)
-			: undefined;
-	const receiptSummary = synthesisReceiptSummary(result);
-	const primaryProjection = observation
-		? compactText(observation, 1_500)
-		: userFacingText
-			? compactText(userFacingText, 750)
-			: result.success
-				? "Tool completed; no synthesis-safe observation was published."
-				: "Tool failed; no synthesis-safe diagnostic was published.";
-	return {
-		iteration: step.iteration,
-		toolCall: {
-			id: step.toolCall.id,
-			name: step.toolCall.name,
-			params: {},
-		},
-		result: {
-			success: result.success,
-			text: receiptSummary
-				? `${primaryProjection}\n${receiptSummary}`
-				: primaryProjection,
-			...(userFacingText
-				? { userFacingText: compactText(userFacingText, 750) }
-				: {}),
-		},
 	};
 }
 
@@ -4756,10 +4350,8 @@ function isEchoOfPlannerFacingToolText(
 ): boolean {
 	const normalizedCandidate = normalizeForEchoComparison(candidate);
 	if (normalizedCandidate.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) return false;
-	// Compacted steps stay in scope: mid-turn compaction moves settled results
-	// to `archivedSteps`, and archived planner-facing text is exactly as
-	// unlicensed for the user channel as live text (the rescue synthesis feeds
-	// archived excerpts to the model, so an archived echo is reachable).
+	// Legacy archived steps stay in scope because their planner-facing text is
+	// exactly as unlicensed for the user channel as live text.
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		const result = step.result;
@@ -4805,9 +4397,7 @@ function isEchoOfPlannerFacingToolText(
 function hasSuccessfulNonTerminalToolStep(
 	trajectory: PlannerTrajectory,
 ): boolean {
-	// Archived steps count: on long turns compaction can move EVERY completed
-	// success out of `steps`, and a reply guarantee that only checks the live
-	// window would silently skip exactly the turns with the most tool work.
+	// Legacy archived successes count when loading older persisted trajectories.
 	return [...trajectory.archivedSteps, ...trajectory.steps].some(
 		(step) =>
 			step.toolCall !== undefined &&
@@ -4984,12 +4574,6 @@ async function ensureFailedTurnFinalMessage(
 	}
 }
 
-/** Newest successful excerpts fed to the rescue synthesis, and the per-excerpt
- * character ceiling that keeps that many large search results inside one
- * bounded compose call. */
-const RESCUE_EXCERPT_MAX_STEPS = 6;
-const RESCUE_EXCERPT_MAX_CHARS = 1500;
-
 /**
  * Last-resort rescue when the planner-path forced synthesis itself returns
  * unusable text. Observed live (2026-08-11 sub-agent report failures):
@@ -5000,10 +4584,8 @@ const RESCUE_EXCERPT_MAX_CHARS = 1500;
  * result". One plain TEXT_LARGE call with an explicit token budget and no
  * tools: a deliberately different failure profile from the planner slot.
  *
- * The walk includes `archivedSteps` because the long multi-search turns this
- * rescue exists for are exactly the ones mid-turn compaction has archived, and
- * it keeps the NEWEST successful results — the refined, answer-bearing ones —
- * when there are more than the excerpt budget. Excerpts enter the prompt as
+ * The walk includes `archivedSteps` so every successful result remains
+ * available to the rescue. Excerpts enter the prompt as
  * fenced untrusted data in their own message, separated from the compose
  * instructions. When the turn carries a failed step the instructions say so
  * (with the scrubbed cause), so the reply stays honest about the partial
@@ -5034,13 +4616,13 @@ async function rescueReplyFromSuccessfulResults(
 		successfulExcerpts.push(
 			[
 				`<tool_result name="${step.toolCall.name}">`,
-				truncateWellFormed(toWellFormedUnicode(text), RESCUE_EXCERPT_MAX_CHARS),
+				toWellFormedUnicode(text),
 				"</tool_result>",
 			].join("\n"),
 		);
 	}
 	if (successfulExcerpts.length === 0) return undefined;
-	const excerpts = successfulExcerpts.slice(-RESCUE_EXCERPT_MAX_STEPS);
+	const excerpts = successfulExcerpts;
 	const failedStep =
 		latestUnresolvedFailedNonTerminalToolStep(trajectory) ??
 		latestFailedToolStep(trajectory);
@@ -5411,7 +4993,7 @@ export function codingActionSummary(
 		}
 	}
 	if (parts.length === 0) return undefined;
-	const unique = [...new Set(parts)].slice(0, 8);
+	const unique = [...new Set(parts)];
 	const summary = unique.join("; ");
 	return `Done — ${summary.charAt(0).toUpperCase()}${summary.slice(1)}.`;
 }
@@ -5742,10 +5324,6 @@ function diagnosticFailureReason(
 	return undefined;
 }
 
-/** Ceiling for a scrubbed failure cause injected into a synthesis prompt —
- * enough for a producer's human-shaped sentence, too short for a log dump. */
-const PROMPT_FAILURE_CAUSE_MAX_CHARS = 320;
-
 /**
  * Internal-detail hygiene for failure text that is about to enter a prompt
  * WE compose (retry instructions, failure synthesis). Producers fixed under
@@ -5768,9 +5346,7 @@ function scrubFailureCauseForPrompt(text: string): string | undefined {
 		.replace(/\s+/g, " ")
 		.trim();
 	if (!cleaned) return undefined;
-	return cleaned.length > PROMPT_FAILURE_CAUSE_MAX_CHARS
-		? `${truncateWellFormed(cleaned, PROMPT_FAILURE_CAUSE_MAX_CHARS)}…`
-		: cleaned;
+	return cleaned;
 }
 
 /**

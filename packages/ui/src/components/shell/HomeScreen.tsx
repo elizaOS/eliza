@@ -14,7 +14,14 @@ import {
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import { useAppSelector } from "../../state";
+import {
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
+  subscribeNotificationCenterOpenRequests,
+} from "../../state/notifications/notification-center-open-request";
 import { useNotifications } from "../../state/notifications/notification-store";
+import { useShellSurface } from "../../state/shell-surface-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
@@ -219,9 +226,56 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   const wasAppsDisplacedRef = useRef(false);
   const [notificationShadeExpanded, setNotificationShadeExpanded] =
     useState(false);
+  const [
+    pendingNotificationCenterOpenRequestId,
+    setPendingNotificationCenterOpenRequestId,
+  ] = useState<number | null>(null);
+  const [notificationCenterOpenRequestId, setNotificationCenterOpenRequestId] =
+    useState<number | null>(null);
+  const activeTab = useAppSelector((state) => state.tab);
+  const { page: shellSurfacePage } = useShellSurface();
   const { notifications } = useNotifications();
   const appsDisplaced = notificationShadeExpanded && notifications.length > 0;
   appsDisplacedRef.current = appsDisplaced;
+
+  useLayoutEffect(() => {
+    // Subscribe before peeking so a request racing this mount is either
+    // delivered live or observed as retained, never lost between those states.
+    const unsubscribe = subscribeNotificationCenterOpenRequests(
+      setPendingNotificationCenterOpenRequestId,
+    );
+    const retainedRequestId = peekNotificationCenterOpenRequest();
+    if (retainedRequestId !== null) {
+      setPendingNotificationCenterOpenRequestId(retainedRequestId);
+    }
+    return unsubscribe;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (
+      activeTab !== "chat" ||
+      shellSurfacePage !== "home" ||
+      pendingNotificationCenterOpenRequestId === null
+    ) {
+      return;
+    }
+    setNotificationCenterOpenRequestId(pendingNotificationCenterOpenRequestId);
+  }, [activeTab, pendingNotificationCenterOpenRequestId, shellSurfacePage]);
+
+  const handleNotificationCenterOpenRequestHandled = useCallback(
+    (requestId: number) => {
+      acknowledgeNotificationCenterOpenRequest(requestId);
+      setPendingNotificationCenterOpenRequestId((current) =>
+        current === requestId ? null : current,
+      );
+      // Clearing the delivered id prevents a later child remount from opening
+      // the same already-acknowledged request a second time.
+      setNotificationCenterOpenRequestId((current) =>
+        current === requestId ? null : current,
+      );
+    },
+    [],
+  );
 
   // Remember the latest launcher control independently of the shade gesture.
   // A notification can arrive asynchronously while an expanded empty shade
@@ -352,6 +406,8 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             emptyGestureTargetRef={homeScreenRef}
             shadeLayoutTargetRef={homeContentColumnRef}
             onShadeOccupancyChange={handleShadeExpandedChange}
+            openRequestId={notificationCenterOpenRequestId}
+            onOpenRequestHandled={handleNotificationCenterOpenRequestHandled}
           />
         </div>
 

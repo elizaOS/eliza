@@ -229,8 +229,9 @@ describe("drainAndDeliverGreetings", () => {
     expect(acknowledged).toHaveLength(2);
   });
 
-  test("oversize greeting content is truncated to Discord's 2000-char cap", async () => {
-    let delivered = "";
+  test("oversize greeting content is delivered as lossless ordered chunks", async () => {
+    const delivered: string[] = [];
+    const nonces: string[] = [];
     await drainAndDeliverGreetings({
       drain: async () =>
         jsonResponse({
@@ -239,11 +240,14 @@ describe("drainAndDeliverGreetings", () => {
           ],
         }),
       acknowledge: async () => jsonResponse({ acknowledged: 1 }),
-      sendDirectMessage: async (_userId, content) => {
-        delivered = content;
+      sendDirectMessage: async (_userId, content, nonce) => {
+        delivered.push(content);
+        nonces.push(nonce);
       },
     });
-    expect(delivered).toHaveLength(2000);
+    expect(delivered.map((chunk) => chunk.length)).toEqual([2000, 500]);
+    expect(delivered.join("")).toBe("x".repeat(2500));
+    expect(new Set(nonces).size).toBe(2);
   });
 
   test("a body without a greetings array claims nothing", async () => {

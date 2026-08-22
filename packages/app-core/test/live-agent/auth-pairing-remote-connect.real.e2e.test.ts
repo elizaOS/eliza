@@ -70,6 +70,7 @@
 import crypto from "node:crypto";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import WebSocket from "ws";
 import { SESSION_COOKIE_NAME } from "../../src/api/auth/sessions.ts";
 import {
   _resetAuthPairingStateForTests,
@@ -81,6 +82,29 @@ import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 const PRODUCTION_API_TOKEN = "prod-shaped-static-api-token-13692";
+
+function waitForWsFrame(
+  ws: WebSocket,
+  type: string,
+  timeoutMs = 10_000,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`timed out waiting for WebSocket ${type}`)),
+      timeoutMs,
+    );
+    ws.on("message", (data) => {
+      const frame = JSON.parse(String(data)) as Record<string, unknown>;
+      if (frame.type !== type) return;
+      clearTimeout(timer);
+      resolve(frame);
+    });
+    ws.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
 
 type Started = Awaited<ReturnType<typeof startApiServer>>;
 type RealRuntime = Awaited<ReturnType<typeof createRealTestRuntime>>;
@@ -225,6 +249,21 @@ describe("production auth path: pair-code → machine session; remote-connect to
     expect(
       (meViaCookie.data as { session?: { id?: string } }).session?.id,
     ).toBe(sessionId);
+
+    // The same revocable machine session must authorize the browser WebSocket.
+    // Android remote-connect uses this query-token handshake because browser
+    // WebSocket constructors cannot set Authorization headers. Before #13580,
+    // REST pairing succeeded but /ws recognized only the static API token, so
+    // the app stayed on "waking up" and every chat frame was rejected.
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(sessionId)}`,
+    );
+    const statusFrame = await waitForWsFrame(ws, "status");
+    expect(statusFrame.type).toBe("status");
+    const pong = waitForWsFrame(ws, "pong");
+    ws.send(JSON.stringify({ type: "ping" }));
+    await pong;
+    ws.close();
   }, 120_000);
 
   it("§Verification canary: a WRONG pair code is rejected and mints NO session (green run is non-vacuous)", async () => {

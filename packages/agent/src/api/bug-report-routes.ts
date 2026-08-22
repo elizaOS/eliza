@@ -197,10 +197,19 @@ function formatIssueBody(body: BugReportBody): string {
     sections.push(
       `### Startup Context\n\n\`\`\`json\n${JSON.stringify(
         {
-          reason: body.startup.reason,
-          phase: body.startup.phase,
+          reason:
+            body.startup.reason === undefined
+              ? undefined
+              : sanitize(body.startup.reason, 120),
+          phase:
+            body.startup.phase === undefined
+              ? undefined
+              : sanitize(body.startup.phase, 120),
           status: body.startup.status,
-          path: body.startup.path,
+          path:
+            body.startup.path === undefined
+              ? undefined
+              : sanitize(body.startup.path, 500),
         },
         null,
         2,

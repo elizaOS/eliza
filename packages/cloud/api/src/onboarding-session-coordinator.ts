@@ -26,7 +26,6 @@ interface ReplayEntry {
   result: Omit<OnboardingChatResult, "session">;
   session: Omit<OnboardingSession, "history">;
   historyEndMessageId: string;
-  historyTail: OnboardingSession["history"];
   expiresAt: number;
 }
 
@@ -290,7 +289,6 @@ function storedReplay(key: string, result: OnboardingChatResult): ReplayEntry {
     result: stored,
     session: sessionMetadata,
     historyEndMessageId,
-    historyTail: history.slice(-2),
     expiresAt: Date.now() + REPLAY_RETENTION_MS,
   };
 }
@@ -306,13 +304,14 @@ function replayResult(
     ...entry.result,
     session: {
       ...entry.session,
-      // The marker is retained for every normal replay-window turn. The compact
-      // tail keeps a coherent response if many non-idempotent web turns trim it
-      // without growing the ledger by duplicating whole 200-message histories.
-      history:
-        historyEnd >= 0
-          ? currentSession.history.slice(0, historyEnd + 1)
-          : entry.historyTail,
+      history: (() => {
+        if (historyEnd < 0) {
+          throw new Error(
+            "onboarding replay history marker is missing; refusing to return a partial transcript",
+          );
+        }
+        return currentSession.history.slice(0, historyEnd + 1);
+      })(),
     },
   };
 }

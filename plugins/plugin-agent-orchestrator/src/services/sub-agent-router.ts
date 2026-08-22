@@ -3231,7 +3231,6 @@ Do not report done until every referenced URL in the final page resolves without
         : "";
     if (!chunk) return;
 
-    const MAX_BUFFER = 16_384;
     const TAIL = 64; // ≥ marker length, to catch a marker split across chunks
     let buf = (this.parentAgentBuffers.get(sessionId) ?? "") + chunk;
 
@@ -3241,17 +3240,13 @@ Do not report done until every referenced URL in the final page resolves without
       return;
     }
     buf = buf.slice(markerAt);
-    if (buf.length > MAX_BUFFER) buf = buf.slice(-MAX_BUFFER);
 
     const directive = extractParentAgentDirective(buf);
     if (!directive) {
-      // Marker present but the JSON is still streaming (or malformed). If it is
-      // malformed the extractor returns null; drop the dead marker so we do not
-      // re-scan it forever, keeping only a tail.
-      this.parentAgentBuffers.set(
-        sessionId,
-        buf.length > MAX_BUFFER ? buf.slice(-TAIL) : buf,
-      );
+      // Once the marker is present, retain the complete streamed directive.
+      // Cutting its JSON tail can silently turn a valid large parent-agent
+      // request into a different or permanently unparsable request.
+      this.parentAgentBuffers.set(sessionId, buf);
       return;
     }
     // Consume the directive BEFORE awaiting so a concurrent chunk cannot

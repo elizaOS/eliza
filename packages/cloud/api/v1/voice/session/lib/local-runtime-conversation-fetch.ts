@@ -9,7 +9,18 @@ import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
-  /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/([^/]+)\/messages\/stream$/;
+  /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/;
+const LOOPBACK_IP_LITERALS = new Set(["127.0.0.1", "[::1]"]);
+const MAX_CLIENT_MESSAGE_ID_LENGTH = 128;
+const FORWARDED_HEADER_NAMES = [
+  "X-Eliza-Voice-Trace-Id",
+  "X-Eliza-Trace-Id",
+] as const;
+
+export interface LocalRuntimeConversationScope {
+  agentId: string;
+  conversationId: string;
+}
 
 export class LocalRuntimeConversationFetchError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -18,15 +29,15 @@ export class LocalRuntimeConversationFetchError extends Error {
   }
 }
 
-/** Decode an untrusted conversation-id path segment into a typed boundary error. */
-function decodeConversationId(raw: string): string {
+/** Decode an untrusted identity path segment into a typed boundary error. */
+function decodeIdentity(label: string, raw: string): string {
   try {
     return decodeURIComponent(raw);
   } catch (error) {
     // error-policy:J3 untrusted conversation path segments are client input;
     // malformed percent-encoding is a typed fetch error, not an uncaught URIError.
     throw new LocalRuntimeConversationFetchError(
-      "conversation id is not valid percent-encoding",
+      `${label} is not valid percent-encoding`,
       { cause: error },
     );
   }
@@ -34,6 +45,7 @@ function decodeConversationId(raw: string): string {
 
 export function createLocalRuntimeConversationFetch(
   localRuntimeOrigin: string,
+  scope: LocalRuntimeConversationScope,
   fetchImpl: typeof fetch = fetch,
 ): typeof fetch {
   const origin = resolveLoopbackOrigin(localRuntimeOrigin);
@@ -44,7 +56,7 @@ export function createLocalRuntimeConversationFetch(
   ): Promise<Response> => {
     const sourceUrl = resolveRequestUrl(input);
     const match = CLOUD_CONVERSATION_STREAM_PATH.exec(sourceUrl.pathname);
-    if (!match?.[1]) {
+    if (!match?.[1] || !match[2]) {
       throw new LocalRuntimeConversationFetchError(
         `unsupported local voice upstream path: ${sourceUrl.pathname}`,
       );
@@ -55,17 +67,24 @@ export function createLocalRuntimeConversationFetch(
       );
     }
 
-    const conversationId = decodeConversationId(match[1]);
+    const agentId = decodeIdentity("agent id", match[1]);
+    const conversationId = decodeIdentity("conversation id", match[2]);
+    if (agentId !== scope.agentId || conversationId !== scope.conversationId) {
+      throw new LocalRuntimeConversationFetchError(
+        "local voice request does not match the bound runtime identity",
+      );
+    }
     const target = new URL(
       `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
       origin,
     );
     const body = parseRequestBody(init?.body);
-    const headers = new Headers(init?.headers);
-    headers.delete("Authorization");
-    headers.delete("X-Service-Key");
-    headers.delete("X-Eliza-Organization-Id");
-    headers.delete("X-Eliza-User-Id");
+    const sourceHeaders = new Headers(init?.headers);
+    const headers = new Headers();
+    for (const name of FORWARDED_HEADER_NAMES) {
+      const value = sourceHeaders.get(name);
+      if (value !== null) headers.set(name, value);
+    }
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "text/event-stream");
 
@@ -73,6 +92,7 @@ export function createLocalRuntimeConversationFetch(
       ...init,
       headers,
       body: JSON.stringify(body),
+      redirect: "error",
     });
   }) as typeof fetch;
 }
@@ -90,19 +110,24 @@ function resolveLoopbackOrigin(raw: string): URL {
     );
   }
   if (
-    (url.protocol !== "http:" && url.protocol !== "https:") ||
-    (url.hostname !== "127.0.0.1" &&
-      url.hostname !== "localhost" &&
-      url.hostname !== "::1")
+    url.protocol !== "http:" ||
+    !LOOPBACK_IP_LITERALS.has(url.hostname) ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/" ||
+    url.search !== "" ||
+    url.hash !== ""
   ) {
     throw new LocalRuntimeConversationFetchError(
-      "local runtime origin must be an HTTP loopback URL",
+      "local runtime origin must be a canonical HTTP loopback origin",
     );
   }
-  url.pathname = "/";
-  url.search = "";
-  url.hash = "";
-  return url;
+  if (raw !== url.origin && raw !== `${url.origin}/`) {
+    throw new LocalRuntimeConversationFetchError(
+      "local runtime origin must use its canonical serialized form",
+    );
+  }
+  return new URL(`${url.origin}/`);
 }
 
 function resolveRequestUrl(input: RequestInfo | URL): URL {
@@ -113,6 +138,8 @@ function resolveRequestUrl(input: RequestInfo | URL): URL {
 
 function parseRequestBody(body: BodyInit | null | undefined): {
   text: string;
+  messageRole?: "system";
+  clientMessageId?: string;
   metadata: { clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT };
   streamProtocol: typeof VOICE_STREAM_PROTOCOL;
 } {
@@ -124,6 +151,8 @@ function parseRequestBody(body: BodyInit | null | undefined): {
   try {
     const parsed = JSON.parse(body) as {
       text?: unknown;
+      messageRole?: unknown;
+      clientMessageId?: unknown;
       metadata?: unknown;
       streamProtocol?: unknown;
     };
@@ -148,8 +177,31 @@ function parseRequestBody(body: BodyInit | null | undefined): {
         "local voice conversation delta stream protocol is required",
       );
     }
+    if (parsed.messageRole !== undefined && parsed.messageRole !== "system") {
+      throw new LocalRuntimeConversationFetchError(
+        "local voice conversation message role must be system",
+      );
+    }
+    if (parsed.clientMessageId !== undefined) {
+      if (
+        typeof parsed.clientMessageId !== "string" ||
+        parsed.clientMessageId.length === 0 ||
+        parsed.clientMessageId.length > MAX_CLIENT_MESSAGE_ID_LENGTH ||
+        parsed.clientMessageId.trim() !== parsed.clientMessageId
+      ) {
+        throw new LocalRuntimeConversationFetchError(
+          "local voice client message id must be canonical and at most 128 characters",
+        );
+      }
+    }
     return {
       text: parsed.text,
+      ...(parsed.messageRole === undefined
+        ? {}
+        : { messageRole: parsed.messageRole }),
+      ...(parsed.clientMessageId === undefined
+        ? {}
+        : { clientMessageId: parsed.clientMessageId }),
       metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
       streamProtocol: parsed.streamProtocol,
     };

@@ -48,7 +48,7 @@ export interface EnsureCloudSessionForRepairDeps {
   /** Injected (tests). Defaults to the canonical Steward refresh. */
   refreshFn?: typeof refreshCloudStewardSession;
   /** Injected (tests). Defaults to the localStorage Steward mirror write. */
-  writeToken?: (token: string) => void;
+  writeToken?: (token: string) => Promise<void> | void;
   /** Injected (tests). Defaults to the real refresh timeout. */
   timeoutMs?: number;
   /** Injected (tests). Defaults to real setTimeout-based race. */
@@ -121,7 +121,7 @@ export async function ensureCloudSessionForRepair(
   const token = recovered?.token?.trim();
   if (!token) return null;
 
-  writeToken(token);
+  await writeToken(token);
   // error-policy:J6 best-effort nudge — token consumers re-read next tick.
   // dispatchEvent reports listener errors instead of rethrowing, so no
   // try/catch is needed; the guard only skips environments without

@@ -2633,7 +2633,7 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 		}
 
-		return this.dedupeConnectorTargets(results).slice(0, 25);
+		return this.dedupeConnectorTargets(results);
 	}
 
 	public async listConnectorRooms(
@@ -2699,7 +2699,7 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		targets.push(...(await this.listConnectorRooms(context)));
-		return this.dedupeConnectorTargets(targets).slice(0, 25);
+		return this.dedupeConnectorTargets(targets);
 	}
 
 	public async getConnectorChatContext(

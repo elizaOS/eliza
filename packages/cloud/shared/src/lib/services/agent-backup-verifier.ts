@@ -51,7 +51,11 @@
 
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { AGENT_BACKUP_CANONICAL_JSON, stableJsonString } from "@elizaos/shared/canonical-json";
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  CANONICAL_JSON_UNBOUNDED,
+  stableJsonString,
+} from "@elizaos/shared/canonical-json";
 import { and, desc, eq, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
@@ -293,6 +297,31 @@ export function classifyCryptoError(error: unknown): BackupVerificationFailure |
     return { kind: "decrypt-failed", message: error.message };
   }
   return null;
+}
+
+/**
+ * Map the canonical-JSON budget rejection (#23817) to a verification failure,
+ * or null for anything else. `stableJsonString` throws `ElizaError` /
+ * `CANONICAL_JSON_UNBOUNDED` for a payload that is over-depth, over the node
+ * budget, or cyclic — a deterministic defect of the stored backup, not
+ * verifier infrastructure, so it must stamp `failed: invalid-payload` rather
+ * than `errored`. Compatibility note: a legal-JSON state deeper than
+ * `maxDepth: 64` that hashed under the pre-#23817 unbounded walk now
+ * classifies here too; the producer, differ, and restore path all share
+ * `AGENT_BACKUP_CANONICAL_JSON`, so such a state can no longer be hashed
+ * anywhere and the backup is honestly non-restorable. The error's `context`
+ * is structural-only (budget counters, never reflected content), so it is
+ * safe for the stamped verification_error and logs.
+ */
+function classifyCanonicalJsonError(
+  error: unknown,
+  site: "content_hash" | "manifest",
+): BackupVerificationFailure | null {
+  if (!(error instanceof ElizaError) || error.code !== CANONICAL_JSON_UNBOUNDED) return null;
+  return {
+    kind: "invalid-payload",
+    message: `${site}: ${error.message} ${JSON.stringify(error.context ?? {})}`,
+  };
 }
 
 function classifyMissingObjectPayload(error: unknown): BackupVerificationFailure | null {
@@ -778,7 +807,16 @@ export async function verifyBackupRestorability(
   }
 
   if (row.content_hash) {
-    const actual = computeStateHash(state);
+    let actual: string;
+    try {
+      actual = computeStateHash(state);
+    } catch (error) {
+      // error-policy:J3 untrusted-input sanitizing — an over-budget stored
+      // payload is an explicit invalid-payload result, never infra `errored`.
+      const classified = classifyCanonicalJsonError(error, "content_hash");
+      if (classified) return fail(classified);
+      throw error;
+    }
     if (actual !== row.content_hash) {
       return fail({
         kind: "hash-mismatch",
@@ -789,7 +827,16 @@ export async function verifyBackupRestorability(
   }
 
   if (state.manifest) {
-    const mismatches = verifyManifestIntegrity(state.manifest);
+    let mismatches: string[];
+    try {
+      mismatches = verifyManifestIntegrity(state.manifest);
+    } catch (error) {
+      // error-policy:J3 untrusted-input sanitizing — same classification as
+      // the content_hash site; unrelated throws stay verifier-infrastructure.
+      const classified = classifyCanonicalJsonError(error, "manifest");
+      if (classified) return fail(classified);
+      throw error;
+    }
     if (mismatches.length > 0) {
       return fail({
         kind: "hash-mismatch",

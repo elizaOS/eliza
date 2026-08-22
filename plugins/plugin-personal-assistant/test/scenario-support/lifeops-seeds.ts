@@ -40,14 +40,14 @@ type BrowserTelemetryWindow = {
 
 type BrowserTelemetrySeed = {
   deviceId: string;
-  browserVendor?: "chrome" | "safari" | "unknown";
+  browserVendor?: "chrome" | "firefox" | "safari" | "unknown";
   extensionVersion?: string;
   userAgent?: string;
   windows: BrowserTelemetryWindow[];
 };
 
 type BrowserPageContextSeed = {
-  browser: "chrome" | "safari";
+  browser: "chrome" | "firefox" | "safari";
   profileId: string;
   windowId: string;
   tabId: string;

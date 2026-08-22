@@ -34,7 +34,6 @@ import {
   readNumberParam,
   readStringParam,
   successActionResult,
-  truncate,
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
@@ -54,7 +53,6 @@ import { summarizeShellCommand } from "./summaries.js";
 const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
-const STREAM_CAP_CHARS = 30_000;
 const USER_FACING_STDOUT_CAP_CHARS = 8_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
@@ -1145,16 +1143,14 @@ function formatStreams(
   stderr: string,
   options: { showEmptyStreams?: boolean } = {},
 ): string {
-  const sOut = truncate(stdout, STREAM_CAP_CHARS);
-  const sErr = truncate(stderr, STREAM_CAP_CHARS);
   const lines: string[] = [];
-  if (sOut.text.length > 0 || options.showEmptyStreams) {
+  if (stdout.length > 0 || options.showEmptyStreams) {
     lines.push("--- stdout ---");
-    lines.push(sOut.text.length > 0 ? sOut.text : "(empty)");
+    lines.push(stdout.length > 0 ? stdout : "(empty)");
   }
-  if (sErr.text.length > 0 || options.showEmptyStreams) {
+  if (stderr.length > 0 || options.showEmptyStreams) {
     lines.push("--- stderr ---");
-    lines.push(sErr.text.length > 0 ? sErr.text : "(empty)");
+    lines.push(stderr.length > 0 ? stderr : "(empty)");
   }
   return lines.join("\n");
 }
@@ -1877,6 +1873,16 @@ export const shellAction: Action = {
     }
 
     const took = Date.now() - startedAt;
+    if (result.outputLimitExceeded) {
+      return failureToActionResult(
+        {
+          reason: "internal",
+          message:
+            "command output exceeded the 1,000,000-character complete-capture safety limit; no partial output is available",
+        },
+        { command: redactShellText(runtime, command), cwd: redactedCwd },
+      );
+    }
     const timedOut = result.timedOut;
     const signal = result.signal;
     const redactedCommand = redactShellText(runtime, command);

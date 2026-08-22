@@ -4187,14 +4187,10 @@ export class ElizaSandboxService {
     channelId: string,
     history: SharedTurnMessage[],
   ): Promise<void> {
-    const capped =
-      history.length > SHARED_RUNTIME_HISTORY_MAX_MESSAGES
-        ? history.slice(history.length - SHARED_RUNTIME_HISTORY_MAX_MESSAGES)
-        : history;
     await sharedRuntimeHistoryRepository.merge(
       agentId,
       channelId,
-      capped,
+      history,
       SHARED_RUNTIME_HISTORY_MAX_MESSAGES,
     );
   }

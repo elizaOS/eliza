@@ -28,6 +28,9 @@ export enum OAuthErrorCode {
   // Rate limiting
   RATE_LIMITED = "RATE_LIMITED",
 
+  // Upstream provider errors
+  UPSTREAM_RESPONSE_TOO_LARGE = "UPSTREAM_RESPONSE_TOO_LARGE",
+
   // Internal errors
   INTERNAL_ERROR = "INTERNAL_ERROR",
 }
@@ -47,6 +50,7 @@ export const ERROR_STATUS_MAP: Record<OAuthErrorCode, number> = {
   [OAuthErrorCode.UNAUTHORIZED]: 401,
   [OAuthErrorCode.FORBIDDEN]: 403,
   [OAuthErrorCode.RATE_LIMITED]: 429,
+  [OAuthErrorCode.UPSTREAM_RESPONSE_TOO_LARGE]: 502,
   [OAuthErrorCode.INTERNAL_ERROR]: 500,
 };
 

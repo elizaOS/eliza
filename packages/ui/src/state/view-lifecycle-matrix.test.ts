@@ -52,6 +52,7 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   rolodex: "system",
   desktop: "system",
   settings: "system",
+  vault: "system",
   background: "system",
   // Developer / advanced surfaces.
   plugins: "developer",

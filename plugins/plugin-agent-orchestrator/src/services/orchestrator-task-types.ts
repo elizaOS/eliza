@@ -115,9 +115,6 @@ export interface AttemptReflection {
   summary: string;
 }
 
-/** Cap on retained reflections — keep the most recent few to bound prompt size. */
-export const MAX_ATTEMPT_REFLECTIONS = 5;
-
 /** Crash-retry budget: the total number of errored sessions a task's sub-agent
  * lineage may accrue before the task goes terminal `failed`. Bounds the
  * general-crash respawn the same way `MAX_AUTO_VERIFY_ATTEMPTS` bounds

@@ -1,10 +1,6 @@
 /**
- * Scene serialization tests pin the token-budgeted JSON fence that the scene
+ * Scene serialization tests pin the lossless JSON fence that the scene
  * provider injects into prompts.
- *
- * The serializer caps per-display OCR, prefers the focused-display AX subtree,
- * and clips background apps so high-resolution multi-monitor sessions stay
- * prompt-sized while preserving actionable structure.
  */
 import { describe, expect, it } from "vitest";
 import type { Scene, SceneApp, SceneOcrBox } from "./scene-types.js";
@@ -50,19 +46,18 @@ describe("serializeSceneForPrompt", () => {
   it("emits valid fenced JSON", () => {
     const parsed = parseFenced(serializeSceneForPrompt(baseScene()));
     expect(parsed.timestamp).toBe(1000);
-    expect(parsed.truncation).toMatchObject({ ocr_total: 0, apps_kept: 0 });
+    expect(parsed).not.toHaveProperty("truncation");
   });
 
-  it("keeps only the top-N most confident OCR boxes per display", () => {
+  it("keeps every OCR box even when a legacy cap option is passed", () => {
     const ocr = Array.from({ length: 30 }, (_, i) => ocrBox(i, i / 100));
     const parsed = parseFenced(
       serializeSceneForPrompt(baseScene({ ocr }), { ocrTopN: 3 }),
     );
     const kept = parsed.ocr as Array<{ conf: number }>;
-    expect(kept).toHaveLength(3);
-    // Sorted by descending confidence → the three highest (0.29, 0.28, 0.27).
-    expect(kept.map((b) => b.conf)).toEqual([0.29, 0.28, 0.27]);
-    expect(parsed.truncation).toMatchObject({ ocr_total: 30, ocr_kept: 3 });
+    expect(kept).toHaveLength(30);
+    expect(kept[0]?.conf).toBe(0.29);
+    expect(kept.at(-1)?.conf).toBe(0);
   });
 
   it("rounds OCR confidence to 3 decimals", () => {
@@ -72,7 +67,7 @@ describe("serializeSceneForPrompt", () => {
     expect((parsed.ocr as Array<{ conf: number }>)[0]?.conf).toBe(0.123);
   });
 
-  it("prefers the focused-window display's AX subtree when capping", () => {
+  it("keeps every AX node while ordering the focused display first", () => {
     const ax = [
       {
         id: "d0a",
@@ -119,12 +114,11 @@ describe("serializeSceneForPrompt", () => {
       ),
     );
     const keptAx = parsed.ax as Array<{ displayId: number }>;
-    expect(keptAx).toHaveLength(2);
-    expect(keptAx.every((n) => n.displayId === 1)).toBe(true);
-    expect(parsed.truncation).toMatchObject({ ax_total: 4, ax_kept: 2 });
+    expect(keptAx).toHaveLength(4);
+    expect(keptAx.map((n) => n.displayId)).toEqual([1, 1, 0, 0]);
   });
 
-  it("orders apps by window count then name, caps the list, and clips per-app windows", () => {
+  it("orders apps while retaining every app and window", () => {
     const win = (id: string) => ({
       id,
       title: `w-${id}`,
@@ -153,12 +147,14 @@ describe("serializeSceneForPrompt", () => {
       window_count: number;
       windows: unknown[];
     }>;
-    expect(keptApps).toHaveLength(2);
-    // Both 2-window apps win the cap; alpha sorts before zebra on the tie-break.
-    expect(keptApps.map((a) => a.name)).toEqual(["app-alpha", "app-zebra"]);
-    // window_count reflects the FULL count; windows array is clipped to 1.
+    expect(keptApps).toHaveLength(4);
+    expect(keptApps.map((a) => a.name)).toEqual([
+      "app-alpha",
+      "app-zebra",
+      "app-mid",
+      "app-bg",
+    ]);
     expect(keptApps[0]?.window_count).toBe(2);
-    expect(keptApps[0]?.windows).toHaveLength(1);
-    expect(parsed.truncation).toMatchObject({ apps_total: 4, apps_kept: 2 });
+    expect(keptApps[0]?.windows).toHaveLength(2);
   });
 });

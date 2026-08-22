@@ -53,10 +53,7 @@ import { hasActionContext } from "../../../utils/action-validation.ts";
 import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
@@ -1030,7 +1027,7 @@ function recentTextFromState(state: State | undefined): string {
 	]
 		.filter((v): v is string => typeof v === "string")
 		.join("\n");
-	return chunks.slice(-4000);
+	return chunks;
 }
 
 function inferTargetFromRecentConversation(
@@ -2184,7 +2181,9 @@ function applyContentShaping(
 		maxLength > 0 &&
 		text.length > maxLength
 	) {
-		text = truncateWellFormed(text, Math.floor(maxLength));
+		throw new Error(
+			`Connector ${connector.source} cannot accept ${text.length} characters; its declared maximum is ${Math.floor(maxLength)}. Refusing to send partial content.`,
+		);
 	}
 	return text === content.text ? content : { ...content, text };
 }
@@ -3001,7 +3000,7 @@ async function fetchRecentMessagesFromConnector(
 	if (!connector.fetchMessages || !connector.listRecentTargets) return [];
 	const recent = await connector.listRecentTargets(context);
 	const memories: Memory[] = [];
-	for (const r of recent.slice(0, 8)) {
+	for (const r of recent) {
 		const target = {
 			...r.target,
 			accountId: r.target.accountId ?? connector.accountId,
@@ -3649,12 +3648,6 @@ async function handleSearch(
 // op=list_channels / list_servers
 // ---------------------------------------------------------------------------
 
-// Cap on rendered channel entries so a large deployment can't flood the
-// action result. Counts are always computed over the connector's complete
-// room set, and a capped listing is annotated (truncated + channelCount)
-// instead of silently posing as complete.
-const MAX_LISTED_CHANNELS = 50;
-
 async function handleListChannels(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -3696,18 +3689,15 @@ async function handleListChannels(
 		// even when the rendered listing below is capped.
 		const mutedFlags = await resolveMutedTargetFlags(runtime, targets);
 		const mutedCount = mutedFlags.filter(Boolean).length;
-		const rendered = targets.slice(0, MAX_LISTED_CHANNELS);
-		const truncated = rendered.length < targets.length;
 		return opSuccess(
 			"list_channels",
 			`Listed ${targets.length} channels from ${connector.label}${
 				mutedCount > 0 ? ` (${mutedCount} muted)` : ""
-			}${truncated ? ` — showing the first ${rendered.length}` : ""}.`,
+			}.`,
 			{
 				source: connector.source,
 				channelCount: targets.length,
-				...(truncated ? { truncated: true } : {}),
-				channels: rendered.map((t, index) => ({
+				channels: targets.map((t, index) => ({
 					label: t.label,
 					kind: t.kind,
 					target: t.target,

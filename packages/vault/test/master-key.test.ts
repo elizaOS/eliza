@@ -194,8 +194,8 @@ describe("defaultMasterKey — fallback chain", () => {
   test("error message names passphrase remediation when both paths are unavailable", async () => {
     delete process.env.ELIZA_VAULT_PASSPHRASE;
     // Force the keychain bypass path instead of depending on platform-specific
-    // invalid service-name behavior. macOS `/usr/bin/security` accepts inputs
-    // that @napi-rs/keyring used to reject, so the old sentinel was brittle.
+    // invalid service-name behavior. The explicit bypass is deterministic and
+    // avoids touching the developer machine's real native credential store.
     process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
     const r = defaultMasterKey({ service: "test" });
     await expect(r.load()).rejects.toThrow(MasterKeyUnavailableError);

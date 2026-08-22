@@ -81,6 +81,10 @@ function makeSetupService(state: FakeSetupServiceState) {
       state.calls.push(`setOwnerContact:${update.source}`);
       return true;
     },
+    removeConnectorCredentialReference: async (reference: string) => {
+      state.calls.push(`removeConnectorCredentialReference:${reference}`);
+      return reference.startsWith("vault://");
+    },
   };
 }
 
@@ -199,6 +203,20 @@ describe("plugin-telegram setup routes (real dispatch)", () => {
       Record<string, unknown>
     >;
     expect(connectors.telegram.botToken).toBeUndefined();
+  });
+
+  it("cancels a vault-backed bot token in config and encrypted storage", async () => {
+    const reference = "vault://connector.agent-1.telegram.42.bot-token";
+    const state: FakeSetupServiceState = {
+      config: { connectors: { telegram: { botToken: reference } } },
+      calls: [],
+    };
+    const base = await startServer(makeRuntime({ state }));
+    const res = await postJson(base, "/api/setup/telegram/cancel", {});
+    expect(res.status).toBe(200);
+    expect(state.calls).toContain(
+      `removeConnectorCredentialReference:${reference}`,
+    );
   });
 
   it("still serves status when the connector-setup service is unavailable (200)", async () => {

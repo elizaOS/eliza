@@ -940,6 +940,7 @@ export const ChatMessage = memo(function ChatMessage({
           data-testid="thread-line"
           data-role={message.role}
           data-failure={message.failureKind}
+          data-interrupted={message.interrupted ? "true" : undefined}
           initial={initial}
           animate={{ opacity: 1 }}
           transition={transition}
@@ -1112,6 +1113,9 @@ export const ChatMessage = memo(function ChatMessage({
         data-testid="thread-line"
         data-role={message.role}
         data-failure={isAssistant ? message.failureKind : undefined}
+        data-interrupted={
+          isAssistant && message.interrupted ? "true" : undefined
+        }
         // A very short opacity-only entrance keeps fast-model turns immediate
         // without fighting the scroller's bottom anchor.
         initial={initial}
@@ -1305,6 +1309,7 @@ export const ChatMessage = memo(function ChatMessage({
       }`}
       data-testid="chat-message"
       data-role={message.role}
+      data-interrupted={isAssistant && message.interrupted ? "true" : undefined}
       tabIndex={isFirstRun ? undefined : 0}
       onPointerMove={supportsHover ? handleActionsPointerMove : undefined}
       onMouseLeave={supportsHover ? handleActionsMouseLeave : undefined}

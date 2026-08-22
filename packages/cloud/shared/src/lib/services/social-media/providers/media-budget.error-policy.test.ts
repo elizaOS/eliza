@@ -54,6 +54,14 @@ const OVERSIZE_DATA = Buffer.alloc(SOCIAL_MEDIA_MEDIA_MAX_BYTES + 1, 0x41);
 const SMALL_BYTES = Buffer.from("PNGBYTES");
 const SMALL_BASE64 = SMALL_BYTES.toString("base64");
 
+function mimeWrap(base64: string): string {
+  const lines: string[] = [];
+  for (let index = 0; index < base64.length; index += 76) {
+    lines.push(base64.slice(index, index + 76));
+  }
+  return lines.join("\r\n");
+}
+
 const oversizeBase64Media = (): MediaAttachment =>
   ({ type: "image", base64: OVERSIZE_BASE64, mimeType: "image/png" }) as MediaAttachment;
 const oversizeDataMedia = (): MediaAttachment =>
@@ -147,6 +155,31 @@ describe("blueskyProvider — media budget", () => {
     const result = await blueskyProvider.uploadMedia!(BSKY_CREDS, smallBase64Media());
     expect(result.mediaId).toBe("blob-link");
     expect(Buffer.from(mediaBodies[0]!).toString()).toBe("PNGBYTES");
+  });
+
+  test("uploadMedia posts an exact-budget MIME-wrapped attachment", async () => {
+    const wrapped = mimeWrap(Buffer.alloc(SOCIAL_MEDIA_MEDIA_MAX_BYTES, 0x41).toString("base64"));
+    fetchQueue = [
+      BSKY_SESSION,
+      () =>
+        json({
+          blob: {
+            $type: "blob",
+            ref: { $link: "max-blob-link" },
+            mimeType: "image/png",
+            size: SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+          },
+        }),
+    ];
+
+    const result = await blueskyProvider.uploadMedia!(BSKY_CREDS, {
+      type: "image",
+      base64: wrapped,
+      mimeType: "image/png",
+    } as MediaAttachment);
+
+    expect(result.mediaId).toBe("max-blob-link");
+    expect(mediaBodies[0]?.byteLength).toBe(SOCIAL_MEDIA_MEDIA_MAX_BYTES);
   });
 
   test("createPost fails closed on an oversized base64 attachment instead of posting", async () => {

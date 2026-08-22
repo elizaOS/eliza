@@ -978,6 +978,7 @@ export class WorkflowsDomain {
     args: {
       startedAt: string;
       confirmBrowserActions: boolean;
+      triggerChainDepth?: number;
       request: Record<string, unknown>;
       /**
        * Replay guard. A keyed run is reserved durably before its first step,
@@ -1093,6 +1094,7 @@ export class WorkflowsDomain {
     args: {
       startedAt: string;
       confirmBrowserActions: boolean;
+      triggerChainDepth?: number;
       request: Record<string, unknown>;
       idempotencyKey?: string | null;
     },
@@ -1160,6 +1162,7 @@ export class WorkflowsDomain {
           definition,
           startedAt: args.startedAt,
           confirmBrowserActions: args.confirmBrowserActions,
+          triggerChainDepth: args.triggerChainDepth ?? 0,
           request: args.request,
           outputs,
           previousStepValue: steps.at(-1)?.value ?? null,

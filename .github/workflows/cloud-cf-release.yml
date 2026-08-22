@@ -1028,7 +1028,7 @@ jobs:
               return 0
             fi
             local secret_inventory
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
             printf '%s' "$secret_inventory" | node -e '
               const fs = require("node:fs");
               const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -1056,7 +1056,7 @@ jobs:
 
           verify_apns_binding_candidates() {
             local secret_inventory
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
             printf '%s' "$secret_inventory" | node -e '
               const fs = require("node:fs");
               const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -1088,7 +1088,7 @@ jobs:
               return 0
             fi
             local secret_inventory
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
             printf '%s' "$secret_inventory" | node -e '
               const fs = require("node:fs");
               const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -1112,7 +1112,7 @@ jobs:
               return 0
             fi
             local secret_inventory
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
 
             # Names-only wiring (above/below) proves a binding NAME exists or
             # is queued; it cannot prove the VALUE still matches the live
@@ -1421,7 +1421,7 @@ jobs:
           VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
         run: |
           set -euo pipefail
-          secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+          secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
           printf '%s' "$secret_inventory" | node -e '
             const fs = require("node:fs");
             const parsed = JSON.parse(fs.readFileSync(0, "utf8"));

@@ -173,7 +173,6 @@ export interface OnboardingChatResult {
 }
 
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
-const MAX_HISTORY_MESSAGES = 200;
 /**
  * Claim authority is intentionally a separate session purpose from ordinary
  * Telegram onboarding. There is no legacy fallback: callers with an older or
@@ -185,7 +184,6 @@ const TELEGRAM_ACCOUNT_CLAIM_SESSION_PATTERN = /^platform:telegram-claim:[0-9a-f
  * message length, but gateway services call runOnboardingChat directly with
  * raw connector payloads, so the session store enforces its own bound.
  */
-const MAX_MESSAGE_LENGTH = 4000;
 // The Cloud app host. Serves the authenticated `/get-started` continuation
 // landing (Steward login -> identity confirm -> back-to-Discord handoff) that
 // the messaging Connect CTA now targets directly, plus in-app Cloud links.
@@ -708,12 +706,6 @@ export async function mirrorOnboardingSessionToCache(session: OnboardingSession)
   await cache.set(sessionCacheKey(session.id), session, SESSION_TTL_SECONDS);
 }
 
-function trimHistory(history: OnboardingChatMessage[]): OnboardingChatMessage[] {
-  return history.length > MAX_HISTORY_MESSAGES
-    ? history.slice(history.length - MAX_HISTORY_MESSAGES)
-    : history;
-}
-
 function appendMessage(
   session: OnboardingSession,
   role: OnboardingChatRole,
@@ -724,10 +716,10 @@ function appendMessage(
   return {
     ...session,
     updatedAt: nowIso(),
-    history: trimHistory([
+    history: [
       ...session.history,
       { id: crypto.randomUUID(), role, content: message, createdAt: nowIso() },
-    ]),
+    ],
   };
 }
 
@@ -1561,9 +1553,7 @@ export async function runOnboardingChatWithStore(
   // to the session, and a `running` observation still performs the transcript
   // handoff (that is the only handoff path for a user who never types, since
   // the browser polls with statusOnly: true).
-  const userMessage = input.statusOnly
-    ? undefined
-    : input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
+  const userMessage = input.statusOnly ? undefined : input.message?.trim();
   let preferredNameProvidedThisTurn = false;
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);

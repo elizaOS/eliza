@@ -118,6 +118,8 @@ public class ElizaAgentService extends Service {
     // below). AGENT_PORT is only used when ELIZA_API_EXPOSE_PORT re-opens the
     // HTTP listener for dev/LAN/e2e, and to advertise the port in status text.
     private static final int AGENT_PORT = 31337;
+    private static final String DEBUG_API_EXPOSE_PORT_PROP =
+        "debug.eliza.api_expose_port";
 
     /**
      * Abstract-namespace AF_UNIX socket the in-process bionic GPU inference
@@ -2059,8 +2061,13 @@ public class ElizaAgentService extends Service {
             // LAN access, e2e harnesses) — then the agent advertises AGENT_PORT
             // and the launch.sh PORT default applies. Passing the port env
             // unconditionally is what used to make the agent open 31337.
-            if ("1".equals(env.get("ELIZA_API_EXPOSE_PORT"))
-                    || "true".equalsIgnoreCase(env.get("ELIZA_API_EXPOSE_PORT"))) {
+            boolean exposeAgentApiPort = shouldExposeAgentApiPort(
+                BuildConfig.DEBUG,
+                env.get("ELIZA_API_EXPOSE_PORT"),
+                readDebugProp(DEBUG_API_EXPOSE_PORT_PROP)
+            );
+            if (exposeAgentApiPort) {
+                agentEnv.put("ELIZA_API_EXPOSE_PORT", "1");
                 agentEnv.put("PORT", String.valueOf(AGENT_PORT));
                 agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
                 agentEnv.put("ELIZA_API_BIND", "127.0.0.1");
@@ -2097,14 +2104,13 @@ public class ElizaAgentService extends Service {
                 Log.i(TAG, "Hybrid cloud inference enabled: ELIZAOS_CLOUD_API_KEY"
                     + " injected from prefs (len=" + cloudInferenceKey.length() + ")");
             }
-            // Local passwordless mode: the on-device agent trusts its own sealed
-            // request socket so the single device owner never hits a login/pairing
-            // gate. The per-boot bearer-token guard (ELIZA_REQUIRE_LOCAL_AUTH=1)
-            // is intentionally OFF — the WebView cannot reliably present that
-            // token at cold start, which otherwise dead-ends the dashboard at
-            // 401 ("Connecting to backend…" forever). The token is still minted
-            // and exposed via the Agent plugin for callers that opt to use it.
-            agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "0");
+            // Abstract UDS requests stay process-confined and passwordless so
+            // the WebView cannot dead-end at cold start waiting for its bearer.
+            // The debug/e2e TCP opt-in shares Android's loopback namespace with
+            // other apps, so it must retain bearer auth even though it never
+            // binds off-device. The Agent plugin exposes the per-boot token to
+            // the harness without weakening the normal port-free path.
+            agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", exposeAgentApiPort ? "1" : "0");
             agentEnv.put("ELIZA_API_TOKEN", token);
             agentEnv.put("ELIZA_TERMINAL_RUN_TOKEN", terminalToken);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
@@ -2211,8 +2217,8 @@ public class ElizaAgentService extends Service {
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
-            // When the dynamic-Vulkan fused lib is staged (libelizainference.so +
-            // libggml-vulkan.so), the GPU is only reachable from THIS bionic app
+            // When the fused inference lib is staged, its Android Vulkan dependency
+            // is only reachable from THIS bionic app
             // process — the musl agent's ld can't load libvulkan's HIDL closure
             // (project_android_gpu_vulkan_wall). So instead of pointing the musl
             // agent at the bun:ffi AOSP loader (ELIZA_LOCAL_LLAMA=1 → the wall),
@@ -2231,8 +2237,9 @@ public class ElizaAgentService extends Service {
             // would fail with a cryptic "bionic socket error: connect ENOENT".
             boolean bionicJniBridgeBundled =
                 resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile();
-            boolean delegateToBionicHost =
-                fusedInferenceBundled && abiGgmlVulkan.isFile() && bionicJniBridgeBundled;
+            boolean delegateToBionicHost = shouldDelegateToBionicHost(
+                fusedInferenceBundled,
+                bionicJniBridgeBundled);
             // #11760: export the device RAM class + idle-unload default so the
             // bun agent's in-process loader (plugin-native-inference) applies
             // the same inference memory policy as the bionic host. Operator env
@@ -2246,9 +2253,9 @@ public class ElizaAgentService extends Service {
                     "ELIZA_LOCAL_IDLE_UNLOAD_MS",
                     String.valueOf(inferenceIdleUnloadMs(inferenceRamClass)));
             }
-            if (fusedInferenceBundled && abiGgmlVulkan.isFile() && !bionicJniBridgeBundled) {
+            if (fusedInferenceBundled && !bionicJniBridgeBundled) {
                 Log.w(TAG, "agent/" + abiDir.getName()
-                    + ": fused Vulkan libs are staged but libelizavoicejni.so is absent "
+                    + ": fused inference is staged but libelizavoicejni.so is absent "
                     + "(this build skipped the fused-voice JNI bridge); on-device GPU "
                     + "inference via the bionic host is UNAVAILABLE. Rebuild with "
                     + "stage-elizavoice-lib.mjs to re-enable. Falling back to the "
@@ -2258,7 +2265,7 @@ public class ElizaAgentService extends Service {
                 agentEnv.put("ELIZA_BIONIC_HOST_DELEGATED", "1");
                 agentEnv.put("ELIZA_BIONIC_INFERENCE_SOCK", BIONIC_INFERENCE_SOCKET_NAME);
                 Log.i(TAG, "agent/" + abiDir.getName()
-                    + "/libggml-vulkan.so present; delegating inference to the in-process"
+                    + "/libelizainference.so present; delegating inference to the in-process"
                     + " bionic Vulkan host over UDS \"" + BIONIC_INFERENCE_SOCKET_NAME
                     + "\" (NOT taking the musl bun:ffi AOSP path)");
                 // Stand up the in-process GPU inference server BEFORE the agent
@@ -4068,6 +4075,28 @@ public class ElizaAgentService extends Service {
         } catch (ReflectiveOperationException | SecurityException e) {
             return "";
         }
+    }
+
+    static boolean shouldExposeAgentApiPort(
+            boolean debugBuild,
+            String inheritedValue,
+            String debugPropertyValue) {
+        if ("1".equals(inheritedValue) || "true".equalsIgnoreCase(inheritedValue)) {
+            return true;
+        }
+        return debugBuild
+            && ("1".equals(debugPropertyValue)
+                || "true".equalsIgnoreCase(debugPropertyValue));
+    }
+
+    static boolean shouldDelegateToBionicHost(
+            boolean fusedInferenceBundled,
+            boolean bionicJniBridgeBundled) {
+        // The Android artifact is a single fused ABI. Vulkan is linked into
+        // libelizainference.so, so a separate libggml-vulkan.so is not a valid
+        // capability sentinel. The JNI bridge is the fail-closed proof that the
+        // app process can host the fused library for the musl agent.
+        return fusedInferenceBundled && bionicJniBridgeBundled;
     }
 
     /**

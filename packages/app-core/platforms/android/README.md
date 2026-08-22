@@ -18,6 +18,60 @@ hosting target. Produces a release AAB at
 For local Pixel smoke tests, `android-cloud-debug` produces a debug APK
 under `packages/app-core/platforms/android/app/build/outputs/apk/debug/`.
 
+### Play capability contract
+
+The Play artifact is a standard consumer client. Its post-merge manifest and
+package contents are checked against exact allowlists during every Cloud APK or
+AAB build; an unexpected permission, component, query, native plugin, native
+library, packaged credential, or local-development route fails the build.
+
+Runtime permissions:
+
+- `android.permission.RECORD_AUDIO` — requested only when the user starts a
+  voice interaction.
+
+Install-time normal permissions:
+
+- `android.permission.INTERNET`
+- `android.permission.ACCESS_NETWORK_STATE`
+- `android.permission.MODIFY_AUDIO_SETTINGS`
+- AndroidX's app-scoped `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` signature
+  permission.
+
+Packaged Android components:
+
+- Activities: `MainActivity`, `ElizaShareActivity`, and Capacitor Browser's
+  `BrowserControllerActivity`.
+- Providers: the non-exported Capacitor `FileProvider` and AndroidX Startup.
+- Receiver: AndroidX Profile Installer's non-app-feature receiver.
+- Services: none.
+- Native libraries: none.
+
+User-facing capabilities are limited to cloud chat, user-initiated microphone
+voice, audio playback, secure private preferences/files, network-state
+awareness, browser-based sign-in, ordinary Android sharing/`PROCESS_TEXT`, and
+Eliza deep links/shortcuts. The application disables cleartext traffic and
+backup, targets API 36, has no package-name query, and does not ship local Mac
+routes, emulator/ADB assumptions, provider credentials, or an on-device agent.
+
+The Play client does not declare or register accessibility/gesture control,
+notification-listener access, device administration, overlay or usage access,
+VPN, MediaProjection, Health Connect, camera/location/Bluetooth/contact/SMS/
+call access, default Assistant/Browser/Dialer/SMS/Home roles, an IME, app
+installation/update APIs, boot receivers, foreground/background services,
+push/local notifications, native inference, or dynamically loadable code.
+
+Policy basis: Google Play restricts sensitive permissions to documented core
+uses, requires SMS/Call Log permissions to be removed when the app does not
+qualify, imposes declarations and user-perceptibility requirements on foreground
+services, and requires current target API levels. See the official
+[permissions policy](https://support.google.com/googleplay/android-developer/answer/16558241),
+[SMS and Call Log policy](https://support.google.com/googleplay/android-developer/answer/10208820),
+[AccessibilityService policy](https://support.google.com/googleplay/android-developer/answer/10964491),
+[foreground-service requirements](https://support.google.com/googleplay/android-developer/answer/13392821),
+[target API requirements](https://support.google.com/googleplay/android-developer/answer/11926878),
+and [Android cleartext guidance](https://developer.android.com/privacy-and-security/risks/cleartext-communications).
+
 Release AAB auditing uses Google's standalone bundletool JAR. The canonical
 build downloads bundletool 1.18.3 into a temporary cache and verifies its
 pinned SHA-256 before execution. To supply a pre-provisioned official JAR

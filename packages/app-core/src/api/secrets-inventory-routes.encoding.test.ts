@@ -9,6 +9,25 @@ const vaultMocks = vi.hoisted(() => ({
   readEntryMeta: vi.fn(async () => null),
   has: vi.fn(async () => false),
   reveal: vi.fn(),
+  listConnectorSecretFindings: vi.fn(() => [
+    {
+      id: "config:telegram.botToken",
+      connector: "telegram",
+      label: "telegram botToken",
+      source: "eliza-config",
+      protection: "mode-0600",
+      autoMigratesOnDesktop: true,
+      detail: "Protected fallback; no value returned.",
+    },
+  ]),
+}));
+
+vi.mock("@elizaos/agent/config/config", () => ({
+  loadElizaConfig: () => ({ connectors: { telegram: { botToken: "secret" } } }),
+}));
+
+vi.mock("@elizaos/agent/config/paths", () => ({
+  resolveStateDir: () => "/tmp/example-state",
 }));
 
 vi.mock("@elizaos/vault", () => ({
@@ -28,6 +47,10 @@ vi.mock("../services/vault-mirror", () => ({
     has: vaultMocks.has,
     reveal: vaultMocks.reveal,
   }),
+}));
+
+vi.mock("../services/connector-secret-inventory", () => ({
+  listConnectorSecretFindings: vaultMocks.listConnectorSecretFindings,
 }));
 
 vi.mock("./auth.ts", () => ({
@@ -88,7 +111,20 @@ describe("GET /api/secrets/inventory/:key encoding", () => {
     );
     expect(handled).toBe(true);
     expect(res.status()).toBe(200);
-    expect(res.body()).toEqual({ ok: true, entries: [] });
+    expect(res.body()).toEqual({
+      ok: true,
+      entries: [],
+      securityFindings: [
+        expect.objectContaining({
+          id: "config:telegram.botToken",
+          protection: "mode-0600",
+        }),
+      ],
+      // A successful scan says so explicitly, so a caller can tell a clean
+      // result from one that never ran.
+      securityFindingsAvailable: true,
+    });
+    expect(JSON.stringify(res.body())).not.toContain('secret"');
     expect(vaultMocks.listVaultInventory).toHaveBeenCalled();
     expect(vaultMocks.readEntryMeta).not.toHaveBeenCalled();
   });

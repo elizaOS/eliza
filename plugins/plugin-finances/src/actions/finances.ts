@@ -755,7 +755,10 @@ export async function runPaymentsHandler(
       return {
         success: false,
         text: error.message,
-        data: { status: error.status },
+        data: {
+          status: error.status,
+          ...(error.code ? { code: error.code } : {}),
+        },
       };
     }
     throw error;

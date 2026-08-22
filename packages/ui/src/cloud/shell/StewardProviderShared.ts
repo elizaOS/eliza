@@ -7,6 +7,7 @@ import {
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TOKEN_KEY,
+  StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
 import {
@@ -158,12 +159,13 @@ export function tokenSecsRemaining(token: string): number | null {
   return payload.exp - Date.now() / 1000;
 }
 
-export function clearStaleStewardSession(): void {
+export async function clearStaleStewardSession(): Promise<void> {
   if (typeof window === "undefined") return;
   let storedTokenClearError: unknown;
   try {
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
   } catch (error) {
+    if (error instanceof StewardTokenRemovalError) throw error;
     // error-policy:J2 canonical invalidation may already have succeeded before
     // obsolete refresh-key cleanup failed. Finish every credential teardown,
     // then rethrow the original storage error with its stack intact.

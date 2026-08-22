@@ -241,7 +241,7 @@ describe("code handler", () => {
     expect(result).toEqual({ ok: true, output: "x-y" });
   });
 
-  it("caps oversized code output at 4000 chars", async () => {
+  it("preserves large code output in full", async () => {
     const handler = buildTestHandler(
       makeDef({
         handler: { type: "code", code: 'return "z".repeat(50000);' },
@@ -252,7 +252,7 @@ describe("code handler", () => {
     const result = await handler({});
 
     expect(result.ok).toBe(true);
-    expect(result.output.length).toBe(4000);
+    expect(result.output).toBe("z".repeat(50_000));
   });
 
   it("returns 'Done' when the code produces no value", async () => {

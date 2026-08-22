@@ -1,6 +1,6 @@
 /**
- * Host-side coverage for the Android service boot gate that decides whether a
- * stock phone should spawn the bundled local agent before the renderer starts.
+ * Host-side coverage for Android service boot gates that select local-agent
+ * autostart and the bionic host for a bundled fused inference runtime.
  */
 package ai.elizaos.app;
 
@@ -29,6 +29,21 @@ public class ElizaAgentAutostartPolicyTest {
     private static final long RAM_12GB = 12L * (1L << 30);
     private static final long RAM_6GB = 6L * (1L << 30);
     private static final long RAM_3GB = 3L * (1L << 30);
+
+    @Test
+    public void debugApiPortOverrideIsDebugOnly() {
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(true, null, "1"));
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(true, null, "true"));
+        assertFalse(ElizaAgentService.shouldExposeAgentApiPort(false, null, "1"));
+        assertFalse(ElizaAgentService.shouldExposeAgentApiPort(true, null, "0"));
+    }
+
+    @Test
+    public void inheritedApiPortOverrideRemainsAvailableToOperators() {
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(false, "1", null));
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(false, "true", "0"));
+        assertFalse(ElizaAgentService.shouldExposeAgentApiPort(true, "false", null));
+    }
 
     @Test
     public void brandedDevicesAlwaysStartTheBundledAgent() {
@@ -122,5 +137,12 @@ public class ElizaAgentAutostartPolicyTest {
         assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, true));
         assertTrue(ElizaAgentService.coldBootStampTrustworthy(true, true));
         assertFalse(ElizaAgentService.coldBootStampTrustworthy(true, false));
+    }
+
+    @Test
+    public void fusedInferenceUsesBionicHostWithoutSplitVulkanLibrary() {
+        assertTrue(ElizaAgentService.shouldDelegateToBionicHost(true, true));
+        assertFalse(ElizaAgentService.shouldDelegateToBionicHost(true, false));
+        assertFalse(ElizaAgentService.shouldDelegateToBionicHost(false, true));
     }
 }

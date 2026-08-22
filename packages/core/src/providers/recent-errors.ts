@@ -28,11 +28,9 @@ import type {
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,
-	truncateWellFormed,
 } from "../utils/well-formed.ts";
 
 /** Newest N distinct-by-code errors surfaced into the prompt. */
-const MAX_RECENT_ERRORS = 5;
 /** Entries older than this are ignored (stale failures shouldn't linger). */
 const ERROR_MAX_AGE_MS = 30 * 60 * 1000;
 
@@ -58,9 +56,6 @@ export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
 	"PROVIDER_COMPOSITION_ABORTED",
 	"TURN_ABORTED",
 ]);
-/** Cap serialized context length so a large payload can't blow up the prompt. */
-export const MAX_CONTEXT_CHARS = 400;
-
 const EMPTY_RESULT: ProviderResult = {
 	data: { recentErrors: [] },
 	values: { recentErrors: "" },
@@ -80,12 +75,7 @@ export function serializeContext(
 		// circular/non-serializable value; drop it rather than fabricate one.
 		return undefined;
 	}
-	const wellFormed = toWellFormedUnicode(text);
-	if (wellFormed.length <= MAX_CONTEXT_CHARS) {
-		return wellFormed;
-	}
-	const budget = Math.max(0, MAX_CONTEXT_CHARS - 1);
-	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+	return toWellFormedUnicode(text);
 }
 
 /**
@@ -108,9 +98,7 @@ function selectRecentErrors(
 			newestByCode.set(entry.code, entry);
 		}
 	}
-	return [...newestByCode.values()]
-		.sort((a, b) => b.at - a.at)
-		.slice(0, MAX_RECENT_ERRORS);
+	return [...newestByCode.values()].sort((a, b) => b.at - a.at);
 }
 
 function renderText(

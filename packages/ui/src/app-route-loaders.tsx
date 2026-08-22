@@ -79,6 +79,10 @@ export const LazySettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
   "SettingsView",
 );
+export const LazyVaultPageView = lazyNamedView(
+  () => import("./components/pages/VaultPageView"),
+  "VaultPageView",
+);
 export const LazyStreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
   "StreamView",

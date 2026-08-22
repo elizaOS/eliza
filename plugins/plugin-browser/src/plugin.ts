@@ -7,7 +7,6 @@
  */
 
 import type http from "node:http";
-import { TLSSocket } from "node:tls";
 import type {
   AgentRuntime,
   LegacyRouteHandler,
@@ -56,31 +55,6 @@ function httpDecodePathComponent(
   }
 }
 
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) {
-    return firstHeaderValue(value[0]);
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.split(",")[0]?.trim();
-  return normalized ? normalized : null;
-}
-
-function requestBaseUrl(req: http.IncomingMessage): string {
-  const headers = req.headers ?? {};
-  const protocol =
-    firstHeaderValue(headers["x-forwarded-proto"]) ??
-    (req.socket instanceof TLSSocket && req.socket.encrypted
-      ? "https"
-      : "http");
-  const host =
-    firstHeaderValue(headers["x-forwarded-host"]) ??
-    firstHeaderValue(headers.host) ??
-    "localhost";
-  return `${protocol}://${host}`;
-}
-
 function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
   const ownerId = runtime ? resolveCanonicalOwnerId(runtime) : null;
   return typeof ownerId === "string" ? (ownerId as UUID) : null;
@@ -92,7 +66,7 @@ function buildRouteContext(
   runtime: AgentRuntime | null,
 ): BrowserBridgeRouteContext {
   const method = (req.method ?? "GET").toUpperCase();
-  const url = new URL(req.url ?? "/", requestBaseUrl(req));
+  const url = new URL(req.url ?? "/", "http://127.0.0.1");
   return {
     req,
     res,
@@ -139,6 +113,13 @@ const STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/browser-bridge/packages/open-path" },
   {
     type: "POST",
+    path: "/api/browser-bridge/companions/preflight",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
+  },
+  {
+    type: "POST",
     path: "/api/browser-bridge/companions/sync",
     public: true,
     publicReason: COMPANION_ROUTE_REASON,
@@ -162,6 +143,13 @@ const DYNAMIC_ROUTES: Array<{
   { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
   { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
   { type: "POST", path: "/api/browser-bridge/companions/:id/revoke" },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/companions/sessions/:id/actions/begin",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
+  },
   {
     type: "POST",
     path: "/api/browser-bridge/companions/sessions/:id/progress",
@@ -239,7 +227,7 @@ const browserBridgePluginRoutes: Route[] = [
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description:
-    "Browser plugin: BROWSER (including action=autofill_login) + MANAGE_BROWSER_BRIDGE; workspace browser command router (electrobun-embedded BrowserView + JSDOM fallback) and Chrome/Safari companion bridge (settings, pairing, tab + page-context sync, packaging artifacts).",
+    "Browser plugin: BROWSER (including action=autofill_login) + MANAGE_BROWSER_BRIDGE; workspace browser command router (electrobun-embedded BrowserView + JSDOM fallback) and Chrome/Firefox/Safari companion bridge (settings, pairing, tab + page-context sync, packaging artifacts).",
   schema: browserBridgeSchema,
   routes: [...browserBridgePluginRoutes, ...browserWorkspaceRoutes],
   services: [BrowserService as ServiceClass],

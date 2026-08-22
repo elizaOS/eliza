@@ -6,14 +6,26 @@
  * machine with a drifted Swift toolchain is the difference between a working
  * build and a hard failure (#23776).
  *
- * These tests pin the decision to the source's content instead.
+ * These tests pin the decision to the source's content and the helper's Mach-O
+ * architecture instead.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  helperCacheIsCurrent,
+  readMachOCpuTypes,
+} from "../scripts/build-helper.mjs";
 
 const pkgRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -24,6 +36,25 @@ const source = path.join(pkgRoot, "swift-helper", "main.swift");
 const stamp = path.join(pkgRoot, "bin", "macosalarm-helper.source.sha256");
 
 const COMPILE_FLAGS = ["-O"];
+const CPU_X86_64 = 0x01000007;
+const CPU_ARM64 = 0x0100000c;
+
+function thinMachO(cpuType: number): Buffer {
+  const bytes = Buffer.alloc(32);
+  bytes.writeUInt32LE(0xfeedfacf, 0);
+  bytes.writeUInt32LE(cpuType, 4);
+  return bytes;
+}
+
+function universalMachO(cpuTypes: number[]): Buffer {
+  const bytes = Buffer.alloc(8 + cpuTypes.length * 20);
+  bytes.writeUInt32BE(0xcafebabe, 0);
+  bytes.writeUInt32BE(cpuTypes.length, 4);
+  for (const [index, cpuType] of cpuTypes.entries()) {
+    bytes.writeUInt32BE(cpuType, 8 + index * 20);
+  }
+  return bytes;
+}
 
 function expectedStamp(): string {
   return createHash("sha256")
@@ -55,6 +86,45 @@ function makeNewest(target: string): void {
   const future = new Date(Date.now() + 10_000);
   utimesSync(target, future, future);
 }
+
+describe("Mach-O architecture cache validity", () => {
+  it("reads thin and universal helper architecture declarations", () => {
+    expect(readMachOCpuTypes(thinMachO(CPU_ARM64))).toEqual([CPU_ARM64]);
+    expect(readMachOCpuTypes(universalMachO([CPU_X86_64, CPU_ARM64]))).toEqual([
+      CPU_X86_64,
+      CPU_ARM64,
+    ]);
+  });
+
+  it("rejects a matching source stamp when the helper slice is wrong", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "macosalarm-arch-"));
+    const binaryPath = path.join(directory, "helper");
+    const stampPath = path.join(directory, "helper.source.sha256");
+    try {
+      writeFileSync(stampPath, "same-source-and-flags\n");
+      writeFileSync(binaryPath, thinMachO(CPU_ARM64));
+
+      expect(
+        helperCacheIsCurrent({
+          binaryPath,
+          stampPath,
+          expectedStamp: "same-source-and-flags",
+          targetArch: "x64",
+        }),
+      ).toBe(false);
+      expect(
+        helperCacheIsCurrent({
+          binaryPath,
+          stampPath,
+          expectedStamp: "same-source-and-flags",
+          targetArch: "arm64",
+        }),
+      ).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 const onDarwin = process.platform === "darwin" ? describe : describe.skip;
 
@@ -100,5 +170,5 @@ onDarwin("build-helper currency check", () => {
       writeFileSync(script, original);
       runBuildSkipped();
     }
-  });
+  }, 60_000);
 });

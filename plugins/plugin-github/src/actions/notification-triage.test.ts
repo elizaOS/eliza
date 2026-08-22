@@ -2,7 +2,6 @@
  * Deterministic coverage for unread-notification pagination before priority
  * ranking, using a structural GitHub activity client with multiple pages.
  */
-import { logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubOctokitClient } from "../types.js";
 import {
@@ -94,8 +93,7 @@ describe("fetchAllUnreadNotifications", () => {
     expect(result.totalUnreadIsLowerBound).toBe(false);
   });
 
-  it("stops after the page cap instead of looping on an always-full inbox", async () => {
-    const warning = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  it("follows unread pages beyond the former fixed page ceiling", async () => {
     const page = (start: number) =>
       Array.from({ length: 50 }, (_, index) => ({
         id: String(start + index),
@@ -104,7 +102,7 @@ describe("fetchAllUnreadNotifications", () => {
     const listNotificationsForAuthenticatedUser = vi
       .fn()
       .mockImplementation(async ({ page: pageNumber }: { page: number }) => ({
-        data: page((pageNumber - 1) * 50),
+        data: pageNumber === 21 ? [] : page((pageNumber - 1) * 50),
       }));
     const activity = {
       listNotificationsForAuthenticatedUser,
@@ -112,14 +110,9 @@ describe("fetchAllUnreadNotifications", () => {
 
     const result = await fetchAllUnreadNotifications(activity);
 
-    expect(listNotificationsForAuthenticatedUser).toHaveBeenCalledTimes(20);
+    expect(listNotificationsForAuthenticatedUser).toHaveBeenCalledTimes(21);
     expect(result.notifications).toHaveLength(1000);
-    expect(result.totalUnreadIsLowerBound).toBe(true);
-    expect(warning).toHaveBeenCalledWith(
-      { pages: 20, collected: 1000 },
-      "[GitHub:GITHUB_NOTIFICATION_TRIAGE] unread notifications truncated at page cap",
-    );
-    warning.mockRestore();
+    expect(result.totalUnreadIsLowerBound).toBe(false);
   });
 });
 

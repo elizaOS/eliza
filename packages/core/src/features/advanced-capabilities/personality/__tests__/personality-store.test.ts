@@ -1,14 +1,13 @@
 /**
  * Unit-tests the PersonalityStore service (built on the in-memory FakeRuntime):
- * per-user vs global slot isolation, trait writes and their audit entries, FIFO
- * directive eviction at the cap, profile load/save, and the seeded default
+ * per-user vs global slot isolation, trait writes and their audit entries,
+ * lossless directive retention, profile load/save, and the seeded default
  * profiles. Deterministic — no live model.
  */
 import { describe, expect, test } from "vitest";
 import { defaultProfiles } from "../profiles/index.ts";
 import {
 	GLOBAL_PERSONALITY_SCOPE,
-	MAX_CUSTOM_DIRECTIVES,
 	PERSONALITY_SLOT_TABLE,
 	type PersonalityProfile,
 } from "../types.ts";
@@ -111,9 +110,9 @@ describe("PersonalityStore", () => {
 		);
 	});
 
-	test("addDirective evicts FIFO at the cap", async () => {
+	test("addDirective retains every directive", async () => {
 		const store = bareStore();
-		for (let i = 0; i < MAX_CUSTOM_DIRECTIVES + 3; i++) {
+		for (let i = 0; i < 8; i++) {
 			await store.addDirective({
 				userId: USER_A as never,
 				agentId: AGENT as never,
@@ -122,11 +121,8 @@ describe("PersonalityStore", () => {
 			});
 		}
 		const slot = store.getSlot(USER_A as never, AGENT as never);
-		expect(slot.custom_directives).toHaveLength(MAX_CUSTOM_DIRECTIVES);
-		// Oldest evicted — index 0..2 gone, slot starts at 3.
-		expect(slot.custom_directives[0]).toBe("directive #3");
-		expect(slot.custom_directives[MAX_CUSTOM_DIRECTIVES - 1]).toBe(
-			`directive #${MAX_CUSTOM_DIRECTIVES + 2}`,
+		expect(slot.custom_directives).toEqual(
+			Array.from({ length: 8 }, (_, index) => `directive #${index}`),
 		);
 	});
 

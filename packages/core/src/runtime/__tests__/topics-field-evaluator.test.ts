@@ -1,12 +1,10 @@
 /**
  * Unit coverage for the topics field evaluator and `normalizeTopics`
- * (lowercasing, dedupe, length/count caps, scalar coercion) plus topics
+ * (lowercasing, dedupe, complete retention, scalar coercion) plus topics
  * threading through `parseMessageHandlerOutput`. Pure, deterministic.
  */
 import { describe, expect, it } from "vitest";
 import {
-	MAX_MESSAGE_TOPICS,
-	MAX_TOPIC_LABEL_LENGTH,
 	normalizeTopics,
 	topicsFieldEvaluator,
 } from "../builtin-field-evaluators";
@@ -32,16 +30,14 @@ describe("topicsFieldEvaluator.parse / normalizeTopics", () => {
 		]);
 	});
 
-	it("drops overlong labels (sentences, not topic labels)", () => {
-		const overlong = "x".repeat(MAX_TOPIC_LABEL_LENGTH + 1);
-		const atLimit = "y".repeat(MAX_TOPIC_LABEL_LENGTH);
-		expect(normalizeTopics([overlong, atLimit, "ok"])).toEqual([atLimit, "ok"]);
+	it("preserves long labels", () => {
+		const long = "x".repeat(1_000);
+		expect(normalizeTopics([long, "ok"])).toEqual([long, "ok"]);
 	});
 
-	it(`caps the list at ${MAX_MESSAGE_TOPICS} topics`, () => {
+	it("preserves every unique topic", () => {
 		const many = ["a", "b", "c", "d", "e", "f", "g"];
-		expect(normalizeTopics(many)).toEqual(["a", "b", "c", "d", "e"]);
-		expect(normalizeTopics(many).length).toBe(MAX_MESSAGE_TOPICS);
+		expect(normalizeTopics(many)).toEqual(many);
 	});
 
 	it("coerces non-string scalars then re-applies the rules", () => {

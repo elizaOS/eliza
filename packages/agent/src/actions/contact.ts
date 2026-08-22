@@ -63,7 +63,6 @@ import {
   resolveWorldForMessage,
   stringToUuid,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { resolveFallbackOwnerEntityId } from "../runtime/owner-entity.ts";
 import { hasOwnerAccess } from "../security/access.ts";
@@ -389,16 +388,13 @@ function formatPersonDetail(detail: RelationshipsPersonDetail): string {
       sections.push(
         `### ${convo.roomName} (${convo.lastActivityAt?.slice(0, 10) ?? "?"})`,
       );
-      for (const msg of convo.messages.slice(0, 5)) {
+      for (const msg of convo.messages) {
         const ts = msg.createdAt
           ? new Date(msg.createdAt).toISOString().slice(0, 19)
           : "";
         sections.push(
-          `  ${ts} ${msg.speaker}: ${truncateWellFormed(toWellFormedUnicode(msg.text), 200)}`,
+          `  ${ts} ${msg.speaker}: ${toWellFormedUnicode(msg.text)}`,
         );
-      }
-      if (convo.messages.length > 5) {
-        sections.push(`  ... ${convo.messages.length - 5} more messages`);
       }
     }
   }
@@ -602,9 +598,7 @@ async function handleSearch(
       const person = snapshot.people[i];
       const platforms = person.platforms.join(", ") || "none";
       const aliases =
-        person.aliases.length > 0
-          ? ` (aka ${person.aliases.slice(0, 2).join(", ")})`
-          : "";
+        person.aliases.length > 0 ? ` (aka ${person.aliases.join(", ")})` : "";
       lines.push(
         `${String(i + 1).padStart(3, " ")} | ${person.displayName}${aliases} — ${platforms} — ${person.factCount} facts — entityId: ${person.primaryEntityId}`,
       );
@@ -1603,14 +1597,13 @@ async function handleLink(
 
   if ((!entityA || !entityB) && userText.length > 0) {
     try {
-      const snapshot = await graphService.getGraphSnapshot({ limit: 50 });
+      const snapshot = await graphService.getGraphSnapshot({});
       const peopleList = snapshot.people
         .map((p) => {
           const identities = p.identities
             .flatMap((identity) =>
               identity.handles.map((h) => `${h.platform}:${h.handle}`),
             )
-            .slice(0, 5)
             .join(", ");
           return `  - ${p.primaryEntityId}  ${p.displayName}${identities ? ` (${identities})` : ""}`;
         })

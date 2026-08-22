@@ -17,6 +17,7 @@ const VALID_BODY = JSON.stringify({
   },
   streamProtocol: "delta-v2",
 });
+const SCOPE = { agentId: "agent-a", conversationId: "conv-id" };
 
 function unusedDownstream(): typeof fetch {
   return (async () => {
@@ -38,6 +39,7 @@ describe("local runtime conversation fetch encoding", () => {
   test("unsupported path is untouched", async () => {
     const bridge = createLocalRuntimeConversationFetch(
       "http://127.0.0.1:31337",
+      SCOPE,
       unusedDownstream(),
     );
     await expect(
@@ -59,6 +61,7 @@ describe("local runtime conversation fetch encoding", () => {
     }) as typeof fetch;
     const bridge = createLocalRuntimeConversationFetch(
       "http://127.0.0.1:31337",
+      SCOPE,
       downstream,
     );
     const response = await bridge(
@@ -80,6 +83,7 @@ describe("local runtime conversation fetch encoding", () => {
     async (token) => {
       const bridge = createLocalRuntimeConversationFetch(
         "http://127.0.0.1:31337",
+        SCOPE,
         unusedDownstream(),
       );
       try {

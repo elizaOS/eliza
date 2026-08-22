@@ -145,10 +145,13 @@ beforeAll(() => {
       });
 
       if (url.pathname === "/api/health") {
+        return json({ ready: true });
+      }
+      if (url.pathname === "/api/status") {
         uptime += 1;
         return json({
-          ready: true,
-          agentState: "running",
+          state: "running",
+          canRespond: true,
           uptime,
           startup: { attempt: 1 },
         });
@@ -311,6 +314,7 @@ describe("mobile smoke native command boundaries", () => {
     });
     smoke.preseedAndroidLocalRuntime(fakeAndroidContext);
     smoke.forceStopConflictingAndroidAgents(fakeAndroidContext);
+    smoke.removeAndroidReverse(fakeAndroidContext, 31337);
     await smoke.stageAndroidSmokeModel(fakeAndroidContext);
     smoke.writeAndroidSmokeModelManifest(
       fakeAndroidContext,
@@ -385,7 +389,7 @@ describe("mobile smoke result parsing", () => {
     );
   });
 
-  it("requires an exact useful full-turn reply", () => {
+  it("requires a useful full-turn reply without leaked model control tokens", () => {
     expect(
       smoke.requireUsableFullTurnReply(
         { fullText: '"Android smoke model works!"' },
@@ -398,12 +402,18 @@ describe("mobile smoke result parsing", () => {
       [{ noResponseReason: "muted" }, /noResponseReason/],
       [{ text: "" }, /empty reply/],
       [{ text: "Chat generation failed" }, /unusable reply/],
-      [{ text: "wrong reply" }, /wrong reply/],
+      [{ text: "answer<end_of_turn>next prompt" }, /control token/],
     ]) {
       expect(() => smoke.requireUsableFullTurnReply(done, "stream")).toThrow(
         expected,
       );
     }
+    expect(
+      smoke.requireUsableFullTurnReply(
+        { text: "I am ready to assist you. How can I help?" },
+        "stream",
+      ),
+    ).toBe("I am ready to assist you. How can I help?");
   });
 
   it("summarizes optional local-inference payloads without inventing readiness", () => {
@@ -516,8 +526,8 @@ describe("mobile smoke failure states", () => {
       port: 0,
       fetch(request) {
         const url = new URL(request.url);
-        if (url.pathname === "/api/health") {
-          return json({ ready: false, agentState: "starting", uptime: null });
+        if (url.pathname === "/api/status") {
+          return json({ state: "starting", canRespond: false, uptime: null });
         }
         if (url.pathname === "/api/local-inference/hub") {
           return json({ active: { status: "error", error: "model failed" } });

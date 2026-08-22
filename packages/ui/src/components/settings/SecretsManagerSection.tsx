@@ -9,7 +9,9 @@
  *    the eager boot graph (#11351).
  *
  * The modal is a tabbed Vault interface (Overview / Secrets / Logins /
- * Routing). Data is fetched once per open and shared across tabs.
+ * Routing). `VaultWorkspace` reuses the same controller and tab bodies for the
+ * first-class `/vault` page. Data is fetched once per activation and shared
+ * across tabs; there is no second credential-management implementation.
  */
 
 import { KeyRound, Loader2 } from "lucide-react";
@@ -43,12 +45,14 @@ import { SecretsTab } from "./vault-tabs/SecretsTab";
 import type {
   AgentSummary,
   BackendStatus,
+  ConnectorSecretFinding,
   InstallableBackendId,
   InstalledApp,
   InstallMethod,
   ManagerPreferences,
   RoutingConfig,
   VaultEntryMeta,
+  VaultProtectionStatus,
   VaultTabNavigate,
 } from "./vault-tabs/types";
 
@@ -183,34 +187,34 @@ export function VaultModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-4xl">
-        <VaultBody
+        <VaultWorkspace
           open={open}
           onOpenChange={onOpenChange}
           initialTab={initialTab}
           initialFocusKey={initialFocusKey}
           initialFocusProfileId={initialFocusProfileId}
           onConsumeInitial={onConsumeInitial}
+          presentation="dialog"
         />
       </DialogContent>
     </Dialog>
   );
 }
 
-function VaultBody({
+export interface VaultWorkspaceProps extends VaultModalProps {
+  /** Dialog chrome for the shortcut modal; page chrome for `/vault`. */
+  presentation?: "dialog" | "page";
+}
+
+export function VaultWorkspace({
   open,
   onOpenChange,
-  initialTab,
-  initialFocusKey,
-  initialFocusProfileId,
+  initialTab = null,
+  initialFocusKey = null,
+  initialFocusProfileId = null,
   onConsumeInitial,
-}: {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  initialTab: VaultTab | null;
-  initialFocusKey: string | null;
-  initialFocusProfileId: string | null;
-  onConsumeInitial?: () => void;
-}) {
+  presentation = "page",
+}: VaultWorkspaceProps) {
   // The hash present when the modal opened, restored on close so the
   // SettingsView deep-link anchor (e.g. `#secrets`) survives.
   const priorHashRef = useRef<string>("");
@@ -305,7 +309,13 @@ function VaultBody({
     InstallMethod[]
   > | null>(null);
   const [entries, setEntries] = useState<VaultEntryMeta[] | null>(null);
+  const [securityFindings, setSecurityFindings] = useState<
+    ConnectorSecretFinding[]
+  >([]);
   const [routingConfig, setRoutingConfig] = useState<RoutingConfig | null>(
+    null,
+  );
+  const [protection, setProtection] = useState<VaultProtectionStatus | null>(
     null,
   );
   const [agents, setAgents] = useState<AgentSummary[]>([]);
@@ -325,6 +335,7 @@ function VaultBody({
         methodsRes,
         entriesRes,
         routingRes,
+        protectionRes,
         agentsRes,
         appsRes,
       ] = await Promise.all([
@@ -343,6 +354,11 @@ function VaultBody({
         client.rawRequest("/api/secrets/routing", undefined, {
           allowNonOk: true,
         }),
+        client
+          .rawRequest("/api/secrets/manager/protection", undefined, {
+            allowNonOk: true,
+          })
+          .catch(() => null),
         // error-policy:J4 best-effort enrichment — these endpoints may not
         // exist in headless/test shells; the Routing tab renders without them
         // (documented at the consumers below).
@@ -372,14 +388,24 @@ function VaultBody({
       };
       const entriesJson = (await entriesRes.json()) as {
         entries: VaultEntryMeta[];
+        securityFindings?: ConnectorSecretFinding[];
       };
       const routingJson = (await routingRes.json()) as {
         config: RoutingConfig;
       };
+      if (protectionRes?.ok) {
+        const protectionJson = (await protectionRes.json()) as {
+          protection?: VaultProtectionStatus;
+        };
+        setProtection(protectionJson.protection ?? null);
+      } else {
+        setProtection(null);
+      }
       setBackends(backendsJson.backends);
       setPreferences(prefsJson.preferences);
       setInstallMethods(methodsJson.methods);
       setEntries(entriesJson.entries);
+      setSecurityFindings(entriesJson.securityFindings ?? []);
       setRoutingConfig(routingJson.config);
       // Best-effort agent/app fetches — endpoints may not exist in headless
       // / test environments. The Routing tab still works without them.
@@ -421,8 +447,12 @@ function VaultBody({
       }),
     ]);
     if (entriesRes.ok) {
-      const json = (await entriesRes.json()) as { entries: VaultEntryMeta[] };
+      const json = (await entriesRes.json()) as {
+        entries: VaultEntryMeta[];
+        securityFindings?: ConnectorSecretFinding[];
+      };
       setEntries(json.entries);
+      setSecurityFindings(json.securityFindings ?? []);
     }
     if (routingRes.ok) {
       const json = (await routingRes.json()) as { config: RoutingConfig };
@@ -502,19 +532,42 @@ function VaultBody({
 
   return (
     <>
-      <DialogHeader className="shrink-0">
-        <DialogTitle className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-muted" aria-hidden />
-            Vault
-          </span>
-          <span className="rounded-sm border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted">
+      {presentation === "dialog" ? (
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-muted" aria-hidden />
+              Vault
+            </span>
+            <span className="rounded-sm border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted">
+              {getShortcutLabel()}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+      ) : (
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border/45 pb-4">
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-lg font-semibold text-txt">
+              <KeyRound className="h-5 w-5 text-accent" aria-hidden />
+              Vault
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted">
+              Encrypted credentials and references available to this agent.
+              Organization credential pools remain managed in Eliza Cloud.
+            </p>
+          </div>
+          <span className="hidden shrink-0 rounded-sm border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted sm:inline-flex">
             {getShortcutLabel()}
           </span>
-        </DialogTitle>
-      </DialogHeader>
+        </header>
+      )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-2">
+      <div
+        data-chat-occlusion-policy={
+          presentation === "page" ? "hide" : undefined
+        }
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-2"
+      >
         {!isReady || !backends || !preferences || !installMethods ? (
           <div className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…
@@ -560,6 +613,7 @@ function VaultBody({
                   <OverviewTab
                     backends={backends}
                     preferences={preferences}
+                    protection={protection}
                     installMethods={installMethods}
                     saving={saving}
                     savedAt={savedAt}
@@ -579,6 +633,7 @@ function VaultBody({
                 >
                   <SecretsTab
                     entries={entries ?? []}
+                    securityFindings={securityFindings}
                     onChanged={() => void refreshInventory()}
                     navigate={navigate}
                     focusKey={activeTab === "secrets" ? focusKey : null}
@@ -619,22 +674,24 @@ function VaultBody({
         )}
       </div>
 
-      <DialogFooter className="flex shrink-0 flex-row items-center justify-end gap-3 pt-3">
-        <div className="flex shrink-0 items-center gap-2">
-          <SettingsActionButton
-            agentId="secrets-close"
-            agentLabel="Close the vault"
-            agentGroup="secrets"
-            variant="ghost"
-            size="sm"
-            className="h-9 rounded-sm"
-            onClick={() => onOpenChange(false)}
-            disabled={saving}
-          >
-            Close
-          </SettingsActionButton>
-        </div>
-      </DialogFooter>
+      {presentation === "dialog" ? (
+        <DialogFooter className="flex shrink-0 flex-row items-center justify-end gap-3 pt-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <SettingsActionButton
+              agentId="secrets-close"
+              agentLabel="Close the vault"
+              agentGroup="secrets"
+              variant="ghost"
+              size="sm"
+              className="h-9 rounded-sm"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
+              Close
+            </SettingsActionButton>
+          </div>
+        </DialogFooter>
+      ) : null}
     </>
   );
 }

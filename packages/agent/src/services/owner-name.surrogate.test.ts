@@ -1,9 +1,8 @@
 /** Surrogate safety for owner-name normalization. */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-
-const OWNER_NAME_MAX_LENGTH = 60;
+import { normalizeOwnerName } from "./owner-name.ts";
 
 function isWellFormed(value: string): boolean {
   if (!value) return true;
@@ -12,23 +11,13 @@ function isWellFormed(value: string): boolean {
   return toWellFormedUnicode(value) === value;
 }
 
-function normalizeOwnerName(value: unknown): string | null {
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  const trimmed = String(value).trim();
-  if (!trimmed) return null;
-  return truncateWellFormed(
-    toWellFormedUnicode(trimmed),
-    OWNER_NAME_MAX_LENGTH,
-  );
-}
-
 describe("owner-name surrogate safety", () => {
-  test("60 boundary backs off at surrogate without lone", () => {
+  test("preserves a long name and its surrogate pair", () => {
     const fox = "🦊";
     const name = `${"a".repeat(59)}${fox}${"b".repeat(20)}`;
     const out = normalizeOwnerName(name)!;
     expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBe(59);
+    expect(out).toBe(name);
     expect(() => JSON.stringify(out)).not.toThrow();
   });
   test("short name passthrough", () => {
@@ -36,11 +25,11 @@ describe("owner-name surrogate safety", () => {
     expect(out).toBe("Bob 🦊");
     expect(isWellFormed(out)).toBe(true);
   });
-  test("emoji at 60 fits", () => {
+  test("emoji and suffix beyond the former cap remain", () => {
     const fox = "🦊";
-    const name = `${"a".repeat(58)}${fox}`;
+    const name = `${"a".repeat(58)}${fox}${"b".repeat(100)}`;
     const out = normalizeOwnerName(name)!;
-    expect(out).toBe(`${"a".repeat(58)}${fox}`);
+    expect(out).toBe(name);
     expect(isWellFormed(out)).toBe(true);
   });
   test("null/empty -> null", () => {

@@ -1,12 +1,12 @@
 /**
  * Bounds and guard functions for the planner chaining loop: the
  * `ChainingLoopConfig` limit contract (max tool calls, repeated-failure and
- * cumulative-token budgets, compaction thresholds), the typed
+ * cumulative-token budgets), the typed
  * `TrajectoryLimitExceeded` error, and the assert/count helpers that stop a
  * runaway or stuck planner from burning a turn.
  */
 import type { ActionFailureProvenance } from "../types/action-failure";
-import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
+import { toWellFormedUnicode } from "../utils/well-formed";
 
 export interface ChainingLoopConfig {
 	/** Maximum tool calls executed during one planner loop. */
@@ -46,11 +46,11 @@ export interface ChainingLoopConfig {
 	 * repeated-failure guard so this budget does not suppress a corrected retry.
 	 */
 	maxMemorySearchRounds: number;
-	/** Estimated model context window for compaction decisions. */
+	/** Estimated model context window for explicit oversize rejection. */
 	contextWindowTokens: number;
 	/**
 	 * Optional model id used to resolve the *actual* per-model context
-	 * window (and a 20%-of-window reserve floor) at compaction-budget time
+	 * window (and a 20%-of-window reserve floor) at input-budget time
 	 * via `lookupModelContextWindow`. When set and the lookup hits, this
 	 * wins over `contextWindowTokens` — letting tight-context models
 	 * (Cerebras llama3.1-8b at 32k, compact local tiers at 64k, gemma-4-31b at 131k) get
@@ -70,10 +70,6 @@ export interface ChainingLoopConfig {
 	 * while still preserving explicit reserve overrides.
 	 */
 	compactionReserveTokensExplicit?: boolean;
-	/** Whether the planner may summarize old trajectory steps before replanning. */
-	compactionEnabled: boolean;
-	/** Number of newest completed tool steps kept verbatim after compaction. */
-	compactionKeepSteps: number;
 	/**
 	 * Maximum cumulative prompt tokens summed across every planner-stage
 	 * model call within a single user turn. Once exceeded the loop aborts
@@ -97,35 +93,7 @@ export interface ChainingLoopConfig {
 	 * runaway level — a turn that exceeds it is almost certainly stuck.
 	 */
 	maxTrajectoryPromptTokens: number;
-	/**
-	 * When set, caps each tool-result string rendered into the planner
-	 * input to this many characters (head + `[N chars truncated]` marker
-	 * + tail). The trajectory itself is unchanged — only the wire-shape
-	 * messages are truncated.
-	 *
-	 * Why this exists: the compactor keeps the four newest steps
-	 * verbatim by default (`compactionKeepSteps: 4`). A single
-	 * pathologically-large tool result inside the kept window — a 30 KB
-	 * shell dump, a multi-thousand-line file read, a full grep — can
-	 * blow the model's per-call context budget single-handedly, even
-	 * after compaction has done its job. This cap protects against that
-	 * single-step pathology without touching the trajectory's
-	 * archival/replay fidelity.
-	 *
-	 * Default: undefined (no cap) — the planner path is unchanged. The
-	 * evaluator applies `DEFAULT_MAX_KEPT_STEP_CHARS` directly (see
-	 * evaluator.ts) so the fix stays out of the planner loop. Recommended
-	 * for tight-context models: ~8000 (one tool result still gets
-	 * roughly two pages of head + a half page of tail context).
-	 */
-	compactionMaxKeptStepChars?: number;
 }
-
-/** Default per-tool-result render cap (chars). ~8.6k tokens at 3.5 chars/token:
- * large enough to keep head+tail structure of any real result, small enough that
- * no single step can approach the 128k default window (live incident: one 5MB
- * grep result rendered verbatim = 2.28M tokens vs cerebras's 131,072 limit). */
-export const DEFAULT_MAX_KEPT_STEP_CHARS = 30_000;
 
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxToolCalls: 16,
@@ -135,10 +103,8 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxTerminalOnlyContinuations: 2,
 	maxRepeatedToolCalls: 2,
 	maxMemorySearchRounds: 2,
-	contextWindowTokens: 128_000,
+	contextWindowTokens: 1_000_000,
 	compactionReserveTokens: 10_000,
-	compactionEnabled: true,
-	compactionKeepSteps: 4,
 	maxTrajectoryPromptTokens: 1_500_000,
 };
 
@@ -232,12 +198,8 @@ export function getFailureSignature(failure: FailureLike): string | null {
 				: failure.error == null
 					? "failed"
 					: JSON.stringify(failure.error);
-	// Normalize before truncating: toWellFormedUnicode repairs lone surrogates
-	// already present in the raw provider error, and truncateWellFormed keeps
-	// the 240-char cut off a pair boundary. Truncation alone fixes only the cut.
-	const normalizedError = truncateWellFormed(
-		toWellFormedUnicode(rawError.trim().replace(/\s+/g, " ")),
-		240,
+	const normalizedError = toWellFormedUnicode(
+		rawError.trim().replace(/\s+/g, " "),
 	);
 	return `${toolName}:${normalizedError}`;
 }
@@ -264,7 +226,7 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
 	const signature = getFailureSignature(failure);
 	if (!signature) return null;
 	const repeatKey = failure.repeatKey?.trim();
-	return repeatKey ? `${signature}:${repeatKey.slice(0, 240)}` : signature;
+	return repeatKey ? `${signature}:${repeatKey}` : signature;
 }
 
 export function assertRepeatedFailureLimit(params: {

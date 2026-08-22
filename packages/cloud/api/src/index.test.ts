@@ -1257,10 +1257,7 @@ describe("cloud-api worker entrypoint", () => {
         staging?: { durable_objects?: DurableConfig };
         production?: { durable_objects?: DurableConfig };
       };
-      migrations?: Array<{
-        tag?: string;
-        new_sqlite_classes?: string[];
-      }>;
+      exports?: Record<string, { type?: string; storage?: string }>;
     };
 
     for (const durableObjects of [
@@ -1273,9 +1270,9 @@ describe("cloud-api worker entrypoint", () => {
         class_name: "PersonalTelegramDelivery",
       });
     }
-    expect(config.migrations).toContainEqual({
-      tag: "personal-telegram-delivery-v1",
-      new_sqlite_classes: ["PersonalTelegramDelivery"],
+    expect(config.exports?.PersonalTelegramDelivery).toEqual({
+      type: "durable-object",
+      storage: "sqlite",
     });
   });
 

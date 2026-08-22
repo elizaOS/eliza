@@ -4,8 +4,8 @@ import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
  * Flatten `GenerateTextParams` (system + messages/prompt) into the two strings
  * the sanctioned CLIs consume:
  *
- *   - `system`  → claude `--system-prompt` (full replace) / codex top instructions block.
- *   - `body`    → claude `-p <body>` / codex `exec <body>` positional prompt.
+ *   - `system`  → claude system-prompt file (full replace) / codex top instructions block.
+ *   - `body`    → claude/codex stdin prompt file.
  *
  * HARD REQ: both `params.system` AND `params.messages`/`params.prompt` must be
  * forwarded. Dropping `messages` would strip skills/memory/recent-conversation/
@@ -16,83 +16,34 @@ import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
  */
 
 export interface FlattenedPrompt {
-  /** Goes to claude `--system-prompt` / codex instructions block. */
+  /** Goes to Claude's system-prompt file / Codex's instructions block. */
   system: string;
   /** Goes to claude `-p` / codex `exec` positional prompt. */
   body: string;
 }
 
-/**
- * Bounded-walk budget for untrusted tool payloads.
- *
- * A tool part's `output`/`input` is raw remote data — a WEB_FETCH body, an MCP
- * tool result, model-authored tool arguments. The walk below used to be
- * unbounded and unguarded, so a deep or cyclic payload threw `RangeError:
- * Maximum call stack size exceeded` (deep array, deep `.content` chain,
- * self-referential `.content`) or `TypeError: Converting circular structure to
- * JSON` straight out of `flattenPrompt`. Because the planner's message array
- * grows append-only across iterations
- * (`packages/core/src/runtime/planner-loop.ts` "grows append-only across
- * planner iterations"), every later CLI-backed generation that replays the turn
- * re-walks the same part and throws again — one poisoned tool result is a
- * persistent failure, not a single failed call.
- *
- * The contract mirrors core's own bounded flatten (`flattenTextValues` in
- * `packages/core/src/utils/text-normalize.ts`):
- *  - a depth ceiling far above any honest payload;
- *  - node and character ceilings, so a wide graph is bounded too, not just a
- *    deep one, with container width charged BEFORE any element is allocated;
- *  - a PATH-LOCAL ancestor set (added on descent, removed in `finally`), so a
- *    real back-edge is cut while an honest DAG — the same cached object
- *    referenced twice in one result — still flattens in full;
- *  - descriptor-only reflection, so no attacker-supplied getter or `toJSON`
- *    ever executes while we render a prompt;
- *  - an explicit in-band marker rather than a throw. Throwing would preserve
- *    the exact failure this guards against: one bad part bricking every later
- *    replay of the turn. The marker is visible to the model and in the
- *    transcript, so nothing is silently dropped.
- *
- * Nothing inside the budget changes shape: every payload the old walk accepted
- * still flattens to byte-identical text.
- */
-const MAX_TOOL_PAYLOAD_DEPTH = 64;
-const MAX_TOOL_PAYLOAD_NODES = 100_000;
-const MAX_TOOL_PAYLOAD_CHARS = 4 * 1024 * 1024;
+/** Explicit failure for a payload that cannot be represented losslessly. */
+export class PromptPayloadSerializationError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "PromptPayloadSerializationError";
+  }
+}
 
-/** Emitted in place of a subtree that is deeper than the ceiling. */
-export const TOOL_PAYLOAD_DEPTH_MARKER = `[tool payload omitted: deeper than ${MAX_TOOL_PAYLOAD_DEPTH}]`;
-/** Emitted in place of a back-edge (a value that is its own ancestor). */
-export const TOOL_PAYLOAD_CYCLE_MARKER = "[tool payload omitted: cycle]";
-/** Emitted once the node or character budget for one part is spent. */
-export const TOOL_PAYLOAD_BUDGET_MARKER = "[tool payload omitted: over budget]";
-
-interface PayloadBudget {
-  nodes: number;
-  chars: number;
-  /** Path-local, NOT visit-global: honest DAGs keep flattening in full. */
+interface PayloadTraversal {
+  /** Path-local, not visit-global: honest DAGs serialize every occurrence. */
   ancestors: Set<object>;
 }
 
-/** One budget per tool part, so a large part never starves its siblings. */
-function newPayloadBudget(): PayloadBudget {
-  return { nodes: 0, chars: 0, ancestors: new Set<object>() };
+function newPayloadTraversal(): PayloadTraversal {
+  return { ancestors: new Set<object>() };
 }
 
-/**
- * Charge produced text against the character budget. The check runs before the
- * charge, so the first (possibly very large) string always comes back whole —
- * a single 10 MB WEB_FETCH body flattens exactly as it does today.
- */
-function chargeChars(budget: PayloadBudget, text: string): string {
-  if (budget.chars > MAX_TOOL_PAYLOAD_CHARS) return TOOL_PAYLOAD_BUDGET_MARKER;
-  budget.chars += text.length;
-  return text;
-}
-
-/** Charge container width before allocating anything for its elements. */
-function chargeWidth(budget: PayloadBudget, width: number): boolean {
-  budget.nodes += width;
-  return budget.nodes <= MAX_TOOL_PAYLOAD_NODES;
+/** Buffer/Uint8Array brand check that does not depend on a `Buffer` global. */
+function isBufferValue(value: object): boolean {
+  return (
+    typeof Buffer !== "undefined" && typeof Buffer.isBuffer === "function" && Buffer.isBuffer(value)
+  );
 }
 
 /**
@@ -109,19 +60,33 @@ function ownDataProperty(target: object, key: string): unknown {
 
 type JsonSafe = string | number | boolean | null | JsonSafe[] | { [key: string]: JsonSafe };
 
+function dateProjection(value: object): { matched: boolean; value: string | null } {
+  try {
+    const time = Date.prototype.getTime.call(value);
+    return {
+      matched: true,
+      value: Number.isNaN(time) ? null : Date.prototype.toISOString.call(value),
+    };
+  } catch {
+    return { matched: false, value: null };
+  }
+}
+
+function urlProjection(value: object): { matched: boolean; value: string } {
+  try {
+    return { matched: true, value: URL.prototype.toString.call(value) };
+  } catch {
+    return { matched: false, value: "" };
+  }
+}
+
 /**
- * Bounded, descriptor-only projection to a JSON-safe value. Structurally
- * identical to the input for anything within budget — same keys, same insertion
- * order, same scalar rendering as `JSON.stringify` — so serializing the result
- * is byte-identical to serializing the original. Cycles, over-deep subtrees and
- * over-budget graphs become markers instead of throwing, and `bigint` becomes
- * its decimal string instead of throwing `TypeError`.
+ * Descriptor-only projection to a JSON-safe value. Every representable value is
+ * preserved. Cycles and accessors are rejected explicitly because invoking
+ * attacker-controlled code or inventing an omission marker would both violate
+ * the model-input contract.
  */
-function toBoundedJsonValue(
-  value: unknown,
-  budget: PayloadBudget,
-  depth: number
-): JsonSafe | undefined {
+function toJsonValue(value: unknown, traversal: PayloadTraversal): JsonSafe | undefined {
   if (value === null) return null;
   const kind = typeof value;
   if (kind === "string") return value as string;
@@ -130,95 +95,138 @@ function toBoundedJsonValue(
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return undefined; // undefined / function / symbol: dropped, as today
   const object = value as object;
-  if (object instanceof Date) {
-    const time = object.getTime();
-    return Number.isNaN(time) ? null : object.toISOString();
+  // Brand check, not `instanceof`: a Date from another realm fails the
+  // prototype test and used to fall through to the object branch, rendering
+  // `{}` and losing the timestamp entirely. Dispatch through the builtins so an
+  // attacker-supplied `getTime` / `toISOString` override on a Date-shaped
+  // payload can neither run nor throw out of prompt flattening — the same
+  // reason core's `flattenTextValues` uses `Date.prototype.getTime.call`.
+  const date = dateProjection(object);
+  if (date.matched) return date.value;
+  // Buffer and URL both serialize to `{}` or an index map through the generic
+  // object branch, dropping the bytes / the href. Reproduce what the
+  // original `JSON.stringify` path produced for each.
+  if (isBufferValue(object)) {
+    const bytes = object as Uint8Array;
+    return { type: "Buffer", data: Array.from(bytes) };
   }
-  if (depth >= MAX_TOOL_PAYLOAD_DEPTH) return TOOL_PAYLOAD_DEPTH_MARKER;
-  if (budget.ancestors.has(object)) return TOOL_PAYLOAD_CYCLE_MARKER;
+  const url = urlProjection(object);
+  if (url.matched) return url.value;
+  if (traversal.ancestors.has(object)) {
+    throw new PromptPayloadSerializationError(
+      "Tool payload contains a cycle and cannot be sent to the model losslessly"
+    );
+  }
   if (Array.isArray(object)) {
-    if (!chargeWidth(budget, object.length)) return TOOL_PAYLOAD_BUDGET_MARKER;
-    budget.ancestors.add(object);
+    traversal.ancestors.add(object);
     try {
       const items: JsonSafe[] = [];
       for (let index = 0; index < object.length; index += 1) {
-        items.push(toBoundedJsonValue(object[index], budget, depth + 1) ?? null);
+        items.push(toJsonValue(object[index], traversal) ?? null);
       }
       return items;
     } finally {
-      budget.ancestors.delete(object);
+      traversal.ancestors.delete(object);
     }
   }
   // Own enumerable string keys, in insertion order — the exact set and order
   // `JSON.stringify` would serialize, read without invoking anything.
   const keys = Object.keys(object);
-  if (!chargeWidth(budget, keys.length)) return TOOL_PAYLOAD_BUDGET_MARKER;
-  budget.ancestors.add(object);
+  traversal.ancestors.add(object);
   try {
-    const projected: Record<string, JsonSafe> = {};
+    // Null-prototype staging: on a plain `{}` an assignment of a
+    // `JSON.parse`-produced own `"__proto__"` key hits the `Object.prototype`
+    // setter and the member vanishes silently. With no prototype there is no
+    // setter to hit, so the key lands as an own data property.
+    const projected = Object.create(null) as Record<string, JsonSafe>;
     for (const key of keys) {
       const descriptor = Object.getOwnPropertyDescriptor(object, key);
-      if (!descriptor || !("value" in descriptor)) continue;
-      const nested = toBoundedJsonValue(descriptor.value, budget, depth + 1);
-      if (nested !== undefined) projected[key] = nested;
+      if (!descriptor || !("value" in descriptor)) {
+        throw new PromptPayloadSerializationError(
+          `Tool payload property ${JSON.stringify(key)} is an accessor and cannot be read safely`
+        );
+      }
+      const nested = toJsonValue(descriptor.value, traversal);
+      if (nested === undefined) continue;
+      projected[key] = nested;
     }
     return projected;
   } finally {
-    budget.ancestors.delete(object);
+    traversal.ancestors.delete(object);
   }
 }
 
-/** `JSON.stringify` for untrusted tool payloads: bounded and fail-closed. */
-function stringifyToolPayload(value: unknown, budget: PayloadBudget, depth: number): string {
-  const bounded = toBoundedJsonValue(value, budget, depth);
-  if (bounded === undefined) return "";
-  return JSON.stringify(bounded) ?? "";
+/** Serialize every safe tool-payload value or fail before model dispatch. */
+function stringifyToolPayload(value: unknown): string {
+  try {
+    const projected = toJsonValue(value, newPayloadTraversal());
+    if (projected === undefined) return "";
+    return JSON.stringify(projected) ?? "";
+  } catch (error) {
+    if (error instanceof PromptPayloadSerializationError) throw error;
+    throw new PromptPayloadSerializationError(
+      "Tool payload could not be serialized completely for model input",
+      { cause: error }
+    );
+  }
 }
 
 /** Pull readable text out of a tool-result part's `output` (shape varies by
  * provider: `{type:"text",value}`, a bare string, or an array of such parts).
- * Bounded per {@link newPayloadBudget}: the payload is untrusted remote data. */
+ * The payload is untrusted remote data, so unsafe shapes fail explicitly. */
 function toolOutputToText(
   output: unknown,
-  budget: PayloadBudget = newPayloadBudget(),
-  depth = 0
+  traversal: PayloadTraversal = newPayloadTraversal()
 ): string {
   if (output == null) return "";
-  if (typeof output === "string") return chargeChars(budget, output);
-  if (typeof output !== "object") return chargeChars(budget, String(output));
-  if (depth >= MAX_TOOL_PAYLOAD_DEPTH) return TOOL_PAYLOAD_DEPTH_MARKER;
-  if (budget.ancestors.has(output)) return TOOL_PAYLOAD_CYCLE_MARKER;
+  if (typeof output === "string") return output;
+  if (typeof output !== "object") return String(output);
+  if (traversal.ancestors.has(output)) {
+    throw new PromptPayloadSerializationError(
+      "Tool output contains a cycle and cannot be sent to the model losslessly"
+    );
+  }
   if (Array.isArray(output)) {
-    if (!chargeWidth(budget, output.length)) return TOOL_PAYLOAD_BUDGET_MARKER;
-    budget.ancestors.add(output);
+    traversal.ancestors.add(output);
     try {
       const parts: string[] = [];
       for (let index = 0; index < output.length; index += 1) {
-        const text = toolOutputToText(output[index], budget, depth + 1);
+        const text = toolOutputToText(output[index], traversal);
         if (text) parts.push(text);
       }
       return parts.join("\n");
     } finally {
-      budget.ancestors.delete(output);
+      traversal.ancestors.delete(output);
     }
   }
-  if (!chargeWidth(budget, 1)) return TOOL_PAYLOAD_BUDGET_MARKER;
-  budget.ancestors.add(output);
+  traversal.ancestors.add(output);
   try {
     const value = ownDataProperty(output, "value");
-    if (typeof value === "string") return chargeChars(budget, value);
+    if (typeof value === "string") return value;
     const text = ownDataProperty(output, "text");
-    if (typeof text === "string") return chargeChars(budget, text);
+    if (typeof text === "string") return text;
     const content = ownDataProperty(output, "content");
-    if (content != null) return toolOutputToText(content, budget, depth + 1);
+    if (content != null) return toolOutputToText(content, traversal);
   } finally {
-    budget.ancestors.delete(output);
+    traversal.ancestors.delete(output);
   }
   // Terminal serialization runs AFTER `output` leaves the ancestor path, so the
   // projection below treats it as a fresh root rather than as a back-edge onto
   // itself. This is exactly what "path-local" buys: an honest value is never
   // mistaken for a cycle.
-  return chargeChars(budget, stringifyToolPayload(output, budget, depth));
+  return stringifyToolPayload(output);
+}
+
+function serializeToolOutput(output: unknown): string {
+  try {
+    return toolOutputToText(output);
+  } catch (error) {
+    if (error instanceof PromptPayloadSerializationError) throw error;
+    throw new PromptPayloadSerializationError(
+      "Tool output could not be serialized completely for model input",
+      { cause: error }
+    );
+  }
 }
 
 /**
@@ -247,14 +255,11 @@ export function contentToText(content: ChatMessage["content"]): string {
         output?: unknown;
       };
       if (p.type === "tool-call" || p.type === "tool_call") {
-        const args =
-          typeof p.input === "string"
-            ? p.input
-            : stringifyToolPayload(p.input ?? {}, newPayloadBudget(), 0);
+        const args = typeof p.input === "string" ? p.input : stringifyToolPayload(p.input ?? {});
         return `[tool_call ${p.toolName ?? "tool"} ${args}]`;
       }
       if (p.type === "tool-result" || p.type === "tool_result") {
-        const out = toolOutputToText(p.output);
+        const out = serializeToolOutput(p.output);
         return out ? `[tool_result ${p.toolName ?? "tool"}: ${out}]` : "";
       }
       return "";
@@ -275,7 +280,7 @@ function renderMessage(message: ChatMessage): string {
           const args =
             typeof call.arguments === "string"
               ? call.arguments
-              : stringifyToolPayload(call.arguments ?? {}, newPayloadBudget(), 0);
+              : stringifyToolPayload(call.arguments ?? {});
           return `[tool_call ${call.name} ${args}]`;
         })
       : [];

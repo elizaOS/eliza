@@ -14,11 +14,11 @@ import {
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { navigateBrowserPath } from "../../app-navigate-view";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { openExternalUrl } from "../../utils";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   CloudServicesSection,
@@ -31,7 +31,6 @@ import {
   EVM_RPC_OPTIONS,
   SOLANA_RPC_OPTIONS,
 } from "./config-page-sections.helpers";
-import { SecretsView } from "./SecretsView";
 
 /* ── ConfigPageView ──────────────────────────────────────────────────── */
 
@@ -121,7 +120,6 @@ export function ConfigPageView({
     handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
   }));
 
-  const [secretsOpen, setSecretsOpen] = useState(false);
   const manualRpcModeSelection = useRef(false);
 
   const initialRpc = resolveInitialWalletRpcSelections(walletConfig);
@@ -144,6 +142,7 @@ export function ConfigPageView({
   const handleRpcFieldChange = useCallback((key: string, value: unknown) => {
     setRpcFieldValues((prev) => ({ ...prev, [key]: String(value ?? "") }));
   }, []);
+  const handleOpenVault = useCallback(() => navigateBrowserPath("/vault"), []);
 
   /* ── RPC provider selection state ──────────────────────────────────── */
   const initialSelectedRpc = allCloud ? CLOUD_RPC_SELECTIONS : initialRpc;
@@ -380,12 +379,12 @@ export function ConfigPageView({
     },
   });
   const secretsEl = useAgentElement<HTMLButtonElement>({
-    id: "open-secrets",
+    id: "open-vault",
     role: "button",
-    label: t("configpageview.Secrets", { defaultValue: "Secrets" }),
+    label: t("configpageview.Secrets", { defaultValue: "Vault" }),
     group: "rpc-config",
-    description: "Open the secrets vault to manage API keys",
-    onActivate: () => setSecretsOpen(true),
+    description: "Open the Vault workspace to manage encrypted credentials",
+    onActivate: handleOpenVault,
   });
 
   return (
@@ -642,7 +641,7 @@ export function ConfigPageView({
                 variant="outline"
                 className="min-h-[2.625rem] px-4 rounded-sm flex items-center gap-1.5 text-xs text-muted hover:text-txt"
                 {...secretsEl.agentProps}
-                onClick={() => setSecretsOpen(true)}
+                onClick={handleOpenVault}
               >
                 <svg
                   width="13"
@@ -660,7 +659,7 @@ export function ConfigPageView({
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
-                {t("configpageview.Secrets", { defaultValue: "Secrets" })}
+                {t("configpageview.Secrets", { defaultValue: "Vault" })}
               </Button>
             </div>
 
@@ -753,51 +752,6 @@ export function ConfigPageView({
             </div>
           </div>
         )}
-
-        {/* ── Secrets modal ── */}
-        <Dialog open={secretsOpen} onOpenChange={setSecretsOpen}>
-          <DialogContent
-            showCloseButton={false}
-            className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0"
-          >
-            <div className="flex max-h-[min(88vh,48rem)] flex-col">
-              <DialogHeader className="flex flex-row items-center justify-between px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-accent"
-                  >
-                    <title>{t("configpageview.SecretsVault")}</title>
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                  <DialogTitle className="text-sm font-bold">
-                    {t("configpageview.SecretsVault1")}
-                  </DialogTitle>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-muted hover:text-txt text-lg leading-none"
-                  onClick={() => setSecretsOpen(false)}
-                  aria-label={t("common.close")}
-                >
-                  {t("bugreportmodal.Times")}
-                </Button>
-              </DialogHeader>
-              <div className="flex-1 min-h-0 overflow-y-auto p-5">
-                <SecretsView />
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     </ShellViewAgentSurface>
   );

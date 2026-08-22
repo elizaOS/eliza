@@ -155,7 +155,7 @@ export function FinancesSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} shrink={0}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading
@@ -348,6 +348,7 @@ function FiltersSection({
           key={chip.action}
           agent={chip.action}
           tone={chip.active ? "primary" : "muted"}
+          variant={chip.active ? "solid" : "ghost"}
           pressed={chip.active}
           onPress={dispatch(chip.action)}
         >
@@ -430,6 +431,7 @@ function TransactionsSection({
               </Text>
               <Button
                 agent={`open-txn-${tx.id}`}
+                variant="ghost"
                 onPress={dispatch(`txn-${tx.id}`)}
               >
                 ›
@@ -479,6 +481,7 @@ function RecurringSection({
               <Text wrap={false}>{row.amount}</Text>
               <Button
                 agent={`open-bill-${row.id}`}
+                variant="ghost"
                 onPress={dispatch(`bill-${row.id}`)}
               >
                 ›

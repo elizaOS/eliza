@@ -12,7 +12,6 @@ import {
   ModelType,
   parseJSONObjectFromText,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.ts";
@@ -39,13 +38,8 @@ type ActionHistoryItem = {
   success: boolean;
 };
 
-function truncateText(value: string, maxLength: number): string {
-  const wellFormed = toWellFormedUnicode(value);
-  if (wellFormed.length <= maxLength) {
-    return wellFormed;
-  }
-  const budget = Math.max(0, maxLength - 1);
-  return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+function normalizePromptText(value: string): string {
+  return toWellFormedUnicode(value);
 }
 
 function normalizeReplyText(raw: string): string {
@@ -71,12 +65,12 @@ function looksLikeStructuredReply(raw: string): boolean {
   );
 }
 
-function stringifyPromptValue(value: unknown, maxLength = 2_400): string {
+function stringifyPromptValue(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
-    return truncateText(serialized, maxLength);
+    return normalizePromptText(serialized);
   } catch {
-    return truncateText(String(value), maxLength);
+    return normalizePromptText(String(value));
   }
 }
 
@@ -166,7 +160,7 @@ function summarizeActionResult(result: ActionResult): ActionHistoryItem | null {
   }
   return {
     actionName,
-    text: truncateText(snippet.replace(/\s+/g, " "), 180),
+    text: normalizePromptText(snippet.replace(/\s+/g, " ")),
     success: result.success !== false,
   };
 }
@@ -264,7 +258,6 @@ export async function summarizeActiveTrajectory(
         : null;
     const recentProviders =
       latestStep?.providerAccesses
-        .slice(-2)
         .map((access) => access.providerName)
         .filter((name) => typeof name === "string" && name.trim().length > 0)
         .join(", ") ?? "";
@@ -308,7 +301,6 @@ export async function renderGroundedActionReply(
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 12,
   });
   const recentActionHistory = summarizeRecentActionHistory(args.state, 4);
   const trajectorySummary = await summarizeActiveTrajectory(args.runtime);

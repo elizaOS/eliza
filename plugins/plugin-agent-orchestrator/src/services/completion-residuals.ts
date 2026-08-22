@@ -32,10 +32,6 @@ import {
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
 
-/** Cap on the residual path/detail lists so a giant dirty tree cannot bloat
- * the task metadata or the correction prompt. */
-export const MAX_RESIDUAL_PATHS = 20;
-
 /** Provenance stamped on validation events produced by this gate. */
 export const COMPLETION_RESIDUALS_VERIFIER_NAME = "completion-residuals";
 
@@ -61,7 +57,7 @@ export type CompletionResidualKind =
 export interface CompletionResidual {
   kind: CompletionResidualKind;
   detail: string;
-  /** Affected paths / commands / risks, capped at {@link MAX_RESIDUAL_PATHS}. */
+  /** Complete affected paths / commands / risks. */
   items?: string[];
 }
 
@@ -195,10 +191,6 @@ function runGit(
   };
 }
 
-function cap(items: string[]): string[] {
-  return items.slice(0, MAX_RESIDUAL_PATHS);
-}
-
 function porcelainPaths(line: string): string[] {
   const rawPath = line.slice(3).trim();
   if (!rawPath) return [];
@@ -300,17 +292,15 @@ export async function collectCompletionResiduals(
     residuals.push({
       kind: "failing_tests_reported",
       detail: `${failing.length} reported test command(s) exited non-zero`,
-      items: cap(failing.map((row) => `${row.command} (exit ${row.exitCode})`)),
+      items: failing.map((row) => `${row.command} (exit ${row.exitCode})`),
     });
   }
   // Residual risks are carried as non-blocking disclosure (see header): a
   // worker who admits "migration not run on prod" must fare no worse than one
   // who stays silent, or the admission stops appearing.
-  const disclosedRisks = cap(
-    (input.residualRisks ?? [])
-      .map((risk) => risk.trim())
-      .filter((risk) => risk.length > 0),
-  );
+  const disclosedRisks = (input.residualRisks ?? [])
+    .map((risk) => risk.trim())
+    .filter((risk) => risk.length > 0);
 
   const base = {
     residuals,
@@ -466,7 +456,7 @@ export async function collectCompletionResiduals(
         detail: `${dirty.length} uncommitted path(s) in the workspace`,
         // Porcelain lines are `XY path`; keep the status code — it tells the
         // corrective prompt whether the leftover is modified vs untracked.
-        items: cap(dirty),
+        items: dirty,
       });
     }
 
@@ -495,7 +485,7 @@ export async function collectCompletionResiduals(
         residuals.push({
           kind: "unpushed_commits",
           detail: `${shas.length} commit(s) not pushed to the upstream branch`,
-          items: cap(shas),
+          items: shas,
         });
       }
     }

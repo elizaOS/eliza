@@ -67,7 +67,7 @@ const unavailableSecureStore: PlatformSecureStore = {
   backend: "none",
   get: async () => ({ ok: false, reason: "unavailable" }),
   set: async () => ({ ok: false, reason: "unavailable" }),
-  delete: async () => {},
+  delete: async () => ({ ok: false, reason: "unavailable" }),
   isAvailable: async () => false,
 };
 

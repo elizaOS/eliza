@@ -21,7 +21,6 @@ import {
   type IAgentRuntime,
   ModelType,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 
@@ -174,7 +173,7 @@ export function decideInterruption(
 function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
   const label = input.agentLabel?.trim() || input.agentType;
   const work = input.taskContext?.trim()
-    ? truncateWellFormed(toWellFormedUnicode(input.taskContext.trim()), 500)
+    ? toWellFormedUnicode(input.taskContext.trim())
     : "a coding task";
   const state = input.sessionBusy
     ? "MID-TURN (actively generating or running a tool right now)"
@@ -198,7 +197,7 @@ function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
     `State: ${state}`,
     `Room: ${room}`,
     "",
-    `Incoming message: """${truncateWellFormed(toWellFormedUnicode(input.text.trim()), 800)}"""`,
+    `Incoming message: """${toWellFormedUnicode(input.text.trim())}"""`,
     "",
     "Choose EXACTLY one action:",
     '- "interrupt": stop or change direction RIGHT NOW — an explicit halt ("stop", "cancel", "wait"), or a redirect that invalidates the work in progress ("no, use Postgres not MySQL", "scrap that, start over"). Reserve for genuine halts/redirects worth cancelling live work for.',
@@ -230,7 +229,7 @@ function parseInterruptionVerdict(raw: string): InterruptionDecision | null {
   }
   const detail =
     typeof obj.reason === "string" && obj.reason.trim()
-      ? truncateWellFormed(toWellFormedUnicode(obj.reason.trim()), 160)
+      ? toWellFormedUnicode(obj.reason.trim())
       : "verdict";
   return { action, reason: `model: ${detail}` };
 }

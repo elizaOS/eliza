@@ -8,6 +8,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
+} from "../state/notifications/notification-center-open-request";
+import {
   __resetLastCloudHandoffPhaseDetailForTests,
   CHAT_CLOSE_EVENT,
   CHAT_OPEN_EVENT,
@@ -35,6 +39,10 @@ import {
 
 describe("dispatchCloudHandoffPhase", () => {
   afterEach(() => {
+    const pendingRequestId = peekNotificationCenterOpenRequest();
+    if (pendingRequestId !== null) {
+      acknowledgeNotificationCenterOpenRequest(pendingRequestId);
+    }
     vi.restoreAllMocks();
   });
 

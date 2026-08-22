@@ -336,7 +336,7 @@ function createClient(token) {
 
 async function collectFailures(client, repo, runId, budget) {
   const failures = [];
-  for (let page = 1; page <= 10; page += 1) {
+  for (let page = 1; ; page += 1) {
     const payload = await client.json(
       `/repos/${repo}/actions/runs/${runId}/jobs?per_page=100&page=${page}&filter=latest`,
     );
@@ -367,9 +367,8 @@ async function collectFailures(client, repo, runId, budget) {
         logError,
       });
     }
-    if (jobs.length < 100) break;
+    if (jobs.length < 100) return failures;
   }
-  return failures;
 }
 
 async function findOpenHealPr(client, repo, branch) {

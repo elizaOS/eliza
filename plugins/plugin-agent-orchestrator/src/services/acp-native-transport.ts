@@ -659,18 +659,12 @@ export class NativeAcpClient {
       });
     });
     const capture = (chunk: Buffer) => {
+      if (record.truncated) return;
       record.output += chunk.toString("utf8");
       if (Buffer.byteLength(record.output, "utf8") > record.limit) {
         record.truncated = true;
-        // Keep the last `limit` BYTES, not characters. `String.slice(-limit)`
-        // keeps `limit` CHARACTERS, so multi-byte UTF-8 output could exceed the
-        // byte budget by up to 4×. Slice the encoded buffer to the last `limit`
-        // bytes, then drop any leading UTF-8 continuation bytes so we decode on
-        // a character boundary.
-        const tail = Buffer.from(record.output, "utf8").subarray(-record.limit);
-        let start = 0;
-        while (start < tail.length && (tail[start] & 0xc0) === 0x80) start += 1;
-        record.output = tail.subarray(start).toString("utf8");
+        // Never expose a prefix or tail as if it were the complete command result.
+        record.output = "";
       }
     };
     proc.stdout.on("data", capture);
@@ -682,9 +676,14 @@ export class NativeAcpClient {
 
   private terminalOutput(params: Record<string, unknown> | undefined) {
     const terminal = this.requireTerminal(stringValue(params?.terminalId));
+    if (terminal.truncated) {
+      throw new Error(
+        `Terminal output exceeded the ${terminal.limit}-byte complete-capture safety limit; no partial result is available`,
+      );
+    }
     return {
       output: terminal.output,
-      truncated: terminal.truncated,
+      truncated: false,
       ...(terminal.exitCode !== undefined || terminal.signal !== undefined
         ? {
             exitStatus: {

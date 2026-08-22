@@ -38,12 +38,12 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  readSync,
   realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -177,24 +177,62 @@ function assertStableFile(handle) {
     namedStats.dev !== handle.stats.dev ||
     namedStats.ino !== handle.stats.ino ||
     currentStats.size !== handle.stats.size ||
-    currentStats.mtimeMs !== handle.stats.mtimeMs ||
-    currentStats.ctimeMs !== handle.stats.ctimeMs
+    currentStats.mtimeMs !== handle.stats.mtimeMs
   ) {
+    fail(`${handle.label} changed during verification`);
+  }
+  if (currentStats.ctimeMs === handle.stats.ctimeMs) return;
+  // Only the inode change time moved: identity, size and modification time all
+  // still match. That is either metadata-only churn that never touched the
+  // verified bytes (a release mirror hard-linking the tree, a chmod sweep, an
+  // xattr-setting scanner) or a same-size rewrite whose mtime was forged. Decide
+  // it on content rather than on the timestamp, by re-reading through the same
+  // descriptor the bytes were verified from. Comparing bytes is strictly
+  // stronger evidence than comparing ctime, so nothing a ctime check rejected
+  // on real tampering is accepted here.
+  if (!descriptorStillHoldsVerifiedBytes(handle)) {
     fail(`${handle.label} changed during verification`);
   }
 }
 
-function inspectArchiveBytes(archiveBytes, inspect) {
-  const inspectionDir = mkdtempSync(
-    path.join(tmpdir(), "eliza-linux-gtk-archive-"),
-  );
-  const snapshotPath = path.join(inspectionDir, "artifact.tar.zst");
-  try {
-    writeFileSync(snapshotPath, archiveBytes, { flag: "wx", mode: 0o600 });
-    return inspect(snapshotPath);
-  } finally {
-    rmSync(inspectionDir, { force: true, recursive: true });
+/**
+ * Re-reads `handle.fd` from offset 0 and reports whether it still yields the
+ * exact bytes that were digested and signature-verified. Positional `readSync`
+ * is required because the descriptor is already at EOF from the initial read.
+ */
+function descriptorStillHoldsVerifiedBytes(handle) {
+  const expected = handle.bytes;
+  const chunk = Buffer.allocUnsafe(Math.min(expected.length, 1 << 20) || 1);
+  let position = 0;
+  while (position < expected.length) {
+    const wanted = Math.min(chunk.length, expected.length - position);
+    const read = readSync(handle.fd, chunk, 0, wanted, position);
+    if (read <= 0) return false;
+    if (
+      !chunk
+        .subarray(0, read)
+        .equals(expected.subarray(position, position + read))
+    ) {
+      return false;
+    }
+    position += read;
   }
+  // A file that grew past the verified bytes would already have failed the
+  // size comparison above; re-check the descriptor is exhausted regardless.
+  return readSync(handle.fd, chunk, 0, 1, position) === 0;
+}
+
+/**
+ * Argument shape for a `tar` inspection of `archive`, which is either a
+ * filesystem path or the exact archive bytes. Bytes are streamed to `tar` on
+ * stdin so that inspecting them needs no temporary copy: the release path must
+ * not acquire a free-space requirement equal to the whole archive, and a full
+ * `$TMPDIR` must not surface as a verification failure on a good artifact.
+ */
+function archiveSource(archive) {
+  return Buffer.isBuffer(archive)
+    ? { input: archive, target: "-" }
+    : { input: undefined, target: archive };
 }
 
 function isWithinDirectory(rootDir, candidatePath) {
@@ -455,10 +493,15 @@ function runTar(args) {
   execFileSync("tar", args, { stdio: ["ignore", "pipe", "inherit"] });
 }
 
-/** Lists archive member paths, normalized without a leading "./". */
-export function listArchiveMembers(archivePath) {
-  const out = execFileSync("tar", ["--zstd", "-tf", archivePath], {
+/**
+ * Lists archive member paths, normalized without a leading "./". `archive` is
+ * either a filesystem path or the exact archive bytes.
+ */
+export function listArchiveMembers(archive) {
+  const { input, target } = archiveSource(archive);
+  const out = execFileSync("tar", ["--zstd", "-tf", target], {
     encoding: "utf8",
+    input,
   });
   return out
     .split("\n")
@@ -466,8 +509,8 @@ export function listArchiveMembers(archivePath) {
     .filter((line) => line.length > 0 && line !== ".");
 }
 
-function assertSafeArchiveMembers(archivePath) {
-  for (const member of listArchiveMembers(archivePath)) {
+function assertSafeArchiveMembers(archive) {
+  for (const member of listArchiveMembers(archive)) {
     if (
       path.posix.isAbsolute(member) ||
       member.split("/").some((segment) => segment === "..") ||
@@ -476,9 +519,11 @@ function assertSafeArchiveMembers(archivePath) {
       fail(`archive contains an unsafe member path: ${JSON.stringify(member)}`);
     }
   }
-  const verbose = execFileSync("tar", ["--zstd", "-tvf", archivePath], {
+  const { input, target } = archiveSource(archive);
+  const verbose = execFileSync("tar", ["--zstd", "-tvf", target], {
     encoding: "utf8",
     env: { ...process.env, LC_ALL: "C" },
+    input,
   });
   for (const line of verbose.split("\n").filter(Boolean)) {
     const type = line[0];
@@ -501,11 +546,12 @@ function assertSafeArchiveMembers(archivePath) {
   }
 }
 
-function assertArchivedEntrypoint(archivePath, relativePath, key) {
+function assertArchivedEntrypoint(archive, relativePath, key) {
+  const { input, target } = archiveSource(archive);
   const listing = execFileSync(
     "tar",
-    ["--zstd", "-tvf", archivePath, `./${relativePath}`],
-    { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } },
+    ["--zstd", "-tvf", target, `./${relativePath}`],
+    { encoding: "utf8", env: { ...process.env, LC_ALL: "C" }, input },
   ).trim();
   const mode = listing.split(/\s+/, 1)[0] ?? "";
   if (!/^-[rwx-]{9}$/.test(mode)) {
@@ -589,7 +635,7 @@ export function produceArtifact({
     const stagedArchivePath = path.join(stagingDir, archiveName);
     runTar(["--zstd", "-cf", stagedArchivePath, "-C", canonicalStageDir, "."]);
     const archiveBytes = readFileSync(stagedArchivePath);
-    inspectArchiveBytes(archiveBytes, assertSafeArchiveMembers);
+    assertSafeArchiveMembers(archiveBytes);
     const archiveDigest = createHash("sha256")
       .update(archiveBytes)
       .digest("hex");
@@ -712,18 +758,16 @@ export function verifyArtifactDir(outDir, publicKeyPem, testHooks = {}) {
       fail("archive signature does not verify over the exact archive bytes");
     }
 
-    inspectArchiveBytes(archiveBytes, (snapshotPath) => {
-      const members = new Set(listArchiveMembers(snapshotPath));
-      assertSafeArchiveMembers(snapshotPath);
-      for (const key of REQUIRED_ENTRYPOINTS) {
-        if (!members.has(manifest.entrypoints[key])) {
-          fail(
-            `entrypoint ${key} (${manifest.entrypoints[key]}) is not present in the archive`,
-          );
-        }
-        assertArchivedEntrypoint(snapshotPath, manifest.entrypoints[key], key);
+    const members = new Set(listArchiveMembers(archiveBytes));
+    assertSafeArchiveMembers(archiveBytes);
+    for (const key of REQUIRED_ENTRYPOINTS) {
+      if (!members.has(manifest.entrypoints[key])) {
+        fail(
+          `entrypoint ${key} (${manifest.entrypoints[key]}) is not present in the archive`,
+        );
       }
-    });
+      assertArchivedEntrypoint(archiveBytes, manifest.entrypoints[key], key);
+    }
     testHooks.beforeFinalStableFileCheck?.({ archivePath, manifestPath });
     for (const handle of handles) assertStableFile(handle);
     return manifest;

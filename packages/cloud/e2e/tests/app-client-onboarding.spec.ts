@@ -54,7 +54,7 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     try {
       DIRECT_ELIZA_CLOUD_API_BY_HOST.set(cloudApiHost, cloudApiBase);
       setBootConfig({ ...prevBoot, cloudApiBase });
-      writeStoredStewardToken(authToken);
+      await writeStoredStewardToken(authToken);
 
       const client = new ElizaClient(cloudApiBase, authToken);
 
@@ -142,9 +142,9 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
       }
       setBootConfig(prevBoot);
       if (prevToken === null) {
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
       } else {
-        writeStoredStewardToken(prevToken);
+        await writeStoredStewardToken(prevToken);
       }
     }
   });

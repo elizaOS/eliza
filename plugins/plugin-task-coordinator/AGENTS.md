@@ -47,11 +47,12 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 ### Registration side effects (`src/register.ts`)
 
-`register.ts` is a side-effect module (imported for its effects, not exports). It activates the slot-registry fills:
+`register.ts` is a side-effect module (imported for its effects, not exports). It activates the slot-registry fills and signed native pages:
 
 - **`import "./register-slots.js"`** — activates the slot-registry fills below (the `@elizaos/ui` empty-slot defaults). Without this import the UI renders empty slots.
+- **`registerAppShellPage(...)`** — registers lazy, in-bundle renderers for `task-coordinator`, `orchestrator`, and `cockpit`. iOS and Android strip agent-served JavaScript from `/api/views`, so these registrations are the native render path; web and desktop continue to prefer the runtime manifest bundles.
 
-The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) reach the app shell through the standard **view manifest** in `src/index.ts` (`bundlePath` + `componentExport`), NOT via `registerAppShellPage` — this plugin registers no app-shell pages.
+The three GUI views still declare the standard **view manifest** in `src/index.ts` (`bundlePath` + `componentExport`) as the runtime metadata and web/desktop bundle path. Keep the native registrations aligned with those ids, paths, kinds, surfaces, and component exports.
 
 ## Layout
 
@@ -59,7 +60,7 @@ The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) reach the ap
 src/
   index.ts                         Plugin definition — views + capabilities, init() command registration, handler action
   orchestrator-command.ts          /orchestrator-status slash command def + deterministic handler action (#8790)
-  register.ts                      Slot import side effect
+  register.ts                      Slot and signed native-page side effects
   register-slots.ts                Slot registry fills for ui empty-slot defaults
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
   CodingAgentTasksPanel.interact.ts  View-bundle `interact` capability handler (split for Fast-Refresh compat)

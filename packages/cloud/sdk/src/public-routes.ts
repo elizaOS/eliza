@@ -1944,6 +1944,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/mcps/[mcpId]/route.ts",
   },
+  "GET /api/v1/me/account-deletion": {
+    method: "GET",
+    path: "/api/v1/me/account-deletion",
+    methodName: "getApiV1MeAccountDeletion",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/me/account-deletion/route.ts",
+  },
   "GET /api/v1/me/mfa": {
     method: "GET",
     path: "/api/v1/me/mfa",
@@ -3466,6 +3475,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/coding-containers/promotions/route.ts",
   },
+  "POST /api/v1/connections/{id}/broker": {
+    method: "POST",
+    path: "/api/v1/connections/{id}/broker",
+    methodName: "postApiV1ConnectionsByIdBroker",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/connections/[id]/broker/route.ts",
+  },
+  "POST /api/v1/connections/{id}/refresh": {
+    method: "POST",
+    path: "/api/v1/connections/{id}/refresh",
+    methodName: "postApiV1ConnectionsByIdRefresh",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/connections/[id]/refresh/route.ts",
+  },
   "POST /api/v1/connections/{platform}": {
     method: "POST",
     path: "/api/v1/connections/{platform}",
@@ -3983,6 +4010,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/link-token/route.ts",
   },
+  "POST /api/v1/eliza/plaid/revoke": {
+    method: "POST",
+    path: "/api/v1/eliza/plaid/revoke",
+    methodName: "postApiV1ElizaPlaidRevoke",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/plaid/revoke/route.ts",
+  },
   "POST /api/v1/eliza/plaid/sync": {
     method: "POST",
     path: "/api/v1/eliza/plaid/sync",
@@ -4189,6 +4225,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["mcpId"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/mcps/[mcpId]/publish/route.ts",
+  },
+  "POST /api/v1/me/account-deletion": {
+    method: "POST",
+    path: "/api/v1/me/account-deletion",
+    methodName: "postApiV1MeAccountDeletion",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/me/account-deletion/route.ts",
   },
   "POST /api/v1/messages": {
     method: "POST",
@@ -5279,6 +5324,7 @@ export interface PublicRoutePathParams {
   };
   "GET /api/v1/mcps": Record<never, never>;
   "GET /api/v1/mcps/{mcpId}": { mcpId: string | number };
+  "GET /api/v1/me/account-deletion": Record<never, never>;
   "GET /api/v1/me/mfa": Record<never, never>;
   "GET /api/v1/models": Record<never, never>;
   "GET /api/v1/models/{model}": {
@@ -5485,6 +5531,8 @@ export interface PublicRoutePathParams {
     containerId: string | number;
   };
   "POST /api/v1/coding-containers/promotions": Record<never, never>;
+  "POST /api/v1/connections/{id}/broker": { id: string | number };
+  "POST /api/v1/connections/{id}/refresh": { id: string | number };
   "POST /api/v1/connections/{platform}": { platform: string | number };
   "POST /api/v1/containers": Record<never, never>;
   "POST /api/v1/credits/checkout": Record<never, never>;
@@ -5579,6 +5627,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/paypal/transactions": Record<never, never>;
   "POST /api/v1/eliza/plaid/exchange": Record<never, never>;
   "POST /api/v1/eliza/plaid/link-token": Record<never, never>;
+  "POST /api/v1/eliza/plaid/revoke": Record<never, never>;
   "POST /api/v1/eliza/plaid/sync": Record<never, never>;
   "POST /api/v1/embeddings": Record<never, never>;
   "POST /api/v1/extract": Record<never, never>;
@@ -5616,6 +5665,7 @@ export interface PublicRoutePathParams {
   };
   "POST /api/v1/mcps": Record<never, never>;
   "POST /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
+  "POST /api/v1/me/account-deletion": Record<never, never>;
   "POST /api/v1/messages": Record<never, never>;
   "POST /api/v1/models/status": Record<never, never>;
   "POST /api/v1/oauth-intents": Record<never, never>;
@@ -5942,6 +5992,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/marketing/pr/{releaseId}/coverage": never;
   "GET /api/v1/mcps": never;
   "GET /api/v1/mcps/{mcpId}": never;
+  "GET /api/v1/me/account-deletion": never;
   "GET /api/v1/me/mfa": never;
   "GET /api/v1/models": never;
   "GET /api/v1/models/{model}": never;
@@ -6119,6 +6170,8 @@ export interface PublicRouteHeaders {
   "POST /api/v1/coding-containers": never;
   "POST /api/v1/coding-containers/{containerId}/sync": never;
   "POST /api/v1/coding-containers/promotions": never;
+  "POST /api/v1/connections/{id}/broker": never;
+  "POST /api/v1/connections/{id}/refresh": never;
   "POST /api/v1/connections/{platform}": never;
   "POST /api/v1/containers": never;
   "POST /api/v1/credits/checkout": never;
@@ -6176,6 +6229,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/eliza/paypal/transactions": never;
   "POST /api/v1/eliza/plaid/exchange": never;
   "POST /api/v1/eliza/plaid/link-token": never;
+  "POST /api/v1/eliza/plaid/revoke": never;
   "POST /api/v1/eliza/plaid/sync": never;
   "POST /api/v1/embeddings": never;
   "POST /api/v1/extract": never;
@@ -6199,6 +6253,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/marketing/pr/{releaseId}/submit": never;
   "POST /api/v1/mcps": never;
   "POST /api/v1/mcps/{mcpId}/publish": never;
+  "POST /api/v1/me/account-deletion": never;
   "POST /api/v1/messages": never;
   "POST /api/v1/models/status": never;
   "POST /api/v1/oauth-intents": never;
@@ -6271,6 +6326,8 @@ export interface PublicRouteHeaders {
   "PUT /api/v1/apis/storage/objects/_": {
     "X-Storage-Object-Key": string;
     "Idempotency-Key": string;
+    "X-Content-Length": string;
+    "X-Content-SHA256": string;
     "Content-Type"?: string;
   };
   "PUT /api/v1/apps/{id}": never;
@@ -8374,6 +8431,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1MeAccountDeletion<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/me/account-deletion"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/me/account-deletion", TResponse>(
+      "GET /api/v1/me/account-deletion",
+      options,
+    );
+  }
+
   getApiV1MeMfa<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
   ): Promise<TResponse> {
@@ -9894,6 +9960,24 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ConnectionsByIdBroker<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/connections/{id}/broker">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/connections/{id}/broker", TResponse>(
+      "POST /api/v1/connections/{id}/broker",
+      options,
+    );
+  }
+
+  postApiV1ConnectionsByIdRefresh<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/connections/{id}/refresh">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/connections/{id}/refresh", TResponse>(
+      "POST /api/v1/connections/{id}/refresh",
+      options,
+    );
+  }
+
   postApiV1ConnectionsByPlatform<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/connections/{platform}">,
   ): Promise<TResponse> {
@@ -10420,6 +10504,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ElizaPlaidRevoke<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/revoke"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/eliza/plaid/revoke", TResponse>(
+      "POST /api/v1/eliza/plaid/revoke",
+      options,
+    );
+  }
+
   postApiV1ElizaPlaidSync<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/sync"> = {},
   ): Promise<TResponse> {
@@ -10638,6 +10731,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/mcps/{mcpId}/publish", TResponse>(
       "POST /api/v1/mcps/{mcpId}/publish",
+      options,
+    );
+  }
+
+  postApiV1MeAccountDeletion<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/me/account-deletion"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/me/account-deletion", TResponse>(
+      "POST /api/v1/me/account-deletion",
       options,
     );
   }
@@ -12805,6 +12907,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/mcps/{mcpId}", options);
   }
 
+  getApiV1MeAccountDeletionRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/me/account-deletion"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/me/account-deletion", options);
+  }
+
   getApiV1MeMfaRaw(
     options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
   ): Promise<Response> {
@@ -13882,6 +13990,18 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/coding-containers/promotions", options);
   }
 
+  postApiV1ConnectionsByIdBrokerRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/connections/{id}/broker">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/connections/{id}/broker", options);
+  }
+
+  postApiV1ConnectionsByIdRefreshRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/connections/{id}/refresh">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/connections/{id}/refresh", options);
+  }
+
   postApiV1ConnectionsByPlatformRaw(
     options: PublicRouteCallOptions<"POST /api/v1/connections/{platform}">,
   ): Promise<Response> {
@@ -14290,6 +14410,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/eliza/plaid/link-token", options);
   }
 
+  postApiV1ElizaPlaidRevokeRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/revoke"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/eliza/plaid/revoke", options);
+  }
+
   postApiV1ElizaPlaidSyncRaw(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/sync"> = {},
   ): Promise<Response> {
@@ -14447,6 +14573,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/mcps/{mcpId}/publish">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/mcps/{mcpId}/publish", options);
+  }
+
+  postApiV1MeAccountDeletionRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/me/account-deletion"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/me/account-deletion", options);
   }
 
   postApiV1MessagesRaw(

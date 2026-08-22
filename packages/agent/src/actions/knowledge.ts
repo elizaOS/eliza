@@ -31,7 +31,6 @@ import {
   type Media,
   type Memory,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -432,10 +431,7 @@ export const searchKnowledgeAction: Action = {
             "Untitled",
           mediaFormat: documentMediaFormat(meta, tags),
           similarity: r.similarity,
-          snippet: truncateWellFormed(
-            toWellFormedUnicode(r.content.text ?? ""),
-            240,
-          ),
+          snippet: toWellFormedUnicode(r.content.text ?? ""),
         };
       });
 

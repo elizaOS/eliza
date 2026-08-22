@@ -25,12 +25,8 @@ import {
   type Memory,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
-
-/** Max characters of fetched text we return when no extract path matches. */
-const WEB_FETCH_SNIPPET_CHARS = 4_000;
 
 /**
  * Capability gate: WEB_FETCH is enabled by default and opted out with
@@ -96,7 +92,7 @@ function stringifyValue(value: unknown): string {
 /**
  * Apply the optional `extract` instruction: when the body parses as JSON and
  * `extract` is a dotted path that resolves, return that field; otherwise fall
- * back to a truncated text snippet of the raw body.
+ * back to the complete guarded response body.
  */
 function extractValue(body: string, extract: string | undefined): string {
   if (extract) {
@@ -105,10 +101,10 @@ function extractValue(body: string, extract: string | undefined): string {
       const resolved = resolveJsonPath(parsed, extract);
       if (resolved !== undefined) return stringifyValue(resolved);
     } catch {
-      // Body was not JSON, or extract did not resolve — fall through to snippet.
+      // Body was not JSON, or extract did not resolve — return the complete body.
     }
   }
-  return truncateWellFormed(toWellFormedUnicode(body), WEB_FETCH_SNIPPET_CHARS);
+  return toWellFormedUnicode(body);
 }
 
 export const webFetch: Action & Record<string, unknown> = {
@@ -153,7 +149,7 @@ export const webFetch: Action & Record<string, unknown> = {
     {
       name: "extract",
       description:
-        "Optional dotted JSON path selecting which field to return when the body is JSON (e.g. 'data.amount'). Omit to return a text snippet of the body.",
+        "Optional dotted JSON path selecting which field to return when the body is JSON (e.g. 'data.amount'). Omit to return the complete guarded response body.",
       required: false,
       schema: { type: "string" },
     },

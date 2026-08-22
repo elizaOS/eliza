@@ -1,0 +1,223 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  color: CanvasText;
+  background: Canvas;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 280px;
+  max-width: 360px;
+}
+
+.panel {
+  width: 100%;
+  padding: 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.connection {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, CanvasText 16%, transparent);
+  border-radius: 12px;
+}
+
+.status {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.status[data-kind="connected"] {
+  color: #167046;
+}
+
+.status[data-kind="needs_app"],
+.status[data-kind="needs_settings"],
+.status[data-kind="needs_permission"] {
+  color: #8a4f09;
+}
+
+.status[data-kind="error"] {
+  color: #a33b22;
+}
+
+button {
+  min-height: 40px;
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+button.primary {
+  background: #b94c0e;
+  color: #fff;
+}
+
+button.primary:hover {
+  background: #a9430e;
+}
+
+button.disconnect {
+  border-color: color-mix(in srgb, CanvasText 20%, transparent);
+  background: Canvas;
+  color: CanvasText;
+}
+
+button.secondary {
+  border-color: color-mix(in srgb, CanvasText 20%, transparent);
+  background: Canvas;
+  color: CanvasText;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #e87524;
+  outline-offset: 3px;
+}
+
+.details {
+  margin-top: 10px;
+  padding: 2px 4px;
+}
+
+.details summary {
+  min-height: 36px;
+  padding: 8px 4px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.recovery {
+  margin-top: 10px;
+  border-top: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+}
+
+.recovery label {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.recovery textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  border-radius: 8px;
+  padding: 8px;
+  resize: vertical;
+  background: Canvas;
+  color: CanvasText;
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+dl {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  border-radius: 10px;
+}
+
+dl div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+  gap: 8px;
+}
+
+dt,
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+dt {
+  color: color-mix(in srgb, CanvasText 66%, transparent);
+}
+
+dd {
+  text-align: right;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status[data-kind="connected"] {
+    color: #65d69e;
+  }
+
+  .status[data-kind="needs_app"],
+  .status[data-kind="needs_settings"],
+  .status[data-kind="needs_permission"] {
+    color: #f4a950;
+  }
+
+  .status[data-kind="error"] {
+    color: #ff967a;
+  }
+}
+
+@media (forced-colors: active) {
+  .connection,
+  dl,
+  button {
+    border-color: ButtonText;
+  }
+
+  .recovery,
+  .recovery textarea {
+    border-color: ButtonText;
+  }
+
+  .status,
+  .status[data-kind] {
+    color: CanvasText;
+  }
+
+  button.primary {
+    background: ButtonFace;
+    color: ButtonText;
+  }
+}
+
+@media (max-width: 300px) {
+  .panel {
+    padding: 12px;
+  }
+
+  dl div {
+    grid-template-columns: 1fr;
+  }
+
+  dd {
+    text-align: left;
+  }
+}

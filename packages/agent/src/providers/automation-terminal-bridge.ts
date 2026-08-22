@@ -13,12 +13,7 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import {
-  logger,
-  stringToUuid,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { logger, stringToUuid, toWellFormedUnicode } from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -28,8 +23,6 @@ import {
   formatRelativeTimestampPrefix,
   formatSpeakerLabel,
 } from "../shared/conversation-format.ts";
-
-const MAX_TERMINAL_MESSAGES = 8;
 
 export const automationTerminalBridgeProvider: Provider = {
   name: "automation-terminal-bridge",
@@ -72,12 +65,10 @@ export const automationTerminalBridgeProvider: Provider = {
       const memories = await runtime.getMemories({
         roomId: sourceRoomId,
         tableName: "messages",
-        limit: MAX_TERMINAL_MESSAGES,
       });
       const visibleMessages = memories
         .filter((entry) => entry.content.text)
-        .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
-        .slice(-MAX_TERMINAL_MESSAGES);
+        .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0));
 
       if (visibleMessages.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -87,10 +78,7 @@ export const automationTerminalBridgeProvider: Provider = {
       for (const mem of visibleMessages) {
         const speaker = formatSpeakerLabel(runtime, mem);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const text = truncateWellFormed(
-          toWellFormedUnicode(mem.content.text ?? ""),
-          300,
-        );
+        const text = toWellFormedUnicode(mem.content.text ?? "");
         lines.push(`${age}${speaker}: ${text}`);
       }
 
