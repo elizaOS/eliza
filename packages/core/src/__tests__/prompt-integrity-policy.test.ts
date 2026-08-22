@@ -111,6 +111,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/applyTrajectoryFieldCap/,
 		/capBytes\?:/,
 	],
+	"packages/agent/src/providers/media-provider.ts": [
+		/max_tokens:\s*options\.maxTokens\s*\?\?\s*1024/,
+		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
+		/num_predict:\s*this\.maxTokens/,
+	],
 	"plugins/plugin-coding-tools/src/actions/summaries.ts": [
 		/compactSummaryText/,
 		/truncateWellFormed/,
