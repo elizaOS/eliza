@@ -13,6 +13,8 @@ import type {
 const SUCCESS = 1000;
 const LOGIN_NEEDED = 1001;
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_REQUEST_TIMEOUT_MS = 5 * 60_000;
+const MAX_RETRY_BASE_DELAY_MS = 8_000;
 
 export interface ProxyClientOptions {
   requestTimeoutMs?: number;
@@ -37,13 +39,15 @@ export class ProxyClient {
     this.baseUrl = normalizeProxyUrl(account.proxyUrl);
     this.accountId = account.id;
     this.deviceType = account.deviceType ?? "ipad";
-    this.requestTimeoutMs = requirePositiveInteger(
+    this.requestTimeoutMs = requireBoundedPositiveInteger(
       options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS,
       "requestTimeoutMs",
+      MAX_REQUEST_TIMEOUT_MS,
     );
-    this.retryBaseDelayMs = requirePositiveInteger(
+    this.retryBaseDelayMs = requireBoundedPositiveInteger(
       options.retryBaseDelayMs ?? 1000,
       "retryBaseDelayMs",
+      MAX_RETRY_BASE_DELAY_MS,
     );
     this.signal = options.signal;
   }
@@ -75,6 +79,7 @@ export class ProxyClient {
           headers,
           body: body ? JSON.stringify(body) : undefined,
           signal,
+          redirect: "error",
         });
 
         if (res.status === 429) {
@@ -89,12 +94,26 @@ export class ProxyClient {
           continue;
         }
 
+        if (!res.ok) {
+          // Consume the body to release the connection, but never trust or
+          // surface an untrusted error envelope. HTTP status is authoritative:
+          // a forged `{ code: 1000 }` on an error status cannot become success.
+          await res.text().catch(() => {});
+          throw new ProxyHttpStatusError(res.status);
+        }
+
         const json = (await res.json()) as ProxyApiResponse<T>;
         return json;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (this.signal?.aborted) {
           throw this.signal.reason ?? lastError;
+        }
+        if (err instanceof ProxyHttpStatusError && !err.retryable) {
+          throw err;
+        }
+        if (attempt === 2) {
+          throw lastError;
         }
         const delay = Math.min(this.retryBaseDelayMs * 2 ** attempt, 8000);
         await sleep(delay, this.signal);
@@ -203,6 +222,16 @@ export class LoginExpiredError extends Error {
   }
 }
 
+class ProxyHttpStatusError extends Error {
+  readonly retryable: boolean;
+
+  constructor(readonly status: number) {
+    super(`WeChat proxy request failed with HTTP ${status}`);
+    this.name = "ProxyHttpStatusError";
+    this.retryable = status === 408 || status >= 500;
+  }
+}
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
     return Promise.reject(
@@ -274,13 +303,22 @@ function normalizeProxyUrl(proxyUrl: string): string {
   if (parsed.username || parsed.password) {
     throw new Error("[wechat] proxyUrl must not include credentials");
   }
+  if (parsed.search) {
+    throw new Error("[wechat] proxyUrl must not include query parameters");
+  }
   parsed.hash = "";
   return parsed.toString().replace(/\/$/, "");
 }
 
-function requirePositiveInteger(value: number, name: string): number {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`[wechat] ${name} must be a positive integer`);
+function requireBoundedPositiveInteger(
+  value: number,
+  name: string,
+  maximum: number,
+): number {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
+    throw new Error(
+      `[wechat] ${name} must be a positive integer no greater than ${maximum}`,
+    );
   }
   return value;
 }

@@ -126,6 +126,8 @@ mapping to `WECHAT_TYPE_MAP` in `src/callback-server.ts`.
 - **Bounded client requests.** `ProxyClientOptions` can narrow the default 30-second
   request timeout and retry delay and can carry a lifecycle `AbortSignal`. External
   cancellation stops retries immediately; normal transport failures remain bounded to three attempts.
+  HTTP status is authoritative: 408/429/5xx are bounded retry cases, other non-2xx
+  statuses fail immediately, redirects fail closed, and error JSON can never claim success.
 - **Login flow.** On first start (or after session expiry), `WechatChannel`
   polls for QR-code login. `displayQRUrl` prints the URL; the user must scan it
   via the WeChat mobile app within `loginTimeoutMs` (default 5 min).

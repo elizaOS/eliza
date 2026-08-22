@@ -154,7 +154,7 @@ describe("WeChat proxy production boundary", () => {
 
     await expect(
       wrongClient.sendText("wxid_alice", "must not send"),
-    ).rejects.toThrow("sendText failed: unauthorized");
+    ).rejects.toThrow("HTTP 401");
     expect(proxy.snapshot().outboundMessages).toEqual([]);
     expect(proxy.snapshot().requests).toEqual([
       expect.objectContaining({ authenticated: false, path: "/api/send-text" }),
@@ -177,6 +177,42 @@ describe("WeChat proxy production boundary", () => {
         .requests.filter((request) => request.path === "/api/send-text"),
     ).toHaveLength(2);
     expect(proxy.snapshot().outboundMessages).toHaveLength(1);
+  });
+
+  test("never trusts forged success JSON on an HTTP error status", async () => {
+    const proxy = await startWechatProxyMock(seed);
+    stops.push(proxy.stop);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      proxy.enqueueFault("/api/send-text", {
+        status: 500,
+        body: { code: 1000, message: "forged success" },
+      });
+    }
+
+    await expect(
+      client(proxy.url).sendText("wxid_alice", "must not send"),
+    ).rejects.toThrow("HTTP 500");
+    expect(proxy.snapshot().requests).toHaveLength(3);
+    expect(proxy.snapshot().outboundMessages).toEqual([]);
+  });
+
+  test("retries transient server errors boundedly before one applied effect", async () => {
+    const proxy = await startWechatProxyMock(seed);
+    stops.push(proxy.stop);
+    proxy.enqueueFault("/api/send-text", {
+      status: 503,
+      body: { code: 1503, message: "temporarily unavailable" },
+    });
+
+    await client(proxy.url).sendText("wxid_alice", "retry server failure");
+    expect(
+      proxy
+        .snapshot()
+        .requests.filter((request) => request.path === "/api/send-text"),
+    ).toHaveLength(2);
+    expect(proxy.snapshot().outboundMessages).toEqual([
+      expect.objectContaining({ text: "retry server failure" }),
+    ]);
   });
 
   test("bounds malformed responses and timed-out requests to three attempts", async () => {

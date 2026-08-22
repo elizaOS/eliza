@@ -100,5 +100,23 @@ describe("ProxyClient transport policy", () => {
     expect(() => new ProxyClient(account, { retryBaseDelayMs: 1.5 })).toThrow(
       "retryBaseDelayMs must be a positive integer",
     );
+    expect(
+      () => new ProxyClient(account, { requestTimeoutMs: 300_001 }),
+    ).toThrow(
+      "requestTimeoutMs must be a positive integer no greater than 300000",
+    );
+    expect(() => new ProxyClient(account, { retryBaseDelayMs: 8_001 })).toThrow(
+      "retryBaseDelayMs must be a positive integer no greater than 8000",
+    );
+  });
+
+  it("rejects base URL query parameters before path concatenation", () => {
+    expect(
+      () =>
+        new ProxyClient({
+          ...account,
+          proxyUrl: "https://proxy.example.test?tenant=unexpected",
+        }),
+    ).toThrow("proxyUrl must not include query parameters");
   });
 });
