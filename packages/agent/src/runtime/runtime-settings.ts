@@ -28,6 +28,12 @@ export interface RuntimeSettingsProjectionOptions {
    * plugins the plaintext while the environment stays clean.
    */
   connectorSecretsOverlay?: Record<string, string>;
+  /**
+   * Selected provider credential resolved from protected Vault at boot. Kept
+   * in AgentRuntime.settings so provider plugins can use runtime.getSetting()
+   * without exposing the value through process.env or child inheritance.
+   */
+  providerCredentialsOverlay?: Record<string, string>;
 }
 
 /**
@@ -95,6 +101,7 @@ export function buildRuntimeSettingsProjection(
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
+    ...(options.providerCredentialsOverlay ?? {}),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),

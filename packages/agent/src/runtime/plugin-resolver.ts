@@ -2386,7 +2386,9 @@ export async function resolvePlugins(
       );
     }
   }
-  const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
+  const forceIncludePluginNames = new Set(
+    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
+  );
 
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
@@ -2400,6 +2402,31 @@ export async function resolvePlugins(
     .filter(Boolean);
   for (const pluginName of envSkipPlugins) {
     denyList.add(pluginName);
+  }
+  const canonicalDenyList = new Set(
+    Array.from(denyList, resolvePluginPackageAlias),
+  );
+  const pluginEntries = config.plugins?.entries as
+    | Record<string, { enabled?: boolean }>
+    | undefined;
+  const isExplicitlyDisabled = (pluginName: string): boolean => {
+    const canonical = resolvePluginPackageAlias(pluginName);
+    const shortId = canonical.includes("/plugin-")
+      ? canonical.slice(canonical.lastIndexOf("/plugin-") + "/plugin-".length)
+      : canonical;
+    return (
+      pluginEntries?.[shortId]?.enabled === false ||
+      pluginEntries?.[canonical]?.enabled === false
+    );
+  };
+  for (const pluginName of forceIncludePluginNames) {
+    if (canonicalDenyList.has(pluginName) || isExplicitlyDisabled(pluginName)) {
+      continue;
+    }
+    pluginsToLoad.add(pluginName);
+    if (!loadReasons.has(pluginName)) {
+      loadReasons.set(pluginName, "host-selected provider");
+    }
   }
   if (envSkipPlugins.length > 0) {
     logger.info(

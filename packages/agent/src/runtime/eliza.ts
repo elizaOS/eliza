@@ -77,6 +77,7 @@ import {
   isLikelyOpenAiTextModel,
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
+import { hydrateSelectedProviderCredentialFromVault } from "./provider-vault-credential.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
@@ -4480,6 +4481,40 @@ export async function startEliza(
     }
   }
 
+  // Finder/LaunchServices does not inherit a repository dotenv file. The
+  // durable direct-provider selection lives in serviceRouting and its secret
+  // lives in protected Vault, so project only that selected credential into
+  // AgentRuntime.settings. Never place a Vault-only credential in process.env:
+  // unrelated host commands inherit that global environment.
+  // Multi-profile credentials above remain authoritative because an existing
+  // process value is never overwritten.
+  const providerCredentialsOverlay: Record<string, string> = {};
+  if (
+    preferredProviderId &&
+    preferredProviderId !== "elizacloud" &&
+    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1"
+  ) {
+    const providerCredential = await hydrateSelectedProviderCredentialFromVault(
+      {
+        providerId: preferredProviderId,
+        vault: importAppCoreRuntime().sharedVault(),
+        settingsOverlay: providerCredentialsOverlay,
+      },
+    );
+    if (providerCredential.status === "hydrated") {
+      logger.info(
+        `[provider-vault] hydrated selected provider=${providerCredential.providerId} env=${providerCredential.envKey} key=${providerCredential.vaultKey}`,
+      );
+    } else if (
+      providerCredential.status === "missing" ||
+      providerCredential.status === "unavailable"
+    ) {
+      logger.warn(
+        `[provider-vault] selected provider=${providerCredential.providerId} credential=${providerCredential.status} env=${providerCredential.envKey}`,
+      );
+    }
+  }
+
   // Provider plugins snapshot model env during the blocking resolution wave.
   // Seed set-if-missing defaults only after subscription, account-pool, and
   // per-agent vault credentials have all been applied, but before provider
@@ -4820,6 +4855,7 @@ export async function startEliza(
       bundledSkillsDir,
       workspaceSkillsDir,
       connectorSecretsOverlay,
+      providerCredentialsOverlay,
     }),
   });
   installRuntimeMethodBindings(runtime);
