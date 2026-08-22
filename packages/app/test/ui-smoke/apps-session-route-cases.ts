@@ -191,6 +191,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "vault view",
+    path: "/vault",
+    selector: '[data-testid="vault-page"]',
+    timeoutMs: 90_000,
+  },
+  {
     // Pinned home tile → Workflows (live inside the Automations feed).
     name: "automations / workflows view",
     path: "/automations",

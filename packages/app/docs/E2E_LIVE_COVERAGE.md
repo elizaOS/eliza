@@ -16,11 +16,13 @@ local services, and checked-in browser fixtures. A test that requires a hosted
 model, Railway service, production account, physical device, or store signing
 does not belong in this lane.
 
-## Nightly
+## Develop and platform validation
 
-`.github/workflows/nightly.yml` reuses the consolidated CI workflow and adds
-macOS and Windows platform smoke. It does not publish packages or deploy
-infrastructure.
+`.github/workflows/develop-full.yml` is the sole develop-push validation
+authority. Its impact plan calls the reusable
+`.github/workflows/platform-smoke.yml` workflow for deterministic macOS and
+Windows runtime proof when that surface changes. These validation workflows do
+not publish packages or deploy infrastructure.
 
 ## Live services
 

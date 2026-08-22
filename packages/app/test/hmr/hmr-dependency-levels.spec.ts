@@ -34,6 +34,10 @@ const LEVELS = [
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
   {
+    name: "plugin view computer-use-sessions",
+    file: "plugins/plugin-computeruse/src/views/ComputerUseSessionsView.tsx",
+  },
+  {
     // The /cloud launcher view (Eliza Cloud account at a glance), served as
     // plugin-elizacloud's `cloud` view bundle and mounted by DynamicViewLoader.
     name: "plugin view cloud",
@@ -53,10 +57,6 @@ const LEVELS = [
   {
     name: "plugin view calendar",
     file: "plugins/plugin-calendar/src/components/CalendarSection.tsx",
-  },
-  {
-    name: "plugin view documents",
-    file: "plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
   },
   {
     name: "plugin view finances",
