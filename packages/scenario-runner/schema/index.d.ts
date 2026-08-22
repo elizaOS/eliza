@@ -23,6 +23,12 @@ export type CapturedAction = {
 
 export type ScenarioTurnExecution = {
   actionsCalled: CapturedAction[];
+  /** Registered action validation outcome; this is evidence, never an action call. */
+  validation?: {
+    actionName: string;
+    accepted: boolean;
+    expected: "accepted" | "rejected";
+  };
   responseText?: string;
   statusCode?: number;
   responseBody?: unknown;
