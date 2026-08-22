@@ -12,6 +12,7 @@ import { ZodError } from "zod";
 export type ApiErrorCode =
   | "authentication_required"
   | "session_auth_required"
+  | "recent_auth_required"
   | "invalid_credentials"
   | "access_denied"
   | "resource_not_found"
@@ -54,9 +55,13 @@ export class ApiError extends HTTPException {
           }
         : statusOrOptions;
 
-    super(options.status as 400 | 401 | 402 | 403 | 404 | 409 | 422 | 429 | 500 | 503, {
-      message: options.message,
-    });
+    super(
+      options.status as
+        400 | 401 | 402 | 403 | 404 | 409 | 422 | 429 | 500 | 503,
+      {
+        message: options.message,
+      },
+    );
     this.name = "ApiError";
     this.code = options.code;
     this.details = options.details;
@@ -81,8 +86,10 @@ export const ForbiddenError = (message = "Access denied") =>
 export const NotFoundError = (message = "Resource not found") =>
   new ApiError(404, "resource_not_found", message);
 
-export const ValidationError = (message: string, details?: Record<string, unknown>) =>
-  new ApiError(400, "validation_error", message, details);
+export const ValidationError = (
+  message: string,
+  details?: Record<string, unknown>,
+) => new ApiError(400, "validation_error", message, details);
 
 export const RateLimitError = (retryAfter?: number) =>
   new ApiError(
@@ -139,8 +146,13 @@ function inferStatusFromLegacyError(error: Error): number {
   if (isInfrastructureError(error)) return 500;
   const message = error.message.toLowerCase();
   if (error.name === "InsufficientCreditsError") return 402;
-  if (error.name === "AuthenticationError" || error.name === "UnauthorizedError") return 401;
-  if (error.name === "ForbiddenError" || error.name === "AccessDeniedError") return 403;
+  if (
+    error.name === "AuthenticationError" ||
+    error.name === "UnauthorizedError"
+  )
+    return 401;
+  if (error.name === "ForbiddenError" || error.name === "AccessDeniedError")
+    return 403;
   if (error.name === "NotFoundError") return 404;
   if (error.name === "RateLimitError") return 429;
   if (
@@ -192,11 +204,12 @@ type AutoTopUpLifecycleGuardConstraint =
   | "auto_top_up_unresolved_work"
   | "organization_nonzero_credit_balance";
 
-const AUTO_TOP_UP_LIFECYCLE_GUARD_CONSTRAINTS = new Set<AutoTopUpLifecycleGuardConstraint>([
-  "auto_top_up_cutover_paused",
-  "auto_top_up_unresolved_work",
-  "organization_nonzero_credit_balance",
-]);
+const AUTO_TOP_UP_LIFECYCLE_GUARD_CONSTRAINTS =
+  new Set<AutoTopUpLifecycleGuardConstraint>([
+    "auto_top_up_cutover_paused",
+    "auto_top_up_unresolved_work",
+    "organization_nonzero_credit_balance",
+  ]);
 
 /**
  * Drizzle wraps postgres.js errors, so the stable Postgres constraint can live
@@ -210,14 +223,19 @@ function findAutoTopUpLifecycleGuardConstraint(
   const visited = new Set<object>();
   let current = error;
 
-  while ((typeof current === "object" && current !== null) || typeof current === "function") {
+  while (
+    (typeof current === "object" && current !== null) ||
+    typeof current === "function"
+  ) {
     if (visited.has(current)) return null;
     visited.add(current);
 
     const constraint = (current as { constraint?: unknown }).constraint;
     if (
       typeof constraint === "string" &&
-      AUTO_TOP_UP_LIFECYCLE_GUARD_CONSTRAINTS.has(constraint as AutoTopUpLifecycleGuardConstraint)
+      AUTO_TOP_UP_LIFECYCLE_GUARD_CONSTRAINTS.has(
+        constraint as AutoTopUpLifecycleGuardConstraint,
+      )
     ) {
       return constraint as AutoTopUpLifecycleGuardConstraint;
     }
@@ -294,7 +312,8 @@ export function failureResponse(c: Context, error: unknown): Response {
           details: {
             current,
             max: limit,
-            upgrade_hint: "Add credits to your account to increase your agent limit.",
+            upgrade_hint:
+              "Add credits to your account to increase your agent limit.",
           },
         },
         403,
@@ -330,13 +349,15 @@ export function failureResponse(c: Context, error: unknown): Response {
     return c.json(
       {
         success: false,
-        error: "Organization cannot be removed while billing work or credit remains",
+        error:
+          "Organization cannot be removed while billing work or credit remains",
         code: "billing_state_conflict" as const,
       },
       409,
     );
   }
-  const status = error instanceof Error ? inferStatusFromLegacyError(error) : 500;
+  const status =
+    error instanceof Error ? inferStatusFromLegacyError(error) : 500;
   return c.json(
     {
       success: false,

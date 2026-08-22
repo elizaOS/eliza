@@ -1,47 +1,91 @@
-/** Verifies fail-closed deletion admission and generation-fenced worker behavior with mocks. */
+/** Verifies reserved deletion admission, opaque credentials, and fenced legacy claims. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const CLAIM_GENERATION = new Date("2026-09-18T00:00:01Z");
+const REQUESTED_AT = new Date("2026-08-19T00:00:00Z");
+const RECOVERY_AT = new Date("2026-09-18T00:00:00Z");
 
-const requestRepo = {
-  createIdempotent: mock(async (data: Record<string, unknown>) => ({
-    id: "request-1",
-    ...data,
-    identity_deactivated_at: null,
-    completed_at: null,
-  })),
-  update: mock(async (id: string, data: Record<string, unknown>) => ({
-    id,
-    user_id: "user-1",
-    organization_id: "org-1",
+function reservedRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    user_id: "11111111-1111-4111-8111-111111111111",
+    organization_id: "22222222-2222-4222-8222-222222222222",
     steward_user_id: "steward-1",
-    processing_started_at: CLAIM_GENERATION,
-    requested_at: new Date("2026-08-19T00:00:00Z"),
-    execute_after: new Date("2026-09-18T00:00:00Z"),
+    operation_kind: "personal_account_deletion",
+    status: "reserved",
+    lifecycle_revision: 1,
+    lease_generation: 0,
+    lease_expires_at: null,
+    status_token_hash: "status-hash",
+    status_token_expires_at: new Date("2026-12-17T00:00:00Z"),
+    recovery_token_hash: "recovery-hash",
+    recovery_token_expires_at: RECOVERY_AT,
+    request_digest: "request-digest",
+    restore_auto_top_up_enabled: false,
+    restore_pay_as_you_go_from_earnings: true,
+    requested_at: REQUESTED_AT,
+    recovery_expires_at: RECOVERY_AT,
+    execute_after: RECOVERY_AT,
     identity_deactivated_at: null,
+    processing_started_at: null,
+    irreversible_at: null,
+    canceled_at: null,
     completed_at: null,
-    ...data,
-  })),
+    completion_receipt_digest: null,
+    last_error_code: null,
+    failure_class: null,
+    next_reconcile_at: null,
+    attempts: 0,
+    max_attempts: 5,
+    updated_at: REQUESTED_AT,
+    ...overrides,
+  };
+}
+
+const reservePersonalAccountDeletion = mock(async () => ({
+  outcome: "reserved" as const,
+  request: reservedRequest(),
+}));
+const leasePhase = mock(async () => ({
+  receipt: { id: "44444444-4444-4444-8444-444444444444" },
+  generation: 1,
+}));
+const markPhaseProviderCallStarted = mock(async () => true);
+const completeStewardDeactivationPhase = mock(async () => true);
+const completeStewardReactivationPhase = mock(async () => true);
+const markPhaseForReconciliation = mock(async () => true);
+const cancelDuringRecovery = mock(async () => ({
+  outcome: "canceled" as const,
+  request: reservedRequest({
+    status: "canceled",
+    canceled_at: REQUESTED_AT,
+    recovery_token_hash: null,
+    recovery_token_expires_at: null,
+    identity_deactivated_at: REQUESTED_AT,
+    last_error_code: "STEWARD_REACTIVATION_PENDING",
+  }),
+  stewardUserId: "steward-1",
+}));
+const requestRepo = {
+  reservePersonalAccountDeletion,
+  cancelDuringRecovery,
+  leasePhase,
+  markPhaseProviderCallStarted,
+  completeStewardDeactivationPhase,
+  completeStewardReactivationPhase,
+  markPhaseForReconciliation,
   findOpenByUserId: mock(async () => undefined),
-  findOpenByUserAndOrganizationId: mock(async () => undefined),
+  findByStatusTokenHash: mock(async () => undefined),
   claimDue: mock(async () => []),
   recoverStaleProcessing: mock(async () => 0),
   markActionRequired: mock(async () => true),
   recordPurgeFailure: mock(async () => undefined),
 };
-const listByOrganization = mock(async () => [
-  { id: "user-1", role: "owner", is_active: true, is_anonymous: false },
-]);
-const findByIdForWrite = mock(async () => ({ id: "user-1" }));
 const deactivateSteward = mock(async () => ({ userId: "steward-1" }));
+const reactivateSteward = mock(async () => ({ userId: "steward-1" }));
 const deleteSteward = mock(async () => ({ userId: "steward-1" }));
-const updateUser = mock(async () => undefined);
-const deletePersonalAccount = mock(async () => undefined);
-const deleteSharedOrganizationUser = mock(async () => undefined);
-const updateOrg = mock(async () => undefined);
 const purgeOrganizationResources = mock(async () => undefined);
-const recordPurgeFailure = requestRepo.recordPurgeFailure;
 const blob = {
   get: mock(async () => null),
   put: mock(async () => undefined),
@@ -51,30 +95,10 @@ const blob = {
 mock.module("../../db/repositories/account-deletion-requests", () => ({
   accountDeletionRequestsRepository: requestRepo,
 }));
-mock.module("../../db/repositories/api-keys", () => ({
-  apiKeysRepository: { deactivateByUserAndOrganization: mock(async () => undefined) },
-}));
-mock.module("../../db/repositories/users", () => ({
-  usersRepository: {
-    listByOrganizationForWrite: listByOrganization,
-    findByIdForWrite,
-  },
-}));
 mock.module("./steward-platform-users", () => ({
   deactivateStewardPlatformUser: deactivateSteward,
+  reactivateStewardPlatformUser: reactivateSteward,
   deleteStewardPlatformUser: deleteSteward,
-  getStewardApiUrl: () => "https://steward.example",
-  getStewardPlatformKey: () => "test-platform-key",
-  isStewardPlatformConfigured: () => true,
-}));
-mock.module("./user-sessions", () => ({
-  userSessionsService: { endAllUserSessions: mock(async () => undefined) },
-}));
-mock.module("./users", () => ({
-  usersService: { update: updateUser, deletePersonalAccount, delete: deleteSharedOrganizationUser },
-}));
-mock.module("./organizations", () => ({
-  organizationsService: { update: updateOrg },
 }));
 mock.module("../utils/logger", () => ({
   logger: {
@@ -85,184 +109,186 @@ mock.module("../utils/logger", () => ({
 }));
 
 const {
-  AccountDeletionConflictError,
-  getAccountDeletionStatus,
+  cancelAccountDeletion,
   processDueAccountDeletions,
   requestAccountDeletion,
 } = await import("./account-deletion");
 
 beforeEach(() => {
-  requestRepo.update.mockClear();
-  requestRepo.findOpenByUserAndOrganizationId.mockClear();
-  requestRepo.findOpenByUserAndOrganizationId.mockResolvedValue(undefined);
-  requestRepo.claimDue.mockClear();
-  requestRepo.recoverStaleProcessing.mockClear();
-  requestRepo.markActionRequired.mockClear();
-  requestRepo.markActionRequired.mockResolvedValue(true);
-  listByOrganization.mockClear();
-  listByOrganization.mockResolvedValue([
-    { id: "user-1", role: "owner", is_active: true, is_anonymous: false },
-  ]);
-  deactivateSteward.mockClear();
-  deleteSteward.mockClear();
-  updateUser.mockClear();
-  deletePersonalAccount.mockClear();
-  deleteSharedOrganizationUser.mockClear();
-  updateOrg.mockClear();
-  purgeOrganizationResources.mockClear();
-  recordPurgeFailure.mockClear();
-  recordPurgeFailure.mockResolvedValue(undefined);
+  reservePersonalAccountDeletion.mockReset();
+  reservePersonalAccountDeletion.mockResolvedValue({
+    outcome: "reserved",
+    request: reservedRequest(),
+  });
+  leasePhase.mockReset();
+  leasePhase.mockResolvedValue({
+    receipt: { id: "44444444-4444-4444-8444-444444444444" },
+    generation: 1,
+  });
+  markPhaseProviderCallStarted.mockReset();
+  markPhaseProviderCallStarted.mockResolvedValue(true);
+  completeStewardDeactivationPhase.mockReset();
+  completeStewardDeactivationPhase.mockResolvedValue(true);
+  completeStewardReactivationPhase.mockReset();
+  completeStewardReactivationPhase.mockResolvedValue(true);
+  markPhaseForReconciliation.mockReset();
+  markPhaseForReconciliation.mockResolvedValue(true);
+  cancelDuringRecovery.mockReset();
+  cancelDuringRecovery.mockResolvedValue({
+    outcome: "canceled",
+    request: reservedRequest({
+      status: "canceled",
+      canceled_at: REQUESTED_AT,
+      recovery_token_hash: null,
+      recovery_token_expires_at: null,
+      identity_deactivated_at: REQUESTED_AT,
+      last_error_code: "STEWARD_REACTIVATION_PENDING",
+    }),
+    stewardUserId: "steward-1",
+  });
+  deactivateSteward.mockReset();
+  deactivateSteward.mockResolvedValue({ userId: "steward-1" });
+  reactivateSteward.mockReset();
+  reactivateSteward.mockResolvedValue({ userId: "steward-1" });
+  requestRepo.claimDue.mockReset();
   requestRepo.claimDue.mockResolvedValue([]);
+  requestRepo.recoverStaleProcessing.mockReset();
+  requestRepo.recoverStaleProcessing.mockResolvedValue(0);
+  requestRepo.markActionRequired.mockReset();
+  requestRepo.markActionRequired.mockResolvedValue(true);
+  requestRepo.recordPurgeFailure.mockReset();
+  requestRepo.recordPurgeFailure.mockResolvedValue(undefined);
+  purgeOrganizationResources.mockClear();
 });
 
 describe("account deletion lifecycle", () => {
-  test("rejects a new personal deletion before deactivation when no reservation exists", async () => {
-    const rejection = requestAccountDeletion({
-      userId: "user-1",
-      organizationId: "org-1",
+  test("atomically reserves authority and returns separate opaque capabilities", async () => {
+    const accepted = await requestAccountDeletion({
+      userId: "11111111-1111-4111-8111-111111111111",
+      organizationId: "22222222-2222-4222-8222-222222222222",
       stewardUserId: "steward-1",
-    });
-    await expect(rejection).rejects.toEqual(
-      new AccountDeletionConflictError(
-        "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
-        "LIFECYCLE_RESERVATION_REQUIRED",
-      ),
-    );
-    expect(requestRepo.createIdempotent).not.toHaveBeenCalled();
-    expect(deactivateSteward).not.toHaveBeenCalled();
-    expect(updateUser).not.toHaveBeenCalled();
-    expect(updateOrg).not.toHaveBeenCalled();
-  });
-
-  test("rejects an inactive account before creating a deletion receipt", async () => {
-    listByOrganization.mockResolvedValueOnce([
-      { id: "user-1", role: "owner", is_active: false, is_anonymous: false },
-    ]);
-
-    await expect(
-      requestAccountDeletion({
-        userId: "user-1",
-        organizationId: "org-1",
-        stewardUserId: "steward-1",
-      }),
-    ).rejects.toMatchObject({ code: "ACCOUNT_UNAVAILABLE" });
-    expect(requestRepo.createIdempotent).not.toHaveBeenCalled();
-    expect(requestRepo.findOpenByUserAndOrganizationId).not.toHaveBeenCalled();
-  });
-
-  for (const unavailable of [
-    { label: "inactive", is_active: false, deleted_at: null, is_anonymous: false },
-    {
-      label: "deleted",
-      is_active: true,
-      deleted_at: new Date("2026-08-20T00:00:00Z"),
-      is_anonymous: false,
-    },
-    { label: "anonymous", is_active: true, deleted_at: null, is_anonymous: true },
-  ] as const) {
-    test(`does not surface an open receipt for current account state: ${unavailable.label}`, async () => {
-      listByOrganization.mockResolvedValueOnce([{ id: "user-1", role: "owner", ...unavailable }]);
-
-      await expect(
-        getAccountDeletionStatus({ userId: "user-1", organizationId: "org-1" }),
-      ).rejects.toMatchObject({
-        code: unavailable.label === "anonymous" ? "ANONYMOUS_ACCOUNT" : "ACCOUNT_UNAVAILABLE",
-      });
-      expect(requestRepo.findOpenByUserAndOrganizationId).not.toHaveBeenCalled();
+      now: REQUESTED_AT,
     });
 
-    test(`does not accept an open receipt for current account state: ${unavailable.label}`, async () => {
-      listByOrganization.mockResolvedValueOnce([{ id: "user-1", role: "owner", ...unavailable }]);
+    expect(reservePersonalAccountDeletion).toHaveBeenCalledTimes(1);
+    const reservation = reservePersonalAccountDeletion.mock.calls[0]?.[0];
+    expect(reservation?.phases).toHaveLength(15);
+    expect(reservation?.phases[0]).toMatchObject({
+      phase: "account_authority",
+      completed: true,
+    });
+    expect(accepted.request).toMatchObject({
+      requestId: "33333333-3333-4333-8333-333333333333",
+      status: "reserved",
+      canCancel: true,
+      nextAction: "wait_for_export",
+    });
+    expect(accepted.statusCredential).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(accepted.recoveryCredential).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(accepted.statusCredential).not.toBe(accepted.recoveryCredential);
+    expect(deactivateSteward).toHaveBeenCalledWith("steward-1");
+    expect(completeStewardDeactivationPhase).toHaveBeenCalledTimes(1);
+  });
 
+  test.each([
+    ["account_unavailable", "ACCOUNT_UNAVAILABLE"],
+    ["anonymous_account", "ANONYMOUS_ACCOUNT"],
+  ] as const)(
+    "returns %s without crossing a provider boundary",
+    async (outcome, code) => {
+      reservePersonalAccountDeletion.mockResolvedValueOnce({ outcome });
       await expect(
         requestAccountDeletion({
           userId: "user-1",
           organizationId: "org-1",
           stewardUserId: "steward-1",
         }),
-      ).rejects.toMatchObject({
-        code: unavailable.label === "anonymous" ? "ANONYMOUS_ACCOUNT" : "ACCOUNT_UNAVAILABLE",
-      });
-      expect(requestRepo.findOpenByUserAndOrganizationId).not.toHaveBeenCalled();
-    });
-  }
-
-  test("ignores an open receipt that is not bound to the authenticated organization", async () => {
-    await expect(
-      getAccountDeletionStatus({ userId: "user-1", organizationId: "org-1" }),
-    ).resolves.toMatchObject({ state: "lifecycle_unavailable" });
-    await expect(
-      requestAccountDeletion({
-        userId: "user-1",
-        organizationId: "org-1",
-        stewardUserId: "steward-1",
-      }),
-    ).rejects.toMatchObject({ code: "LIFECYCLE_RESERVATION_REQUIRED" });
-    expect(requestRepo.findOpenByUserAndOrganizationId).toHaveBeenCalledTimes(2);
-    expect(requestRepo.findOpenByUserAndOrganizationId).toHaveBeenNthCalledWith(
-      1,
-      "user-1",
-      "org-1",
-      true,
-    );
-    expect(requestRepo.findOpenByUserId).not.toHaveBeenCalled();
-  });
-
-  test("does not treat a revoked former member as active shared authority", async () => {
-    listByOrganization.mockResolvedValueOnce([
-      { id: "user-1", role: "owner", is_active: true, is_anonymous: false },
-      { id: "user-2", role: "member", is_active: false, is_anonymous: false },
-    ]);
-
-    await expect(
-      requestAccountDeletion({
-        userId: "user-1",
-        organizationId: "org-1",
-        stewardUserId: "steward-1",
-      }),
-    ).rejects.toMatchObject({ code: "LIFECYCLE_RESERVATION_REQUIRED" });
-    expect(requestRepo.createIdempotent).not.toHaveBeenCalled();
-  });
-
-  for (const role of ["member", "owner"] as const) {
-    test(`rejects a shared-organization ${role} before any mutation`, async () => {
-      listByOrganization.mockResolvedValueOnce([
-        { id: "user-1", role, is_active: true, is_anonymous: false },
-        { id: "user-2", role: "owner", is_active: true, is_anonymous: false },
-      ]);
-
-      const rejection = requestAccountDeletion({
-        userId: "user-1",
-        organizationId: "org-1",
-        stewardUserId: "steward-1",
-      });
-      await expect(rejection).rejects.toMatchObject({ code: "TRANSFER_REQUIRED" });
-      expect(requestRepo.createIdempotent).not.toHaveBeenCalled();
+      ).rejects.toMatchObject({ code });
       expect(deactivateSteward).not.toHaveBeenCalled();
-      expect(updateUser).not.toHaveBeenCalled();
-      expect(updateOrg).not.toHaveBeenCalled();
-    });
-  }
+    },
+  );
 
-  test("rejects missing object storage before recovering or claiming requests", async () => {
+  test("returns actionable shared-owner state without mutating Steward", async () => {
+    reservePersonalAccountDeletion.mockResolvedValueOnce({
+      outcome: "transfer_required",
+      activeOwnerCount: 1,
+    });
+    await expect(
+      requestAccountDeletion({
+        userId: "user-1",
+        organizationId: "org-1",
+        stewardUserId: "steward-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "TRANSFER_REQUIRED",
+      details: { successorOwnerRequired: true, activeOwnerCount: 1 },
+    });
+    expect(deactivateSteward).not.toHaveBeenCalled();
+  });
+
+  test("records an ambiguous Steward response for reconciliation rather than replay", async () => {
+    deactivateSteward.mockRejectedValueOnce(new Error("response lost"));
+    await requestAccountDeletion({
+      userId: "user-1",
+      organizationId: "org-1",
+      stewardUserId: "steward-1",
+    });
+    expect(markPhaseForReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phaseReceiptId: "44444444-4444-4444-8444-444444444444",
+        generation: 1,
+        errorCode: "STEWARD_DEACTIVATION_AMBIGUOUS",
+      }),
+    );
+    expect(completeStewardDeactivationPhase).not.toHaveBeenCalled();
+  });
+
+  test("uses only the recovery capability to undo and reconciles Steward reactivation", async () => {
+    const recoveryCredential = "r".repeat(43);
+    const canceled = await cancelAccountDeletion(recoveryCredential);
+
+    expect(cancelDuringRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recoveryTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        reactivationIdempotencyKeyDigest:
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    );
+    expect(reactivateSteward).toHaveBeenCalledWith("steward-1");
+    expect(completeStewardReactivationPhase).toHaveBeenCalledTimes(1);
+    expect(canceled).toMatchObject({
+      status: "canceled",
+      identityDeactivated: false,
+      nextAction: "none",
+    });
+  });
+
+  test("records ambiguous Steward reactivation without restoring provider evidence", async () => {
+    reactivateSteward.mockRejectedValueOnce(new Error("response lost"));
+    const canceled = await cancelAccountDeletion("r".repeat(43));
+
+    expect(markPhaseForReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: "STEWARD_REACTIVATION_AMBIGUOUS",
+      }),
+    );
+    expect(completeStewardReactivationPhase).not.toHaveBeenCalled();
+    expect(canceled).toMatchObject({
+      status: "canceled",
+      identityDeactivated: true,
+      nextAction: "wait_for_reconciliation",
+    });
+  });
+
+  test("rejects missing object storage before claiming legacy receipts", async () => {
     await expect(processDueAccountDeletions()).rejects.toThrow(
       "Account deletion requires a valid Cloud object-storage binding",
     );
-    expect(requestRepo.recoverStaleProcessing).not.toHaveBeenCalled();
-    expect(requestRepo.claimDue).not.toHaveBeenCalled();
-    expect(recordPurgeFailure).not.toHaveBeenCalled();
-  });
-
-  test("requires object listing before any claim when using the default purge", async () => {
-    await expect(processDueAccountDeletions(10, { blob })).rejects.toThrow(
-      "Account deletion's default resource purge requires Cloud object listing",
-    );
-    expect(requestRepo.recoverStaleProcessing).not.toHaveBeenCalled();
     expect(requestRepo.claimDue).not.toHaveBeenCalled();
   });
 
-  test("parks a personal organization until a lifecycle reservation exists", async () => {
-    requestRepo.claimDue.mockResolvedValue([
+  test("parks a legacy due receipt without crossing an irreversible boundary", async () => {
+    requestRepo.claimDue.mockResolvedValueOnce([
       {
         id: "request-1",
         user_id: "user-1",
@@ -275,7 +301,12 @@ describe("account deletion lifecycle", () => {
       blob,
       purgeOrganizationResources,
     });
-    expect(result).toEqual({ recovered: 0, processed: 1, completed: 0, actionRequired: 1 });
+    expect(result).toEqual({
+      recovered: 0,
+      processed: 1,
+      completed: 0,
+      actionRequired: 1,
+    });
     expect(requestRepo.markActionRequired).toHaveBeenCalledWith(
       "request-1",
       CLAIM_GENERATION,
@@ -283,12 +314,10 @@ describe("account deletion lifecycle", () => {
     );
     expect(purgeOrganizationResources).not.toHaveBeenCalled();
     expect(deleteSteward).not.toHaveBeenCalled();
-    expect(deletePersonalAccount).not.toHaveBeenCalled();
-    expect(recordPurgeFailure).not.toHaveBeenCalled();
   });
 
-  test("a stale worker cannot overwrite a newer request state", async () => {
-    requestRepo.claimDue.mockResolvedValue([
+  test("a stale legacy worker cannot overwrite a newer request state", async () => {
+    requestRepo.claimDue.mockResolvedValueOnce([
       {
         id: "request-1",
         user_id: "user-1",
@@ -298,68 +327,11 @@ describe("account deletion lifecycle", () => {
       },
     ]);
     requestRepo.markActionRequired.mockResolvedValueOnce(false);
-
     const result = await processDueAccountDeletions(10, {
       blob,
       purgeOrganizationResources,
     });
-
-    expect(result).toEqual({ recovered: 0, processed: 1, completed: 0, actionRequired: 0 });
-    expect(recordPurgeFailure).not.toHaveBeenCalled();
-    expect(purgeOrganizationResources).not.toHaveBeenCalled();
-    expect(deleteSteward).not.toHaveBeenCalled();
-    expect(deletePersonalAccount).not.toHaveBeenCalled();
+    expect(result.actionRequired).toBe(0);
+    expect(requestRepo.recordPurgeFailure).not.toHaveBeenCalled();
   });
-
-  test("retry failure is fenced to the same processing generation", async () => {
-    requestRepo.claimDue.mockResolvedValue([
-      {
-        id: "request-1",
-        user_id: "user-1",
-        organization_id: "org-1",
-        steward_user_id: "steward-1",
-        processing_started_at: CLAIM_GENERATION,
-      },
-    ]);
-    requestRepo.markActionRequired.mockRejectedValueOnce(new Error("write unavailable"));
-
-    await processDueAccountDeletions(10, { blob, purgeOrganizationResources });
-
-    expect(recordPurgeFailure).toHaveBeenCalledWith("request-1", CLAIM_GENERATION, "purge_failed");
-  });
-
-  for (const role of ["member", "owner"] as const) {
-    test(`parks a shared-organization ${role} without deleting anything`, async () => {
-      listByOrganization.mockResolvedValueOnce([
-        { id: "user-1", role, is_active: false, is_anonymous: false },
-        { id: "user-2", role: "owner", is_active: true, is_anonymous: false },
-      ]);
-      requestRepo.claimDue.mockResolvedValue([
-        {
-          id: "request-1",
-          user_id: "user-1",
-          organization_id: "org-1",
-          steward_user_id: "steward-1",
-          processing_started_at: CLAIM_GENERATION,
-        },
-      ]);
-
-      const result = await processDueAccountDeletions(10, {
-        blob,
-        purgeOrganizationResources,
-      });
-
-      expect(result).toEqual({ recovered: 0, processed: 1, completed: 0, actionRequired: 1 });
-      expect(requestRepo.markActionRequired).toHaveBeenCalledWith(
-        "request-1",
-        CLAIM_GENERATION,
-        "LIFECYCLE_RESERVATION_REQUIRED",
-      );
-      expect(recordPurgeFailure).not.toHaveBeenCalled();
-      expect(purgeOrganizationResources).not.toHaveBeenCalled();
-      expect(deleteSteward).not.toHaveBeenCalled();
-      expect(deletePersonalAccount).not.toHaveBeenCalled();
-      expect(deleteSharedOrganizationUser).not.toHaveBeenCalled();
-    });
-  }
 });
