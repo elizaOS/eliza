@@ -138,6 +138,8 @@ export interface DocumentRangeReadResult {
 export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
 	limit: number;
 	offset?: number;
+	/** Inclusive creation-time fence shared by every page of one snapshot read. */
+	snapshotEnd?: number;
 	documentId?: UUID;
 	roomId?: UUID;
 	worldId?: UUID;

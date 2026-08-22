@@ -59,6 +59,7 @@ function makeRuntime(options?: {
       roomId?: UUID;
       entityId?: UUID;
       limit?: number;
+      end?: number;
       cursor?: { createdAt: number; id: UUID };
     }) => {
       assertUuidOrThrowLikeDrizzle(params.roomId, "roomId");
@@ -68,6 +69,11 @@ function makeRuntime(options?: {
         .filter((row) => !params.roomId || row.memory.roomId === params.roomId)
         .filter(
           (row) => !params.entityId || row.memory.entityId === params.entityId,
+        )
+        .filter(
+          (row) =>
+            params.end === undefined ||
+            (row.memory.createdAt ?? 0) <= params.end,
         )
         .map((row) => row.memory)
         .sort(
@@ -618,7 +624,6 @@ describe("MEMORY op:search complete traversal", () => {
 
   it("reports a complete empty result when every row was considered", async () => {
     const { runtime, rows } = makeRuntime();
-    // perTable = max(limit * 2, 200); the default limit is 50, so 200.
     for (let i = 0; i < 200; i++) {
       seedFact(rows, { text: `unrelated note ${i}`, entityId: USER_ID });
     }
@@ -643,6 +648,7 @@ describe("MEMORY op:search complete traversal", () => {
     const result = await runAction(runtime, makeMessage(), {
       action: "search",
       query: "guitar",
+      limit: 1,
     });
 
     const text = String(result.text ?? "");
@@ -678,16 +684,26 @@ describe("MEMORY op:search complete traversal", () => {
     );
   });
 
-  it("rejects an inventory that changes between traversal passes", async () => {
+  it("holds a complete snapshot while newer rows are appended", async () => {
     const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "stable memory", entityId: USER_ID });
-    const originalCount = runtime.countMemories.bind(runtime);
-    let factsCountCalls = 0;
-    runtime.countMemories = async (params) => {
-      const count = await originalCount(params);
-      if (params.tableName !== "facts") return count;
-      factsCountCalls += 1;
-      return factsCountCalls === 1 ? count : count + 1;
+    const stableId = seedFact(rows, {
+      text: "stable memory",
+      entityId: USER_ID,
+    });
+    const originalGetMemories = runtime.getMemories.bind(runtime);
+    let factsCalls = 0;
+    runtime.getMemories = async (params) => {
+      const memories = await originalGetMemories(params);
+      if (params.tableName === "facts" && ++factsCalls === 1) {
+        const appendedId = seedFact(rows, {
+          text: "newer stable memory",
+          entityId: USER_ID,
+        });
+        const appended = rows.find((row) => row.memory.id === appendedId);
+        if (appended)
+          appended.memory.createdAt = (params.end ?? Date.now()) + 1;
+      }
+      return memories;
     };
 
     const result = await runAction(runtime, makeMessage(), {
@@ -696,10 +712,12 @@ describe("MEMORY op:search complete traversal", () => {
       query: "stable",
     });
 
-    expect(result.success).toBe(false);
-    expect((result.data as { error: string }).error).toBe(
-      "MEMORY_TRAVERSAL_INVENTORY_CHANGED",
-    );
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { memories: Array<{ id: UUID }> }).memories.map(
+        (memory) => memory.id,
+      ),
+    ).toEqual([stableId]);
   });
 
   it("rejects content mutation between complete traversal passes", async () => {

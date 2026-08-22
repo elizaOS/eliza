@@ -767,6 +767,15 @@ export function validateDocumentFragmentQueryParams(
 			},
 		);
 	}
+	if (
+		params.snapshotEnd !== undefined &&
+		(!Number.isSafeInteger(params.snapshotEnd) || params.snapshotEnd < 0)
+	) {
+		throw new ElizaError("Document fragment snapshot end is invalid", {
+			code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+			context: { snapshotEnd: params.snapshotEnd },
+		});
+	}
 	if (params.documentId !== undefined && !isUuid(params.documentId)) {
 		throw new ElizaError("Document fragment parent id is invalid", {
 			code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
@@ -1007,6 +1016,13 @@ export function queryDocumentFragmentsInMemory(
 			if (
 				memory.agentId !== params.agentId ||
 				memory.metadata?.type !== MemoryType.FRAGMENT
+			) {
+				return false;
+			}
+			if (
+				params.snapshotEnd !== undefined &&
+				(typeof memory.createdAt !== "number" ||
+					memory.createdAt > params.snapshotEnd)
 			) {
 				return false;
 			}

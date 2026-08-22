@@ -38,6 +38,7 @@ type DocRecord = {
   content: { text?: string };
   metadata: Record<string, unknown>;
   agentId?: UUID;
+  createdAt: number;
 };
 
 function doc(
@@ -49,6 +50,7 @@ function doc(
     id,
     content: { text: `body of ${id}` },
     agentId: AGENT_ID,
+    createdAt: 1_000,
     metadata: {
       type: "document",
       documentId: id,
@@ -77,10 +79,17 @@ function makeService(records: DocRecord[] = CORPUS) {
       async ({
         offset = 0,
         count = records.length,
+        end,
       }: {
         offset?: number;
         count?: number;
-      }) => records.slice(offset, offset + count),
+        end?: number;
+      }) =>
+        records
+          .filter(
+            (record) => end === undefined || (record.createdAt ?? 0) <= end,
+          )
+          .slice(offset, offset + count),
     ),
     getDocumentById: vi.fn(
       async (id: UUID) => records.find((r) => r.id === id) ?? null,
@@ -216,7 +225,7 @@ describe("SEARCH_KNOWLEDGE", () => {
       searchKnowledgeAction,
       runtime,
       msg(OWNER_ENTITY, DM_ROOM),
-      { tags: ["media-format:pdf"] },
+      { tags: ["media-format:pdf"], limit: 1 },
     );
 
     expect(res.success).toBe(true);
@@ -259,6 +268,37 @@ describe("SEARCH_KNOWLEDGE", () => {
         tags: ["media-format:pdf"],
       }),
     ).rejects.toMatchObject({ code: "KNOWLEDGE_TRAVERSAL_INVENTORY_CHANGED" });
+  });
+
+  it("holds a complete facet snapshot while newer documents are appended", async () => {
+    const stable = doc(DOC_GLOBAL, "global");
+    const records = [stable];
+    const service = makeService(records);
+    const originalGetMemories = service.getMemories.getMockImplementation();
+    service.getMemories.mockImplementation(async (params) => {
+      const rows = await originalGetMemories?.(params);
+      if (service.getMemories.mock.calls.length === 1) {
+        const appended = doc(DOC_OWNER_PRIVATE, "global");
+        appended.createdAt = (params.end ?? Date.now()) + 1;
+        records.push(appended);
+      }
+      return rows ?? [];
+    });
+    const runtime = makeRuntime({ service });
+
+    const result = await call(
+      searchKnowledgeAction,
+      runtime,
+      msg(OWNER_ENTITY, DM_ROOM),
+      { tags: ["media-format:pdf"] },
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { items: Array<{ id: UUID }> }).items.map(
+        (item) => item.id,
+      ),
+    ).toEqual([stable.id]);
   });
 
   it("free-text search composes with the help tag on fragment metadata", async () => {

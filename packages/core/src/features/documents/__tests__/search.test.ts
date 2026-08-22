@@ -137,6 +137,7 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 			requesterEntityId: UUID;
 			offset?: number;
 			limit: number;
+			snapshotEnd?: number;
 		}) =>
 			fragments
 				.filter((fragment) => {
@@ -144,8 +145,12 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 						| Record<string, unknown>
 						| undefined;
 					return (
+						(params.snapshotEnd === undefined ||
+							(fragment.createdAt ?? 0) <= params.snapshotEnd) &&
 						metadata?.scope !== "user-private" ||
-						metadata.scopedToEntityId === params.requesterEntityId
+						((params.snapshotEnd === undefined ||
+							(fragment.createdAt ?? 0) <= params.snapshotEnd) &&
+							metadata.scopedToEntityId === params.requesterEntityId)
 					);
 				})
 				.slice(params.offset ?? 0, (params.offset ?? 0) + params.limit),
@@ -337,7 +342,38 @@ describe("DocumentService.searchDocuments", () => {
 			});
 		});
 
-		it("rejects insertion between complete traversal passes", async () => {
+		it("ignores newer appends outside the complete traversal snapshot", async () => {
+			const fragments = Array.from({ length: 20 }, (_, index) =>
+				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			const originalQuery = rt.adapter.queryDocumentFragments.getMockImplementation();
+			let call = 0;
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				const rows = await originalQuery?.(params);
+				if (++call === 1) {
+					const appended = makeFragment(
+						"frag-inserted",
+						"new complete corpus match",
+					);
+					appended.createdAt = (params.snapshotEnd ?? Date.now()) + 1;
+					fragments.push(appended);
+				}
+				return rows ?? [];
+			});
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("complete corpus match"),
+				undefined,
+				"keyword",
+			);
+
+			expect(results).toHaveLength(20);
+			expect(results.map((result) => result.id)).not.toContain("frag-inserted");
+		});
+
+		it("rejects a backdated insertion between complete traversal passes", async () => {
 			const fragments = Array.from({ length: 1_205 }, (_, index) =>
 				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
 			);
@@ -346,9 +382,12 @@ describe("DocumentService.searchDocuments", () => {
 			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
 				call += 1;
 				if (call === 3) {
-					fragments.push(
-						makeFragment("frag-inserted", "new complete corpus match"),
+					const inserted = makeFragment(
+						"frag-inserted",
+						"new complete corpus match",
 					);
+					inserted.createdAt = (params.snapshotEnd ?? Date.now()) - 1;
+					fragments.push(inserted);
 				}
 				return fragments.slice(
 					params.offset ?? 0,

@@ -2101,9 +2101,17 @@ export class DocumentService extends Service {
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
 		const pageSize = 1_000;
-		const first = await this.traverseDocumentFragmentSnapshot(params, pageSize);
+		// Fence out ordinary concurrent appends. Both passes inspect the same
+		// logical inventory; updates, deletes, or backdated writes within that
+		// inventory still reject explicitly through the fingerprint comparison.
+		const snapshotEnd = Date.now();
+		const snapshotParams = { ...params, snapshotEnd };
+		const first = await this.traverseDocumentFragmentSnapshot(
+			snapshotParams,
+			pageSize,
+		);
 		const second = await this.traverseDocumentFragmentSnapshot(
-			params,
+			snapshotParams,
 			pageSize,
 		);
 		if (first.fingerprints.length !== second.fingerprints.length) {
