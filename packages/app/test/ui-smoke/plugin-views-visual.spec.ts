@@ -20,7 +20,7 @@ const MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID = new Map<string, number>([
 ]);
 const DEFAULT_MIN_VISIBLE_TEXT_LENGTH = 21;
 
-// Interaction coverage ratchet signals: rendered text, controls, screenshots.
+// Interaction coverage guard signals: rendered text, controls, screenshots.
 type ViewAudit = {
   id: string;
   viewType: "gui";
@@ -186,9 +186,7 @@ test.describe("registered plugin views visual coverage", () => {
             name: /expand conversation|collapse conversation/i,
           }),
         );
-        const assistantComposer = page.getByTestId(
-          "chat-composer-textarea",
-        );
+        const assistantComposer = page.getByTestId("chat-composer-textarea");
         if ((await assistantLauncher.count()) > 0) {
           await assistantLauncher.first().click();
         }

@@ -199,7 +199,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     ],
     // OWNER_DOCUMENTS is the personal-assistant signature/portal umbrella;
     // DOCUMENT (core documents feature) is the CRUD twin of the view's
-    // upload/delete controls (#14369 ratchet mapping).
+    // upload/delete controls (#14369 guard mapping).
     relatedActions: ["OWNER_DOCUMENTS", "DOCUMENT"],
     anticipatoryIntent:
       "Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.",
@@ -259,7 +259,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "extensions",
     ],
     // PLUGIN is the install/enable/configure twin of the plugin browser's
-    // controls (#14369 ratchet mapping); RUNTIME stays per #13589.
+    // controls (#14369 guard mapping); RUNTIME stays per #13589.
     relatedActions: ["RUNTIME", "PLUGIN"],
     anticipatoryIntent:
       "Offer to install, configure, or troubleshoot a plugin — surface the smallest setup gap — grounded in installed-plugin and health state.",
