@@ -6,10 +6,16 @@
  */
 import { afterEach, describe, expect, it, mock } from "bun:test";
 
-import { BLOOIO_REQUEST_TIMEOUT_MS, blooioFetch } from "./blooio-api";
-import { CLOUDFLARE_REQUEST_TIMEOUT_MS, cloudflareFetch } from "./cloudflare-api";
-import { TWILIO_REQUEST_TIMEOUT_MS, twilioFetch } from "./twilio-api";
-import { TWITTER_REQUEST_TIMEOUT_MS, twitterFetch } from "./twitter-api";
+mock.module("@elizaos/core/edge", () => ({
+  isSensitiveKeyName: () => false,
+  redactLogArgs: (args: unknown[]) => args,
+}));
+
+const { BLOOIO_REQUEST_TIMEOUT_MS, blooioFetch } = await import("./blooio-api");
+const { CLOUDFLARE_REQUEST_TIMEOUT_MS, cloudflareFetch } = await import("./cloudflare-api");
+const { ownedBoundedFetch } = await import("./owned-bounded-fetch");
+const { TWILIO_REQUEST_TIMEOUT_MS, twilioFetch } = await import("./twilio-api");
+const { TWITTER_REQUEST_TIMEOUT_MS, twitterFetch } = await import("./twitter-api");
 
 const realFetch = globalThis.fetch;
 
@@ -57,30 +63,30 @@ describe("shared-utils deadline helpers", () => {
 
   it("aborts a hung Twitter hop at the owned deadline", async () => {
     installHungFetch();
-    await expect(twitterFetch("https://api.twitter.com/2/test", undefined, 100)).rejects.toThrow(
-      /aborted/i,
-    );
+    await expect(
+      twitterFetch("https://api.twitter.com/2/test", undefined, 100),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("aborts a hung Cloudflare hop at the owned deadline", async () => {
     installHungFetch();
     await expect(
       cloudflareFetch("https://api.cloudflare.com/client/v4/test", undefined, 100),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("aborts a hung Twilio hop at the owned deadline", async () => {
     installHungFetch();
     await expect(
       twilioFetch("https://api.twilio.com/2010-04-01/test", undefined, 100),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("aborts a hung Blooio hop at the owned deadline", async () => {
     installHungFetch();
-    await expect(blooioFetch("https://api.blooio.com/v2/api/test", undefined, 100)).rejects.toThrow(
-      /aborted/i,
-    );
+    await expect(
+      blooioFetch("https://api.blooio.com/v2/api/test", undefined, 100),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("keeps the deadline when a never-aborted caller signal is supplied (Twitter)", async () => {
@@ -88,7 +94,7 @@ describe("shared-utils deadline helpers", () => {
     const never = new AbortController();
     await expect(
       twitterFetch("https://api.twitter.com/2/test", { signal: never.signal }, 100),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("keeps the deadline when a never-aborted caller signal is supplied (Cloudflare)", async () => {
@@ -96,7 +102,7 @@ describe("shared-utils deadline helpers", () => {
     const never = new AbortController();
     await expect(
       cloudflareFetch("https://api.cloudflare.com/client/v4/test", { signal: never.signal }, 100),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
   it("propagates caller cancellation before the deadline (Twitter)", async () => {
@@ -149,36 +155,111 @@ describe("shared-utils deadline helpers", () => {
 
   it("body consumption remains bounded by the same hop deadline (Twitter headers arrive, body stalls)", async () => {
     installStalledBody(503);
-    const response = await twitterFetch("https://api.twitter.com/2/test", undefined, 200);
-    // headers arrived, but body should abort at deadline
-    await expect(response.text()).rejects.toThrow(/aborted/i);
+    await expect(twitterFetch("https://api.twitter.com/2/test", undefined, 200)).rejects.toThrow(
+      /expired/i,
+    );
   });
 
   it("body consumption remains bounded by the same hop deadline (Cloudflare)", async () => {
     installStalledBody(500);
-    const response = await cloudflareFetch(
-      "https://api.cloudflare.com/client/v4/test",
-      undefined,
-      200,
-    );
-    await expect(response.text()).rejects.toThrow(/aborted/i);
+    await expect(
+      cloudflareFetch("https://api.cloudflare.com/client/v4/test", undefined, 200),
+    ).rejects.toThrow(/expired/i);
   });
 
   it("body consumption remains bounded for deadline-only helpers (Twilio/Blooio)", async () => {
     installStalledBody(502);
-    const r1 = await twilioFetch("https://api.twilio.com/2010-04-01/test", undefined, 200);
-    await expect(r1.text()).rejects.toThrow(/aborted/i);
+    await expect(
+      twilioFetch("https://api.twilio.com/2010-04-01/test", undefined, 200),
+    ).rejects.toThrow(/expired/i);
     globalThis.fetch = realFetch;
     installStalledBody(502);
-    const r2 = await blooioFetch("https://api.blooio.com/v2/api/test", undefined, 200);
-    await expect(r2.text()).rejects.toThrow(/aborted/i);
+    await expect(blooioFetch("https://api.blooio.com/v2/api/test", undefined, 200)).rejects.toThrow(
+      /expired/i,
+    );
+  });
+
+  it("does not dispatch a pre-aborted request", async () => {
+    const caller = new AbortController();
+    caller.abort(new DOMException("cancelled before dispatch", "AbortError"));
+    const fetchMock = mock(async () => new Response());
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(
+      twitterFetch("https://api.twitter.com/2/test", {
+        signal: caller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the owned timer after a fully buffered success", async () => {
+    let signal: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input, init) => {
+      signal = init?.signal;
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    const response = await twitterFetch("https://api.twitter.com/2/test", undefined, 20);
+    expect(await response.json()).toEqual({ ok: true });
+    await Bun.sleep(40);
+    expect(signal?.aborted).toBe(false);
+  });
+
+  it("returns a typed size error even when body cancellation rejects", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            cancel() {
+              return Promise.reject(new Error("hostile cancel"));
+            },
+          }),
+          { headers: { "content-length": "5" } },
+        ),
+    ) as typeof fetch;
+
+    await expect(
+      ownedBoundedFetch("https://example.com", undefined, {
+        maxResponseBytes: 4,
+        timeoutMs: 100,
+      }),
+    ).rejects.toMatchObject({ code: "CLOUD_REST_RESPONSE_TOO_LARGE" });
+  });
+
+  it("does not await hostile cancellation on fragmentation overflow", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array([1]));
+              controller.enqueue(new Uint8Array([2]));
+              controller.enqueue(new Uint8Array([3]));
+            },
+            cancel() {
+              return new Promise<void>(() => undefined);
+            },
+          }),
+        ),
+    ) as typeof fetch;
+
+    const outcome = await Promise.race([
+      ownedBoundedFetch("https://example.com", undefined, {
+        maxResponseBytes: 10,
+        maxResponseChunks: 2,
+        timeoutMs: 100,
+      }).catch((error: unknown) => error),
+      Bun.sleep(50).then(() => "hung"),
+    ]);
+    expect(outcome).toMatchObject({ code: "CLOUD_REST_RESPONSE_TOO_LARGE" });
   });
 
   it("restores fetch after every case (no mock leak)", async () => {
     installHungFetch();
-    await expect(twitterFetch("https://api.twitter.com/2/test", undefined, 100)).rejects.toThrow(
-      /aborted/i,
-    );
+    await expect(
+      twitterFetch("https://api.twitter.com/2/test", undefined, 100),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(globalThis.fetch).not.toBe(realFetch);
     globalThis.fetch = realFetch;
     expect(globalThis.fetch).toBe(realFetch);
@@ -191,10 +272,10 @@ describe("shared-utils deadline helpers", () => {
     expect(source).not.toContain("response.json().catch(() => ({}))");
   });
 
-  it("does not claim every helper composes caller signal (Twilio/Blooio are deadline-only)", async () => {
+  it("routes Twilio and Blooio through the same owned helper", async () => {
     const twilioSource = await Bun.file("packages/cloud/shared/src/lib/utils/twilio-api.ts").text();
     const blooioSource = await Bun.file("packages/cloud/shared/src/lib/utils/blooio-api.ts").text();
-    expect(twilioSource).toContain("deadline-only");
-    expect(blooioSource).toContain("deadline-only");
+    expect(twilioSource).toContain("ownedBoundedFetch");
+    expect(blooioSource).toContain("ownedBoundedFetch");
   });
 });

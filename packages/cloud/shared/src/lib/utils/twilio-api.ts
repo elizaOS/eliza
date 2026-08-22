@@ -6,23 +6,20 @@
 
 import crypto from "crypto";
 import { z } from "zod";
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
 
 export const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 export const TWILIO_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Bound every Twilio REST hop with an owned deadline. This helper is deadline-only (no caller signal exposure); callers cannot disable the bound.
+ * Bound every Twilio REST hop while preserving caller cancellation.
  */
-export function twilioFetch(
+export async function twilioFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = TWILIO_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
-  });
+  return ownedBoundedFetch(input, init, { timeoutMs });
 }
 
 export interface TwilioSendMessageRequest {

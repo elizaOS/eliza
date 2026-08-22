@@ -6,23 +6,20 @@
 
 import crypto from "crypto";
 import { z } from "zod";
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
 
 export const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
 export const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Bound every Blooio REST hop with an owned deadline. This helper is deadline-only (no caller signal exposure); callers cannot disable the bound.
+ * Bound every Blooio REST hop while preserving caller cancellation.
  */
-export function blooioFetch(
+export async function blooioFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = BLOOIO_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
-  });
+  return ownedBoundedFetch(input, init, { timeoutMs });
 }
 
 export interface BlooioSendMessageRequest {

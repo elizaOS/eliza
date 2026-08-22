@@ -8,22 +8,20 @@ export const TWITTER_API_BASE = "https://api.twitter.com/2";
 export const TWITTER_UPLOAD_BASE = "https://upload.twitter.com/1.1";
 export const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
 
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
+
 /**
  * Bound every Twitter REST hop while preserving caller cancellation.
  *
  * A caller signal is composed with the owned deadline rather than replacing
  * it, so a never-aborted caller signal cannot disable the operation bound.
  */
-export function twitterFetch(
+export async function twitterFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = TWITTER_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
-  });
+  return ownedBoundedFetch(input, init, { timeoutMs });
 }
 
 /**

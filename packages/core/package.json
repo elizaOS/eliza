@@ -125,6 +125,16 @@
 			"import": "./dist/node/utils/atomic-json.js",
 			"default": "./dist/node/utils/atomic-json.js"
 		},
+		"./errors": {
+			"types": "./dist/errors.d.ts",
+			"eliza-source": {
+				"types": "./src/errors.ts",
+				"import": "./src/errors.ts",
+				"default": "./src/errors.ts"
+			},
+			"import": "./dist/errors.js",
+			"default": "./dist/errors.js"
+		},
 		"./security/kms": {
 			"types": "./dist/security/kms/index.d.ts",
 			"eliza-source": {
