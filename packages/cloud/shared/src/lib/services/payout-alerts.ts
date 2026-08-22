@@ -10,6 +10,8 @@ import { logger } from "../utils/logger";
 
 const ALERT_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_ALERT_REQUEST_BODY_BYTES = 64 * 1024;
+const MAX_ALERT_RESPONSE_BODY_BYTES = 64 * 1024;
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 const PAGERDUTY_EVENTS_URL = "https://events.pagerduty.com/v2/enqueue";
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -40,8 +42,11 @@ function assertAllowedAlertEndpoint(input: string | URL): URL {
 
 /**
  * Sends one bounded payout-alert request. Only the two owned alert endpoints
- * are accepted, redirects are rejected, and caller cancellation is composed
- * with (rather than substituted for) the per-hop deadline.
+ * are accepted, redirects are rejected, caller cancellation is composed with
+ * (rather than substituted for) the per-hop deadline, and the deadline stays
+ * armed until the response body has been consumed under a fixed byte ceiling.
+ * The returned Response carries the fully buffered (bounded) body, so callers
+ * never hold an open transport stream.
  */
 export async function alertFetch(
   input: string | URL,
@@ -102,12 +107,85 @@ export async function alertFetch(
       releaseAlertResponse(response, "redirect");
       throw new Error(`Payout alert endpoint redirected with status ${response.status}`);
     }
-    return response;
+    const body = await readBoundedResponseBody(response, aborted);
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   } finally {
     acceptResponse = false;
     clearTimeout(deadlineTimer);
     if (onAbort) signal.removeEventListener("abort", onAbort);
   }
+}
+
+/**
+ * Drains the response body while the hop deadline is still armed. A declared
+ * Content-Length above the ceiling is rejected before any byte is read; a
+ * chunked body that crosses the ceiling, or one that stalls past the deadline,
+ * is cancelled (detached) and rejected. Any failure here surfaces to the
+ * caller as the hop outcome rather than leaving an open stream behind.
+ */
+async function readBoundedResponseBody(
+  response: Response,
+  aborted: Promise<never>,
+): Promise<Uint8Array | null> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    const declared = Number(declaredLength);
+    if (
+      !Number.isSafeInteger(declared) ||
+      declared < 0 ||
+      declared > MAX_ALERT_RESPONSE_BODY_BYTES
+    ) {
+      releaseAlertResponse(response, "oversized");
+      throw new RangeError(
+        `Payout alert response declares ${declaredLength} bytes, above the ${MAX_ALERT_RESPONSE_BODY_BYTES} byte limit`,
+      );
+    }
+  }
+  if (!response.body || NULL_BODY_STATUSES.has(response.status)) {
+    releaseAlertResponse(response, "empty");
+    return null;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_ALERT_RESPONSE_BODY_BYTES) {
+        throw new RangeError(
+          `Payout alert response body exceeds the ${MAX_ALERT_RESPONSE_BODY_BYTES} byte limit`,
+        );
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    // error-policy:J6 the bounded read already failed (oversize, stall, or stream
+    // error) and is rethrown unchanged; cancellation is detached so a hostile
+    // stream cannot delay that rethrow.
+    void reader.cancel(error).catch((cancelError: unknown) => {
+      // error-policy:J6 Response disposal is best-effort after the hop already failed.
+      logger.warn("[PayoutAlerts] Failed to cancel oversized or stalled response body", {
+        error: cancelError,
+      });
+    });
+    throw error;
+  }
+  reader.releaseLock();
+  if (total === 0) return null;
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
 function releaseAlertResponse(response: Response, channel: string): void {

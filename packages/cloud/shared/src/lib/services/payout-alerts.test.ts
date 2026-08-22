@@ -1,7 +1,8 @@
 /**
  * Exercises payout-alert delivery through a deterministic mocked transport,
- * including endpoint policy, redirect and body bounds, cancellation, response
- * disposal, and the real Slack and PagerDuty request shapes.
+ * including endpoint policy, redirect and request/response byte bounds,
+ * cancellation, stalled-body deadlines, response disposal, and the real Slack
+ * and PagerDuty request shapes.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { type AlertTransport, alertFetch, PayoutAlertsService } from "./payout-alerts";
@@ -188,13 +189,147 @@ describe("alertFetch", () => {
     const requests: string[] = [];
     const transport = mock(async (input: string) => {
       requests.push(input);
-      return new Response(
-        new ReadableStream({
-          cancel: () =>
-            input.includes("slack") ? new Promise<void>(() => undefined) : Promise.resolve(),
-        }),
-        { status: 202 },
-      );
+      if (input.includes("slack")) {
+        // A redirect whose body cancellation never settles.
+        return new Response(
+          new ReadableStream({
+            cancel: () => new Promise<void>(() => undefined),
+          }),
+          { status: 302, headers: { location: "https://example.com/capture" } },
+        );
+      }
+      return new Response("ok", { status: 202 });
+    }) as AlertTransport;
+
+    const startedAt = Date.now();
+    await expect(
+      new PayoutAlertsService(transport).sendAlert({
+        severity: "critical",
+        title: "Emergency Pause",
+        message: "Payouts paused",
+      }),
+    ).resolves.toBeUndefined();
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(requests).toEqual([
+      "https://hooks.slack.com/services/T/B/secret",
+      "https://events.pagerduty.com/v2/enqueue",
+    ]);
+  });
+
+  test("rejects a response that declares an oversized Content-Length before reading it", async () => {
+    let pulled = 0;
+    let cancelled = 0;
+    const transport = mock(
+      async () =>
+        new Response(
+          new ReadableStream(
+            {
+              pull(controller) {
+                pulled += 1;
+                controller.enqueue(new Uint8Array(1024));
+              },
+              cancel() {
+                cancelled += 1;
+              },
+            },
+            // No eager prefetch, so any pull proves the body was actually read.
+            { highWaterMark: 0 },
+          ),
+          { status: 200, headers: { "content-length": String(64 * 1024 + 1) } },
+        ),
+    ) as AlertTransport;
+
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, undefined, transport),
+    ).rejects.toThrow(/declares 65537 bytes/);
+    expect(pulled).toBe(0);
+    expect(cancelled).toBe(1);
+  });
+
+  test("rejects a chunked response that crosses the byte ceiling and cancels the stream", async () => {
+    let cancelled = 0;
+    let chunksServed = 0;
+    const transport = mock(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              chunksServed += 1;
+              controller.enqueue(new Uint8Array(16 * 1024));
+            },
+            cancel() {
+              cancelled += 1;
+            },
+          }),
+          { status: 200 },
+        ),
+    ) as AlertTransport;
+
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, undefined, transport),
+    ).rejects.toThrow(/response body exceeds/);
+    expect(cancelled).toBe(1);
+    // 64 KiB ceiling: the fifth 16 KiB chunk trips it; the stream is not read further.
+    expect(chunksServed).toBeLessThanOrEqual(6);
+  });
+
+  test("keeps the deadline armed while the response body stalls", async () => {
+    let cancelled = 0;
+    const transport = mock(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(8));
+            },
+            cancel() {
+              cancelled += 1;
+            },
+          }),
+          { status: 200 },
+        ),
+    ) as AlertTransport;
+
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 25, transport),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(cancelled).toBe(1);
+  });
+
+  test("returns a buffered bounded body so callers never hold the transport stream", async () => {
+    const transport = mock(
+      async () =>
+        new Response("accepted", { status: 202, headers: { "content-type": "text/plain" } }),
+    ) as AlertTransport;
+
+    const response = await alertFetch(
+      "https://events.pagerduty.com/v2/enqueue",
+      undefined,
+      undefined,
+      transport,
+    );
+    expect(response.status).toBe(202);
+    expect(response.headers.get("content-type")).toBe("text/plain");
+    await expect(response.text()).resolves.toBe("accepted");
+  });
+
+  test("an oversized Slack response cannot suppress PagerDuty or completion", async () => {
+    process.env[slackWebhookEnv] = "https://hooks.slack.com/services/T/B/secret";
+    process.env[pagerDutyKeyEnv] = "pager-key";
+    const requests: string[] = [];
+    const transport = mock(async (input: string) => {
+      requests.push(input);
+      if (input.includes("slack")) {
+        return new Response(
+          new ReadableStream({
+            pull(controller) {
+              controller.enqueue(new Uint8Array(32 * 1024));
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("ok", { status: 202 });
     }) as AlertTransport;
 
     await expect(
@@ -226,17 +361,19 @@ describe("alertFetch", () => {
     ).rejects.toThrow("redirected with status 302");
   });
 
-  test("pins real Slack and PagerDuty shapes and releases both responses", async () => {
+  test("pins real Slack and PagerDuty shapes and drains both responses", async () => {
     process.env[slackWebhookEnv] = "https://hooks.slack.com/services/T/B/secret";
     process.env[pagerDutyKeyEnv] = "pager-key";
     const requests: Array<{ url: string; init?: RequestInit }> = [];
-    let cancelledResponses = 0;
+    let drainedResponses = 0;
     const transport = mock(async (input: string, init?: RequestInit) => {
       requests.push({ url: input, init });
       return new Response(
         new ReadableStream({
-          cancel() {
-            cancelledResponses += 1;
+          pull(controller) {
+            controller.enqueue(new TextEncoder().encode("ok"));
+            controller.close();
+            drainedResponses += 1;
           },
         }),
         { status: 202 },
@@ -266,6 +403,6 @@ describe("alertFetch", () => {
       event_action: "trigger",
       payload: { summary: "[elizaOS Payout] Velocity Limit", severity: "critical" },
     });
-    expect(cancelledResponses).toBe(2);
+    expect(drainedResponses).toBe(2);
   });
 });
