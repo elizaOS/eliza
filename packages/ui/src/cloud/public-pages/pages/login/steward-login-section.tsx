@@ -838,6 +838,7 @@ export default function StewardLoginSection() {
       return;
     }
 
+    setSessionRecoveryComplete(false);
     let cancelled = false;
 
     const tryRecoverSession = async () => {
