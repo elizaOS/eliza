@@ -25,7 +25,14 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ComponentType, FormEvent } from "react";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ApiError, api } from "../../lib/api-client";
@@ -63,6 +70,17 @@ import { Button } from "../../../components/ui/button";
 
 interface BillingTabProps {
   user: BillingUser;
+  checkoutIntentStore?: CardCheckoutIntentStore;
+}
+
+export interface CardCheckoutIntent {
+  organizationId: string;
+  amount: number;
+  key: string;
+}
+
+export interface CardCheckoutIntentStore {
+  current: CardCheckoutIntent | null;
 }
 
 const AMOUNT_LIMITS = {
@@ -228,7 +246,7 @@ function getInvoiceStatusPresentation(status: string): {
   return { Icon: AlertCircle, className: "text-muted-strong" };
 }
 
-export function BillingTab({ user }: BillingTabProps) {
+export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const billingSnapshot = useBillingSnapshotV2(user.organization_id);
@@ -237,6 +255,18 @@ export function BillingTab({ user }: BillingTabProps) {
   const [loadingInvoices, setLoadingInvoices] = useState(true);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
   const [purchaseAmount, setPurchaseAmount] = useState("");
+
+  // Idempotency intent for the card checkout (#24144): the server requires an
+  // Idempotency-Key (8-128 chars of [A-Za-z0-9._:-]) for non-hardware credit
+  // purchases and scopes durable checkout orders to (org, key). A UUID is
+  // generated only after validation, reused while the purchase intent (the
+  // amount) is unchanged so ambiguous/transient failures can replay safely,
+  // and cleared when the amount changes or a definitive client-side failure
+  // (plain 4xx) proves the server never accepted the intent. Deliberately a
+  // single-slot ref, NOT a per-amount map: editing A -> B -> A must not
+  // resurrect A's earlier key as a "same intent" replay.
+  const localCheckoutIntentStore = useRef<CardCheckoutIntent | null>(null);
+  const intentStore = checkoutIntentStore ?? localCheckoutIntentStore;
   // Tracks whether a submit has been attempted so an empty submission (which
   // never populates purchaseAmount) still marks the field invalid and renders
   // the adjacent inline error instead of only emitting a transient toast.
@@ -358,12 +388,30 @@ export function BillingTab({ user }: BillingTabProps) {
       return;
     }
 
+    // Card checkout only. The crypto branches above have returned by here, so
+    // the idempotency intent stays scoped to the route that requires it
+    // (/api/stripe/create-checkout-session) and never touches crypto payments.
+    const intent = intentStore.current;
+    const idempotencyKey =
+      intent &&
+      intent.organizationId === user.organization_id &&
+      intent.amount === amount
+        ? intent.key
+        : crypto.randomUUID();
+    const requestIntent: CardCheckoutIntent = {
+      organizationId: user.organization_id,
+      amount,
+      key: idempotencyKey,
+    };
+    intentStore.current = requestIntent;
+
     try {
       const data = await api<{ url?: string }>(
         "/api/stripe/create-checkout-session",
         {
           method: "POST",
           json: { amount, returnUrl: "settings" },
+          headers: { "Idempotency-Key": idempotencyKey },
         },
       );
       if (!data.url) {
@@ -386,8 +434,35 @@ export function BillingTab({ user }: BillingTabProps) {
         setIsProcessingCheckout(false);
         return;
       }
+      if (intentStore.current?.key === requestIntent.key) {
+        intentStore.current = null;
+      }
       window.location.href = data.url;
     } catch (error) {
+      // Preserve the idempotency key across ambiguous/transient outcomes
+      // (network errors, 408/429, 5xx): the server may have created the
+      // durable checkout order before the response was lost, and replaying
+      // the same key reconciles to it instead of double-ordering. Clear it
+      // only on definitive client-side failures (plain 4xx except 408/429):
+      // those prove the server rejected the request before creating anything.
+      // Known edge: if the HTTP status was received but the response body
+      // stream itself fails mid-read, the transport error escapes as a
+      // non-ApiError — including after a 4xx. That case conservatively
+      // PRESERVES the key: we cannot prove the server's 4xx semantics were
+      // for this request, so treating it as ambiguous is the safe direction
+      // (worst case, the retry hits the server's own key/digest conflict).
+      if (
+        error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408 &&
+        error.status !== 429 &&
+        intentStore.current?.organizationId === requestIntent.organizationId &&
+        intentStore.current.amount === requestIntent.amount &&
+        intentStore.current.key === requestIntent.key
+      ) {
+        intentStore.current = null;
+      }
       toast.error(
         error instanceof ApiError
           ? error.message
@@ -561,6 +636,13 @@ export function BillingTab({ user }: BillingTabProps) {
                         onChange={(e) => {
                           setPurchaseAmount(e.target.value);
                           if (submitAttempted) setSubmitAttempted(false);
+                          // Note: the idempotency intent is intentionally NOT
+                          // cleared on edit here. Intermediate keystrokes
+                          // ("2" while retyping "25") would clear a still-
+                          // valid intent prematurely; the authoritative
+                          // rotation check is at submit time, where the full
+                          // parsed amount is compared against the recorded
+                          // intent (#24144).
                         }}
                         className="pl-7 bg-surface border border-border text-txt h-11 font-mono tabular-nums"
                         placeholder="0.00"
