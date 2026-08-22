@@ -61,6 +61,40 @@ async function waitFor(
   }
 }
 
+function serializeFailure(error: unknown): string {
+  return JSON.stringify(
+    {
+      direct: String(error),
+      error,
+    },
+    (_key, value) => {
+      if (!(value instanceof Error)) return value;
+      const fields = new Set([
+        "name",
+        "message",
+        "stack",
+        "cause",
+        ...Object.keys(value),
+      ]);
+      return Object.fromEntries(
+        [...fields].map((field) => [
+          field,
+          (value as unknown as Record<string, unknown>)[field],
+        ]),
+      );
+    },
+  );
+}
+
+function expectSanitizedFailure(
+  error: unknown,
+  secret: string,
+  expected: { code: string; message: string },
+): void {
+  expect(error).toMatchObject(expected);
+  expect(serializeFailure(error)).not.toContain(secret);
+}
+
 afterEach(async () => {
   configureFishAudioWebSocketFactory(undefined);
   await Promise.all(runningMocks.splice(0).map((mock) => mock.stop()));
@@ -184,6 +218,63 @@ describe("Fish Audio protocol mock", () => {
       retryable: false,
     });
     await waitFor(() => mock.store.openConnectionCount === 0);
+  });
+
+  test("redacts provider frame, close, and upgrade text from every public error surface", async () => {
+    const mock = await startMock();
+    const frameSecret = "FRAME_SECRET_do-not-reflect_7e11";
+    mock.store.setFault("provider_error", { providerMessage: frameSecret });
+    const providerFailure = await streamingResult({ text: "frame failure" });
+    const providerError = await providerFailure.bytes.catch(
+      (failure: unknown) => failure,
+    );
+    expectSanitizedFailure(providerError, frameSecret, {
+      code: "FISH_AUDIO_PROVIDER_ERROR",
+      message: "Fish Audio provider reported an error",
+    });
+    expect(classifyFishAudioFailure(providerError)).toEqual({
+      category: "provider",
+      retryable: false,
+    });
+    await waitFor(() => mock.store.openConnectionCount === 0);
+    expect(JSON.stringify(mock.store.readback())).not.toContain(frameSecret);
+
+    mock.store.reset();
+    const closeSecret = "CLOSE_SECRET_do-not-reflect_28c4";
+    mock.store.setFault("close_early", { closeReason: closeSecret });
+    const closed = await streamingResult({ text: "close failure" });
+    const closeError = await closed.bytes.catch((failure: unknown) => failure);
+    expectSanitizedFailure(closeError, closeSecret, {
+      code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+      message: "Fish Audio WebSocket closed before synthesis completed",
+    });
+    expect(closeError).toMatchObject({ context: { closeCode: 1011 } });
+    expect(classifyFishAudioFailure(closeError)).toEqual({
+      category: "transport",
+      retryable: true,
+    });
+    await waitFor(() => mock.store.openConnectionCount === 0);
+    expect(JSON.stringify(mock.store.readback())).not.toContain(closeSecret);
+
+    mock.store.reset();
+    const upgradeSecret = "UPGRADE_SECRET_do-not-reflect_a090";
+    mock.store.setFault("rate_limit", { upgradeStatusText: upgradeSecret });
+    const rejected = await streamingResult({ text: "upgrade failure" });
+    const upgradeError = await rejected.bytes.catch(
+      (failure: unknown) => failure,
+    );
+    expectSanitizedFailure(upgradeError, upgradeSecret, {
+      code: "FISH_AUDIO_RATE_LIMITED",
+      message: "Fish Audio rate limit exceeded",
+    });
+    expect(upgradeError).toMatchObject({
+      context: { retryable: true, statusCode: 429 },
+    });
+    expect(classifyFishAudioFailure(upgradeError)).toEqual({
+      category: "rate_limit",
+      retryable: true,
+    });
+    expect(JSON.stringify(mock.store.readback())).not.toContain(upgradeSecret);
   });
 
   test("cancels and times out stalled real protocol sessions", async () => {

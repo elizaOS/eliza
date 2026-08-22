@@ -388,12 +388,9 @@ function createFishAudioStream(
       if (frame.event === "finish") {
         if (frame.reason === "error") {
           fail(
-            new ElizaError(
-              String(
-                frame.message ?? "Fish Audio TTS failed to finish synthesis",
-              ),
-              { code: "FISH_AUDIO_PROVIDER_FINISH_ERROR" },
-            ),
+            new ElizaError("Fish Audio provider reported a synthesis failure", {
+              code: "FISH_AUDIO_PROVIDER_FINISH_ERROR",
+            }),
           );
         } else {
           finish();
@@ -401,10 +398,9 @@ function createFishAudioStream(
       }
       if (frame.event === "error" || frame.error) {
         fail(
-          new ElizaError(
-            String(frame.message ?? frame.error ?? "Fish Audio TTS failed"),
-            { code: "FISH_AUDIO_PROVIDER_ERROR" },
-          ),
+          new ElizaError("Fish Audio provider reported an error", {
+            code: "FISH_AUDIO_PROVIDER_ERROR",
+          }),
         );
       }
     } catch (error) {
@@ -414,22 +410,28 @@ function createFishAudioStream(
     }
   });
   socket.addEventListener("error", (event) => {
-    const message =
-      event.message ??
-      (event.error instanceof Error
-        ? event.error.message
-        : "Fish Audio WebSocket error");
-    const statusCode = /\b(401|429)\b/.exec(message)?.[1];
+    const diagnosticText = [
+      event.message,
+      event.error instanceof Error ? event.error.message : undefined,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ");
+    const statusCode = /\b(401|429)\b/.exec(diagnosticText)?.[1];
     const code =
       statusCode === "401"
         ? "FISH_AUDIO_AUTH_FAILED"
         : statusCode === "429"
           ? "FISH_AUDIO_RATE_LIMITED"
           : "FISH_AUDIO_WEBSOCKET_ERROR";
+    const publicMessage =
+      statusCode === "401"
+        ? "Fish Audio authentication failed"
+        : statusCode === "429"
+          ? "Fish Audio rate limit exceeded"
+          : "Fish Audio WebSocket transport failed";
     fail(
-      new ElizaError(message, {
+      new ElizaError(publicMessage, {
         code,
-        cause: event.error,
         severity: statusCode === "401" ? "fatal" : "ephemeral",
         context: {
           retryable: statusCode !== "401",
@@ -440,11 +442,11 @@ function createFishAudioStream(
   });
   socket.addEventListener("close", (event) => {
     if (done) return;
-    const detail = event.reason ? `: ${event.reason}` : "";
     fail(
-      new ElizaError(`Fish Audio WebSocket closed before finish${detail}`, {
+      new ElizaError("Fish Audio WebSocket closed before synthesis completed", {
         code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
-        context: { statusCode: event.code, reason: event.reason },
+        context:
+          typeof event.code === "number" ? { closeCode: event.code } : {},
       }),
     );
   });
@@ -518,12 +520,11 @@ function decodeFrame(data: unknown): Record<string, unknown> {
               new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
             )
           : decode(data as Uint8Array);
-  } catch (error) {
+  } catch {
     // error-policy:J1 malformed provider bytes are translated at the transport
     // boundary and never reach callers as an unclassified decoder exception.
     throw new ElizaError("Fish Audio returned an invalid MessagePack frame", {
       code: "FISH_AUDIO_PROVIDER_MESSAGE_INVALID",
-      cause: error,
       severity: "fatal",
     });
   }

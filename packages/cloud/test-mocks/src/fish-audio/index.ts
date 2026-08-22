@@ -23,6 +23,12 @@ export interface FishAudioMockSeed {
   chunkDelayMs: number;
 }
 
+export interface FishAudioMockFaultDetails {
+  providerMessage?: string;
+  closeReason?: string;
+  upgradeStatusText?: string;
+}
+
 export interface FishAudioMockObservation {
   order: number;
   generation: number;
@@ -34,7 +40,6 @@ export interface FishAudioMockObservation {
   referenceId?: string;
   text?: string;
   closeCode?: number;
-  closeReason?: string;
 }
 
 const DEFAULT_SEED: FishAudioMockSeed = {
@@ -48,6 +53,7 @@ export class FishAudioMockStore {
   #generation = 1;
   #seed: FishAudioMockSeed;
   #fault: FishAudioMockFault | null = null;
+  #faultDetails: FishAudioMockFaultDetails = {};
   #observations: FishAudioMockObservation[] = [];
   readonly #connections = new Set<WebSocket>();
 
@@ -71,19 +77,28 @@ export class FishAudioMockStore {
     return this.#connections.size;
   }
 
-  setFault(fault: FishAudioMockFault | null): void {
+  setFault(
+    fault: FishAudioMockFault | null,
+    details: FishAudioMockFaultDetails = {},
+  ): void {
     this.#fault = fault;
+    this.#faultDetails = { ...details };
   }
 
   responsePlan(generation: number): FishAudioResponsePlan | null {
     if (generation !== this.#generation) return null;
-    return { fault: this.#fault, seed: cloneSeed(this.#seed) };
+    return {
+      fault: this.#fault,
+      faultDetails: { ...this.#faultDetails },
+      seed: cloneSeed(this.#seed),
+    };
   }
 
   reset(seed: Partial<FishAudioMockSeed> = {}): void {
     this.#generation += 1;
     this.#seed = normalizeSeed(seed);
     this.#fault = null;
+    this.#faultDetails = {};
     this.#observations = [];
     for (const connection of this.#connections) {
       connection.close(1012, "synthetic environment reset");
@@ -153,8 +168,11 @@ export async function startFishAudioMock(
         model,
       });
       const retryAfter = rejectedStatus === 429 ? "Retry-After: 1\r\n" : "";
+      const statusText =
+        store.responsePlan(store.generation)?.faultDetails.upgradeStatusText ??
+        (rejectedStatus === 429 ? "Too Many Requests" : "Unauthorized");
       socket.write(
-        `HTTP/1.1 ${rejectedStatus} ${rejectedStatus === 429 ? "Too Many Requests" : "Unauthorized"}\r\n${retryAfter}Connection: close\r\n\r\n`,
+        `HTTP/1.1 ${rejectedStatus} ${sanitizeHttpStatusText(statusText)}\r\n${retryAfter}Connection: close\r\nContent-Type: text/plain\r\n\r\n${statusText}`,
       );
       socket.destroy();
       return;
@@ -201,13 +219,12 @@ export async function startFishAudioMock(
         if (responsePlan) void respond(connection, responsePlan);
       }
     });
-    connection.on("close", (code, reason) => {
+    connection.on("close", (code) => {
       store.removeConnection(connection);
       store.observe(
         {
           event: "closed",
           closeCode: code,
-          closeReason: reason.toString(),
         },
         connectionGeneration,
       );
@@ -241,6 +258,7 @@ export async function startFishAudioMock(
 
 interface FishAudioResponsePlan {
   fault: FishAudioMockFault | null;
+  faultDetails: FishAudioMockFaultDetails;
   seed: FishAudioMockSeed;
 }
 
@@ -248,7 +266,7 @@ async function respond(
   connection: WebSocket,
   plan: FishAudioResponsePlan,
 ): Promise<void> {
-  const { fault, seed } = plan;
+  const { fault, faultDetails, seed } = plan;
   if (fault === "stall") return;
   if (fault === "malformed_frame") {
     connection.send(new Uint8Array([0xc1]));
@@ -260,12 +278,19 @@ async function respond(
   }
   if (fault === "provider_error") {
     connection.send(
-      encode({ event: "error", message: "synthetic provider failure" }),
+      encode({
+        event: "error",
+        message: faultDetails.providerMessage ?? "synthetic provider failure",
+        error: faultDetails.providerMessage ?? "synthetic provider failure",
+      }),
     );
     return;
   }
   if (fault === "close_early") {
-    connection.close(1011, "synthetic provider closed early");
+    connection.close(
+      1011,
+      faultDetails.closeReason ?? "synthetic provider closed early",
+    );
     return;
   }
   for (const chunk of seed.audioChunks) {
@@ -300,4 +325,8 @@ function singleHeader(
   value: string | string[] | undefined,
 ): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function sanitizeHttpStatusText(value: string): string {
+  return value.replaceAll(/[\r\n]/g, " ").slice(0, 123);
 }

@@ -66,9 +66,9 @@ class FakeFishSocket {
     }
   }
 
-  close(_code?: number, reason?: string): void {
+  close(code?: number, reason?: string): void {
     this.readyState = 3;
-    this.fire("close", { reason });
+    this.fire("close", { code, reason });
   }
 
   addEventListener(type: string, listener: (event: never) => void): void {
@@ -86,6 +86,10 @@ class FakeFishSocket {
 
   emitFinish(): void {
     this.fire("message", { data: encode({ event: "finish", reason: "stop" }) });
+  }
+
+  emitError(message: string, error: unknown): void {
+    this.fire("error", { message, error });
   }
 
   private fire(type: string, event: unknown): void {
@@ -263,8 +267,49 @@ describe("fishAudioPlugin", () => {
     FakeFishSocket.instances.at(-1)?.close(1011, "provider failed");
 
     await expect(result.bytes).rejects.toThrow(
-      "Fish Audio WebSocket closed before finish: provider failed",
+      "Fish Audio WebSocket closed before synthesis completed",
     );
+  });
+
+  test("does not preserve provider-controlled WebSocket error text or causes", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "transport error", audioStream: true },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+    await Promise.resolve();
+    const secret = "WS_CAUSE_SECRET_do-not-reflect_88fd";
+    FakeFishSocket.instances
+      .at(-1)
+      ?.emitError(`upgrade 401 ${secret}`, new Error(`cause ${secret}`));
+
+    const failure = await result.bytes.catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "FISH_AUDIO_AUTH_FAILED",
+      message: "Fish Audio authentication failed",
+      context: { retryable: false, statusCode: 401 },
+    });
+    const error = failure as Error & {
+      cause?: unknown;
+      context?: Record<string, unknown>;
+    };
+    expect(error.cause).toBeUndefined();
+    expect(
+      [
+        String(error),
+        error.stack,
+        JSON.stringify(error),
+        JSON.stringify(error.context),
+        String(error.cause),
+      ].join("\n"),
+    ).not.toContain(secret);
   });
 
   test("rejects a provider finish frame whose reason is error", async () => {
@@ -282,7 +327,7 @@ describe("fishAudioPlugin", () => {
     if (!("bytes" in result)) throw new Error("Expected streaming result");
 
     await expect(result.bytes).rejects.toThrow(
-      "Fish Audio TTS failed to finish synthesis",
+      "Fish Audio provider reported a synthesis failure",
     );
   });
 
