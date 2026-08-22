@@ -237,6 +237,36 @@ describe("FileMessageInteractionSessionStore", () => {
     ).rejects.toMatchObject({ code: "UNSAFE_INTERACTION_STORE_PATH" });
   });
 
+  it("rejects hardlinked, over-permissive, and oversized store files", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const filePath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json",
+    );
+    await fs.writeFile(filePath, '{"version":1,"sessions":{}}', {
+      mode: 0o644,
+    });
+    await expect(
+      new FileMessageInteractionSessionStore({ stateDirectory }).get("missing"),
+    ).rejects.toMatchObject({ code: "UNSAFE_INTERACTION_STORE_PATH" });
+    await fs.chmod(filePath, 0o600);
+    const linked = path.join(stateDirectory, "linked.json");
+    await fs.link(filePath, linked);
+    await expect(
+      new FileMessageInteractionSessionStore({ stateDirectory }).get("missing"),
+    ).rejects.toMatchObject({ code: "UNSAFE_INTERACTION_STORE_PATH" });
+    await fs.unlink(linked);
+    await fs.writeFile(filePath, "x".repeat(65), { mode: 0o600 });
+    await expect(
+      new FileMessageInteractionSessionStore({
+        stateDirectory,
+        maxStoreBytes: 64,
+      }).get("missing"),
+    ).rejects.toMatchObject({
+      code: "INTERACTION_SESSION_STORE_LIMIT_EXCEEDED",
+    });
+  });
+
   it("rejects a directory swapped to a symlink after initialization", async () => {
     const stateDirectory = await temporaryDirectory();
     const redirectedDirectory = await temporaryDirectory();
@@ -311,5 +341,68 @@ describe("FileMessageInteractionSessionStore", () => {
       await store.deleteExpired(Date.parse(created.session.expiresAt)),
     ).toBe(1);
     expect(await store.get(created.session.reference)).toBeNull();
+  });
+
+  it("never collects a committed ambiguous effect or completed receipt", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { store, created, now } = await seed(stateDirectory, {
+      retentionMs: 0,
+    });
+    const claim = await store.claimIfCurrent({
+      ...bindings,
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+      claimTtlMs: 1,
+    });
+    expect(claim.status).toBe("acquired");
+    await store.commitIfClaimed({
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+    });
+    expect(
+      await store.deleteExpired(Date.parse(created.session.expiresAt)),
+    ).toBe(0);
+    const reopenedCommitted = new FileMessageInteractionSessionStore({
+      stateDirectory,
+    });
+    expect(
+      await reopenedCommitted.get(created.session.reference),
+    ).toMatchObject({
+      consume: { state: "committed" },
+    });
+    await reopenedCommitted.completeIfClaimed({
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+      receipt: {
+        receiptId: "receipt-a",
+        idempotencyKey: "replay-a",
+        status: "completed",
+        completedAt: new Date(now).toISOString(),
+        result: { accepted: true },
+      },
+    });
+    const reopenedCompleted = new FileMessageInteractionSessionStore({
+      stateDirectory,
+    });
+    expect(
+      await reopenedCompleted.get(created.session.reference),
+    ).toMatchObject({
+      consume: {
+        state: "completed",
+        committedAt: new Date(now).toISOString(),
+        receipt: { receiptId: "receipt-a" },
+      },
+    });
+    expect(
+      await reopenedCompleted.deleteExpired(
+        Date.parse(created.session.expiresAt),
+      ),
+    ).toBe(0);
   });
 });
