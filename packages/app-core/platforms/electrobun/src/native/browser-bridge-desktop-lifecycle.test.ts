@@ -14,6 +14,13 @@ import {
 
 const roots: string[] = [];
 
+vi.mock("electrobun/bun", () => ({
+  Session: {
+    defaultSession: { cookies: { get: () => [] } },
+    fromPartition: () => ({ cookies: { get: () => [] } }),
+  },
+}));
+
 describe("browser bridge desktop lifecycle", () => {
   afterEach(async () => {
     await stopBrowserBridgeDesktopLifecycle();

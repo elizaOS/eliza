@@ -5,6 +5,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  browserBridgeSchema,
   type BrowserBridgeCompanionPairingResponse,
   createBrowserBridgeCompanionStatus,
   MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
@@ -74,7 +75,16 @@ async function pair(
 }
 
 beforeAll(async () => {
-  runtimeResult = await createLifeOpsTestRuntime();
+  runtimeResult = await createLifeOpsTestRuntime({
+    plugins: [
+      {
+        name: "browser-companion-revocation-test-schema",
+        description:
+          "Installs the production browser schema used by the revocation repository test.",
+        schema: browserBridgeSchema,
+      },
+    ],
+  });
   runtime = runtimeResult.runtime;
   repository = new LifeOpsRepository(runtime);
 }, 180_000);

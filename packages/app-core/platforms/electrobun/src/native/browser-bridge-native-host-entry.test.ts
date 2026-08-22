@@ -98,11 +98,7 @@ describe("browser bridge native-host executable", () => {
       broker,
     });
     try {
-      const bunExecutable = path.join(
-        process.env.BUN_INSTALL ?? path.join(os.homedir(), ".bun"),
-        "bin",
-        "bun",
-      );
+      const bunExecutable = process.env.ELIZA_BUN_EXECUTABLE ?? "bun";
       const child = spawn(
         bunExecutable,
         [
