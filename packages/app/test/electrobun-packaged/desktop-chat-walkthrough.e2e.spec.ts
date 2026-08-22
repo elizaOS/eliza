@@ -48,6 +48,7 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import { dismissPermissionPrimingIfShown } from "./packaged-ui-actions";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
@@ -361,6 +362,7 @@ test("packaged desktop chat walkthrough records a real-time MP4", async ({
       30_000,
     );
     await waitForRendererShellReady(harness);
+    await dismissPermissionPrimingIfShown(harness);
 
     // The agent must be ready (pill leaves the disabled `booting` phase) before
     // the pill will summon.

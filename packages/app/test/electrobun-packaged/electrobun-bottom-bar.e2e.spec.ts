@@ -19,9 +19,11 @@ import {
 // MAIN-PROCESS window shape (reported by the desktop test bridge, independent of
 // whether the renderer fully boots the chat UI): when ELIZA_DESKTOP_BOTTOM_BAR=1
 // the resting surface is a frameless (no OS title bar), short, full-width window
-// pinned to the screen bottom — not the 1440x900 dashboard. Runs only where a
-// packaged launcher has been built (CI / local packaged builds); self-skips
-// otherwise.
+// pinned to the screen bottom — not the 1440x900 dashboard. A dedicated Linux
+// xvfb-run display has no window manager, so it can prove the native frame
+// shape and renderer anchoring but not compositor-enforced absolute placement.
+// Runs only where a packaged launcher has been built (CI / local packaged
+// builds); self-skips otherwise.
 
 test.describe.configure({ mode: "serial" });
 
@@ -73,12 +75,22 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
 
     // A bar, not the dashboard: short, wider than tall, pinned low on screen.
     const bounds = state.mainWindow.bounds;
+    const absolutePlacementAvailable =
+      harness.displaySession === "desktop-session";
     expect(bounds).toBeTruthy();
     if (bounds) {
       expect(bounds.height).toBeLessThanOrEqual(200);
       expect(bounds.width).toBeGreaterThan(bounds.height);
-      // Pinned to the bottom: the bar's bottom edge sits well below its top.
-      expect(bounds.y).toBeGreaterThan(bounds.height);
+      if (absolutePlacementAvailable) {
+        // Pinned to the bottom: the bar's bottom edge sits well below its top.
+        expect(bounds.y).toBeGreaterThan(bounds.height);
+      } else {
+        testInfo.annotations.push({
+          type: "placement-evidence-unavailable",
+          description:
+            "dedicated xvfb-run display has no window manager; native frame shape and renderer anchoring remain asserted",
+        });
+      }
     }
 
     // The native shell and tray exist before the renderer/preload RPC is ready.
@@ -86,7 +98,9 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     // for it before issuing DOM eval requests that would otherwise be lost.
     const interactiveState = await harness.waitForState(
       (next) =>
-        next.shell.shortcuts.some((shortcut) => shortcut.id === "chat-overlay"),
+        (next.shell.shortcuts ?? []).some(
+          (shortcut) => shortcut.id === "chat-overlay",
+        ),
       "Expected the popup hotkey to register after the renderer mounted.",
       30_000,
     );
@@ -258,9 +272,11 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     if (!bounds || !expandedBounds) {
       throw new Error("bottom-bar expansion bounds unavailable");
     }
-    expect(expandedBounds.y + expandedBounds.height).toBe(
-      bounds.y + bounds.height,
-    );
+    if (absolutePlacementAvailable) {
+      expect(expandedBounds.y + expandedBounds.height).toBe(
+        bounds.y + bounds.height,
+      );
+    }
     await expect
       .poll(() =>
         harness.eval(`(() => {

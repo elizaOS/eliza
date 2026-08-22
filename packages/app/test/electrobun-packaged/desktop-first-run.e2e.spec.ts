@@ -17,6 +17,7 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import { dismissPermissionPrimingIfShown } from "./packaged-ui-actions";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
@@ -183,6 +184,7 @@ test("packaged desktop drives chat-first onboarding and persists first-run", asy
     await waitForTestId(harness, TUTORIAL_CHOICE("skip"));
     await clickTestId(harness, TUTORIAL_CHOICE("skip"));
 
+    await dismissPermissionPrimingIfShown(harness);
     await waitForRestingShell(harness);
     expect(
       api.requests.filter((request) => request === "POST /api/first-run"),
@@ -266,6 +268,7 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
         timeoutMs: 60_000,
       },
     );
+    await dismissPermissionPrimingIfShown(harness);
     await waitForRestingShell(harness);
 
     const storedToken = await bridgeEval<string | null>(

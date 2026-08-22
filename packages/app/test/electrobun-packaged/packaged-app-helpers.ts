@@ -132,6 +132,22 @@ export function isMacConsoleSessionLocked(): boolean {
   );
 }
 
+export type PackagedDisplaySession =
+  | "desktop-session"
+  | "dedicated-xvfb-without-window-manager";
+
+export function classifyPackagedDisplaySession(args: {
+  platform: NodeJS.Platform;
+  useCurrentDisplay: boolean;
+  xvfbRunAvailable: boolean;
+}): PackagedDisplaySession {
+  return args.platform === "linux" &&
+    !args.useCurrentDisplay &&
+    args.xvfbRunAvailable
+    ? "dedicated-xvfb-without-window-manager"
+    : "desktop-session";
+}
+
 function resolveExecutableOnPath(binaryName: string): string | null {
   const pathValue = process.env.PATH || "";
   for (const dir of pathValue.split(path.delimiter)) {
@@ -616,6 +632,7 @@ export class PackagedDesktopHarness {
   appEnv: NodeJS.ProcessEnv;
   process: ChildProcess | null = null;
   logs: PackagedProcessLogs | null = null;
+  displaySession: PackagedDisplaySession = "desktop-session";
 
   constructor(args: {
     tempRoot: string;
@@ -664,6 +681,11 @@ export class PackagedDesktopHarness {
     const xvfbRun = useDedicatedXvfb
       ? resolveExecutableOnPath("xvfb-run")
       : null;
+    this.displaySession = classifyPackagedDisplaySession({
+      platform: process.platform,
+      useCurrentDisplay: !useDedicatedXvfb,
+      xvfbRunAvailable: xvfbRun !== null,
+    });
     const launchCommand = xvfbRun ?? this.launcherPath;
     const launchArgs = xvfbRun ? ["-a", this.launcherPath] : [];
 
