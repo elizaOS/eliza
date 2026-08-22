@@ -3,7 +3,9 @@
  * RAM before a model's fit is judged, so a silently truncated value removes the
  * safety margin that refuses an oversized load.
  */
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { localInferencePlugin } from "../provider";
 import { ramHeadroomReserveMb } from "./ram-budget";
 
 const KEY = "ELIZA_LOCAL_RAM_HEADROOM_MB";
@@ -15,10 +17,8 @@ afterEach(() => {
 });
 
 describe("ramHeadroomReserveMb", () => {
-	it("ignores a trailing-garbage reserve instead of parsing its prefix", () => {
-		// parseInt("1junk") is 1 — a 1MB reserve instead of 1536MB, overstating
-		// usable RAM by ~1.5GB so a model that must be refused reports "fits".
-		process.env[KEY] = "1junk";
+	it("uses the default only when the override is absent", () => {
+		delete process.env[KEY];
 		expect(ramHeadroomReserveMb()).toBe(1536);
 	});
 
@@ -35,8 +35,39 @@ describe("ramHeadroomReserveMb", () => {
 		expect(ramHeadroomReserveMb()).toBe(2048);
 	});
 
-	it("falls back for a reserve beyond the safe integer range", () => {
-		process.env[KEY] = "9007199254740993";
-		expect(ramHeadroomReserveMb()).toBe(1536);
+	it.each([
+		"",
+		"   ",
+		"1junk",
+		"2048MB",
+		"2048.7",
+		"2 048",
+		"2_048",
+		"-1",
+		"9007199254740993",
+	])("rejects the explicit malformed reserve %j", (configured) => {
+		process.env[KEY] = configured;
+
+		expect(() => ramHeadroomReserveMb()).toThrowError(ElizaError);
+		try {
+			ramHeadroomReserveMb();
+		} catch (error) {
+			expect(error).toMatchObject({
+				code: "INVALID_LOCAL_RAM_HEADROOM",
+				context: { envKey: KEY, configured },
+				severity: "fatal",
+			});
+		}
+	});
+
+	it("surfaces malformed configuration through plugin startup", async () => {
+		process.env[KEY] = "2048MB";
+		if (!localInferencePlugin.init) {
+			throw new Error("local-inference plugin has no startup initializer");
+		}
+
+		await expect(
+			localInferencePlugin.init({}, {} as IAgentRuntime),
+		).rejects.toMatchObject({ code: "INVALID_LOCAL_RAM_HEADROOM" });
 	});
 });
