@@ -1689,7 +1689,12 @@ async function runCreateLegacy(
       // completion nobody wanted 25s after "stopping the build" (live
       // 2026-08-22, breakout). The newborn session is stopped before its
       // first prompt and the task reads interrupted.
-      if (createTurnSignal?.aborted) {
+      const taskInterruptedMeanwhile =
+        threadId && typeof taskService?.getTask === "function"
+          ? (await taskService.getTask(threadId).catch(() => null))?.status ===
+            "interrupted"
+          : false;
+      if (createTurnSignal?.aborted || taskInterruptedMeanwhile) {
         await markSessionAdministrativelyStopped(
           service,
           session.sessionId,
@@ -4407,6 +4412,43 @@ async function runCancel(
           )
         : newestSession(sessions);
 
+    if (!target && !sessionId && _message.roomId) {
+      // No session yet, but the room's build may still be spawning: the
+      // durable task exists and is what the user wants stopped.
+      const taskService = runtime.getService?.(
+        OrchestratorTaskService.serviceType,
+      ) as OrchestratorTaskService | null | undefined;
+      const titles =
+        typeof taskService?.interruptInFlightTasksForRoom === "function"
+          ? await taskService
+              .interruptInFlightTasksForRoom(
+                String(_message.roomId),
+                "user_cancel",
+              )
+              .catch(() => [] as string[])
+          : [];
+      if (titles.length > 0) {
+        const label = titles[0];
+        const { text } = await phraseForUser(
+          runtime,
+          {
+            intent: "confirm",
+            facts: { canceledCount: titles.length, label },
+            mustInclude: [label],
+          },
+          `Canceled "${label}".`,
+        );
+        await callbackText(callback, text);
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          data: { canceledCount: titles.length, interruptedTasks: titles },
+        };
+      }
+    }
     if (!target) {
       // Planner-facing only: the not-found guard next to the evaluator's
       // in-voice reply was a double message.

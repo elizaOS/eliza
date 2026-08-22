@@ -1115,6 +1115,11 @@ function activeSessionNames(
     .filter((label): label is string => label.length > 0);
 }
 
+const IN_FLIGHT_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set([
+  "open",
+  "active",
+  "validating",
+]);
 const TERMINAL_OR_INTERRUPTED_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
   new Set(["interrupted", "done", "failed", "archived"]);
 
@@ -6722,6 +6727,31 @@ export class OrchestratorTaskService extends Service {
       } | null
     )?.releaseDeferredCompletionRelay?.(taskId, "failed");
     return true;
+  }
+
+  /** Interrupt every in-flight task of a room. The cancel that lands while a
+   * spawn is still in flight finds NO session to stop (live 2026-08-22,
+   * pong: "No matching task found." and the build completed anyway); the
+   * durable task already exists, and the spawn path honors `interrupted`
+   * when it returns. Parked (waiting_on_user) tasks are not in flight. */
+  async interruptInFlightTasksForRoom(
+    roomId: string,
+    reason: string,
+  ): Promise<string[]> {
+    const titles: string[] = [];
+    const records = await this.store.listTasks({ includeArchived: false });
+    for (const record of records) {
+      if (!IN_FLIGHT_TASK_STATUSES.has(record.status)) continue;
+      const doc = await this.store.getTask(record.id);
+      if (!doc) continue;
+      if (doc.task.roomId !== roomId && doc.task.taskRoomId !== roomId) {
+        continue;
+      }
+      if (await this.interruptTask(record.id, reason)) {
+        titles.push(doc.task.title);
+      }
+    }
+    return titles;
   }
 
   async stopTaskAgent(taskId: string, sessionId: string): Promise<boolean> {

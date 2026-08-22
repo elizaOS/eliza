@@ -47,4 +47,28 @@ describe("interruptTask", () => {
     );
     expect((await store.getTask(detail.task.id))?.task.status).toBe("done");
   });
+
+  it("interrupts only the room's in-flight tasks, leaving parked and finished ones", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = makeService(store);
+    const mk = async (title: string, status: string, roomId: string) => {
+      const d = await store.createTask({ title, goal: "g", roomId });
+      await store.updateTask(d.task.id, { status: status as never });
+      return d.task.id;
+    };
+    const spawning = await mk("pong", "open", "room-a");
+    const running = await mk("snake", "active", "room-a");
+    const parked = await mk("tetris", "waiting_on_user", "room-a");
+    const elsewhere = await mk("other", "active", "room-b");
+
+    const titles = await service.interruptInFlightTasksForRoom(
+      "room-a",
+      "user_cancel",
+    );
+    expect(titles.sort()).toEqual(["pong", "snake"]);
+    expect((await store.getTask(spawning))?.task.status).toBe("interrupted");
+    expect((await store.getTask(running))?.task.status).toBe("interrupted");
+    expect((await store.getTask(parked))?.task.status).toBe("waiting_on_user");
+    expect((await store.getTask(elsewhere))?.task.status).toBe("active");
+  });
 });
