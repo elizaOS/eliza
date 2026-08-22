@@ -298,6 +298,37 @@ function InspectorBackdrop({
   );
 }
 
+function TimelineLoadOlderButton({
+  label,
+  onLoad,
+}: {
+  label: string;
+  onLoad: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "timeline-load-older",
+    role: "button",
+    label,
+    group: "orchestrator-timeline",
+    description: "Load older entries in the task timeline",
+  });
+  return (
+    <Button
+      unstyled
+      ref={ref}
+      type="button"
+      onClick={onLoad}
+      className="flex items-center gap-1 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-txt"
+      data-testid="orchestrator-load-older"
+      aria-label={label}
+      {...agentProps}
+    >
+      <ArrowDownToLine className="h-3 w-3" />
+      {label}
+    </Button>
+  );
+}
+
 export function OrchestratorWorkbench() {
   const {
     t: appT,
@@ -579,14 +610,6 @@ export function OrchestratorWorkbench() {
       description: "Toggle showing archived tasks in the list",
       onActivate: () => setShowArchived((value) => !value),
     });
-  const { ref: loadOlderRef, agentProps: loadOlderAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "timeline-load-older",
-      role: "button",
-      label: loadOlderLabel,
-      group: "orchestrator-timeline",
-      description: "Load older entries in the task timeline",
-    });
   return (
     <div
       className="relative flex h-full min-h-0 w-full flex-col bg-bg text-txt"
@@ -759,19 +782,10 @@ export function OrchestratorWorkbench() {
               >
                 {timelineCursor ? (
                   <div className="flex justify-center">
-                    <Button
-                      unstyled
-                      ref={loadOlderRef}
-                      type="button"
-                      onClick={() => void loadOlderTimeline()}
-                      className="flex items-center gap-1 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-txt"
-                      data-testid="orchestrator-load-older"
-                      aria-label={loadOlderLabel}
-                      {...loadOlderAgentProps}
-                    >
-                      <ArrowDownToLine className="h-3 w-3" />
-                      {loadOlderLabel}
-                    </Button>
+                    <TimelineLoadOlderButton
+                      label={loadOlderLabel}
+                      onLoad={() => void loadOlderTimeline()}
+                    />
                   </div>
                 ) : null}
                 {conversation.length === 0 ? (
