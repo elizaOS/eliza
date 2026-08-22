@@ -79,9 +79,10 @@ The plugin itself reads no env vars directly. The `routes.ts` handler reads one 
 |-------------|--------|---------|
 | `ELIZA_ADMIN_ENTITY_ID` | `runtime.getSetting(...)` | Identifies the OWNER actor for document access-control decisions |
 
-Access control is role-based, resolved from request headers:
-- `x-eliza-entity-id` / `x-eliza-actor-entity-id` — caller's entity UUID
-- Role inferred as `OWNER`, `USER`, or `AGENT` based on header vs known agent/owner IDs
+Access control is role-based and requires the authenticated `AccessContext`
+provided by the host route boundary. Missing context returns `401`; the plugin
+never treats an absent caller as owner. Request headers alone are not an
+identity or authorization authority.
 
 ## How to extend
 
