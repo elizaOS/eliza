@@ -36,6 +36,20 @@ describe("alertFetch", () => {
     expect(transport).not.toHaveBeenCalled();
   });
 
+  test("rejects timeouts beyond the platform timer range before dispatch", async () => {
+    const transport = mock(async () => new Response(null, { status: 204 }));
+
+    await expect(
+      alertFetch(
+        "https://events.pagerduty.com/v2/enqueue",
+        undefined,
+        2_147_483_648,
+        transport as AlertTransport,
+      ),
+    ).rejects.toThrow(/between 1 and 2147483647/);
+    expect(transport).not.toHaveBeenCalled();
+  });
+
   test("aborts a hung alert hop at the configured timeout", async () => {
     const transport = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>

@@ -9,6 +9,7 @@ import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 
 const ALERT_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
 const MAX_ALERT_REQUEST_BODY_BYTES = 64 * 1024;
 const MAX_ALERT_RESPONSE_BODY_BYTES = 64 * 1024;
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
@@ -54,8 +55,10 @@ export async function alertFetch(
   timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
   transport: AlertTransport = safeFetch,
 ): Promise<Response> {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new RangeError("Payout alert timeout must be a positive integer");
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMER_TIMEOUT_MS) {
+    throw new RangeError(
+      `Payout alert timeout must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}`,
+    );
   }
 
   const url = assertAllowedAlertEndpoint(input);
