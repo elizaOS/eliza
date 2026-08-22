@@ -120,6 +120,32 @@ function responseBody(data: unknown): string {
   return JSON.stringify(data);
 }
 
+/** CapacitorHttp expects JSON as a structured bridge value, not serialized text. */
+function nativeRequestData(
+  body: BodyInit | null | undefined,
+  headers: HeadersInit | undefined,
+): unknown {
+  const serialized = bodyToString(body) ?? undefined;
+  if (serialized === undefined) return undefined;
+
+  const contentType = new Headers(headers ?? {})
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (contentType !== "application/json" && !contentType?.endsWith("+json")) {
+    return serialized;
+  }
+
+  try {
+    return JSON.parse(serialized);
+  } catch {
+    // error-policy:J3 Preserve malformed JSON as malformed wire input so the
+    // server remains the authority for its normal explicit validation error.
+    return serialized;
+  }
+}
+
 /** CapacitorHttp returns arraybuffer responses as base64 across the native bridge. */
 function responseBytes(data: unknown): ArrayBuffer {
   if (typeof data !== "string" || data.length === 0) return new ArrayBuffer(0);
@@ -161,8 +187,9 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     }
 
     const method = init.method ?? "GET";
-    // CapacitorHttp has no concept of a null body — treat null and undefined alike.
-    const data = bodyToString(init.body) ?? undefined;
+    // CapacitorHttp crosses a JSON bridge: send JSON as a structured value so
+    // iOS serializes the request object once instead of quoting the JSON text.
+    const data = nativeRequestData(init.body, init.headers);
     if (init.body != null && data === undefined) {
       return fetchAgentTransport.request(url, init, context);
     }

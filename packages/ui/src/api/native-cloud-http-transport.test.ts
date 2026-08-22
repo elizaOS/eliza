@@ -298,13 +298,39 @@ describe("non-streaming requests are unchanged", () => {
       expect.objectContaining({
         url,
         method: "POST",
-        data: JSON.stringify({ code: "redacted-test-code" }),
+        data: { code: "redacted-test-code" },
         connectTimeout: 10_000,
         readTimeout: 10_000,
         disableRedirects: true,
       }),
     );
     expect(globalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves non-JSON request text instead of coercing it through the bridge", async () => {
+    const transport = nativeCloudHttpTransportForUrl(API_URL);
+    await transport?.request(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: "123",
+    });
+
+    expect(capacitorHttpRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: "123" }),
+    );
+  });
+
+  it("leaves malformed JSON intact so the server returns its validation error", async () => {
+    const transport = nativeCloudHttpTransportForUrl(API_URL);
+    await transport?.request(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: "{invalid",
+    });
+
+    expect(capacitorHttpRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: "{invalid" }),
+    );
   });
 });
 
