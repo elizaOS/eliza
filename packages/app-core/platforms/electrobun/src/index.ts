@@ -755,6 +755,14 @@ let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
 let quitRequestPromise: Promise<void> | null = null;
+let desktopSessionAgentGeneration: string | null = null;
+
+function desktopSessionGeneration(status: {
+  port: number;
+  startedAt: number | null;
+}): string {
+  return `${status.port}:${status.startedAt ?? "unknown"}`;
+}
 
 function requestAppQuit(): Promise<void> {
   if (quitRequestPromise) {
@@ -2087,6 +2095,11 @@ async function _startAgent(): Promise<void> {
       // renderer to start hitting /api. This is the desktop trust path: if
       // the bridge succeeds, the renderer skips the login UI; if it fails,
       // the renderer behaves like a remote browser (password-required).
+      const generation = desktopSessionGeneration(status);
+      if (desktopSessionAgentGeneration !== generation) {
+        markDesktopSessionStale();
+        desktopSessionAgentGeneration = generation;
+      }
       await primeDesktopSessionAuth(apiBase, rendererBase);
       const apiToken = resolveApiToken(process.env) ?? "";
       // Set the source-of-truth API base FIRST (correct even with zero open
@@ -2870,7 +2883,11 @@ async function main(): Promise<void> {
         // crash) — the cookies we installed during _startAgent were scoped to
         // the old origin. Re-prime so every renderer's next /api request stays
         // authenticated, including any open secondary renderer windows.
-        markDesktopSessionStale();
+        const generation = desktopSessionGeneration(status);
+        if (desktopSessionAgentGeneration !== generation) {
+          markDesktopSessionStale();
+          desktopSessionAgentGeneration = generation;
+        }
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
           process.env as Record<string, string | undefined>,

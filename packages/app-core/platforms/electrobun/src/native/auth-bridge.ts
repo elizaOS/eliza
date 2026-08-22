@@ -41,6 +41,7 @@ const PERSISTED_SCHEMA_VERSION = 1;
 const SOCKET_CONNECT_TIMEOUT_MS = 5_000;
 const HTTP_REQUEST_TIMEOUT_MS = 10_000;
 const SECRET_BYTES = 32;
+const SESSION_VALIDATION_TIMEOUT_MS = 3_000;
 /** Refuse to reuse an existing session if it expires within this window. */
 const EXPIRY_SAFETY_MARGIN_MS = 60_000;
 
@@ -516,9 +517,49 @@ export async function loadOrCreateDesktopSession(
 ): Promise<DesktopSession | null> {
   const env = deps.env ?? process.env;
   const now = deps.now ?? Date.now;
+  const fetchImpl = deps.fetchImpl ?? fetch;
 
   const existing = loadPersistedSession(env, now);
-  if (existing) return existing;
+  if (existing) {
+    let response: Response;
+    try {
+      response = await fetchImpl(
+        `${deps.apiBase.replace(/\/+$/, "")}/api/auth/me`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${existing.sessionId}`,
+          },
+          signal: AbortSignal.timeout(SESSION_VALIDATION_TIMEOUT_MS),
+        },
+      );
+    } catch (err) {
+      // A starting or restarting backend is not proof that the persisted
+      // session is invalid. Preserve it and let the bounded lifecycle retry.
+      logger.debug(
+        "[DesktopAuthBridge] Persisted session validation deferred",
+        {
+          error: errorMessage(err),
+        },
+      );
+      return null;
+    }
+    if (response.ok) return existing;
+    if (response.status !== 401 && response.status !== 403) {
+      logger.debug(
+        "[DesktopAuthBridge] Persisted session validation deferred",
+        {
+          status: response.status,
+        },
+      );
+      return null;
+    }
+    // A definitive auth rejection means the runtime generation no longer
+    // knows this session. Remove only the opaque local receipt and mint a new
+    // proof-bound session; never install a known-stale cookie into the webview.
+    clearPersistedSession(env);
+  }
 
   const fresh = await bootstrapDesktopSession(deps);
   if (!fresh) return null;

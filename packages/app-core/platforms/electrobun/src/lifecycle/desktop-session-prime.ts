@@ -8,10 +8,18 @@ import {
   loadOrCreateDesktopSession,
 } from "../native/auth-bridge";
 
-// Tracks whether the desktop loopback session has already been primed for the
-// current process lifetime. The bridge is idempotent on disk, but cookie jar
-// writes are cheap and we don't need to repeat them on every status tick.
-let desktopSessionPrimed = false;
+// The agent emits several status changes while one startup settles. Keep the
+// proof exchange single-flight: every exchange owns a one-shot Unix socket,
+// and overlapping retries can otherwise hammer the auth route before its
+// database is ready and starve the embedded API.
+let desktopSessionPrimedApiBase: string | null = null;
+let desktopSessionPrimeInFlight: Promise<void> | null = null;
+let desktopSessionPrimeInFlightApiBase: string | null = null;
+let desktopSessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let desktopSessionFailureCount = 0;
+
+const DESKTOP_SESSION_RETRY_BASE_MS = 500;
+const DESKTOP_SESSION_RETRY_MAX_MS = 15_000;
 
 /**
  * Reset the primed flag so the next call to primeDesktopSessionAuth() re-runs
@@ -19,7 +27,35 @@ let desktopSessionPrimed = false;
  * cookies installed for the old origin don't authenticate the new one.
  */
 export function markDesktopSessionStale(): void {
-  desktopSessionPrimed = false;
+  desktopSessionPrimedApiBase = null;
+  desktopSessionFailureCount = 0;
+  if (desktopSessionRetryTimer) {
+    clearTimeout(desktopSessionRetryTimer);
+    desktopSessionRetryTimer = null;
+  }
+}
+
+/** Reset module state between focused tests. Never called by the app. */
+export function _resetDesktopSessionPrimeForTests(): void {
+  markDesktopSessionStale();
+  desktopSessionPrimeInFlight = null;
+  desktopSessionPrimeInFlightApiBase = null;
+}
+
+function scheduleDesktopSessionRetry(
+  apiBase: string,
+  rendererOrigin: string,
+): void {
+  if (desktopSessionRetryTimer) return;
+  const exponent = Math.max(0, desktopSessionFailureCount - 1);
+  const delay = Math.min(
+    DESKTOP_SESSION_RETRY_MAX_MS,
+    DESKTOP_SESSION_RETRY_BASE_MS * 2 ** exponent,
+  );
+  desktopSessionRetryTimer = setTimeout(() => {
+    desktopSessionRetryTimer = null;
+    void primeDesktopSessionAuth(apiBase, rendererOrigin);
+  }, delay);
 }
 
 /**
@@ -36,43 +72,76 @@ export async function primeDesktopSessionAuth(
   apiBase: string,
   rendererOrigin: string,
 ): Promise<void> {
-  if (desktopSessionPrimed) return;
-  let session: DesktopSession | null;
-  try {
-    session = await loadOrCreateDesktopSession({ apiBase });
-  } catch (err) {
-    logger.warn(
-      `[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-  if (!session) {
-    logger.info(
-      "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
-    );
+  if (desktopSessionPrimedApiBase === apiBase) return;
+  if (desktopSessionRetryTimer) return;
+
+  if (desktopSessionPrimeInFlight) {
+    await desktopSessionPrimeInFlight;
+    if (desktopSessionPrimedApiBase === apiBase) return;
+    // A port rollover can arrive while the old origin is still finishing.
+    // Let the new origin take its own turn once the prior proof is closed.
+    if (desktopSessionPrimeInFlightApiBase !== apiBase) {
+      return primeDesktopSessionAuth(apiBase, rendererOrigin);
+    }
     return;
   }
 
-  try {
-    const partition = resolveMainWindowPartition(process.env);
-    const electrobunSession =
-      partition !== null
-        ? Session.fromPartition(partition)
-        : Session.defaultSession;
-    const installer = electrobunSession.cookies as {
-      set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
-    };
-    const touched = installDesktopSessionCookies(installer, session, {
-      apiOrigin: apiBase,
-      rendererOrigin,
-    });
-    desktopSessionPrimed = true;
-    logger.info(
-      `[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
-    );
-  } catch (err) {
-    logger.warn(
-      `[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  const run = async (): Promise<void> => {
+    let session: DesktopSession | null;
+    try {
+      session = await loadOrCreateDesktopSession({ apiBase });
+    } catch (err) {
+      desktopSessionFailureCount += 1;
+      logger.warn(
+        `[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      scheduleDesktopSessionRetry(apiBase, rendererOrigin);
+      return;
+    }
+    if (!session) {
+      desktopSessionFailureCount += 1;
+      logger.info(
+        "[Main] Desktop auth bridge is not ready; retrying with bounded backoff.",
+      );
+      scheduleDesktopSessionRetry(apiBase, rendererOrigin);
+      return;
+    }
+
+    try {
+      const partition = resolveMainWindowPartition(process.env);
+      const electrobunSession =
+        partition !== null
+          ? Session.fromPartition(partition)
+          : Session.defaultSession;
+      const installer = electrobunSession.cookies as {
+        set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
+      };
+      const touched = installDesktopSessionCookies(installer, session, {
+        apiOrigin: apiBase,
+        rendererOrigin,
+      });
+      desktopSessionPrimedApiBase = apiBase;
+      desktopSessionFailureCount = 0;
+      if (desktopSessionRetryTimer) {
+        clearTimeout(desktopSessionRetryTimer);
+        desktopSessionRetryTimer = null;
+      }
+      logger.info(
+        `[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
+      );
+    } catch (err) {
+      desktopSessionFailureCount += 1;
+      logger.warn(
+        `[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      scheduleDesktopSessionRetry(apiBase, rendererOrigin);
+    }
+  };
+
+  desktopSessionPrimeInFlightApiBase = apiBase;
+  desktopSessionPrimeInFlight = run().finally(() => {
+    desktopSessionPrimeInFlight = null;
+    desktopSessionPrimeInFlightApiBase = null;
+  });
+  await desktopSessionPrimeInFlight;
 }
