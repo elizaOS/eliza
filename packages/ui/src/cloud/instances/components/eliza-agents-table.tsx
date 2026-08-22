@@ -1145,8 +1145,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             className="inline-flex items-center gap-1 text-xs text-muted-strong hover:text-txt-strong transition-colors bg-transparent border-0 p-0"
                           >
                             <ExternalLink className="h-3 w-3" />
-                            {t("cloud.elizaAgentsTable.open", {
-                              defaultValue: "Open",
+                            {t("cloud.elizaAgentsTable.openWebUi", {
+                              defaultValue: "Open Web UI",
                             })}
                           </Button>
                         ) : (
@@ -1156,30 +1156,6 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
 
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-0.5">
-                          {hasStandaloneWebUi && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  type="button"
-                                  aria-label={t(
-                                    "cloud.elizaAgentsTable.openWebUi",
-                                    { defaultValue: "Open Web UI" },
-                                  )}
-                                  onClick={() => openWebUIWithPairing(sb.id)}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors"
-                                >
-                                  <ExternalLink className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-card border-border">
-                                {t("cloud.elizaAgentsTable.openWebUi", {
-                                  defaultValue: "Open Web UI",
-                                })}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-
                           {canStart && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -1389,8 +1365,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           className="flex min-h-touch items-center justify-center gap-1.5 px-3 py-2 text-xs text-accent rounded-md hover:bg-bg-hover transition-colors"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
-                          {t("cloud.elizaAgentsTable.webUi", {
-                            defaultValue: "Web UI",
+                          {t("cloud.elizaAgentsTable.openWebUi", {
+                            defaultValue: "Open Web UI",
                           })}
                         </Button>
                       )}

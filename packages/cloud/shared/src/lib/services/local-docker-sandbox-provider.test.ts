@@ -10,6 +10,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   collectLocalDockerLlmPassthrough,
   parseLocalDockerBridgeGatewayCidrs,
+  resolveLocalDockerCloudApiBaseUrl,
   sandboxBridgeFetch,
 } from "./local-docker-sandbox-provider";
 
@@ -262,5 +263,32 @@ describe("parseLocalDockerBridgeGatewayCidrs", () => {
   test("fails closed when Docker omits or corrupts the gateway", () => {
     expect(() => parseLocalDockerBridgeGatewayCidrs("\n")).toThrow("did not report a gateway");
     expect(() => parseLocalDockerBridgeGatewayCidrs("not-an-ip\n")).toThrow("invalid gateway");
+  });
+});
+
+describe("resolveLocalDockerCloudApiBaseUrl", () => {
+  test("pins local pairing to the isolated Worker v1 base", () => {
+    expect(
+      resolveLocalDockerCloudApiBaseUrl({
+        ELIZA_CLOUD_LOCAL_API_URL: "http://127.0.0.1:18787",
+        NEXT_PUBLIC_API_URL: "https://cloud.eliza.app/api/v1",
+      }),
+    ).toBe("http://127.0.0.1:18787/api/v1");
+    expect(
+      resolveLocalDockerCloudApiBaseUrl({
+        NEXT_PUBLIC_API_URL: "http://localhost:8787/api/v1",
+      }),
+    ).toBe("http://localhost:8787/api/v1");
+  });
+
+  test("fails closed instead of exchanging local tokens with a remote Cloud", () => {
+    expect(() => resolveLocalDockerCloudApiBaseUrl({})).toThrow(
+      "ELIZA_CLOUD_LOCAL_API_URL is required",
+    );
+    expect(() =>
+      resolveLocalDockerCloudApiBaseUrl({
+        ELIZA_CLOUD_LOCAL_API_URL: "https://cloud.eliza.app",
+      }),
+    ).toThrow("must use a loopback HTTP origin");
   });
 });
