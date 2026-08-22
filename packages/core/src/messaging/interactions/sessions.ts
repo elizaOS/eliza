@@ -108,12 +108,23 @@ export type MessageInteractionConsumeState =
 			attempt: number;
 	  }
 	| {
+			state: "committed";
+			claimId: string;
+			replayKey: string;
+			responseDigest: string;
+			response: MessageInteractionResponse;
+			claimedAt: string;
+			committedAt: string;
+			attempt: number;
+	  }
+	| {
 			state: "completed";
 			claimId: string;
 			replayKey: string;
 			responseDigest: string;
 			response: MessageInteractionResponse;
 			claimedAt: string;
+			committedAt: string;
 			completedAt: string;
 			attempt: number;
 			receipt: MessageInteractionReceipt;
@@ -172,6 +183,13 @@ export interface MessageInteractionCompleteContext {
 	now: number;
 }
 
+export interface MessageInteractionCommitContext {
+	reference: string;
+	claimId: string;
+	replayKey: string;
+	now: number;
+}
+
 /**
  * Storage transaction boundary. Implementations must make every method atomic;
  * a distributed implementation maps these operations to one row transaction.
@@ -182,6 +200,9 @@ export interface MessageInteractionSessionStore {
 	claimIfCurrent(
 		context: MessageInteractionClaimContext,
 	): Promise<MessageInteractionClaimResult>;
+	commitIfClaimed(
+		context: MessageInteractionCommitContext,
+	): Promise<MessageInteractionSession>;
 	completeIfClaimed(
 		context: MessageInteractionCompleteContext,
 	): Promise<MessageInteractionSession>;
@@ -195,8 +216,8 @@ export interface MessageInteractionSessionStore {
 
 export interface MessageInteractionEffectExecutor {
 	/**
-	 * Must be idempotent for idempotencyKey. A retry after a crash may invoke this
-	 * again; it must return the original effect receipt without repeating effect.
+	 * Executes only after the host durably commits the replay key. A crash after
+	 * commit is permanently ambiguous and is never automatically re-executed.
 	 */
 	execute(args: {
 		idempotencyKey: string;
@@ -225,13 +246,25 @@ function requiredText(value: string, path: string): string {
 }
 
 function validClock(value: number): number {
-	if (!Number.isSafeInteger(value) || value < 0) {
+	if (
+		!Number.isSafeInteger(value) ||
+		value < 0 ||
+		value > 8_640_000_000_000_000
+	) {
 		return fail(
 			"INVALID_MESSAGE_INTERACTION_CLOCK",
 			"Trusted clock is invalid.",
 		);
 	}
 	return value;
+}
+
+function parseCanonicalIso(value: string): number {
+	const parsed = Date.parse(value);
+	if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+		return Number.NaN;
+	}
+	return parsed;
 }
 
 function hex(bytes: Uint8Array): string {
@@ -497,6 +530,7 @@ export function validateMessageInteractionResponse(
 function assertCurrentContext(
 	session: MessageInteractionSession,
 	context: MessageInteractionClaimContext,
+	options: { requireActive: boolean } = { requireActive: true },
 ): MessageInteractionResponse {
 	const suppliedBindings: MessageInteractionBindings = {
 		actorId: context.actorId,
@@ -513,13 +547,13 @@ function assertCurrentContext(
 			{ reference: session.reference },
 		);
 	}
-	if (session.authorization.state !== "active") {
+	if (options.requireActive && session.authorization.state !== "active") {
 		return fail(
 			"MESSAGE_INTERACTION_AUTHORIZATION_REVOKED",
 			"Interaction authorization was revoked after render.",
 		);
 	}
-	if (Date.parse(session.expiresAt) <= context.now) {
+	if (options.requireActive && Date.parse(session.expiresAt) <= context.now) {
 		return fail("MESSAGE_INTERACTION_EXPIRED", "Interaction session expired.");
 	}
 	const response = session.presetResponse ?? context.response;
@@ -559,7 +593,17 @@ export function applyMessageInteractionClaim(
 			"Interaction claim lease must be a positive safe integer.",
 		);
 	}
-	const response = assertCurrentContext(session, context);
+	if (context.claimTtlMs > 8_640_000_000_000_000 - context.now) {
+		return fail(
+			"INVALID_MESSAGE_INTERACTION_CLAIM_TTL",
+			"Interaction claim lease exceeds the supported clock range.",
+		);
+	}
+	const response = assertCurrentContext(session, context, {
+		requireActive:
+			session.consume.state !== "committed" &&
+			session.consume.state !== "completed",
+	});
 	const digest = responseDigest(response);
 	if (session.consume.state === "completed") {
 		if (
@@ -572,6 +616,18 @@ export function applyMessageInteractionClaim(
 			);
 		}
 		return { status: "replay", session, receipt: session.consume.receipt };
+	}
+	if (session.consume.state === "committed") {
+		if (
+			session.consume.replayKey !== context.replayKey ||
+			session.consume.responseDigest !== digest
+		) {
+			return fail(
+				"MESSAGE_INTERACTION_ALREADY_COMMITTED",
+				"Interaction already committed a different response.",
+			);
+		}
+		return { status: "in_progress", session };
 	}
 	if (session.consume.state === "claimed") {
 		if (
@@ -626,11 +682,14 @@ export function applyMessageInteractionCompletion(
 	requiredText(context.claimId, "claimId");
 	requiredText(context.replayKey, "replayKey");
 	requiredText(context.receipt.receiptId, "receipt.receiptId");
-	const receiptCompletedAt = Date.parse(context.receipt.completedAt);
-	if (!Number.isFinite(receiptCompletedAt)) {
+	const receiptCompletedAt = parseCanonicalIso(context.receipt.completedAt);
+	if (
+		!Number.isFinite(receiptCompletedAt) ||
+		receiptCompletedAt > context.now
+	) {
 		return fail(
 			"INVALID_MESSAGE_INTERACTION_RECEIPT",
-			"Effect receipt has an invalid completion time.",
+			"Effect receipt has an invalid or future completion time.",
 		);
 	}
 	if (session.consume.state === "completed") {
@@ -645,7 +704,7 @@ export function applyMessageInteractionCompletion(
 		);
 	}
 	if (
-		session.consume.state !== "claimed" ||
+		session.consume.state !== "committed" ||
 		session.consume.claimId !== context.claimId ||
 		session.consume.replayKey !== context.replayKey
 	) {
@@ -670,9 +729,48 @@ export function applyMessageInteractionCompletion(
 		responseDigest: session.consume.responseDigest,
 		response: session.consume.response,
 		claimedAt: session.consume.claimedAt,
+		committedAt: session.consume.committedAt,
 		completedAt: new Date(context.now).toISOString(),
 		attempt: session.consume.attempt,
 		receipt: structuredClone(context.receipt),
+	};
+	session.revision += 1;
+	return session;
+}
+
+/** Durably linearize one effect before crossing the external side-effect boundary. */
+export function applyMessageInteractionCommit(
+	sessionValue: MessageInteractionSession,
+	context: MessageInteractionCommitContext,
+): MessageInteractionSession {
+	const session = cloneSession(sessionValue);
+	validClock(context.now);
+	if (
+		session.reference !== context.reference ||
+		session.consume.state !== "claimed" ||
+		session.consume.claimId !== context.claimId ||
+		session.consume.replayKey !== context.replayKey
+	) {
+		return fail(
+			"MESSAGE_INTERACTION_STALE_CLAIM",
+			"Interaction effect commitment does not own the current claim.",
+		);
+	}
+	if (session.authorization.state !== "active") {
+		return fail(
+			"MESSAGE_INTERACTION_AUTHORIZATION_REVOKED",
+			"Interaction authorization was revoked before effect commitment.",
+		);
+	}
+	session.consume = {
+		state: "committed",
+		claimId: session.consume.claimId,
+		replayKey: session.consume.replayKey,
+		responseDigest: session.consume.responseDigest,
+		response: session.consume.response,
+		claimedAt: session.consume.claimedAt,
+		committedAt: new Date(context.now).toISOString(),
+		attempt: session.consume.attempt,
 	};
 	session.revision += 1;
 	return session;
@@ -691,6 +789,12 @@ export function applyMessageInteractionRevocation(
 		);
 	}
 	if (session.authorization.state === "revoked") return session;
+	if (session.consume.state === "committed") {
+		return fail(
+			"MESSAGE_INTERACTION_EFFECT_COMMITTED",
+			"Interaction revocation is pending an already committed effect outcome.",
+		);
+	}
 	session.authorization = {
 		...session.authorization,
 		state: "revoked",
@@ -771,6 +875,22 @@ export class InMemoryMessageInteractionSessionStore
 		});
 	}
 
+	async commitIfClaimed(
+		context: MessageInteractionCommitContext,
+	): Promise<MessageInteractionSession> {
+		return this.atomic(() => {
+			const current = this.sessions.get(context.reference);
+			if (!current)
+				return fail(
+					"MESSAGE_INTERACTION_NOT_FOUND",
+					"Interaction session was not found.",
+				);
+			const committed = applyMessageInteractionCommit(current, context);
+			this.sessions.set(context.reference, cloneSession(committed));
+			return committed;
+		});
+	}
+
 	async revokeAuthorization(args: {
 		reference: string;
 		decisionId: string;
@@ -798,7 +918,11 @@ export class InMemoryMessageInteractionSessionStore
 		return this.atomic(() => {
 			let deleted = 0;
 			for (const [reference, session] of this.sessions) {
-				if (Date.parse(session.expiresAt) <= before) {
+				if (
+					Date.parse(session.expiresAt) <= before &&
+					session.consume.state !== "committed" &&
+					session.consume.state !== "completed"
+				) {
 					this.sessions.delete(reference);
 					deleted += 1;
 				}
@@ -851,7 +975,7 @@ export class MessageInteractionSessionAuthority {
 				"MESSAGE_INTERACTION_PROFILE_BINDING_MISMATCH",
 				"Capability profile belongs to another account or target.",
 			);
-		const expiry = Date.parse(args.expiresAt);
+		const expiry = parseCanonicalIso(args.expiresAt);
 		if (
 			!Number.isFinite(expiry) ||
 			expiry <= now ||
@@ -926,7 +1050,9 @@ export class MessageInteractionSessionAuthority {
 			consume: { state: "pending" },
 			revision: 0,
 		};
-		const authorizationTime = Date.parse(session.authorization.decidedAt);
+		const authorizationTime = parseCanonicalIso(
+			session.authorization.decidedAt,
+		);
 		if (!Number.isFinite(authorizationTime) || authorizationTime > now) {
 			return fail(
 				"INVALID_MESSAGE_INTERACTION_AUTHORIZATION",
@@ -993,11 +1119,22 @@ export class MessageInteractionSessionAuthority {
 				"MESSAGE_INTERACTION_STORE_PROTOCOL",
 				"Store returned an unclaimed session.",
 			);
+		const committed = await this.store.commitIfClaimed({
+			reference,
+			claimId: claim.session.consume.claimId,
+			replayKey,
+			now: this.now(),
+		});
+		if (committed.consume.state !== "committed")
+			return fail(
+				"MESSAGE_INTERACTION_STORE_PROTOCOL",
+				"Store did not retain the effect commitment.",
+			);
 		const receipt = await args.executor.execute({
 			idempotencyKey: replayKey,
-			effect: claim.session.effect,
-			response: claim.session.consume.response,
-			session: claim.session,
+			effect: committed.effect,
+			response: committed.consume.response,
+			session: committed,
 		});
 		const completed = await this.store.completeIfClaimed({
 			reference,

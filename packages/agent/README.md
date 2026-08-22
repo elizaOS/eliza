@@ -37,6 +37,11 @@ is one machine and one state directory. Multi-host deployments must supply a
 transactional database implementation of `MessageInteractionSessionStore` and
 use the session replay key as the effect or outbox idempotency key.
 
+The file authority durably commits an effect before dispatch. If the process
+dies after that commit but before retaining the receipt, the session remains
+`committed` for operator reconciliation; it is never lease-transferred,
+automatically retried, revoked as if cancellation succeeded, or garbage-collected.
+
 The bundled `eliza` plugin registers `MessageInteractionHostService` as the one
 runtime authority connectors resolve through `MESSAGE_INTERACTION_HOST_SERVICE`.
 Connectors submit capability profiles and trusted render bindings to `prepare`,
