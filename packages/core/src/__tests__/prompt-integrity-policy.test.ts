@@ -270,6 +270,23 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/\.slice\(0,\s*(?:10|12|20|40)\)/,
 		/collectVisibleText\(\d/,
 	],
+	"plugins/plugin-personal-assistant/src/providers/activity-profile.ts": [
+		/tasks\s*\.slice\(/,
+		/limit:\s*25/,
+		/apps\s*\.slice\(/,
+	],
+	"plugins/plugin-personal-assistant/src/providers/first-run.ts": [
+		/ONE_LINE_MAX/,
+		/\.slice\(\s*0,\s*ONE_LINE_MAX/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/owner-profile.ts": [
+		/trimmed\.slice\(/,
+		/OWNER_NAME_MAX_LENGTH/,
+	],
+	"packages/shared/src/utils/owner-name.ts": [
+		/truncateWellFormed/,
+		/OWNER_NAME_MAX_LENGTH/,
+	],
 	"plugins/plugin-browser/src/providers/workspace.ts": [/MAX_TABS_IN_SUMMARY/],
 	"plugins/plugin-browser/src/workspace/browser-workspace-desktop.ts": [
 		/bodyText:\s*normalize\([^\n]+\)\.slice\(/,
