@@ -1882,10 +1882,11 @@ export class MessageManager {
     const sourceMessage = query.message;
     const chat = sourceMessage.chat as Chat;
     const telegramUserId = ctx.from.id.toString();
-    const entityId = createUniqueUuid(
+    const entityId = await resolveTelegramRuntimeEntityId(
       this.runtime,
-      this.scopedTelegramKey(telegramUserId),
-    ) as UUID;
+      this.accountId,
+      telegramUserId,
+    );
 
     const threadId =
       "is_topic_message" in sourceMessage && sourceMessage.is_topic_message
@@ -2238,10 +2239,11 @@ export class MessageManager {
       firstReaction.type === "emoji" ? firstReaction.emoji : firstReaction.type;
 
     try {
-      const entityId = createUniqueUuid(
+      const entityId = await resolveTelegramRuntimeEntityId(
         this.runtime,
-        this.scopedTelegramKey(ctx.from.id.toString()),
-      ) as UUID;
+        this.accountId,
+        ctx.from.id.toString(),
+      );
       const roomId = createUniqueUuid(
         this.runtime,
         this.scopedTelegramKey(ctx.chat.id.toString()),

@@ -4,7 +4,7 @@
  * per command (never clobbering `eliza_pair`), and role-gated dispatch. Runtime
  * and `hasRoleAccess` are mocked.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { createUniqueUuid, type IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The connector bridge gates auth via the agent role model (`hasRoleAccess`).
@@ -73,7 +73,9 @@ import {
   buildTelegramCommandDescriptors,
   registerTelegramCommandHandlers,
   resolveTelegramEmbedUrl,
+  resolveTelegramSenderAuth,
 } from "./command-registration";
+import { resolveTelegramRuntimeEntityId } from "./identity";
 import type { MessageManager } from "./messageManager";
 
 const { getConnectorCommands } = pluginCommandsMock;
@@ -422,6 +424,35 @@ describe("auth gating", () => {
     const requestedRoles = hasRoleAccess.mock.calls.map((call) => call[2]);
     expect(requestedRoles).toContain("OWNER");
     expect(requestedRoles).toContain("ADMIN");
+  });
+
+  it("resolves default-account sender entity ids the same way inbound messages do", async () => {
+    hasRoleAccess.mockResolvedValue(true);
+    const rt = makeRuntime();
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "default");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    const expected = await resolveTelegramRuntimeEntityId(
+      rt,
+      "default",
+      "4242",
+    );
+    expect(memory.entityId).toBe(expected);
+    expect(memory.entityId).toBe(createUniqueUuid(rt, "default:4242"));
+    expect(memory.entityId).not.toBe(createUniqueUuid(rt, "4242"));
+  });
+
+  it("keeps non-default account sender ids on the historical account:user seed", async () => {
+    hasRoleAccess.mockResolvedValue(true);
+    const rt = makeRuntime();
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "acct-a");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    expect(memory.entityId).toBe(createUniqueUuid(rt, "acct-a:4242"));
   });
 });
 
