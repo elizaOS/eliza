@@ -236,6 +236,20 @@ function bulkPingHeldPickPending(
 export default scenario({
   id: "lowact-morning-single-priority-fires-once",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Low activation: one gentle morning pick fires once, the whole-list ping stays held",
   domain: "lifeops",

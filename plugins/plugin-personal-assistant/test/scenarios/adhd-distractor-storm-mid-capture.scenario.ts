@@ -225,6 +225,20 @@ function assertResurfacesOnce(
 export default scenario({
   id: "adhd-distractor-storm-mid-capture",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "ADHD distractor storm: a parked capture resurfaces once at its promised time, never early",
   domain: "lifeops",

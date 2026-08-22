@@ -201,6 +201,20 @@ function firedOnceOnDay(
 export default scenario({
   id: "f1-multiday-recurrence-control-baseline",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 3,
+      },
+    ],
+  },
   title:
     "Control baseline: a plain daily habit fires once per day on its literal cadence, three days running",
   domain: "lifeops",

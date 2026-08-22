@@ -297,6 +297,20 @@ export default scenario({
   // Literal (not the SCENARIO_ID const) so the static corpus guard can read it.
   id: "traveler-reanchor-on-timezone-change-signal",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 3,
+      },
+    ],
+  },
   title:
     "Traveler tz-change: wall-clock reminder re-anchors to destination, absolute instant is invariant",
   domain: "lifeops",

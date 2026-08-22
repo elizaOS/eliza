@@ -235,6 +235,20 @@ function assertTimeout(
 export default scenario({
   id: "adhd-followthrough-noreply-retry-then-skip",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 2,
+      },
+    ],
+  },
   title:
     "ADHD follow-through: an ignored reminder re-nudges once, then settles — never lost, never nagged forever",
   domain: "lifeops",

@@ -320,6 +320,20 @@ function expireCheckinTurn(dayIndex: number) {
 export default scenario({
   id: "lowact-quiet-streak-softens-next-nudge",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 4,
+      },
+    ],
+  },
   title:
     "Low activation: three ignored check-ins soften the next nudge (quiet-streak), never chase harder",
   domain: "lifeops",

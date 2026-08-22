@@ -276,6 +276,20 @@ export default scenario({
   // Literal (not the SCENARIO_ID const) so the static corpus guard can read it.
   id: "traveler-absolute-vs-wallclock-disambiguation-flight",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 2,
+      },
+    ],
+  },
   title:
     "Traveler: a wall-clock morning window re-anchors to the destination while an absolute boarding instant does not",
   domain: "lifeops",

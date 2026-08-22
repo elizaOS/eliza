@@ -231,6 +231,20 @@ function importantFiresPingHeld(
 export default scenario({
   id: "f1-cross-persona-quiet-hours-respected-baseline",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Control baseline: standard quiet hours hold a low-value ping, a high-priority reminder still breaks through",
   domain: "lifeops",

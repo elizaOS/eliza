@@ -228,6 +228,20 @@ function assertTimeout(
 export default scenario({
   id: "adhd-followthrough-intensity-persistent-chases-twice",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 3,
+      },
+    ],
+  },
   title:
     "ADHD follow-through: persistent reminderIntensity earns a second no-reply retry rung",
   domain: "lifeops",

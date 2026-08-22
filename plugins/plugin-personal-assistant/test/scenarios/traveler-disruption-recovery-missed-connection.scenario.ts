@@ -219,6 +219,20 @@ export default scenario({
   // Literal (not the SCENARIO_ID const) so the static corpus guard can read it.
   id: "traveler-disruption-recovery-missed-connection",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Traveler disruption recovery: a delayed connection re-times the reminder, it never fires at the stale time",
   domain: "lifeops",

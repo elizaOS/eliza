@@ -242,6 +242,20 @@ function notFiredFor(
 export default scenario({
   id: "shift-rotation-wake-anchor-follows-shifted-window",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Wake-anchored reminder re-anchors to the shifted wake window and stays silent at the old morning slot",
   domain: "lifeops",

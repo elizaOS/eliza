@@ -314,6 +314,20 @@ function assertSilentReNudgeNotResolved(
 export default scenario({
   id: "f1-adversarial-highstakes-confirmation-fail-closed",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Fail-closed baseline: a silent high-stakes approval never self-resolves, standard re-nudge only",
   domain: "lifeops",

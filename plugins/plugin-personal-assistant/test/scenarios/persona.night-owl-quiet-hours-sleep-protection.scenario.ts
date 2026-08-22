@@ -255,6 +255,20 @@ export default scenario({
   // the id statically, resolve it.
   id: "persona.night-owl-quiet-hours-sleep-protection",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Night owl sleep protection: a low-value reminder is held in her 04:00–11:30 quiet hours; only a high-priority one breaks through",
   domain: "lifeops",

@@ -265,6 +265,20 @@ function assertZoneFire(_status: number, body: unknown): string | undefined {
 export default scenario({
   id: "f1-timezone-boundary-edge-generic",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Control baseline: a literal zoned reminder fires at its true wall-clock instant, no re-anchoring",
   domain: "lifeops",
