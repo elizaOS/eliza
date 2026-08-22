@@ -32,7 +32,6 @@ export function formatSendAtIso(sendAtMs: number): string {
 			{
 				code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
 				context: { sendAtMs },
-				severity: "validation",
 			},
 		);
 	}
@@ -43,7 +42,6 @@ export function formatSendAtIso(sendAtMs: number): string {
 			{
 				code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
 				context: { sendAtMs },
-				severity: "validation",
 			},
 		);
 	}
@@ -115,6 +113,7 @@ export const scheduleDraftSendAction: Action = {
 			logger.warn(`[ScheduleDraftSend] ${parsed.error}`);
 			return { success: false, text: parsed.error, error: parsed.error };
 		}
+		const sendAtIso = formatSendAtIso(parsed.sendAtMs);
 
 		const service = getDefaultTriageService();
 		const existing = service.getStore().getDraft(parsed.draftId);
@@ -130,7 +129,7 @@ export const scheduleDraftSendAction: Action = {
 			parsed.sendAtMs,
 		);
 
-		const text = `Scheduled draft ${parsed.draftId} for ${formatSendAtIso(parsed.sendAtMs)}.`;
+		const text = `Scheduled draft ${parsed.draftId} for ${sendAtIso}.`;
 		const commit = updated.scheduleCommit;
 		if (!commit) {
 			throw new ElizaError(
