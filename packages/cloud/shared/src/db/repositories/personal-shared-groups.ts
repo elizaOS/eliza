@@ -1,5 +1,5 @@
 /** Atomic claim and binding authority for Personal Shared provider groups. */
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import { dbWrite } from "../client";
 import {
@@ -36,6 +36,13 @@ export type ConsumePersonalSharedGroupClaimResult =
   | { status: "bound"; binding: PersonalSharedGroupBinding }
   | { status: "invalid" | "expired" | "already_used" | "already_bound" };
 
+export interface PersonalSharedGroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
 export const personalSharedGroupsRepository = {
   async issueClaim(input: {
     codeHash: string;
@@ -58,7 +65,10 @@ export const personalSharedGroupsRepository = {
             eq(personalSharedGroupClaims.owner_user_id, input.ownerUserId),
             eq(personalSharedGroupClaims.platform, input.platform),
             eq(personalSharedGroupClaims.project, input.project),
-            eq(personalSharedGroupClaims.connector_account_id, input.connectorAccountId),
+            eq(
+              personalSharedGroupClaims.connector_account_id,
+              input.connectorAccountId,
+            ),
             isNull(personalSharedGroupClaims.consumed_at),
           ),
         );
@@ -95,8 +105,14 @@ export const personalSharedGroupsRepository = {
             eq(personalSharedGroupClaims.code_hash, input.codeHash),
             eq(personalSharedGroupClaims.platform, input.platform),
             eq(personalSharedGroupClaims.project, input.project),
-            eq(personalSharedGroupClaims.connector_account_id, input.connectorAccountId),
-            eq(personalSharedGroupClaims.issued_to_platform_user_id, input.actorPlatformUserId),
+            eq(
+              personalSharedGroupClaims.connector_account_id,
+              input.connectorAccountId,
+            ),
+            eq(
+              personalSharedGroupClaims.issued_to_platform_user_id,
+              input.actorPlatformUserId,
+            ),
             isNull(personalSharedGroupClaims.consumed_at),
             gt(personalSharedGroupClaims.expires_at, now),
           ),
@@ -129,8 +145,14 @@ export const personalSharedGroupsRepository = {
           and(
             eq(personalSharedGroupBindings.platform, input.platform),
             eq(personalSharedGroupBindings.project, input.project),
-            eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-            eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+            eq(
+              personalSharedGroupBindings.connector_account_id,
+              input.connectorAccountId,
+            ),
+            eq(
+              personalSharedGroupBindings.provider_chat_id,
+              input.providerChatId,
+            ),
           ),
         )
         .limit(1);
@@ -172,6 +194,7 @@ export const personalSharedGroupsRepository = {
             conversation_id: conversationId,
             state: "active",
             response_policy: "mention_only",
+            authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
             created_by_platform_user_id: input.actorPlatformUserId,
             last_verified_at: now,
             updated_at: now,
@@ -205,8 +228,14 @@ export const personalSharedGroupsRepository = {
         and(
           eq(personalSharedGroupBindings.platform, input.platform),
           eq(personalSharedGroupBindings.project, input.project),
-          eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-          eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+          eq(
+            personalSharedGroupBindings.connector_account_id,
+            input.connectorAccountId,
+          ),
+          eq(
+            personalSharedGroupBindings.provider_chat_id,
+            input.providerChatId,
+          ),
         ),
       )
       .limit(1);
@@ -220,7 +249,11 @@ export const personalSharedGroupsRepository = {
   }): Promise<PersonalSharedGroupBinding | null> {
     const [binding] = await dbWrite
       .update(personalSharedGroupBindings)
-      .set({ response_policy: input.policy, updated_at: new Date() })
+      .set({
+        response_policy: input.policy,
+        authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+        updated_at: new Date(),
+      })
       .where(
         and(
           eq(personalSharedGroupBindings.id, input.bindingId),
@@ -232,10 +265,17 @@ export const personalSharedGroupsRepository = {
     return binding ?? null;
   },
 
-  async revokeBinding(input: { bindingId: string; ownerUserId: string }): Promise<boolean> {
+  async revokeBinding(input: {
+    bindingId: string;
+    ownerUserId: string;
+  }): Promise<boolean> {
     const [binding] = await dbWrite
       .update(personalSharedGroupBindings)
-      .set({ state: "revoked", updated_at: new Date() })
+      .set({
+        state: "revoked",
+        authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+        updated_at: new Date(),
+      })
       .where(
         and(
           eq(personalSharedGroupBindings.id, input.bindingId),
@@ -259,6 +299,7 @@ export const personalSharedGroupsRepository = {
       .update(personalSharedGroupBindings)
       .set({
         state: input.membershipChange === "joined" ? "active" : "suspended",
+        authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
         last_verified_at: now,
         updated_at: now,
       })
@@ -266,8 +307,14 @@ export const personalSharedGroupsRepository = {
         and(
           eq(personalSharedGroupBindings.platform, input.platform),
           eq(personalSharedGroupBindings.project, input.project),
-          eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-          eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+          eq(
+            personalSharedGroupBindings.connector_account_id,
+            input.connectorAccountId,
+          ),
+          eq(
+            personalSharedGroupBindings.provider_chat_id,
+            input.providerChatId,
+          ),
           eq(
             personalSharedGroupBindings.state,
             input.membershipChange === "joined" ? "suspended" : "active",
@@ -278,29 +325,97 @@ export const personalSharedGroupsRepository = {
     return binding ?? null;
   },
 
+  async authorizeDelivery(input: {
+    authority: PersonalSharedGroupDeliveryAuthority;
+    platform: PersonalSharedGroupPlatform;
+    project: string;
+    connectorAccountId: string;
+    providerChatId: string;
+    invocation: "mention" | "command" | "reply" | "ambient";
+  }): Promise<boolean> {
+    const [binding] = await dbWrite
+      .select({ id: personalSharedGroupBindings.id })
+      .from(personalSharedGroupBindings)
+      .where(
+        and(
+          eq(personalSharedGroupBindings.id, input.authority.bindingId),
+          eq(
+            personalSharedGroupBindings.owner_user_id,
+            input.authority.ownerUserId,
+          ),
+          eq(
+            personalSharedGroupBindings.personal_agent_id,
+            input.authority.personalAgentId,
+          ),
+          eq(
+            personalSharedGroupBindings.authority_version,
+            input.authority.version,
+          ),
+          eq(personalSharedGroupBindings.platform, input.platform),
+          eq(personalSharedGroupBindings.project, input.project),
+          eq(
+            personalSharedGroupBindings.connector_account_id,
+            input.connectorAccountId,
+          ),
+          eq(
+            personalSharedGroupBindings.provider_chat_id,
+            input.providerChatId,
+          ),
+          eq(personalSharedGroupBindings.state, "active"),
+          ...(input.invocation === "ambient"
+            ? [eq(personalSharedGroupBindings.response_policy, "ambient")]
+            : []),
+        ),
+      )
+      .limit(1);
+    return Boolean(binding);
+  },
+
   async recordDeliveryReceipts(input: {
+    authority: PersonalSharedGroupDeliveryAuthority;
     platform: PersonalSharedGroupPlatform;
     project: string;
     connectorAccountId: string;
     providerChatId: string;
     sourceMessageId: string;
     providerMessageIds: string[];
-  }): Promise<number> {
+  }): Promise<{ recorded: boolean; inserted: number }> {
     return dbWrite.transaction(async (tx) => {
       const [binding] = await tx
         .select({ id: personalSharedGroupBindings.id })
         .from(personalSharedGroupBindings)
         .where(
           and(
+            eq(personalSharedGroupBindings.id, input.authority.bindingId),
+            eq(
+              personalSharedGroupBindings.owner_user_id,
+              input.authority.ownerUserId,
+            ),
+            eq(
+              personalSharedGroupBindings.personal_agent_id,
+              input.authority.personalAgentId,
+            ),
+            eq(
+              personalSharedGroupBindings.authority_version,
+              input.authority.version,
+            ),
             eq(personalSharedGroupBindings.platform, input.platform),
             eq(personalSharedGroupBindings.project, input.project),
-            eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
-            eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+            eq(
+              personalSharedGroupBindings.connector_account_id,
+              input.connectorAccountId,
+            ),
+            eq(
+              personalSharedGroupBindings.provider_chat_id,
+              input.providerChatId,
+            ),
             eq(personalSharedGroupBindings.state, "active"),
           ),
         )
         .limit(1);
-      if (!binding || input.providerMessageIds.length === 0) return 0;
+      if (!binding || input.providerMessageIds.length === 0) {
+        return { recorded: false, inserted: 0 };
+      }
       const inserted = await tx
         .insert(personalSharedGroupDeliveryReceipts)
         .values(
@@ -316,7 +431,37 @@ export const personalSharedGroupsRepository = {
         )
         .onConflictDoNothing()
         .returning({ id: personalSharedGroupDeliveryReceipts.id });
-      return inserted.length;
+      const recorded = await tx
+        .select({
+          providerMessageId:
+            personalSharedGroupDeliveryReceipts.provider_message_id,
+          sourceMessageId:
+            personalSharedGroupDeliveryReceipts.source_message_id,
+        })
+        .from(personalSharedGroupDeliveryReceipts)
+        .where(
+          and(
+            eq(personalSharedGroupDeliveryReceipts.binding_id, binding.id),
+            inArray(
+              personalSharedGroupDeliveryReceipts.provider_message_id,
+              input.providerMessageIds,
+            ),
+          ),
+        );
+      const expected = new Set(input.providerMessageIds);
+      const durable = new Set(
+        recorded
+          .filter(
+            (receipt) => receipt.sourceMessageId === input.sourceMessageId,
+          )
+          .map((receipt) => receipt.providerMessageId),
+      );
+      return {
+        recorded:
+          durable.size === expected.size &&
+          [...expected].every((id) => durable.has(id)),
+        inserted: inserted.length,
+      };
     });
   },
 
@@ -330,7 +475,10 @@ export const personalSharedGroupsRepository = {
       .where(
         and(
           eq(personalSharedGroupDeliveryReceipts.binding_id, input.bindingId),
-          eq(personalSharedGroupDeliveryReceipts.provider_message_id, input.providerMessageId),
+          eq(
+            personalSharedGroupDeliveryReceipts.provider_message_id,
+            input.providerMessageId,
+          ),
         ),
       )
       .limit(1);

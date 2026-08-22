@@ -1,6 +1,15 @@
 /** Durable owner claims and provider-chat bindings for one canonical Personal Shared agent. */
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -62,6 +71,9 @@ export const personalSharedGroupBindings = pgTable(
       .$type<PersonalSharedGroupResponsePolicy>()
       .notNull()
       .default("mention_only"),
+    authority_version: bigint("authority_version", { mode: "number" })
+      .notNull()
+      .default(1),
     created_by_platform_user_id: text("created_by_platform_user_id").notNull(),
     last_verified_at: timestamp("last_verified_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

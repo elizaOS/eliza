@@ -2003,6 +2003,13 @@
       "when": 1793995200004,
       "tag": "0302_agent_restore_target_occurrence",
       "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1794081600000,
+      "tag": "0303_personal_shared_group_authority_version",
+      "breakpoints": true
     }
   ]
 }

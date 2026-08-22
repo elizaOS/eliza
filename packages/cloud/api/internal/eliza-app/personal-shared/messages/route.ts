@@ -98,6 +98,12 @@ const groupActorSchema = z.object({
   displayName: z.string().trim().min(1).max(128).optional(),
   role: z.enum(["creator", "administrator", "member", "unknown", "possessor"]),
 });
+const groupDeliveryAuthoritySchema = z.object({
+  bindingId: z.string().uuid(),
+  ownerUserId: z.string().uuid(),
+  personalAgentId: z.string().trim().min(1).max(160),
+  version: z.number().int().positive(),
+});
 const groupFields = {
   project: projectSchema,
   connectorAccountId: connectorAccountIdSchema,
@@ -120,6 +126,15 @@ const sharedMessageSchema = z.union([
     membershipChange: z.enum(["joined", "removed"]),
   }),
   z.object({
+    eventType: z.literal("delivery_authorization"),
+    platform: z.enum(["telegram", "blooio"]),
+    project: projectSchema,
+    connectorAccountId: connectorAccountIdSchema,
+    chatId: z.string().trim().min(1).max(160),
+    invocation: z.enum(["mention", "command", "reply", "ambient"]),
+    authority: groupDeliveryAuthoritySchema,
+  }),
+  z.object({
     eventType: z.literal("delivery_receipt"),
     platform: z.enum(["telegram", "blooio"]),
     project: projectSchema,
@@ -130,6 +145,7 @@ const sharedMessageSchema = z.union([
       .array(z.string().trim().min(1).max(160))
       .min(1)
       .max(8),
+    authority: groupDeliveryAuthoritySchema,
   }),
   z
     .object({
@@ -360,7 +376,18 @@ app.post("/", async (c) => {
           },
         });
       }
-      const inserted =
+      if (parsed.data.eventType === "delivery_authorization") {
+        const authorized =
+          await personalSharedGroupsRepository.authorizeDelivery({
+            ...parsed.data,
+            authority: parsed.data.authority,
+          });
+        return c.json({
+          success: true,
+          data: { code: "group_delivery_authorization", authorized },
+        });
+      }
+      const receipt =
         await personalSharedGroupsRepository.recordDeliveryReceipts({
           platform: parsed.data.platform,
           project: parsed.data.project,
@@ -368,10 +395,11 @@ app.post("/", async (c) => {
           providerChatId: parsed.data.chatId,
           sourceMessageId: parsed.data.sourceMessageId,
           providerMessageIds: parsed.data.providerMessageIds,
+          authority: parsed.data.authority,
         });
       return c.json({
         success: true,
-        data: { code: "group_delivery_receipt_recorded", inserted },
+        data: { code: "group_delivery_receipt_recorded", ...receipt },
       });
     }
     let telegramVoiceBytes: Uint8Array | undefined;
@@ -415,6 +443,14 @@ app.post("/", async (c) => {
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
     let groupPersonalAgentId: string | undefined;
+    let groupDeliveryAuthority:
+      | {
+          bindingId: string;
+          ownerUserId: string;
+          personalAgentId: string;
+          version: number;
+        }
+      | undefined;
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
@@ -595,6 +631,12 @@ app.post("/", async (c) => {
       accountResolution = "group-binding";
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
+      groupDeliveryAuthority = {
+        bindingId: binding.id,
+        ownerUserId: binding.owner_user_id,
+        personalAgentId: binding.personal_agent_id,
+        version: binding.authority_version,
+      };
       const actorDigest = (
         await sha256Hex(
           `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
@@ -1072,6 +1114,7 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: result.text,
+        ...(groupDeliveryAuthority ? { groupDeliveryAuthority } : {}),
       },
     });
   } catch (error) {

@@ -50,6 +50,10 @@ class PersonalSharedPreEgressError extends Error {
   override readonly name = "PersonalSharedPreEgressError";
 }
 
+class PersonalSharedRecoverablePostEgressError extends Error {
+  override readonly name = "PersonalSharedRecoverablePostEgressError";
+}
+
 interface HandlerDeps {
   redis: GatewayRedis;
   cloudBaseUrl: string;
@@ -495,10 +499,14 @@ export async function handleWebhook(
         messageId: event.messageId,
         traceId: trace.traceId,
       });
-      if (err instanceof PersonalSharedPreEgressError) {
+      if (
+        err instanceof PersonalSharedPreEgressError ||
+        err instanceof PersonalSharedRecoverablePostEgressError
+      ) {
         try {
-          // The Shared endpoint is idempotent and provider egress has not
-          // started, so reopening lets the messaging provider retry safely.
+          // The Shared endpoint is idempotent. Blooio also keys provider
+          // egress by the inbound message id, so a lost receipt response can
+          // safely reopen the webhook without sending a second text.
           await redis.del(dedupKey);
         } catch (cleanupError) {
           // error-policy:J7 The original delivery failure is already observed;
@@ -1086,17 +1094,23 @@ async function sendPersonalSharedReply(
     );
   }
   const cloudMs = attemptResult.durationMs;
-  const reply =
-    body && typeof body === "object" && "data" in body
-      ? (body.data as { reply?: unknown } | null)?.reply
-      : undefined;
+  const data =
+    body &&
+    typeof body === "object" &&
+    "data" in body &&
+    body.data &&
+    typeof body.data === "object"
+      ? (body.data as Record<string, unknown>)
+      : null;
+  const reply = data?.reply;
   if (typeof reply !== "string") {
     throw new PersonalSharedPreEgressError(
       "personal Shared chat returned no reply",
     );
   }
-  // Empty is the agent's deliberate shouldRespond=no result. It is a
-  // successful turn with no provider egress, not a malformed response.
+  // Empty is the agent's deliberate shouldRespond=no result. Membership
+  // changes and stale turns intentionally take this path with no authority
+  // token because there will be no provider egress to authorize.
   if (reply.length === 0) {
     return {
       cloudMs,
@@ -1105,12 +1119,97 @@ async function sendPersonalSharedReply(
       cloudServerTiming,
     };
   }
+  const authorityValue = data?.groupDeliveryAuthority;
+  const groupDeliveryAuthority =
+    authorityValue &&
+    typeof authorityValue === "object" &&
+    typeof (authorityValue as Record<string, unknown>).bindingId === "string" &&
+    typeof (authorityValue as Record<string, unknown>).ownerUserId ===
+      "string" &&
+    typeof (authorityValue as Record<string, unknown>).personalAgentId ===
+      "string" &&
+    typeof (authorityValue as Record<string, unknown>).version === "number" &&
+    Number.isSafeInteger((authorityValue as Record<string, unknown>).version)
+      ? (authorityValue as {
+          bindingId: string;
+          ownerUserId: string;
+          personalAgentId: string;
+          version: number;
+        })
+      : null;
+  if (isGroup && !groupDeliveryAuthority) {
+    throw new PersonalSharedPreEgressError(
+      "personal Shared group reply returned no delivery authority",
+    );
+  }
   const egressStartedAt = Date.now();
   if (isGroup) {
     if (!sendReplyWithReceipt) {
       throw new PersonalSharedPreEgressError(
         "group connector cannot return a provider delivery receipt",
       );
+    }
+    const authorizationBody = JSON.stringify({
+      eventType: "delivery_authorization",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      invocation: groupInvocationForEvent(event),
+      authority: groupDeliveryAuthority,
+    });
+    const postAuthorization = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: authorizationBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let authorizationResponse = await postAuthorization(authHeader);
+    if (
+      authorizationResponse.status === 401 ||
+      authorizationResponse.status === 403
+    ) {
+      await authorizationResponse.body?.cancel();
+      authHeader = await reauth();
+      authorizationResponse = await postAuthorization(authHeader);
+    }
+    if (!authorizationResponse.ok) {
+      await authorizationResponse.body?.cancel();
+      throw new PersonalSharedPreEgressError(
+        `group delivery authorization failed (${authorizationResponse.status})`,
+      );
+    }
+    let authorizationResult: unknown;
+    try {
+      authorizationResult = await authorizationResponse.json();
+    } catch (error) {
+      // error-policy:J3 authorization is untrusted until the explicit boolean
+      // contract parses; provider egress has not started.
+      throw new PersonalSharedPreEgressError(
+        "group delivery authorization returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const authorized =
+      authorizationResult !== null &&
+      typeof authorizationResult === "object" &&
+      "data" in authorizationResult &&
+      authorizationResult.data !== null &&
+      typeof authorizationResult.data === "object" &&
+      "authorized" in authorizationResult.data &&
+      authorizationResult.data.authorized === true;
+    if (!authorized) {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
     }
     const receipt = await sendReplyWithReceipt(
       config,
@@ -1126,6 +1225,7 @@ async function sendPersonalSharedReply(
       chatId: event.chatId,
       sourceMessageId: `${adapter.platform}:${project}:${event.messageId}`,
       providerMessageIds: receipt.providerMessageIds,
+      authority: groupDeliveryAuthority,
     });
     const postReceipt = (header: Record<string, string>) =>
       fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
@@ -1146,11 +1246,34 @@ async function sendPersonalSharedReply(
     }
     if (!receiptResponse.ok) {
       await receiptResponse.body?.cancel();
-      throw new Error(
+      throw new PersonalSharedRecoverablePostEgressError(
         `group delivery receipt persistence failed (${receiptResponse.status})`,
       );
     }
-    await receiptResponse.body?.cancel();
+    let receiptResult: unknown;
+    try {
+      receiptResult = await receiptResponse.json();
+    } catch (error) {
+      // error-policy:J3 provider egress is idempotent, so malformed receipt
+      // persistence can reopen the webhook for an exact retry.
+      throw new PersonalSharedRecoverablePostEgressError(
+        "group delivery receipt persistence returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const recorded =
+      receiptResult !== null &&
+      typeof receiptResult === "object" &&
+      "data" in receiptResult &&
+      receiptResult.data !== null &&
+      typeof receiptResult.data === "object" &&
+      "recorded" in receiptResult.data &&
+      receiptResult.data.recorded === true;
+    if (!recorded) {
+      throw new PersonalSharedRecoverablePostEgressError(
+        "group delivery receipt persistence rejected stale authority",
+      );
+    }
   } else {
     await adapter.sendReply(config, event, reply, deliveryHooks);
   }
