@@ -4480,6 +4480,11 @@ export async function handleConversationRoutes(
         let lastStatusSignature = "thinking::";
         let generationResult: ChatGenerationResult | null = null;
         try {
+          const assertCurrentGenerationOwner = () =>
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
           const result = await generateChatResponse(
             runtime,
             routedUserMessage,
@@ -4488,6 +4493,7 @@ export async function handleConversationRoutes(
               abortSignal: disconnectTracker.signal,
               roomHandlerLease: runtimeTurnLease,
               onStatus: (status) => {
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4508,6 +4514,7 @@ export async function handleConversationRoutes(
                 writeChatStatusSse(res, status);
               },
               onToolEvent: (event) => {
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4518,6 +4525,7 @@ export async function handleConversationRoutes(
               },
               onChunk: (chunk, origin) => {
                 if (!chunk) return;
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4534,6 +4542,7 @@ export async function handleConversationRoutes(
               },
               onSnapshot: (text, origin) => {
                 if (!text) return;
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4559,8 +4568,10 @@ export async function handleConversationRoutes(
                   provisional: origin === "action_callback",
                 });
               },
-              resolveNoResponseText: () =>
-                resolveNoResponseFallback(state.logBuffer, runtime),
+              resolveNoResponseText: () => {
+                assertCurrentGenerationOwner();
+                return resolveNoResponseFallback(state.logBuffer, runtime);
+              },
               preferredLanguage,
             },
           );
