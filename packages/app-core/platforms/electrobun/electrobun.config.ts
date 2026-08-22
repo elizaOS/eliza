@@ -581,6 +581,20 @@ export function createElectrobunConfig(): ElectrobunConfig {
     delete storeEntitlements["com.apple.security.application-groups"];
   }
   const linuxRenderer = resolveLinuxRenderer(process.env);
+  const appleTeamId = resolveAppleTeamId(process.env);
+  const browserBridgeAppGroup = appleTeamId
+    ? "group.ai.elizaos.browserbridge"
+    : null;
+  const storeEntitlements = parseEntitlementsPlist(
+    path.join(electrobunDir, "entitlements/mas.entitlements"),
+  );
+  if (browserBridgeAppGroup) {
+    storeEntitlements["com.apple.security.application-groups"] = [
+      browserBridgeAppGroup,
+    ];
+  } else {
+    delete storeEntitlements["com.apple.security.application-groups"];
+  }
   const brandConfigCopySource = resolveBrandConfigCopySource({
     appName,
     appId,
