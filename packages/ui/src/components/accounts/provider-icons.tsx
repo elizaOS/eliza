@@ -126,6 +126,17 @@ export function ElizaCloudMark(props: BrandGlyphProps) {
   );
 }
 
+// Neutral API-key identity for paid providers without a bundled licensed mark.
+export function ApiKeyMark(props: BrandGlyphProps) {
+  return (
+    <Glyph
+      {...props}
+      viewBox="0 0 24 24"
+      path="M14.5 3a6.5 6.5 0 1 0 4.96 10.7L23 17.24V21h-3v-2h-2v-2h-2.24l-1.06-1.06A6.5 6.5 0 0 0 14.5 3zm0 3a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z"
+    />
+  );
+}
+
 // Local / on-device — a monitor+chip glyph
 export function LocalMark(props: BrandGlyphProps) {
   return (
@@ -153,8 +164,8 @@ const PROVIDER_MARKS: Record<
   "zai-api": ZaiMark,
   "zai-coding": ZaiMark,
   "cerebras-api": CerebrasMark,
-  "openrouter-api": ElizaCloudMark,
-  "xai-api": ElizaCloudMark,
+  "openrouter-api": ApiKeyMark,
+  "xai-api": ApiKeyMark,
 };
 
 export interface ProviderMarkProps extends BrandGlyphProps {
