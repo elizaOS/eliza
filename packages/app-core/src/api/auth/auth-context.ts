@@ -13,7 +13,11 @@
  */
 
 import type http from "node:http";
-import type { RuntimeEnvRecord } from "@elizaos/shared";
+import {
+  isLoopbackBindHost,
+  isLoopbackRemoteAddress,
+  type RuntimeEnvRecord,
+} from "@elizaos/shared";
 import type {
   AuthIdentityRow,
   AuthSessionRow,
@@ -45,6 +49,23 @@ export interface EnsureSessionOptions {
   allowBootstrapBearer?: boolean;
 }
 
+export const DESKTOP_LOOPBACK_SESSION_SCOPE = "desktop:loopback";
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0]?.trim() || null;
+  return value?.trim() || null;
+}
+
+function sessionAllowedForRequest(
+  session: AuthSessionRow,
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+): boolean {
+  if (!session.scopes.includes(DESKTOP_LOOPBACK_SESSION_SCOPE)) return true;
+  if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
+  const host = firstHeaderValue(req.headers.host);
+  return host !== null && isLoopbackBindHost(host);
+}
+
 /**
  * Resolve the request to a session + identity if possible. Returns null on
  * any failure path; never throws on bad input. The caller is responsible
@@ -65,7 +86,7 @@ export async function ensureSessionForRequest(
     const session = await findActiveSession(store, cookieSessionId, now).catch(
       () => null,
     );
-    if (session) {
+    if (session && sessionAllowedForRequest(session, req)) {
       const identity = await store
         .findIdentity(session.identityId)
         .catch(() => null);
@@ -86,7 +107,7 @@ export async function ensureSessionForRequest(
     const session = await findActiveSession(store, bearer, now).catch(
       () => null,
     );
-    if (session) {
+    if (session && sessionAllowedForRequest(session, req)) {
       const identity = await store
         .findIdentity(session.identityId)
         .catch(() => null);

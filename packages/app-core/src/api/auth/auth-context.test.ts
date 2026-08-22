@@ -13,7 +13,10 @@ import type {
   AuthSessionRow,
   AuthStore,
 } from "../../services/auth-store";
-import { ensureSessionForRequest } from "./auth-context";
+import {
+  DESKTOP_LOOPBACK_SESSION_SCOPE,
+  ensureSessionForRequest,
+} from "./auth-context";
 import {
   BROWSER_SESSION_REMEMBER_CAP_MS,
   BROWSER_SESSION_TTL_MS,
@@ -603,5 +606,94 @@ describe("ensureSessionForRequest", () => {
     expect(ctx?.source).toBe("cookie");
     expect(ctx?.session?.id).toBe(SESSION_ID);
     expect(ctx?.identity?.id).toBe(OWNER_ID);
+  });
+});
+
+function makeDesktopRequest(options: {
+  remoteAddress: string;
+  host: string;
+  bearer?: boolean;
+}): http.IncomingMessage {
+  const req = makeReq(
+    options.bearer
+      ? { authorization: `Bearer ${SESSION_ID}`, host: options.host }
+      : { cookie: `${SESSION_COOKIE_NAME}=${SESSION_ID}`, host: options.host },
+  );
+  Object.defineProperty(req.socket, "remoteAddress", {
+    value: options.remoteAddress,
+    configurable: true,
+  });
+  return req;
+}
+
+async function resolveDesktopSession(
+  row: AuthSessionRow,
+  request: http.IncomingMessage,
+) {
+  const store = new FakeAuthStore().seed(row);
+  return ensureSessionForRequest(request, fakeRes(), {
+    store: asAuthStore(store),
+    now: NOW,
+    allowBootstrapBearer: false,
+  });
+}
+
+describe("desktop loopback browser sessions", () => {
+  it("accepts the marked session only from a loopback peer and Host", async () => {
+    const row = session({ scopes: [DESKTOP_LOOPBACK_SESSION_SCOPE] });
+
+    await expect(
+      resolveDesktopSession(
+        row,
+        makeDesktopRequest({
+          remoteAddress: "127.0.0.1",
+          host: "127.0.0.1:31337",
+        }),
+      ),
+    ).resolves.toMatchObject({ source: "cookie", identity: identity() });
+
+    await expect(
+      resolveDesktopSession(
+        row,
+        makeDesktopRequest({
+          remoteAddress: "203.0.113.5",
+          host: "127.0.0.1:31337",
+        }),
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      resolveDesktopSession(
+        row,
+        makeDesktopRequest({
+          remoteAddress: "127.0.0.1",
+          host: "example.test",
+        }),
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("enforces the same restriction for bearer replay", async () => {
+    await expect(
+      resolveDesktopSession(
+        session({ scopes: [DESKTOP_LOOPBACK_SESSION_SCOPE] }),
+        makeDesktopRequest({
+          remoteAddress: "203.0.113.6",
+          host: "example.test",
+          bearer: true,
+        }),
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("does not change ordinary browser-session routing", async () => {
+    await expect(
+      resolveDesktopSession(
+        session({ scopes: [] }),
+        makeDesktopRequest({
+          remoteAddress: "203.0.113.7",
+          host: "example.test",
+        }),
+      ),
+    ).resolves.toMatchObject({ source: "cookie", identity: identity() });
   });
 });
