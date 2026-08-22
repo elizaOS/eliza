@@ -15,8 +15,10 @@
  */
 import {
 	compareMemoryIds,
+	compareTasksForQuery,
 	DatabaseAdapter,
 	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
 } from "../database";
 import { ElizaError } from "../errors";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
@@ -2015,6 +2017,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		limit?: number;
 		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		if (params.agentIds.length === 0) return [];
 		const all = Array.from(this.tasks.values());
 		let filtered = all.filter((t) => {
@@ -2030,6 +2033,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			}
 			return true;
 		});
+
+		filtered.sort(compareTasksForQuery);
 
 		// Paginate to bound result size.
 		const offset = params.offset ?? 0;

@@ -4,6 +4,7 @@
  * — no mocks.
  */
 import { ChannelType, type Entity, logger, type Room, type Task, type UUID } from "@elizaos/core";
+import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -104,6 +105,12 @@ describe("Task Integration Tests", () => {
       ).resolves.toEqual([]);
       await expect(adapter.getTasks({ agentIds: [] })).resolves.toEqual([]);
       await expect(adapter.getTasks({ agentIds: [uuidv4() as UUID] })).resolves.toEqual([]);
+      await expect(adapter.getTasks({ agentIds: [testAgentId], limit: -1 })).rejects.toThrow(
+        /non-negative safe integer/u
+      );
+      await expect(adapter.getTasks({ agentIds: [testAgentId], offset: 0.5 })).rejects.toThrow(
+        /non-negative safe integer/u
+      );
       await expect(
         adapter.createTask({
           ...task,
@@ -240,6 +247,79 @@ describe("Task Integration Tests", () => {
       expect(["completed", "executing"]).toContain(stored?.metadata?.status);
     });
 
+    it("atomically composes concurrent due-time patches with metadata replacement and clear", async () => {
+      const taskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: taskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Concurrent timing",
+        metadata: { owner: "old", preserved: true },
+      });
+
+      await Promise.all([
+        adapter.updateTask(taskId, { dueAt: 1_900_000_011_000 }),
+        adapter.updateTask(taskId, { metadata: { owner: "replacement" } }),
+      ]);
+      const replaced = await adapter.getTask(taskId);
+      expect(replaced?.metadata?.owner).toBe("replacement");
+      expect(replaced?.metadata).not.toHaveProperty("preserved");
+      expect([undefined, 1_900_000_011_000]).toContain(replaced?.dueAt);
+
+      await adapter.updateTask(taskId, {
+        dueAt: 1_900_000_012_000,
+        metadata: { owner: "stable" },
+      });
+      await Promise.all([
+        adapter.updateTask(taskId, { dueAt: 1_900_000_013_000 }),
+        adapter.updateTask(taskId, { dueAt: null }),
+      ]);
+      const raced = await adapter.getTask(taskId);
+      expect(raced?.metadata?.owner).toBe("stable");
+      expect([undefined, 1_900_000_013_000]).toContain(raced?.dueAt);
+    });
+
+    it("returns only tasks authorized by the requested agent set", async () => {
+      const secondAgentId = uuidv4() as UUID;
+      const existingAgent = await adapter.getAgent(testAgentId);
+      if (!existingAgent) throw new Error("test agent must exist");
+      await adapter.createAgent({
+        ...existingAgent,
+        id: secondAgentId,
+        name: "Second task authority",
+      });
+      const firstTaskId = uuidv4() as UUID;
+      const secondTaskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: firstTaskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "First authority",
+        metadata: {},
+      });
+      await (adapter.getDatabase() as DrizzleDatabase).insert(taskTable).values({
+        id: secondTaskId,
+        agentId: secondAgentId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Second authority",
+        metadata: {},
+      });
+
+      await expect(adapter.getTasks({ agentIds: [testAgentId, secondAgentId] })).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: firstTaskId, agentId: testAgentId }),
+          expect.objectContaining({ id: secondTaskId, agentId: secondAgentId }),
+        ])
+      );
+      const firstOnly = await adapter.getTasks({ agentIds: [testAgentId] });
+      expect(firstOnly.map((task) => task.id)).toContain(firstTaskId);
+      expect(firstOnly.map((task) => task.id)).not.toContain(secondTaskId);
+    });
+
     it("should delete a task", async () => {
       const taskId = uuidv4() as UUID;
       const task: Task = {
@@ -281,7 +361,7 @@ describe("Task Integration Tests", () => {
       ]);
 
       const task1: Task = {
-        id: uuidv4() as UUID,
+        id: "30000000-0000-0000-0000-000000000011" as UUID,
         roomId: roomId1,
         worldId: testWorldId,
         entityId: testEntityId,
@@ -293,7 +373,7 @@ describe("Task Integration Tests", () => {
       await adapter.createTask(task1);
 
       const task2: Task = {
-        id: uuidv4() as UUID,
+        id: "30000000-0000-0000-0000-000000000010" as UUID,
         roomId: roomId1,
         worldId: testWorldId,
         entityId: testEntityId,
@@ -315,6 +395,19 @@ describe("Task Integration Tests", () => {
         metadata: {},
       };
       await adapter.createTask(task3);
+      const db = adapter.getDatabase() as DrizzleDatabase;
+      await db
+        .update(taskTable)
+        .set({ createdAt: new Date("2030-01-01T00:00:01.000Z") })
+        .where(eq(taskTable.id, task1.id as UUID));
+      await db
+        .update(taskTable)
+        .set({ createdAt: new Date("2030-01-01T00:00:01.000Z") })
+        .where(eq(taskTable.id, task2.id as UUID));
+      await db
+        .update(taskTable)
+        .set({ createdAt: new Date("2030-01-01T00:00:02.000Z") })
+        .where(eq(taskTable.id, task3.id as UUID));
 
       const filteredTasks = await adapter.getTasks({
         roomId: roomId1,
@@ -337,9 +430,8 @@ describe("Task Integration Tests", () => {
       ).resolves.toEqual([]);
       const firstPage = await adapter.getTasks({ agentIds: [testAgentId], limit: 1 });
       const secondPage = await adapter.getTasks({ agentIds: [testAgentId], limit: 1, offset: 1 });
-      expect(firstPage).toHaveLength(1);
-      expect(secondPage).toHaveLength(1);
-      expect(secondPage[0]?.id).not.toBe(firstPage[0]?.id);
+      expect(firstPage).toMatchObject([{ id: task2.id }]);
+      expect(secondPage).toMatchObject([{ id: task1.id }]);
     });
   });
 });

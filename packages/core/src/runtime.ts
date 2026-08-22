@@ -34,7 +34,10 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
-import { validateQueryEntitiesPagination } from "./database";
+import {
+	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
+} from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
@@ -11814,6 +11817,7 @@ ${section_end}`;
 		limit?: number;
 		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		return this.adapter.getTasks({ ...params, agentIds: [this.agentId] });
 	}
 	async getTasksByName(name: string): Promise<Task[]> {

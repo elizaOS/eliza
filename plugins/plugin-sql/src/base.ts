@@ -88,6 +88,7 @@ import {
   validateDocumentRequesterContext,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
+  validateTaskQueryPagination,
   type World,
 } from "@elizaos/core";
 import { sanitizeJsonObject } from "./sanitize-json";
@@ -5145,6 +5146,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     limit?: number;
     offset?: number;
   }): Promise<Task[]> {
+    validateTaskQueryPagination(params);
     if (params.agentIds.length === 0) return [];
     return this.withRetry(async () => {
       return this.withDatabase(async () => {

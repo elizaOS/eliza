@@ -79,6 +79,21 @@ export function validateQueryEntitiesPagination(params: {
 	}
 }
 
+/** Enforces the portable pagination contract for task-query boundaries. */
+export function validateTaskQueryPagination(params: {
+	limit?: number;
+	offset?: number;
+}): void {
+	for (const field of ["limit", "offset"] as const) {
+		const value = params[field];
+		if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+			throw new RangeError(
+				`getTasks ${field} must be a non-negative safe integer`,
+			);
+		}
+	}
+}
+
 /**
  * Compares UUID-backed memory ids in the same order as PostgreSQL's `uuid`
  * type. PostgreSQL normalizes hexadecimal case before ordering, so in-memory
@@ -92,6 +107,19 @@ export function compareMemoryIds(left: string, right: string): number {
 	if (normalizedLeft < normalizedRight) return -1;
 	if (normalizedLeft > normalizedRight) return 1;
 	return 0;
+}
+
+/** Matches PostgreSQL's ascending `(created_at, id)` task-query order. */
+export function compareTasksForQuery(left: Task, right: Task): number {
+	const leftCreatedAt = left.createdAt;
+	const rightCreatedAt = right.createdAt;
+	if (leftCreatedAt === undefined && rightCreatedAt !== undefined) return 1;
+	if (leftCreatedAt !== undefined && rightCreatedAt === undefined) return -1;
+	if (leftCreatedAt !== undefined && rightCreatedAt !== undefined) {
+		if (leftCreatedAt < rightCreatedAt) return -1;
+		if (leftCreatedAt > rightCreatedAt) return 1;
+	}
+	return compareMemoryIds(String(left.id ?? ""), String(right.id ?? ""));
 }
 
 /**
