@@ -1232,7 +1232,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands, manage per-conversation background shell sessions, or view/clear shell history. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
   descriptionCompressed:
     "Run shell commands; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
@@ -1258,7 +1258,7 @@ export const shellAction: Action = {
     {
       name: "command",
       description:
-        "For action=run: /bin/bash -c command. Keep bounded; prefer jq/node for JSON and python3 if Python is needed. Include all requested paths in df/du checks.",
+        "For action=run: /bin/bash -c command in a fresh process; exported variables do not persist to later calls. Keep bounded; prefer jq/node for JSON and python3 if Python is needed. Include all requested paths in df/du checks.",
       required: false,
       schema: { type: "string" },
     },
