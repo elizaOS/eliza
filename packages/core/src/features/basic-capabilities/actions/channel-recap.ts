@@ -48,6 +48,19 @@ export const CHANNEL_RECAP_DEFAULT_COUNT = 50;
  */
 export const CHANNEL_RECAP_MAX_FETCH = 500;
 
+/**
+ * Model-window fit bound on the rendered transcript per call, in characters
+ * (~15K tokens — comfortably inside the serving model's context even when the
+ * transcript re-enters the next planner prompt alongside the base context;
+ * live 2026-08-22: a 500-message read rendered past the provider's 131K-token
+ * window and killed the turn). Never a cap on any individual message — every
+ * served message is complete; when the requested range does not fit, the
+ * NEWEST messages that fit are served and the result states the exact range
+ * plus the offset that continues into older history. A single message larger
+ * than the bound is served alone, complete.
+ */
+export const CHANNEL_RECAP_TRANSCRIPT_FIT_CHARS = 60_000;
+
 function resolveRequestedCount(options?: HandlerOptions): number | undefined {
 	const raw =
 		options?.parameters && typeof options.parameters === "object"
@@ -116,6 +129,13 @@ export const channelRecapAction: Action = {
 	],
 	parameters: [
 		{
+			name: "offset",
+			description:
+				"How many newest messages to skip before reading (default 0). Use the continuation offset a previous recap reported to page into older history.",
+			schema: { type: "number", minimum: 0 },
+			required: false,
+		},
+		{
 			name: "count",
 			description: `How many most-recent messages to read back (default ${CHANNEL_RECAP_DEFAULT_COUNT}; storage read bound ${CHANNEL_RECAP_MAX_FETCH}).`,
 			required: false,
@@ -168,6 +188,19 @@ export const channelRecapAction: Action = {
 		}
 
 		const requestedCount = resolveRequestedCount(options);
+		const rawOffset = (
+			options?.parameters as Record<string, unknown> | undefined
+		)?.offset;
+		const parsedOffset =
+			typeof rawOffset === "number"
+				? rawOffset
+				: typeof rawOffset === "string" && /^\d+$/.test(rawOffset.trim())
+					? Number(rawOffset.trim())
+					: 0;
+		const offset =
+			Number.isFinite(parsedOffset) && parsedOffset > 0
+				? Math.floor(parsedOffset)
+				: 0;
 		const validRequested =
 			requestedCount !== undefined && requestedCount >= 1
 				? requestedCount
@@ -183,7 +216,7 @@ export const channelRecapAction: Action = {
 		const rows = await runtime.getMemories({
 			tableName: "messages",
 			roomId,
-			count: fetchCount,
+			count: fetchCount + offset,
 			unique: false,
 		});
 
@@ -191,10 +224,30 @@ export const channelRecapAction: Action = {
 		// internal bridge relays) — the same structural filter RECENT_MESSAGES
 		// applies so the model never re-reads its own tooling as conversation.
 		// Every retained dialogue row is rendered complete.
-		const dialogue = rows.filter(
+		const allDialogue = rows.filter(
 			(row) =>
 				row.content?.type !== "action_result" && !isInternalBridgeMessage(row),
 		);
+		// Caller-requested pagination: skip the `offset` newest dialogue rows,
+		// then serve the newest messages of the remaining range that fit the
+		// documented transcript fit bound. Messages are always complete; only
+		// the served WINDOW shrinks, and the continuation offset is stated.
+		const ranged = allDialogue.slice(offset, offset + fetchCount);
+		let fitChars = 0;
+		let served = 0;
+		for (const row of ranged) {
+			const rowChars = (row.content?.text ?? "").length + 120;
+			if (
+				served > 0 &&
+				fitChars + rowChars > CHANNEL_RECAP_TRANSCRIPT_FIT_CHARS
+			) {
+				break;
+			}
+			fitChars += rowChars;
+			served += 1;
+		}
+		const dialogue = ranged.slice(0, served);
+		const olderRemaining = ranged.length - served;
 
 		const roomEntities = await getEntityDetails({ runtime, roomId });
 		const entities = fallbackFormattingEntities(roomEntities, dialogue);
@@ -208,10 +261,18 @@ export const channelRecapAction: Action = {
 			rows.length < fetchCount
 				? ` This room's stored history holds ${rows.length} message(s); the read requested up to ${fetchCount}.`
 				: "";
+		const rangeLabel =
+			offset > 0
+				? `messages ${offset + 1}–${offset + dialogue.length} back (newest first)`
+				: `the last ${dialogue.length} stored message(s)`;
+		const fitNote =
+			olderRemaining > 0
+				? ` The requested range holds ${ranged.length} message(s), more than fits one model call; the ${dialogue.length} newest of the range are served complete. Continue into older history by calling CHANNEL_RECAP again with offset=${offset + dialogue.length}.`
+				: "";
 		const text =
 			dialogue.length === 0
-				? `No stored messages found in this room's history.${boundNote}${depthNote}`
-				: `Complete transcript of the last ${dialogue.length} stored message(s) in this room, oldest first:${boundNote}${depthNote}\n\n${transcript}`;
+				? `No stored messages found in this room's history at offset ${offset}.${boundNote}${depthNote}`
+				: `Complete transcript of ${rangeLabel} in this room, oldest first:${boundNote}${depthNote}${fitNote}\n\n${transcript}`;
 
 		return {
 			success: true,
@@ -224,9 +285,14 @@ export const channelRecapAction: Action = {
 					roomScoped: true,
 					requestedCount: validRequested ?? null,
 					fetchCount,
+					offset,
 					storageReadBound: CHANNEL_RECAP_MAX_FETCH,
+					transcriptFitChars: CHANNEL_RECAP_TRANSCRIPT_FIT_CHARS,
 					fetchedRows: rows.length,
 					renderedCount: dialogue.length,
+					olderRemaining,
+					continuationOffset:
+						olderRemaining > 0 ? offset + dialogue.length : null,
 					order: "chronological",
 				},
 				messages: dialogue
