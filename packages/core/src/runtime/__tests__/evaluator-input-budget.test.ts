@@ -46,12 +46,6 @@ interface CapturedRequest {
 	providerOptions?: {
 		eliza?: {
 			thinking?: unknown;
-			contentProjection?: {
-				enabled: boolean;
-				resultCount: number;
-				pagesIncluded: number;
-				pagesOmitted: number;
-			};
 		};
 	};
 }
@@ -129,7 +123,7 @@ function _systemMessageContent(request: CapturedRequest): string {
 	return typeof system?.content === "string" ? system.content : "";
 }
 
-describe("runEvaluator — over-window input trims to fit (never context_length_exceeded)", () => {
+describe("runEvaluator — complete input or explicit rejection", () => {
 	it("preserves a large-context candidate's 30k tool result byte-for-byte", async () => {
 		const result = "large-context-result-".repeat(1_600);
 		const { runtime, captured } = makeRegisteredRuntime([
@@ -151,15 +145,9 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 		if (!request) throw new Error("no captured request");
 		expect(toolMessageValues(request)[0]).toContain(result);
 		expect(toolMessageValues(request)[0]).not.toContain("chars truncated]");
-		expect(request.providerOptions?.eliza?.contentProjection).toMatchObject({
-			enabled: false,
-			resultCount: 1,
-			pagesIncluded: 0,
-			pagesOmitted: 0,
-		});
 	});
 
-	it("preserves the selected primary input and lets AgentRuntime compact a smaller failover", async () => {
+	it("preserves the primary input and skips a failover that cannot fit it", async () => {
 		const result = "x".repeat(500_000);
 		const { runtime, captured } = makeRegisteredRuntime([
 			{
@@ -544,9 +532,8 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 
 describe("runEvaluator — bottom-out guard (stable segments alone over budget)", () => {
 	it("fails fast with EVALUATOR_INPUT_OVER_BUDGET instead of calling the provider", async () => {
-		// Overflow in the STABLE prefix, which the degrade loop deliberately
-		// never trims: even at the 2k tool-result floor the input cannot fit,
-		// so the evaluator must throw a typed error before useModel.
+		// Overflow in the stable prefix makes the complete request impossible to
+		// dispatch, so the evaluator must throw a typed error before useModel.
 		const hugeStablePrompt = "characterization ".repeat(2_000_000);
 		const { runtime } = makeRuntime();
 

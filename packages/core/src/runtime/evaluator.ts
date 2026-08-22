@@ -30,11 +30,6 @@ import { modelProviderErrorDetail } from "../utils/model-errors";
 import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
 import { toWellFormedUnicode } from "../utils/well-formed.js";
-import {
-	buildContentProjectionDiagnostics,
-	type ContentProjectionDiagnostics,
-	isProgressiveContentProjectionEnabled,
-} from "./content-projection-policy";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
@@ -47,16 +42,13 @@ import {
 	parseJsonObject,
 } from "./json-output";
 import {
-	buildContentProjectionBudget,
 	buildModelInputBudget,
-	type ContentProjectionBudget,
-	DEFAULT_COMPACTION_RESERVE_TOKENS,
+	DEFAULT_INPUT_RESERVE_TOKENS,
 	MODEL_WINDOW_RESERVE_FRACTION,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
-	type ToolResultProjectionStats,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -243,18 +235,25 @@ function resolveEvaluatorBudget(
 	};
 }
 
-function evaluatorBudgetOptions(contextWindowTokens: number): {
+function evaluatorBudgetOptions(
+	contextWindowTokens: number,
+	minOutputReserveTokens = DEFAULT_EVALUATOR_MAX_TOKENS,
+): {
 	contextWindowTokens: number;
 	reserveTokens: number;
 } {
 	const desiredReserve = Math.max(
-		DEFAULT_COMPACTION_RESERVE_TOKENS,
+		DEFAULT_INPUT_RESERVE_TOKENS,
 		Math.floor(contextWindowTokens * MODEL_WINDOW_RESERVE_FRACTION),
+		minOutputReserveTokens,
 	);
 	// Custom/local model windows can be smaller than the global 10k reserve.
-	// Keep enough room for both input and provider-owned evaluator output instead of
+	// Keep enough room for input and the requested evaluator output instead of
 	// turning such models into an unconditional one-token bottom-out.
-	const smallWindowCap = Math.floor(contextWindowTokens * 0.4);
+	const smallWindowCap = Math.max(
+		minOutputReserveTokens,
+		Math.floor(contextWindowTokens * 0.4),
+	);
 	return {
 		contextWindowTokens,
 		reserveTokens: Math.min(
@@ -328,52 +327,21 @@ export async function runEvaluator(
 	const initialBudgetOptions = budgetResolution.contextWindowTokens
 		? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
 		: {};
-	const projectionEnabled = isProgressiveContentProjectionEnabled(
-		params.runtime,
-	);
 	const renderArgs = {
 		context: params.context,
 		trajectory: params.trajectory,
 		redactText: redactDiagnosticText,
 	};
-	const baselineInput = renderEvaluatorModelInput({
-		...renderArgs,
-		...(projectionEnabled ? { omitRecoverableText: true } : {}),
-	});
-	const baselineBudget = buildModelInputBudget({
-		messages: baselineInput.messages,
-		promptSegments: baselineInput.promptSegments,
-		...initialBudgetOptions,
-	});
-	const projectionBudget = projectionEnabled
-		? buildContentProjectionBudget({
-				budget: baselineBudget,
-				resultCount: baselineInput.projectionStats.resultCount,
-			})
-		: undefined;
-	const renderedInput = projectionBudget
-		? renderEvaluatorModelInput({ ...renderArgs, projectionBudget })
-		: baselineInput;
+	const renderedInput = renderEvaluatorModelInput(renderArgs);
 	const modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		...initialBudgetOptions,
 	});
-	const contentProjection = buildContentProjectionDiagnostics({
-		enabled: projectionEnabled,
-		baselineBudget,
-		...(projectionBudget ? { projectionBudget } : {}),
-		stats: renderedInput.projectionStats,
-	});
-	params.runtime.logger?.debug?.(
-		{ src: "evaluator", contentProjection },
-		"Computed progressive content projection",
-	);
 	const buildAttemptProviderOptions = (
 		input: ReturnType<typeof renderEvaluatorModelInput>,
 		budget: ReturnType<typeof buildModelInputBudget>,
 		provider: string | undefined,
-		projectionDiagnostics: ContentProjectionDiagnostics,
 	): {
 		providerOptions: Record<string, unknown>;
 		prefixHashes: ReturnType<typeof computePrefixHashes>;
@@ -396,7 +364,6 @@ export async function runEvaluator(
 		providerOptions.eliza = {
 			...(providerOptions.eliza ?? {}),
 			thinking: "off",
-			contentProjection: projectionDiagnostics,
 		};
 		return { providerOptions, prefixHashes, prefixHash };
 	};
@@ -404,7 +371,6 @@ export async function runEvaluator(
 		renderedInput,
 		modelInputBudget,
 		params.provider,
-		contentProjection,
 	);
 	const providerOptions = initialAttempt.providerOptions;
 	const prefixHashes = initialAttempt.prefixHashes;
@@ -430,7 +396,7 @@ export async function runEvaluator(
 				code: "EVALUATOR_INPUT_OVER_BUDGET",
 				context: {
 					estimatedInputTokens: args.budget.estimatedInputTokens,
-					compactionThresholdTokens: args.budget.compactionThresholdTokens,
+					dispatchThresholdTokens: args.budget.dispatchThresholdTokens,
 					contextWindowTokens: args.budget.contextWindowTokens,
 					structuredParameterChars: structuredParameterChars(
 						args.input.messages,
@@ -487,54 +453,29 @@ export async function runEvaluator(
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
 		},
+		maxOutputTokens = DEFAULT_EVALUATOR_MAX_TOKENS,
 	): Promise<void> => {
 		const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
 		const resolvedBudget = buildModelInputBudget({ modelName });
 		const attemptWindow = resolvedBudget.contextWindowTokens;
-		const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
-		const attemptBaselineInput = renderEvaluatorModelInput({
+		const attemptBudgetOptions = evaluatorBudgetOptions(
+			attemptWindow,
+			maxOutputTokens,
+		);
+		const attemptInput = renderEvaluatorModelInput({
 			context: params.context,
 			trajectory: params.trajectory,
 			redactText: redactDiagnosticText,
-			...(projectionEnabled ? { omitRecoverableText: true } : {}),
 		});
-		const attemptBaselineBudget = buildModelInputBudget({
-			messages: attemptBaselineInput.messages,
-			promptSegments: attemptBaselineInput.promptSegments,
-			...attemptBudgetOptions,
-		});
-		const attemptProjectionBudget = projectionEnabled
-			? buildContentProjectionBudget({
-					budget: attemptBaselineBudget,
-					resultCount: attemptBaselineInput.projectionStats.resultCount,
-				})
-			: undefined;
-		const attemptInput = attemptProjectionBudget
-			? renderEvaluatorModelInput({
-					context: params.context,
-					trajectory: params.trajectory,
-					redactText: redactDiagnosticText,
-					projectionBudget: attemptProjectionBudget,
-				})
-			: attemptBaselineInput;
 		const attemptBudget = buildModelInputBudget({
 			messages: attemptInput.messages,
 			promptSegments: attemptInput.promptSegments,
 			...attemptBudgetOptions,
 		});
-		const attemptContentProjection = buildContentProjectionDiagnostics({
-			enabled: projectionEnabled,
-			baselineBudget: attemptBaselineBudget,
-			...(attemptProjectionBudget
-				? { projectionBudget: attemptProjectionBudget }
-				: {}),
-			stats: attemptInput.projectionStats,
-		});
 		const attemptOptions = buildAttemptProviderOptions(
 			attemptInput,
 			attemptBudget,
 			attempt.provider,
-			attemptContentProjection,
 		);
 		preparedAttempt = {
 			input: attemptInput,
@@ -543,7 +484,7 @@ export async function runEvaluator(
 			prefixHash: attemptOptions.prefixHash,
 			provider: attempt.provider,
 		};
-		if (attemptBudget.shouldCompact) {
+		if (attemptBudget.shouldReject) {
 			// Attempt-local rejection: this registration's window cannot fit the
 			// complete input. The runtime treats a
 			// preparation throw as a skip and advances to the next registration;
@@ -566,7 +507,7 @@ export async function runEvaluator(
 	// opaque provider error — fail fast with a typed error instead so the
 	// planner-loop's degrade/propagate policy sees the real cause.
 	if (
-		modelInputBudget.shouldCompact &&
+		modelInputBudget.shouldReject &&
 		params.runtime.supportsModelAttemptPreparation !== true
 	) {
 		const preflightError = buildInputBudgetError({
@@ -593,6 +534,42 @@ export async function runEvaluator(
 			const callStartedAt = Date.now();
 			activeCallStartedAt = callStartedAt;
 			const callInput = renderedInput;
+			let callProviderOptions = providerOptions;
+			if (
+				maxTokens > DEFAULT_EVALUATOR_MAX_TOKENS &&
+				params.runtime.supportsModelAttemptPreparation !== true &&
+				budgetResolution.contextWindowTokens
+			) {
+				const retryBudget = buildModelInputBudget({
+					messages: callInput.messages,
+					promptSegments: callInput.promptSegments,
+					...evaluatorBudgetOptions(
+						budgetResolution.contextWindowTokens,
+						maxTokens,
+					),
+				});
+				const retryOptions = buildAttemptProviderOptions(
+					callInput,
+					retryBudget,
+					params.provider,
+				);
+				callProviderOptions = retryOptions.providerOptions;
+				preparedAttempt = {
+					input: callInput,
+					providerOptions: callProviderOptions,
+					prefixHashes: retryOptions.prefixHashes,
+					prefixHash: retryOptions.prefixHash,
+					provider: params.provider,
+				};
+				if (retryBudget.shouldReject) {
+					throw buildInputBudgetError({
+						input: callInput,
+						budget: retryBudget,
+						resolvedModelNames: budgetResolution.modelNames,
+						unknownReachableModel: budgetResolution.unknownReachableModel,
+					});
+				}
+			}
 			const callRaw = await runWithStreamingContext(
 				streamingContext
 					? {
@@ -605,7 +582,7 @@ export async function runEvaluator(
 						messages: callInput.messages,
 						responseSchema: evaluatorSchema,
 						promptSegments: callInput.promptSegments,
-						providerOptions,
+						providerOptions: callProviderOptions,
 						prepareModelAttempt: (
 							attempt: ModelAttemptContext,
 							attemptParams: {
@@ -910,34 +887,18 @@ function renderEvaluatorModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	redactText: ToolDiagnosticTextRedactor;
-	projectionBudget?: ContentProjectionBudget;
-	omitRecoverableText?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
-	projectionStats: ToolResultProjectionStats;
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	let projectionStats: ToolResultProjectionStats = {
-		resultCount: 0,
-		pagesIncluded: 0,
-		pagesOmitted: 0,
-		omissionReasons: {},
-	};
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		redactText: params.redactText,
-		...(params.projectionBudget
-			? { projectionBudget: params.projectionBudget }
-			: {}),
-		...(params.omitRecoverableText ? { omitRecoverableText: true } : {}),
-		onProjectionStats: (stats) => {
-			projectionStats = stats;
-		},
 	});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
@@ -964,7 +925,7 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments, projectionStats };
+	return { messages, promptSegments, cacheKeySegments };
 }
 
 export function parseEvaluatorOutput(
