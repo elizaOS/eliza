@@ -81,9 +81,14 @@ export class VideoGenerationTerminalError extends Error {
 }
 
 /**
- * Submission may have reached a paid provider but yielded no durable job id.
- * The route must not dispatch a fallback or refund; its reservation backstop
- * settles conservatively because no provider status lookup is possible.
+ * Submission may have reached a paid provider but yielded no durable job id:
+ * the transport failed with no HTTP response, or the provider answered 2xx
+ * without an identifiable job. An HTTP error response is NOT this case; a
+ * provider that answered with an error status issued no job, which is a
+ * {@link VideoGenerationTerminalError}. The route must not dispatch a
+ * fallback or refund; it persists a {@link VideoSubmissionUnknownSettlement}
+ * record and settles the reservation conservatively because no provider
+ * status lookup is possible.
  */
 export class VideoGenerationSubmissionUnknownError extends Error {
   readonly providerCause: unknown;
@@ -107,6 +112,24 @@ export interface VideoPendingSettlement {
   settlement_marker: typeof VIDEO_PENDING_SETTLEMENT_MARKER;
   reservation_transaction_id: string;
   reserved_amount: number;
+  billed_cost: number;
+  billing_source: string;
+}
+
+/** Marks a generation row whose provider submission outcome is unverifiable. */
+export const VIDEO_SUBMISSION_UNKNOWN_SETTLEMENT_MARKER = "video_submission_unknown_settlement_v1";
+
+/**
+ * Settlement payload stored on `generations.metadata` when a video submission
+ * may have reached a paid provider without a job id. The reservation is
+ * charged in full, so this record is what support uses to locate, audit, and
+ * manually refund the charge; no automated sweep can verify it.
+ */
+export interface VideoSubmissionUnknownSettlement {
+  settlement_marker: typeof VIDEO_SUBMISSION_UNKNOWN_SETTLEMENT_MARKER;
+  settlement_state: "charged_unverified";
+  billing_request_id: string;
+  reservation_transaction_id: string | null;
   billed_cost: number;
   billing_source: string;
 }

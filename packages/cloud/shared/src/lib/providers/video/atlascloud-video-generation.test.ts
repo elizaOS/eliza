@@ -187,20 +187,23 @@ describe("Atlas Cloud video provider", () => {
     ).rejects.toBeInstanceOf(VideoGenerationSubmissionUnknownError);
   });
 
-  test("classifies a submit server error as unknown", async () => {
+  test("classifies a submit server error as terminal: no prediction was created", async () => {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ message: "gateway timeout" }), {
         status: 503,
         headers: { "content-type": "application/json" },
       })) as typeof fetch;
 
-    await expect(
-      generateAtlasCloudVideo({
-        model: "vidu/q3-turbo/text-to-video",
-        prompt: "a lighthouse",
-        apiKeys: { ATLASCLOUD_API_KEY: "atlas-key" },
-      }),
-    ).rejects.toBeInstanceOf(VideoGenerationSubmissionUnknownError);
+    const error = await generateAtlasCloudVideo({
+      model: "vidu/q3-turbo/text-to-video",
+      prompt: "a lighthouse",
+      apiKeys: { ATLASCLOUD_API_KEY: "atlas-key" },
+    }).catch((caught) => caught);
+    expect(error).toBeInstanceOf(VideoGenerationTerminalError);
+    expect(error.message).toBe("gateway timeout");
+    expect(
+      (error as InstanceType<typeof VideoGenerationTerminalError>).providerCause,
+    ).toMatchObject({ status: 503 });
   });
 
   test("retains the Atlas prediction id when polling is unreachable", async () => {

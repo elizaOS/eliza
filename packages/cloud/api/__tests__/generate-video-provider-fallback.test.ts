@@ -405,6 +405,50 @@ describe("generate-video — default provider fallback", () => {
     expect(generationsCreate).not.toHaveBeenCalled();
   });
 
+  test("falls back to Atlas when fal answers a 5xx on submit (no job issued)", async () => {
+    const falLedger = makeLedgerReservation(
+      100,
+      FAL_COST,
+      "11111111-1111-4111-8111-111111111111",
+    );
+    const atlasLedger = makeLedgerReservation(
+      100,
+      ATLAS_COST,
+      "22222222-2222-4222-8222-222222222222",
+    );
+    reserve
+      .mockResolvedValueOnce(falLedger.reservation)
+      .mockResolvedValueOnce(atlasLedger.reservation);
+    subscribe.mockRejectedValue(
+      new FalApiError({
+        message: "fal upstream unavailable",
+        status: 503,
+        body: undefined,
+      }),
+    );
+    fetchMock.mockResolvedValue(atlasSuccess());
+
+    const response = await post({
+      FAL_KEY: "fal-key",
+      ATLASCLOUD_API_KEY: "atlas-key",
+    });
+
+    expect(response.status).toBe(200);
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(falLedger.reconcileCalls).toBe(1);
+    expect(falLedger.lastActual).toBe(0);
+    expect(atlasLedger.reconcileCalls).toBe(1);
+    expect(atlasLedger.lastActual).toBeCloseTo(ATLAS_COST, 10);
+    expect(generationsCreate).toHaveBeenCalledTimes(1);
+    expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+      model: ATLAS_MODEL,
+      provider: "vidu",
+      status: "completed",
+      result: { billingSource: "atlascloud" },
+    });
+  });
+
   test("does not dispatch Atlas when fal submission may have been accepted", async () => {
     const ledger = makeLedgerReservation(100, FAL_COST);
     reserve.mockResolvedValue(ledger.reservation);
@@ -416,16 +460,62 @@ describe("generate-video — default provider fallback", () => {
     });
 
     expect(response.status).toBe(202);
-    expect(await response.json()).toMatchObject({
+    const body = (await response.json()) as {
+      id: string;
+      requestId: string;
+    };
+    expect(body).toMatchObject({
       success: false,
       status: "submission_unknown",
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       requestId: expect.stringMatching(/^generate-video:[^:]+:0$/),
     });
     expect(reserve).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.lastActual).toBeCloseTo(FAL_COST, 10);
-    expect(generationsCreate).not.toHaveBeenCalled();
+    // The charge is unverifiable, so a durable record must name the billing
+    // request and reservation for support to locate and refund it.
+    expect(generationsCreate).toHaveBeenCalledTimes(1);
+    expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+      id: body.id,
+      organization_id: ORG,
+      user_id: USER,
+      type: "video",
+      model: FAL_MODEL,
+      provider: "fal",
+      status: "failed",
+      error: "connection reset after upload",
+      cost: String(FAL_COST),
+      metadata: {
+        settlement_marker: "video_submission_unknown_settlement_v1",
+        settlement_state: "charged_unverified",
+        billing_request_id: body.requestId,
+        reservation_transaction_id: "11111111-1111-4111-8111-111111111111",
+        billed_cost: FAL_COST,
+        billing_source: "fal",
+      },
+    });
+  });
+
+  test("still settles conservatively when the submission-unknown record cannot be written", async () => {
+    const ledger = makeLedgerReservation(100, FAL_COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockRejectedValue(new Error("connection reset after upload"));
+    generationsCreate.mockRejectedValue(new Error("db unavailable"));
+
+    const response = await post({
+      FAL_KEY: "fal-key",
+      ATLASCLOUD_API_KEY: "atlas-key",
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      status: "submission_unknown",
+    });
+    expect(generationsCreate).toHaveBeenCalledTimes(1);
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.lastActual).toBeCloseTo(FAL_COST, 10);
   });
 
   test("does not fall back when fal may still complete upstream", async () => {

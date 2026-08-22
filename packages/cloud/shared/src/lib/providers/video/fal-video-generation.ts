@@ -192,7 +192,12 @@ export async function generateFalVideo(request: VideoGenerationRequest): Promise
     // error-policy:J1 the provider adapter translates submission/poll outcomes
     // into the typed states required by route billing and reconciliation.
     if (!requestId) {
-      if (isDefinitiveFalRejection(error)) {
+      // The client only raises ApiError from a real HTTP error response, and
+      // fal issues a request_id only inside a 2xx submit body, so ANY error
+      // status (4xx or 5xx, rate limit or outage) proves no paid job exists:
+      // refunding and falling back is safe. Only a failure with no response
+      // at all (socket reset, abort) leaves the submission genuinely unknown.
+      if (error instanceof ApiError) {
         throw new VideoGenerationTerminalError(error.message, error);
       }
       throw new VideoGenerationSubmissionUnknownError(

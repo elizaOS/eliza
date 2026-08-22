@@ -339,6 +339,34 @@ describe("generateFalVideo — post-enqueue failures never present as refundable
     expect(queueStatus).not.toHaveBeenCalled();
   });
 
+  test("pre-enqueue 5xx response is terminal: no request id was ever issued", async () => {
+    resetFalMocks();
+    subscribe.mockRejectedValue(
+      new ApiError({
+        message: "fal upstream 503",
+        status: 503,
+        body: undefined,
+      }),
+    );
+
+    const error = await generateFalVideo(request).catch((caught) => caught);
+    expect(error).toBeInstanceOf(VideoGenerationTerminalError);
+    expect(
+      (error as InstanceType<typeof VideoGenerationTerminalError>).providerCause,
+    ).toMatchObject({ status: 503 });
+    expect(queueStatus).not.toHaveBeenCalled();
+  });
+
+  test("pre-enqueue rate limit is terminal: fal created no job", async () => {
+    resetFalMocks();
+    subscribe.mockRejectedValue(
+      new ApiError({ message: "rate limited", status: 429, body: undefined }),
+    );
+
+    await expect(generateFalVideo(request)).rejects.toBeInstanceOf(VideoGenerationTerminalError);
+    expect(queueStatus).not.toHaveBeenCalled();
+  });
+
   test("pre-enqueue transport ambiguity cannot dispatch a paid fallback", async () => {
     resetFalMocks();
     subscribe.mockRejectedValue(new Error("connection reset after upload"));

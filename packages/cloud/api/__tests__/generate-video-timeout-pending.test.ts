@@ -314,13 +314,13 @@ describe("generate-video — verified terminal failures still refund exactly onc
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
   });
 
-  test("definitive pre-enqueue rejection: reconciled once to 0", async () => {
+  test("pre-enqueue provider failure (fal 503, no upstream job): reconciled once to 0", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
     subscribe.mockRejectedValue(
       new ApiError({
-        message: "invalid input",
-        status: 422,
+        message: "fal upstream 503",
+        status: 503,
         body: undefined,
       }),
     );

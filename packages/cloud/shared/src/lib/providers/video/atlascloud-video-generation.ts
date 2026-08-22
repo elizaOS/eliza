@@ -193,14 +193,10 @@ export async function generateAtlasCloudVideo(
       status: submitResponse.status,
       ...(submitJson.kind === "invalid" ? { cause: submitJson.error } : {}),
     });
-    if (
-      submitResponse.status >= 400 &&
-      submitResponse.status < 500 &&
-      ![408, 409, 425, 429].includes(submitResponse.status)
-    ) {
-      throw new VideoGenerationTerminalError(message, providerCause);
-    }
-    throw new VideoGenerationSubmissionUnknownError(message, providerCause);
+    // Atlas returns the prediction id only in a 2xx body; an error status
+    // (4xx or 5xx) means no paid prediction was created, so releasing the
+    // hold and trying the next provider is safe.
+    throw new VideoGenerationTerminalError(message, providerCause);
   }
   if (submitJson.kind === "invalid") {
     throw new VideoGenerationSubmissionUnknownError(

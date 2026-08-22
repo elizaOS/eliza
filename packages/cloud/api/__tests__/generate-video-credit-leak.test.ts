@@ -9,7 +9,7 @@
  * These tests drive the real route handler with a faithful ledger-backed
  * reservation (the reconcile math is REAL) and assert:
  *  - post-settle DB failure: reconciled exactly once to totalCost, NOT refunded;
- *  - definitive pre-settle rejection: reconciled once to 0, balance restored;
+ *  - pre-settle provider failure (fal answers 5xx, no job): reconciled once to 0;
  *  - clean success: reconciled once to totalCost.
  * Everything else is mocked at the module boundary.
  */
@@ -243,18 +243,20 @@ describe("generate-video — post-settle failure must not refund (#10278)", () =
   });
 });
 
-describe("generate-video — definitive pre-settle rejection still refunds", () => {
-  test("provider rejects before enqueue: refunds and returns provider diagnostics", async () => {
+describe("generate-video — pre-settle failure still refunds", () => {
+  test("provider answers 503 BEFORE enqueue: refunds and returns provider diagnostics", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
+    // fal's client raises ApiError only from a real HTTP error response; an
+    // outage status carries no request_id, so no paid job exists to hold for.
     const providerError = Object.assign(
       new FalApiError({
-        message: "fal rejected input api_key=secret-token",
-        status: 422,
+        message: "fal upstream 503 api_key=secret-token",
+        status: 503,
         body: undefined,
       }),
       {
-        code: "FAL_INVALID_INPUT",
+        code: "FAL_UPSTREAM_UNAVAILABLE",
       },
     );
     subscribe.mockRejectedValue(providerError);
@@ -271,9 +273,9 @@ describe("generate-video — definitive pre-settle rejection still refunds", () 
         provider: "fal",
         model: MODEL,
         billingSource: "fal",
-        upstreamStatus: 422,
-        upstreamCode: "FAL_INVALID_INPUT",
-        upstreamMessage: "fal rejected input api_key=[REDACTED]",
+        upstreamStatus: 503,
+        upstreamCode: "FAL_UPSTREAM_UNAVAILABLE",
+        upstreamMessage: "fal upstream 503 api_key=[REDACTED]",
       },
     });
     expect(generationsCreate).not.toHaveBeenCalled();

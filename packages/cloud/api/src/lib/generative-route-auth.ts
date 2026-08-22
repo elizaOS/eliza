@@ -76,13 +76,6 @@ export async function admitFlatGenerativeOperation(params: {
   cost: FlatBillingCost;
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /**
-   * Long-running media jobs need a durable reservation transaction id for
-   * provider-status reconciliation. Force that lane even in Workers instead
-   * of creating a Durable Object lease that would later need a non-atomic
-   * cross-system handoff to the reservation ledger.
-   */
-  settlementMode?: "default" | "synchronous_reservation";
 }): Promise<OrganizationInferenceAdmission> {
   const executionCtx = getGenerativeExecutionContext(params.c);
   const { provider, billingSource, requestId } = params.context;
@@ -97,7 +90,7 @@ export async function admitFlatGenerativeOperation(params: {
     billingSource,
     requestId,
   };
-  if (!executionCtx || params.settlementMode === "synchronous_reservation") {
+  if (!executionCtx) {
     const { reserveFlatUsageCredits } = await import(
       "@/lib/services/ai-billing"
     );

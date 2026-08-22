@@ -20,9 +20,12 @@ import {
 import {
   type GeneratedVideo,
   VIDEO_PENDING_SETTLEMENT_MARKER,
+  VIDEO_SUBMISSION_UNKNOWN_SETTLEMENT_MARKER,
   VideoGenerationPendingError,
   VideoGenerationSubmissionUnknownError,
   VideoGenerationTerminalError,
+  type VideoProvider,
+  type VideoSubmissionUnknownSettlement,
 } from "@/lib/providers/video/types";
 import {
   type BillingContext,
@@ -60,8 +63,11 @@ const videoRequestSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-/** Everything the catch needs to persist a pending settlement (#11862). */
-interface PendingSettlementContext {
+/**
+ * Everything the catch needs to persist the admitted attempt's settlement
+ * record: a pending job (#11862) or an unverifiable submission.
+ */
+interface AttemptSettlementContext {
   organizationId: string;
   userId: string;
   model: string;
@@ -75,9 +81,7 @@ interface PendingSettlementContext {
 
 interface PricedVideoCandidate {
   definition: SupportedVideoModelDefinition;
-  provider: ReturnType<
-    typeof getConfiguredVideoProviderCandidates
-  >[number]["provider"];
+  provider: VideoProvider;
   billingContext: BillingContext;
   cost: FlatBillingCost;
   durationSeconds: number;
@@ -157,7 +161,7 @@ app.post("/", async (c) => {
   // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
   // the already-correct charge, giving a free video. Mirrors generate-image.
   let chargeSettled = false;
-  let pendingContext: PendingSettlementContext | null = null;
+  let attemptContext: AttemptSettlementContext | null = null;
   let activeBillingRequestId: string | null = null;
 
   try {
@@ -278,10 +282,6 @@ app.post("/", async (c) => {
           cost: candidate.cost,
           idempotencyKey: candidate.billingContext.requestId ?? undefined,
           admissionSnapshot,
-          // Pending video reconciliation is keyed by the reservation
-          // transaction. Keeping every provider attempt on that one durable
-          // ledger avoids a non-atomic DO-lease → DB-reservation handoff.
-          settlementMode: "synchronous_reservation",
         });
       } catch (error) {
         // error-policy:J1 the HTTP boundary translates insufficient-credit
@@ -300,7 +300,7 @@ app.post("/", async (c) => {
       }
       admission = attemptAdmission;
       activeBillingRequestId = candidate.billingContext.requestId ?? null;
-      pendingContext = {
+      attemptContext = {
         organizationId: user.organization_id,
         userId: user.id,
         model: candidate.definition.modelId,
@@ -352,7 +352,7 @@ app.post("/", async (c) => {
         await attemptAdmission.settle(0);
         admission = undefined;
         activeBillingRequestId = null;
-        pendingContext = null;
+        attemptContext = null;
         if (index < providerCandidates.length - 1) {
           logger.warn("[GenerateVideo] Provider failed; trying fallback", {
             provider: candidate.definition.provider,
@@ -483,10 +483,10 @@ app.post("/", async (c) => {
       error instanceof VideoGenerationPendingError &&
       admission &&
       !chargeSettled &&
-      pendingContext
+      attemptContext
     ) {
       const pendingAdmission = admission;
-      const pending = pendingContext;
+      const pending = attemptContext;
       const pendingGenerationId = crypto.randomUUID();
       const persistPendingSettlement = persistPendingVideoSettlement({
         generationId: pendingGenerationId,
@@ -542,18 +542,84 @@ app.post("/", async (c) => {
     if (
       error instanceof VideoGenerationSubmissionUnknownError &&
       admission &&
-      !chargeSettled
+      !chargeSettled &&
+      attemptContext &&
+      activeBillingRequestId
     ) {
       const unknownAdmission = admission;
+      const unknownAttempt = attemptContext;
+      const unknownGenerationId = crypto.randomUUID();
+      const settlement: VideoSubmissionUnknownSettlement = {
+        settlement_marker: VIDEO_SUBMISSION_UNKNOWN_SETTLEMENT_MARKER,
+        settlement_state: "charged_unverified",
+        billing_request_id: activeBillingRequestId,
+        reservation_transaction_id:
+          unknownAdmission.reservation?.reservationTransactionId ?? null,
+        billed_cost: unknownAttempt.totalCost,
+        billing_source: unknownAttempt.billingSource,
+      };
       chargeSettled = true;
-      const conservativeSettlement = unknownAdmission
-        .settleUnknown()
+      // The customer is charged for work no status probe can ever verify, so
+      // the charge must be discoverable and refundable by support. Write the
+      // durable record FIRST; the conservative settlement runs even if the
+      // write fails so the reservation cannot leak, and the failure is logged
+      // with the billing request id that still names the ledger hold.
+      const conservativeSettlement = generationsService
+        .create({
+          id: unknownGenerationId,
+          organization_id: unknownAttempt.organizationId,
+          user_id: unknownAttempt.userId,
+          type: "video",
+          model: unknownAttempt.model,
+          provider: unknownAttempt.provider,
+          prompt: unknownAttempt.prompt,
+          status: "failed",
+          error: redactProviderErrorMessage(error.message).slice(0, 500),
+          parameters: unknownAttempt.parameters,
+          metadata: { ...settlement },
+          dimensions: { duration: unknownAttempt.durationSeconds },
+          cost: String(unknownAttempt.totalCost),
+          credits: String(unknownAttempt.totalCost),
+        })
+        .catch((persistError) => {
+          // error-policy:J7 the submission-unknown record is diagnostic; a
+          // failed write must not block the conservative settlement below.
+          logger.error(
+            "[GenerateVideo] Failed to persist submission-unknown record",
+            {
+              generationId: unknownGenerationId,
+              billingRequestId: settlement.billing_request_id,
+              reservationTransactionId: settlement.reservation_transaction_id,
+              error:
+                persistError instanceof Error
+                  ? persistError.message
+                  : String(persistError),
+            },
+          );
+        })
+        .then(() => unknownAdmission.settleUnknown())
+        .then(() => {
+          logger.warn(
+            "[GenerateVideo] Provider submission outcome unknown — charged conservatively without fallback",
+            {
+              generationId: unknownGenerationId,
+              billingRequestId: settlement.billing_request_id,
+              reservationTransactionId: settlement.reservation_transaction_id,
+              organizationId: unknownAttempt.organizationId,
+              provider: unknownAttempt.provider,
+              model: unknownAttempt.model,
+              billedCost: unknownAttempt.totalCost,
+            },
+          );
+        })
         .catch((settleError) => {
           // error-policy:J7 the reservation sweep retains the same pinned
           // provider/model identity if immediate conservative settlement fails.
           logger.error(
             "[GenerateVideo] Failed to settle an ambiguous provider submission",
             {
+              generationId: unknownGenerationId,
+              billingRequestId: settlement.billing_request_id,
               error:
                 settleError instanceof Error
                   ? settleError.message
@@ -568,6 +634,7 @@ app.post("/", async (c) => {
         {
           success: false,
           status: "submission_unknown",
+          id: unknownGenerationId,
           requestId: activeBillingRequestId,
           error:
             "The provider may have accepted this video request, so no fallback was dispatched and the provider-specific reservation settles conservatively. This request is not safe to retry automatically.",
