@@ -7,8 +7,10 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  type AgentNotification,
   type IAgentRuntime,
   logger,
+  type NotificationInput,
   ServiceType,
   stableStringify,
   toWellFormedUnicode,
@@ -799,22 +801,18 @@ function timestampLiteral(date: Date): string {
 }
 
 interface NotificationEmitter {
-  notify: (input: {
-    title: string;
-    body?: string;
-    category?: string;
-    priority?: string;
-    source?: string;
-    deepLink?: string;
-    groupKey?: string;
-    data?: Record<string, unknown>;
-  }) => Promise<unknown>;
+  notify: (input: NotificationInput) => Promise<AgentNotification>;
+  notifyWithoutEviction?: (
+    input: NotificationInput,
+  ) => Promise<AgentNotification>;
   /**
    * §C.5 acted-upon auto-read: mark the notification(s) for a groupKey read
    * without removing them. Optional — an older NotificationService may not
    * expose it, so callers guard on its presence.
    */
   markReadByGroupKey?: (groupKey: string) => Promise<number>;
+  listIncludingExpired?: () => AgentNotification[];
+  remove?: (id: string) => Promise<boolean>;
 }
 
 function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
@@ -827,6 +825,95 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
 /** The inbox groupKey an approval's notification is filed under. */
 function approvalGroupKey(id: string): string {
   return `approval:${id}`;
+}
+
+type ApprovalNotificationInput = Parameters<NotificationEmitter["notify"]>[0];
+
+function approvalNotificationInput(
+  request: ApprovalRequest,
+): ApprovalNotificationInput {
+  return {
+    title: "Approval needed",
+    body: truncateWellFormed(toWellFormedUnicode(request.reason), 200),
+    category: "approval",
+    priority: "high",
+    source: "lifeops",
+    deepLink: "/chat",
+    groupKey: approvalGroupKey(request.id),
+    data: { requestId: request.id, kind: request.action },
+  };
+}
+
+function hasExactApprovalProjection(
+  notification: AgentNotification,
+  expected: ApprovalNotificationInput,
+): boolean {
+  return (
+    notification.title === expected.title &&
+    notification.body === expected.body &&
+    notification.category === expected.category &&
+    notification.priority === expected.priority &&
+    notification.source === expected.source &&
+    notification.deepLink === expected.deepLink &&
+    notification.icon === undefined &&
+    notification.groupKey === expected.groupKey &&
+    notification.readAt == null &&
+    notification.expiresAt == null &&
+    stableStringify(notification.data ?? {}) ===
+      stableStringify(expected.data ?? {})
+  );
+}
+
+function requireProjectionNotifier(
+  runtime: IAgentRuntime,
+): Required<
+  Pick<
+    NotificationEmitter,
+    "listIncludingExpired" | "notifyWithoutEviction" | "remove"
+  >
+> {
+  const notifier = getNotifier(runtime);
+  if (
+    !notifier ||
+    typeof notifier.listIncludingExpired !== "function" ||
+    typeof notifier.notifyWithoutEviction !== "function" ||
+    typeof notifier.remove !== "function"
+  ) {
+    throw new Error(
+      "[ApprovalQueue] notification service unavailable for awaited approval projection",
+    );
+  }
+  return notifier as Required<
+    Pick<
+      NotificationEmitter,
+      "listIncludingExpired" | "notifyWithoutEviction" | "remove"
+    >
+  >;
+}
+
+async function ensureApprovalNotification(
+  notifier: Required<
+    Pick<
+      NotificationEmitter,
+      "listIncludingExpired" | "notifyWithoutEviction" | "remove"
+    >
+  >,
+  request: ApprovalRequest,
+): Promise<void> {
+  const expected = approvalNotificationInput(request);
+  const projections = notifier
+    .listIncludingExpired()
+    .filter((entry) => entry.groupKey === expected.groupKey);
+  if (
+    projections.length === 1 &&
+    hasExactApprovalProjection(projections[0], expected)
+  ) {
+    return;
+  }
+  for (const projection of projections) {
+    await notifier.remove(projection.id);
+  }
+  await notifier.notifyWithoutEviction(expected);
 }
 
 /**
@@ -887,8 +974,14 @@ export class PgApprovalQueue implements ApprovalQueue {
     input: ApprovalEnqueueInput,
     awaitNotification: boolean,
   ): Promise<ApprovalEnqueueResult> {
+    const projectionNotifier = awaitNotification
+      ? requireProjectionNotifier(this.runtime)
+      : null;
     const inserted = await this.insertApproval(input);
     if (inserted.reused) {
+      if (projectionNotifier) {
+        await ensureApprovalNotification(projectionNotifier, inserted.request);
+      }
       return inserted;
     }
     const { request } = inserted;
@@ -898,34 +991,27 @@ export class PgApprovalQueue implements ApprovalQueue {
     // An outbound action now needs the owner's go-ahead. Ordinary callers keep
     // this side-channel non-blocking, while exact import/seed callers await it
     // so their receipt boundary owns every durable projection.
+    if (projectionNotifier) {
+      await ensureApprovalNotification(projectionNotifier, request);
+      return inserted;
+    }
     const notifier = getNotifier(this.runtime);
     if (notifier) {
-      const notificationWrite = notifier.notify({
-        title: "Approval needed",
-        body: truncateWellFormed(toWellFormedUnicode(input.reason), 200),
-        category: "approval",
-        priority: "high",
-        source: "lifeops",
-        deepLink: "/chat",
-        groupKey: approvalGroupKey(request.id),
-        data: { requestId: request.id, kind: input.action },
-      });
-      if (awaitNotification) {
-        await notificationWrite;
-      } else {
-        void notificationWrite.catch((error) => {
-          // error-policy:J7 owner notification is a non-blocking side-channel,
-          // but a failed rail must remain visible to diagnostics.
-          logger.warn(
-            { error, id: request.id, action: input.action },
-            "[ApprovalQueue] failed to notify owner about pending approval",
-          );
-          this.runtime.reportError("ApprovalQueue.notify", error, {
-            requestId: request.id,
-            action: input.action,
-          });
+      const notificationWrite = notifier.notify(
+        approvalNotificationInput(request),
+      );
+      void notificationWrite.catch((error) => {
+        // error-policy:J7 owner notification is a non-blocking side-channel,
+        // but a failed rail must remain visible to diagnostics.
+        logger.warn(
+          { error, id: request.id, action: input.action },
+          "[ApprovalQueue] failed to notify owner about pending approval",
+        );
+        this.runtime.reportError("ApprovalQueue.notify", error, {
+          requestId: request.id,
+          action: input.action,
         });
-      }
+      });
     }
     return inserted;
   }

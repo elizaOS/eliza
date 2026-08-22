@@ -4832,7 +4832,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(
           and(
             eq(relationshipTable.sourceEntityId, sourceEntityId),
-            eq(relationshipTable.targetEntityId, targetEntityId)
+            eq(relationshipTable.targetEntityId, targetEntityId),
+            eq(relationshipTable.agentId, this.agentId)
           )
         );
       if (result.length === 0) return null;
