@@ -44,6 +44,8 @@ interface LockRaceHooks {
   afterTransitionCheckBeforeLockPublish?: () => Promise<void>;
   afterLockPublishBeforeCandidateCleanup?: () => Promise<void>;
   beforeOwnerCandidateCleanup?: () => Promise<void>;
+  beforeStateDirectorySync?: () => Promise<void>;
+  afterStateDirectoryClose?: () => Promise<void>;
   beforePublicationCandidateValidation?: () => Promise<void>;
   beforeStaleRetire?: () => Promise<void>;
   beforeReleaseRetire?: () => Promise<void>;
@@ -546,6 +548,7 @@ export class FileMessageInteractionSessionStore
     lockIdentity: string,
     validate: () => Promise<boolean>,
     phase: "recovery" | "release",
+    ownerToken?: string,
   ): Promise<boolean> {
     const marker = await this.beginLockTransition(lockIdentity, phase);
     if (!marker) return false;
@@ -583,14 +586,41 @@ export class FileMessageInteractionSessionStore
     try {
       await this.lockRaceHooks.beforeLockUnlink?.();
       await fs.rm(this.lockPath);
-    } catch (error) {
+    } catch (unlinkError) {
       try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
         await fs.rm(marker, { force: true });
-      } catch {
-        // error-policy:J6 preserve the authoritative unlink failure.
+      } catch (cleanupError) {
+        // error-policy:J2 Preserve both failures and the exact offline
+        // authority needed to recover the still-published owner generation.
+        throw new ElizaError(
+          "Interaction lock unlink and transition cleanup both failed.",
+          {
+            code:
+              phase === "recovery"
+                ? "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED"
+                : "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
+            cause: unlinkError,
+            context: {
+              ...this.transitionRecoveryContext(marker),
+              lockPath: this.lockPath,
+              lockIdentity,
+              ...(ownerToken ? { ownerToken } : {}),
+              cleanupError:
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : String(cleanupError),
+              recovery:
+                "Stop all store users, verify lockPath still has lockIdentity and ownerToken when reported, remove markerPath and lockPath, fsync their parent directory, then restart.",
+              ...(phase === "recovery"
+                ? { committed: false, retrySafeAfterRecovery: true }
+                : {}),
+            },
+          },
+        );
       }
-      if (isErrno(error, "ENOENT")) return false;
-      throw error;
+      if (isErrno(unlinkError, "ENOENT")) return false;
+      throw unlinkError;
     }
     try {
       await this.lockRaceHooks.beforeTransitionMarkerCleanup?.();
@@ -954,6 +984,7 @@ export class FileMessageInteractionSessionStore
             return Boolean(current && current.token === owner.token);
           },
           "release",
+          owner.token,
         )
       ) {
         return;
@@ -1136,15 +1167,40 @@ export class FileMessageInteractionSessionStore
       );
     }
     const temp = `${this.filePath}.tmp-${process.pid}-${newToken()}`;
+    let renameCommitted = false;
+    let directorySynced = false;
     try {
       await this.writeAndSync(temp, document);
       await fs.rename(temp, this.filePath);
+      renameCommitted = true;
       const directoryHandle = await fs.open(this.directory, constants.O_RDONLY);
       try {
+        await this.lockRaceHooks.beforeStateDirectorySync?.();
         await directoryHandle.sync();
+        directorySynced = true;
       } finally {
         await directoryHandle.close();
+        await this.lockRaceHooks.afterStateDirectoryClose?.();
       }
+    } catch (error) {
+      if (renameCommitted) {
+        // error-policy:J2 The new row is visible after rename; failed directory
+        // durability/teardown makes retry unsafe and requires state inspection.
+        throw new ElizaError(
+          "Interaction store commit requires reconciliation after a post-rename failure.",
+          {
+            code: "INTERACTION_STORE_COMMIT_AMBIGUOUS",
+            cause: error,
+            context: {
+              committed: directorySynced ? true : "unknown",
+              filePath: this.filePath,
+              reconciliationRequired: true,
+              retrySafe: false,
+            },
+          },
+        );
+      }
+      throw error;
     } finally {
       try {
         await fs.rm(temp, { force: true });
@@ -1185,6 +1241,12 @@ export class FileMessageInteractionSessionStore
           code: "INTERACTION_STORE_TRANSACTION_AND_RELEASE_FAILED",
           cause: operationError,
           context: {
+            ...(operationError instanceof ElizaError
+              ? {
+                  operationErrorCode: operationError.code,
+                  operationErrorContext: operationError.context,
+                }
+              : {}),
             releaseError:
               releaseError instanceof Error
                 ? releaseError.message
