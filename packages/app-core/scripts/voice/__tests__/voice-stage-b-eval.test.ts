@@ -1,8 +1,9 @@
 // Exercises tests voice stage b eval.test automation behavior with deterministic script fixtures.
-import { describe, expect, test } from "vitest";
+
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { describe, expect, test } from "vitest";
 import {
   STAGE_B_SCHEMA,
   validateStageBReport,

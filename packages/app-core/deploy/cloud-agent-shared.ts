@@ -9,7 +9,9 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import { sql } from "drizzle-orm";
-import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with { type: "json" };
+import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+  type: "json",
+};
 
 const CLOUD_AGENT_RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 

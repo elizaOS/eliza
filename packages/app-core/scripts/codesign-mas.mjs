@@ -33,8 +33,8 @@ import { spawnSync } from "node:child_process";
 import {
   closeSync,
   existsSync,
-  openSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   readSync,
@@ -60,20 +60,23 @@ const ENTITLEMENTS_DIR = path.resolve(
   "../platforms/electrobun/entitlements",
 );
 let PARENT_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas.entitlements");
-let CHILD_ENTITLEMENTS = path.join(
-  ENTITLEMENTS_DIR,
-  "mas-child.entitlements",
-);
+let CHILD_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas-child.entitlements");
 let BUN_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas-bun.entitlements");
 
-export function resolveAppleSigningTeamId({ args, identity, env = process.env }) {
+export function resolveAppleSigningTeamId({
+  args,
+  identity,
+  env = process.env,
+}) {
   const identityTeam = identity?.match(/\(([A-Z0-9]{10})\)\s*$/)?.[1];
   const configured = [args["team-id"], env.ELIZA_APPLE_TEAM_ID, identityTeam]
     .map((value) => value?.trim())
     .filter(Boolean);
   const unique = [...new Set(configured)];
   if (unique.length !== 1 || !/^[A-Z0-9]{10}$/.test(unique[0])) {
-    throw new Error("MAS signing requires one matching 10-character Apple Team ID");
+    throw new Error(
+      "MAS signing requires one matching 10-character Apple Team ID",
+    );
   }
   return unique[0];
 }
@@ -99,7 +102,9 @@ function materializeConcreteEntitlements(teamId) {
     child: render(CHILD_ENTITLEMENTS),
     bun: render(BUN_ENTITLEMENTS),
   };
-  process.once("exit", () => rmSync(temporaryRoot, { force: true, recursive: true }));
+  process.once("exit", () =>
+    rmSync(temporaryRoot, { force: true, recursive: true }),
+  );
   return rendered;
 }
 

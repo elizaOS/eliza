@@ -60,9 +60,7 @@ function resolveVulkanHostTooling(ndk) {
 
   const spirvHeadersDir =
     process.env.ELIZA_SPIRV_HEADERS_DIR ||
-    firstExisting([
-      "/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers",
-    ]);
+    firstExisting(["/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers"]);
   if (!spirvHeadersDir) {
     die(
       "SPIRV-Headers cmake dir not found (set ELIZA_SPIRV_HEADERS_DIR) — clone " +

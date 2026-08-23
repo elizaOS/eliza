@@ -1,10 +1,11 @@
 /** Exercises server config filter behavior with deterministic app-core test fixtures. */
-import { describe, expect, test } from "vitest";
+
 import { ElizaError } from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import {
   CONFIG_FILTER_UNBOUNDED,
-  MAX_CONFIG_FILTER_DEPTH,
   filterConfigEnvForResponse,
+  MAX_CONFIG_FILTER_DEPTH,
 } from "../src/api/server-config-filter";
 
 describe("filterConfigEnvForResponse", () => {

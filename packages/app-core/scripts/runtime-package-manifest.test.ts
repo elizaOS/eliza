@@ -19,7 +19,9 @@ const NO_PLUGINS_BUNDLED: ReadonlySet<string> = new Set<string>();
 describe("isRuntimePluginPackage", () => {
   it("recognizes elizaOS runtime plugins", () => {
     expect(isRuntimePluginPackage("@elizaos/plugin-sql")).toBe(true);
-    expect(isRuntimePluginPackage("@elizaos/plugin-local-inference")).toBe(true);
+    expect(isRuntimePluginPackage("@elizaos/plugin-local-inference")).toBe(
+      true,
+    );
     // Unscoped form used by local plugin projects.
     expect(isRuntimePluginPackage("plugin-my-project")).toBe(true);
   });
@@ -28,9 +30,9 @@ describe("isRuntimePluginPackage", () => {
     // Each of these is a hard dependency of a bundled package.
     expect(isRuntimePluginPackage("@octokit/plugin-request-log")).toBe(false);
     expect(isRuntimePluginPackage("@octokit/plugin-paginate-rest")).toBe(false);
-    expect(isRuntimePluginPackage("@octokit/plugin-rest-endpoint-methods")).toBe(
-      false,
-    );
+    expect(
+      isRuntimePluginPackage("@octokit/plugin-rest-endpoint-methods"),
+    ).toBe(false);
     expect(isRuntimePluginPackage("@jimp/plugin-resize")).toBe(false);
     expect(isRuntimePluginPackage("@milkdown/plugin-history")).toBe(false);
     expect(isRuntimePluginPackage("@solana/plugin-core")).toBe(false);
@@ -54,13 +56,18 @@ describe("shouldBundleDiscoveredPackage", () => {
       "@jimp/plugin-resize",
       "@milkdown/plugin-history",
     ]) {
-      expect(shouldBundleDiscoveredPackage(name, NO_PLUGINS_BUNDLED)).toBe(true);
+      expect(shouldBundleDiscoveredPackage(name, NO_PLUGINS_BUNDLED)).toBe(
+        true,
+      );
     }
   });
 
   it("still gates elizaOS plugins on the always-bundled set", () => {
     expect(
-      shouldBundleDiscoveredPackage("@elizaos/plugin-notes", NO_PLUGINS_BUNDLED),
+      shouldBundleDiscoveredPackage(
+        "@elizaos/plugin-notes",
+        NO_PLUGINS_BUNDLED,
+      ),
     ).toBe(false);
     expect(
       shouldBundleDiscoveredPackage(
@@ -81,8 +88,8 @@ describe("shouldBundleDiscoveredPackage", () => {
 
   it("bundles ordinary dependencies", () => {
     expect(shouldBundleDiscoveredPackage("zod", NO_PLUGINS_BUNDLED)).toBe(true);
-    expect(shouldBundleDiscoveredPackage("@octokit/rest", NO_PLUGINS_BUNDLED)).toBe(
-      true,
-    );
+    expect(
+      shouldBundleDiscoveredPackage("@octokit/rest", NO_PLUGINS_BUNDLED),
+    ).toBe(true);
   });
 });
