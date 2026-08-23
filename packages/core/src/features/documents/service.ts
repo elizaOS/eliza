@@ -1959,7 +1959,27 @@ export class DocumentService extends Service {
 			}
 
 			fragments.push(...page);
-			if (page.length < DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE) return fragments;
+			if (page.length < DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE) {
+				const continuation = await this.runtime.adapter.queryDocumentFragments({
+					...params,
+					limit: 1,
+					offset: offset + page.length,
+				});
+				if (continuation.length > 0) {
+					throw new ElizaError(
+						"Document fragment source returned a capped page",
+						{
+							code: "DOCUMENT_SEARCH_SOURCE_INCOMPLETE",
+							context: {
+								offset,
+								requested: DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE,
+								returned: page.length,
+							},
+						},
+					);
+				}
+				return fragments;
+			}
 			if (offset > Number.MAX_SAFE_INTEGER - page.length) {
 				throw new ElizaError(
 					"Document fragment result count is not representable",
