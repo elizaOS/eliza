@@ -2,7 +2,7 @@
  * Behavioral regression for Date.UTC 0-99 — must use setUTCFullYear
  * Calls real calendar primitives that previously used Date.UTC(y,m,d) directly.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { addDaysToLocalDate, getWeekdayForLocalDate } from "../internal/time";
 
 function createUTCDateViaSet(y: number, m: number, d: number): Date {

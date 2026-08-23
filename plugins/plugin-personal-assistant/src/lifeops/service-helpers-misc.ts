@@ -249,7 +249,9 @@ export function compareWindowStarts(
   right: Pick<LifeOpsWindowPolicy["windows"][number], "name" | "startMinute">,
 ): number {
   const leftMinute = Number.isFinite(left.startMinute) ? left.startMinute : 0;
-  const rightMinute = Number.isFinite(right.startMinute) ? right.startMinute : 0;
+  const rightMinute = Number.isFinite(right.startMinute)
+    ? right.startMinute
+    : 0;
   if (leftMinute !== rightMinute) return leftMinute - rightMinute;
   return left.name.localeCompare(right.name);
 }

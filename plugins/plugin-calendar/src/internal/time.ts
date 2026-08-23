@@ -181,7 +181,11 @@ export function addDaysToLocalDate(
   dayDelta: number,
 ): Pick<ZonedDateParts, "year" | "month" | "day"> {
   const utcDate = new Date(0);
-  utcDate.setUTCFullYear(dateOnly.year, dateOnly.month - 1, dateOnly.day + dayDelta);
+  utcDate.setUTCFullYear(
+    dateOnly.year,
+    dateOnly.month - 1,
+    dateOnly.day + dayDelta,
+  );
   utcDate.setUTCHours(12, 0, 0, 0);
   return {
     year: utcDate.getUTCFullYear(),
