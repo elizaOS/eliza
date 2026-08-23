@@ -1214,6 +1214,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				all,
 				params.accessContext,
 				this.adapterAgentId,
+				params.tableName === "messages" &&
+					params.accessContext.authorizedRoomIds !== undefined
+					? "room"
+					: "private",
 			);
 		}
 
@@ -1310,6 +1314,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				all,
 				params.accessContext,
 				this.adapterAgentId,
+				params.tableName === "messages" &&
+					params.accessContext.authorizedRoomIds !== undefined
+					? "room"
+					: "private",
 			);
 		}
 
@@ -1363,6 +1371,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				windowed,
 				params.accessContext,
 				this.adapterAgentId,
+				"room",
 			);
 		}
 		const ranked = rankMessageSearch(windowed, params.query);

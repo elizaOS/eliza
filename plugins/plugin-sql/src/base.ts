@@ -216,7 +216,8 @@ function escapeIlikeLiteral(value: string): string {
  */
 function memoryAccessContextConditions(
   accessContext: AccessContext | undefined,
-  agentId: UUID
+  agentId: UUID,
+  tableName?: string
 ): SQL[] {
   if (!accessContext) return [];
 
@@ -246,8 +247,10 @@ function memoryAccessContextConditions(
       )
     )
   )`;
+  const unstampedScope =
+    tableName === "messages" && accessContext.authorizedRoomIds !== undefined ? "room" : "private";
   const scope = sql`CASE
-    WHEN NOT (${metadata} ? 'scope') THEN 'private'
+    WHEN NOT (${metadata} ? 'scope') THEN ${unstampedScope}
     ELSE ${metadata}->>'scope'
   END`;
   const scopedEntityId = sql`COALESCE(
@@ -2831,7 +2834,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
 
-      conditions.push(...memoryAccessContextConditions(params.accessContext, this.agentId));
+      conditions.push(
+        ...memoryAccessContextConditions(params.accessContext, this.agentId, tableName)
+      );
 
       if (start !== undefined) {
         conditions.push(gte(memoryTable.createdAt, new Date(start)));
@@ -3004,7 +3009,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const conditions = [
         eq(memoryTable.type, params.tableName),
         inArray(memoryTable.roomId, params.roomIds),
-        ...memoryAccessContextConditions(params.accessContext, this.agentId),
+        ...memoryAccessContextConditions(params.accessContext, this.agentId, params.tableName),
       ];
 
       conditions.push(eq(memoryTable.agentId, this.agentId));
@@ -3143,7 +3148,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.agentId),
         inArray(memoryTable.roomId, params.roomIds),
-        ...memoryAccessContextConditions(params.accessContext, this.agentId),
+        ...memoryAccessContextConditions(params.accessContext, this.agentId, tableName),
         ...timeConditions,
         sql`(${tsvector} @@ ${tsquery} OR ${literalMatch} OR ${trigramMatch})`,
       ];
@@ -3220,7 +3225,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               eq(memoryTable.type, tableName),
               eq(memoryTable.agentId, this.agentId),
               inArray(memoryTable.roomId, params.roomIds),
-              ...memoryAccessContextConditions(params.accessContext, this.agentId),
+              ...memoryAccessContextConditions(params.accessContext, this.agentId, tableName),
               ...timeConditions,
               or(
                 sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(params.query)}%`} ESCAPE '\\'`,
@@ -3929,7 +3934,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         isNotNull(activeColumn),
         eq(memoryTable.type, params.tableName),
         eq(memoryTable.agentId, this.agentId),
-        ...memoryAccessContextConditions(params.accessContext, this.agentId),
+        ...memoryAccessContextConditions(params.accessContext, this.agentId, params.tableName),
       ];
 
       if (params.unique) {

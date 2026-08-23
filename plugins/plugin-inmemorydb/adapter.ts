@@ -1091,7 +1091,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       readableMemories = filterMemoryReadByAccessContext(
         readableMemories,
         params.accessContext,
-        this.agentId
+        this.agentId,
+        params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+          ? "room"
+          : "private"
       );
     }
 
@@ -1159,7 +1162,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       readableMemories = filterMemoryReadByAccessContext(
         readableMemories,
         params.accessContext,
-        this.agentId
+        this.agentId,
+        params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+          ? "room"
+          : "private"
       );
     }
     const offset = typeof params.offset === "number" ? params.offset : 0;
@@ -1197,7 +1203,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         )
       );
     if (params.accessContext) {
-      candidates = filterMemoryReadByAccessContext(candidates, params.accessContext, this.agentId);
+      candidates = filterMemoryReadByAccessContext(
+        candidates,
+        params.accessContext,
+        this.agentId,
+        "room"
+      );
     }
     const ranked = rankMessageSearch(candidates, params.query);
     const offset = typeof params.offset === "number" ? params.offset : 0;
@@ -1295,7 +1306,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         ? filterMemoryReadByAccessContext(
             eligibleMemories.map(toMemory),
             params.accessContext,
-            this.agentId
+            this.agentId,
+            params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+              ? "room"
+              : "private"
           )
         : eligibleMemories.map(toMemory);
       const memoriesById = new Map(
