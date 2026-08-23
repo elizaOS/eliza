@@ -31,7 +31,7 @@ describe("browser bridge registration lifecycle", () => {
       fs.rmSync(root, { force: true, recursive: true });
   });
 
-  posixIt("plans exact macOS and Linux per-user manifest locations", () => {
+  it("plans exact target-platform per-user manifest locations", () => {
     const mac = createBrowserBridgeRegistrationPlan({
       platform: "darwin",
       homeDir: "/Users/eliza",
@@ -55,31 +55,39 @@ describe("browser bridge registration lifecycle", () => {
       "/home/eliza/.config/google-chrome/NativeMessagingHosts/ai.elizaos.browserbridge.json",
       "/home/eliza/.mozilla/native-messaging-hosts/ai.elizaos.browserbridge.json",
     ]);
+    const windows = createBrowserBridgeRegistrationPlan({
+      platform: "win32",
+      homeDir: "C:\\Users\\eliza",
+      executablePath: "C:\\Program Files\\Eliza\\browser-host.exe",
+      chromeExtensionIds: [chromeId],
+      firefoxExtensionIds: ["bridge@elizaos.ai"],
+    });
+    expect(windows.manifests.map((entry) => entry.manifestPath)).toEqual([
+      "C:\\Users\\eliza\\AppData\\Local\\elizaOS\\BrowserBridge\\chrome\\ai.elizaos.browserbridge.json",
+      "C:\\Users\\eliza\\AppData\\Local\\elizaOS\\BrowserBridge\\firefox\\ai.elizaos.browserbridge.json",
+    ]);
   });
 
-  posixIt(
-    "resolves the dedicated packaged host instead of the desktop executable",
-    () => {
-      expect(
-        resolveBrowserBridgeNativeHostExecutable(
-          "/Applications/Eliza.app/Contents/Resources/bun/native",
-          "darwin",
-          (candidate) =>
-            candidate ===
-            "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
-        ),
-      ).toBe(
-        "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
-      );
-      expect(() =>
-        resolveBrowserBridgeNativeHostExecutable(
-          "/tmp/native",
-          "linux",
-          () => false,
-        ),
-      ).toThrow("executable is missing");
-    },
-  );
+  it("resolves the dedicated packaged host instead of the desktop executable", () => {
+    expect(
+      resolveBrowserBridgeNativeHostExecutable(
+        "/Applications/Eliza.app/Contents/Resources/bun/native",
+        "darwin",
+        (candidate) =>
+          candidate ===
+          "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
+      ),
+    ).toBe(
+      "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
+    );
+    expect(() =>
+      resolveBrowserBridgeNativeHostExecutable(
+        "/tmp/native",
+        "linux",
+        () => false,
+      ),
+    ).toThrow("executable is missing");
+  });
 
   posixIt(
     "writes private manifests atomically and removes only exact planned files",
@@ -118,6 +126,7 @@ describe("browser bridge registration lifecycle", () => {
       platform: "win32",
       homeDir: "C:\\Users\\eliza",
       windowsConfigDir: root,
+      pathApi: path,
       executablePath: "C:\\Program Files\\Eliza\\Eliza.exe",
       chromeExtensionIds: [chromeId],
       firefoxExtensionIds: ["bridge@elizaos.ai"],
@@ -151,6 +160,7 @@ describe("browser bridge registration lifecycle", () => {
       platform: "win32",
       homeDir: "C:\\Users\\eliza",
       windowsConfigDir: root,
+      pathApi: path,
       executablePath: "C:\\Program Files\\Eliza\\browser-host.exe",
       chromeExtensionIds: [chromeId],
       firefoxExtensionIds: ["bridge@elizaos.ai"],
@@ -213,6 +223,7 @@ describe("browser bridge registration lifecycle", () => {
       platform: "win32",
       homeDir: "C:\\Users\\eliza",
       windowsConfigDir: root,
+      pathApi: path,
       executablePath: "C:\\Program Files\\Eliza\\browser-host.exe",
       chromeExtensionIds: [chromeId],
       firefoxExtensionIds: [],
@@ -252,6 +263,7 @@ describe("browser bridge registration lifecycle", () => {
       platform: "win32",
       homeDir: "C:\\Users\\eliza",
       windowsConfigDir: root,
+      pathApi: path,
       executablePath: "C:\\Program Files\\Eliza\\browser-host.exe",
       chromeExtensionIds: [chromeId],
       firefoxExtensionIds: [],
@@ -291,6 +303,7 @@ describe("browser bridge registration lifecycle", () => {
       platform: "win32",
       homeDir: "C:\\Users\\eliza",
       windowsConfigDir: root,
+      pathApi: path,
       executablePath: "C:\\Program Files\\Eliza\\browser-host.exe",
       chromeExtensionIds: [chromeId],
       firefoxExtensionIds: [],
@@ -322,6 +335,7 @@ describe("browser bridge registration lifecycle", () => {
       platform: "win32",
       homeDir: "C:\\Users\\eliza",
       windowsConfigDir: root,
+      pathApi: path,
       executablePath: "C:\\Program Files\\Eliza\\browser-host.exe",
       chromeExtensionIds: [chromeId],
       firefoxExtensionIds: [],
