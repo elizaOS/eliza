@@ -15,15 +15,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveCloudAgentBuildPaths } from "./cloud-agent-build-paths.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// packages/cloud/scripts/admin/dev -> five levels up to the repo root
-const elizaRoot = path.resolve(__dirname, "../../../../..");
-
-const dockerfile = path.resolve(
-  elizaRoot,
-  "packages/app-core/deploy/Dockerfile.cloud-agent",
-);
+const { contextRoot, dockerfile, dockerfileRelToContext } =
+  resolveCloudAgentBuildPaths(__dirname);
 
 if (!existsSync(dockerfile)) {
   console.error(`[agent:build] Dockerfile not found at ${dockerfile}`);
@@ -35,10 +31,8 @@ const platform =
   process.env.ELIZA_AGENT_IMAGE_PLATFORM ??
   (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
 
-const dockerfileRelToContext = path.relative(elizaRoot, dockerfile);
-
 console.log(`[agent:build] tag=${tag} platform=${platform}`);
-console.log(`[agent:build] context=${elizaRoot}`);
+console.log(`[agent:build] context=${contextRoot}`);
 console.log(`[agent:build] dockerfile=${dockerfileRelToContext}`);
 
 const result = spawnSync(
@@ -54,7 +48,7 @@ const result = spawnSync(
     ".",
   ],
   {
-    cwd: elizaRoot,
+    cwd: contextRoot,
     stdio: "inherit",
   },
 );

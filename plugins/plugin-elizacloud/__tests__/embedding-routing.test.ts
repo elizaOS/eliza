@@ -60,6 +60,10 @@ afterEach(() => {
 });
 
 describe("Eliza Cloud embedding routing", () => {
+  it("declares the host routing flag in plugin config so runtime settings retain it", () => {
+    expect(elizaOSCloudPlugin.config).toHaveProperty("ELIZAOS_CLOUD_USE_EMBEDDINGS");
+  });
+
   it("does not register cloud embeddings when ELIZAOS_CLOUD_USE_EMBEDDINGS=false so BYO embeddings resolve", () => {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
     process.env.EMBEDDING_BASE_URL = "http://172.17.0.1:11434/v1";
