@@ -178,7 +178,9 @@ export function selectLruEvictions(
   const ordered = [...eligible].sort((a, b) => {
     const at = lastActiveAt.get(a) ?? 0;
     const bt = lastActiveAt.get(b) ?? 0;
-    if (at !== bt) return at - bt;
+    const safeAt = Number.isFinite(at) ? at : 0;
+    const safeBt = Number.isFinite(bt) ? bt : 0;
+    if (safeAt !== safeBt) return safeAt - safeBt;
     return a < b ? -1 : a > b ? 1 : 0;
   });
   return ordered.slice(0, Math.min(overflow, ordered.length));
@@ -229,12 +231,19 @@ export function planModuleCacheEvictions<E extends ModuleCacheEntryLike>(
   const { now, ttlMs, maxEntries, force, totalSize } = options;
   const idleOldestFirst = entries
     .filter((entry) => entry.refCount === 0)
-    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+    .sort(
+      (a, b) =>
+        (Number.isFinite(a.lastUsedAt) ? a.lastUsedAt : 0) -
+        (Number.isFinite(b.lastUsedAt) ? b.lastUsedAt : 0),
+    );
 
   const plan: { entry: E; phase: ModuleCacheEvictionPhase }[] = [];
   const ttlEvicted = new Set<E>();
   for (const entry of idleOldestFirst) {
-    if (force || now - entry.lastUsedAt >= ttlMs) {
+    const safeLastUsed = Number.isFinite(entry.lastUsedAt)
+      ? entry.lastUsedAt
+      : 0;
+    if (force || now - safeLastUsed >= ttlMs) {
       plan.push({ entry, phase: "ttl" });
       ttlEvicted.add(entry);
     }
