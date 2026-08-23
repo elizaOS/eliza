@@ -281,7 +281,17 @@ export function WifiAppView(props: OverlayAppContext) {
   }, []);
 
   const sortedNetworks = useMemo(() => {
-    return [...networks].sort((a, b) => b.rssi - a.rssi);
+    return [...networks].sort((a, b) => {
+      const bRssi =
+        typeof b.rssi === "number" && Number.isFinite(b.rssi)
+          ? b.rssi
+          : -Infinity;
+      const aRssi =
+        typeof a.rssi === "number" && Number.isFinite(a.rssi)
+          ? a.rssi
+          : -Infinity;
+      return bRssi - aRssi || a.ssid.localeCompare(b.ssid);
+    });
   }, [networks]);
 
   return (
