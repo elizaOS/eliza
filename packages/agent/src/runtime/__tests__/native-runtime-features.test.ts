@@ -1,8 +1,12 @@
+/**
+ * Native-runtime feature tests exercise the production method-presence gates
+ * with deterministic runtime doubles for enabled, absent, and invalid flags.
+ */
 import { describe, expect, it } from "vitest";
 import {
   runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
-} from "./native-runtime-features.ts";
+} from "../native-runtime-features.ts";
 
 describe("native-runtime-features", () => {
   it("returns true when the method exists and reports enabled", () => {

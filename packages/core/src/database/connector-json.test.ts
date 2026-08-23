@@ -248,7 +248,9 @@ describe("connector JSON projection", () => {
 			const overLength = "a".repeat(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
 
 			encodeCalls = 0;
-			expect(() => cloneConnectorJsonObject({ value: overLength })).toThrowError(
+			expect(() =>
+				cloneConnectorJsonObject({ value: overLength }),
+			).toThrowError(
 				expect.objectContaining({ code: CONNECTOR_JSON_UNBOUNDED }),
 			);
 			expect(encodeCalls).toBe(0);
