@@ -1,0 +1,72 @@
+/** Tests the pure workspace-delta receipt validator with deterministic fixtures. */
+
+import { describe, expect, it } from "vitest";
+import {
+	normalizeWorkspaceDeltaReceipt,
+	readWorkspaceDeltaReceipt,
+	WORKSPACE_DELTA_RECEIPT_DATA_KEY,
+} from "./workspace-delta";
+
+const HASH_A = "a".repeat(64);
+const HASH_B = "b".repeat(64);
+
+function observed(outcome: "changed" | "unchanged") {
+	return {
+		version: 1,
+		kind: "workspace_delta",
+		scope: {
+			kind: "git_worktree",
+			root: "/workspace",
+			coverage: "tracked_and_untracked_nonignored",
+		},
+		outcome,
+		beforeFingerprint: HASH_A,
+		afterFingerprint: outcome === "changed" ? HASH_B : HASH_A,
+		observedAt: "2026-08-22T12:00:00.000Z",
+	};
+}
+
+describe("WorkspaceDeltaReceipt", () => {
+	it("normalizes observed and indeterminate receipts", () => {
+		expect(normalizeWorkspaceDeltaReceipt(observed("changed"))).toEqual(
+			observed("changed"),
+		);
+		expect(
+			normalizeWorkspaceDeltaReceipt({
+				...observed("unchanged"),
+				outcome: "indeterminate",
+				afterFingerprint: undefined,
+				reasonCode: "POST_SNAPSHOT_FAILED",
+			}),
+		).toMatchObject({
+			outcome: "indeterminate",
+			reasonCode: "POST_SNAPSHOT_FAILED",
+			beforeFingerprint: HASH_A,
+		});
+	});
+
+	it("reads only the canonical ActionResult.data key", () => {
+		expect(
+			readWorkspaceDeltaReceipt({
+				[WORKSPACE_DELTA_RECEIPT_DATA_KEY]: observed("unchanged"),
+			}),
+		).toMatchObject({ outcome: "unchanged" });
+		expect(readWorkspaceDeltaReceipt({ unrelated: observed("changed") })).toBe(
+			undefined,
+		);
+	});
+
+	it.each([
+		{ ...observed("changed"), version: 2 },
+		{ ...observed("changed"), outcome: "maybe" },
+		{ ...observed("changed"), beforeFingerprint: "short" },
+		{ ...observed("changed"), observedAt: "not-a-time" },
+		{
+			...observed("changed"),
+			outcome: "indeterminate",
+			afterFingerprint: undefined,
+		},
+	])("rejects malformed receipt %#", (value) => {
+		expect(() => normalizeWorkspaceDeltaReceipt(value)).toThrow(TypeError);
+	});
+});

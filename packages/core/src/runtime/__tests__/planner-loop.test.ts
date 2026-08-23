@@ -549,6 +549,27 @@ describe("v5 planner loop skeleton", () => {
 		text: "",
 		toolCalls: [{ id, name: "REPLY", arguments: { text } }],
 	});
+	const workspaceDelta = (
+		outcome: "changed" | "unchanged" | "indeterminate",
+	) => ({
+		workspaceDeltaReceipt: {
+			version: 1,
+			kind: "workspace_delta",
+			scope: {
+				kind: "git_worktree",
+				root: "/workspace",
+				coverage: "tracked_and_untracked_nonignored",
+			},
+			outcome,
+			...(outcome === "indeterminate"
+				? { reasonCode: "WORKTREE_PROBE_FAILED" }
+				: {
+						beforeFingerprint: "a".repeat(64),
+						afterFingerprint: (outcome === "changed" ? "b" : "a").repeat(64),
+					}),
+			observedAt: "2026-08-22T12:00:00.000Z",
+		},
+	});
 	const codingFileWrite = () => ({
 		text: "",
 		toolCalls: [
@@ -776,6 +797,214 @@ describe("v5 planner loop skeleton", () => {
 			);
 		});
 	});
+
+	it("requires clean verification after an observed shell mutation", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "generate-1",
+								name: "SHELL",
+								arguments: { command: "node generate.js" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("reply-1", "Generated files."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-clean",
+								name: "SHELL",
+								arguments: { command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-2", "Generated and verified files."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "generated",
+					data: workspaceDelta("changed"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "tests passed cleanly",
+					data: workspaceDelta("unchanged"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Generated and verified files.");
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+			expect(
+				result.trajectory.evaluatorOutputs.filter(
+					(output) => output.decision === "CONTINUE",
+				),
+			).toHaveLength(1);
+		});
+	});
+
+	it("treats an indeterminate shell receipt as a mutation requiring verification", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "generate-unknown",
+								name: "SHELL",
+								arguments: { command: "node generate.js" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("reply-1", "Generated files."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-clean",
+								name: "SHELL",
+								arguments: { command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-2", "Generated and verified files."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "generation status unknown",
+					data: workspaceDelta("indeterminate"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "tests passed cleanly",
+					data: workspaceDelta("unchanged"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Generated and verified files.");
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	it.each(["changed", "indeterminate"] as const)(
+		"does not let a verifier with a %s receipt clear pending mutation",
+		async (verifierOutcome) => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "generate-1",
+									name: "SHELL",
+									arguments: { command: "node generate.js" },
+								},
+							],
+						})
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "verify-mutating",
+									name: "SHELL",
+									arguments: { command: "npm test" },
+								},
+							],
+						})
+						.mockResolvedValueOnce(codingReply("reply-1", "Verified."))
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "verify-clean",
+									name: "SHELL",
+									arguments: { command: "npm run typecheck" },
+								},
+							],
+						})
+						.mockResolvedValueOnce(
+							codingReply("reply-2", "Verified without further mutation."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						text: "generated",
+						data: workspaceDelta("changed"),
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "tests passed but mutated the workspace",
+						data: workspaceDelta(verifierOutcome),
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "tests passed cleanly",
+						data: workspaceDelta("unchanged"),
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: [
+						{ name: "SHELL", description: "Run a command." },
+						{ name: "REPLY", description: "Reply to the user." },
+					],
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(result.finalMessage).toBe("Verified without further mutation.");
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+			});
+		},
+	);
 
 	it("does not treat a successful inspection command as coding verification", async () => {
 		await withCodingRequiredToolDefaults(async () => {

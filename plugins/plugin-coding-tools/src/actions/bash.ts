@@ -14,10 +14,12 @@ import {
   type ActionResult,
   CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
+  getCapabilityRouter,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
+  type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
@@ -41,6 +43,11 @@ import {
   type ShellOutputArtifactStream,
 } from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
+import {
+  beginLocalWorkspaceDeltaObservation,
+  finishLocalWorkspaceDeltaObservation,
+  workspaceDeltaResultData,
+} from "../lib/workspace-delta.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
@@ -63,6 +70,23 @@ const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
 const COINGECKO_SIMPLE_PRICE_BASE =
   "https://api.coingecko.com/api/v3/simple/price";
+
+function redactedWorkspaceDeltaResultData(
+  runtime: IAgentRuntime,
+  receipt: WorkspaceDeltaReceipt | undefined,
+): Record<string, unknown> {
+  return workspaceDeltaResultData(
+    receipt
+      ? {
+          ...receipt,
+          scope: {
+            ...receipt.scope,
+            root: redactShellText(runtime, receipt.scope.root),
+          },
+        }
+      : undefined,
+  );
+}
 
 type ShellActionSubaction =
   | "run"
@@ -1916,6 +1940,12 @@ export const shellAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch configuration`,
     );
 
+    // A remote PTY may execute on a different machine from this process. Never
+    // pair that execution with a local Git snapshot and call it authoritative;
+    // remote receipts must eventually come from the executing capability.
+    const workspaceObservation = getCapabilityRouter(runtime)
+      ? undefined
+      : await beginLocalWorkspaceDeltaObservation(cwd);
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
     coreLogger.info(
@@ -1934,11 +1964,23 @@ export const shellAction: Action = {
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
       );
+      const workspaceDelta =
+        await finishLocalWorkspaceDeltaObservation(workspaceObservation);
       return failureToActionResult(
         { reason: "internal", message },
-        { cwd: redactedCwd },
+        {
+          cwd: redactedCwd,
+          ...redactedWorkspaceDeltaResultData(runtime, workspaceDelta),
+        },
       );
     }
+
+    const workspaceDelta =
+      await finishLocalWorkspaceDeltaObservation(workspaceObservation);
+    const workspaceDeltaData = redactedWorkspaceDeltaResultData(
+      runtime,
+      workspaceDelta,
+    );
 
     const took = Date.now() - startedAt;
     if (result.outputLimitExceeded) {
@@ -1948,7 +1990,11 @@ export const shellAction: Action = {
           message:
             "command output exceeded the 1,000,000-character complete-capture safety limit; no partial output is available",
         },
-        { command: redactShellText(runtime, command), cwd: redactedCwd },
+        {
+          command: redactShellText(runtime, command),
+          cwd: redactedCwd,
+          ...workspaceDeltaData,
+        },
       );
     }
     const timedOut = result.timedOut;
@@ -1984,6 +2030,7 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: false,
+          ...workspaceDeltaData,
         },
       );
     }
@@ -1999,6 +2046,7 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: false,
+          ...workspaceDeltaData,
         },
       );
     }
@@ -2010,6 +2058,7 @@ export const shellAction: Action = {
       sandbox_backend: result.sandbox,
       signal,
       output_truncated: false,
+      ...workspaceDeltaData,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is
