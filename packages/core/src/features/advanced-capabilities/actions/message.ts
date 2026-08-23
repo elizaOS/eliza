@@ -4808,7 +4808,7 @@ async function handleGetUser(
 
 async function handleReadMessage(
 	runtime: IAgentRuntime,
-	_message: Memory,
+	message: Memory,
 	params: ParamRecord,
 ): Promise<ActionResult> {
 	const sourceValue = textParam(params.source) ?? "gmail";
@@ -4844,6 +4844,8 @@ async function handleReadMessage(
 				messageId,
 				reference,
 				worldId: textParam(params.accountId),
+				requesterEntityId: message.entityId,
+				requesterRoomId: message.roomId,
 				offset: numberParam(params.offset),
 				limit: numberParam(params.limit),
 				unit: unitValue as "line" | "fragment" | "byte",
@@ -4852,6 +4854,7 @@ async function handleReadMessage(
 		);
 		const projection = {
 			readView: result.readView,
+			...(result.sourceWork ? { sourceWork: result.sourceWork } : {}),
 			...(result.control ? { control: result.control } : {}),
 		};
 		// The exact body page has one carrier. Structured projections contain
