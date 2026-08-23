@@ -225,15 +225,13 @@ function newestLocalBackup(
   backups: LocalAgentBackupMetadata[],
 ): LocalAgentBackupMetadata | null {
   return (
-    backups
-      .slice()
-      .sort((a, b) => {
-        const aTime = Date.parse(a.createdAt);
-        const bTime = Date.parse(b.createdAt);
-        const aSafe = Number.isFinite(aTime) ? aTime : 0;
-        const bSafe = Number.isFinite(bTime) ? bTime : 0;
-        return bSafe - aSafe || b.fileName.localeCompare(a.fileName);
-      })[0] ?? null
+    backups.slice().sort((a, b) => {
+      const aTime = Date.parse(a.createdAt);
+      const bTime = Date.parse(b.createdAt);
+      const aSafe = Number.isFinite(aTime) ? aTime : 0;
+      const bSafe = Number.isFinite(bTime) ? bTime : 0;
+      return bSafe - aSafe || b.fileName.localeCompare(a.fileName);
+    })[0] ?? null
   );
 }
 
