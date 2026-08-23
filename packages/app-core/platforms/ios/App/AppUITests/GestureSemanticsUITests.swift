@@ -995,13 +995,15 @@ final class GestureSemanticsUITests: XCTestCase {
 
     // MARK: - Message plumbing
 
-    /// User message bubbles surface as their aria-label ("Show/Hide message
-    /// actions") — the text child is name-hidden behind the label on most OS
-    /// builds, so match the label across element types.
+    /// Current transcript rows expose the complete user message to VoiceOver;
+    /// older renderers exposed only the message-actions label. Match both
+    /// contracts so geometry coverage follows the rendered row rather than an
+    /// obsolete accessibility implementation detail.
     private func messageBubbles(in app: XCUIApplication) -> XCUIElementQuery {
         app.descendants(matching: .any).matching(
             NSPredicate(
-                format: "label IN {'Show message actions', 'Hide message actions'}"
+                format:
+                    "label IN {'Show message actions', 'Hide message actions'} OR label BEGINSWITH[c] 'Your message:'"
             ))
     }
 
@@ -1014,6 +1016,13 @@ final class GestureSemanticsUITests: XCTestCase {
     /// whose center sits right of the window midline, falling back to the
     /// plain last bubble on a reply-less (model-less) boot.
     private func lastMessageBubble(in app: XCUIApplication) throws -> XCUIElement {
+        let currentUserRows = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'Your message:'")
+        )
+        if currentUserRows.count > 0 {
+            return currentUserRows.element(boundBy: currentUserRows.count - 1)
+        }
+
         let bubbles = messageBubbles(in: app)
         let count = bubbles.count
         guard count > 0 else {

@@ -5458,6 +5458,17 @@ export function ChatOverlay({
     overpullCapT,
     setDragPreviewMounted,
   ]);
+  // A busy WebView can coalesce a quick restore flick into pointerdown →
+  // pointerup with no delivered pointermove. `usePullGesture` still recognizes
+  // that release as a downward pull, but `onRestoreDrag` never had a chance to
+  // mark the restore engaged. Promote that release-only path before settling so
+  // the real flick exits full-bleed instead of snapping back to maximized.
+  const settleCoalescedRestorePullDown = React.useCallback(() => {
+    if (!pinnedOpen && !restoreDidEngageRef.current) {
+      restoreDidEngageRef.current = true;
+    }
+    settleRestore();
+  }, [pinnedOpen, settleRestore]);
   // Cancel/tap on the strip: drop the drag flag and spring back to the current
   // detent (a tap keeps it maximized; a rotation-canceled drag re-settles).
   const resetRestore = React.useCallback(() => {
@@ -5486,7 +5497,7 @@ export function ChatOverlay({
     onDragReset: resetRestore,
     // Flick or slow-release both settle at the current finger height.
     onPullUp: settleRestore,
-    onPullDown: settleRestore,
+    onPullDown: settleCoalescedRestorePullDown,
     onSettleFree: settleRestore,
     // A pointercancel / lost capture (rotation, OS takeover) must NOT strand
     // `restoreDragging` true — that would keep the panel max-height full-screen
