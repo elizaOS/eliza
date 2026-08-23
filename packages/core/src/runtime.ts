@@ -11385,20 +11385,34 @@ ${section_end}`;
 		) {
 			return null;
 		}
-		const requested = params.limit ?? params.count;
+		const requestedLimit = params.limit ?? params.count;
+		// A caller that pins no limit asks for the room's complete retained
+		// window — the shape the prompt-integrity providers (RECENT_MESSAGES,
+		// FACTS, ATTACHMENTS) now use after they stopped capping model-facing
+		// history. Treat it as an infinite request so it still coalesces: the
+		// superset fetch drops the limit, `meta` records an unbounded window,
+		// and no bounded cache entry can ever serve it (Infinity fails the
+		// superset check), so coalescing can never shorten a complete read.
+		const unbounded = requestedLimit === undefined;
 		if (
-			typeof requested !== "number" ||
-			!Number.isFinite(requested) ||
-			requested <= 0
+			!unbounded &&
+			(typeof requestedLimit !== "number" ||
+				!Number.isFinite(requestedLimit) ||
+				requestedLimit <= 0)
 		) {
 			return null;
 		}
+		const requested = unbounded
+			? Number.POSITIVE_INFINITY
+			: (requestedLimit as number);
 		const roomId = params.roomId;
-		const supersetLimit = Math.max(
-			requested,
-			this.getConversationLength(),
-			AgentRuntime.ROOM_MESSAGES_MEMO_MIN_WINDOW,
-		);
+		const supersetLimit = unbounded
+			? Number.POSITIVE_INFINITY
+			: Math.max(
+					requested,
+					this.getConversationLength(),
+					AgentRuntime.ROOM_MESSAGES_MEMO_MIN_WINDOW,
+				);
 		const cached = this.roomMessagesMemo.peek(roomId);
 		const window =
 			cached && cached.meta >= requested
@@ -11409,7 +11423,7 @@ ${section_end}`;
 						this.adapter.getMemories({
 							tableName: "messages",
 							roomId,
-							limit: supersetLimit,
+							...(unbounded ? {} : { limit: supersetLimit }),
 							unique: false,
 						}),
 					);

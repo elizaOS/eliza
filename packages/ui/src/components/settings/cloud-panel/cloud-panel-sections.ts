@@ -1,16 +1,20 @@
 /**
  * Cloud panel section registry.
  *
- * Declares the 8 sections of the cloud-only desktop settings panel. Each
- * section is lazy-loaded so only the active section's body is in the initial
- * chunk. The registry is a static array (not the dynamic global-symbol-backed
- * registry used by the legacy settings) because the cloud panel has a fixed,
- * curated set of sections.
+ * Declares the curated navigation and connected-account destinations for the
+ * cloud-only desktop settings panel. Each section is lazy-loaded so only the
+ * active section's body is in the initial chunk. The registry is a static
+ * array (not the dynamic global-symbol-backed registry used by the legacy
+ * settings) because the cloud panel has a fixed set of sections.
  */
 import type { LucideIcon } from "lucide-react";
 import {
   Bell,
+  Building2,
+  CreditCard,
   Keyboard,
+  KeyRound,
+  Lock,
   Mic,
   Monitor,
   Plug,
@@ -22,22 +26,36 @@ import type { ComponentType, LazyExoticComponent } from "react";
 import { lazy } from "react";
 import type { CloudPanelGroupId } from "./cloud-panel-groups";
 
-export interface CloudPanelSection {
+interface CloudPanelSectionBase {
   /** Stable id — also the URL hash. */
   id: string;
-  /** Display label in the sidebar. */
+  /** Display label for the section heading or navigation entry. */
   label: string;
-  /** One-line subtitle shown in the narrow hub list. */
+  /** One-line section description. */
   subtitle: string;
-  /** Sidebar icon. */
+  /** Section icon. */
   icon: LucideIcon;
+  /** Lazy-loaded section body. */
+  Component: LazyExoticComponent<ComponentType>;
+}
+
+export interface CloudPanelNavigationSection extends CloudPanelSectionBase {
+  placement: "navigation";
   /** Sidebar group. */
   group: CloudPanelGroupId;
   /** Sort priority within a group (lower first). */
   order: number;
-  /** Lazy-loaded section body. */
-  Component: LazyExoticComponent<ComponentType>;
 }
+
+export interface CloudPanelAccountFooterSection extends CloudPanelSectionBase {
+  placement: "account-footer";
+  /** Action label rendered in the connected-account menu. */
+  footerLabel: string;
+}
+
+export type CloudPanelSection =
+  | CloudPanelNavigationSection
+  | CloudPanelAccountFooterSection;
 
 // Lazy-load each section so only the active one is in the initial chunk.
 const GeneralSection = lazy(() =>
@@ -76,6 +94,26 @@ const AdvancedSection = lazy(() =>
     default: m.AdvancedSection,
   })),
 );
+const CloudBillingSection = lazy(() =>
+  import("../../../cloud/settings/sections").then((m) => ({
+    default: m.CloudBillingSection,
+  })),
+);
+const CloudApiKeysSection = lazy(() =>
+  import("../../../cloud/settings/sections").then((m) => ({
+    default: m.CloudApiKeysSection,
+  })),
+);
+const CloudSecuritySection = lazy(() =>
+  import("../../../cloud/settings/sections").then((m) => ({
+    default: m.CloudSecuritySection,
+  })),
+);
+const CloudOrganizationSection = lazy(() =>
+  import("../../../cloud/settings/sections").then((m) => ({
+    default: m.CloudOrganizationSection,
+  })),
+);
 
 export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
   {
@@ -83,6 +121,7 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "General",
     subtitle: "Desktop integration",
     icon: Monitor,
+    placement: "navigation",
     group: "general",
     order: 0,
     Component: GeneralSection,
@@ -92,6 +131,7 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "Voice",
     subtitle: "TTS, STT, conversation",
     icon: Volume2,
+    placement: "navigation",
     group: "agent",
     order: 0,
     Component: VoiceSection,
@@ -101,6 +141,7 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "Agent",
     subtitle: "Active agent, cloud agents",
     icon: Mic,
+    placement: "navigation",
     group: "agent",
     order: 1,
     Component: AgentSection,
@@ -110,6 +151,7 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "Connections",
     subtitle: "Discord, TG, MCP servers",
     icon: Plug,
+    placement: "navigation",
     group: "agent",
     order: 2,
     Component: ConnectionsSection,
@@ -119,6 +161,7 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "Permissions",
     subtitle: "Mic, notif, accessibility",
     icon: Shield,
+    placement: "navigation",
     group: "system",
     order: 0,
     Component: PermissionsSection,
@@ -128,6 +171,7 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "Notifications",
     subtitle: "Push, sound, badge",
     icon: Bell,
+    placement: "navigation",
     group: "system",
     order: 1,
     Component: NotificationsSection,
@@ -137,6 +181,7 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "Shortcuts",
     subtitle: "Hotkeys, mouse",
     icon: Keyboard,
+    placement: "navigation",
     group: "system",
     order: 2,
     Component: ShortcutsSection,
@@ -146,9 +191,46 @@ export const CLOUD_PANEL_SECTIONS: readonly CloudPanelSection[] = [
     label: "Advanced",
     subtitle: "Dev mode, backups, reset",
     icon: SlidersHorizontal,
+    placement: "navigation",
     group: "advanced",
     order: 0,
     Component: AdvancedSection,
+  },
+  {
+    id: "cloud-billing",
+    label: "Billing & Credits",
+    subtitle: "Plans, credits, and invoices",
+    icon: CreditCard,
+    placement: "account-footer",
+    footerLabel: "Manage billing",
+    Component: CloudBillingSection,
+  },
+  {
+    id: "cloud-api-keys",
+    label: "API Keys",
+    subtitle: "Cloud API credentials",
+    icon: KeyRound,
+    placement: "account-footer",
+    footerLabel: "API keys",
+    Component: CloudApiKeysSection,
+  },
+  {
+    id: "cloud-security",
+    label: "Sessions & Privacy",
+    subtitle: "Sessions, privacy, and audit",
+    icon: Lock,
+    placement: "account-footer",
+    footerLabel: "Sessions & privacy",
+    Component: CloudSecuritySection,
+  },
+  {
+    id: "cloud-organization",
+    label: "Organization",
+    subtitle: "Members and organization settings",
+    icon: Building2,
+    placement: "account-footer",
+    footerLabel: "Organization",
+    Component: CloudOrganizationSection,
   },
 ] as const;
 
@@ -185,10 +267,11 @@ export function resolveCloudPanelSection(
 /** Sections grouped by group id, in display order. */
 export function groupedCloudPanelSections(): Record<
   string,
-  CloudPanelSection[]
+  CloudPanelNavigationSection[]
 > {
-  const groups: Record<string, CloudPanelSection[]> = {};
+  const groups: Record<string, CloudPanelNavigationSection[]> = {};
   for (const section of CLOUD_PANEL_SECTIONS) {
+    if (section.placement !== "navigation") continue;
     const group = groups[section.group] ?? [];
     group.push(section);
     groups[section.group] = group;
@@ -197,4 +280,12 @@ export function groupedCloudPanelSections(): Record<
     groups[key].sort((a, b) => a.order - b.order);
   }
   return groups;
+}
+
+/** Account-menu destinations, in their authored display order. */
+export function cloudPanelAccountFooterSections(): CloudPanelAccountFooterSection[] {
+  return CLOUD_PANEL_SECTIONS.filter(
+    (section): section is CloudPanelAccountFooterSection =>
+      section.placement === "account-footer",
+  );
 }

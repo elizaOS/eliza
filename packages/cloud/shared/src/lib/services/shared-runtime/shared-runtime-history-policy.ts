@@ -546,6 +546,23 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   return { ...chosen, grounding };
 }
 
+export function compareSharedRuntimeHistoryMessages(
+  a: { createdAt?: unknown; id?: unknown },
+  b: { createdAt?: unknown; id?: unknown },
+): number {
+  const aCreated =
+    typeof (a as any).createdAt === "number" && Number.isFinite((a as any).createdAt)
+      ? (a as any).createdAt
+      : 0;
+  const bCreated =
+    typeof (b as any).createdAt === "number" && Number.isFinite((b as any).createdAt)
+      ? (b as any).createdAt
+      : 0;
+  return (
+    aCreated - bCreated || String((a as any).id ?? "").localeCompare(String((b as any).id ?? ""))
+  );
+}
+
 export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistoryMessageLike>(
   current: T[],
   incoming: T[],
@@ -557,5 +574,5 @@ export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistory
     const key = messageIdentity(message);
     merged.set(key, chooseMergedMessage(merged.get(key), message));
   }
-  return [...merged.values()].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  return [...merged.values()].sort(compareSharedRuntimeHistoryMessages);
 }

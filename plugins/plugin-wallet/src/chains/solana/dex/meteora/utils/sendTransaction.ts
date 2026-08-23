@@ -17,6 +17,22 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 
+export function calculatePrioritizationFee(
+  recentPrioritizationFees: Array<{ prioritizationFee?: number } | null | undefined>,
+  percentile = 0.95
+): number {
+  if (!recentPrioritizationFees || recentPrioritizationFees.length === 0) return 0;
+  const sorted = recentPrioritizationFees
+    .map((fee) =>
+      typeof fee?.prioritizationFee === "number" && Number.isFinite(fee.prioritizationFee)
+        ? fee.prioritizationFee
+        : 0
+    )
+    .sort((a, b) => a - b);
+  const index = Math.ceil(percentile * sorted.length) - 1;
+  return sorted[Math.max(0, index)] ?? 0;
+}
+
 export async function sendTransaction(
   connection: Connection,
   instructions: TransactionInstruction[],
@@ -37,10 +53,7 @@ export async function sendTransaction(
   const safeComputeUnits = Math.ceil(Math.max(computeUnits * 1.3, computeUnits + 100_000));
 
   const recentPrioritizationFees = await connection.getRecentPrioritizationFees();
-  const prioritizationFee =
-    recentPrioritizationFees.map((fee) => fee.prioritizationFee).sort((a, b) => a - b)[
-      Math.ceil(0.95 * recentPrioritizationFees.length) - 1
-    ] ?? 0;
+  const prioritizationFee = calculatePrioritizationFee(recentPrioritizationFees);
 
   const computeBudgetInstructions = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: safeComputeUnits }),

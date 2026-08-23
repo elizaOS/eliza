@@ -634,7 +634,17 @@ export class InMemoryPendantSessionRepository
     } else {
       next.segments.push({ ...segment, words: [...segment.words] });
     }
-    next.segments.sort((a, b) => a.ordinal - b.ordinal);
+    next.segments.sort((a, b) => {
+      const aOrdinal =
+        typeof a.ordinal === "number" && Number.isFinite(a.ordinal)
+          ? a.ordinal
+          : 0;
+      const bOrdinal =
+        typeof b.ordinal === "number" && Number.isFinite(b.ordinal)
+          ? b.ordinal
+          : 0;
+      return aOrdinal - bOrdinal || a.id.localeCompare(b.id);
+    });
     this.rows.set(key, next);
   }
 

@@ -48,6 +48,7 @@ export default defineConfig({
       "src/lib/services/steward-platform-users.error-policy.test.ts",
       "src/lib/utils/whatsapp-api.test.ts",
       "src/lib/services/email.port.test.ts",
+      "src/lib/services/docker-node-manager.surrogate-safe.test.ts",
     ],
     environment: "node",
     // PGlite's WASM worker outlives Vitest's fork shutdown grace even after

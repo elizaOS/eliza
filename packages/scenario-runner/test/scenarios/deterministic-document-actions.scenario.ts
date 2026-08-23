@@ -72,17 +72,41 @@ const ownerDeleteParams: JsonRecord = { action: "delete" };
 // processing (merged per source key); world-metadata role grants do not.
 const GUEST_STABLE_ID = `${SCENARIO_ID}-guest-admin`;
 
+/**
+ * The guest room's runtime identity, read from the executor-published topology
+ * instead of re-deriving it here. `rooms[].account` is hashed into the entity
+ * id by the executor alone (`scenario-account:<scenarioId>:<account>`), and
+ * that recipe has already changed once (#24842 namespaced accounts per
+ * scenario). A scenario that spells the recipe out a second time forks from the
+ * identity its own turns are sent under the moment the executor moves: seeds
+ * then stamp roles onto an entity nobody speaks as, and every owner-scoped read
+ * misses. Same class as #25009 — one derivation, one seam.
+ */
+function guestIdentity(
+  ctx: ScenarioContext,
+): { entityId: UUID; roomId: UUID } | string {
+  const entityId = ctx.roomEntityIds?.guest;
+  const roomId = ctx.roomIds?.guest;
+  if (!entityId || !roomId) {
+    return "executor did not publish the guest room identity (ctx.roomEntityIds/ctx.roomIds)";
+  }
+  return { entityId: entityId as UUID, roomId: roomId as UUID };
+}
+
 // Pins the tier the whitelist fixture actually resolves to (#16963). If the
 // connector stamp or whitelist silently stops applying, the guest degrades to
 // GUEST and the mutation-wall refusal would still pass — for the wrong reason
 // (any non-owner is refused). This probe runs the real roles.ts resolution the
 // DOCUMENT handler uses, so a degraded fixture is a hard failure instead.
 async function expectGuestResolvesAdmin(
-  runtime: ScenarioRuntime,
+  ctx: ScenarioContext,
 ): Promise<string | undefined> {
+  const runtime = ctx.runtime as ScenarioRuntime;
+  const guest = guestIdentity(ctx);
+  if (typeof guest === "string") return guest;
   const probe = {
-    entityId: stringToUuid(`scenario-account:${SCENARIO_ID}:guest`) as UUID,
-    roomId: stringToUuid(`scenario-room:${SCENARIO_ID}:guest`) as UUID,
+    entityId: guest.entityId,
+    roomId: guest.roomId,
     agentId: runtime.agentId,
     content: { text: "" },
   } as Memory;
@@ -215,11 +239,23 @@ export default scenario({
         if (!ctx.primaryRoomId || !ctx.primaryUserId) {
           return "primary room/user were not set by the executor";
         }
+        const guest = guestIdentity(ctx);
+        if (typeof guest === "string") return guest;
         const room = await runtime.getRoom(ctx.primaryRoomId as UUID);
         if (!room?.worldId) return "primary room world was not created";
         const stored = await service.addDocument({
           worldId: room.worldId,
-          roomId: ctx.primaryRoomId as UUID,
+          // ADMIN is intentionally room-limited for document reads
+          // (`documentReadConditions` in plugin-sql/src/base.ts requires the
+          // row's room to be one of the requester's, on top of the scope
+          // check). Seed the global record in the GUEST room so the non-owner
+          // can identify the target without widening that privacy boundary —
+          // otherwise the delete fails existence before the owner-only
+          // mutation wall is ever evaluated and this turn pins `not_found`,
+          // covering nothing. OWNER keeps global visibility, so the main-room
+          // list turns and the successful owner delete are unaffected. Same
+          // fixture shape as the live-document-delete sibling.
+          roomId: guest.roomId,
           entityId: ctx.primaryUserId as UUID,
           clientDocumentId: stringToUuid(`${SCENARIO_ID}:doc`) as UUID,
           contentType: "text/markdown",
@@ -245,18 +281,18 @@ export default scenario({
       // owner-only mutation wall, mirroring live-document-delete's fixture.
       apply: async (ctx) => {
         const runtime = ctx.runtime as ScenarioRuntime;
-        const guestId = stringToUuid(
-          `scenario-account:${SCENARIO_ID}:guest`,
-        ) as UUID;
+        const guest = guestIdentity(ctx);
+        if (typeof guest === "string") return guest;
         setConnectorAdminWhitelist(runtime, { telegram: [GUEST_STABLE_ID] });
-        const entity = (await runtime.getEntitiesByIds([guestId]))[0] ?? null;
+        const entity =
+          (await runtime.getEntitiesByIds([guest.entityId]))[0] ?? null;
         if (!entity) return "guest entity was not created by the executor";
         entity.metadata = {
           ...entity.metadata,
           telegram: { userId: GUEST_STABLE_ID },
         };
         await runtime.updateEntities([entity]);
-        return expectGuestResolvesAdmin(runtime);
+        return expectGuestResolvesAdmin(ctx);
       },
     },
   ],
@@ -375,8 +411,7 @@ export default scenario({
       // Runs before cleanup clears the whitelist, so it proves the ADMIN tier
       // held through the refusal turn — not just at seed time (#16963).
       name: "whitelisted guest still resolves as connector-admin (ADMIN)",
-      predicate: (ctx) =>
-        expectGuestResolvesAdmin(ctx.runtime as ScenarioRuntime),
+      predicate: (ctx) => expectGuestResolvesAdmin(ctx),
     },
     {
       type: "actionCalled",

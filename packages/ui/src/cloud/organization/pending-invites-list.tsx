@@ -171,12 +171,13 @@ export function PendingInvitesList({
                     <Button
                       variant="ghost"
                       type="button"
+                      aria-label={`Revoke invitation for ${invite.email}`}
                       className="p-2 hover:bg-surface transition-colors border border-border"
                     >
                       <X className="h-4 w-4 text-danger" />
                     </Button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-popover border border-brand-surface">
+                  <AlertDialogContent className="bg-bg border border-brand-surface">
                     <AlertDialogHeader>
                       <AlertDialogTitle className="text-txt-strong font-mono">
                         Revoke Invitation

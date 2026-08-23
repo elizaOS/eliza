@@ -85,4 +85,29 @@ describe("selectBestEliza1Fit — biggest tier that fits, 128k target, QJL alway
       if (fit) expect(fit.tierId).not.toMatch(/0_8b/);
     }
   });
+
+  it("selects the best tier safely when catalog contains a NaN minRamGb entry", () => {
+    // Note: the existing .filter checks typeof m.minRamGb === "number", which is true for NaN.
+    // The comparator's Number.isFinite guard prevents NaN from corrupting sort ordering.
+    const customCatalog = [
+      {
+        id: "tier-nan",
+        minRamGb: Number.NaN,
+        sizeGb: 1,
+        contextLength: 131072,
+        contextStep: 4096,
+      } as unknown as (typeof MODEL_CATALOG)[number],
+      {
+        id: "eliza-1-2b",
+        minRamGb: 4,
+        sizeGb: 1.4,
+        contextLength: 131072,
+        contextStep: 4096,
+      } as unknown as (typeof MODEL_CATALOG)[number],
+    ];
+
+    const fit = selectBestEliza1Fit(8, customCatalog);
+    expect(fit).not.toBeNull();
+    expect(fit?.tierId).toBe("eliza-1-2b");
+  });
 });

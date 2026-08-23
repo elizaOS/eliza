@@ -32,7 +32,10 @@ function serializeStableValue(value: unknown, seen: WeakSet<object>): string {
     seen.add(value);
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([, entryValue]) => entryValue !== undefined)
-      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+      // Code-unit order, not localeCompare: ICU collation is locale-dependent and
+      // ranks canonically equivalent distinct keys as equal, so the sha1 settings
+      // signature derived from this output must not vary with the host locale.
+      .sort(([leftKey], [rightKey]) => (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0));
     const serialized = `{${entries
       .map(
         ([key, entryValue]) => `${JSON.stringify(key)}:${serializeStableValue(entryValue, seen)}`,

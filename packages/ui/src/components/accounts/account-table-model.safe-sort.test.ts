@@ -3,7 +3,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { sortAccounts, type AccountWithCredentialFlag } from "./account-table-model.js";
+import {
+  type AccountWithCredentialFlag,
+  sortAccounts,
+} from "./account-table-model.js";
 import { bySoonestReset } from "./reset-time.js";
 
 function makeAccount(

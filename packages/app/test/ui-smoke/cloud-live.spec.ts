@@ -44,6 +44,7 @@ import {
   isLiveReply,
   readLivenessThreadLines,
 } from "../liveness-contract";
+import { writePrivacySafeLivenessDiagnostic } from "../privacy-safe-liveness-diagnostic-artifact.mjs";
 import { writeStagingCloudChatLatencyEvidence } from "../staging-cloud-chat-latency-evidence";
 import { openAppPath } from "./helpers";
 
@@ -868,30 +869,12 @@ test.describe("real cloud login + personal identity + chat", () => {
       const diagnosticPath = test
         .info()
         .outputPath("privacy-safe-liveness-history-network-diagnostics.json");
-      // error-policy:J2 retain only allowlisted counts, booleans, and enums.
-      // Artifact write failure must not replace the original liveness verdict.
-      const diagnosticArtifactWritten = await mkdir(dirname(diagnosticPath), {
-        recursive: true,
-        mode: 0o700,
-      })
-        .then(() =>
-          writeFile(
-            diagnosticPath,
-            `${JSON.stringify(
-              {
-                schema: "elizaos.cloud.liveness-failure-diagnostics/v1",
-                ...diagnosticRecord,
-              },
-              null,
-              2,
-            )}\n`,
-            { encoding: "utf8", flag: "wx", mode: 0o600 },
-          ),
-        )
-        .then(
-          () => true,
-          () => false,
-        );
+      const diagnosticArtifactWritten =
+        await writePrivacySafeLivenessDiagnostic({
+          diagnosticPath,
+          diagnosticRecord,
+          annotations: test.info().annotations,
+        });
       const diagnostic = [
         ...Object.entries(diagnosticRecord).map(
           ([name, value]) => `${name}=${value}`,

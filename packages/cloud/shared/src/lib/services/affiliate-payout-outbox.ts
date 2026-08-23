@@ -105,7 +105,10 @@ function canonicalJson(value: unknown): unknown {
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(
     Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
+      // Code-unit order, not localeCompare: ICU collation is locale-dependent and
+      // ranks canonically equivalent distinct keys as equal, so identical payout
+      // metadata could compare unequal across hosts and key insertion order.
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, nested]) => [key, canonicalJson(nested)]),
   );
 }
