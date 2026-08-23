@@ -11,6 +11,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
+import { truncateWellFormed } from "@elizaos/core";
 import type { BrokerAuthCredentials, TwitterBrokerProvider } from "./types";
 
 interface BrokerOAuth2Token {
@@ -159,8 +160,13 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
     }
     if (!response.ok) {
       const body = await response.text().catch(() => "");
+      // Truncate with surrogate-pair safety: a raw slice can land mid-pair
+      // and leave a lone surrogate in the thrown Error message, which
+      // JSON.stringify then emits as invalid \uD8xx escapes and strict
+      // parsers reject (#24973).
+      const preview = truncateWellFormed(body, 200);
       throw new Error(
-        `X broker request failed (${response.status}): ${body.slice(0, 200)}`,
+        `X broker request failed (${response.status}): ${preview}`,
       );
     }
     const token: unknown = await response.json();

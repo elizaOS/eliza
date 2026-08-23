@@ -130,6 +130,33 @@ describe("BrokerAuthProvider", () => {
     );
   });
 
+  it("never emits a lone surrogate in the error body preview (#24973)", async () => {
+    // A body ending on an astral character (🦊 = \uD83E\uDD8A) would make a raw
+    // slice(0, 200) land mid-pair and leave a lone surrogate in the thrown Error
+    // message, which JSON.stringify then emits as invalid \uD8xx escapes.
+    const body = "x".repeat(198) + "🦊";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 400 })),
+    );
+    const provider = new BrokerAuthProvider(
+      runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+    );
+
+    let message = "";
+    try {
+      await provider.getBrokerCredentials();
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    expect(message).toContain("X broker request failed (400)");
+    // The preview must not contain any surrogate code points.
+    expect(/[\uD800-\uDFFF]/u.test(message)).toBe(false);
+    // And it must round-trip through JSON without \uD8xx escapes.
+    expect(JSON.parse(JSON.stringify(message))).toBe(message);
+  });
+
   it("rejects an unknown broker connection role", async () => {
     const provider = new BrokerAuthProvider(
       runtime({
