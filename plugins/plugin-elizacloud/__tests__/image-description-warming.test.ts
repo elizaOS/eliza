@@ -31,8 +31,11 @@ vi.mock("../src/utils/config", async (orig) => {
 
 const { handleImageDescription, handleImageGeneration } = await import("../src/models/image");
 
-function runtime(): IAgentRuntime {
-  return { getSetting: () => "", emitEvent: () => {} } as unknown as IAgentRuntime;
+function runtime(settings: Record<string, string> = {}): IAgentRuntime {
+  return {
+    getSetting: (key: string) => settings[key] ?? "",
+    emitEvent: () => {},
+  } as unknown as IAgentRuntime;
 }
 
 function warming503(): Response {
@@ -67,6 +70,30 @@ describe("handleImageDescription warming-503 retry", () => {
     });
     expect(postRaw).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(result)).toContain("red square");
+  });
+
+  it("omits the output cap unless an operator explicitly configures it", async () => {
+    postRaw.mockResolvedValue(ok("Complete description."));
+    await handleImageDescription(runtime(), "https://example.com/full.png");
+    expect(postRaw.mock.calls[0]?.[0]?.json).not.toHaveProperty("max_tokens");
+
+    postRaw.mockClear();
+    postRaw.mockResolvedValue(ok("Complete description."));
+    await handleImageDescription(
+      runtime({ ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS: "16384" }),
+      "https://example.com/full.png"
+    );
+    expect(postRaw.mock.calls[0]?.[0]?.json?.max_tokens).toBe(16384);
+  });
+
+  it("rejects an invalid explicit image output budget before dispatch", async () => {
+    await expect(
+      handleImageDescription(
+        runtime({ ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS: "8192oops" }),
+        "https://example.com/full.png"
+      )
+    ).rejects.toMatchObject({ code: "ELIZAOS_CLOUD_IMAGE_OUTPUT_BUDGET_INVALID" });
+    expect(postRaw).not.toHaveBeenCalled();
   });
 
   it("throws (fails closed) on a hard 500 instead of fabricating a description", async () => {

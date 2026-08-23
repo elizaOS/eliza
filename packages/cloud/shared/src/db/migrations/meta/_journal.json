@@ -2042,8 +2042,15 @@
     {
       "idx": 291,
       "version": "7",
+      "when": 1794168000004,
+      "tag": "0308_remove_conversation_token_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
       "when": 1794254400000,
-      "tag": "0308_retire_legacy_bluebubbles_gateways",
+      "tag": "0309_retire_legacy_bluebubbles_gateways",
       "breakpoints": true
     }
   ]

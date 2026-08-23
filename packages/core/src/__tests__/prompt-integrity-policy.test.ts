@@ -44,6 +44,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
+	"packages/cloud/shared/src/db/schemas/conversations.ts": [
+		/maxTokens:\s*2000/,
+	],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
@@ -263,6 +266,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-x/src/lifeops-message-adapter.ts": [
 		/draft\.body\.(?:slice|substring)\(/,
 	],
+	"plugins/plugin-x/src/discovery.ts": [
+		/maxTokens:\s*100/,
+		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
+	],
 	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
@@ -274,6 +281,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-elizacloud/src/cloud/bridge-client.ts": [
 		/(?:text|errorText)\.slice\(/,
+	],
+	"plugins/plugin-elizacloud/src/models/text.ts": [
+		/max_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/max_output_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/(?:max_tokens|max_output_tokens)\s*[:=]\s*8192/,
+	],
+	"plugins/plugin-elizacloud/src/models/image.ts": [
+		/IMAGE_DESCRIPTION_MAX_TOKENS[^\n]*["']8192["']/,
+		/max_tokens\s*:\s*maxTokens/,
 	],
 	"packages/core/src/runtime/limits.ts": [
 		/compactionEnabled/,

@@ -30,6 +30,37 @@ async function writeScenarioFile(
   await writeFile(join(dir, name), `${source.join("\n")}\n`);
 }
 
+async function writeTwoBaseScenarioDir(): Promise<{
+  dir: string;
+  baseIdA: string;
+  baseIdB: string;
+}> {
+  const dir = await makeTempScenarioDir();
+  const baseIdA = "fixture.todo.create";
+  const baseIdB = "fixture.todo.list";
+  await writeScenarioFile(dir, "todo.create.scenario.ts", [
+    'import { scenario } from "@elizaos/scenario-runner/schema";',
+    "export default scenario({",
+    `  id: "${baseIdA}",`,
+    '  title: "Create fixture todo",',
+    '  domain: "fixture",',
+    '  tags: ["fixture"],',
+    '  turns: [{ kind: "message", name: "create", text: "Create a todo for the report." }],',
+    "});",
+  ]);
+  await writeScenarioFile(dir, "todo.list.scenario.ts", [
+    'import { scenario } from "@elizaos/scenario-runner/schema";',
+    "export default scenario({",
+    `  id: "${baseIdB}",`,
+    '  title: "List fixture todos",',
+    '  domain: "fixture",',
+    '  tags: ["fixture"],',
+    '  turns: [{ kind: "message", name: "list", text: "List my open todos." }],',
+    "});",
+  ]);
+  return { dir, baseIdA, baseIdB };
+}
+
 async function writeFixtureScenario(): Promise<string> {
   const dir = await makeTempScenarioDir();
   await writeFile(
@@ -156,6 +187,99 @@ describe("scenario-runner edge expansion", () => {
     expect(expanded[0].scenario.turns[2]).toMatchObject({
       text: expect.stringContaining("Extra edge context:"),
     });
+  });
+
+  it("validates a corpus filtered to a single base id (regression #24807)", async () => {
+    // Before the fix `--validate-scenarios --scenario <baseId>` threw
+    // "invalid expanded corpus" because the id filter matched only the base
+    // while countScenarioCorpus projected a blind base×(1+variants) total.
+    const { dir, baseIdA } = await writeTwoBaseScenarioDir();
+    const filter = new Set([baseIdA]);
+
+    const result = await validateScenarioCorpus(dir, filter);
+    expect(result).toMatchObject({
+      valid: true,
+      total: 11,
+      uniqueIds: 11,
+      expansionMatches: true,
+      duplicateIds: [],
+      missingIds: [],
+    });
+
+    const expandedListing = await listScenarioMetadata(
+      dir,
+      filter,
+      undefined,
+      true,
+    );
+    expect(result.total).toBe(expandedListing.length);
+  });
+
+  it("counts a base-id-filtered corpus consistently with the expanded listing (regression #24807)", async () => {
+    const { dir, baseIdA } = await writeTwoBaseScenarioDir();
+    const filter = new Set([baseIdA]);
+
+    const counts = await countScenarioCorpus(dir, filter);
+    const expandedListing = await listScenarioMetadata(
+      dir,
+      filter,
+      undefined,
+      true,
+    );
+
+    // total must equal the number of scenarios a filtered expanded run selects,
+    // not a blind 11× of every base in the directory.
+    expect(counts.total).toBe(expandedListing.length);
+    expect(counts).toMatchObject({
+      suite: "scenario-runner",
+      existing: 1,
+      added: 10,
+      total: 11,
+      multiplierAdded: 10,
+    });
+    // The unrelated base in the same directory must not leak into the count.
+    expect(
+      expandedListing.every(
+        (scenario) =>
+          scenario.id === baseIdA || scenario.baseScenarioId === baseIdA,
+      ),
+    ).toBe(true);
+  });
+
+  it("loads a base and its edge variants when filtered by base id (regression #24807)", async () => {
+    // Previously the post-expansion id filter dropped every variant because
+    // their generated ids (`<id>--edge-*`) are absent from the base-id filter.
+    const { dir, baseIdA, baseIdB } = await writeTwoBaseScenarioDir();
+    const loaded = await loadAllScenarios(
+      dir,
+      new Set([baseIdA]),
+      undefined,
+      true,
+    );
+
+    const ids = loaded.map((entry) => entry.scenario.id);
+    expect(ids).toHaveLength(1 + SCENARIO_EDGE_VARIANTS.length);
+    expect(ids).toContain(baseIdA);
+    for (const variant of SCENARIO_EDGE_VARIANTS) {
+      expect(ids).toContain(`${baseIdA}--edge-${variant.suffix}`);
+    }
+    // The sibling base and its variants must be excluded by the filter.
+    expect(ids.some((id) => id.startsWith(baseIdB))).toBe(false);
+  });
+
+  it("still selects exactly one scenario when filtered by a generated edge id", async () => {
+    const { dir, baseIdA } = await writeTwoBaseScenarioDir();
+    const edgeId = `${baseIdA}--edge-prompt-injection`;
+    const loaded = await loadAllScenarios(
+      dir,
+      new Set([edgeId]),
+      undefined,
+      true,
+    );
+
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].scenario.id).toBe(edgeId);
+    expect(loaded[0].scenario.baseScenarioId).toBe(baseIdA);
   });
 
   it("lists static metadata without importing modules with runtime-only top-level code", async () => {
