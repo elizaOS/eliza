@@ -115,7 +115,7 @@ try {
     "successful escalation must not report a teardown error",
   );
   assert.ok(
-    elapsedMs < 5000,
+    elapsedMs < 30_000,
     `watchdog took too long to return (${elapsedMs} ms)`,
   );
   assert.ok(

@@ -61,7 +61,11 @@ export const DEFAULT_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_BATCH_KILL_GRACE_MS = 2000;
 export const MAX_CLASSIFICATION_OUTPUT_CHARS = 1024 * 1024;
 const MAX_TIMER_MS = 2_147_483_647;
-const WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS = 2500;
+// A cold Windows PowerShell process can take several seconds to initialize on
+// the hosted windows-2025 image. Keep the identity query bounded, but allow the
+// universal powershell.exe path enough time to return the immutable StartTime
+// ticks before any PID-targeted teardown is considered.
+const WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS = 10_000;
 const POSIX_PROCESS_GROUP_SUPERVISOR = `
 terminating=0
 trap 'terminating=1' TERM INT

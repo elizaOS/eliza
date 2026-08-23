@@ -576,7 +576,7 @@ describe("watchdog configuration", () => {
     expect(invocation.options).toMatchObject({
       encoding: "utf8",
       windowsHide: true,
-      timeout: 2500,
+      timeout: 10_000,
       maxBuffer: 4096,
     });
   });
