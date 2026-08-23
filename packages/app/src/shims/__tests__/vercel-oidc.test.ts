@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   AccessTokenMissingError,
-  RefreshAccessTokenFailedError,
   getContext,
   getVercelOidcToken,
   getVercelOidcTokenSync,
   getVercelToken,
-} from "./vercel-oidc.ts";
+  RefreshAccessTokenFailedError,
+} from "../vercel-oidc.ts";
 
 describe("vercel-oidc browser stub", () => {
   it("returns an empty context", () => {
