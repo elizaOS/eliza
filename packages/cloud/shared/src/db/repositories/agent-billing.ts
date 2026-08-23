@@ -371,7 +371,7 @@ export class AgentBillingRepository {
         sandboxId,
         organizationId,
         userId: sandbox.user_id,
-        agentName: sandbox.agent_name ?? sandboxId.slice(0, 8),
+        agentName: sandbox.agent_name ?? sandboxId,
         hourlyRate: 0,
         billingDescription: `Eliza agent lifecycle debt settlement: ${sandbox.agent_name ?? sandboxId}`,
         lowCreditWarningAmount: 0,
