@@ -25,6 +25,7 @@ describe("checkSecretHandler", () => {
 	});
 
 	it("reports which keys exist without returning values", async () => {
+		mocks.secretContextFromMessage.mockReturnValue({ level: "user" });
 		const service = {
 			exists: vi.fn(async (key: string) => key === "API_KEY"),
 		};
@@ -33,14 +34,16 @@ describe("checkSecretHandler", () => {
 			parameters: { key: ["api-key", "MISSING_KEY"] },
 		} as never);
 		expect(result.success).toBe(true);
-		const data = result.data as { exists: string[]; missing: string[] };
-		expect(data.exists).toContain("API_KEY");
-		expect(data.missing).toContain("MISSING_KEY");
+		const data = result.data as { present: boolean[]; missing: string[] };
+		expect(data.present).toEqual([true, false]);
+		expect(data.missing).toEqual(["MISSING_KEY"]);
+		expect(result.text).toContain("Missing: MISSING_KEY");
 		// 绝不返回值
 		expect(JSON.stringify(result)).not.toContain("the-value");
 	});
 
 	it("handles string and missing key params", async () => {
+		mocks.secretContextFromMessage.mockReturnValue(undefined);
 		const service = { exists: vi.fn(async () => false) };
 		const runtime = { getService: () => service } as never;
 		const r1 = await checkSecretHandler(runtime, {} as never, undefined, {
