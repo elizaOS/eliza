@@ -1077,6 +1077,111 @@ describe("binary payload redaction", () => {
 });
 
 /**
+ * Shared-substructure fidelity (diamond walk): the deep-walk redactor must
+ * treat a second reference to the same subobject as ordinary shared content,
+ * not as a cycle. A permanent seen-set misreports any diamond
+ * (`{ config: shared, retryConfig: shared }`) as `[Circular]`, corrupting the
+ * diagnostic text every sink (ring buffer, WS stream, file) serves verbatim.
+ * True cycles — self, mutual, through arrays and Map entries — must still
+ * collapse to `[Circular]`, and the depth cap must still bound recursion.
+ */
+describe("shared-substructure redaction fidelity", () => {
+  const fidelityLogger = () => createLogger({ level: "trace" });
+
+  afterEach(() => {
+    fidelityLogger().clear();
+    vi.restoreAllMocks();
+  });
+
+  it("renders both references of a diamond in full instead of [Circular]", () => {
+    const logger = fidelityLogger();
+    const shared = { region: "us-east-fidelity", retries: 3 };
+    logger.info({ config: shared, retryConfig: shared }, "diamond-entry");
+
+    const logs = recentLogs();
+    // Both siblings carry the full shared content.
+    expect(logs.match(/"region":"us-east-fidelity"/g)).toHaveLength(2);
+    expect(logs).not.toContain("[Circular]");
+  });
+
+  it("renders a shared subtree referenced at sibling depths in full", () => {
+    const logger = fidelityLogger();
+    const shared = { zone: "shared-leaf-value" };
+    logger.info(
+      { outer: { inner: shared }, direct: shared },
+      "nested-diamond-entry",
+    );
+
+    const logs = recentLogs();
+    expect(logs.match(/"zone":"shared-leaf-value"/g)).toHaveLength(2);
+    expect(logs).not.toContain("[Circular]");
+  });
+
+  it("still collapses a self-referencing object to [Circular]", () => {
+    const logger = fidelityLogger();
+    const cyclic: Record<string, unknown> = { name: "loop-fidelity" };
+    cyclic.self = cyclic;
+    logger.info({ cyclic, plain: { ok: 1 } }, "self-cycle-entry");
+
+    const logs = recentLogs();
+    expect(logs.match(/\[Circular\]/g)).toHaveLength(1);
+    // The non-cyclic sibling is untouched by the cycle break.
+    expect(logs).toContain('"ok":1');
+  });
+
+  it("still collapses mutual cycles to exactly one [Circular]", () => {
+    const logger = fidelityLogger();
+    const a: Record<string, unknown> = { name: "node-a" };
+    const b: Record<string, unknown> = { name: "node-b", peer: a };
+    a.peer = b;
+    logger.info({ a, b }, "mutual-cycle-entry");
+
+    const logs = recentLogs();
+    // Each sibling reference re-walks the cycle and collapses its own
+    // back-edge, so both full copies carry exactly one marker.
+    expect(logs.match(/\[Circular\]/g)).toHaveLength(2);
+    expect(logs).toContain('"name":"node-a"');
+    expect(logs).toContain('"name":"node-b"');
+  });
+
+  it("still collapses an array self-cycle to [Circular]", () => {
+    const logger = fidelityLogger();
+    const list: unknown[] = ["leaf-value"];
+    list.push(list);
+    logger.info({ list }, "array-cycle-entry");
+
+    const logs = recentLogs();
+    expect(logs).toContain('"leaf-value"');
+    expect(logs.match(/\[Circular\]/g)).toHaveLength(1);
+  });
+
+  it("still collapses a Map that contains itself", () => {
+    const logger = fidelityLogger();
+    const map = new Map<string, unknown>();
+    map.set("label", "map-fidelity");
+    map.set("self", map);
+    logger.info({ map }, "map-cycle-entry");
+
+    const logs = recentLogs();
+    expect(logs).toContain('"map-fidelity"');
+    expect(logs.match(/\[Circular\]/g)).toHaveLength(1);
+  });
+
+  it("keeps the depth cap bounding pathological nesting", () => {
+    const logger = fidelityLogger();
+    let deep: unknown = { leaf: "depth-cap-leaf" };
+    for (let i = 0; i < 12; i += 1) {
+      deep = { nested: deep };
+    }
+    expect(() => logger.info({ deep }, "depth-cap-entry")).not.toThrow();
+
+    const logs = recentLogs();
+    expect(logs).toContain("[REDACTED]");
+    expect(logs).not.toContain("depth-cap-leaf");
+  });
+});
+
+/**
  * File-sink permission contract (W1-059): output.log/prompts.log/chat.log
  * must be created 0600, and files left world-readable by older builds must be
  * healed on first open. Needs a fresh module instance per case because the

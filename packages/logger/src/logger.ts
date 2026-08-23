@@ -625,88 +625,98 @@ function redactLogValue(
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return "[Circular]";
   if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE;
+  // Track only the active ancestor path: the entry is undone on exit, so a
+  // reference counts as circular iff it re-enters a container currently being
+  // walked. A permanent set would misreport every diamond — an ordinary
+  // shared subobject referenced from two siblings (`{ config: shared,
+  // retryConfig: shared }`) — as "[Circular]", corrupting the diagnostic text
+  // every sink serves. Re-walking a shared subtree matches JSON.stringify's
+  // own DAG semantics; recursion stays bounded by MAX_REDACT_DEPTH.
   seen.add(value);
-
-  if (value instanceof Error) {
-    const clone = new Error(redactSensitiveLogText(value.message));
-    clone.name = redactSensitiveLogText(value.name);
-    if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
-    if (value.cause !== undefined) {
-      clone.cause = redactLogValue(value.cause, seen, depth + 1);
+  try {
+    if (value instanceof Error) {
+      const clone = new Error(redactSensitiveLogText(value.message));
+      clone.name = redactSensitiveLogText(value.name);
+      if (value.stack) clone.stack = redactSensitiveLogText(value.stack);
+      if (value.cause !== undefined) {
+        clone.cause = redactLogValue(value.cause, seen, depth + 1);
+      }
+      const target = clone as unknown as Record<string, unknown>;
+      redactOwnPropertiesInto(value, target, seen, depth + 1);
+      return clone;
     }
-    const target = clone as unknown as Record<string, unknown>;
-    redactOwnPropertiesInto(value, target, seen, depth + 1);
-    return clone;
-  }
 
-  if (Array.isArray(value)) {
-    // Avoid the caller's potentially overridden `map` and species constructor.
-    const result = new Array<unknown>(value.length);
-    for (let index = 0; index < value.length; index += 1) {
-      result[index] = redactLogValue(value[index], seen, depth + 1);
+    if (Array.isArray(value)) {
+      // Avoid the caller's potentially overridden `map` and species constructor.
+      const result = new Array<unknown>(value.length);
+      for (let index = 0; index < value.length; index += 1) {
+        result[index] = redactLogValue(value[index], seen, depth + 1);
+      }
+      return result;
     }
-    return result;
-  }
 
-  // Binary payloads carry raw bytes that JSON serializes verbatim
-  // ({"type":"Buffer","data":[...]}); under a neutral key that silently leaks
-  // secret material into every sink, so mask with a size-only marker. Both
-  // the node and browser log paths funnel through this walker.
-  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
-    return `[BUFFER REDACTED ${value.byteLength} bytes]`;
-  }
-
-  // Built-ins must also be detached from the caller. JSON.stringify invokes a
-  // caller-owned Date/toJSON before its replacer, and pretty sinks may inspect
-  // Map/Set contents directly.
-  if (value instanceof Date) {
-    try {
-      return Date.prototype.toISOString.call(value);
-    } catch {
-      return "[Invalid Date]";
+    // Binary payloads carry raw bytes that JSON serializes verbatim
+    // ({"type":"Buffer","data":[...]}); under a neutral key that silently leaks
+    // secret material into every sink, so mask with a size-only marker. Both
+    // the node and browser log paths funnel through this walker.
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+      return `[BUFFER REDACTED ${value.byteLength} bytes]`;
     }
-  }
-  if (value instanceof RegExp) {
-    return `[RegExp ${redactSensitiveLogText(RegExp.prototype.toString.call(value))}]`;
-  }
-  if (value instanceof Map) {
-    const entries: unknown[] = [];
-    Map.prototype.forEach.call(
-      value,
-      (entryValue: unknown, entryKey: unknown) => {
-        const safeKey = redactLogValue(entryKey, seen, depth + 1);
-        const safeValue =
-          typeof entryKey === "string" && isSensitiveLogKey(entryKey)
-            ? REDACTED_VALUE
-            : redactLogValue(entryValue, seen, depth + 1);
-        entries.push([safeKey, safeValue]);
-      },
-    );
+
+    // Built-ins must also be detached from the caller. JSON.stringify invokes a
+    // caller-owned Date/toJSON before its replacer, and pretty sinks may inspect
+    // Map/Set contents directly.
+    if (value instanceof Date) {
+      try {
+        return Date.prototype.toISOString.call(value);
+      } catch {
+        return "[Invalid Date]";
+      }
+    }
+    if (value instanceof RegExp) {
+      return `[RegExp ${redactSensitiveLogText(RegExp.prototype.toString.call(value))}]`;
+    }
+    if (value instanceof Map) {
+      const entries: unknown[] = [];
+      Map.prototype.forEach.call(
+        value,
+        (entryValue: unknown, entryKey: unknown) => {
+          const safeKey = redactLogValue(entryKey, seen, depth + 1);
+          const safeValue =
+            typeof entryKey === "string" && isSensitiveLogKey(entryKey)
+              ? REDACTED_VALUE
+              : redactLogValue(entryValue, seen, depth + 1);
+          entries.push([safeKey, safeValue]);
+        },
+      );
+      const result = Object.create(null) as Record<string, unknown>;
+      defineSafeProperty(result, "type", "Map");
+      defineSafeProperty(result, "entries", entries);
+      return result;
+    }
+    if (value instanceof Set) {
+      const values: unknown[] = [];
+      Set.prototype.forEach.call(value, (entryValue: unknown) => {
+        values.push(redactLogValue(entryValue, seen, depth + 1));
+      });
+      const result = Object.create(null) as Record<string, unknown>;
+      defineSafeProperty(result, "type", "Set");
+      defineSafeProperty(result, "values", values);
+      return result;
+    }
+    if (value instanceof WeakMap) return "[WeakMap]";
+    if (value instanceof WeakSet) return "[WeakSet]";
+    if (value instanceof Promise) return "[Promise]";
+
+    // Class instances are cloned into plain objects: JSON serialization only
+    // ever emits own enumerable properties anyway, and walking them here masks
+    // credentials stashed on config/response wrappers (axios-style).
     const result = Object.create(null) as Record<string, unknown>;
-    defineSafeProperty(result, "type", "Map");
-    defineSafeProperty(result, "entries", entries);
+    redactOwnPropertiesInto(value, result, seen, depth + 1);
     return result;
+  } finally {
+    seen.delete(value);
   }
-  if (value instanceof Set) {
-    const values: unknown[] = [];
-    Set.prototype.forEach.call(value, (entryValue: unknown) => {
-      values.push(redactLogValue(entryValue, seen, depth + 1));
-    });
-    const result = Object.create(null) as Record<string, unknown>;
-    defineSafeProperty(result, "type", "Set");
-    defineSafeProperty(result, "values", values);
-    return result;
-  }
-  if (value instanceof WeakMap) return "[WeakMap]";
-  if (value instanceof WeakSet) return "[WeakSet]";
-  if (value instanceof Promise) return "[Promise]";
-
-  // Class instances are cloned into plain objects: JSON serialization only
-  // ever emits own enumerable properties anyway, and walking them here masks
-  // credentials stashed on config/response wrappers (axios-style).
-  const result = Object.create(null) as Record<string, unknown>;
-  redactOwnPropertiesInto(value, result, seen, depth + 1);
-  return result;
 }
 
 /** Define a clone key without invoking Object.prototype's `__proto__` setter. */
