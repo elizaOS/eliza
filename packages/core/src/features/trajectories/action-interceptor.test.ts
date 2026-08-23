@@ -418,7 +418,7 @@ describe("action-originated trajectory records", () => {
 });
 
 describe("provider wrapping", () => {
-	it("preserves an async undefined result without context or an active step", async () => {
+	it("normalizes an async undefined result without context or an active step", async () => {
 		const runtimeWithoutContext = createRuntime();
 		const runtimeWithoutStep = createRuntime();
 		const noStepLogger = createTrajectoryLogger(null);
@@ -430,12 +430,16 @@ describe("provider wrapping", () => {
 		const wrapped = wrapProviderWithLogging(provider, noStepLogger);
 		setTrajectoryContext(runtimeWithoutStep, "trajectory-1", noStepLogger);
 
+		// Both branches normalize to the declared ProviderResult, matching the
+		// active-step branch below. The earlier revision of this case asserted
+		// `undefined` here, which codified the un-awaited `||` fallback as required
+		// behaviour and would have blocked its correction (@attentionhead).
 		await expect(
 			wrapped.get(runtimeWithoutContext, createMessage(), createState()),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({ text: "" });
 		await expect(
 			wrapped.get(runtimeWithoutStep, createMessage(), createState()),
-		).resolves.toBeUndefined();
+		).resolves.toEqual({ text: "" });
 		expect(provider.get).toHaveBeenCalledTimes(2);
 		expect(noStepLogger.logProviderAccess).not.toHaveBeenCalled();
 	});

@@ -132,6 +132,12 @@ export function wrapActionWithLogging(
 			callback?: HandlerCallback,
 		): Promise<ActionResult | undefined> => {
 			const context = getTrajectoryContext(runtime);
+			// Await before the `|| { text: "" }` fallback. `Provider.get` is declared
+			// as Promise<ProviderResult>, so the un-awaited call was ALWAYS truthy
+			// and the fallback dead: a provider resolving `undefined` made the
+			// wrapper resolve `undefined` too, against its own return type. The
+			// active-step branch already awaited first; all three now normalize
+			// identically.
 			if (!context) {
 				const result = await originalHandler(
 					runtime,
@@ -348,7 +354,7 @@ export function wrapProviderWithLogging(
 		): Promise<ProviderResult> => {
 			const context = getTrajectoryContext(runtime);
 			if (!context) {
-				return originalGet(runtime, message, state) || { text: "" };
+				return (await originalGet(runtime, message, state)) || { text: "" };
 			}
 
 			const { trajectoryId, logger: loggerService } = context;
@@ -359,7 +365,7 @@ export function wrapProviderWithLogging(
 					{ provider: provider.name, trajectoryId },
 					"No active step for provider access",
 				);
-				return originalGet(runtime, message, state) || { text: "" };
+				return (await originalGet(runtime, message, state)) || { text: "" };
 			}
 
 			const result = (await originalGet(runtime, message, state)) || {
