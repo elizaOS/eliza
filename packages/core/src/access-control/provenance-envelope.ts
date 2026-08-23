@@ -657,16 +657,19 @@ function trustedDeliveryTurnDenial(
 async function resolveRequesterAccessContext(
 	runtime: IAgentRuntime,
 	deliveryMessage: Memory,
+	crossWorld: boolean,
 ): Promise<
 	{ ok: true; context: AccessContext } | { ok: false; cause: unknown }
 > {
 	try {
-		// buildAccessContext is the same composition the disclosure gate trusts:
-		// it resolves role/isOwner/worldId against the single world the message
-		// belongs to. Delegating here keeps requester identity derived from the
-		// same process-bound evidence, not caller-supplied fields.
-		const { buildAccessContext } = await import("../access-context");
-		const context = await buildAccessContext(runtime, deliveryMessage);
+		// Both builders derive requester authority from the exact delivery turn.
+		// Cross-world recall additionally resolves a verified room intersection;
+		// same-room recall retains the single-world context.
+		const { buildAccessContext, buildCrossWorldConversationAccessContext } =
+			await import("../access-context");
+		const context = crossWorld
+			? await buildCrossWorldConversationAccessContext(runtime, deliveryMessage)
+			: await buildAccessContext(runtime, deliveryMessage);
 		return { ok: true, context };
 	} catch (cause) {
 		return { ok: false, cause };
@@ -717,9 +720,11 @@ export async function searchCanonicalConversationMemories(
 		};
 	}
 
+	const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(revalidated);
 	const requesterResult = await resolveRequesterAccessContext(
 		input.runtime,
 		deliveryMessage,
+		crossRoomGate.allowed,
 	);
 	if (!requesterResult.ok) {
 		input.runtime.reportError(
@@ -741,8 +746,6 @@ export async function searchCanonicalConversationMemories(
 		};
 	}
 	const requester = requesterResult.context;
-
-	const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(revalidated);
 
 	// Constrain the vector scan by the attested room BEFORE ranking so a global
 	// top-K cannot starve eligible same-room rows. When cross-room recall is

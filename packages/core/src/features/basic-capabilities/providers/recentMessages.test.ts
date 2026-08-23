@@ -647,6 +647,12 @@ describe("recentMessagesProvider", () => {
 		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
 			tableName: "messages",
 			roomIds: [OTHER_ROOM_ID],
+			accessContext: {
+				requesterEntityId: USER_ID,
+				source: "discord",
+				worldId: undefined,
+				authorizedRoomIds: [ROOM_ID, OTHER_ROOM_ID],
+			},
 		});
 		expect(result.data?.recentInteractions).toHaveLength(1);
 		expect(result.values?.recentMessageInteractions).toContain(
