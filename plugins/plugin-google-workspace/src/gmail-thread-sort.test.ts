@@ -1,67 +1,135 @@
 /**
- * Unit tests for Google Workspace Gmail thread message sorting.
+ * Unit tests for the Gmail unresponded-thread and message sort comparators
+ * exported by `gmail.ts`. Deterministic and mock-free: each case calls the
+ * production comparator directly with fixtures whose ordering is fully
+ * determined by the guarded arithmetic and the id tiebreakers.
  */
 import { describe, expect, it } from "vitest";
 import { compareUnrespondedThreads, sortGmailMessages } from "./gmail.js";
-import type { GoogleGmailMessageSummary, GoogleGmailUnrespondedThread } from "./types.js";
+import type {
+  GoogleGmailMessageSummary,
+  GoogleGmailUnrespondedThread,
+} from "./types.js";
 
-describe("Gmail thread message safe date sorting", () => {
-  it("maintains strict total ordering when receivedAt contains invalid date strings", () => {
-    const messages: Pick<GoogleGmailMessageSummary, "externalId" | "receivedAt" | "isImportant" | "likelyReplyNeeded" | "isUnread">[] = [
-      {
+function makeMessage(
+  overrides: Partial<GoogleGmailMessageSummary> &
+    Pick<GoogleGmailMessageSummary, "externalId">,
+): GoogleGmailMessageSummary {
+  return {
+    threadId: "thread-1",
+    subject: "subject",
+    from: "Sender",
+    fromEmail: "sender@example.com",
+    replyTo: null,
+    to: [],
+    cc: [],
+    snippet: "",
+    receivedAt: "2026-05-01T10:00:00.000Z",
+    isUnread: false,
+    isImportant: false,
+    likelyReplyNeeded: false,
+    triageScore: 0,
+    triageReason: "",
+    labels: [],
+    htmlLink: null,
+    metadata: {},
+    ...overrides,
+  };
+}
+
+function makeThread(
+  threadId: string,
+  daysWaiting: number,
+): GoogleGmailUnrespondedThread {
+  return {
+    threadId,
+    externalMessageId: `${threadId}-message`,
+    subject: "subject",
+    to: [],
+    cc: [],
+    lastOutboundAt: "2026-05-01T10:00:00.000Z",
+    lastInboundAt: null,
+    daysWaiting,
+    snippet: "",
+    labels: [],
+    htmlLink: null,
+  };
+}
+
+describe("compareUnrespondedThreads", () => {
+  it("keeps a non-finite daysWaiting from poisoning the ordering", () => {
+    const threads = [
+      makeThread("thread-nan", Number.NaN),
+      makeThread("thread-high", 15),
+      makeThread("thread-low", 2),
+    ];
+
+    threads.sort(compareUnrespondedThreads);
+
+    expect(threads.map((thread) => thread.threadId)).toEqual([
+      "thread-high",
+      "thread-low",
+      "thread-nan",
+    ]);
+  });
+
+  it("tie-breaks equal wait times by threadId instead of input order", () => {
+    const threads = [makeThread("z-thread", 5), makeThread("a-thread", 5)];
+
+    threads.sort(compareUnrespondedThreads);
+
+    expect(threads.map((thread) => thread.threadId)).toEqual([
+      "a-thread",
+      "z-thread",
+    ]);
+  });
+
+  it("does not throw when threads tie, which is the common whole-day case", () => {
+    const threads = [makeThread("b-thread", 3), makeThread("a-thread", 3)];
+
+    expect(() => threads.sort(compareUnrespondedThreads)).not.toThrow();
+  });
+});
+
+describe("sortGmailMessages", () => {
+  it("orders unparsable receivedAt values last instead of returning NaN", () => {
+    const sorted = sortGmailMessages([
+      makeMessage({
         externalId: "msg-valid-older",
         receivedAt: "2026-05-01T10:00:00.000Z",
-        isImportant: false,
-        likelyReplyNeeded: false,
-        isUnread: false,
-      },
-      {
+      }),
+      makeMessage({
         externalId: "msg-invalid",
         receivedAt: "invalid-date-string",
-        isImportant: false,
-        likelyReplyNeeded: false,
-        isUnread: false,
-      },
-      {
+      }),
+      makeMessage({
         externalId: "msg-valid-newer",
         receivedAt: "2026-05-01T12:00:00.000Z",
-        isImportant: false,
-        likelyReplyNeeded: false,
-        isUnread: false,
-      },
-    ] as unknown as GoogleGmailMessageSummary[];
+      }),
+    ]);
 
-    const sorted = sortGmailMessages(messages as GoogleGmailMessageSummary[]);
-
-    expect(sorted).toHaveLength(3);
-    expect(sorted[0]?.externalId).toBe("msg-invalid");
-    expect(sorted[1]?.externalId).toBe("msg-valid-older");
-    expect(sorted[2]?.externalId).toBe("msg-valid-newer");
+    expect(sorted.map((message) => message.externalId)).toEqual([
+      "msg-valid-newer",
+      "msg-valid-older",
+      "msg-invalid",
+    ]);
   });
 
-  it("maintains strict total ordering when daysWaiting contains NaN or non-finite numbers", () => {
-    const threads: GoogleGmailUnrespondedThread[] = [
-      { threadId: "thread-nan", daysWaiting: NaN, externalMessageId: "m1", subject: "s", to: [], cc: [], lastOutboundAt: "", lastInboundAt: null, snippet: "", labels: [], htmlLink: null },
-      { threadId: "thread-high", daysWaiting: 15, externalMessageId: "m2", subject: "s", to: [], cc: [], lastOutboundAt: "", lastInboundAt: null, snippet: "", labels: [], htmlLink: null },
-      { threadId: "thread-low", daysWaiting: 2, externalMessageId: "m3", subject: "s", to: [], cc: [], lastOutboundAt: "", lastInboundAt: null, snippet: "", labels: [], htmlLink: null },
-    ];
+  it("tie-breaks identical timestamps by externalId instead of input order", () => {
+    const sorted = sortGmailMessages([
+      makeMessage({
+        externalId: "msg-z",
+        receivedAt: "2026-05-01T10:00:00.000Z",
+      }),
+      makeMessage({
+        externalId: "msg-a",
+        receivedAt: "2026-05-01T10:00:00.000Z",
+      }),
+    ]);
 
-    threads.sort(compareUnrespondedThreads);
-
-    expect(threads[0]?.threadId).toBe("thread-high");
-    expect(threads[1]?.threadId).toBe("thread-low");
-    expect(threads[2]?.threadId).toBe("thread-nan");
-  });
-
-  it("tie-breaks threads with same daysWaiting deterministically by threadId", () => {
-    const threads: GoogleGmailUnrespondedThread[] = [
-      { threadId: "z-thread", daysWaiting: 5, externalMessageId: "m1", subject: "s", to: [], cc: [], lastOutboundAt: "", lastInboundAt: null, snippet: "", labels: [], htmlLink: null },
-      { threadId: "a-thread", daysWaiting: 5, externalMessageId: "m2", subject: "s", to: [], cc: [], lastOutboundAt: "", lastInboundAt: null, snippet: "", labels: [], htmlLink: null },
-    ];
-
-    threads.sort(compareUnrespondedThreads);
-
-    expect(threads[0]?.threadId).toBe("a-thread");
-    expect(threads[1]?.threadId).toBe("z-thread");
+    expect(sorted.map((message) => message.externalId)).toEqual([
+      "msg-a",
+      "msg-z",
+    ]);
   });
 });
