@@ -13,15 +13,11 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  readlinkSync,
   renameSync,
   statSync,
-  symlinkSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { cp } from "node:fs/promises";
@@ -29,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import { normalizeAbsoluteStagedSymlinks } from "./lib/linux-artifact-symlinks.mjs";
 import {
   assertLinuxDistributionClaim,
   LINUX_DISTRIBUTION_CLAIMS,
@@ -471,52 +468,6 @@ function ensureVerifiedAppImageTool(targetArch) {
 
 export function debArchiveBuildArgs(packageRoot, outputPath) {
   return ["--root-owner-group", "--build", packageRoot, outputPath];
-}
-
-function normalizeAbsoluteStagedSymlinks(sourceRoot, destinationRoot) {
-  const pending = [sourceRoot];
-  while (pending.length > 0) {
-    const sourcePath = pending.pop();
-    if (!sourcePath) continue;
-    const stats = lstatSync(sourcePath);
-    if (stats.isDirectory()) {
-      for (const entry of readdirSync(sourcePath)) {
-        pending.push(path.join(sourcePath, entry));
-      }
-      continue;
-    }
-    if (!stats.isSymbolicLink()) continue;
-
-    const target = readlinkSync(sourcePath);
-    const resolvedTarget = path.resolve(path.dirname(sourcePath), target);
-    const sourceRelativeTarget = path.relative(sourceRoot, resolvedTarget);
-    if (
-      sourceRelativeTarget === ".." ||
-      sourceRelativeTarget.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(sourceRelativeTarget)
-    ) {
-      throw new Error(
-        `Linux package payload contains an escaping symlink: ${sourcePath} -> ${target}`,
-      );
-    }
-    if (!existsSync(resolvedTarget)) {
-      throw new Error(
-        `Linux package payload contains a dangling symlink: ${sourcePath} -> ${target}`,
-      );
-    }
-    if (!path.isAbsolute(target)) continue;
-
-    const stagedLink = path.join(
-      destinationRoot,
-      path.relative(sourceRoot, sourcePath),
-    );
-    const stagedTarget = path.join(destinationRoot, sourceRelativeTarget);
-    unlinkSync(stagedLink);
-    symlinkSync(
-      path.relative(path.dirname(stagedLink), stagedTarget),
-      stagedLink,
-    );
-  }
 }
 
 export async function stagePackageRoot(buildDir, destRoot) {
