@@ -23,6 +23,22 @@ export interface VoiceProfileStore {
   delete(id: string): Promise<void>;
 }
 
+function toSimilarityScore(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareVoiceProfileSearchHit(
+  a: VoiceProfileSearchHit,
+  b: VoiceProfileSearchHit,
+): number {
+  const aScore = toSimilarityScore(a.similarity);
+  const bScore = toSimilarityScore(b.similarity);
+  if (bScore !== aScore) return bScore - aScore;
+  return a.profile.id.localeCompare(b.profile.id);
+}
+
+export const __testCompareVoiceProfileSearchHit = compareVoiceProfileSearchHit;
+
 function cosineSimilarity(
   a: ReadonlyArray<number>,
   b: ReadonlyArray<number>,
@@ -73,7 +89,7 @@ export class InMemoryVoiceProfileStore implements VoiceProfileStore {
       if (best === -Infinity) continue;
       hits.push({ profile, similarity: best });
     }
-    hits.sort((a, b) => b.similarity - a.similarity);
+    hits.sort(compareVoiceProfileSearchHit);
     return hits.slice(0, limit);
   }
 
