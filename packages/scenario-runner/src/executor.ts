@@ -2117,11 +2117,37 @@ async function executeActionTurn(
   ) {
     responseText = actionResult.userFacingText;
   }
-  if (!responseText && typeof actionResult?.text === "string") {
+  // `responseText` is the report's claim about what the user saw, so it must
+  // not carry a machine receipt the runtime would never deliver. Core marks a
+  // reply that merely restates an internal action result
+  // `transcriptVisibility: "internal"` (`resolveActionResultTranscriptVisibility`)
+  // and drops it before egress (`message.ts`), so an internal receipt is
+  // exactly the text a user does not see. Mirror that instead of inventing a
+  // rule: skip the receipt, prefer any explicitly user-facing prose, and fall
+  // back to the action's own vetted `modelReplyFallback` — the prose the
+  // runtime delivers when no model reply is synthesized, which is always the
+  // case on an action turn because it invokes the handler directly. When the
+  // action offers neither, the turn genuinely has no user-visible reply and
+  // `responseText` stays empty. The receipt itself is never discarded: the
+  // complete ActionResult remains on `responseBody` for assertions that mean
+  // to check it.
+  const receiptIsInternal = actionResult?.transcriptVisibility === "internal";
+  if (
+    !responseText &&
+    !receiptIsInternal &&
+    typeof actionResult?.text === "string"
+  ) {
     responseText = actionResult.text;
   }
   if (!responseText && typeof actionResult?.userFacingText === "string") {
     responseText = actionResult.userFacingText;
+  }
+  if (
+    !responseText &&
+    receiptIsInternal &&
+    typeof actionResult?.modelReplyFallback === "string"
+  ) {
+    responseText = actionResult.modelReplyFallback;
   }
   return {
     validation: {
