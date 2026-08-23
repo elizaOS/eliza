@@ -10,6 +10,7 @@ import {
   logger as coreLogger,
   type IAgentRuntime,
   Service,
+  type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
 import {
   type HostShellProcess,
@@ -17,6 +18,11 @@ import {
   signalHostProcessGroup,
   startBackgroundShellOnHost,
 } from "../lib/run-shell.js";
+import {
+  finishLocalWorkspaceDeltaObservation,
+  indeterminateWorkspaceDeltaReceipt,
+  type LocalWorkspaceDeltaObservation,
+} from "../lib/workspace-delta.js";
 import { redactShellText } from "../shell/redaction.js";
 import { BACKGROUND_SHELL_SERVICE, CODING_TOOLS_LOG_PREFIX } from "../types.js";
 
@@ -56,6 +62,7 @@ export interface BackgroundShellSessionSnapshot {
   sandbox: ShellSandboxBackend;
   stdoutOffset: number;
   stderrOffset: number;
+  workspaceDeltaReceipt?: WorkspaceDeltaReceipt;
 }
 
 export interface BackgroundShellPollResult
@@ -89,6 +96,9 @@ interface BackgroundShellSession {
   redaction: FragmentRedactionState;
   stdinError?: Error;
   outputLimitExceeded?: boolean;
+  workspaceObservation?: LocalWorkspaceDeltaObservation;
+  workspaceDeltaReceipt?: WorkspaceDeltaReceipt;
+  workspaceDeltaPromise?: Promise<WorkspaceDeltaReceipt | undefined>;
   killTimer?: NodeJS.Timeout;
 }
 
@@ -135,6 +145,7 @@ export class BackgroundShellService extends Service {
     conversationId: string;
     command: string;
     cwd: string;
+    workspaceObservation?: LocalWorkspaceDeltaObservation;
   }): BackgroundShellSessionSnapshot {
     this.ensureCapacity(args.conversationId);
     const handle = this.nextHandle(args.conversationId);
@@ -158,6 +169,13 @@ export class BackgroundShellService extends Service {
       stdout: emptyRing(),
       stderr: emptyRing(),
       redaction: emptyFragmentRedactionState(),
+      workspaceObservation: args.workspaceObservation,
+      workspaceDeltaReceipt: args.workspaceObservation
+        ? indeterminateWorkspaceDeltaReceipt(
+            args.workspaceObservation.root,
+            "BACKGROUND_RECEIPT_PENDING",
+          )
+        : undefined,
     };
     if (!started.process.stdout || !started.process.stderr) {
       signalHostProcessGroup(started.process, "SIGKILL");
@@ -203,12 +221,14 @@ export class BackgroundShellService extends Service {
       session.exitCode = code;
       session.signal = signal;
       session.endedAt = Date.now();
+      void this.finalizeWorkspaceDelta(session);
     });
     started.process.on("error", (error) => {
       session.status = "error";
       session.exitCode = -1;
       session.signal = null;
       session.endedAt = Date.now();
+      void this.finalizeWorkspaceDelta(session);
       appendSessionOutput(
         this.runtime,
         session,
@@ -221,18 +241,20 @@ export class BackgroundShellService extends Service {
     return snapshot(this.runtime, session);
   }
 
-  poll(args: {
+  async poll(args: {
     conversationId: string;
     handle: string;
     stdoutOffset?: number;
     stderrOffset?: number;
-  }): BackgroundShellPollResult {
+  }): Promise<BackgroundShellPollResult> {
     const session = this.requireSession(args.conversationId, args.handle);
     if (session.outputLimitExceeded) {
       throw new Error(
         `background shell output exceeded the ${this.bufferChars}-character complete-capture safety limit; no partial output is available`,
       );
     }
+    if (session.status !== "running")
+      await this.finalizeWorkspaceDelta(session);
     refreshSessionRedaction(this.runtime, session);
     return {
       ...snapshot(this.runtime, session),
@@ -299,7 +321,10 @@ export class BackgroundShellService extends Service {
   private async killSession(
     session: BackgroundShellSession,
   ): Promise<BackgroundShellSessionSnapshot> {
-    if (session.status !== "running") return snapshot(this.runtime, session);
+    if (session.status !== "running") {
+      await this.finalizeWorkspaceDelta(session);
+      return snapshot(this.runtime, session);
+    }
     session.status = "killed";
     signalHostProcessGroup(session.process, "SIGTERM");
     try {
@@ -332,7 +357,24 @@ export class BackgroundShellService extends Service {
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} background SHELL reaped handle=${session.handle} pid=${session.pid ?? "unknown"}`,
     );
+    await this.finalizeWorkspaceDelta(session);
     return snapshot(this.runtime, session);
+  }
+
+  private async finalizeWorkspaceDelta(
+    session: BackgroundShellSession,
+  ): Promise<WorkspaceDeltaReceipt | undefined> {
+    if (!session.workspaceObservation) return session.workspaceDeltaReceipt;
+    if (!session.workspaceDeltaPromise) {
+      session.workspaceDeltaPromise = finishLocalWorkspaceDeltaObservation(
+        session.workspaceObservation,
+      ).then((receipt) => {
+        session.workspaceDeltaReceipt = receipt;
+        session.workspaceObservation = undefined;
+        return receipt;
+      });
+    }
+    return session.workspaceDeltaPromise;
   }
 
   private ensureCapacity(conversationId: string): void {
@@ -703,6 +745,7 @@ function snapshot(
     sandbox: session.sandbox,
     stdoutOffset: session.stdout.endOffset,
     stderrOffset: session.stderr.endOffset,
+    workspaceDeltaReceipt: session.workspaceDeltaReceipt,
   };
 }
 

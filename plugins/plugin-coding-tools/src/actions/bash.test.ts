@@ -576,7 +576,70 @@ describeIfPosix("shellAction", () => {
     expect(result.text).not.toContain("--- stdout ---\nlocal shell output");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.command).toBe("echo local shell output");
-    expect(result.data?.workspaceDeltaReceipt).toBeUndefined();
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
+  });
+
+  it.each([
+    {
+      name: "dispatch exception",
+      run: async () => {
+        throw new Error("remote dispatch failed");
+      },
+    },
+    {
+      name: "complete-capture overflow",
+      run: async () => ({
+        output: "x".repeat(1_000_001),
+        exitCode: 0,
+        timedOut: false,
+      }),
+    },
+  ])("fails conservatively with a routed receipt on $name", async ({ run }) => {
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(run),
+    });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "node generate.js",
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
+  });
+
+  it("preserves the receipt when transcript callback delivery fails", async () => {
+    process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
+    const router = makeShellRouter(async () => ({
+      output: "done\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "node generate.js" },
+        async () => {
+          throw new Error("callback unavailable");
+        },
+      ),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("callback failed");
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
   });
 
   it("runs a simple foreground command (echo hello)", async () => {
@@ -875,6 +938,41 @@ describeIfPosix("shellAction", () => {
     expect(killed?.success).toBe(true);
     expect(killed?.text).toContain("status=killed");
     expect(isProcessAlive(pid)).toBe(false);
+  });
+
+  it("carries a pending receipt until a background mutation is observed", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session } = await makeRuntime({ workspaceRoots: root });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const start = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; sleep 1`,
+        }),
+      );
+      expect(start.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "indeterminate",
+        reasonCode: "BACKGROUND_RECEIPT_PENDING",
+      });
+      const handle = (start.data as Record<string, unknown>).handle as string;
+      const settled = await pollUntil(
+        runtime,
+        message,
+        handle,
+        (data) => data.status === "exited",
+      );
+      expect(settled.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: { root: await fs.realpath(root) },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("returns incremental background output using stream offsets", async () => {
@@ -2067,7 +2165,7 @@ describeIfPosix("shellAction", () => {
 
       const result = requireActionResult(
         await shellAction.handler?.(runtime, message, undefined, {
-          command: "printf 'generated\\n' > generated.txt; exit 7",
+          command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; exit 7`,
         }),
       );
 
@@ -2113,7 +2211,7 @@ describeIfPosix("shellAction", () => {
 
       const result = requireActionResult(
         await shellAction.handler?.(runtime, message, undefined, {
-          command: "printf 'generated\\n' > timed-out.txt; sleep 5",
+          command: `printf 'generated\\n' > '${path.join(root, "timed-out.txt")}'; sleep 5`,
           timeout: 200,
         }),
       );

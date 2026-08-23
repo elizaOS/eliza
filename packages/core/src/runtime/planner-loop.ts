@@ -53,7 +53,7 @@ import {
 } from "../types/model";
 import {
 	readWorkspaceDeltaReceipt,
-	type WorkspaceDeltaOutcome,
+	type WorkspaceDeltaReceipt,
 } from "../types/workspace-delta";
 import {
 	isModelProviderError,
@@ -3725,11 +3725,17 @@ function deferCodingCompletionUntilMutationVerified(args: {
 function codingMutationRequiresVerification(
 	trajectory: PlannerTrajectory,
 ): boolean {
-	let latestMutationIndex = -1;
+	type PendingMutation =
+		| { kind: "typed" }
+		| { kind: "background_pending" }
+		| { kind: "legacy" }
+		| { kind: "malformed" };
+	const pending = new Map<string, PendingMutation>();
+	const legacyKey = "legacy:unscoped";
+	const malformedKey = "malformed:unscoped";
 	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
-	for (let index = 0; index < steps.length; index++) {
-		const step = steps[index];
-		const workspaceDelta = workspaceDeltaOutcome(step);
+	for (const step of steps) {
+		const workspaceDelta = workspaceDeltaReceipt(step);
 		const name = step?.toolCall?.name.toUpperCase();
 		const fileMutation =
 			name === "FILE" &&
@@ -3753,33 +3759,66 @@ function codingMutationRequiresVerification(
 					.trim()
 					.toLowerCase(),
 			);
+		if (workspaceDelta.malformed) {
+			pending.set(malformedKey, { kind: "malformed" });
+		} else if (workspaceDelta.receipt) {
+			const receipt = workspaceDelta.receipt;
+			const key = workspaceDeltaScopeKey(receipt);
+			if (receipt.outcome === "changed") {
+				pending.set(key, { kind: "typed" });
+			} else if (receipt.outcome === "indeterminate") {
+				const existing = pending.get(key);
+				if (receipt.reasonCode === "BACKGROUND_RECEIPT_PENDING") {
+					if (!existing) pending.set(key, { kind: "background_pending" });
+				} else {
+					pending.set(key, { kind: "typed" });
+				}
+			} else if (pending.get(key)?.kind === "background_pending") {
+				// A terminal background observation resolves only its own provisional
+				// start receipt. It is not semantic test evidence for older mutations.
+				pending.delete(key);
+			}
+		}
 		if (
-			workspaceDelta === "changed" ||
-			workspaceDelta === "indeterminate" ||
-			((name === "WRITE" || name === "EDIT" || fileMutation) &&
-				step.result?.success === true)
+			(name === "WRITE" || name === "EDIT" || fileMutation) &&
+			step.result?.success === true
 		) {
-			latestMutationIndex = index;
+			pending.set(legacyKey, { kind: "legacy" });
+		}
+		if (isSuccessfulCodingVerificationStep(step)) {
+			if (workspaceDelta.receipt?.outcome === "unchanged") {
+				pending.delete(workspaceDeltaScopeKey(workspaceDelta.receipt));
+				// Receipt-less file tools predate typed scopes. Preserve their existing
+				// compatibility contract while never letting them clear another typed root.
+				pending.delete(legacyKey);
+			} else if (!workspaceDelta.receipt && !workspaceDelta.malformed) {
+				pending.delete(legacyKey);
+			}
 		}
 	}
-	if (latestMutationIndex < 0) return false;
-
-	const verified = steps
-		.slice(latestMutationIndex + 1)
-		.some((step) => isSuccessfulCodingVerificationStep(step));
-	return !verified;
+	return pending.size > 0;
 }
 
-function workspaceDeltaOutcome(
-	step: PlannerStep,
-): WorkspaceDeltaOutcome | undefined {
+function workspaceDeltaReceipt(step: PlannerStep): {
+	receipt?: WorkspaceDeltaReceipt;
+	malformed: boolean;
+} {
 	try {
-		return readWorkspaceDeltaReceipt(step.result?.data)?.outcome;
+		return {
+			receipt: readWorkspaceDeltaReceipt(step.result?.data),
+			malformed: false,
+		};
 	} catch {
 		// A malformed receipt is not allowed to suppress the completion gate. Its
 		// mutation outcome is unknown, which is conservatively indeterminate.
-		return "indeterminate";
+		return { malformed: true };
 	}
+}
+
+function workspaceDeltaScopeKey(receipt: WorkspaceDeltaReceipt): string {
+	return [receipt.scope.kind, receipt.scope.coverage, receipt.scope.root].join(
+		"\0",
+	);
 }
 
 /**
@@ -3798,8 +3837,21 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 	) {
 		return false;
 	}
-	const workspaceDelta = workspaceDeltaOutcome(step);
-	if (workspaceDelta === "changed" || workspaceDelta === "indeterminate") {
+	const subaction = String(
+		(step.toolCall.params as Record<string, unknown> | undefined)?.action ??
+			(step.toolCall.params as Record<string, unknown> | undefined)
+				?.operation ??
+			"run",
+	)
+		.trim()
+		.toLowerCase();
+	if (subaction !== "run") return false;
+	const workspaceDelta = workspaceDeltaReceipt(step);
+	if (
+		workspaceDelta.malformed ||
+		workspaceDelta.receipt?.outcome === "changed" ||
+		workspaceDelta.receipt?.outcome === "indeterminate"
+	) {
 		return false;
 	}
 	if (

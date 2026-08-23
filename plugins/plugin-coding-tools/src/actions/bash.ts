@@ -46,6 +46,7 @@ import { resolveHostShell } from "../lib/terminal-capabilities.js";
 import {
   beginLocalWorkspaceDeltaObservation,
   finishLocalWorkspaceDeltaObservation,
+  indeterminateWorkspaceDeltaReceipt,
   workspaceDeltaResultData,
 } from "../lib/workspace-delta.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
@@ -1531,6 +1532,10 @@ export const shellAction: Action = {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "write_background",
             session,
+            ...redactedWorkspaceDeltaResultData(
+              runtime,
+              session.workspaceDeltaReceipt,
+            ),
           });
         }
 
@@ -1548,10 +1553,14 @@ export const shellAction: Action = {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "kill_background",
             session,
+            ...redactedWorkspaceDeltaResultData(
+              runtime,
+              session.workspaceDeltaReceipt,
+            ),
           });
         }
 
-        const poll = backgroundShell.poll({
+        const poll = await backgroundShell.poll({
           conversationId,
           handle,
           stdoutOffset: readNonNegativeOffset(options, "stdout_offset"),
@@ -1588,6 +1597,10 @@ export const shellAction: Action = {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "poll_background",
           ...poll,
+          ...redactedWorkspaceDeltaResultData(
+            runtime,
+            poll.workspaceDeltaReceipt,
+          ),
         });
       } catch (err) {
         // error-policy:J1 SHELL action boundary; background session lookup and
@@ -1883,12 +1896,19 @@ export const shellAction: Action = {
           message: "Background shell service unavailable.",
         });
       }
+      const backgroundObservation =
+        await beginLocalWorkspaceDeltaObservation(cwd);
+      let startedSession:
+        | ReturnType<BackgroundShellService["startSession"]>
+        | undefined;
       try {
         const session = backgroundShell.startSession({
           conversationId,
           command,
           cwd,
+          workspaceObservation: backgroundObservation,
         });
+        startedSession = session;
         const redactedCommand = redactShellText(runtime, command);
         const text = [
           `$ ${redactedCommand}`,
@@ -1911,11 +1931,18 @@ export const shellAction: Action = {
           session,
           execution_route: session.sandbox === "host" ? "host" : "sandbox",
           sandbox_backend: session.sandbox,
+          ...redactedWorkspaceDeltaResultData(
+            runtime,
+            session.workspaceDeltaReceipt,
+          ),
         });
       } catch (err) {
         // error-policy:J1 SHELL action boundary; unsupported execution backends
         // and spawn failures must be visible to the planner instead of falling
         // back to a host-spawned process.
+        const workspaceDelta =
+          startedSession?.workspaceDeltaReceipt ??
+          (await finishLocalWorkspaceDeltaObservation(backgroundObservation));
         return failureToActionResult(
           {
             reason: "internal",
@@ -1924,6 +1951,7 @@ export const shellAction: Action = {
           {
             command: redactShellText(runtime, command),
             cwd: redactedCwd,
+            ...redactedWorkspaceDeltaResultData(runtime, workspaceDelta),
           },
         );
       }
@@ -1940,12 +1968,12 @@ export const shellAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch configuration`,
     );
 
-    // A remote PTY may execute on a different machine from this process. Never
-    // pair that execution with a local Git snapshot and call it authoritative;
-    // remote receipts must eventually come from the executing capability.
-    const workspaceObservation = getCapabilityRouter(runtime)
-      ? undefined
-      : await beginLocalWorkspaceDeltaObservation(cwd);
+    // Capture a local baseline even when a router is registered because the
+    // router may explicitly fall back to the host. A command that actually ran
+    // remotely receives an indeterminate receipt instead of pairing remote
+    // execution with this local snapshot.
+    const capabilityRouterPresent = getCapabilityRouter(runtime) !== null;
+    const workspaceObservation = await beginLocalWorkspaceDeltaObservation(cwd);
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
     coreLogger.info(
@@ -1964,8 +1992,12 @@ export const shellAction: Action = {
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
       );
-      const workspaceDelta =
-        await finishLocalWorkspaceDeltaObservation(workspaceObservation);
+      const workspaceDelta = capabilityRouterPresent
+        ? indeterminateWorkspaceDeltaReceipt(
+            workspaceObservation?.root ?? cwd,
+            "REMOTE_EXECUTION_UNOBSERVED",
+          )
+        : await finishLocalWorkspaceDeltaObservation(workspaceObservation);
       return failureToActionResult(
         { reason: "internal", message },
         {
@@ -1976,7 +2008,12 @@ export const shellAction: Action = {
     }
 
     const workspaceDelta =
-      await finishLocalWorkspaceDeltaObservation(workspaceObservation);
+      result.sandbox === "capability-router"
+        ? indeterminateWorkspaceDeltaReceipt(
+            workspaceObservation?.root ?? cwd,
+            "REMOTE_EXECUTION_UNOBSERVED",
+          )
+        : await finishLocalWorkspaceDeltaObservation(workspaceObservation);
     const workspaceDeltaData = redactedWorkspaceDeltaResultData(
       runtime,
       workspaceDelta,
@@ -2016,11 +2053,30 @@ export const shellAction: Action = {
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
-    if (callback && (echoTranscript === "1" || echoTranscript === "true"))
-      await callback({
-        text: fencePreformatted(capTranscriptForChat(text)),
-        source: "coding-tools",
-      });
+    if (callback && (echoTranscript === "1" || echoTranscript === "true")) {
+      try {
+        await callback({
+          text: fencePreformatted(capTranscriptForChat(text)),
+          source: "coding-tools",
+        });
+      } catch (error) {
+        // error-policy:J1 the command has already executed; preserve its delta
+        // receipt even when transcript delivery fails at the action boundary.
+        return failureToActionResult(
+          {
+            reason: "internal",
+            message: `shell transcript callback failed: ${redactShellText(runtime, (error as Error).message)}`,
+          },
+          {
+            command: redactedCommand,
+            cwd: redactedCwd,
+            output: text,
+            output_truncated: false,
+            ...workspaceDeltaData,
+          },
+        );
+      }
+    }
 
     if (timedOut) {
       return failureToActionResult(

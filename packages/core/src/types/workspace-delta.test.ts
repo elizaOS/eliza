@@ -61,10 +61,29 @@ describe("WorkspaceDeltaReceipt", () => {
 		{ ...observed("changed"), outcome: "maybe" },
 		{ ...observed("changed"), beforeFingerprint: "short" },
 		{ ...observed("changed"), observedAt: "not-a-time" },
+		{ ...observed("changed"), observedAt: "2026-08-22" },
+		{ ...observed("changed"), afterFingerprint: HASH_A },
+		{ ...observed("unchanged"), afterFingerprint: HASH_B },
+		{ ...observed("changed"), extra: true },
+		{
+			...observed("changed"),
+			scope: { ...observed("changed").scope, extra: true },
+		},
 		{
 			...observed("changed"),
 			outcome: "indeterminate",
 			afterFingerprint: undefined,
+		},
+		{
+			...observed("changed"),
+			outcome: "indeterminate",
+			afterFingerprint: undefined,
+			reasonCode: "arbitrary prose",
+		},
+		{
+			...observed("changed"),
+			outcome: "indeterminate",
+			reasonCode: "POST_SNAPSHOT_FAILED",
 		},
 	])("rejects malformed receipt %#", (value) => {
 		expect(() => normalizeWorkspaceDeltaReceipt(value)).toThrow(TypeError);
