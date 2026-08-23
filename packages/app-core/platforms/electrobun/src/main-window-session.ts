@@ -107,7 +107,17 @@ export function shouldUseIsolatedMainView({
     return true;
   }
 
-  return forceMainWindowCef && buildInfo.availableRenderers.includes("cef");
+  if (!buildInfo.availableRenderers.includes("cef")) {
+    return false;
+  }
+
+  // Electrobun 1.18 BrowserWindow does not forward `partition` to its implicit
+  // BrowserView. Linux CEF therefore needs the explicit view path below or it
+  // silently opens persist:default and loses the requested profile on relaunch.
+  return (
+    forceMainWindowCef ||
+    (platform === "linux" && buildInfo.defaultRenderer === "cef")
+  );
 }
 
 export function resolveBootstrapShellRenderer(buildInfo: BuildInfo): Renderer {

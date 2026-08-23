@@ -295,6 +295,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         glassTier: string | null;
         backdropFilter: string | null;
         webkitBackdropFilter: string | null;
+        effectiveBackdropFilter: string | null;
         radius: string | null;
         width: number | null;
         height: number | null;
@@ -307,6 +308,8 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         const composer = document.querySelector('[data-testid="chat-composer-textarea"]');
         const rect = sheet instanceof HTMLElement ? sheet.getBoundingClientRect() : null;
         const surfaceStyle = surface instanceof HTMLElement ? getComputedStyle(surface) : null;
+        const backdropFilter = surfaceStyle?.getPropertyValue('backdrop-filter') || null;
+        const webkitBackdropFilter = surfaceStyle?.getPropertyValue('-webkit-backdrop-filter') || null;
         return {
           present: sheet instanceof HTMLElement && composer instanceof HTMLTextAreaElement,
           legacyDrawerPresent: Boolean(document.querySelector('[data-testid="shell-assistant-overlay"]')),
@@ -315,8 +318,13 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
           theme: sheet?.getAttribute('data-theme') ?? null,
           placeholder: composer?.getAttribute('placeholder') ?? null,
           glassTier: surface?.getAttribute('data-glass-tier') ?? null,
-          backdropFilter: surfaceStyle?.backdropFilter ?? null,
-          webkitBackdropFilter: surfaceStyle?.webkitBackdropFilter ?? null,
+          backdropFilter,
+          webkitBackdropFilter,
+          // CSSOM exposes only spellings the current engine recognizes. Linux
+          // CEF exposes the standard property while older WKWebView builds may
+          // expose only the prefixed alias; either spelling paints the same
+          // material and both raw values remain available for diagnostics.
+          effectiveBackdropFilter: backdropFilter ?? webkitBackdropFilter,
           radius: surfaceStyle?.borderRadius ?? null,
           width: rect ? Math.round(rect.width) : null,
           height: rect ? Math.round(rect.height) : null,
@@ -335,8 +343,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         theme: "dark",
         placeholder: "Message Eliza",
         glassTier: expect.stringMatching(/^css-/),
-        backdropFilter: expect.stringContaining("blur("),
-        webkitBackdropFilter: expect.stringContaining("blur("),
+        effectiveBackdropFilter: expect.stringContaining("blur("),
       });
     const composerState = await readComposerState();
     expect(composerState.width).not.toBeNull();
