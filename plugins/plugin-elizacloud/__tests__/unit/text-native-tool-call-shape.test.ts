@@ -19,7 +19,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleActionPlanner } from "../../src/models/text";
+import { finalizeStreamedToolCalls, handleActionPlanner } from "../../src/models/text";
 
 type RuntimeFixture = Pick<IAgentRuntime, "character" | "emitEvent" | "getSetting"> &
   Partial<IAgentRuntime>;
@@ -242,5 +242,36 @@ describe("non-streaming planner tool-call shape (offline)", () => {
     await expect(handleActionPlanner(runtime(), PLANNER_PARAMS as never)).rejects.toMatchObject({
       code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
     });
+  });
+
+  it("rejects non-finite and negative streamed tool call indices", () => {
+    const nanAcc = new Map();
+    nanAcc.set(NaN, { id: "call_1", name: "tool1", args: "{}" });
+    expect(() => finalizeStreamedToolCalls(nanAcc)).toThrowError(
+      expect.objectContaining({
+        code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+      })
+    );
+
+    const negAcc = new Map();
+    negAcc.set(-1, { id: "call_neg", name: "toolNeg", args: "{}" });
+    expect(() => finalizeStreamedToolCalls(negAcc)).toThrowError(
+      expect.objectContaining({
+        code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+      })
+    );
+  });
+
+  it("orders streamed tool calls in ascending order of chunk index", () => {
+    const acc = new Map();
+    acc.set(2, { id: "call_2", name: "toolC", args: '{"c":3}' });
+    acc.set(0, { id: "call_0", name: "toolA", args: '{"a":1}' });
+    acc.set(1, { id: "call_1", name: "toolB", args: '{"b":2}' });
+
+    const calls = finalizeStreamedToolCalls(acc);
+    expect(calls.length).toBe(3);
+    expect(calls[0]?.toolCallId).toBe("call_0");
+    expect(calls[1]?.toolCallId).toBe("call_1");
+    expect(calls[2]?.toolCallId).toBe("call_2");
   });
 });
