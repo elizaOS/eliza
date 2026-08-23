@@ -15,12 +15,12 @@
  * same structure but the control differs.
  */
 
-import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { Circle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
 import { cn } from "../../../../lib/utils";
 import { useAppSelector } from "../../../../state";
+import { Button } from "../../../ui/button";
 import { useDesktopPermissionsState } from "../../permission-controls.hooks";
 import type { PermissionDef } from "../../permission-types";
 import { hasCloudManagementCredential } from "../cloud-management-auth";
@@ -111,18 +111,18 @@ function DevicePermissionRow({
         <span className="flex items-center gap-3">
           <StatusBadge granted={granted} />
           {granted ? (
-            <NuphyButton variant="secondary" size="sm" onClick={onOpenSettings}>
+            <Button variant="outline" size="sm" onClick={onOpenSettings}>
               Open
-            </NuphyButton>
+            </Button>
           ) : (
-            <NuphyButton
-              variant="primary"
+            <Button
+              variant="default"
               size="sm"
               disabled={!canRequest}
               onClick={onRequest}
             >
               Request
-            </NuphyButton>
+            </Button>
           )}
         </span>
       }

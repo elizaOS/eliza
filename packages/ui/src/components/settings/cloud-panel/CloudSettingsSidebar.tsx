@@ -2,7 +2,7 @@
  * Sidebar for the cloud settings panel.
  *
  * Renders grouped section items with an account footer pinned to the bottom.
- * Uses NuPhy UI design tokens for the macOS settings aesthetic.
+ * Uses Eliza design tokens for the macOS settings aesthetic.
  */
 import { Check, ChevronUp, Circle, Loader2, RotateCcw } from "lucide-react";
 import { useState } from "react";
@@ -67,10 +67,10 @@ export function CloudAccountMenu({
 
   if (accountState === "disconnected") {
     return (
-      <div className="border-t border-[var(--hairline)] px-3 py-3">
+      <div className="border-t border-border px-3 py-3">
         <button
           type="button"
-          className="keyboard-focus-surface flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--fill)]"
+          className="keyboard-focus-surface flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
           onClick={() => {
             void handleInteractiveCloudLogin().catch((error: unknown) => {
               // error-policy:J4 login failure surfaces as a visible notice.
@@ -84,7 +84,7 @@ export function CloudAccountMenu({
             });
           }}
         >
-          <Circle className="h-2.5 w-2.5 text-[var(--muted-foreground)]" />
+          <Circle className="h-2.5 w-2.5 text-muted-foreground" />
           Connect Cloud
         </button>
       </div>
@@ -93,10 +93,10 @@ export function CloudAccountMenu({
 
   if (accountState === "signing-out") {
     return (
-      <div className="border-t border-[var(--hairline)] px-3 py-3">
+      <div className="border-t border-border px-3 py-3">
         <div
           aria-live="polite"
-          className="flex min-h-9 items-center gap-2 px-2 py-1.5 text-sm text-[var(--muted-foreground)]"
+          className="flex min-h-9 items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground"
           role="status"
         >
           <Loader2
@@ -111,13 +111,13 @@ export function CloudAccountMenu({
 
   if (accountState === "sign-out-failed") {
     return (
-      <div className="space-y-2 border-t border-[var(--hairline)] px-3 py-3">
-        <p className="px-2 text-xs text-[var(--destructive)]" role="alert">
+      <div className="space-y-2 border-t border-border px-3 py-3">
+        <p className="px-2 text-xs text-destructive" role="alert">
           Cloud sign-out didn&apos;t finish.
         </p>
         <button
           type="button"
-          className="keyboard-focus-surface flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--fill)]"
+          className="keyboard-focus-surface flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
           onClick={startSignOut}
         >
           <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
@@ -128,23 +128,21 @@ export function CloudAccountMenu({
   }
 
   return (
-    <div className="border-t border-[var(--hairline)] px-3 py-2">
+    <div className="border-t border-border px-3 py-2">
       <button
         type="button"
         aria-controls="cloud-account-menu"
         aria-expanded={open}
-        className="keyboard-focus-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[var(--fill)]"
+        className="keyboard-focus-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-bg-hover"
         onClick={() => setOpen(!open)}
       >
         <span className="flex items-center gap-2 truncate">
-          <Circle className="h-2.5 w-2.5 shrink-0 text-[var(--success)]" />
-          <span className="truncate text-[var(--muted-foreground)]">
-            Connected
-          </span>
+          <Circle className="h-2.5 w-2.5 shrink-0 text-ok" />
+          <span className="truncate text-muted-foreground">Connected</span>
         </span>
         <ChevronUp
           className={cn(
-            "h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform",
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
             !open && "rotate-180",
           )}
         />
@@ -152,7 +150,7 @@ export function CloudAccountMenu({
       {open && (
         <div
           id="cloud-account-menu"
-          className="mt-1 space-y-0.5 rounded-md border border-[var(--hairline)] bg-[var(--surface)] p-1"
+          className="mt-1 space-y-0.5 rounded-md border border-border bg-card p-1"
         >
           {cloudPanelAccountFooterSections().map((section) => (
             <FooterLink
@@ -162,10 +160,10 @@ export function CloudAccountMenu({
               onSelect={onSelect}
             />
           ))}
-          <div className="my-1 border-t border-[var(--hairline)]" />
+          <div className="my-1 border-t border-border" />
           <button
             type="button"
-            className="keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10"
+            className="keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
             onClick={startSignOut}
           >
             Sign out
@@ -196,8 +194,8 @@ function FooterLink({
       className={cn(
         "keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors",
         active
-          ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--fill)] hover:text-[var(--foreground)]",
+          ? "bg-accent-subtle font-medium text-foreground"
+          : "text-muted-foreground hover:bg-bg-hover hover:text-foreground",
       )}
     >
       {section.footerLabel}
@@ -223,21 +221,19 @@ function SectionItem({
       className={cn(
         "keyboard-focus-surface flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
         active
-          ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--fill)] hover:text-[var(--foreground)]",
+          ? "bg-accent-subtle font-medium text-foreground"
+          : "text-muted-foreground hover:bg-bg-hover hover:text-foreground",
       )}
     >
       <Icon
         className={cn(
           "h-4 w-4 shrink-0",
-          active
-            ? "text-[var(--foreground)]"
-            : "text-[var(--muted-foreground)]",
+          active ? "text-foreground" : "text-muted-foreground",
         )}
       />
       <span className="truncate">{section.label}</span>
       {active && (
-        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--foreground)]" />
+        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-foreground" />
       )}
     </button>
   );
@@ -261,7 +257,7 @@ export function CloudSettingsSidebar({
   return (
     <nav
       aria-label="Settings sections"
-      className="flex h-full w-60 shrink-0 flex-col bg-[var(--surface)] pt-8"
+      className="flex h-full w-60 shrink-0 flex-col bg-card pt-8"
     >
       <div className="flex-1 overflow-y-auto px-3 py-4">
         {CLOUD_PANEL_GROUPS.map((group) => {
@@ -269,7 +265,7 @@ export function CloudSettingsSidebar({
           if (!sections?.length) return null;
           return (
             <div key={group.id} className="mb-5 last:mb-0">
-              <h2 className="mb-1.5 px-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+              <h2 className="mb-1.5 px-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {group.label}
               </h2>
               <div className="space-y-0.5">

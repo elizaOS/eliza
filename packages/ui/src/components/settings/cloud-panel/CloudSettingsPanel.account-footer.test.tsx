@@ -135,12 +135,9 @@ describe("CloudSettingsPanel account footer navigation", () => {
 
       const sectionBody = screen.getByTestId(`section-${sectionId}`);
       expect(sectionBody).toBeTruthy();
-      const themeBoundary = sectionBody.closest(
-        '[data-cloud-section-theme="eliza"]',
-      );
-      expect(themeBoundary).toBeTruthy();
-      expect(themeBoundary?.closest(".nuphy-scope")).toBeTruthy();
-      expect(themeBoundary?.getAttribute("style")).toBeNull();
+      // Sections render directly on the shared Eliza theme — no scoped token
+      // wrapper may reappear around an account-footer body.
+      expect(sectionBody.closest("[data-cloud-section-theme]")).toBeNull();
       expect(
         screen.getByRole("heading", { level: 1, name: sectionLabel }),
       ).toBeTruthy();

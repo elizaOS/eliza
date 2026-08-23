@@ -1,34 +1,29 @@
 /**
- * NuPhy UI–based settings primitives for the cloud-only settings panel.
- *
- * Wraps @extrastu/nuphy-ui components with agent-surface instrumentation so
- * rows remain addressable from chat/voice (useAgentElement). The API mirrors
- * the shared settings-agent-rows but renders NuPhy's macOS-inspired controls
- * (IosToggle, SelectPill, Segmented, Slider, Button) instead of the legacy
- * Switch/Select/SegmentedGroup. This is the package's only dependency boundary:
- * application behavior remains in these wrappers and all package styling is
- * confined to the `.nuphy-scope` settings root.
+ * Settings primitives for the cloud-only settings panel, rendered entirely
+ * with the package's canonical controls (Switch, Slider, SegmentedControl,
+ * FormSelect, Button, Dialog) on Eliza brand tokens. Rows keep agent-surface
+ * instrumentation (useAgentElement) so they remain addressable from
+ * chat/voice. The exported names retain their historical `Nuphy*` prefix
+ * because nine section files import them; the former @extrastu/nuphy-ui
+ * dependency and its `.nuphy-scope` token bridge are gone (#24495).
  */
 
-import {
-  IosToggle,
-  Button as NuphyButton,
-  Input as NuphyInput,
-  SettingRow as NuphySettingRow,
-  Slider as NuphySlider,
-  Segmented,
-  SelectPill,
-} from "@extrastu/nuphy-ui";
 import type { LucideIcon } from "lucide-react";
+import { X } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { cn } from "../../../lib/utils";
+import { Button } from "../../ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from "../../ui/dialog";
+import { FormSelect, FormSelectItem } from "../../ui/form-select";
+import { SegmentedControl } from "../../ui/segmented-control";
+import { Slider } from "../../ui/slider";
+import { Switch } from "../../ui/switch";
 
 interface SettingsGroupProps {
   children: React.ReactNode;
@@ -51,8 +46,10 @@ export function SettingsGroup({
           {title}
         </h2>
       ) : null}
-      <div className="rounded-2xl border border-hairline bg-surface px-5 py-1">
-        <div className="nuphy-settings-group-rows">{children}</div>
+      <div className="rounded-2xl border border-border bg-card px-5 py-1">
+        <div className="[&>:not([hidden])+:not([hidden])]:border-t [&>:not([hidden])+:not([hidden])]:border-border">
+          {children}
+        </div>
       </div>
       {footer ? (
         <p className="mt-2 px-1 text-pretty text-[12px] leading-5 text-muted-foreground">
@@ -79,13 +76,14 @@ export function SettingsStack({
 export function DestructiveSecondaryButton({
   className,
   ...props
-}: React.ComponentProps<typeof NuphyButton>) {
+}: React.ComponentProps<typeof Button>) {
   return (
-    <NuphyButton
+    <Button
       variant="secondary"
+      size="sm"
       className={cn(
-        "bg-fill text-destructive",
-        "hover:bg-destructive/10 active:bg-destructive/15",
+        "text-danger",
+        "hover:bg-destructive-subtle active:bg-destructive-subtle/80",
         className,
       )}
       {...props}
@@ -95,6 +93,33 @@ export function DestructiveSecondaryButton({
 
 function labelToString(label: React.ReactNode, fallback: string): string {
   return typeof label === "string" ? label : fallback;
+}
+
+/** Shared macOS-style row layout: title + description left, control right. */
+function SettingRowShell({
+  title,
+  description,
+  control,
+}: {
+  title: string;
+  description?: string;
+  control?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-6 py-3.5">
+      <div className="min-w-0">
+        <p className="text-[15px] font-medium leading-6 text-foreground">
+          {title}
+        </p>
+        {description ? (
+          <p className="mt-0.5 text-pretty text-[13px] leading-5 text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
+      </div>
+      {control ? <div className="shrink-0">{control}</div> : null}
+    </div>
+  );
 }
 
 // ── Switch row ──────────────────────────────────────────────────────────
@@ -143,14 +168,12 @@ export function NuphySwitchRow({
 
   return (
     <div className={className}>
-      <NuphySettingRow
-        title={
-          typeof label === "string" ? label : labelToString(label, agentId)
-        }
+      <SettingRowShell
+        title={labelToString(label, agentId)}
         description={typeof description === "string" ? description : undefined}
         control={
           <div ref={ref} {...toggleAgentProps} data-testid={testId}>
-            <IosToggle
+            <Switch
               id={agentId}
               checked={checked}
               onCheckedChange={onCheckedChange}
@@ -215,20 +238,24 @@ export function NuphySelectRow({
 
   return (
     <div className={className}>
-      <NuphySettingRow
-        title={
-          typeof label === "string" ? label : labelToString(label, agentId)
-        }
+      <SettingRowShell
+        title={labelToString(label, agentId)}
         description={typeof description === "string" ? description : undefined}
         control={
           <div ref={ref} {...selectAgentProps} data-testid={testId}>
-            <SelectPill
-              options={options}
+            <FormSelect
               value={value}
               onValueChange={onValueChange}
               disabled={disabled}
+              triggerClassName="h-9 w-auto min-w-32 rounded-full px-3 text-sm"
               aria-label={resolvedLabel}
-            />
+            >
+              {options.map((option) => (
+                <FormSelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </FormSelectItem>
+              ))}
+            </FormSelect>
           </div>
         }
       />
@@ -278,15 +305,18 @@ export function NuphySegmentedRow({
   });
 
   return (
-    <NuphySettingRow
-      title={typeof label === "string" ? label : labelToString(label, agentId)}
+    <SettingRowShell
+      title={labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
         <div ref={ref} {...agentProps}>
-          <Segmented
-            options={options}
+          <SegmentedControl
             value={value}
             onValueChange={onValueChange}
+            items={options.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
             aria-label={resolvedLabel}
           />
         </div>
@@ -330,7 +360,7 @@ export function NuphySliderRow({
   group = "settings",
 }: NuphySliderRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
-  const { agentProps } = useAgentElement<HTMLDivElement>({
+  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
     role: "slider",
     label: resolvedLabel,
@@ -342,22 +372,30 @@ export function NuphySliderRow({
   });
 
   return (
-    <NuphySettingRow
-      title={typeof label === "string" ? label : labelToString(label, agentId)}
+    <SettingRowShell
+      title={labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
-        <NuphySlider
-          value={value}
-          onValueChange={onValueChange}
-          min={min}
-          max={max}
-          step={step}
-          showValue={showValue}
-          unit={unit}
-          disabled={disabled}
-          label={resolvedLabel}
-          {...agentProps}
-        />
+        <div ref={ref} {...agentProps} className="flex w-44 items-center gap-3">
+          <Slider
+            value={[value]}
+            onValueChange={(values) => {
+              const next = values[0];
+              if (typeof next === "number") onValueChange(next);
+            }}
+            min={min}
+            max={max}
+            step={step}
+            disabled={disabled}
+            aria-label={resolvedLabel}
+          />
+          {showValue ? (
+            <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+              {value}
+              {unit ?? ""}
+            </span>
+          ) : null}
+        </div>
       }
     />
   );
@@ -405,11 +443,11 @@ export function NuphyInputRow({
   const { "aria-label": _ignored, ...inputAgentProps } = agentProps;
 
   return (
-    <NuphySettingRow
-      title={typeof label === "string" ? label : labelToString(label, agentId)}
+    <SettingRowShell
+      title={labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
-        <NuphyInput
+        <input
           ref={ref as React.Ref<HTMLInputElement>}
           id={agentId}
           type={type}
@@ -417,6 +455,12 @@ export function NuphyInputRow({
           onChange={(e) => onValueChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
+          className={cn(
+            "w-48 rounded-md border border-border bg-bg px-3 py-1.5",
+            "text-[14px] leading-5 text-foreground placeholder:text-muted-foreground/60",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            "transition-colors",
+          )}
           {...(inputAgentProps as Record<string, unknown>)}
         />
       }
@@ -439,6 +483,19 @@ export interface NuphyActionButtonProps {
   group?: string;
   className?: string;
 }
+
+const ACTION_BUTTON_VARIANT = {
+  primary: "default",
+  secondary: "outline",
+  ghost: "ghost",
+  destructive: "destructive",
+} as const;
+
+const ACTION_BUTTON_SIZE = {
+  sm: "sm",
+  md: "default",
+  lg: "lg",
+} as const;
 
 export function NuphyActionButton({
   agentId,
@@ -465,20 +522,20 @@ export function NuphyActionButton({
   const { "aria-label": _ignored, ...btnAgentProps } = agentProps;
 
   return (
-    <NuphySettingRow
-      title={typeof label === "string" ? label : labelToString(label, agentId)}
+    <SettingRowShell
+      title={labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
-        <NuphyButton
+        <Button
           ref={ref}
-          variant={variant}
-          size={size}
+          variant={ACTION_BUTTON_VARIANT[variant]}
+          size={ACTION_BUTTON_SIZE[size]}
           onClick={onActivate}
           disabled={disabled}
           {...(btnAgentProps as Record<string, unknown>)}
         >
           {buttonLabel}
-        </NuphyButton>
+        </Button>
       }
     />
   );
@@ -506,22 +563,7 @@ export function NuphyRow({
   ...rest
 }: NuphyRowProps) {
   const effectiveControl = children ?? control ?? null;
-  const labelIsString = typeof label === "string";
-  const descIsString = typeof description === "string";
 
-  // Fast path: plain string label/description → delegate to NuPhy SettingRow.
-  if (labelIsString && descIsString && !below && !className) {
-    return (
-      <NuphySettingRow
-        title={label}
-        description={description}
-        control={effectiveControl}
-      />
-    );
-  }
-
-  // General path: custom JSX label/description or extra props → render a
-  // row that mirrors SettingRow's layout but accepts ReactNode.
   return (
     <div className={cn("py-4", className)} data-testid={rest["data-testid"]}>
       <div className="flex items-center justify-between gap-6">
@@ -530,7 +572,7 @@ export function NuphyRow({
             {label}
           </p>
           {description ? (
-            <div className="mt-0.5 text-[13px] leading-5 text-muted-foreground text-pretty">
+            <div className="mt-0.5 text-pretty text-[13px] leading-5 text-muted-foreground">
               {description}
             </div>
           ) : null}
@@ -557,7 +599,7 @@ export interface NuphyModalProps {
   maxWidth?: string;
 }
 
-/** A NuPhy-styled composition of the shared modal dialog primitive. */
+/** A brand-styled composition of the shared modal dialog primitive. */
 export function NuphyModal({
   open,
   title,
@@ -594,12 +636,12 @@ export function NuphyModal({
           returnFocusRef.current = null;
         }}
         className={cn(
-          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto rounded-xl border-hairline bg-surface p-0 text-foreground shadow-lg",
+          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto rounded-xl border-border bg-card p-0 text-foreground shadow-lg",
           maxWidth,
           "max-h-[85vh]",
         )}
       >
-        <div className="border-b border-hairline px-5 py-4">
+        <div className="border-b border-border px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <DialogTitle className="text-[15px] font-semibold leading-6 text-foreground">
@@ -614,29 +656,16 @@ export function NuphyModal({
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-fill hover:text-foreground"
+              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
               aria-label="Close dialog"
             >
-              <svg
-                aria-hidden="true"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <X aria-hidden className="h-4 w-4" />
             </button>
           </div>
         </div>
         <div className="px-5 py-4">{children}</div>
         {footer ? (
-          <div className="border-t border-hairline px-5 py-3">{footer}</div>
+          <div className="border-t border-border px-5 py-3">{footer}</div>
         ) : null}
       </DialogContent>
     </Dialog>
@@ -675,11 +704,11 @@ export function NuphyConfirmDialog({
       maxWidth="max-w-sm"
       footer={
         <div className="flex justify-end gap-2">
-          <NuphyButton variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose}>
             {cancelLabel}
-          </NuphyButton>
-          <NuphyButton
-            variant={destructive ? "destructive" : "primary"}
+          </Button>
+          <Button
+            variant={destructive ? "destructive" : "default"}
             size="sm"
             onClick={() => {
               onConfirm();
@@ -687,7 +716,7 @@ export function NuphyConfirmDialog({
             }}
           >
             {confirmLabel}
-          </NuphyButton>
+          </Button>
         </div>
       }
     >
@@ -728,7 +757,7 @@ export function NuphyFormField({
   );
 }
 
-/** A text input styled to match the NuPhy settings panel. */
+/** A text input styled to match the settings panel. */
 export function NuphyTextInput({
   id,
   type = "text",
@@ -756,9 +785,8 @@ export function NuphyTextInput({
       autoComplete={autoComplete}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "w-full rounded-md border border-hairline bg-surface px-3 py-2",
+        "w-full rounded-md border border-border bg-bg px-3 py-2",
         "text-[14px] leading-5 text-foreground placeholder:text-muted-foreground/60",
-        "focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors",
       )}
