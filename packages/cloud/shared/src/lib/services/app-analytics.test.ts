@@ -142,6 +142,34 @@ describe("AppAnalyticsService.buildSessionAnalytics", () => {
     expect(analytics.funnel.steps[2]?.conversionFromPreviousPercent).toBe(50);
   });
 
+  test("keeps visitors separate when they reuse the same session id", () => {
+    const service = new AppAnalyticsService();
+    const analytics = service.buildSessionAnalytics(
+      [
+        request("00000000-0000-4000-8000-000000000037", "2026-07-02T12:00:00Z", {
+          visitor_id: "visitor-a",
+          session_id: "shared-session",
+          page_url: "/",
+        }),
+        request("00000000-0000-4000-8000-000000000038", "2026-07-02T12:01:00Z", {
+          visitor_id: "visitor-b",
+          session_id: "shared-session",
+          page_url: "/checkout",
+        }),
+      ],
+      ["/", "/checkout"],
+    );
+
+    expect(analytics.summary.totalSessions).toBe(2);
+    expect(analytics.summary.uniqueVisitors).toBe(2);
+    expect(analytics.summary.bounceRatePercent).toBe(100);
+    expect(analytics.sessions.map((session) => session.visitorId).sort()).toEqual([
+      "visitor-a",
+      "visitor-b",
+    ]);
+    expect(analytics.funnel.steps.map((step) => step.sessions)).toEqual([1, 0]);
+  });
+
   test("splits legacy fallback sessions at the hour-bucket window boundary", () => {
     const service = new AppAnalyticsService();
     const analytics = service.buildSessionAnalytics([

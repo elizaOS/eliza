@@ -51,6 +51,13 @@ type AppAnalyticsRepository = Pick<
   "findById" | "getRecentRequests" | "incrementUsage" | "trackAppUserActivity"
 >;
 
+interface AggregatedSession {
+  aggregationKey: string;
+  sessionId: string;
+  visitorId: string;
+  pages: Array<{ path: string; at: Date }>;
+}
+
 function metadataString(
   metadata: Record<string, unknown> | null | undefined,
   key: string,
@@ -208,14 +215,7 @@ export class AppAnalyticsService {
     const ordered = validRequests
       .slice()
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
-    const sessions = new Map<
-      string,
-      {
-        sessionId: string;
-        visitorId: string;
-        pages: Array<{ path: string; at: Date }>;
-      }
-    >();
+    const sessions = new Map<string, AggregatedSession>();
 
     for (const request of ordered) {
       const metadata = request.metadata;
@@ -227,22 +227,20 @@ export class AppAnalyticsService {
       const sessionId =
         metadataString(metadata, "session_id") ??
         `${visitorId}:${request.created_at.toISOString().slice(0, 13)}`;
+      const aggregationKey = JSON.stringify([visitorId, sessionId]);
       const path = normalizePath(
         metadataString(metadata, "pathname") ?? metadataString(metadata, "page_url"),
       );
       const existing =
-        sessions.get(sessionId) ??
+        sessions.get(aggregationKey) ??
         ({
+          aggregationKey,
           sessionId,
           visitorId,
           pages: [],
-        } satisfies {
-          sessionId: string;
-          visitorId: string;
-          pages: Array<{ path: string; at: Date }>;
-        });
+        } satisfies AggregatedSession);
       existing.pages.push({ path, at: request.created_at });
-      sessions.set(sessionId, existing);
+      sessions.set(aggregationKey, existing);
     }
 
     const sessionRows = [...sessions.values()]
@@ -314,15 +312,11 @@ export class AppAnalyticsService {
   }
 
   private buildFunnel(
-    sessions: Array<{
-      sessionId: string;
-      visitorId: string;
-      pages: Array<{ path: string; at: Date }>;
-    }>,
+    sessions: AggregatedSession[],
     steps: string[],
   ): AppSessionAnalytics["funnel"] {
     let previousSessions: Map<string, number> = new Map(
-      sessions.map((session) => [session.sessionId, -1] as const),
+      sessions.map((session) => [session.aggregationKey, -1] as const),
     );
     const startCount = previousSessions.size;
     const stepRows: AppFunnelStep[] = [];
@@ -331,13 +325,13 @@ export class AppAnalyticsService {
       const matchedSessions = new Map<string, number>();
       const matchedVisitors = new Set<string>();
       for (const session of sessions) {
-        const previousIndex = previousSessions.get(session.sessionId);
+        const previousIndex = previousSessions.get(session.aggregationKey);
         if (previousIndex === undefined) continue;
         const matchedIndex = session.pages.findIndex(
           (page, index) => index > previousIndex && page.path === step,
         );
         if (matchedIndex >= 0) {
-          matchedSessions.set(session.sessionId, matchedIndex);
+          matchedSessions.set(session.aggregationKey, matchedIndex);
           matchedVisitors.add(session.visitorId);
         }
       }

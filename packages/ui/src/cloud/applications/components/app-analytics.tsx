@@ -906,7 +906,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                         <tbody>
                           {sessionAnalytics.sessions.slice(0, 10).map((s) => (
                             <tr
-                              key={s.sessionId}
+                              key={JSON.stringify([s.visitorId, s.sessionId])}
                               className="border-b border-border hover:bg-bg-hover"
                             >
                               <td className="py-2 px-3 text-txt text-xs max-w-[180px] truncate">

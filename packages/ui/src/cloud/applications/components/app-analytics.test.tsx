@@ -53,6 +53,7 @@ import { AppAnalytics } from "./app-analytics";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   apiMock.mockReset();
   toastErrorMock.mockReset();
 });
@@ -102,7 +103,7 @@ function mockAnalyticsResponses() {
           },
           sessions: [
             {
-              sessionId: "session-a",
+              sessionId: "shared-session",
               visitorId: "visitor-a",
               startedAt: "2026-07-02T12:00:00.000Z",
               endedAt: "2026-07-02T12:04:00.000Z",
@@ -110,6 +111,16 @@ function mockAnalyticsResponses() {
               pageViews: 3,
               entryPath: "/",
               exitPath: "/checkout",
+            },
+            {
+              sessionId: "shared-session",
+              visitorId: "visitor-b",
+              startedAt: "2026-07-02T12:01:00.000Z",
+              endedAt: "2026-07-02T12:01:00.000Z",
+              durationMs: 0,
+              pageViews: 1,
+              entryPath: "/pricing",
+              exitPath: "/pricing",
             },
           ],
           funnel: {
@@ -143,6 +154,9 @@ function mockAnalyticsResponses() {
 describe("AppAnalytics sessions tab (#11349)", () => {
   it("loads and renders session summary, funnel, and recent sessions from the DTO", async () => {
     mockAnalyticsResponses();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const user = userEvent.setup({ delay: null });
     render(<AppAnalytics appId="app_1" />);
 
@@ -158,6 +172,11 @@ describe("AppAnalytics sessions tab (#11349)", () => {
     expect(screen.getByText("2.5")).toBeTruthy();
     expect(screen.getByText("Checkout")).toBeTruthy();
     expect(screen.getAllByText("/checkout").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("/pricing")).toHaveLength(2);
     expect(screen.getByText("3")).toBeTruthy();
+    expect(consoleError.mock.calls.flat().join(" ")).not.toContain(
+      "Encountered two children with the same key",
+    );
+    consoleError.mockRestore();
   });
 });
