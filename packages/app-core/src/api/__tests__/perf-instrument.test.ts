@@ -3,7 +3,7 @@ import {
   getPerfSnapshot,
   isPerfInstrumentEnabled,
   normalizeRouteKey,
-} from "./perf-instrument.ts";
+} from "../perf-instrument.ts";
 
 describe("normalizeRouteKey", () => {
   it("combines method and collapsed pathname", () => {
