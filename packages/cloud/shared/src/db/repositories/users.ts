@@ -227,6 +227,7 @@ export type FindPendingPhoneTelegramConvergenceResult =
       user: User;
       organization: Organization;
     }
+  | { status: "canonical_user"; user: UserWithOrganization }
   | { status: "not_found" }
   | { status: "identity_projection_conflict" };
 
@@ -1525,6 +1526,44 @@ export class UsersRepository {
    * constraint rather than required retry authority.
    */
   async findPendingPhoneTelegramPersonalAccountConvergence(input: {
+    phoneNumber?: string;
+    stewardUserId: string;
+  }): Promise<FindPendingPhoneTelegramConvergenceResult> {
+    const [inspection] = await dbWrite
+      .select({
+        user: users,
+        organization: organizations,
+        pendingReceiptToken: personalAccountConvergences.token,
+      })
+      .from(users)
+      .leftJoin(organizations, eq(organizations.id, users.organization_id))
+      .leftJoin(
+        personalAccountConvergences,
+        and(
+          eq(personalAccountConvergences.target_user_id, users.id),
+          eq(personalAccountConvergences.steward_user_id, input.stewardUserId),
+          eq(personalAccountConvergences.status, "pending_alias"),
+        ),
+      )
+      .where(eq(users.steward_user_id, input.stewardUserId))
+      .limit(1);
+
+    if (!inspection) return { status: "not_found" };
+    if (!inspection.pendingReceiptToken) {
+      return {
+        status: "canonical_user",
+        user: { ...inspection.user, organization: inspection.organization },
+      };
+    }
+
+    return await this.validatePendingPhoneTelegramPersonalAccountConvergence(input);
+  }
+
+  /**
+   * Revalidates a detected pending receipt within the original primary
+   * transaction so rare alias recovery retains its existing snapshot checks.
+   */
+  private async validatePendingPhoneTelegramPersonalAccountConvergence(input: {
     phoneNumber?: string;
     stewardUserId: string;
   }): Promise<FindPendingPhoneTelegramConvergenceResult> {

@@ -159,9 +159,10 @@ mock.module("./db/repositories/organization-invites", () => ({
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
     delete: async () => undefined,
-    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
-      status: "not_found" as const,
-    }),
+    findPendingPhoneTelegramPersonalAccountConvergence: async () => {
+      const user = await getByStewardIdImpl();
+      return user ? { status: "canonical_user" as const, user } : { status: "not_found" as const };
+    },
   },
 }));
 

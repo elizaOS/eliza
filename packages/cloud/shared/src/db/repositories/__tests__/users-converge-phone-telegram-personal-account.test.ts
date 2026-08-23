@@ -72,6 +72,31 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     expectedTelegramOrganizationId: pair.telegram.organization.id,
   });
 
+  const createCanonicalStewardSubject = async () => {
+    sequence += 1;
+    const stewardUserId = `steward-canonical-${sequence}`;
+    const [organization] = await dbWrite
+      .insert(organizations)
+      .values({
+        name: `Canonical ${sequence}`,
+        slug: `canonical-${sequence}`,
+      })
+      .returning();
+    const [user] = await dbWrite
+      .insert(users)
+      .values({
+        steward_user_id: stewardUserId,
+        organization_id: organization.id,
+        role: "owner",
+      })
+      .returning();
+    await dbWrite.insert(userIdentities).values({
+      user_id: user.id,
+      steward_user_id: stewardUserId,
+    });
+    return { stewardUserId, user, organization };
+  };
+
   beforeAll(async () => {
     if (!CAN_USE_ISOLATED_PGLITE) {
       pgliteReady = false;
@@ -186,6 +211,36 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     await closeDatabaseConnectionsForTests();
   });
 
+  test("returns not_found when the canonical Steward subject does not exist", async () => {
+    await expect(
+      usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        stewardUserId: "missing-steward-subject",
+      }),
+    ).resolves.toEqual({ status: "not_found" });
+  });
+
+  test("returns the canonical user and organization when no pending alias exists", async () => {
+    const canonical = await createCanonicalStewardSubject();
+
+    await expect(
+      usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        stewardUserId: canonical.stewardUserId,
+      }),
+    ).resolves.toMatchObject({
+      status: "canonical_user",
+      user: {
+        id: canonical.user.id,
+        steward_user_id: canonical.stewardUserId,
+        organization_id: canonical.organization.id,
+        organization: {
+          id: canonical.organization.id,
+          slug: canonical.organization.slug,
+          credit_balance: "0.000000",
+        },
+      },
+    });
+  });
+
   test("converges exactly two $0 provisional accounts and retains an idempotent alias receipt", async () => {
     const pair = await createPair();
     const proof = proofFor(pair);
@@ -267,7 +322,14 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
       await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
         stewardUserId: proof.stewardUserId,
       }),
-    ).toEqual({ status: "not_found" });
+    ).toMatchObject({
+      status: "canonical_user",
+      user: {
+        id: pair.telegram.user.id,
+        organization_id: pair.telegram.organization.id,
+        organization: { id: pair.telegram.organization.id },
+      },
+    });
     expect(
       await usersRepository.hasPendingPhoneTelegramPersonalAccountConvergenceTarget({
         targetUserId: pair.telegram.user.id,

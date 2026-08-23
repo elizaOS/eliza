@@ -628,6 +628,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     stewardUserId,
     ...(verifiedPhone ? { phoneNumber: verifiedPhone } : {}),
   });
+  const inspectedCanonicalUser = pending.status === "canonical_user" ? pending.user : undefined;
   if (pending.status === "identity_projection_conflict") {
     throw new StewardTelegramAccountClaimError(pending.status);
   }
@@ -778,7 +779,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // misread the subject's own account as `steward_subject_owned_by_other_user`
   // and 409 the first verified-phone session (#19365). An existing user links
   // the unowned verified phone through the existing-user path below instead.
-  let user = claimedTelegramUser ?? (await usersService.getByStewardId(stewardUserId));
+  let user = claimedTelegramUser ?? inspectedCanonicalUser;
 
   // A signed inbound text creates a phone-only personal account before any
   // browser session exists. SMS login may claim only that exact synthetic
