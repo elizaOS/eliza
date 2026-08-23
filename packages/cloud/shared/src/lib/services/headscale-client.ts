@@ -19,6 +19,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 /** Timeout for health checks (ms) */
 const HEALTH_TIMEOUT_MS = 5_000;
 
+/** Typed non-2xx response. Callers may suppress only an exact HTTP status. */
+export class HeadscaleHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly method: string,
+    readonly path: string,
+    statusText: string,
+  ) {
+    super(`Headscale API ${method} ${path} failed: ${status} ${statusText}`);
+    this.name = "HeadscaleHttpError";
+  }
+}
+
 async function readHeadscaleErrorBody(
   resp: Response,
   method: string,
@@ -305,12 +318,12 @@ export class HeadscaleClient {
       await this.request<Record<string, unknown>>("DELETE", `/api/v1/node/${nodeId}`);
       logger.info(`[headscale] deleted node ${nodeId}`);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       // 404 is acceptable – node already gone
-      if (msg.includes("404")) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) {
         logger.warn(`[headscale] node ${nodeId} already deleted (404)`);
         return;
       }
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[headscale] error deleting node ${nodeId}:`, msg);
       throw error;
     }
@@ -409,7 +422,7 @@ export class HeadscaleClient {
     try {
       await this.request<Record<string, unknown>>("POST", "/api/v1/preauthkey/expire", { id });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("404")) return;
+      if (error instanceof HeadscaleHttpError && error.status === 404) return;
       throw error;
     }
   }
@@ -428,7 +441,7 @@ export class HeadscaleClient {
         `/api/v1/preauthkey?id=${encodeURIComponent(id)}`,
       );
     } catch (error) {
-      if (error instanceof Error && error.message.includes("404")) return;
+      if (error instanceof HeadscaleHttpError && error.status === 404) return;
       throw error;
     }
   }
@@ -460,12 +473,12 @@ export class HeadscaleClient {
       const data = await this.request<{ routes?: HeadscaleRoute[] }>("GET", "/api/v1/routes");
       return data.routes ?? [];
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       // Some older Headscale versions may not support /routes
-      if (msg.includes("404")) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) {
         logger.warn("[headscale] routes endpoint not supported; returning empty list");
         return [];
       }
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error("[headscale] error listing routes:", msg);
       return [];
     }
@@ -517,7 +530,7 @@ export class HeadscaleClient {
       logger.debug(`[headscale] API error body for ${method} ${path}:`, {
         body: text,
       });
-      throw new Error(`Headscale API ${method} ${path} failed: ${resp.status} ${resp.statusText}`);
+      throw new HeadscaleHttpError(resp.status, method, path, resp.statusText);
     }
 
     // Some endpoints (DELETE) may not return a body

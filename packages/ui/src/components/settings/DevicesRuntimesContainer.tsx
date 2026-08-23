@@ -17,6 +17,8 @@ import {
   getDefaultRemoteControlCloudConnection,
 } from "../../api/remote-control-cloud-default";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { isStoreBuild } from "../../build-variant";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import {
   clearRemoteControllerSessionState,
   getOrCreateRemoteControllerIdentity,
@@ -56,11 +58,13 @@ import {
   removeAgentProfile,
   switchRuntimeNonDestructive,
 } from "../../state";
+import { isTrustedRestoreApiBaseUrl } from "../../state/runtime-url-trust";
 import {
   type DesktopRemoteTargetView,
   type DevicePairingView,
   type DeviceRuntimeTarget,
   DevicesRuntimesSection,
+  type DirectRuntimeInput,
   type SshConnectInput,
 } from "./DevicesRuntimesSection";
 
@@ -247,6 +251,7 @@ function hostTarget(
       : undefined,
     canPair: !revoked && !activeHere,
     canRevoke: !revoked && Boolean(activeHere),
+    canSelect: false,
   };
 }
 
@@ -295,6 +300,26 @@ async function revokeDesktopHostCloudFirst(
   }
 }
 
+function visibleProfilesForBuild(
+  profiles: readonly AgentProfile[],
+  activeProfileId: string | null,
+  localRuntimeUnavailable: boolean,
+): AgentProfile[] {
+  if (!localRuntimeUnavailable) return [...profiles];
+  return profiles.filter(
+    (profile) => profile.kind !== "local" || profile.id === activeProfileId,
+  );
+}
+
+function canSelectProfileForBuild(
+  profile: AgentProfile | undefined,
+  localRuntimeUnavailable: boolean,
+): boolean {
+  return (
+    Boolean(profile) && !(localRuntimeUnavailable && profile?.kind === "local")
+  );
+}
+
 export function DevicesRuntimesContainer({
   className,
 }: {
@@ -325,6 +350,7 @@ export function DevicesRuntimesContainer({
   const [cloudState, setCloudState] = useState<
     "loading" | "available" | "signed-out" | "error"
   >("loading");
+  const localRuntimeUnavailable = isAndroidCloudBuild() || isStoreBuild();
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -459,7 +485,11 @@ export function DevicesRuntimesContainer({
   }, []);
 
   const targets = useMemo(() => {
-    const profiles = registry.profiles.map((profile) =>
+    const profiles = visibleProfilesForBuild(
+      registry.profiles,
+      registry.activeProfileId,
+      localRuntimeUnavailable,
+    ).map((profile) =>
       profileTarget(
         profile,
         registry.activeProfileId,
@@ -472,7 +502,14 @@ export function DevicesRuntimesContainer({
       hostTarget(host, sessions, controller),
     );
     return [...profiles, ...hosts];
-  }, [controller, directory, registry, sessions, sshRunning]);
+  }, [
+    controller,
+    directory,
+    localRuntimeUnavailable,
+    registry,
+    sessions,
+    sshRunning,
+  ]);
 
   const pairingView: DevicePairingView | null = useMemo(() => {
     if (!pairing) return null;
@@ -489,11 +526,43 @@ export function DevicesRuntimesContainer({
 
   const onSelect = (id: string) =>
     run(async () => {
+      const profile = loadAgentProfileRegistry().profiles.find(
+        (item) => item.id === id,
+      );
+      if (!canSelectProfileForBuild(profile, localRuntimeUnavailable)) {
+        throw new Error(
+          "Local runtime is unavailable on this build. Choose Cloud or a verified remote runtime.",
+        );
+      }
       const result = switchRuntimeNonDestructive(id);
       if (!result.ok)
         throw new Error(
           "That runtime could not be selected. Check its connection and try again.",
         );
+    });
+
+  const onAddDirectRuntime = (input: DirectRuntimeInput) =>
+    run(async () => {
+      if (!isTrustedRestoreApiBaseUrl(input.apiBase)) {
+        throw new Error(
+          "That address is not trusted. Use a private, local, or Tailscale runtime URL.",
+        );
+      }
+      const profile = addAgentProfile(
+        {
+          kind: "remote",
+          label: input.label,
+          apiBase: input.apiBase,
+          accessToken: input.accessToken,
+        },
+        { activate: false },
+      );
+      const result = switchRuntimeNonDestructive(profile.id);
+      if (!result.ok) {
+        throw new Error(
+          "The private runtime was saved but could not be selected. Check its address and retry.",
+        );
+      }
     });
 
   const onPair = (targetId: string) =>
@@ -691,6 +760,7 @@ export function DevicesRuntimesContainer({
       onRemove={onRemove}
       onInspectSsh={onInspectSsh}
       onConnectSsh={onConnectSsh}
+      onAddDirectRuntime={onAddDirectRuntime}
       onEnrollDesktopTarget={onEnrollDesktopTarget}
       onActivateDesktopTarget={onActivateDesktopTarget}
       onSetDesktopTargetRunning={onSetDesktopTargetRunning}
@@ -700,9 +770,11 @@ export function DevicesRuntimesContainer({
 }
 
 export const devicesRuntimesInternals = {
+  canSelectProfileForBuild,
   hostTarget,
   profileTarget,
   removeRuntimeWithAuthority,
   revokeDesktopHostCloudFirst,
   requireCompleteSshCleanup,
+  visibleProfilesForBuild,
 };

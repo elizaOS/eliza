@@ -72,7 +72,46 @@ const PROFILE: AgentProfile = {
   },
 };
 
+const LOCAL_PROFILE: AgentProfile = {
+  id: "local-1",
+  label: "This device",
+  kind: "local",
+  apiBase: "http://127.0.0.1:3000",
+  createdAt: "2026-08-22T00:00:00.000Z",
+};
+
+const CLOUD_PROFILE: AgentProfile = {
+  id: "cloud-1",
+  label: "Eliza Cloud",
+  kind: "cloud",
+  apiBase: "https://agent.eliza.app",
+  createdAt: "2026-08-22T00:00:00.000Z",
+};
+
 describe("Devices & Runtimes reconciliation", () => {
+  it("hides local execution on store/mobile builds and refuses selecting it", () => {
+    expect(
+      devicesRuntimesInternals.visibleProfilesForBuild(
+        [LOCAL_PROFILE, CLOUD_PROFILE],
+        CLOUD_PROFILE.id,
+        true,
+      ),
+    ).toEqual([CLOUD_PROFILE]);
+    expect(
+      devicesRuntimesInternals.visibleProfilesForBuild(
+        [LOCAL_PROFILE, CLOUD_PROFILE],
+        LOCAL_PROFILE.id,
+        true,
+      ),
+    ).toEqual([LOCAL_PROFILE, CLOUD_PROFILE]);
+    expect(
+      devicesRuntimesInternals.canSelectProfileForBuild(LOCAL_PROFILE, true),
+    ).toBe(false);
+    expect(
+      devicesRuntimesInternals.canSelectProfileForBuild(CLOUD_PROFILE, true),
+    ).toBe(true);
+  });
+
   it("does not expose another controller's active session as this device's grant", () => {
     const target = devicesRuntimesInternals.hostTarget(
       HOST,
@@ -93,6 +132,7 @@ describe("Devices & Runtimes reconciliation", () => {
     expect(target.activity).toBe("Paired on another controller");
     expect(target.canPair).toBe(true);
     expect(target.canRevoke).toBe(false);
+    expect(target.canSelect).toBe(false);
   });
 
   it("marks a stale local relay profile as an error instead of connected", () => {

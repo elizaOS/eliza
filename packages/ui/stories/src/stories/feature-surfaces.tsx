@@ -140,6 +140,21 @@ function DevicesAndRuntimesStory() {
           })
         }
         onConnectSsh={noop}
+        onAddDirectRuntime={({ label, apiBase }) =>
+          setTargets((current) => [
+            ...current.map((target) => ({ ...target, selected: false })),
+            {
+              id: `direct-${current.length + 1}`,
+              label,
+              detail: apiBase,
+              kind: "vps",
+              status: "connected",
+              selected: true,
+              activity: "Private runtime added",
+              canRemove: true,
+            },
+          ])
+        }
         onEnrollDesktopTarget={noop}
         onActivateDesktopTarget={() => setPairing(null)}
         onSetDesktopTargetRunning={setRelayRunning}

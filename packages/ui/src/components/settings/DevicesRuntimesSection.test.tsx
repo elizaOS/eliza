@@ -233,4 +233,33 @@ describe("DevicesRuntimesSection", () => {
       ).disabled,
     ).toBe(true);
   });
+
+  it("restores the trust-gated direct private runtime flow", async () => {
+    const user = userEvent.setup();
+    const onAddDirectRuntime = vi.fn();
+    render(
+      <DevicesRuntimesSection
+        {...props({ onAddDirectRuntime, cloudState: "signed-out" })}
+      />,
+    );
+
+    await user.click(screen.getByText("Advanced direct runtime"));
+    await user.type(screen.getByLabelText("Runtime name"), "Home VPS");
+    await user.type(
+      screen.getByLabelText("Private runtime URL"),
+      "http://100.64.0.10:3000",
+    );
+    await user.type(
+      screen.getByLabelText("Direct runtime token (optional)"),
+      "private-token",
+    );
+    const add = screen.getByRole("button", { name: "Add private runtime" });
+    expect(add.className).toContain("min-h-11");
+    await user.click(add);
+    expect(onAddDirectRuntime).toHaveBeenCalledWith({
+      label: "Home VPS",
+      apiBase: "http://100.64.0.10:3000",
+      accessToken: "private-token",
+    });
+  });
 });

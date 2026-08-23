@@ -174,6 +174,14 @@ a running tunnel.
 
 ## Managed-network compensation
 
+This is an opt-in server-side infrastructure contract. The current native
+Devices flow neither requests nor consumes a Headscale credential, so the
+product does not claim managed-network enrollment until a reviewed native
+lifecycle exists. The committed v0.28 policy declares
+`tag:eliza-remote-host` and permits it to reach only
+`tag:eliza-proxy:443`; it has no edge to agents, peer remote hosts, or from the
+proxy back to the host.
+
 Headscale configuration accepts HTTPS endpoints, or loopback HTTP for local
 tests only. Pre-auth keys are one-use, non-ephemeral, tagged, and limited to 15
 minutes. Only the numeric pre-auth key identifier and cleanup status are stored;
@@ -182,7 +190,10 @@ the secret key is not persisted.
 Database success followed by Headscale failure revokes host authority and
 records retryable compensation. Repeated cleanup, missing keys or nodes, and
 process restart are idempotent. Transport cleanup can lag without restoring
-revoked command authority.
+revoked command authority. Idempotent absence is recognized only from a typed
+HTTP 404, never by matching digits in an error message. Database diagnostics
+are explicitly marked bounded previews; complete upstream bodies remain in
+protected logs.
 
 ## Evidence boundary
 

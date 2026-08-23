@@ -52,17 +52,22 @@ invariants; the range-diff must not be misrepresented as blob identity.
 - SSH setup/removal is serialized and restart-safe. Only public completion
   receipts are persisted; private key paths, credentials, fingerprints, and
   target addresses are never written to the receipt store.
-- Managed Headscale enrollment is part of the host lifecycle. Only the public
-  numeric pre-auth key identifier and cleanup state are stored. Enrollment
-  failures revoke authority and compensation is durable and retryable.
+- Optional managed Headscale enrollment is a server-side infrastructure
+  primitive, not a user-visible Devices enrollment claim in this release. Only
+  the public numeric pre-auth key identifier and cleanup state are stored;
+  enrollment failures revoke authority and compensation is durable and
+  retryable. The committed ACL grants its dedicated tag only an outbound HTTPS
+  edge to the relay proxy, with no agent, peer-host, or inbound edge.
 
 ## Compatibility disposition
 
 The compatibility adapter preserves imports of `MyRuntimesContainer` while
 rendering the canonical UI. Existing v1 remote-target identity records that
 lack a platform are read as Linux, but a stored identity cannot silently move
-between platforms. Old SSH lifecycle receipts are not trusted as credentials;
-the secure store remains the sole credential authority.
+between platforms. The trusted private/Tailscale URL add path remains available
+inside the canonical Advanced surface, while store/mobile builds hide and
+refuse local execution. Old SSH lifecycle receipts are not trusted as
+credentials; the secure store remains the sole credential authority.
 
 ## Review proof
 
@@ -73,9 +78,8 @@ The exact publication head must pass:
    integration, and Electrobun typecheck.
 3. Cloud remote API tests, shared repository/Headscale/PGlite tests, and both
    Cloud typechecks.
-4. Disposable real PostgreSQL composition of migrations 0305-0308, including
-   the upstream 0307 migration between the Devices relay and managed-network
-   suffix.
+4. Disposable real PostgreSQL composition of migrations 0305-0309, including
+   upstream 0307 and 0308 before the Devices managed-network suffix.
 5. Production story build plus responsive interaction at 380x844 and
    1440x1000 with no horizontal overflow and 44-point actions.
 6. An exact-head unsigned iOS Simulator build whose cloud-only attestation

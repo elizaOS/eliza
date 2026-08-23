@@ -21,14 +21,18 @@ app, or native port 50001.
 1. Confirm the deployment source equals the draft-PR head and capture health,
    migration-tail, PostgreSQL backup/rollback marker, and service identifiers.
 2. Apply the complete locked migration chain; verify Devices migrations 0305,
-   0306, and 0308 plus upstream Twilio migration 0307 are each present exactly
-   once, and the controller, host, relay, start-fence, managed-network, and
-   cleanup constraints exist.
+   0306, and 0309 plus upstream migrations 0307 and 0308 are each present
+   exactly once, and the controller, host, relay, start-fence,
+   managed-network, and cleanup constraints exist.
 3. Create and clean up one Headscale pre-auth key and node. Exercise database-
    success/Headscale-failure, client-disconnect, missing-key/node, repeated
    revoke, and service-restart compensation. Confirm no secret key is stored.
 4. Roll back only the disposable tenant or restore it from its recorded marker;
    never use production data for this exercise.
+
+The Headscale steps above accept the server-side compensation primitive only.
+They do not turn managed networking into a user-visible product claim; a future
+native client must separately prove secure credential consumption and teardown.
 
 ## Pairing and authority
 

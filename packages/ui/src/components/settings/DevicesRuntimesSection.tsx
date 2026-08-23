@@ -38,6 +38,7 @@ export interface DeviceRuntimeTarget {
   canPair?: boolean;
   canRevoke?: boolean;
   canRemove?: boolean;
+  canSelect?: boolean;
 }
 
 export interface DevicePairingView {
@@ -57,6 +58,12 @@ export interface SshConnectInput {
   identityFile?: string;
   accessToken?: string;
   expectedFingerprint: string;
+}
+
+export interface DirectRuntimeInput {
+  label: string;
+  apiBase: string;
+  accessToken?: string;
 }
 
 export interface DesktopRemoteTargetView {
@@ -87,6 +94,7 @@ export interface DevicesRuntimesSectionProps {
     sshPort: number;
   }) => void | Promise<void>;
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
+  onAddDirectRuntime?: (input: DirectRuntimeInput) => void | Promise<void>;
   onEnrollDesktopTarget?: () => void | Promise<void>;
   onActivateDesktopTarget?: (input: {
     sessionId: string;
@@ -492,7 +500,9 @@ function RuntimeCard({
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {!target.selected && target.status === "connected" ? (
+        {!target.selected &&
+        target.status === "connected" &&
+        target.canSelect !== false ? (
           <Button
             type="button"
             size="sm"
@@ -588,6 +598,101 @@ function RuntimeCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function AdvancedDirectRuntime({
+  busy,
+  onAdd,
+}: {
+  busy: boolean;
+  onAdd: NonNullable<DevicesRuntimesSectionProps["onAddDirectRuntime"]>;
+}) {
+  const [label, setLabel] = useState("");
+  const [apiBase, setApiBase] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const valid = Boolean(label.trim() && apiBase.trim());
+
+  return (
+    <details className="rounded-xl border border-border bg-card p-4">
+      <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold text-txt-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        Advanced direct runtime
+      </summary>
+      <p className="mb-4 text-xs leading-relaxed text-muted">
+        Add an existing Eliza runtime reachable over a private or Tailscale
+        address. Public internet URLs are rejected by the runtime trust gate.
+      </p>
+      <form
+        className="grid gap-4 sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!valid) return;
+          void onAdd({
+            label: label.trim(),
+            apiBase: apiBase.trim(),
+            accessToken: accessToken.trim() || undefined,
+          });
+          setAccessToken("");
+        }}
+      >
+        <label
+          htmlFor="direct-runtime-label"
+          className="grid gap-1.5 text-xs text-muted"
+        >
+          Runtime name
+          <Input
+            id="direct-runtime-label"
+            required
+            density="relaxed"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder="Home server"
+            autoComplete="off"
+          />
+        </label>
+        <label
+          htmlFor="direct-runtime-url"
+          className="grid gap-1.5 text-xs text-muted"
+        >
+          Private runtime URL
+          <Input
+            id="direct-runtime-url"
+            required
+            density="relaxed"
+            type="url"
+            inputMode="url"
+            value={apiBase}
+            onChange={(event) => setApiBase(event.target.value)}
+            placeholder="http://100.64.0.10:3000"
+            autoCapitalize="none"
+            autoComplete="url"
+            spellCheck={false}
+          />
+        </label>
+        <label
+          htmlFor="direct-runtime-token"
+          className="grid gap-1.5 text-xs text-muted sm:col-span-2"
+        >
+          Direct runtime token (optional)
+          <Input
+            id="direct-runtime-token"
+            density="relaxed"
+            type="password"
+            value={accessToken}
+            onChange={(event) => setAccessToken(event.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+          <Button type="submit" className="min-h-11" disabled={busy || !valid}>
+            <Link2 className="mr-1.5 h-4 w-4" aria-hidden /> Add private runtime
+          </Button>
+          <span className="text-xs text-muted">
+            The address is validated before it can become active.
+          </span>
+        </div>
+      </form>
+    </details>
   );
 }
 
@@ -818,6 +923,7 @@ export function DevicesRuntimesSection({
   onRemove,
   onInspectSsh,
   onConnectSsh,
+  onAddDirectRuntime,
   onEnrollDesktopTarget,
   onActivateDesktopTarget,
   onSetDesktopTargetRunning,
@@ -904,6 +1010,9 @@ export function DevicesRuntimesSection({
           onSetRunning={onSetDesktopTargetRunning}
           onRevoke={onRevokeDesktopTarget}
         />
+      ) : null}
+      {onAddDirectRuntime ? (
+        <AdvancedDirectRuntime busy={busy} onAdd={onAddDirectRuntime} />
       ) : null}
       <AdvancedSsh
         busy={busy}

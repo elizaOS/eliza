@@ -14,6 +14,7 @@ import { remoteCommandEnvelopes } from "../schemas/remote-command-envelopes";
 import { type NewRemoteHost, type RemoteHost, remoteHosts } from "../schemas/remote-hosts";
 import { remoteSessions } from "../schemas/remote-sessions";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
+import { managedCleanupErrorPreview } from "./remote-host-cleanup-diagnostic";
 
 const HOST_REVOCATION_SESSION_BATCH = 100;
 const HOST_REVOCATION_COMMAND_BATCH = 500;
@@ -172,7 +173,7 @@ export class RemoteHostsRepository {
       .update(remoteHosts)
       .set({
         headscale_cleanup_pending: true,
-        headscale_cleanup_error: input.message.slice(0, 1_000),
+        headscale_cleanup_error: managedCleanupErrorPreview(input.message),
         updated_at: new Date(),
       })
       .where(

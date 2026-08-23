@@ -4,6 +4,7 @@ import {
   DEFAULT_PREAUTH_TTL_MIN,
   ECMA_TIME_CLIP_MS,
   HeadscaleClient,
+  HeadscaleHttpError,
   MAX_PREAUTH_TTL_MIN,
   resolvePreAuthExpirationIso,
   resolvePreAuthTtlMs,
@@ -242,6 +243,48 @@ describe("HeadscaleClient v0.28 pre-auth cleanup contract", () => {
     await expect(client.expirePreAuthKey("key-secret")).rejects.toThrow(/invalid pre-auth key id/);
     await expect(client.deletePreAuthKey("0")).rejects.toThrow(/invalid pre-auth key id/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("suppresses only an actual HTTP 404 during idempotent cleanup", async () => {
+    const statuses = [404, 404, 404];
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("missing", {
+          status: statuses.shift() ?? 500,
+          statusText: "Not Found",
+        }),
+    ) as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+
+    await expect(client.deleteNode("9")).resolves.toBeUndefined();
+    await expect(client.expirePreAuthKey("123")).resolves.toBeUndefined();
+    await expect(client.deletePreAuthKey("123")).resolves.toBeUndefined();
+  });
+
+  it("does not suppress a non-404 failure merely because its text contains 404", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("failure", {
+          status: 500,
+          statusText: "upstream incident 404",
+        }),
+    ) as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+
+    await expect(client.deletePreAuthKey("123")).rejects.toMatchObject({
+      name: "HeadscaleHttpError",
+      status: 500,
+      method: "DELETE",
+      path: "/api/v1/preauthkey?id=123",
+    } satisfies Partial<HeadscaleHttpError>);
   });
 });
 
