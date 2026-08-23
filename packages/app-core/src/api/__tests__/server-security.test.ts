@@ -21,7 +21,7 @@ import {
   resolveTerminalRunClientId,
   resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection,
-} from "./server-security.ts";
+} from "../server-security.ts";
 
 describe("server-security wrappers", () => {
   it("forwards MCP terminal authorization rejection through compat context", () => {
