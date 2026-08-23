@@ -3,7 +3,7 @@ import {
   extractHeaderValue,
   getProvidedApiToken,
   tokenMatches,
-} from "./tokens.ts";
+} from "../tokens.ts";
 
 describe("tokenMatches", () => {
   it("matches equal tokens", () => {
