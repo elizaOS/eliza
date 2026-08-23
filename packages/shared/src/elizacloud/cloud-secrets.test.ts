@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type CloudSecretsModule = {
   _resetCloudSecretsForTesting: () => void;
   clearCloudSecrets: () => void;
-  getCloudSecret: (key: string) => string | undefined;
+  getCloudSecret: (
+    key: "ELIZAOS_CLOUD_API_KEY" | "ELIZAOS_CLOUD_ENABLED",
+  ) => string | undefined;
   scrubCloudSecretsFromEnv: () => void;
 };
 
