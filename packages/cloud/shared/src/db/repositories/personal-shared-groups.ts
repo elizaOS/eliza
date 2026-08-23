@@ -62,6 +62,7 @@ export interface PersonalSharedGroupDeliveryLease {
   leaseToken: string | null;
   expiresAt: string | null;
   reason: "source_already_attempted" | "not_authorized" | null;
+  deliveryState: "committed" | "uncertain" | "reconciled" | null;
 }
 
 const DELIVERY_LEASE_MS = 90_000;
@@ -566,6 +567,7 @@ export const personalSharedGroupsRepository = {
             leaseToken: null,
             expiresAt: null,
             reason: "not_authorized",
+            deliveryState: null,
           };
         }
         await tx
@@ -664,10 +666,11 @@ export const personalSharedGroupsRepository = {
           leaseToken: binding.token,
           expiresAt: binding.expiresAt.toISOString(),
           reason: null,
+          deliveryState: null,
         };
       }
       const [priorAttempt] = await tx
-        .select({ id: personalSharedGroupDeliveryAttempts.id })
+        .select({ state: personalSharedGroupDeliveryAttempts.state })
         .from(personalSharedGroupDeliveryAttempts)
         .where(
           and(
@@ -693,6 +696,7 @@ export const personalSharedGroupsRepository = {
         leaseToken: null,
         expiresAt: null,
         reason: priorAttempt || priorReceipt ? "source_already_attempted" : "not_authorized",
+        deliveryState: priorAttempt?.state ?? (priorReceipt ? "reconciled" : null),
       };
     });
   },
@@ -793,7 +797,7 @@ export const personalSharedGroupsRepository = {
       // The source/token pair was durably committed before provider egress.
       // Its attempt remains authoritative even after the live slot is released
       // for a distinct source, so late provider receipts stay reconcilable.
-      const [attempt] = await tx
+      let [attempt] = await tx
         .select({ bindingId: personalSharedGroupDeliveryAttempts.binding_id })
         .from(personalSharedGroupDeliveryAttempts)
         .where(
@@ -813,6 +817,70 @@ export const personalSharedGroupsRepository = {
           ),
         )
         .limit(1);
+
+      // A previous revision can commit the binding during a rolling deploy
+      // without knowing about the attempts table. Lock and materialize that
+      // exact authority before accepting its provider receipt; no broader or
+      // expired binding is allowed to stand in for the source/token pair.
+      if (!attempt) {
+        const [legacyCommit] = await tx
+          .select({
+            bindingId: personalSharedGroupBindings.id,
+            committedAt: personalSharedGroupBindings.delivery_lease_committed_at,
+          })
+          .from(personalSharedGroupBindings)
+          .where(
+            and(
+              eq(personalSharedGroupBindings.id, input.authority.bindingId),
+              eq(personalSharedGroupBindings.owner_user_id, input.authority.ownerUserId),
+              eq(personalSharedGroupBindings.personal_agent_id, input.authority.personalAgentId),
+              eq(personalSharedGroupBindings.authority_version, input.authority.version),
+              eq(personalSharedGroupBindings.platform, input.platform),
+              eq(personalSharedGroupBindings.project, input.project),
+              eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
+              eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+              eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
+              eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+              isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
+            ),
+          )
+          .limit(1)
+          .for("update");
+        if (legacyCommit?.committedAt) {
+          await tx
+            .insert(personalSharedGroupDeliveryAttempts)
+            .values({
+              binding_id: legacyCommit.bindingId,
+              platform: input.platform,
+              project: input.project,
+              connector_account_id: input.connectorAccountId,
+              provider_chat_id: input.providerChatId,
+              source_message_id: input.sourceMessageId,
+              lease_token: input.leaseToken,
+              state: "committed",
+              committed_at: legacyCommit.committedAt,
+            })
+            .onConflictDoNothing();
+          [attempt] = await tx
+            .select({ bindingId: personalSharedGroupDeliveryAttempts.binding_id })
+            .from(personalSharedGroupDeliveryAttempts)
+            .where(
+              and(
+                eq(personalSharedGroupDeliveryAttempts.binding_id, input.authority.bindingId),
+                eq(personalSharedGroupDeliveryAttempts.platform, input.platform),
+                eq(personalSharedGroupDeliveryAttempts.project, input.project),
+                eq(
+                  personalSharedGroupDeliveryAttempts.connector_account_id,
+                  input.connectorAccountId,
+                ),
+                eq(personalSharedGroupDeliveryAttempts.provider_chat_id, input.providerChatId),
+                eq(personalSharedGroupDeliveryAttempts.source_message_id, input.sourceMessageId),
+                eq(personalSharedGroupDeliveryAttempts.lease_token, input.leaseToken),
+              ),
+            )
+            .limit(1);
+        }
+      }
       if (!attempt || input.providerMessageIds.length === 0) {
         return { recorded: false, inserted: 0 };
       }

@@ -1406,14 +1406,16 @@ async function sendPersonalSharedReply(
     if (
       authorizationData !== false &&
       authorizationData.authorized === false &&
-      authorizationData.reason === "source_already_attempted"
+      authorizationData.reason === "source_already_attempted" &&
+      (authorizationData.deliveryState === "committed" ||
+        authorizationData.deliveryState === "uncertain")
     ) {
       logger.warn("Personal Shared delivery outcome remains uncertain", {
         project,
         platform: adapter.platform,
         messageId: event.messageId,
         sourceMessageId,
-        deliveryState: "uncertain",
+        deliveryState: authorizationData.deliveryState,
         operatorAction:
           "reconcile the durable provider attempt before retrying this source",
         traceId,

@@ -839,6 +839,7 @@ describe("gateway webhook handler e2e routing", () => {
                   leaseToken: null,
                   expiresAt: null,
                   reason: "source_already_attempted",
+                  deliveryState: receiptPersisted ? "reconciled" : "committed",
                 }
               : {
                   code: "group_delivery_authorization",
@@ -930,12 +931,9 @@ describe("gateway webhook handler e2e routing", () => {
       "committed delivery retry fence",
     );
     expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
-    expect(warnLog).toHaveBeenCalledWith(
+    expect(warnLog).not.toHaveBeenCalledWith(
       "Personal Shared delivery outcome remains uncertain",
-      expect.objectContaining({
-        sourceMessageId: "blooio:eliza-app:blooio-group-zero-receipt",
-        deliveryState: "uncertain",
-      }),
+      expect.anything(),
     );
   });
 
