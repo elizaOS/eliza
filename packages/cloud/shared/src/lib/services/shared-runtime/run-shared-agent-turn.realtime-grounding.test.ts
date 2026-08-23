@@ -13,6 +13,7 @@ let runtimeResponded = true;
 let runtimeActionResults: ActionResult[] | undefined;
 let capturedRuntimeInput: Record<string, unknown> | undefined;
 let searchQueries: string[] = [];
+let searchObservedAt = 0;
 
 mock.module("../../providers/language-model", () => ({
   hasLanguageModelProviderConfigured: () => true,
@@ -21,7 +22,10 @@ mock.module("../../providers/language-model", () => ({
 mock.module("@elizaos/plugin-web-search/edge", () => ({
   runWebSearchEdge: async (query: string) => {
     searchQueries.push(query);
-    return searchResult;
+    return {
+      ...searchResult,
+      data: { ...searchResult.data, query },
+    };
   },
 }));
 
@@ -57,6 +61,7 @@ const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-sha
 const character = { name: "Grounding Pin", system: "You are a test persona." };
 
 function groundedSearch(): ActionResult {
+  searchObservedAt = Date.now();
   return {
     success: true,
     text: JSON.stringify({ symbol: "BTC", value: "70,000", currency: "USD" }),
@@ -64,7 +69,7 @@ function groundedSearch(): ActionResult {
       actionName: "WEB_SEARCH",
       query: "what is btc price rn",
       provider: "parallel",
-      observedAt: Date.UTC(2026, 7, 21, 8, 30),
+      observedAt: searchObservedAt,
       sourceUrls: ["https://example.com/markets/btc-usd"],
       sources: [
         {
@@ -74,6 +79,7 @@ function groundedSearch(): ActionResult {
             symbol: "BTC",
             value: "70,000",
             currency: "USD",
+            excerpt: "BTC is 70,000 USD.",
           }),
         },
       ],
@@ -107,7 +113,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
     expect(result.reply).toContain("BTC is 70,000 USD.");
     expect(result.reply).toContain("Source: example.com");
     expect(result.reply).toContain("https://example.com/markets/btc-usd");
-    expect(result.reply).toContain("parallel, checked 2026-08-21T08:30:00.000Z");
+    expect(result.reply).toContain(`parallel, checked ${new Date(searchObservedAt).toISOString()}`);
     expect(result.actionResults).toEqual([
       expect.objectContaining({
         success: true,
@@ -260,7 +266,13 @@ describe("runSharedAgentTurn realtime grounding", () => {
     expect(parts[0]?.text).toContain("Source: example.com");
     expect(parts[1]?.text).toContain("Source: example.com");
     expect(parts[1]?.type === "finish" ? parts[1].actionResults : undefined).toEqual([
-      searchResult,
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          query: "latest ethereum price",
+          deliveredReply: expect.stringContaining("Source: example.com"),
+        }),
+      }),
     ]);
   });
 });

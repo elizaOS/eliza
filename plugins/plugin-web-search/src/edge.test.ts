@@ -260,4 +260,31 @@ describe("webSearchEdgePlugin", () => {
         });
         expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
     });
+
+    it("rejects oversized queries before the public network boundary", async () => {
+        const fetchMock = vi.fn();
+        globalThis.fetch = fetchMock as typeof fetch;
+        const result = await runWebSearchEdge("x".repeat(2049));
+        expect(result).toMatchObject({
+            success: false,
+            text: "Web search queries cannot exceed 2048 characters.",
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("reports runner failures through the channel callback", async () => {
+        const callback = vi.fn();
+        globalThis.fetch = vi.fn(
+            async () => new Response("unavailable", { status: 503 })
+        ) as typeof fetch;
+        await webSearchEdgeAction.handler(
+            {} as IAgentRuntime,
+            {} as Memory,
+            undefined,
+            { parameters: { query: "current public result" } },
+            callback
+        );
+        expect(callback).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+    });
 });
