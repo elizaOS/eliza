@@ -9,6 +9,7 @@
  */
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
 import { applyIdentityPersonLinkAttestationGuard } from "./identity-person-link-attestation-guard";
+import { applyMembershipAuthorityTtlConstraints } from "./membership-authority-ttl-constraints";
 import { applyMessageSearchObjects, messageSearchTableExists } from "./message-search";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
@@ -42,6 +43,7 @@ export class DatabaseMigrationService {
   private readonly databaseBackend: DatabaseBackend;
   private messageSearchObjectsSettled = false;
   private identityPersonLinkGuardSettled = false;
+  private membershipAuthorityTtlConstraintsSettled = false;
 
   constructor(options: DatabaseMigrationServiceOptions = {}) {
     this.databaseBackend = options.databaseBackend ?? "unknown";
@@ -151,6 +153,11 @@ export class DatabaseMigrationService {
 
     if (failureCount === 0) {
       logger.info({ src: "plugin:sql", successCount }, "All migrations completed successfully");
+
+      if (!migrationOptions.dryRun && !this.membershipAuthorityTtlConstraintsSettled) {
+        this.membershipAuthorityTtlConstraintsSettled =
+          await applyMembershipAuthorityTtlConstraints(this.db);
+      }
 
       if (!this.identityPersonLinkGuardSettled) {
         this.identityPersonLinkGuardSettled = await applyIdentityPersonLinkAttestationGuard(
