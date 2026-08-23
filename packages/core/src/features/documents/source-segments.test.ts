@@ -142,4 +142,17 @@ describe("canonical document source segments", () => {
 			expect.objectContaining({ code: "DOCUMENT_SOURCE_CORRUPT" }),
 		);
 	});
+
+	it("rejects safe-integer overflow before selecting a source range", () => {
+		const projected = projection("bounded\n");
+		expect(() =>
+			read(projected, {
+				unit: "byte",
+				offset: Number.MAX_SAFE_INTEGER,
+				limit: 2,
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "DOCUMENT_READ_INVALID_RANGE" }),
+		);
+	});
 });
