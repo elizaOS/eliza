@@ -629,7 +629,7 @@ async function handleLocalTranscriptsRoute(
     const transcripts = readTranscriptStore()
       .records.filter((record) => !roomId || record.roomId === roomId)
       .map((record) => record.transcript)
-      .sort((a, b) => b.createdAt - a.createdAt)
+      .sort(compareTranscriptByCreatedAtDesc)
       .map(summarizeTranscript);
     return json({ transcripts });
   }
@@ -724,6 +724,29 @@ function compareLocalMemoryIds(left: string, right: string): number {
   return 0;
 }
 
+function createdAtSortKey(value: unknown): number {
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareTranscriptByCreatedAtDesc(a: { createdAt: number; id: string }, b: { createdAt: number; id: string }): number {
+	const aSafe = createdAtSortKey(a.createdAt);
+	const bSafe = createdAtSortKey(b.createdAt);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return compareLocalMemoryIds(b.id, a.id);
+}
+
+function compareFeedItemByCreatedAtDesc(a: { createdAt: number; id: string }, b: { createdAt: number; id: string }): number {
+	const aSafe = createdAtSortKey(a.createdAt);
+	const bSafe = createdAtSortKey(b.createdAt);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return compareLocalMemoryIds(b.id, a.id);
+}
+
+export const __testCreatedAtSortKey = createdAtSortKey;
+export const __testCompareTranscriptByCreatedAtDesc = compareTranscriptByCreatedAtDesc;
+export const __testCompareFeedItemByCreatedAtDesc = compareFeedItemByCreatedAtDesc;
+
+
 function positiveIntegerParam(value: string | null, fallback: number): number {
   const parsed = integerFromUnknown(value);
   return parsed !== null && parsed > 0 ? parsed : fallback;
@@ -761,12 +784,7 @@ function localMemoryFeedItems(): MemoryBrowseItem[] {
       });
     }
   }
-  items.sort((a, b) => {
-    const timestampOrder = b.createdAt - a.createdAt;
-    return timestampOrder !== 0
-      ? timestampOrder
-      : compareLocalMemoryIds(b.id, a.id);
-  });
+  items.sort(compareFeedItemByCreatedAtDesc);
   return items;
 }
 
