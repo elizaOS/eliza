@@ -157,4 +157,13 @@ describe("serializeSceneForPrompt", () => {
     expect(keptApps[0]?.window_count).toBe(2);
     expect(keptApps[0]?.windows).toHaveLength(2);
   });
+
+  it("sorts OCR boxes safely when confidence contains NaN", () => {
+    const ocr = [ocrBox(1, NaN, 0), ocrBox(2, 0.95, 0)];
+    const parsed = parseFenced(serializeSceneForPrompt(baseScene({ ocr })));
+    const kept = parsed.ocr as Array<{ text: string; conf?: number }>;
+    expect(kept).toHaveLength(2);
+    expect(kept[0]?.text).toBe("line 2");
+    expect(kept[1]?.text).toBe("line 1");
+  });
 });
