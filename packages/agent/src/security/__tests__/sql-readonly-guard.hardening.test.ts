@@ -4,7 +4,7 @@
  * dangerous functions, multi-statement, unterminated constructs).
  */
 import { describe, expect, it } from "vitest";
-import { checkReadOnly } from "./sql-readonly-guard.ts";
+import { checkReadOnly } from "../sql-readonly-guard.ts";
 
 describe("checkReadOnly hardening", () => {
   it("rejects mutation keyword hidden after a -- line comment continuation", () => {
