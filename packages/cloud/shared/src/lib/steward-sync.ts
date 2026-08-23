@@ -72,6 +72,7 @@ export interface StewardSyncExecutionContext {
 }
 
 const STEWARD_IDENTITY_UNIQUE_CONSTRAINT = "user_identities_steward_user_id_unique";
+const ORGANIZATION_SLUG_UNIQUE_CONSTRAINT = "organizations_slug_unique";
 
 function extractErrorMetadata(candidate: unknown): {
   code?: string;
@@ -146,6 +147,21 @@ function isRecoverableStewardProjectionConflict(error: unknown): boolean {
     causeMetadata.constraint === STEWARD_IDENTITY_UNIQUE_CONSTRAINT;
 
   return isUniqueViolation && hasExactStewardConstraint;
+}
+
+function isOrganizationSlugConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const errorMetadata = extractErrorMetadata(error);
+  const causeMetadata = "cause" in error ? extractErrorMetadata(error.cause) : { message: "" };
+  const isUniqueViolation = errorMetadata.code === "23505" || causeMetadata.code === "23505";
+  const hasExactSlugConstraint =
+    errorMetadata.constraint === ORGANIZATION_SLUG_UNIQUE_CONSTRAINT ||
+    causeMetadata.constraint === ORGANIZATION_SLUG_UNIQUE_CONSTRAINT;
+
+  return isUniqueViolation && hasExactSlugConstraint;
 }
 
 async function recoverCanonicalStewardUser(
@@ -1054,40 +1070,37 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
 
   // ── 5. Create new user + organization ────────────────────────────────
 
-  // Generate organization slug
-  let orgSlug: string;
-  if (email) {
-    orgSlug = generateSlugFromEmail(email);
-  } else if (walletAddress) {
-    orgSlug = generateSlugFromWallet(walletAddress);
-  } else if (name) {
-    orgSlug = generateSlugFromName(name);
-  } else {
+  const generateOrganizationSlug = (): string => {
+    if (email) return generateSlugFromEmail(email);
+    if (walletAddress) return generateSlugFromWallet(walletAddress);
+    if (name) return generateSlugFromName(name);
     throw new Error(`Cannot generate organization slug for Steward user ${stewardUserId}`);
-  }
+  };
 
-  // Ensure slug uniqueness
-  let attempts = 0;
-  while (await organizationsService.getBySlug(orgSlug)) {
-    attempts++;
-    if (attempts > 10) {
-      throw new Error(
-        `Failed to generate unique organization slug for Steward user ${stewardUserId}`,
-      );
+  // The database's unique constraint is the authority. Avoid a redundant
+  // preflight read (and its TOCTOU window); retry only the exact slug
+  // constraint, never unrelated organization insert failures.
+  let orgSlug = generateOrganizationSlug();
+  let organization: Awaited<ReturnType<typeof organizationsService.create>> | undefined;
+  for (let attempt = 0; attempt <= 10; attempt += 1) {
+    try {
+      organization = await organizationsService.create({
+        name: `${name}'s Organization`,
+        slug: orgSlug,
+        credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
+      });
+      break;
+    } catch (error) {
+      if (!isOrganizationSlugConflict(error) || attempt === 10) {
+        throw error;
+      }
+      orgSlug = generateOrganizationSlug();
     }
-    orgSlug = email
-      ? generateSlugFromEmail(email)
-      : walletAddress
-        ? generateSlugFromWallet(walletAddress)
-        : generateSlugFromName(name);
   }
 
-  // Create organization with zero balance initially
-  const organization = await organizationsService.create({
-    name: `${name}'s Organization`,
-    slug: orgSlug,
-    credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
-  });
+  if (!organization) {
+    throw new Error(`Failed to create organization for Steward user ${stewardUserId}`);
+  }
 
   // Cloud identity is created at $0. Shared service access is not a credit
   // grant, and purchased credits remain exclusive to explicit funding paths.
@@ -1095,10 +1108,12 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
 
   // Create user, handle race conditions
-  let createdUser: Awaited<ReturnType<typeof usersService.create>> | undefined;
+  let createdUser:
+    | Awaited<ReturnType<typeof usersService.createFreshStewardSignupUser>>
+    | undefined;
 
   try {
-    createdUser = await usersService.create({
+    createdUser = await usersService.createFreshStewardSignupUser({
       steward_user_id: stewardUserId,
       email: email || null,
       email_verified: !!email,
@@ -1197,9 +1212,15 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     throw new Error(`Failed to create user for Steward user ${stewardUserId}`);
   }
 
-  // Upsert identity projection
+  // Initialize the identity projection from the exact row returned by the
+  // fresh insert. The direct-signup lookups above proved this subject absent,
+  // so the generic link path's prior-state reads and cache invalidations would
+  // only add database/cache round trips to the first session handoff.
   try {
-    await usersService.upsertStewardIdentity(createdUser.id, stewardUserId);
+    await usersService.initializeFreshStewardIdentity({
+      user: createdUser,
+      stewardUserId,
+    });
   } catch (error) {
     const recovered = await recoverCanonicalStewardUser(
       createdUser.id,
@@ -1218,12 +1239,13 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     }
   }
 
-  // Fetch final user with organization
-  const userWithOrg = await usersService.getByStewardIdForWrite(stewardUserId);
-
-  if (!userWithOrg) {
-    throw new Error(`Failed to fetch newly created Steward user ${stewardUserId}`);
-  }
+  // Both inserts and the identity projection have committed successfully. Use
+  // their primary RETURNING rows instead of immediately reading the same user
+  // and organization back through the database and cache.
+  const userWithOrg: UserWithOrganization = {
+    ...createdUser,
+    organization,
+  };
 
   // Identity is committed above, but the default API key remains required
   // readiness and is awaited strictly before this function can return. Only
