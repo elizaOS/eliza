@@ -117,7 +117,11 @@ export interface ExecutorOptions {
   attemptId?: string;
   /** Optional bridge to the canonical synthetic-world namespace (#22898). */
   worldId?: string;
-  /** Maximum time to reach post-delivery quiescence before quarantining the runtime. */
+  /**
+   * Maximum time to reach post-delivery quiescence before quarantining the
+   * runtime. Defaults to the per-turn model timeout because detached evaluators
+   * can make the same provider calls as the visible turn.
+   */
   postDeliveryTimeoutMs?: number;
   /**
    * Every plugin package declared by *any* scenario sharing this runtime. The
@@ -296,7 +300,6 @@ export function providerQualifiedScenarioProblems(
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
-const DEFAULT_POST_DELIVERY_TIMEOUT_MS = 10_000;
 
 type TurnMatcher = string | RegExp;
 
@@ -791,8 +794,7 @@ async function drainScenarioPostDeliveryTasks(
   runtime: AgentRuntime,
   opts: ExecutorOptions,
 ): Promise<string | undefined> {
-  const timeoutMs =
-    opts.postDeliveryTimeoutMs ?? DEFAULT_POST_DELIVERY_TIMEOUT_MS;
+  const timeoutMs = opts.postDeliveryTimeoutMs ?? opts.turnTimeoutMs;
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort(
