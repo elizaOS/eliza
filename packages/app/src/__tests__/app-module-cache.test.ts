@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cachedDynamicImport } from "./app-module-cache.ts";
+import { cachedDynamicImport } from "../app-module-cache.ts";
 
 describe("cachedDynamicImport", () => {
   it("invokes the loader once per key", async () => {
