@@ -37,9 +37,6 @@ describe("recentConversationTextsFromState", () => {
 		const state = {
 			values: { recentMessages: "Alice: Hello\n\nBob: World" },
 		} as never;
-		expect(recentConversationTextsFromState(state)).toEqual([
-			"Hello",
-			"World",
-		]);
+		expect(recentConversationTextsFromState(state)).toEqual(["Hello", "World"]);
 	});
 });
