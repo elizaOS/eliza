@@ -5,7 +5,7 @@ vi.mock("@elizaos/core", () => ({
 }));
 
 const routeAutonomyTextToUser = vi.fn(async () => undefined);
-vi.mock("./server-helpers-swarm.ts", () => ({
+vi.mock("../server-helpers-swarm.ts", () => ({
   routeAutonomyTextToUser: (...args: unknown[]) =>
     routeAutonomyTextToUser(...args),
 }));
@@ -13,7 +13,7 @@ vi.mock("./server-helpers-swarm.ts", () => ({
 import {
   isLifeOpsCloudPluginRoute,
   maybeRouteAutonomyEventToConversation,
-} from "./server-autonomy-helpers.ts";
+} from "../server-autonomy-helpers.ts";
 
 describe("isLifeOpsCloudPluginRoute", () => {
   it("matches cloud plugin routes", () => {
