@@ -153,8 +153,12 @@ function clampInt(value: string | undefined, min: number, max: number, fallback:
 }
 
 /**
- * Parses the PDF-spec `D:` date string into a UTC {@link Date}, applying the
- * document's declared UT offset so the returned instant is absolute. Returns
+ * Parses the PDF-spec `D:` date string into a {@link Date}. When the string
+ * carries a UT relation (`Z`, `+`, or `-`) the declared offset is applied so the
+ * returned instant is absolute UTC. When the UT relation is omitted the zone is
+ * unknown and, per PDF Reference 3.8.3 / ISO 32000-1 7.9.4, the remaining fields
+ * are local time; that case is interpreted as host-local wall-clock via the
+ * local `Date` constructor rather than fabricating a `Z` UTC claim. Returns
  * undefined for any string that is not a spec date so an unparseable value is
  * dropped rather than surfaced as an Invalid Date.
  */
@@ -167,24 +171,37 @@ function parsePdfSpecDate(value: string): Date | undefined {
   const year = Number.parseInt(matches[1], 10);
   const monthIndex = clampInt(matches[2], 1, 12, 1) - 1;
   const day = clampInt(matches[3], 1, 31, 1);
-  let hour = clampInt(matches[4], 0, 23, 0);
-  let minute = clampInt(matches[5], 0, 59, 0);
+  const hour = clampInt(matches[4], 0, 23, 0);
+  const minute = clampInt(matches[5], 0, 59, 0);
   const second = clampInt(matches[6], 0, 59, 0);
-  const relation = matches[7] ?? "Z";
+  const relation = matches[7];
+
+  // Absent UT relation: the document time zone is unknown and the components are
+  // local time. Do not substitute `Z` and claim UTC. Build the instant from the
+  // local `Date` constructor so the wall-clock the document declared is
+  // preserved as-is in the host's local time zone.
+  if (relation === undefined) {
+    const localDate = new Date(year, monthIndex, day, hour, minute, second);
+    return Number.isFinite(localDate.getTime()) ? localDate : undefined;
+  }
+
   const offsetHour = clampInt(matches[8], 0, 23, 0);
   const offsetMinute = clampInt(matches[9], 0, 59, 0);
 
   // Convert the document's local wall-clock time to UTC using its UT relation:
   // `-05'00'` means local is 5h behind UTC, so add the offset to reach UTC.
+  // `Z` is already UTC and needs no adjustment.
+  let hourUtc = hour;
+  let minuteUtc = minute;
   if (relation === "-") {
-    hour += offsetHour;
-    minute += offsetMinute;
+    hourUtc += offsetHour;
+    minuteUtc += offsetMinute;
   } else if (relation === "+") {
-    hour -= offsetHour;
-    minute -= offsetMinute;
+    hourUtc -= offsetHour;
+    minuteUtc -= offsetMinute;
   }
 
-  const date = new Date(Date.UTC(year, monthIndex, day, hour, minute, second));
+  const date = new Date(Date.UTC(year, monthIndex, day, hourUtc, minuteUtc, second));
   return Number.isFinite(date.getTime()) ? date : undefined;
 }
 
