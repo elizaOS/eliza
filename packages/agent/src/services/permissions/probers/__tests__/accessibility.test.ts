@@ -39,10 +39,12 @@ describe("accessibilityProber.check", () => {
   });
 
   it("returns unsupported on non-Darwin platforms", async () => {
-    (IS_DARWIN as boolean) = false;
+    // biome-ignore lint/suspicious/noImportAssign: test mutates mocked import to simulate platform
+    (IS_DARWIN as unknown as boolean) = false;
     const state = await accessibilityProber.check();
     expect(state.state).toBe("unsupported");
-    (IS_DARWIN as boolean) = true;
+    // biome-ignore lint/suspicious/noImportAssign: restore mocked import
+    (IS_DARWIN as unknown as boolean) = true;
   });
 
   it("returns granted when the native check is true", async () => {
@@ -90,10 +92,12 @@ describe("accessibilityProber.request", () => {
   });
 
   it("returns unsupported on non-Darwin", async () => {
-    (IS_DARWIN as boolean) = false;
+    // biome-ignore lint/suspicious/noImportAssign: test mutates mocked import to simulate platform
+    (IS_DARWIN as unknown as boolean) = false;
     const state = await accessibilityProber.request({ reason: "test" });
     expect(state.state).toBe("unsupported");
-    (IS_DARWIN as boolean) = true;
+    // biome-ignore lint/suspicious/noImportAssign: restore mocked import
+    (IS_DARWIN as unknown as boolean) = true;
   });
 
   it("invokes the native request and returns the re-checked state with lastRequested", async () => {
