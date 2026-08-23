@@ -79,6 +79,28 @@ describe("webSearchEdgePlugin", () => {
         ).toEqual(["https://example.com/a", "https://news.example.org/story"]);
     });
 
+    it("rejects loopback and private-network citation URLs", () => {
+        expect(
+            webSearchSourceEvidence(
+                JSON.stringify({
+                    results: [
+                        { url: "http://127.0.0.1/admin", text: "local" },
+                        { url: "http://10.0.0.8/private", text: "private" },
+                        { url: "https://public.example/result", text: "public" },
+                    ],
+                })
+            )
+        ).toMatchObject({
+            sourceUrls: ["https://public.example/result"],
+            sources: [
+                {
+                    url: "https://public.example/result",
+                    text: expect.stringContaining("public"),
+                },
+            ],
+        });
+    });
+
     it("binds evidence to its containing result and bounds hostile traversal", () => {
         expect(
             webSearchSourceEvidence(
@@ -109,6 +131,27 @@ describe("webSearchEdgePlugin", () => {
         expect(webSearchSourceEvidence(JSON.stringify(nested))).toMatchObject({
             sources: [],
             overflowed: true,
+        });
+    });
+
+    it("does not bind nested result prose to a parent URL", () => {
+        const evidence = webSearchSourceEvidence(
+            JSON.stringify({
+                url: "https://example.com/collection",
+                title: "Collection",
+                results: [
+                    { url: "https://example.com/a", text: "value A 10 USD" },
+                    { url: "https://example.com/b", text: "value B 20 USD" },
+                ],
+            })
+        );
+        expect(evidence.sources).toContainEqual({
+            url: "https://example.com/collection",
+            text: expect.not.stringContaining("value A 10 USD"),
+        });
+        expect(evidence.sources).toContainEqual({
+            url: "https://example.com/a",
+            text: expect.stringContaining("value A 10 USD"),
         });
     });
 
