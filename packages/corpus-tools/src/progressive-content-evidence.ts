@@ -12,6 +12,16 @@ export const CONTENT_CONTEXT_REQUIRED_ARTIFACTS = [
   "source-work.json",
   "benchmark.json",
   "cleanup.json",
+  "page-ledger.jsonl",
+  "prompt-tokens.json",
+  "faults.json",
+  "stress.json",
+  "soak.json",
+  "postgres.json",
+  "scenario.json",
+  "scenario-native.jsonl",
+  "trajectories.jsonl",
+  "e2e.json",
 ] as const;
 
 export type ContentContextRequiredArtifact =
@@ -80,6 +90,29 @@ function json(bytes: Uint8Array, label: string): Record<string, unknown> {
   } catch (error) {
     throw new TypeError(`${label} is not valid UTF-8 JSON`, { cause: error });
   }
+}
+
+function jsonLines(
+  bytes: Uint8Array,
+  label: string,
+): Record<string, unknown>[] {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    throw new TypeError(`${label} is not valid UTF-8`, { cause: error });
+  }
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length === 0) throw new TypeError(`${label} must not be empty`);
+  return lines.map((line, index) => {
+    try {
+      return record(JSON.parse(line), `${label} line ${index + 1}`);
+    } catch (error) {
+      throw new TypeError(`${label} line ${index + 1} is invalid JSON`, {
+        cause: error,
+      });
+    }
+  });
 }
 
 function semanticFailures(
@@ -261,6 +294,140 @@ function semanticFailures(
     failures.push(
       "cleanup evidence lacks absence, restart, or authorization proof",
     );
+
+  const pageLedger = jsonLines(bytes["page-ledger.jsonl"], "page ledger");
+  if (
+    pageLedger.length < objects.length ||
+    pageLedger.some((entry) => {
+      const range = record(entry.range, "page ledger range");
+      return (
+        typeof entry.objectId !== "string" ||
+        typeof entry.revision !== "string" ||
+        typeof entry.sliceSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(entry.sliceSha256) ||
+        typeof range.start !== "number" ||
+        typeof range.end !== "number" ||
+        range.end < range.start ||
+        typeof entry.bytesRead !== "number" ||
+        entry.bytesRead > 64 * 1024
+      );
+    })
+  )
+    failures.push("page ledger lacks exact bounded native reads");
+
+  const promptTokens = json(bytes["prompt-tokens.json"], "prompt tokens");
+  if (
+    array(promptTokens.cases, "prompt token cases").some((value) => {
+      const entry = record(value, "prompt token case");
+      return (
+        entry.finalSerialized !== true ||
+        entry.withinBudget !== true ||
+        typeof entry.inputTokens !== "number" ||
+        typeof entry.outputReserveTokens !== "number" ||
+        typeof entry.contextWindowTokens !== "number" ||
+        entry.inputTokens + entry.outputReserveTokens >
+          entry.contextWindowTokens
+      );
+    })
+  )
+    failures.push("final prompt-token evidence is incomplete or over budget");
+
+  const faults = json(bytes["faults.json"], "fault report");
+  if (
+    faults.status !== "passed" ||
+    faults.required !== faults.executed ||
+    array(faults.results, "fault results").some(
+      (value) => record(value, "fault result").status !== "passed",
+    )
+  )
+    failures.push("fault matrix is incomplete or failed");
+
+  const stress = json(bytes["stress.json"], "stress report");
+  if (
+    stress.status !== "passed" ||
+    [1, 8, 32, 64].some(
+      (level) =>
+        !array(stress.cases, "stress cases").some(
+          (value) => record(value, "stress case").concurrency === level,
+        ),
+    )
+  )
+    failures.push("stress evidence lacks required concurrency levels");
+
+  const soak = json(bytes["soak.json"], "soak report");
+  if (
+    soak.status !== "passed" ||
+    typeof soak.durationMs !== "number" ||
+    soak.durationMs < 6 * 60 * 60 * 1_000 ||
+    typeof soak.operations !== "number" ||
+    soak.operations < 100_000 ||
+    soak.positiveLeakControlDetected !== true
+  )
+    failures.push("soak evidence lacks duration, operations, or leak control");
+
+  const postgres = json(bytes["postgres.json"], "Postgres report");
+  if (
+    postgres.status !== "passed" ||
+    postgres.backend !== "postgres" ||
+    array(postgres.families, "Postgres families").length < 6 ||
+    postgres.sharedVectorsPassed !== true
+  )
+    failures.push("real Postgres evidence is incomplete");
+
+  const scenario = json(bytes["scenario.json"], "scenario report");
+  const lateEvidenceFamilies = new Set(
+    array(scenario.lateEvidenceFamilies, "late evidence families"),
+  );
+  if (
+    scenario.status !== "passed" ||
+    scenario.deterministic !== true ||
+    scenario.productionActions !== true ||
+    scenario.strictFixtures !== true ||
+    ["file", "document", "memory", "email", "attachment", "tool-output"].some(
+      (family) => !lateEvidenceFamilies.has(family),
+    )
+  )
+    failures.push("deterministic production-action scenario is incomplete");
+
+  const nativeScenario = jsonLines(
+    bytes["scenario-native.jsonl"],
+    "scenario native export",
+  );
+  if (
+    !nativeScenario.some((entry) => entry.type === "tool_call") ||
+    !nativeScenario.some((entry) => entry.type === "final")
+  )
+    failures.push("scenario native export lacks tool and final events");
+
+  const trajectories = jsonLines(bytes["trajectories.jsonl"], "trajectories");
+  if (
+    trajectories.length < 5 ||
+    trajectories.some(
+      (entry) =>
+        entry.status !== "passed" ||
+        entry.providerQualified !== true ||
+        entry.answerLeakageDetected === true,
+    )
+  )
+    failures.push(
+      "live-model trajectories lack five qualified clean repetitions",
+    );
+
+  const e2e = json(bytes["e2e.json"], "E2E report");
+  if (
+    e2e.status !== "passed" ||
+    [
+      "api",
+      "ui",
+      "inspector",
+      "backend",
+      "browser",
+      "network",
+      "database",
+      "artifacts",
+    ].some((key) => e2e[key] !== true)
+  )
+    failures.push("real API/UI inspector E2E evidence is incomplete");
   return failures;
 }
 

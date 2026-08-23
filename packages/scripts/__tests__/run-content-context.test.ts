@@ -7,6 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { createBundle } from "../../evidence/src/bundle.ts";
+import {
+  captureSiloSnapshot,
+  ingestAllSilos,
+} from "../../evidence/src/ingest.ts";
 import {
   parseContentContextArgs,
   publishContentContextEvidence,
@@ -127,6 +132,91 @@ function evidenceValues() {
       authorizationVerified: true,
       probes: [{ absent: true }],
     },
+    "page-ledger.jsonl": objects
+      .map((object) =>
+        JSON.stringify({
+          objectId: object.id,
+          revision: object.revision,
+          sliceSha256: "d".repeat(64),
+          range: { start: 0, end: 1024 },
+          bytesRead: 1024,
+        }),
+      )
+      .join("\n"),
+    "prompt-tokens.json": {
+      cases: [
+        {
+          finalSerialized: true,
+          withinBudget: true,
+          inputTokens: 100,
+          outputReserveTokens: 100,
+          contextWindowTokens: 1_000,
+        },
+      ],
+    },
+    "faults.json": {
+      status: "passed",
+      required: 2,
+      executed: 2,
+      results: [{ status: "passed" }, { status: "passed" }],
+    },
+    "stress.json": {
+      status: "passed",
+      cases: [1, 8, 32, 64].map((concurrency) => ({ concurrency })),
+    },
+    "soak.json": {
+      status: "passed",
+      durationMs: 6 * 60 * 60 * 1_000,
+      operations: 100_000,
+      positiveLeakControlDetected: true,
+    },
+    "postgres.json": {
+      status: "passed",
+      backend: "postgres",
+      families: [
+        "file",
+        "document",
+        "memory",
+        "email",
+        "attachment",
+        "tool-output",
+      ],
+      sharedVectorsPassed: true,
+    },
+    "scenario.json": {
+      status: "passed",
+      deterministic: true,
+      productionActions: true,
+      strictFixtures: true,
+      lateEvidenceFamilies: [
+        "file",
+        "document",
+        "memory",
+        "email",
+        "attachment",
+        "tool-output",
+      ],
+    },
+    "scenario-native.jsonl": `${JSON.stringify({ type: "tool_call" })}\n${JSON.stringify({ type: "final" })}\n`,
+    "trajectories.jsonl": Array.from({ length: 5 }, (_, repetition) =>
+      JSON.stringify({
+        repetition,
+        status: "passed",
+        providerQualified: true,
+        answerLeakageDetected: false,
+      }),
+    ).join("\n"),
+    "e2e.json": {
+      status: "passed",
+      api: true,
+      ui: true,
+      inspector: true,
+      backend: true,
+      browser: true,
+      network: true,
+      database: true,
+      artifacts: true,
+    },
   };
 }
 
@@ -149,14 +239,19 @@ describe("run-content-context", () => {
     );
     cleanup.push(source);
     for (const [name, value] of Object.entries(evidenceValues())) {
-      await writeFile(path.join(source, name), JSON.stringify(value), {
-        mode: 0o600,
-      });
+      await writeFile(
+        path.join(source, name),
+        typeof value === "string" ? value : JSON.stringify(value),
+        {
+          mode: 0o600,
+        },
+      );
     }
     const runId = `producer-test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const runRoot = path.join(repoRoot, "reports", "content-context", runId);
     cleanup.push(runRoot);
     await mkdir(path.dirname(runRoot), { recursive: true });
+    const baseline = captureSiloSnapshot(repoRoot);
 
     const published = await publishContentContextEvidence({
       source,
@@ -173,5 +268,38 @@ describe("run-content-context", () => {
       status: "passed",
     });
     expect(completeness.requiredArtifacts).toContain("benchmark.json");
+
+    const bundleRoot = await mkdtemp(
+      path.join(os.tmpdir(), "content-context-bundle-"),
+    );
+    cleanup.push(bundleRoot);
+    const bundle = createBundle({
+      rootDir: bundleRoot,
+      provenance: {
+        commit: "a".repeat(40),
+        branch: "test/content-context-producer",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: {
+          node: process.version,
+          platform: process.platform,
+          arch: process.arch,
+          tier: "cpu",
+        },
+      },
+    });
+    const ingested = (await ingestAllSilos(bundle, repoRoot, baseline)).find(
+      ({ silo }) => silo === "content-context",
+    );
+    expect(ingested).toMatchObject({
+      status: "ingested",
+      artifactCount: 19,
+    });
+    const { manifest } = await bundle.finalize();
+    expect(
+      manifest.artifacts.some(({ path: artifactPath }) =>
+        artifactPath.endsWith(`/${runId}/completeness-manifest.json`),
+      ),
+    ).toBe(true);
   });
 });
