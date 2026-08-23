@@ -156,6 +156,38 @@ describe("scenario executor multi-world topology", () => {
       "telegram-home": telegramConnection?.worldId,
     });
   });
+
+  it("fails when the confirmed identity-link graph cannot be persisted", async () => {
+    const runtime = createRuntime([], {
+      createRelationship: vi.fn(async () => false),
+    });
+
+    const report = await runScenario(
+      {
+        id: "identity-link-write-failure",
+        title: "Identity link write failure",
+        domain: "executor",
+        rooms: [
+          {
+            id: "owner-dm",
+            account: "discord:owner-123",
+            entity: "owner",
+            source: "discord",
+          },
+        ],
+        turns: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toBe("Failed to create scenario identity link");
+  });
 });
 
 describe("scenario executor wait turns", () => {

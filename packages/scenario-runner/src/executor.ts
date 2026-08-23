@@ -938,7 +938,7 @@ async function establishScenarioIdentityTopology(
         );
       });
       if (!exists) {
-        await runtime.createRelationship({
+        const created = await runtime.createRelationship({
           sourceEntityId: canonicalEntityId,
           targetEntityId: sourcePrincipalId,
           tags: ["identity_link"],
@@ -948,6 +948,16 @@ async function establishScenarioIdentityTopology(
             scenarioId,
           },
         });
+        if (!created) {
+          throw new ElizaError("Failed to create scenario identity link", {
+            code: "SCENARIO_IDENTITY_LINK_CREATE_FAILED",
+            context: {
+              scenarioId,
+              canonicalEntityId,
+              sourcePrincipalId,
+            },
+          });
+        }
       }
     }
 
