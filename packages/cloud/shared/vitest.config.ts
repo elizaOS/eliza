@@ -49,6 +49,7 @@ export default defineConfig({
       "src/lib/utils/whatsapp-api.test.ts",
       "src/lib/services/email.port.test.ts",
       "src/lib/services/docker-node-manager.surrogate-safe.test.ts",
+      "src/lib/services/accept-language.safe-sort.test.ts",
     ],
     environment: "node",
     // PGlite's WASM worker outlives Vitest's fork shutdown grace even after

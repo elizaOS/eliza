@@ -53,7 +53,11 @@ app.post("/", async (c) => {
         metadata: doc.metadata,
       }))
       .filter((result) => result.similarity > 0)
-      .sort((a, b) => b.similarity - a.similarity)
+      .sort((a, b) => {
+        const bSim = Number.isFinite(b.similarity) ? b.similarity : 0;
+        const aSim = Number.isFinite(a.similarity) ? a.similarity : 0;
+        return bSim - aSim || a.id.localeCompare(b.id);
+      })
       .slice(0, limit);
 
     return c.json({

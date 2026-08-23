@@ -157,7 +157,11 @@ function languageFromAcceptLanguage(header: string | null): UiLanguage | null {
       return { tag: tag.trim(), q: q ? Number.parseFloat(q) : 1 };
     })
     .filter((entry) => entry.tag && entry.tag !== "*")
-    .sort((a, b) => b.q - a.q);
+    .sort((a, b) => {
+      const bQ = Number.isFinite(b.q) ? b.q : 1;
+      const aQ = Number.isFinite(a.q) ? a.q : 1;
+      return bQ - aQ || a.tag.localeCompare(b.tag);
+    });
   for (const { tag } of ranked) {
     const matched = matchSupported(tag);
     if (matched) return matched;

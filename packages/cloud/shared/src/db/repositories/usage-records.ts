@@ -246,7 +246,15 @@ export class UsageRecordsRepository {
         count: Number(row.count),
         totalCost: Number(row.totalCost || 0),
       }))
-      .sort((a, b) => b.totalCost - a.totalCost);
+      .sort((a, b) => {
+        const bCost = Number.isFinite(b.totalCost) ? b.totalCost : 0;
+        const aCost = Number.isFinite(a.totalCost) ? a.totalCost : 0;
+        return (
+          bCost - aCost ||
+          (a.provider ?? "").localeCompare(b.provider ?? "") ||
+          (a.model ?? "").localeCompare(b.model ?? "")
+        );
+      });
   }
 
   /**
