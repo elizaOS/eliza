@@ -2,7 +2,6 @@
 
 export const RUNTIME_MANAGEMENT_OPERATIONS = [
   "list",
-  "select",
   "pair",
   "revoke",
   "remove",
