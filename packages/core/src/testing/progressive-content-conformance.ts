@@ -57,6 +57,7 @@ export interface ProgressiveContentPerformanceCeilings {
 	readonly maxPageLatencyMs: number;
 	readonly maxRssGrowthBytes: number;
 	readonly maxReadAmplification: number;
+	readonly maxReadCallsPerPage: number;
 	readonly maxRowsPerPage: number;
 	readonly maxDatabaseGrowthBytes?: number;
 }
@@ -87,6 +88,7 @@ export interface ProgressiveContentConformanceReport {
 		readonly maxPageLatencyMs: number;
 		readonly rssGrowthBytes: number;
 		readonly readAmplification: number;
+		readonly readCallsPerPageMax: number;
 		readonly rowsPerPageMax: number;
 		readonly databaseGrowthBytes?: number;
 		readonly ceilings: ProgressiveContentPerformanceCeilings;
@@ -130,6 +132,8 @@ export async function runProgressiveContentConformance(input: {
 			input.performanceCeilings?.maxRssGrowthBytes ?? 128 * 1024 * 1024,
 		maxReadAmplification:
 			input.performanceCeilings?.maxReadAmplification ?? 2,
+		maxReadCallsPerPage:
+			input.performanceCeilings?.maxReadCallsPerPage ?? 2,
 		maxRowsPerPage: input.performanceCeilings?.maxRowsPerPage ?? 8,
 		...(input.performanceCeilings?.maxDatabaseGrowthBytes === undefined
 			? {}
@@ -145,6 +149,7 @@ export async function runProgressiveContentConformance(input: {
 	let bytesRead = 0;
 	let rowsRead = 0;
 	let parentScans = 0;
+	let readCallsPerPageMax = 0;
 	let rowsPerPageMax = 0;
 	let maxPageLatencyMs = 0;
 	const observeWork = (
@@ -156,7 +161,11 @@ export async function runProgressiveContentConformance(input: {
 			fail("source-work", `${label} has invalid counters`);
 			return;
 		}
+		readCallsPerPageMax = Math.max(readCallsPerPageMax, page.sourceWork.readCalls);
 		rowsPerPageMax = Math.max(rowsPerPageMax, page.sourceWork.rowsRead);
+		if (page.sourceWork.readCalls > ceilings.maxReadCallsPerPage) {
+			fail("source-work", `${label} performed ${page.sourceWork.readCalls} source reads`);
+		}
 		if (page.sourceWork.rowsRead > ceilings.maxRowsPerPage) {
 			fail("source-work", `${label} read ${page.sourceWork.rowsRead} rows`);
 		}
@@ -418,6 +427,7 @@ export async function runProgressiveContentConformance(input: {
 			maxPageLatencyMs,
 			rssGrowthBytes,
 			readAmplification: input.object.byteLength === 0 ? 0 : bytesRead / input.object.byteLength,
+			readCallsPerPageMax,
 			rowsPerPageMax,
 			...(databaseGrowthBytes === undefined ? {} : { databaseGrowthBytes }),
 			ceilings,

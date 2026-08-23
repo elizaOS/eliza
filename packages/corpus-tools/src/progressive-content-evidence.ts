@@ -30,9 +30,34 @@ export interface ContentContextResult {
   }[];
 }
 
-type ArtifactBytes = Readonly<
+export type ContentContextArtifactBytes = Readonly<
   Record<ContentContextRequiredArtifact, Uint8Array>
 >;
+
+/** Build the producer result from the exact artifact bytes that will be ingested. */
+export function buildContentContextResult(input: {
+  readonly commit: string;
+  readonly corpusManifestSha256: string;
+  readonly generatorRevision: string;
+  readonly artifactBytes: ContentContextArtifactBytes;
+}): ContentContextResult {
+  const result: ContentContextResult = {
+    schemaVersion: CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
+    commit: input.commit,
+    corpusManifestSha256: input.corpusManifestSha256,
+    generatorRevision: input.generatorRevision,
+    status: "passed",
+    artifacts: CONTENT_CONTEXT_REQUIRED_ARTIFACTS.map((name) => {
+      const bytes = input.artifactBytes[name];
+      return {
+        name,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        bytes: bytes.byteLength,
+      };
+    }),
+  };
+  return validateContentContextResult(result, input.artifactBytes);
+}
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -59,14 +84,13 @@ function json(bytes: Uint8Array, label: string): Record<string, unknown> {
 
 function semanticFailures(
   result: ContentContextResult,
-  bytes: ArtifactBytes,
+  bytes: ContentContextArtifactBytes,
 ): string[] {
   const failures: string[] = [];
   const manifest = json(bytes["corpus-manifest.json"], "corpus manifest");
   const objects = array(manifest.objects, "corpus objects").map((value) =>
     record(value, "corpus object"),
   );
-  const families = new Set(objects.map(({ family }) => family));
   for (const family of [
     "file",
     "document",
@@ -75,24 +99,19 @@ function semanticFailures(
     "attachment",
     "tool-output",
   ]) {
-    if (!families.has(family)) failures.push(`corpus missing ${family}`);
+    const sizes = new Set(
+      objects
+        .filter((object) => object.family === family)
+        .map(({ byteLength }) => byteLength),
+    );
+    for (const requiredBytes of [1024 * 1024, 10 * 1024 * 1024]) {
+      if (!sizes.has(requiredBytes))
+        failures.push(`corpus ${family} missing ${requiredBytes} byte scale`);
+    }
   }
   if (manifest.manifestSha256 !== result.corpusManifestSha256) {
     failures.push("manifest identity differs from result");
   }
-  const sizes = objects.map(({ byteLength }) => byteLength);
-  if (
-    !sizes.some((value) => typeof value === "number" && value >= 1024 * 1024)
-  ) {
-    failures.push("corpus lacks 1 MiB object");
-  }
-  if (
-    !sizes.some(
-      (value) => typeof value === "number" && value >= 10 * 1024 * 1024,
-    )
-  )
-    failures.push("corpus lacks 10 MiB object");
-
   const ledger = json(
     bytes["native-realization-ledger.json"],
     "realization ledger",
@@ -100,9 +119,26 @@ function semanticFailures(
   if (ledger.corpusManifestSha256 !== result.corpusManifestSha256) {
     failures.push("realization ledger targets another manifest");
   }
-  for (const entry of array(ledger.entries, "realization entries").map(
+  const realizationEntries = array(ledger.entries, "realization entries").map(
     (value) => record(value, "realization entry"),
-  )) {
+  );
+  const objectsById = new Map(objects.map((object) => [object.id, object]));
+  const realizedObjectIds = new Set<unknown>();
+  for (const entry of realizationEntries) {
+    const object = objectsById.get(entry.objectId);
+    if (!object || realizedObjectIds.has(entry.objectId)) {
+      failures.push("native realization identity is missing or duplicated");
+    } else {
+      realizedObjectIds.add(entry.objectId);
+      if (
+        entry.family !== object.family ||
+        entry.sourceSha256 !== object.sourceSha256 ||
+        entry.sourceBytes !== object.byteLength ||
+        entry.revision !== object.revision ||
+        entry.authorizationScope !== object.authorizationScope
+      )
+        failures.push("native realization differs from corpus object");
+    }
     if (entry.status !== "verified")
       failures.push("native realization is not verified");
     const work = record(entry.sourceWork, "realization source work");
@@ -115,6 +151,8 @@ function semanticFailures(
         "native realization source work is unbounded or incomplete",
       );
   }
+  if (realizedObjectIds.size !== objects.length)
+    failures.push("native realization does not cover every corpus object");
 
   const conformance = json(bytes["conformance.json"], "conformance");
   for (const report of array(conformance.reports, "conformance reports").map(
@@ -135,6 +173,7 @@ function semanticFailures(
       [performance.maxPageLatencyMs, ceilings.maxPageLatencyMs],
       [performance.rssGrowthBytes, ceilings.maxRssGrowthBytes],
       [performance.readAmplification, ceilings.maxReadAmplification],
+      [performance.readCallsPerPageMax, ceilings.maxReadCallsPerPage],
       [performance.rowsPerPageMax, ceilings.maxRowsPerPage],
     ]) {
       if (
@@ -228,7 +267,7 @@ function semanticFailures(
 /** Reject incomplete declarations, byte mismatches, or semantically false success evidence. */
 export function validateContentContextResult(
   value: unknown,
-  artifactBytes: ArtifactBytes,
+  artifactBytes: ContentContextArtifactBytes,
 ): ContentContextResult {
   const input = record(value, "content-context result");
   if (

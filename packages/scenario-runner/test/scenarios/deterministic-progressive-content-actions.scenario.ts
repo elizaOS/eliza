@@ -198,6 +198,7 @@ const fileMutate = {
   action: "write",
   file_path: filePath,
   content: "replacement after continuation",
+  overwrite: true,
 };
 const fileStale: JsonRecord = {
   action: "read",
