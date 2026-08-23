@@ -275,6 +275,26 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     ).toBe(true);
   });
 
+  test("drops an unsupported segment while retaining independently bound claims", () => {
+    const divided: SharedRuntimePublicGrounding = {
+      ...grounding,
+      sourceUrls: ["https://coin.example/btc", "https://coin.example/eth"],
+      sources: [
+        { url: "https://coin.example/btc", text: "BTC is 70,000 USD." },
+        { url: "https://coin.example/eth", text: "ETH is 3,500 USD." },
+      ],
+    };
+    const delivered = finalizeSharedRealtimeReply(
+      "BTC is 99,000 USD. [[SOURCE_URL:https://coin.example/btc]] ETH is 3,500 USD. [[SOURCE_URL:https://coin.example/eth]] Unsupported trailing prose.",
+      divided,
+    );
+    expect(delivered).not.toContain("99,000");
+    expect(delivered).not.toContain("Unsupported trailing prose");
+    expect(delivered).toContain("ETH is 3,500 USD.");
+    expect(delivered).toContain("https://coin.example/eth");
+    expect(delivered).not.toContain("https://coin.example/btc");
+  });
+
   test("allows a source-bound rounded market value without accepting an unrelated number", () => {
     if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
     expect(
