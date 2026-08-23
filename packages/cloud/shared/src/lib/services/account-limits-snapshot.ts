@@ -838,7 +838,13 @@ function observeActiveComputeRate(
   if (eligible.length === 0) {
     return unavailableActiveComputeRate(observedAt, "active_compute_rate_segment_future_only");
   }
-  eligible.sort((left, right) => right.effectiveAt.getTime() - left.effectiveAt.getTime());
+  eligible.sort((left, right) => {
+    const leftTime = Number.isFinite(left.effectiveAt.getTime()) ? left.effectiveAt.getTime() : 0;
+    const rightTime = Number.isFinite(right.effectiveAt.getTime())
+      ? right.effectiveAt.getTime()
+      : 0;
+    return rightTime - leftTime;
+  });
   const { segment, effectiveAt } = eligible[0]!;
   if (segment.billingState !== expected.billingState) {
     return unavailableActiveComputeRate(observedAt, "active_compute_rate_segment_state_mismatch");
