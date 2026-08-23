@@ -28,6 +28,15 @@ Updated: 2026-08-23 (America/Los_Angeles)
 - The 24-commit series scans 447.58 KB with gitleaks and contains no detected secret.
 - `git diff --check` passes. Biome checks all 63 changed TypeScript/TSX/MJS/JSON files with no findings.
 
+## Current-base overlap audit (`3624a59c`)
+
+- Fetched and verified `origin/develop@3624a59ccb823312f73b42334d5a4daf23251c54`, whose two-commit advance from `0242ceed35256bc247ed944932f3ccd49a4a3803` is #26414 (`9714493157`, repo-wide design-doctor sweep, merged by `3624a59ccb`). The published draft remained at `d0bf4b04e4e22cf44a91574a391b476231718572` while this audit ran: draft, `CHANGES_REQUESTED`, `CONFLICTING` / `DIRTY`, with GitHub base OID still `0242ceed35256bc247ed944932f3ccd49a4a3803`.
+- Read-only path comparison and the subsequent normal local merge both identified exactly one textual conflict: `packages/ui/src/cloud/public-pages/pages/legal/account-deletion-page.tsx`. No Cloud API, shared lifecycle, schema, migration, provider, authorization, or DTO path overlaps #26414.
+- The conflict was resolved by content, not by an ours/theirs selection. The full server-authoritative request/status/cancel/export page is preserved, including opaque status capability lookup, exact export/cancel confirmations, nonterminal `canceling` rendering, capability-safe retry, authenticated request entry, and explicit error states. The applicable #26414 design-system change is incorporated as `size-7` on all four lifecycle icons and `size-4` on the refresh icon.
+- The resolved page differs from the preceding accepted candidate only in those five square-size utility substitutions. The exact normal-merge composition commit is `e93b25deb3cd3a7d6ecb43205ab64d3276d4a175`, with parents `d0bf4b04e4e22cf44a91574a391b476231718572` and `3624a59ccb823312f73b42334d5a4daf23251c54`.
+- Exact focused proof on the composition: account-deletion public page, dialog, and typed client suites pass 3/3 files and 15/15 tests; Biome checks the resolved page with no findings; `git diff --check` and the staged merge diff check pass; no conflict markers or unmerged paths remain. No install, build, browser capture, evidence bundle, hosted request, account/provider mutation, or deployment was performed. Root free space remained 3.8 GiB after proof.
+- Develop Full run `32657127607` for exact source `3624a59ccb823312f73b42334d5a4daf23251c54` remained `in_progress` with no terminal conclusion at 2026-08-23 11:59 PDT. This lane made no remote draft mutation; Shared must classify the terminal run and confirm publication/staging serialization before any normal push or PR update.
+
 ## Tests and evidence
 
 - Installation and build: `bun install --frozen-lockfile` passes; core build passes 60/60 tasks.
@@ -64,7 +73,7 @@ Updated: 2026-08-23 (America/Los_Angeles)
 
 ## Doing
 
-- Draft PR #25738 is published at `https://github.com/elizaOS/eliza/pull/25738`. The repository merge sweep independently confirmed response-loss checkpoint `0470865a57` appears to address the maintainer P0, but correctly left the standing `CHANGES_REQUESTED` decision to the original reviewer. This lane does not mark the PR ready or request merge without an exact-head re-review. No deployment or hosted provider operation was part of this work.
+- Draft PR #25738 is published at `https://github.com/elizaOS/eliza/pull/25738`. Its remote head remains `d0bf4b04e4e22cf44a91574a391b476231718572`; the current-base composition at `e93b25deb3cd3a7d6ecb43205ab64d3276d4a175` is local only. The repository merge sweep independently confirmed response-loss checkpoint `0470865a57` appears to address the maintainer P0, but correctly left the standing `CHANGES_REQUESTED` decision to the original reviewer. This lane does not push, mark the PR ready, or request merge until Shared classifies Develop Full `32657127607`, confirms serialization, and the exact published head receives re-review. No deployment or hosted provider operation was part of this work.
 
 ## Next / exact external gates
 
