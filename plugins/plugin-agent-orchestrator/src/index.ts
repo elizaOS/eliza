@@ -2046,7 +2046,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const label =
           typeof meta.label === "string" && meta.label.trim().length > 0
             ? meta.label
-            : `sub-agent ${sessionId.slice(0, 8)}`;
+            : `sub-agent ${sessionId}`;
         const isTerminalEvent =
           evName === "stopped" ||
           evName === "error" ||

@@ -2806,7 +2806,7 @@ export class AcpService extends Service {
         }
       }
       this.log("info", "resuming orphaned sub-agent after restart", {
-        sessionId: session.id.slice(0, 8),
+        sessionId: session.id,
         status: session.status,
         transportMode,
         label:
@@ -2819,7 +2819,7 @@ export class AcpService extends Service {
       void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT).catch(
         (err: unknown) =>
           this.log("warn", "orphan resume sendPrompt failed", {
-            sessionId: session.id.slice(0, 8),
+            sessionId: session.id,
             err: err instanceof Error ? err.message : String(err),
           }),
       );
