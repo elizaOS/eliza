@@ -124,7 +124,7 @@ async function processSandboxBilling(
   runAuthority: { runId: string; leaseToken: string },
 ): Promise<BillingResult> {
   const sandboxId = sandbox.id;
-  const agentName = sandbox.agent_name ?? sandboxId.slice(0, 8);
+  const agentName = sandbox.agent_name ?? sandboxId;
   const organizationId = sandbox.organization_id;
   const hourlyRate = getHourlyRate(sandbox.status);
   const currentBalance = Number(org.credit_balance);

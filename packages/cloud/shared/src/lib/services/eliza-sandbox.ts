@@ -1463,7 +1463,7 @@ export class ElizaSandboxService {
     const rawName =
       typeof rawConfig.name === "string" && rawConfig.name.trim()
         ? rawConfig.name.trim()
-        : rec.agent_name?.trim() || `Cloud Agent ${rec.id.slice(0, 8)}`;
+        : rec.agent_name?.trim() || `Cloud Agent ${rec.id}`;
     const plugins =
       Array.isArray(rawConfig.plugins) && rawConfig.plugins.length > 0
         ? rawConfig.plugins
