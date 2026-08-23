@@ -542,4 +542,41 @@ describe("programmaticDspProvider", () => {
     const body = jsonBody(calls[1] as FetchCall) as Record<string, unknown>;
     expect("seat" in body ? body.seat : undefined).toBeUndefined();
   });
+
+  test("safely sorts creative media with non-finite order values", async () => {
+    enqueue({ data: { id: "crv_safe_sort" } });
+    enqueue({ data: { id: "assoc_safe_sort" } });
+
+    const result = await programmaticDspProvider.createCreative(
+      { accessToken: "token" },
+      "adv_1",
+      "adv_1/cmp_1/li_1",
+      {
+        campaignId: "campaign-local",
+        name: "Safe Sort Creative",
+        type: "image",
+        headline: "Try the app",
+        primaryText: "A useful app for builders",
+        callToAction: "learn_more",
+        destinationUrl: "https://example.com/path",
+        media: [
+          {
+            id: "00000000-0000-4000-8000-000000000003",
+            source: "upload",
+            url: "https://cdn.example.com/ad-nan.png",
+            type: "image",
+            order: Number.NaN as unknown as number,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000002",
+            source: "upload",
+            url: "https://cdn.example.com/ad-first.png",
+            type: "image",
+            order: 1,
+          },
+        ],
+      },
+    );
+    expect(result.success).toBe(true);
+  });
 });

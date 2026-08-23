@@ -494,7 +494,12 @@ export const xTwitterAdsProvider: AdProvider = {
       const { lineItemId } = splitExternalCampaignId(externalCampaignId);
       if (!lineItemId) throw new Error("X Ads creative creation requires a line item id");
       const asUserId = input.pageId ?? (await firstPromotableUser(credentials, accountId));
-      const orderedMedia = [...input.media].sort((left, right) => left.order - right.order);
+      const orderedMedia = [...input.media].sort(
+        (left, right) =>
+          (Number.isFinite(left.order) ? left.order : 0) -
+            (Number.isFinite(right.order) ? right.order : 0) ||
+          (left.providerAssetId ?? "").localeCompare(right.providerAssetId ?? ""),
+      );
       const mediaKeys = orderedMedia
         .map((media) => media.providerAssetId)
         .filter((value): value is string => Boolean(value));

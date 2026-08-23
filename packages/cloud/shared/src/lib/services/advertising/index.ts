@@ -191,7 +191,9 @@ class AdvertisingService {
     return {
       timezone: parsed.data.timezone,
       windows: parsed.data.windows.map((window) => ({
-        daysOfWeek: [...new Set(window.daysOfWeek)].sort((a, b) => a - b),
+        daysOfWeek: [...new Set(window.daysOfWeek)].sort(
+          (a, b) => (Number.isFinite(a) ? a : 0) - (Number.isFinite(b) ? b : 0),
+        ),
         startTime: window.startTime,
         endTime: window.endTime,
       })),

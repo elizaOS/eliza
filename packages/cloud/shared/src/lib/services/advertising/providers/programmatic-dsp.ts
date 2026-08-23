@@ -289,7 +289,11 @@ function summarizeReport(report: DspReport | undefined): CampaignMetrics {
  * click-through lands in `adomain` + the asset `link`.
  */
 function buildCreativeAd(input: CreateCreativeInput, seatId: string | undefined) {
-  const orderedMedia = [...input.media].sort((a, b) => a.order - b.order);
+  const orderedMedia = [...input.media].sort(
+    (a, b) =>
+      (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0) ||
+      (a.providerAssetId ?? "").localeCompare(b.providerAssetId ?? ""),
+  );
   const isVideo = input.type === "video" || orderedMedia.some((m) => m.type === "video");
   let adomain: string[] | undefined;
   if (input.destinationUrl) {

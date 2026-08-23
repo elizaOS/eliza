@@ -494,7 +494,11 @@ export const redditAdsProvider: AdProvider = {
       const adGroupId =
         compositeAdGroupId ?? (await firstAdGroupForCampaign(credentials, accountId, campaignId));
       const profileId = input.pageId ?? (await firstProfileId(credentials, accountId));
-      const orderedMedia = [...input.media].sort((a, b) => a.order - b.order);
+      const orderedMedia = [...input.media].sort(
+        (a, b) =>
+          (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0) ||
+          (a.providerAssetId ?? "").localeCompare(b.providerAssetId ?? ""),
+      );
       const primaryMedia = orderedMedia[0];
       const type =
         input.type === "video" ? "VIDEO" : input.type === "carousel" ? "CAROUSEL" : "IMAGE";

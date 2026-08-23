@@ -924,7 +924,12 @@ export const linkedinAdsProvider: AdProvider = {
   ): Promise<AdProviderCreativeResult> {
     try {
       const { campaignId } = splitExternalCampaignId(externalCampaignId);
-      const primaryMedia = [...input.media].sort((left, right) => left.order - right.order)[0];
+      const primaryMedia = [...input.media].sort(
+        (left, right) =>
+          (Number.isFinite(left.order) ? left.order : 0) -
+            (Number.isFinite(right.order) ? right.order : 0) ||
+          (left.providerAssetId ?? "").localeCompare(right.providerAssetId ?? ""),
+      )[0];
       if (!primaryMedia?.providerAssetId) {
         return {
           success: false,
