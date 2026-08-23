@@ -5,7 +5,7 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
-} from "./native-features.edge.ts";
+} from "../native-features.edge.ts";
 
 describe("native-features.edge", () => {
 	it("defaults every native feature to disabled", () => {
