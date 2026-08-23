@@ -17,12 +17,13 @@
  * (e.g. `@radix-ui/react-slot`) are pruned from the Docker runtime-dep closure.
  */
 import type { Plugin, ViewCapability } from "@elizaos/core";
+import { isHumanOnlyOrchestratorCapability } from "./orchestrator-capability-authority";
 import {
   orchestratorStatusCommandAction,
   registerOrchestratorCommands,
 } from "./orchestrator-command";
 
-const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
+const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   { id: "orchestrator-status", description: "Get orchestrator status" },
   {
     id: "orchestrator-list-tasks",
@@ -155,10 +156,6 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
         type: "string",
         description: "Who or what performed validation",
       },
-      humanOverride: {
-        type: "boolean",
-        description: "Whether a human explicitly overrode the result",
-      },
     },
   },
   {
@@ -202,6 +199,13 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
     },
   },
 ];
+
+const ORCHESTRATOR_CAPABILITIES = ORCHESTRATOR_CAPABILITY_DECLARATIONS.map(
+  (capability): ViewCapability =>
+    isHumanOnlyOrchestratorCapability(capability.id)
+      ? { ...capability, authority: "human" }
+      : capability,
+);
 
 const taskCoordinatorPlugin: Plugin = {
   name: "@elizaos/plugin-task-coordinator",
