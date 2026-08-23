@@ -123,6 +123,31 @@ class DeferredReadStateStore implements RemoteTargetStateStore {
   }
 }
 
+class FailingTransactionStateStore implements RemoteTargetStateStore {
+  private readonly delegate = new MemoryRemoteTargetStateStore();
+  private transactionCount = 0;
+
+  constructor(private readonly failTransactionNumber = 1) {}
+
+  read(): Promise<RemoteTargetDurableState> {
+    return this.delegate.read();
+  }
+
+  clear(): Promise<void> {
+    return this.delegate.clear();
+  }
+
+  transact<T>(
+    operation: (state: RemoteTargetDurableState) => T | Promise<T>,
+  ): Promise<T> {
+    this.transactionCount += 1;
+    if (this.transactionCount === this.failTransactionNumber) {
+      return Promise.reject(new Error("local-journal-write-failed"));
+    }
+    return this.delegate.transact(operation);
+  }
+}
+
 class FakeRelay implements RemoteTargetRelayTransport {
   claimRequests = 0;
   readonly claims: RemoteTargetClaim[] = [];
@@ -136,6 +161,10 @@ class FakeRelay implements RemoteTargetRelayTransport {
   }[] = [];
   startFailure: Error | null = null;
   completionFailure: Error | null = null;
+  compensationFailure: Error | null = null;
+  readonly compensations: string[] = [];
+  commitFailure: Error | null = null;
+  readonly commits: string[] = [];
   readonly revocations: Array<{
     hostId: string;
     status: "revoked";
@@ -151,6 +180,34 @@ class FakeRelay implements RemoteTargetRelayTransport {
 
   async activate(): Promise<RemoteTargetActivationResponse> {
     throw new Error("unused");
+  }
+
+  async compensateActivation(
+    input: Parameters<RemoteTargetRelayTransport["compensateActivation"]>[0],
+  ): Promise<
+    Awaited<ReturnType<RemoteTargetRelayTransport["compensateActivation"]>>
+  > {
+    this.compensations.push(input.sessionId);
+    if (this.compensationFailure) throw this.compensationFailure;
+    return {
+      sessionId: input.sessionId,
+      status: "revoked",
+      alreadyCompensated: this.compensations.length > 1,
+    };
+  }
+
+  async commitActivation(
+    input: Parameters<RemoteTargetRelayTransport["commitActivation"]>[0],
+  ): Promise<
+    Awaited<ReturnType<RemoteTargetRelayTransport["commitActivation"]>>
+  > {
+    this.commits.push(input.sessionId);
+    if (this.commitFailure) throw this.commitFailure;
+    return {
+      sessionId: input.sessionId,
+      status: "active",
+      alreadyCommitted: this.commits.length > 1,
+    };
   }
 
   async claimNext(
@@ -280,6 +337,47 @@ class DeferredActivationRelay extends FakeRelay {
   }
 }
 
+class ImmediateActivationRelay extends FakeRelay {
+  constructor(private readonly activation: RemoteTargetActivationResponse) {
+    super();
+  }
+
+  override async activate(): Promise<RemoteTargetActivationResponse> {
+    return this.activation;
+  }
+}
+
+class DeferredCompensationRelay extends ImmediateActivationRelay {
+  readonly compensationRequested: Promise<void>;
+  private markCompensationRequested: () => void = () => undefined;
+  private releaseCompensation: () => void = () => undefined;
+  private readonly deferredCompensation: Promise<void>;
+
+  constructor(activation: RemoteTargetActivationResponse) {
+    super(activation);
+    this.compensationRequested = new Promise((resolve) => {
+      this.markCompensationRequested = resolve;
+    });
+    this.deferredCompensation = new Promise((resolve) => {
+      this.releaseCompensation = resolve;
+    });
+  }
+
+  override async compensateActivation(
+    input: Parameters<RemoteTargetRelayTransport["compensateActivation"]>[0],
+  ): Promise<
+    Awaited<ReturnType<RemoteTargetRelayTransport["compensateActivation"]>>
+  > {
+    this.markCompensationRequested();
+    await this.deferredCompensation;
+    return super.compensateActivation(input);
+  }
+
+  resolveCompensation(): void {
+    this.releaseCompensation();
+  }
+}
+
 function privateKey(): JsonWebKey {
   return generateKeyPairSync("ec", {
     namedCurve: "prime256v1",
@@ -340,7 +438,7 @@ async function createHarness(): Promise<Harness> {
     targetRuntimeId: HOST_ID,
     targetKeyId: enrolled.identity.keyId,
     grantExpiresAt: NOW + 3_600_000,
-    status: "active",
+    status: "activating",
   };
   return {
     vault,
@@ -422,6 +520,7 @@ async function createRunner(
     { now: () => NOW, hooks, pollIntervalMs },
   );
   await runner.installActivation(harness.activation);
+  await runner.commitLocalActivation(harness.activation.sessionId);
   return runner;
 }
 
@@ -739,6 +838,7 @@ describe("remote target durable runner", () => {
       sessionId: deadSessionId,
       grantId: "11111111-3333-4111-8111-111111111111",
     });
+    await runner.commitLocalActivation(deadSessionId);
     const claim = claimFor(harness);
     harness.relay.claims.push(claim);
     expect(await runner.pollOnce()).toBe("completed");
@@ -1154,6 +1254,257 @@ describe("remote target durable runner", () => {
       sessions: {},
       commands: {},
     });
+  });
+
+  it("compensates Cloud when local activation installation fails", async () => {
+    const harness = await createHarness();
+    const relay = new ImmediateActivationRelay(harness.activation);
+    const state = new FailingTransactionStateStore();
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      state,
+      relay,
+      () => NOW,
+    );
+
+    await expect(service.activate({ code: "123456" })).rejects.toMatchObject({
+      code: "REMOTE_ACTIVATION_LOCAL_INSTALL_FAILED",
+      context: { sessionId: SESSION_ID },
+    });
+    expect(relay.compensations).toEqual([SESSION_ID]);
+    expect((await state.read()).sessions).toEqual({});
+  });
+
+  it("exposes failed compensation for exact-session retry without authority", async () => {
+    const harness = await createHarness();
+    const relay = new ImmediateActivationRelay(harness.activation);
+    relay.compensationFailure = new Error("cloud-compensation-unavailable");
+    const state = new FailingTransactionStateStore();
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      state,
+      relay,
+      () => NOW,
+    );
+
+    await expect(service.activate({ code: "123456" })).resolves.toEqual({
+      sessionId: SESSION_ID,
+      status: "compensation_required",
+      errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED",
+      retryRpc: "remoteTargetCompensateActivation",
+    });
+    expect((await state.read()).sessions).toEqual({});
+
+    relay.compensationFailure = null;
+    await expect(
+      service.compensateActivation({ sessionId: SESSION_ID }),
+    ).resolves.toEqual({
+      sessionId: SESSION_ID,
+      status: "revoked",
+      alreadyCompensated: true,
+    });
+  });
+
+  it("keeps a staged grant non-authoritative until exact-session commit retry succeeds", async () => {
+    const harness = await createHarness();
+    const relay = new ImmediateActivationRelay(harness.activation);
+    relay.commitFailure = new RemoteTargetTransportError(
+      "NETWORK_UNAVAILABLE",
+      0,
+    );
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      relay,
+      () => NOW,
+    );
+
+    await expect(service.activate({ code: "123456" })).resolves.toEqual({
+      sessionId: SESSION_ID,
+      status: "commit_required",
+      errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED",
+      retryRpc: "remoteTargetCommitActivation",
+    });
+    expect(
+      (await harness.state.read()).sessions[SESSION_ID]?.activationState,
+    ).toBe("staged");
+    expect((await service.status()).activeSessions).toBe(0);
+
+    relay.commitFailure = null;
+    await expect(
+      service.commitActivation({ sessionId: SESSION_ID }),
+    ).resolves.toMatchObject({
+      sessionId: SESSION_ID,
+      status: "active",
+    });
+    expect(
+      (await harness.state.read()).sessions[SESSION_ID]?.activationState,
+    ).toBe("active");
+    expect(relay.commits).toEqual([SESSION_ID, SESSION_ID]);
+  });
+
+  it("recovers a process exit after durable staging but before Cloud commit", async () => {
+    const harness = await createHarness();
+    const relay = new ImmediateActivationRelay(harness.activation);
+    relay.commitFailure = new RemoteTargetTransportError(
+      "NETWORK_UNAVAILABLE",
+      0,
+    );
+    const interrupted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      relay,
+      () => NOW,
+    );
+    await expect(
+      interrupted.activate({ code: "123456" }),
+    ).resolves.toMatchObject({
+      status: "commit_required",
+    });
+
+    relay.commitFailure = null;
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      relay,
+      () => NOW,
+    );
+    await expect(
+      restarted.resumeEligibleLoopback({
+        apiBase: "http://127.0.0.1:31337",
+        apiToken: "restart-local-token-123456789",
+        pollIntervalMs: 60_000,
+      }),
+    ).resolves.toEqual({ resumed: true, reason: "active_authority" });
+    expect(
+      (await harness.state.read()).sessions[SESSION_ID]?.activationState,
+    ).toBe("active");
+    expect(relay.commits).toEqual([SESSION_ID, SESSION_ID]);
+    await restarted.stop();
+  });
+
+  it("recovers a process exit after Cloud commit but before the local active mark", async () => {
+    const harness = await createHarness();
+    const relay = new ImmediateActivationRelay(harness.activation);
+    const state = new FailingTransactionStateStore(2);
+    const interrupted = new RemoteTargetDesktopService(
+      harness.vault,
+      state,
+      relay,
+      () => NOW,
+    );
+    await expect(
+      interrupted.activate({ code: "123456" }),
+    ).resolves.toMatchObject({
+      status: "commit_required",
+    });
+    expect((await state.read()).sessions[SESSION_ID]?.activationState).toBe(
+      "staged",
+    );
+
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      state,
+      relay,
+      () => NOW,
+    );
+    await expect(
+      restarted.resumeEligibleLoopback({
+        apiBase: "http://127.0.0.1:31337",
+        apiToken: "restart-local-token-123456789",
+        pollIntervalMs: 60_000,
+      }),
+    ).resolves.toEqual({ resumed: true, reason: "active_authority" });
+    expect((await state.read()).sessions[SESSION_ID]?.activationState).toBe(
+      "active",
+    );
+    expect(relay.commits).toEqual([SESSION_ID, SESSION_ID]);
+    await restarted.stop();
+  });
+
+  it("keeps active work running and retries an offline staged commit on the poll lifecycle", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = await createHarness();
+      const relay = new ImmediateActivationRelay(harness.activation);
+      const activeRunner = await createRunner(harness, () => undefined);
+      await activeRunner.installActivation({
+        ...harness.activation,
+        sessionId: "11111111-2222-4111-8111-111111111111",
+        grantId: "11111111-3333-4111-8111-111111111111",
+      });
+      await activeRunner.stop();
+      relay.commitFailure = new RemoteTargetTransportError(
+        "NETWORK_UNAVAILABLE",
+        0,
+      );
+      const restarted = new RemoteTargetDesktopService(
+        harness.vault,
+        harness.state,
+        relay,
+        () => NOW,
+      );
+
+      await expect(
+        restarted.resumeEligibleLoopback({
+          apiBase: "http://127.0.0.1:31337",
+          apiToken: "restart-local-token-123456789",
+          pollIntervalMs: 250,
+        }),
+      ).resolves.toEqual({ resumed: true, reason: "active_authority" });
+      expect(await restarted.status()).toMatchObject({
+        running: true,
+        activeSessions: 1,
+        lastErrorCode: "NETWORK_UNAVAILABLE",
+      });
+
+      relay.commitFailure = null;
+      await vi.advanceTimersByTimeAsync(250);
+      expect(await restarted.status()).toMatchObject({
+        running: true,
+        activeSessions: 2,
+        lastErrorCode: null,
+      });
+      await restarted.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps finalization queued through local-failure compensation", async () => {
+    const harness = await createHarness();
+    const relay = new DeferredCompensationRelay(harness.activation);
+    relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: false,
+      cleanup: { sessions: 0, commands: 0, more: false },
+    });
+    const state = new FailingTransactionStateStore();
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      state,
+      relay,
+      () => NOW,
+    );
+
+    const activating = service.activate({ code: "123456" });
+    await relay.compensationRequested;
+    let finalized = false;
+    const finalizing = service
+      .finalizeHostRevoke({ hostId: HOST_ID })
+      .then((result) => {
+        finalized = true;
+        return result;
+      });
+    await Promise.resolve();
+    expect(finalized).toBe(false);
+
+    relay.resolveCompensation();
+    await expect(activating).rejects.toMatchObject({
+      code: "REMOTE_ACTIVATION_LOCAL_INSTALL_FAILED",
+    });
+    await expect(finalizing).resolves.toEqual({ cleaned: true });
   });
 
   it("requires authoritative host revocation before deleting native credentials", async () => {

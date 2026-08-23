@@ -10,6 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const createUrl = new URL("./0068_add_remote_sessions.sql", import.meta.url);
 const expiryUrl = new URL("./0275_remote_sessions_first_class_expiry.sql", import.meta.url);
+const twoPhaseUrl = new URL("./0311_remote_session_two_phase_activation.sql", import.meta.url);
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
@@ -18,6 +19,7 @@ const agentId = "30000000-0000-4000-8000-000000000001";
 let pg: PGlite;
 let createSource = "";
 let expirySource = "";
+let twoPhaseSource = "";
 
 async function apply(source: string, target: PGlite = pg): Promise<void> {
   for (const statement of source.split("--> statement-breakpoint")) {
@@ -50,6 +52,7 @@ beforeAll(async () => {
   pg = new PGlite();
   createSource = await Bun.file(createUrl).text();
   expirySource = await Bun.file(expiryUrl).text();
+  twoPhaseSource = await Bun.file(twoPhaseUrl).text();
   await createReferencedTables();
   await apply(createSource);
   await apply(expirySource);
@@ -114,5 +117,20 @@ describe("remote session first-class expiry migration", () => {
        WHERE table_name = 'remote_sessions' AND column_name = 'expires_at'`,
     );
     expect(columns.rows).toHaveLength(1);
+  });
+
+  test("0311 admits only the non-authoritative activating phase and remains idempotent", async () => {
+    await insertPending("40000000-0000-4000-8000-000000000004");
+    await apply(twoPhaseSource);
+    await pg.exec("UPDATE remote_sessions SET status = 'activating' WHERE status = 'pending'");
+    await expect(pg.exec("UPDATE remote_sessions SET status = 'committing'")).rejects.toThrow(
+      /remote_sessions_status_check/,
+    );
+    await apply(twoPhaseSource);
+    const constraints = await pg.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM pg_constraint
+       WHERE conname = 'remote_sessions_status_check'`,
+    );
+    expect(constraints.rows[0]?.count).toBe("1");
   });
 });

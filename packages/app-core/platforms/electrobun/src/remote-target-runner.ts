@@ -25,6 +25,7 @@ import {
   signRemoteCommandStartReceipt,
   verifyRemoteCommandAuthenticity,
 } from "../../../src/security/remote-control-crypto";
+import { logger } from "./logger";
 import type {
   RemoteTargetStateStore,
   RemoteTargetStoredCommand,
@@ -75,6 +76,10 @@ type PollDisposition =
   | "duplicate"
   | "delivery_pending"
   | "offline";
+
+function isCommittedSession(session: RemoteTargetStoredSession): boolean {
+  return session.activationState !== "staged";
+}
 
 function errorCode(error: unknown): string {
   if (
@@ -158,11 +163,15 @@ export class RemoteTargetRunner {
   private pollTail: Promise<void> = Promise.resolve();
   private loopGeneration = 0;
 
-  private stopFailedLoop(generation: number): void {
+  private stopFailedLoop(generation: number, error: unknown): void {
     if (generation !== this.loopGeneration) return;
     this.running = false;
     this.pollTimer = null;
     this.lastErrorCode = "REMOTE_TARGET_LOOP_FAILED";
+    logger.error("[RemoteTargetRunner] Background polling loop failed", {
+      generation,
+      error,
+    });
   }
 
   constructor(
@@ -232,8 +241,81 @@ export class RemoteTargetRunner {
         lastSequence: current?.lastSequence ?? 0,
         nonces: current?.nonces ?? {},
         stoppedAt: null,
+        activationState:
+          current?.activationState === "active" ? "active" : "staged",
       };
     });
+  }
+
+  async commitLocalActivation(sessionId: string): Promise<void> {
+    await this.stateStore.transact((state) => {
+      const session = state.sessions[sessionId];
+      if (
+        !session ||
+        session.stoppedAt !== null ||
+        session.grant.revokedAt !== null
+      ) {
+        throw new Error("Staged remote activation is unavailable.");
+      }
+      session.activationState = "active";
+    });
+  }
+
+  async recoverStagedActivations(): Promise<string | null> {
+    const enrollment = await this.requireEnrollment();
+    const state = await this.stateStore.read();
+    const staged = Object.values(state.sessions)
+      .filter(
+        (session) =>
+          session.activationState === "staged" &&
+          session.stoppedAt === null &&
+          session.grant.revokedAt === null,
+      )
+      .sort((a, b) => a.grant.sessionId.localeCompare(b.grant.sessionId));
+    let transientErrorCode: string | null = null;
+    for (const session of staged) {
+      try {
+        await this.transport.commitActivation({
+          enrollment,
+          sessionId: session.grant.sessionId,
+        });
+        await this.commitLocalActivation(session.grant.sessionId);
+      } catch (error) {
+        if (
+          error instanceof RemoteTargetTransportError &&
+          (error.status === 404 || error.status === 409 || error.status === 410)
+        ) {
+          await this.stateStore.transact((candidate) => {
+            const current = candidate.sessions[session.grant.sessionId];
+            if (current?.activationState === "staged") {
+              delete candidate.sessions[session.grant.sessionId];
+            }
+          });
+          continue;
+        }
+        if (
+          error instanceof RemoteTargetTransportError &&
+          (error.status === 0 ||
+            error.status === 408 ||
+            error.status === 429 ||
+            error.status >= 500)
+        ) {
+          // error-policy:J4 an expected relay outage leaves the staged grant
+          // non-executable and visible while the polling lifecycle retries it.
+          transientErrorCode ??= error.code;
+          logger.warn(
+            "[RemoteTargetRunner] Staged activation commit is offline",
+            {
+              sessionId: session.grant.sessionId,
+              error,
+            },
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+    return transientErrorCode;
   }
 
   async pollOnce(expectedGeneration?: number): Promise<PollDisposition> {
@@ -255,11 +337,13 @@ export class RemoteTargetRunner {
     const enrollment = await this.requireEnrollment();
     this.lastPollAt = this.now();
     try {
+      const recoveryErrorCode = await this.recoverStagedActivations();
       await this.flushPending(enrollment);
       const state = await this.stateStore.read();
       const sessions = Object.values(state.sessions)
         .filter(
           (session) =>
+            isCommittedSession(session) &&
             session.stoppedAt === null &&
             session.grant.revokedAt === null &&
             (session.grant.expiresAt === null ||
@@ -297,10 +381,10 @@ export class RemoteTargetRunner {
           claim,
           expectedGeneration,
         );
-        this.lastErrorCode = null;
+        this.lastErrorCode = recoveryErrorCode;
         return disposition;
       }
-      this.lastErrorCode = null;
+      this.lastErrorCode = recoveryErrorCode;
       return "empty";
     } catch (error) {
       if (error instanceof RemoteTargetTransportError) {
@@ -366,6 +450,7 @@ export class RemoteTargetRunner {
       const authority = state.sessions[opened.body.sessionId];
       if (
         !authority ||
+        !isCommittedSession(authority) ||
         authority.stoppedAt !== null ||
         authority.grant.revokedAt !== null ||
         authority.grant.revision !== opened.body.grantRevision ||
@@ -824,6 +909,7 @@ export class RemoteTargetRunner {
 
   async start(): Promise<void> {
     if (this.running) return;
+    await this.recoverStagedActivations();
     const generation = ++this.loopGeneration;
     this.running = true;
     const startup = this.pollTail.then(async () => {
@@ -843,10 +929,10 @@ export class RemoteTargetRunner {
       this.pollTimer = setTimeout(
         () => {
           this.pollTimer = null;
-          void loop().catch(() => {
+          void loop().catch((error) => {
             // error-policy:J4 a background integrity failure becomes a
             // distinct stopped/error status instead of an unhandled promise.
-            this.stopFailedLoop(generation);
+            this.stopFailedLoop(generation, error);
           });
         },
         Math.max(250, this.options.pollIntervalMs ?? 1_000),
@@ -855,7 +941,7 @@ export class RemoteTargetRunner {
     try {
       await loop();
     } catch (error) {
-      this.stopFailedLoop(generation);
+      this.stopFailedLoop(generation, error);
       throw error;
     }
   }
@@ -878,7 +964,9 @@ export class RemoteTargetRunner {
       enrolled: enrollment?.status === "enrolled",
       activeSessions: Object.values(state.sessions).filter(
         (session) =>
-          session.stoppedAt === null && session.grant.revokedAt === null,
+          isCommittedSession(session) &&
+          session.stoppedAt === null &&
+          session.grant.revokedAt === null,
       ).length,
       pendingResults: Object.values(state.commands).filter(
         (record) => record.resultEnvelope && !record.resultDelivered,

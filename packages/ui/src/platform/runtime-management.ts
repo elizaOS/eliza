@@ -331,6 +331,13 @@ async function execute(
         : {}),
       code: requiredString(request.code, "code"),
     });
+    if (result.status !== "active") {
+      throw new Error(
+        result.status === "commit_required"
+          ? `Local activation is staged and Cloud commit must be retried for session ${result.sessionId}.`
+          : `Local activation failed and Cloud rollback must be retried for session ${result.sessionId}.`,
+      );
+    }
     await startRemoteTarget();
     return { controllerDisplayName: result.controllerDisplayName };
   }

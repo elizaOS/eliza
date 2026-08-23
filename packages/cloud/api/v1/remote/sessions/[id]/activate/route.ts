@@ -1,4 +1,7 @@
-/** Atomically consumes one host-bound pairing code and returns grant material. */
+/**
+ * Stages one exact host-bound pairing session, then exposes authenticated,
+ * idempotent commit or rollback after the target durably installs authority.
+ */
 
 import { Hono } from "hono";
 import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
@@ -8,6 +11,104 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../host-auth";
 
 const app = new Hono<AppEnv>();
+
+app.put("/", async (c) => {
+  try {
+    const sessionId = c.req.param("id")?.trim() ?? "";
+    if (!isRemotePairingUuid(sessionId)) {
+      return c.json(
+        { success: false, error: "Session id must be a UUID" },
+        400,
+      );
+    }
+    const credential = parseRemoteHostCredential(c.req.raw);
+    if (!credential) {
+      return c.json(
+        { success: false, error: "Remote host authentication required" },
+        401,
+      );
+    }
+    const result = await remoteSessionsRepository.commitHostActivation({
+      sessionId,
+      hostId: credential.hostId,
+      hostToken: credential.token,
+    });
+    if (result.kind === "not_found") {
+      return c.json({ success: false, error: "Remote session not found" }, 404);
+    }
+    if (result.kind === "conflict") {
+      return c.json(
+        {
+          success: false,
+          error: "Remote activation is no longer committable",
+          code: "REMOTE_ACTIVATION_COMMIT_CONFLICT",
+        },
+        409,
+      );
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      success: true,
+      data: {
+        sessionId: result.session.id,
+        status: result.session.status,
+        alreadyCommitted: result.alreadyCommitted,
+      },
+    });
+  } catch (error) {
+    // error-policy:J1 the HTTP boundary translates typed/internal failures.
+    return failureResponse(c, error);
+  }
+});
+
+app.delete("/", async (c) => {
+  try {
+    const sessionId = c.req.param("id")?.trim() ?? "";
+    if (!isRemotePairingUuid(sessionId)) {
+      return c.json(
+        { success: false, error: "Session id must be a UUID" },
+        400,
+      );
+    }
+    const credential = parseRemoteHostCredential(c.req.raw);
+    if (!credential) {
+      return c.json(
+        { success: false, error: "Remote host authentication required" },
+        401,
+      );
+    }
+    const result = await remoteSessionsRepository.compensateHostActivation({
+      sessionId,
+      hostId: credential.hostId,
+      hostToken: credential.token,
+    });
+    if (result.kind === "not_found") {
+      return c.json({ success: false, error: "Remote session not found" }, 404);
+    }
+    if (result.kind === "conflict") {
+      return c.json(
+        {
+          success: false,
+          error: "Remote session is not an active activation",
+          code: "REMOTE_ACTIVATION_COMPENSATION_CONFLICT",
+        },
+        409,
+      );
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      success: true,
+      data: {
+        sessionId: result.session.id,
+        status: result.session.status,
+        alreadyCompensated: result.alreadyCompensated,
+      },
+    });
+  } catch (error) {
+    // error-policy:J1 the HTTP boundary translates typed/internal failures.
+    return failureResponse(c, error);
+  }
+});
 
 app.post("/", async (c) => {
   try {
