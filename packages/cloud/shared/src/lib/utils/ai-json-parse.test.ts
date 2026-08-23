@@ -32,9 +32,7 @@ describe("parseAiJson", () => {
   });
 
   it("throws on schema mismatch", () => {
-    expect(() => parseAiJson('{"a":"oops","b":"hi"}', schema)).toThrow(
-      /validation failed/,
-    );
+    expect(() => parseAiJson('{"a":"oops","b":"hi"}', schema)).toThrow(/validation failed/);
   });
 
   it("includes context in error", () => {
