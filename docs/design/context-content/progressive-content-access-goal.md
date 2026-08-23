@@ -19,6 +19,7 @@ real agent behavior, bounded source work, isolation, security, latency, memory,
 database cost, and cleanup are proven.
 
 Execution rules:
+- Track implementation and acceptance in https://github.com/elizaOS/eliza/issues/26645.
 - Read the root guide, CONTRIBUTING.md, and every owning package CLAUDE.md/README.
 - Start with a live truncation inventory and exact current origin/develop SHA.
 - Open/link the required issue before non-trivial implementation work.
