@@ -261,8 +261,14 @@ type SelectedGrounding = {
   status: "available" | "unavailable" | "fresh_search_required";
 };
 
+export interface SharedSelectedGroundingMetadata {
+  kind: SharedRuntimePublicGrounding["kind"];
+  query: string;
+  status: SelectedGrounding["status"];
+}
+
 function selectedGrounding(
-  history: SharedRuntimeHistoryMessageLike[],
+  history: readonly SharedRuntimeHistoryMessageLike[],
   queryText: string,
   now: number,
 ): SelectedGrounding | undefined {
@@ -333,6 +339,22 @@ function selectedGrounding(
     return { ...latest, status: "fresh_search_required" };
   }
   return { ...latest, status: "available" };
+}
+
+/** Exposes only validated provenance metadata when history policy selects mutable evidence. */
+export function sharedSelectedGroundingMetadata(
+  history: readonly SharedRuntimeHistoryMessageLike[],
+  queryText: string,
+  now = Date.now(),
+): SharedSelectedGroundingMetadata | undefined {
+  const selected = selectedGrounding(history, queryText, now);
+  return selected
+    ? {
+        kind: selected.grounding.kind,
+        query: selected.grounding.query,
+        status: selected.status,
+      }
+    : undefined;
 }
 
 function groundingAuthorityMarker(selection: SelectedGrounding): ModelMessage {

@@ -1,3 +1,7 @@
+/**
+ * Verifies native-runtime feature policy through deterministic pure helpers
+ * without initializing an agent runtime.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	getNativeRuntimeFeaturePlugin,
@@ -5,7 +9,7 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
-} from "./native-features.edge.ts";
+} from "../native-features.edge.ts";
 
 describe("native-features.edge", () => {
 	it("defaults every native feature to disabled", () => {
