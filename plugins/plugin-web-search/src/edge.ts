@@ -52,6 +52,7 @@ export interface WebSearchSourceEvidence {
 }
 
 const MAX_PROVIDER_JSON_NODES = 512;
+const MAX_WEB_SEARCH_QUERY_CODE_POINTS = 2048;
 const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"]);
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 
@@ -182,6 +183,13 @@ export async function runWebSearchEdge(
 ): Promise<ActionResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return await fail("A web search query is required.");
+    if ([...normalizedQuery].length > MAX_WEB_SEARCH_QUERY_CODE_POINTS) {
+        return await fail(
+            `Web search queries cannot exceed ${MAX_WEB_SEARCH_QUERY_CODE_POINTS} characters.`,
+            undefined,
+            normalizedQuery
+        );
+    }
     const observedAt = Date.now();
     const result = await searchKeylessWeb(normalizedQuery, {
         resultCount: options.numResults,
