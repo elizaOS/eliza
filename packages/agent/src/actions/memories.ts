@@ -30,6 +30,17 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
 
+/**
+ * Tables the delete-by-query type-miss widening may rescan. "Remember" and
+ * "forget" semantically cover the agent's own memory tables — memories and
+ * facts — so a typed miss widens only across those two. Chat transcripts
+ * (messages) and ingested documents are NEVER pulled into scope by a typed
+ * miss: deleting from those tables requires the caller to name them via an
+ * explicit `type` parameter (the untyped path, which scans every table, is
+ * likewise an explicit caller choice of full scope).
+ */
+const FORGET_WIDENING_TABLES: readonly MemoryType[] = ["memories", "facts"];
+
 const UUID_SCHEMA_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
@@ -247,15 +258,16 @@ async function collectCandidates(
   runtime: IAgentRuntime,
   scope: {
     type?: MemoryType;
+    /** Explicit table set; takes precedence over `type`. */
+    tables?: readonly MemoryType[];
     entityId?: UUID;
     roomId?: UUID;
     query?: string;
     limit: number;
   },
 ): Promise<CandidateScan> {
-  const tables: readonly MemoryType[] = scope.type
-    ? [scope.type]
-    : MEMORY_TYPES;
+  const tables: readonly MemoryType[] =
+    scope.tables ?? (scope.type ? [scope.type] : MEMORY_TYPES);
   const perTable = Math.max(scope.limit * 2, 200);
   const collected: MemoryCandidate[] = [];
   const saturatedTables: MemoryType[] = [];
@@ -555,6 +567,10 @@ async function doDelete(
  * match in a multi-user room would also hit another user's identical-text
  * fact, so "forget that I play guitar" may only remove the asking user's own
  * rows. Cross-entity deletes must go through op:search + delete by memoryId.
+ *
+ * A typed scan that misses widens across FORGET_WIDENING_TABLES (memories +
+ * facts) only — never into messages or documents, which require an explicit
+ * `type` to be deleted from.
  */
 async function doDeleteByQuery(
   runtime: IAgentRuntime,
@@ -576,7 +592,7 @@ async function doDeleteByQuery(
   const scopeEntityId = message.entityId ?? entityParam.id;
 
   const limit = clampLimit(params.limit, 50);
-  const strongMatches = (scan: Awaited<ReturnType<typeof collectCandidates>>) =>
+  const strongMatches = (scan: CandidateScan) =>
     // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
     // the whole phrase matched or every query term matched.
     scan.matches.filter((c) => {
@@ -598,12 +614,16 @@ async function doDeleteByQuery(
   // The table is an implementation detail the caller routinely guesses wrong
   // (live 2026-08-23: "forget my dog's name" arrived as type=memories while
   // the record was a FACT row, and the miss read back as "no record exists" —
-  // a broken forget). When a type-scoped scan finds nothing, rescan every
-  // table before failing; the strong match bar, confirm gate, and
+  // a broken forget). When a type-scoped scan finds nothing, rescan before
+  // failing — but only across FORGET_WIDENING_TABLES (memories + facts, the
+  // tables "remember/forget" semantically covers). Messages and documents
+  // stay out of a typed miss's blast radius and are deleted only when the
+  // caller explicitly targets them. The strong match bar, confirm gate, and
   // distinct-text ambiguity guard below still bound what can be deleted, and
   // the widening is disclosed in the result.
   if (matched.length === 0 && type) {
     scan = await collectCandidates(runtime, {
+      tables: FORGET_WIDENING_TABLES,
       entityId: scopeEntityId,
       roomId: roomParam.id,
       query,
@@ -611,7 +631,10 @@ async function doDeleteByQuery(
     });
     matched = strongMatches(scan);
     if (matched.length > 0) {
-      widenedNote = ` (no match in the requested "${type}" table; found in ${matched[0]?.type}).`;
+      // The delete loop removes EVERY matched row, and identical normalized
+      // text can exist in more than one table — name them all.
+      const matchedTables = [...new Set(matched.map((c) => c.type))];
+      widenedNote = ` (no match in the requested "${type}" table; found in ${matchedTables.join(", ")}).`;
     }
   }
 

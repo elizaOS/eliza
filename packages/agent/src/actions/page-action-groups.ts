@@ -377,10 +377,23 @@ export const pageDelegateAction: PageActionGroup = {
       );
       // Self-correction affordance: planners routinely wrap a DIRECT action in
       // PAGE_DELEGATE (live tj-…, PAGE_DELEGATE{action:"CHANNEL_RECAP"} then a
-      // bare stop). When the requested name exists as a directly callable tool,
-      // say so — the next iteration can recover instead of giving up.
+      // bare stop). When the requested name resolves — through the same
+      // name/simile normalization findChildAction uses — to a registered
+      // action whose context set reaches beyond the page-only surfaces, say
+      // so: the next iteration can call it directly instead of giving up.
+      // Children of a DIFFERENT page are excluded: they surface only in
+      // page-scoped chats, so claiming direct callability here would
+      // misdirect the planner away from the availableActions correction.
+      // PAGE_DELEGATE itself never counts as its own recovery target.
+      const normalizedRequested = normalizeActionName(requestedAction);
+      const pageOnlyContexts = new Set(ALL_PAGE_CONTEXTS.map(normalizeContext));
       const directlyCallable = runtime.actions.some(
-        (candidate) => candidate.name === requestedAction,
+        (candidate) =>
+          !isPageDelegate(candidate) &&
+          actionMatchesName(candidate, normalizedRequested) &&
+          resolveActionContexts(candidate).some(
+            (context) => !pageOnlyContexts.has(normalizeContext(context)),
+          ),
       );
       return {
         success: false,
@@ -399,7 +412,13 @@ export const pageDelegateAction: PageActionGroup = {
           requestedAction,
           directlyCallable,
           availableActions,
-          retryable: directlyCallable,
+          // Non-retryable even when directlyCallable: the planner-loop dedup
+          // guard suppresses only the identical PAGE_DELEGATE call, and that
+          // exact call stays deterministic within the turn. The recovery is a
+          // DIFFERENT call (the direct action), carried by directlyCallable
+          // and the text hint; retryable:true would only re-enable the same
+          // failing wrapper call and burn iterations.
+          retryable: false,
         },
       };
     }

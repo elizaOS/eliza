@@ -87,9 +87,15 @@ function makeRuntime(options?: {
   return { runtime, rows };
 }
 
-function seedFact(
+function seedRow(
   rows: StoredRow[],
-  fields: { text: string; entityId: UUID; roomId?: UUID },
+  fields: {
+    text: string;
+    entityId: UUID;
+    tableName: string;
+    roomId?: UUID;
+    createdAt?: number;
+  },
 ): UUID {
   const id = crypto.randomUUID() as UUID;
   rows.push({
@@ -99,11 +105,18 @@ function seedFact(
       agentId: AGENT_ID,
       roomId: fields.roomId ?? ROOM_ID,
       content: { text: fields.text },
-      createdAt: Date.now(),
+      createdAt: fields.createdAt ?? Date.now(),
     } as Memory,
-    tableName: "facts",
+    tableName: fields.tableName,
   });
   return id;
+}
+
+function seedFact(
+  rows: StoredRow[],
+  fields: { text: string; entityId: UUID; roomId?: UUID },
+): UUID {
+  return seedRow(rows, { ...fields, tableName: "facts" });
 }
 
 function makeMessage(): Memory {
@@ -563,6 +576,105 @@ describe("MEMORY op:delete by query", () => {
       "MEMORY_CONFIRMATION_REQUIRED",
     );
     expect(rows).toHaveLength(1);
+  });
+
+  it("widens a typed miss across memories and facts and discloses it", async () => {
+    // Live 2026-08-23: "forget my dog's name" arrived as type=memories while
+    // the record was a FACT row — the typed miss must rescan the forget
+    // tables instead of reporting "no record exists".
+    const { runtime, rows } = makeRuntime();
+    seedRow(rows, {
+      text: "the dog is named biscuit",
+      entityId: USER_ID,
+      tableName: "facts",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "the dog is named biscuit",
+      type: "memories",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(0);
+    expect(result.text).toContain(
+      'no match in the requested "memories" table; found in facts',
+    );
+  });
+
+  it("names every table the widened delete removed rows from", async () => {
+    // Dedup failures can leave identical text in more than one table; the
+    // disclosure must name the full matched set, not just the first row's.
+    const { runtime, rows } = makeRuntime();
+    seedRow(rows, {
+      text: "the dog is named biscuit",
+      entityId: USER_ID,
+      tableName: "memories",
+      createdAt: 2_000,
+    });
+    seedRow(rows, {
+      text: "the dog is named biscuit",
+      entityId: USER_ID,
+      tableName: "facts",
+      createdAt: 1_000,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "the dog is named biscuit",
+      type: "documents",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(0);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(2);
+    expect(result.text).toContain(
+      'no match in the requested "documents" table; found in memories, facts',
+    );
+  });
+
+  it("never widens a typed miss into messages or documents", async () => {
+    // The transcript row matches the query text exactly, but "forget"
+    // widening may only reach memories + facts — chat history and documents
+    // are deleted only when named by an explicit type.
+    const { runtime, rows } = makeRuntime();
+    seedRow(rows, {
+      text: "the dog is named biscuit",
+      entityId: USER_ID,
+      tableName: "messages",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "the dog is named biscuit",
+      type: "facts",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe("MEMORY_NOT_FOUND");
+    expect(rows).toHaveLength(1);
+  });
+
+  it("still deletes from messages when the caller names the table", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedRow(rows, {
+      text: "the dog is named biscuit",
+      entityId: USER_ID,
+      tableName: "messages",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "the dog is named biscuit",
+      type: "messages",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(0);
   });
 });
 

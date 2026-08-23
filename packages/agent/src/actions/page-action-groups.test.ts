@@ -197,6 +197,7 @@ describe("PAGE_DELEGATE structured child-unavailable failure", () => {
       code: "PAGE_CHILD_UNAVAILABLE",
       page: "owner",
       requestedAction: "CREATE_HABIT",
+      directlyCallable: false,
       availableActions: ["OWNER_REMINDERS", "OWNER_ROUTINES"],
       retryable: false,
     });
@@ -219,6 +220,7 @@ describe("PAGE_DELEGATE structured child-unavailable failure", () => {
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({
       code: "PAGE_CHILD_UNAVAILABLE",
+      directlyCallable: false,
       availableActions: [],
       retryable: false,
     });
@@ -247,6 +249,81 @@ describe("PAGE_DELEGATE structured child-unavailable failure", () => {
     expect(availableActions[0]).toBe("CHILD_00");
     expect(availableActions[39]).toBe("CHILD_39");
     expect([...availableActions].sort()).toEqual(availableActions);
+  });
+
+  it("hints at the direct action (still non-retryable) when the wrapped name is a standalone tool", async () => {
+    // Live tj-…: the planner wrapped the DIRECT action CHANNEL_RECAP in
+    // PAGE_DELEGATE and then gave up. The hint must survive case
+    // normalization, and the recovery call has a different identity, so the
+    // failed wrapper call itself stays non-retryable.
+    const runtime = {
+      actions: [
+        pageDelegateAction,
+        makeChildAction({ name: "CHANNEL_RECAP", contexts: ["general"] }),
+      ],
+    } as IAgentRuntime;
+
+    const result = await invokeOnPage(runtime, "owner", "channel_recap");
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      code: "PAGE_CHILD_UNAVAILABLE",
+      directlyCallable: true,
+      retryable: false,
+    });
+    expect(result.text).toContain("directly callable tool on this turn");
+  });
+
+  it("resolves the direct-call hint through similes", async () => {
+    const runtime = {
+      actions: [
+        pageDelegateAction,
+        makeChildAction({
+          name: "CHANNEL_RECAP",
+          contexts: ["general"],
+          similes: ["ROOM_RECAP"],
+        }),
+      ],
+    } as IAgentRuntime;
+
+    const result = await invokeOnPage(runtime, "owner", "ROOM_RECAP");
+
+    expect(result.data).toMatchObject({ directlyCallable: true });
+  });
+
+  it("does not claim a different page's child is directly callable", async () => {
+    // BROWSER is registered, but only under the browser page's context set —
+    // it is not exposed in the chat this failure returns to, so the hint
+    // would misdirect the planner away from the availableActions correction.
+    const runtime = {
+      actions: [
+        pageDelegateAction,
+        makeChildAction({ name: "BROWSER", contexts: ["browser"] }),
+      ],
+    } as IAgentRuntime;
+
+    const result = await invokeOnPage(runtime, "owner", "BROWSER");
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      code: "PAGE_CHILD_UNAVAILABLE",
+      directlyCallable: false,
+      retryable: false,
+    });
+    expect(result.text).not.toContain("directly callable");
+  });
+
+  it("never offers PAGE_DELEGATE itself as the direct-call recovery", async () => {
+    // PAGE_ACTIONS is a simile of PAGE_DELEGATE, whose contexts include
+    // "general" — without the self-exclusion the parent would recommend
+    // re-wrapping in itself.
+    const actions: Action[] = [pageDelegateAction];
+    const runtime = { actions } as IAgentRuntime;
+
+    const result = await invokeOnPage(runtime, "owner", "PAGE_ACTIONS");
+
+    expect(result.data).toMatchObject({ directlyCallable: false });
+    expect(result.text).not.toContain("directly callable");
   });
 
   it("returns a non-retryable PAGE_CHILD_VALIDATE_REJECTED failure when the child refuses", async () => {
