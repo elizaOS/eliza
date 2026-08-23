@@ -21,13 +21,9 @@
  * group repository (cloud-shared db/repositories/personal-shared-groups.ts).
  *
  * Harness notes:
- * - Env passthrough: the Worker only sees env keys sync-api-dev-vars knows
- *   (.env.example keys, real values in cloud/shared/.env[.local], and the
- *   provider-key allowlist). OPENROUTER_BASE_URL is not in .env.example, so
- *   this spec requires an `OPENROUTER_BASE_URL=` line in cloud/shared/.env or
- *   .env.local (any value — the spec's override wins). The worker fixture
- *   fails fast with that instruction instead of letting the Worker dial the
- *   real OpenRouter host with the scripted key.
+ * - Env passthrough: sync-api-dev-vars treats OPENROUTER_BASE_URL as a provider
+ *   override, so the worker fixture can route the scripted key to its loopback
+ *   model without requiring or persisting developer-local configuration.
  * - Schema seam: the fresh-DB migrate lane pauses at the 0282 usage-quotas
  *   release barrier, so the group tables (0297) and their authority-version
  *   (0303) and delivery-lease (0304) columns never exist on a booted e2e
@@ -41,7 +37,7 @@
  *   command says "remind us", which the explicit-delay parser does not own.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import {
   createServer,
   type IncomingMessage,
@@ -472,29 +468,6 @@ function createGatewayCaptureServer(captured: CapturedDelivery[]): Server {
   });
 }
 
-/**
- * sync-api-dev-vars forwards a process-env override into the Worker's
- * `.dev.vars` only for keys it already knows. Fail before the stack boots when
- * OPENROUTER_BASE_URL cannot reach the Worker, naming the fix.
- */
-function assertScriptedModelRouteIsForwardable(): void {
-  const known = [".env.example", ".env", ".env.local"].some((name) => {
-    const file = resolve(CLOUD_SHARED_DIR, name);
-    return (
-      existsSync(file) &&
-      /^\s*OPENROUTER_BASE_URL\s*=\s*\S/m.test(readFileSync(file, "utf8"))
-    );
-  });
-  if (!known) {
-    throw new Error(
-      "personal-eliza-group-lifecycle needs the Worker to honour OPENROUTER_BASE_URL, " +
-        "which sync-api-dev-vars only forwards for keys present in cloud/shared/.env[.local]. " +
-        "Add a line `OPENROUTER_BASE_URL=http://127.0.0.1:1/v1` to packages/cloud/shared/.env.local " +
-        "(any value; this spec overrides it with the scripted model URL).",
-    );
-  }
-}
-
 interface GroupHarness {
   /** Scripted OpenAI-compatible `/v1` base the Worker's OpenRouter client dials. */
   modelUrl: string;
@@ -512,7 +485,6 @@ const test = base.extend<Record<never, never>, { groupHarness: GroupHarness }>({
   groupHarness: [
     // biome-ignore lint/correctness/noEmptyPattern: Playwright derives fixture dependencies from this destructuring pattern; the harness has none.
     async ({}, use) => {
-      assertScriptedModelRouteIsForwardable();
       const deliveries: CapturedDelivery[] = [];
       const model = createScriptedModelServer();
       const gateway = createGatewayCaptureServer(deliveries);

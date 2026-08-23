@@ -108,10 +108,39 @@ async function journalEntries(): Promise<JournalEntry[]> {
  * breaks on every new migration.
  */
 const CHECKPOINT_PREFIX_LENGTH = 184;
+const USAGE_QUOTAS_DROP_TAG = "0282_drop_unused_usage_quotas_table";
+const USAGE_QUOTAS_RESTORE_TAG = "0282_01_restore_usage_quotas_compatibility";
 
-async function expectedPendingBanner(): Promise<string> {
-  const total = (await journalEntries()).length;
-  return `pending migrations: ${total - CHECKPOINT_PREFIX_LENGTH}`;
+/**
+ * Exact migrator banner once the ledger is complete through `appliedLength`
+ * journal entries. The count comes from the live journal, so the expectations
+ * around the release-barrier pause and repair keep tracking appended
+ * migrations too, and the whole line is anchored so a smaller count cannot
+ * match inside a larger one (`: 1` inside `: 16`).
+ */
+async function expectedPendingBanner(
+  appliedLength = CHECKPOINT_PREFIX_LENGTH,
+): Promise<RegExp> {
+  const pending = (await journalEntries()).length - appliedLength;
+  return new RegExp(`^\\[db:migrate\\] pending migrations: ${pending}$`, "m");
+}
+
+/** Journal position of the guarded usage-quotas drop and its adjacent restore. */
+async function usageQuotasBarrier(): Promise<{
+  dropIndex: number;
+  drop: JournalEntry;
+  restore: JournalEntry;
+}> {
+  const entries = await journalEntries();
+  const dropIndex = entries.findIndex(
+    (entry) => entry.tag === USAGE_QUOTAS_DROP_TAG,
+  );
+  const drop = entries[dropIndex];
+  const restore = entries[dropIndex + 1];
+  if (!drop || !restore || restore.tag !== USAGE_QUOTAS_RESTORE_TAG) {
+    throw new Error("Missing guarded usage-quotas migration pair");
+  }
+  return { dropIndex, drop, restore };
 }
 
 /**
@@ -1015,7 +1044,7 @@ describe.skipIf(!ENABLED)(
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain(await expectedPendingBanner());
+      expect(first.output).toMatch(await expectedPendingBanner());
 
       const catalog = await database.client.query<{
         data_type: string;
@@ -1062,7 +1091,13 @@ describe.skipIf(!ENABLED)(
 
       const second = await runScript(MIGRATOR, database.url);
       expect(second.exitCode, second.output).toBe(0);
-      expect(second.output).toContain("pending migrations: 2");
+      // The first run paused before the drop, so the drop and everything the
+      // journal appends after the guarded pair are still pending.
+      const { dropIndex } = await usageQuotasBarrier();
+      expect(second.output).toMatch(await expectedPendingBanner(dropIndex));
+      expect(second.output).toContain(
+        "release barrier permits 0 safe pending migrations before 0282",
+      );
       expect(second.output).toContain(
         "release barrier paused before 0282_drop_unused_usage_quotas_table",
       );
@@ -1083,19 +1118,7 @@ describe.skipIf(!ENABLED)(
         "release barrier paused before 0282_drop_unused_usage_quotas_table",
       );
 
-      const entries = await journalEntries();
-      const dropIndex = entries.findIndex(
-        (entry) => entry.tag === "0282_drop_unused_usage_quotas_table",
-      );
-      const drop = entries[dropIndex];
-      const restore = entries[dropIndex + 1];
-      if (
-        !drop ||
-        restore?.tag !== "0282_01_restore_usage_quotas_compatibility"
-      ) {
-        throw new Error("Missing guarded usage-quotas migration pair");
-      }
-
+      const { dropIndex, drop, restore } = await usageQuotasBarrier();
       const dropSql = await readFile(
         path.join(MIGRATIONS_DIR, `${drop.tag}.sql`),
         "utf8",
@@ -1108,7 +1131,10 @@ describe.skipIf(!ENABLED)(
 
       const repaired = await runScript(MIGRATOR, database.url);
       expect(repaired.exitCode, repaired.output).toBe(0);
-      expect(repaired.output).toContain("pending migrations: 1");
+      // 0282 is ledgered, so the restore and every later migration are pending.
+      expect(repaired.output).toMatch(
+        await expectedPendingBanner(dropIndex + 1),
+      );
       expect(repaired.output).toContain(
         "applying 0282_01_restore_usage_quotas_compatibility",
       );
@@ -1168,7 +1194,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
 
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
@@ -1218,7 +1244,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
@@ -1232,7 +1258,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
@@ -1268,7 +1294,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
@@ -1292,7 +1318,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
 
       const remaining = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
@@ -1418,7 +1444,11 @@ describe.skipIf(!ENABLED)(
       const output = `${first.output}${second.output}`;
       expect(output).toContain("lock timeout on attempt");
       expect(output).toContain("migration lock busy on attempt");
-      expect(output).toContain("pending migrations: 2");
+      // Whichever migrator won the lock applied the safe prefix; the other then
+      // found the ledger already at 0281 with the guarded tail still pending.
+      const { dropIndex } = await usageQuotasBarrier();
+      expect(output).toMatch(await expectedPendingBanner());
+      expect(output).toMatch(await expectedPendingBanner(dropIndex));
       expect(output).toContain(
         "release barrier paused before 0282_drop_unused_usage_quotas_table",
       );

@@ -15,7 +15,8 @@ const migrations = [
   "0306_secure_remote_command_relay",
   "0307_twilio_outbound_call_audit",
   "0308_remove_conversation_token_default",
-  "0310_remote_host_managed_network",
+  "0310_personal_shared_inbound_media_admission",
+  "0311_remote_host_managed_network",
 ] as const;
 
 realPostgresTest(

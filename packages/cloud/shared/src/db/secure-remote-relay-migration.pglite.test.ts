@@ -116,7 +116,7 @@ describe("secure remote relay migrations", () => {
       const journal = JSON.parse(
         await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
       ) as { entries: Array<{ idx: number; tag: string; when: number }> };
-      const relayEntries = journal.entries.slice(-7);
+      const relayEntries = journal.entries.slice(-8);
       expect(relayEntries.map((entry) => entry.tag)).toEqual([
         "0304_personal_shared_group_delivery_lease",
         "0305_secure_remote_hosts",
@@ -124,10 +124,11 @@ describe("secure remote relay migrations", () => {
         "0307_twilio_outbound_call_audit",
         "0308_remove_conversation_token_default",
         "0309_retire_legacy_bluebubbles_gateways",
-        "0310_remote_host_managed_network",
+        "0310_personal_shared_inbound_media_admission",
+        "0311_remote_host_managed_network",
       ]);
       expect(relayEntries.map((entry) => entry.idx)).toEqual([
-        287, 288, 289, 290, 291, 292, 293,
+        287, 288, 289, 290, 291, 292, 293, 294,
       ]);
       for (let index = 1; index < relayEntries.length; index += 1) {
         expect(relayEntries[index]!.when).toBeGreaterThan(relayEntries[index - 1]!.when);

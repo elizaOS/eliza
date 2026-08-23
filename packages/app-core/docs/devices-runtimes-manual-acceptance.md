@@ -21,11 +21,12 @@ app, or native port 50001.
 1. Confirm the deployment source equals the draft-PR head and capture health,
    migration-tail, PostgreSQL backup/rollback marker, and service identifiers.
 2. Apply the complete locked migration chain; verify Devices migrations 0305,
-   0306, and 0310 plus upstream migrations 0307, 0308, and 0309 are each
-   present exactly once, and the controller, host, relay, start-fence,
-   managed-network, and cleanup constraints exist. Migration 0309 is the
-   upstream legacy-BlueBubbles retirement; 0310 is the Devices managed-network
-   migration. Do not renumber or collapse either entry during staging setup.
+   0306, and 0311 plus upstream migrations 0307 through 0310 are each present
+   exactly once, and the controller, host, relay, start-fence,
+   managed-network, and cleanup constraints exist. Upstream owns 0309 for
+   legacy-BlueBubbles retirement and 0310 for personal-shared inbound-media
+   admission; 0311 is the Devices managed-network migration. Do not renumber or
+   collapse any entry during staging setup.
 3. Create and clean up one Headscale pre-auth key and node. Exercise database-
    success/Headscale-failure, client-disconnect, missing-key/node, repeated
    revoke, and service-restart compensation. Confirm no secret key is stored.

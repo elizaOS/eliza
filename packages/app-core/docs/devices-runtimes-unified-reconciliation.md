@@ -38,10 +38,12 @@ invariants; the range-diff must not be misrepresented as blob identity.
   users; it is no longer developer-only.
 - Cloud migrations remain one contiguous suffix:
   `0305_secure_remote_hosts.sql`, `0306_secure_remote_command_relay.sql`, and
-  `0310_remote_host_managed_network.sql`. Upstream owns
+  `0311_remote_host_managed_network.sql`. Upstream owns
   `0307_twilio_outbound_call_audit.sql` and
-  `0308_remove_conversation_token_default.sql`; the unpublished c151 migration
-  block was not stacked or replayed under duplicate names.
+  `0308_remove_conversation_token_default.sql`,
+  `0309_retire_legacy_bluebubbles_gateways.sql`, and
+  `0310_personal_shared_inbound_media_admission.sql`; the unpublished c151
+  migration block was not stacked or replayed under duplicate names.
 - The merged secure pairing/session/relay model remains authoritative for
   device, owner, session, key, target, capability, expiry, replay, and durable
   start fencing.

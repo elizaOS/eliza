@@ -264,7 +264,11 @@ export function createPendingPromptsStore(
 
     return visible
       .slice()
-      .sort((a, b) => Date.parse(b.firedAt) - Date.parse(a.firedAt))
+      .sort((a, b) => {
+        const aTime = Number.isFinite(Date.parse(a.firedAt)) ? Date.parse(a.firedAt) : 0;
+        const bTime = Number.isFinite(Date.parse(b.firedAt)) ? Date.parse(b.firedAt) : 0;
+        return bTime - aTime;
+      })
       .map<PendingPrompt>((entry) => {
         const projected: PendingPrompt = {
           taskId: entry.taskId,
@@ -347,7 +351,11 @@ export function createPendingPromptsStore(
       );
       return perRoom
         .flat()
-        .sort((a, b) => Date.parse(b.firedAt) - Date.parse(a.firedAt));
+        .sort((a, b) => {
+          const aTime = Number.isFinite(Date.parse(a.firedAt)) ? Date.parse(a.firedAt) : 0;
+          const bTime = Number.isFinite(Date.parse(b.firedAt)) ? Date.parse(b.firedAt) : 0;
+          return bTime - aTime;
+        });
     },
 
     async resolve(roomId: string, taskId: string): Promise<void> {
