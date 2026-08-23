@@ -169,7 +169,7 @@ export function AccountList({ providerId }: AccountListProps) {
       </div>
 
       {sorted.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
+        <div className="border-y border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
           {t("accounts.empty", {
             defaultValue:
               "No accounts yet — add one to start using this provider.",

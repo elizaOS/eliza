@@ -132,7 +132,7 @@ export function ReleaseStatusSection({
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-sm border border-border bg-bg p-3">
+        <div className="p-3">
           <div className="text-xs font-semibold text-txt">
             {tr(t, "releasecenter.AppReleaseService", "App Release Service")}
           </div>
@@ -158,7 +158,7 @@ export function ReleaseStatusSection({
           />
         </div>
 
-        <div className="rounded-sm border border-border bg-bg p-3">
+        <div className="p-3">
           <div className="mb-3 text-xs font-semibold text-txt">
             {tr(
               t,
@@ -194,7 +194,7 @@ export function ReleaseStatusSection({
             })}
           />
           {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason ? (
-            <div className="mt-3 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+            <div className="mt-3 border-l-2 border-warning/60 bg-warning/10 px-3 py-2 text-xs text-warning">
               {nativeUpdater.autoUpdateDisabledReason}
             </div>
           ) : null}
@@ -303,7 +303,7 @@ export function ReleaseNotesSection({
         </div>
 
         {releaseNotesWindow ? (
-          <div className="rounded-sm border border-border bg-bg p-3 text-xs text-txt">
+          <div className="border-y border-border py-3 text-xs text-txt">
             <DefinitionRow
               label={tr(t, "releasecenter.WindowId", "Window ID")}
               value={releaseNotesWindow.windowId}
@@ -318,7 +318,7 @@ export function ReleaseNotesSection({
             />
           </div>
         ) : (
-          <div className="rounded-sm border border-border bg-bg p-3 text-xs text-muted">
+          <div className="border-y border-border py-3 text-xs text-muted">
             {tr(t, "releasecenter.UsingUpdaterUrl", "Using updater URL:")}{" "}
             {nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl}
           </div>
@@ -364,7 +364,7 @@ export function BuildRuntimeSection({
         </p>
       </div>
 
-      <div className="rounded-sm border border-border bg-bg p-3">
+      <div className="border-y border-border py-3">
         <DefinitionRow
           label={tr(t, "releasecenter.Platform", "Platform")}
           value={buildInfo?.platform}
@@ -461,7 +461,7 @@ export function SessionControlsSection({
           return (
             <div
               key={partition}
-              className="rounded-sm border border-border bg-bg p-3"
+              className="border-b border-border py-3 last:border-b-0"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -586,7 +586,7 @@ export function WgpuSurfaceSection({
               })}
             </div>
           ) : (
-            <div className="rounded-sm border border-dashed border-border px-4 py-12 text-center text-sm text-muted">
+            <div className="border-y border-dashed border-border px-4 py-12 text-center text-sm text-muted">
               {tr(
                 t,
                 "releasecenter.WgpuCustomElementUnavailable",
@@ -632,7 +632,7 @@ export function WgpuSurfaceSection({
           </div>
         </div>
 
-        <div className="rounded-sm border border-border bg-bg p-3">
+        <div className="border-y border-border py-3">
           <div className="mb-3 text-xs font-semibold text-txt">
             {tr(
               t,
@@ -674,7 +674,7 @@ export function WgpuSurfaceSection({
               tr(t, "releasecenter.NotDetected", "Not detected")
             }
           />
-          <div className="mt-3 rounded-sm border border-border bg-bg-accent px-3 py-2 text-xs text-muted">
+          <div className="mt-3 border-l-2 border-border bg-bg-accent px-3 py-2 text-xs text-muted">
             {webGpuStatus?.reason ??
               tr(
                 t,

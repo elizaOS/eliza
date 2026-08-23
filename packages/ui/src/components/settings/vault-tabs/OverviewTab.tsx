@@ -833,7 +833,7 @@ export function InstallSheet({
       )}
 
       {done && !error && (
-        <div className="flex items-center justify-between gap-2 rounded-sm border border-ok/30 bg-ok/10 px-2 py-1.5 text-xs text-ok">
+        <div className="flex items-center justify-between gap-2 border-l-2 border-ok/50 bg-ok/10 px-2 py-1.5 text-xs text-ok">
           <span className="flex items-center gap-1.5">
             <CheckCircle2 className="size-3.5" aria-hidden />
             {t("vault.install.complete", { defaultValue: "Install complete." })}
@@ -852,7 +852,7 @@ export function InstallSheet({
       )}
 
       {error && (
-        <div className="rounded-sm border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="border-l-2 border-danger/60 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}
@@ -1215,7 +1215,7 @@ export function SigninSheet({
       </div>
 
       {error && (
-        <div className="rounded-sm border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="border-l-2 border-danger/60 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}
