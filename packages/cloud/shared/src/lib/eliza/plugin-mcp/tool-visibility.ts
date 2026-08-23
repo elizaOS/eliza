@@ -137,14 +137,23 @@ export function isCrucialTool(serverName: string, toolName: string): boolean {
  * Returns the list of crucial tool names for a given server.
  */
 export function getCrucialToolsForServer(serverName: string): string[] {
-  return CRUCIAL_TOOLS[serverName.toLowerCase()] ?? [];
+  // Copy, not the live array: `CRUCIAL_TOOLS` is module state and the crucial
+  // action-name set is built once and cached, so one `push` by a caller would
+  // permanently change which tools every agent sees in its prompt — and do it
+  // inconsistently, because the cached set is not rebuilt.
+  return [...(CRUCIAL_TOOLS[serverName.toLowerCase()] ?? [])];
 }
 
 /**
  * Returns a copy of all crucial tools configuration.
  */
 export function getAllCrucialTools(): Record<string, string[]> {
-  return { ...CRUCIAL_TOOLS };
+  // A spread copies only the outer record; every tool list would still be the
+  // live array. Copy each one so the documented "copy" actually isolates the
+  // caller from the module's configuration.
+  return Object.fromEntries(
+    Object.entries(CRUCIAL_TOOLS).map(([server, tools]) => [server, [...tools]]),
+  );
 }
 
 /** Raw DoorDash tools stay callable by its facade but are never agent actions. */
