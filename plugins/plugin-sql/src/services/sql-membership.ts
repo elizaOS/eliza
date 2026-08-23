@@ -24,6 +24,7 @@ import {
   MembershipService,
   type MembershipSnapshotMember,
   type RegisterMembershipPublisherCommand,
+  type ReportIncompleteMembershipSnapshotCommand,
   type Service,
   type SetMembershipHealthCommand,
   type UUID,
@@ -159,6 +160,18 @@ function mapScope(row: ScopeRow): MembershipScopeHealth {
     !MEMBERSHIP_EVIDENCE_MODES.includes(row.evidenceMode as MembershipEvidenceMode)
   )
     fail("MEMBERSHIP_PERSISTED_STATE_INVALID", "Persisted evidence mode is invalid.");
+  if (
+    row.health === "current" &&
+    (row.validUntil === null ||
+      row.validUntil <= row.observedAt ||
+      row.validUntil.getTime() - row.observedAt.getTime() > MAX_VALIDITY_MS ||
+      row.publisherInstanceId === null ||
+      row.publisherGeneration === null ||
+      row.evidenceMode === null ||
+      row.sourceVersion < 0 ||
+      row.sourceCursor === null)
+  )
+    fail("MEMBERSHIP_PERSISTED_STATE_INVALID", "Persisted current scope is not authoritative.");
   return {
     contractVersion: 1,
     agentId: row.agentId as UUID,
@@ -185,7 +198,8 @@ function mapMember(row: MembershipRow): MembershipRecord {
     !MEMBERSHIP_REASONS.includes(row.reason as MembershipRecord["reason"]) ||
     !MEMBERSHIP_EVIDENCE_MODES.includes(row.evidenceMode as MembershipEvidenceMode) ||
     (row.state === "active") !== ACTIVE_REASONS.has(row.reason) ||
-    row.validUntil <= row.observedAt
+    row.validUntil <= row.observedAt ||
+    row.validUntil.getTime() - row.observedAt.getTime() > MAX_VALIDITY_MS
   )
     fail("MEMBERSHIP_PERSISTED_STATE_INVALID", "Persisted membership enum is invalid.");
   assertRoles(row.roles);
@@ -365,10 +379,13 @@ export class SqlMembershipService extends MembershipService {
     if (typeof command.validUntil !== "string")
       fail("MEMBERSHIP_COMMAND_INVALID", "Evidence validity must be a string.");
     const validUntil = new Date(command.validUntil);
+    const now = this.clock().getTime();
     if (
       !Number.isFinite(validUntil.getTime()) ||
       validUntil <= observed ||
-      validUntil.getTime() > this.clock().getTime() + MAX_VALIDITY_MS
+      validUntil.getTime() <= now ||
+      validUntil.getTime() > now + MAX_VALIDITY_MS ||
+      validUntil.getTime() - observed.getTime() > MAX_VALIDITY_MS
     )
       fail("MEMBERSHIP_COMMAND_INVALID", "Evidence validity is invalid.");
     return validUntil;
@@ -887,6 +904,88 @@ export class SqlMembershipService extends MembershipService {
     return receipt;
   }
 
+  async reportIncompleteSnapshot(
+    command: ReportIncompleteMembershipSnapshotCommand
+  ): Promise<MembershipMutationReceipt> {
+    const observed = this.assertBase(command, [
+      "agentId",
+      "connectorId",
+      "connectorAccountId",
+      "externalWorldId",
+      "externalRoomId",
+      "expectedGeneration",
+      "idempotencyKey",
+      "observedAt",
+      "publisherInstanceId",
+      "publisherGeneration",
+      "evidenceMode",
+      "completeness",
+      "reason",
+    ]);
+    this.assertPublisher(command);
+    if (
+      command.completeness !== "incomplete" ||
+      !["complete_snapshot", "ordered_delta"].includes(command.evidenceMode) ||
+      typeof command.reason !== "string" ||
+      command.reason.trim().length === 0 ||
+      command.reason.length > MAX_IDENTIFIER_LENGTH
+    )
+      fail(
+        "MEMBERSHIP_COMMAND_INVALID",
+        "Incomplete snapshot reports require a snapshot-capable publisher and reason."
+      );
+    const requestDigest = digest("health", command);
+    const receipt = await this.db.transaction(async (tx) => {
+      const replay = await this.replay(tx, command, requestDigest);
+      if (replay) return replay;
+      await this.assertAccount(tx, command);
+      const current = await this.row(tx, command);
+      if (current.generation !== command.expectedGeneration) {
+        const concurrentReplay = await this.replay(tx, command, requestDigest);
+        if (concurrentReplay) return concurrentReplay;
+        fail("MEMBERSHIP_GENERATION_MISMATCH", "Membership scope generation changed.");
+      }
+      if (
+        current.publisherInstanceId !== command.publisherInstanceId ||
+        current.publisherGeneration !== command.publisherGeneration ||
+        current.evidenceMode !== command.evidenceMode
+      )
+        fail(
+          "MEMBERSHIP_PUBLISHER_MISMATCH",
+          "Incomplete snapshot does not match the registered publisher generation and mode."
+        );
+      const [advanced] = await tx
+        .update(membershipAuthorityScopeTable)
+        .set({
+          generation: current.generation + 1,
+          health: "stale",
+          reason: command.reason,
+          observedAt: observed,
+          updatedAt: this.clock(),
+        })
+        .where(
+          and(scopeWhere(command), eq(membershipAuthorityScopeTable.generation, current.generation))
+        )
+        .returning();
+      if (!advanced) {
+        const concurrentReplay = await this.replay(tx, command, requestDigest);
+        if (concurrentReplay) return concurrentReplay;
+        fail("MEMBERSHIP_GENERATION_MISMATCH", "Concurrent membership command committed first.");
+      }
+      const result: MembershipMutationReceipt = {
+        contractVersion: 1,
+        operation: "health",
+        idempotentReplay: false,
+        committedGeneration: advanced.generation,
+        health: mapScope(advanced),
+      };
+      await this.record(tx, "health", command, requestDigest, result);
+      return result;
+    });
+    if (!receipt.idempotentReplay) await this.publish(command, receipt);
+    return receipt;
+  }
+
   async applyMembership(command: ApplyMembershipCommand): Promise<MembershipMutationReceipt> {
     const observed = this.assertBase(command, [
       "agentId",
@@ -1045,9 +1144,35 @@ export class SqlMembershipService extends MembershipService {
     canonicalPrincipalId: UUID
   ): Promise<MembershipAuthorizationDecision> {
     this.assertScope(scope);
-    const health = await this.getScopeHealth(scope);
-    if (!health)
+    assertUuid(canonicalPrincipalId, "canonicalPrincipalId");
+    const [authority] = await this.db
+      .select({
+        scope: membershipAuthorityScopeTable,
+        membership: membershipAuthorityTable,
+      })
+      .from(membershipAuthorityScopeTable)
+      .leftJoin(
+        membershipAuthorityTable,
+        and(
+          eq(membershipAuthorityTable.agentId, membershipAuthorityScopeTable.agentId),
+          eq(membershipAuthorityTable.connectorId, membershipAuthorityScopeTable.connectorId),
+          eq(
+            membershipAuthorityTable.connectorAccountId,
+            membershipAuthorityScopeTable.connectorAccountId
+          ),
+          eq(
+            membershipAuthorityTable.externalWorldId,
+            membershipAuthorityScopeTable.externalWorldId
+          ),
+          eq(membershipAuthorityTable.externalRoomId, membershipAuthorityScopeTable.externalRoomId),
+          eq(membershipAuthorityTable.canonicalPrincipalId, canonicalPrincipalId)
+        )
+      )
+      .where(scopeWhere(scope))
+      .limit(1);
+    if (!authority)
       return { decision: "denied", reason: "no_scope_evidence", generation: null, health: null };
+    const health = mapScope(authority.scope);
     if (health.health !== "current")
       return {
         decision: "denied",
@@ -1063,7 +1188,7 @@ export class SqlMembershipService extends MembershipService {
         generation: health.generation,
         health: "current",
       };
-    const membership = await this.getMembership(scope, canonicalPrincipalId);
+    const membership = authority.membership ? mapMember(authority.membership) : null;
     if (!membership)
       return {
         decision: "denied",
@@ -1075,6 +1200,17 @@ export class SqlMembershipService extends MembershipService {
       return {
         decision: "denied",
         reason: "membership_revoked",
+        generation: health.generation,
+        health: "current",
+      };
+    if (
+      membership.publisherInstanceId !== health.publisherInstanceId ||
+      membership.publisherGeneration !== health.publisherGeneration ||
+      membership.evidenceMode !== health.evidenceMode
+    )
+      return {
+        decision: "denied",
+        reason: "membership_evidence_mismatch",
         generation: health.generation,
         health: "current",
       };

@@ -687,7 +687,10 @@ async function searchMemoryNotes(
 
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return b.createdAt - a.createdAt;
+    const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+    const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return a.id.localeCompare(b.id);
   });
   return hits.slice(0, limit);
 }

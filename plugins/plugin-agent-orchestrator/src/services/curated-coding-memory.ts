@@ -106,7 +106,11 @@ function latestWorkdir(doc: OrchestratorTaskDocument): string | undefined {
   return (
     doc.task.boundWorkdir ??
     [...doc.sessions]
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      .sort(
+        (a, b) =>
+          (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+          (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+      )
       .find((session) => session.workdir)?.workdir
   );
 }
@@ -335,7 +339,7 @@ function extractCandidateText(message: OrchestratorTaskMessage): Array<{
     return [];
   }
   const out: Array<{ source: CodingMemorySource; text: string }> = [];
-  for (const line of message.content.split(/\r?\n/)) {
+  for (const line of (message.content ?? "").split(/\r?\n/)) {
     for (const candidate of CANDIDATE_PATTERNS) {
       // A worker cannot declare a user decision or reviewer finding on
       // someone else's behalf. Reviewer findings must arrive through a user or
@@ -388,7 +392,11 @@ export function harvestCodingMemoryCandidates(
       (message) =>
         message.senderKind === "sub_agent" && message.direction === "stdout",
     )
-    .sort((a, b) => b.timestamp - a.timestamp)[0]?.id;
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.timestamp) ? b.timestamp : 0) -
+        (Number.isFinite(a.timestamp) ? a.timestamp : 0),
+    )[0]?.id;
   const candidates = doc.messages.flatMap((message) =>
     extractCandidateText(message).filter((candidate) => {
       const workerCompletionOnly =

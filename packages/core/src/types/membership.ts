@@ -111,6 +111,13 @@ export interface ApplyCompleteMembershipSnapshotCommand
 	completeness: "complete";
 	members: readonly MembershipSnapshotMember[];
 }
+export interface ReportIncompleteMembershipSnapshotCommand
+	extends MembershipCommandBase,
+		MembershipPublisherBinding {
+	evidenceMode: "complete_snapshot" | "ordered_delta";
+	completeness: "incomplete";
+	reason: string;
+}
 export interface ApplyMembershipCommand extends MembershipEvidenceCommand {
 	evidenceMode: "ordered_delta" | "point_query";
 	canonicalPrincipalId: UUID;
@@ -177,6 +184,7 @@ export type MembershipAuthorizationDecision =
 				| "authority_unsupported"
 				| "authority_expired"
 				| "membership_evidence_expired"
+				| "membership_evidence_mismatch"
 				| "no_membership"
 				| "membership_revoked";
 			generation: number | null;
@@ -193,6 +201,9 @@ export abstract class MembershipService extends Service {
 	): Promise<MembershipMutationReceipt>;
 	abstract applyCompleteSnapshot(
 		command: ApplyCompleteMembershipSnapshotCommand,
+	): Promise<MembershipMutationReceipt>;
+	abstract reportIncompleteSnapshot(
+		command: ReportIncompleteMembershipSnapshotCommand,
 	): Promise<MembershipMutationReceipt>;
 	abstract applyMembership(
 		command: ApplyMembershipCommand,

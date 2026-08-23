@@ -54,7 +54,7 @@ export default scenario({
   ],
   isolation: "shared-runtime",
   requires: {
-    plugins: [ORCHESTRATOR_SCENARIO_PLUGIN_NAME],
+    fixturePlugins: [ORCHESTRATOR_SCENARIO_PLUGIN_NAME],
   },
   seed: [
     {

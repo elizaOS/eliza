@@ -1,6 +1,6 @@
 /** Verifies indexed pending-prompt rooms retire when empty while live room behavior remains stable, using a deterministic serialized cache double. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createPendingPromptsStore } from "./store.ts";
 
 const ROOM_INDEX_KEY = "eliza:lifeops:pending-prompts:rooms:v1";
@@ -54,6 +54,16 @@ function makeCache(): CacheDouble {
 }
 
 const firedAt = "2026-08-22T00:00:00.000Z";
+const testNow = new Date("2026-08-22T12:00:00.000Z");
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(testNow);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("pending-prompts room index", () => {
   test("500 recorded-then-resolved rooms leave an empty index and no cache rows", async () => {

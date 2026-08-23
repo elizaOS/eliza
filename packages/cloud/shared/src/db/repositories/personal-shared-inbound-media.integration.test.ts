@@ -26,6 +26,8 @@ let closeDatabaseConnectionsForTests:
   | undefined;
 let getPgliteClientForTests: typeof import("../client").getPgliteClientForTests;
 let repository: typeof import("./personal-shared-inbound-media").personalSharedInboundMediaRepository;
+let PersonalSharedInboundMediaRepository: typeof import("./personal-shared-inbound-media").PersonalSharedInboundMediaRepository;
+let dbWrite: typeof import("../helpers").dbWrite;
 let INBOUND_MEDIA_DESCRIPTION_LEASE_MS: number;
 
 function admission(
@@ -60,11 +62,13 @@ async function ledgerRow(sourceMessageId: string) {
     attempt_count: number;
     claim_token: string;
     media_digest: string;
+    image_count: number;
     organization_id: string;
+    user_id: string;
     completed_at: string | null;
   }>(
     `SELECT state, description, failure_reason, attempt_count, claim_token,
-       media_digest, organization_id, completed_at
+       media_digest, image_count, organization_id, user_id, completed_at
      FROM personal_shared_inbound_media_descriptions
      WHERE source_message_id = $1`,
     [sourceMessageId],
@@ -86,8 +90,12 @@ async function quotaRows() {
 
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import("../client"));
-  ({ personalSharedInboundMediaRepository: repository, INBOUND_MEDIA_DESCRIPTION_LEASE_MS } =
-    await import("./personal-shared-inbound-media"));
+  ({
+    personalSharedInboundMediaRepository: repository,
+    PersonalSharedInboundMediaRepository,
+    INBOUND_MEDIA_DESCRIPTION_LEASE_MS,
+  } = await import("./personal-shared-inbound-media"));
+  ({ dbWrite } = await import("../helpers"));
   const database = getPgliteClientForTests();
   await database.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY);
@@ -187,6 +195,111 @@ describe("personalSharedInboundMediaRepository admission ledger", () => {
     expect((await quotaRows()).map(({ image_count }) => image_count)).toEqual([1, 1]);
   });
 
+  test("tenant and user identity stay immutable across pending, described, and failed rows", async () => {
+    const pending = await claimOf("msg-identity-pending");
+    const described = await claimOf("msg-identity-described");
+    const failed = await claimOf("msg-identity-failed");
+    const expired = await claimOf("msg-identity-expired");
+    expect(await repository.complete(described, "private visible text")).toBe(true);
+    expect(await repository.fail(failed, "media_fetch_failed")).toBe(true);
+    await getPgliteClientForTests().query(
+      `UPDATE personal_shared_inbound_media_descriptions
+       SET lease_expires_at = now() - interval '1 second'
+       WHERE source_message_id = $1`,
+      ["msg-identity-expired"],
+    );
+
+    expect(
+      await admission({
+        sourceMessageId: "msg-identity-pending",
+        userId: USER_B,
+      }),
+    ).toEqual({ kind: "identity_mismatch" });
+    expect(
+      await admission({
+        sourceMessageId: "msg-identity-described",
+        organizationId: ORG_B,
+        userId: USER_B,
+      }),
+    ).toEqual({ kind: "identity_mismatch" });
+    expect(
+      await admission({
+        sourceMessageId: "msg-identity-failed",
+        organizationId: ORG_B,
+        userId: USER_B,
+      }),
+    ).toEqual({ kind: "identity_mismatch" });
+    expect(
+      await admission({
+        sourceMessageId: "msg-identity-expired",
+        organizationId: ORG_B,
+        userId: USER_B,
+      }),
+    ).toEqual({ kind: "identity_mismatch" });
+
+    for (const [sourceMessageId, claim] of [
+      ["msg-identity-pending", pending],
+      ["msg-identity-described", described],
+      ["msg-identity-failed", failed],
+      ["msg-identity-expired", expired],
+    ] as const) {
+      expect(await ledgerRow(sourceMessageId)).toMatchObject({
+        organization_id: ORG_A,
+        user_id: USER_A,
+        media_digest: DIGEST_A,
+        image_count: 1,
+        claim_token: claim.claimToken,
+        attempt_count: 1,
+      });
+    }
+    // Four original claims spent once; the mismatched replays spent nothing.
+    expect((await quotaRows()).map(({ image_count }) => image_count)).toEqual([4, 4]);
+  });
+
+  test("payload identity is checked before every state decision and expired reclaim", async () => {
+    const pending = await claimOf("msg-payload-pending");
+    const described = await claimOf("msg-payload-described");
+    const failed = await claimOf("msg-payload-failed");
+    const expired = await claimOf("msg-payload-expired");
+    expect(await repository.complete(described, "stored description")).toBe(true);
+    expect(await repository.fail(failed, "media_fetch_failed")).toBe(true);
+    await getPgliteClientForTests().query(
+      `UPDATE personal_shared_inbound_media_descriptions
+       SET lease_expires_at = now() - interval '1 second'
+       WHERE source_message_id = $1`,
+      ["msg-payload-expired"],
+    );
+
+    for (const sourceMessageId of [
+      "msg-payload-pending",
+      "msg-payload-described",
+      "msg-payload-failed",
+      "msg-payload-expired",
+    ]) {
+      expect(await admission({ sourceMessageId, mediaDigest: DIGEST_B })).toEqual({
+        kind: "media_mismatch",
+      });
+    }
+    expect(await admission({ sourceMessageId: "msg-payload-pending", imageCount: 2 })).toEqual({
+      kind: "media_mismatch",
+    });
+
+    for (const [sourceMessageId, claim] of [
+      ["msg-payload-pending", pending],
+      ["msg-payload-described", described],
+      ["msg-payload-failed", failed],
+      ["msg-payload-expired", expired],
+    ] as const) {
+      expect(await ledgerRow(sourceMessageId)).toMatchObject({
+        media_digest: DIGEST_A,
+        image_count: 1,
+        claim_token: claim.claimToken,
+        attempt_count: 1,
+      });
+    }
+    expect((await quotaRows()).map(({ image_count }) => image_count)).toEqual([4, 4]);
+  });
+
   test("settlement is fenced to the live claim token and pending state", async () => {
     const claim = await claimOf("msg-5");
     const stale = { ...claim, claimToken: "00000000-0000-4000-8000-0000000000ff" };
@@ -211,20 +324,22 @@ describe("personalSharedInboundMediaRepository admission ledger", () => {
       ["msg-6"],
     );
 
-    const reclaimed = await claimOf("msg-6", { organizationId: ORG_B, userId: USER_B });
+    const reclaimed = await claimOf("msg-6");
     expect(reclaimed.id).toBe(dead.id);
     expect(reclaimed.attempt).toBe(2);
     expect(reclaimed.claimToken).not.toBe(dead.claimToken);
     expect(await ledgerRow("msg-6")).toMatchObject({
       state: "pending",
       attempt_count: 2,
-      organization_id: ORG_B,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      media_digest: DIGEST_A,
+      image_count: 1,
     });
     // The reclaim is a new attempt and pays the ceilings again.
     expect(await quotaRows()).toEqual([
       { scope: "connector", scope_key: `blooio:eliza-app:${CONNECTOR_ID}`, image_count: 2 },
-      { scope: "sender", scope_key: ORG_A, image_count: 1 },
-      { scope: "sender", scope_key: ORG_B, image_count: 1 },
+      { scope: "sender", scope_key: ORG_A, image_count: 2 },
     ]);
 
     // The dead claimant's late settlement is rejected; the live one lands.
@@ -238,6 +353,65 @@ describe("personalSharedInboundMediaRepository admission ledger", () => {
 
   test("the lease horizon outlives the gateway media-turn budget", () => {
     expect(INBOUND_MEDIA_DESCRIPTION_LEASE_MS).toBeGreaterThan(90_000);
+  });
+
+  test("renews the committed lease from the clock after quota contention", async () => {
+    const startedAt = new Date("2026-08-23T12:00:00.000Z");
+    const afterQuotaLocks = new Date(
+      startedAt.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS + 30_000,
+    );
+    const clocks = [startedAt, afterQuotaLocks];
+    const timedRepository = new PersonalSharedInboundMediaRepository(dbWrite, async () => {
+      const next = clocks.shift();
+      if (!next) throw new Error("unexpected database clock read");
+      return next;
+    });
+
+    const result = await timedRepository.admit({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      sourceMessageId: "msg-delayed-quota",
+      organizationId: ORG_A,
+      userId: USER_A,
+      mediaDigest: DIGEST_A,
+      imageCount: 1,
+      ceilings: CEILINGS,
+    });
+    expect(result.kind).toBe("claimed");
+    const { rows } = await getPgliteClientForTests().query<{ lease_expires_at: string }>(
+      `SELECT lease_expires_at FROM personal_shared_inbound_media_descriptions
+       WHERE source_message_id = $1`,
+      ["msg-delayed-quota"],
+    );
+    expect(new Date(rows[0]!.lease_expires_at).getTime()).toBe(
+      afterQuotaLocks.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS,
+    );
+  });
+
+  test("fails closed and rolls back when quota admission crosses a UTC day", async () => {
+    const clocks = [new Date("2026-08-23T23:59:59.999Z"), new Date("2026-08-24T00:00:00.001Z")];
+    const timedRepository = new PersonalSharedInboundMediaRepository(dbWrite, async () => {
+      const next = clocks.shift();
+      if (!next) throw new Error("unexpected database clock read");
+      return next;
+    });
+
+    await expect(
+      timedRepository.admit({
+        platform: "blooio",
+        project: "eliza-app",
+        connectorAccountId: CONNECTOR_ID,
+        sourceMessageId: "msg-utc-rollover",
+        organizationId: ORG_A,
+        userId: USER_A,
+        mediaDigest: DIGEST_A,
+        imageCount: 1,
+        ceilings: CEILINGS,
+      }),
+    ).rejects.toMatchObject({ code: "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE" });
+    expect(await ledgerRow("msg-utc-rollover")).toBeUndefined();
+    expect(await quotaRows()).toEqual([]);
   });
 
   test("an exhausted sender ceiling denies the claim and rolls the ledger back", async () => {

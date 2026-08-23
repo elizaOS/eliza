@@ -1,15 +1,16 @@
 /**
  * Tests declared production-plugin resolution and pre-initialization runtime
- * registration, including the fixture-name skip the runtime factory and the
- * executor share. Real package imports against a fake runtime.
+ * registration and the explicit package-versus-seed-fixture declaration.
+ * Real package imports against a fake runtime.
  */
 
-import type { AgentRuntime, Plugin } from "@elizaos/core";
+import { type AgentRuntime, ElizaError, type Plugin } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertScenarioPluginPackageSpecifier,
   assertSharedRuntimePluginBatchSafe,
-  isResolvablePluginPackage,
   registerScenarioRequiredPlugins,
+  resolveRequiredFixturePlugins,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 
@@ -38,12 +39,7 @@ describe("scenario required plugin registration", () => {
     );
   });
 
-  // Scenario-local fixture plugins (packages/test/scenarios/convo/*.scenario.ts
-  // declare "echo-test" and "greet-test"; the orchestrator scenarios declare
-  // "orchestrator-*-scenario") exist only once the scenario's seed runs, so
-  // importing them at factory time aborted the whole batch before any
-  // scenario executed.
-  it("skips scenario-local fixture plugin names instead of importing them", async () => {
+  it("keeps package import specifiers separate from seed fixture names", async () => {
     const scenario = {
       id: "fixture-plugin",
       title: "fixture plugin",
@@ -51,10 +47,12 @@ describe("scenario required plugin registration", () => {
       turns: [],
       requires: {
         plugins: [
-          "echo-test",
-          "orchestrator-watchdog-scenario",
+          "unscoped-plugin",
           "@elizaos/plugin-maps",
+          "@elizaos/plugin-meetings/test-support",
+          "unscoped-plugin/test-support",
         ],
+        fixturePlugins: ["echo-test", "orchestrator-watchdog-scenario"],
       },
     } as const;
     const plugins: Plugin[] = [];
@@ -66,15 +64,57 @@ describe("scenario required plugin registration", () => {
       "plugins" | "registerPlugin"
     >;
 
+    expect(resolveRequiredPluginPackages(scenario)).toEqual([
+      "unscoped-plugin",
+      "@elizaos/plugin-maps",
+      "@elizaos/plugin-meetings/test-support",
+      "unscoped-plugin/test-support",
+    ]);
+    expect(resolveRequiredFixturePlugins(scenario)).toEqual([
+      "echo-test",
+      "orchestrator-watchdog-scenario",
+    ]);
     await expect(
       registerScenarioRequiredPlugins(
         runtime,
-        resolveRequiredPluginPackages(scenario),
+        ["@elizaos/plugin-maps"],
         "simulated",
       ),
     ).resolves.toEqual(["@elizaos/plugin-maps"]);
     expect(registerPlugin).toHaveBeenCalledOnce();
     expect(plugins.map((plugin) => plugin.name)).toEqual(["maps"]);
+  });
+
+  it.each([
+    "./scenario-plugin.ts",
+    "../scenario-plugin.ts",
+    "/tmp/scenario-plugin.mjs",
+    "file:///tmp/scenario-plugin.mjs",
+    "workspace:@example/scenario-plugin",
+  ])("typed-rejects unsupported package specifier %s", (packageName) => {
+    expect(() => assertScenarioPluginPackageSpecifier(packageName)).toThrow(
+      ElizaError,
+    );
+    try {
+      assertScenarioPluginPackageSpecifier(packageName);
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "SCENARIO_PLUGIN_PACKAGE_SPECIFIER_INVALID",
+        context: { packageName },
+      });
+    }
+  });
+
+  it.each([
+    "unscoped-plugin",
+    "unscoped-plugin/test-support",
+    "@example/plugin",
+    "@example/plugin/test-support",
+    "@example/plugin/exports/feature+node",
+  ])("accepts portable npm package specifier %s", (packageName) => {
+    expect(() =>
+      assertScenarioPluginPackageSpecifier(packageName),
+    ).not.toThrow();
   });
 
   it("still fails clearly on a genuinely missing package plugin", async () => {
@@ -94,16 +134,54 @@ describe("scenario required plugin registration", () => {
     expect(registerPlugin).not.toHaveBeenCalled();
   });
 
-  it("classifies declared names the same way the executor guard does", () => {
-    expect(isResolvablePluginPackage("@elizaos/plugin-maps")).toBe(true);
-    expect(
-      isResolvablePluginPackage("@elizaos/plugin-meetings/test-support"),
-    ).toBe(true);
-    expect(isResolvablePluginPackage("echo-test")).toBe(false);
-    expect(isResolvablePluginPackage("greet-test")).toBe(false);
-    expect(
-      isResolvablePluginPackage("orchestrator-completion-residuals-scenario"),
-    ).toBe(false);
+  it("attempts unscoped package imports instead of silently treating them as fixtures", async () => {
+    const registerPlugin = vi.fn(async (_plugin: Plugin) => undefined);
+    const runtime = { plugins: [], registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    await expect(
+      registerScenarioRequiredPlugins(
+        runtime,
+        ["unscoped-plugin-does-not-exist"],
+        "simulated",
+      ),
+    ).rejects.toThrow(/unscoped-plugin-does-not-exist/u);
+    expect(registerPlugin).not.toHaveBeenCalled();
+  });
+
+  it("resolves installed unscoped packages before validating their Plugin export", async () => {
+    const registerPlugin = vi.fn(async (_plugin: Plugin) => undefined);
+    const runtime = { plugins: [], registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    await expect(
+      registerScenarioRequiredPlugins(runtime, ["ws"], "simulated"),
+    ).rejects.toThrow(/ws did not export a Plugin/u);
+    expect(registerPlugin).not.toHaveBeenCalled();
+  });
+
+  it("loads an exported package subpath", async () => {
+    const plugins: Plugin[] = [];
+    const registerPlugin = vi.fn(async (plugin: Plugin) => {
+      plugins.push(plugin);
+    });
+    const runtime = { plugins, registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    await expect(
+      registerScenarioRequiredPlugins(
+        runtime,
+        ["@elizaos/plugin-maps/plugin"],
+        "simulated",
+      ),
+    ).resolves.toEqual(["@elizaos/plugin-maps/plugin"]);
+    expect(plugins.map((plugin) => plugin.name)).toEqual(["maps"]);
   });
 
   it("does not register an already-present declared plugin twice", async () => {

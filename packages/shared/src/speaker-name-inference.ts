@@ -257,7 +257,7 @@ function groupCandidates(
       return (
         bScore - aScore ||
         bConf - aConf ||
-        a.candidateName.localeCompare(b.candidateName)
+        a.normalizedName.localeCompare(b.normalizedName)
       );
     });
 }

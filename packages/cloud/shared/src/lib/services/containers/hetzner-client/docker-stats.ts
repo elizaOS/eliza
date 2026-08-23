@@ -6,6 +6,7 @@
  * and binary (KiB, MiB) suffixes that Docker emits.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { type ContainerMetricsSnapshot, HetznerClientError } from "./types";
 
 /** Parse the output of `docker stats --no-stream --format ...`. */
@@ -15,7 +16,7 @@ export function parseDockerStats(raw: string): ContainerMetricsSnapshot {
   if (!cpuPerc || !memUsage || !netIo || !blockIo) {
     throw new HetznerClientError(
       "invalid_input",
-      `Failed to parse docker stats output: ${raw.slice(0, 200)}`,
+      `Failed to parse docker stats output: ${truncateWellFormed(toWellFormedUnicode(raw), 200)}`,
     );
   }
 
