@@ -576,21 +576,44 @@ async function doDeleteByQuery(
   const scopeEntityId = message.entityId ?? entityParam.id;
 
   const limit = clampLimit(params.limit, 50);
-  const scan = await collectCandidates(runtime, {
+  const strongMatches = (scan: Awaited<ReturnType<typeof collectCandidates>>) =>
+    // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
+    // the whole phrase matched or every query term matched.
+    scan.matches.filter((c) => {
+      const text =
+        (c.memory.content as { text?: string } | undefined)?.text ?? "";
+      return scoreText(text, query) >= 1;
+    });
+
+  let scan = await collectCandidates(runtime, {
     type,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
     limit,
   });
+  let matched = strongMatches(scan);
+  let widenedNote = "";
 
-  // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
-  // the whole phrase matched or every query term matched.
-  const matched = scan.matches.filter((c) => {
-    const text =
-      (c.memory.content as { text?: string } | undefined)?.text ?? "";
-    return scoreText(text, query) >= 1;
-  });
+  // The table is an implementation detail the caller routinely guesses wrong
+  // (live 2026-08-23: "forget my dog's name" arrived as type=memories while
+  // the record was a FACT row, and the miss read back as "no record exists" —
+  // a broken forget). When a type-scoped scan finds nothing, rescan every
+  // table before failing; the strong match bar, confirm gate, and
+  // distinct-text ambiguity guard below still bound what can be deleted, and
+  // the widening is disclosed in the result.
+  if (matched.length === 0 && type) {
+    scan = await collectCandidates(runtime, {
+      entityId: scopeEntityId,
+      roomId: roomParam.id,
+      query,
+      limit,
+    });
+    matched = strongMatches(scan);
+    if (matched.length > 0) {
+      widenedNote = ` (no match in the requested "${type}" table; found in ${matched[0]?.type}).`;
+    }
+  }
 
   if (matched.length === 0) {
     return fail(
@@ -635,7 +658,7 @@ async function doDeleteByQuery(
     text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${truncateWellFormed(
       toWellFormedUnicode(deleted[0]?.text ?? ""),
       120,
-    )}`,
+    )}${widenedNote}`,
     values: { deletedCount: deleted.length },
     data: {
       actionName: "MEMORY",
