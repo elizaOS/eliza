@@ -41,4 +41,41 @@ describe("BootTimer", () => {
       "[test-boot] deferred:vault: 35ms (t+2055ms)",
     );
   });
+
+  it("sorts slowest laps first in summary even when lap timings contain non-finite numbers", () => {
+    const timer = new BootTimer("[test-boot]");
+    vi.advanceTimersByTime(10);
+    timer.lap("fast");
+    vi.advanceTimersByTime(100);
+    timer.lap("slow");
+    vi.advanceTimersByTime(50);
+    timer.lap("medium");
+
+    // Inject non-finite lap to assert safe sort ordering without NaN perturbation
+    (
+      timer as unknown as {
+        laps: Array<{ name: string; ms: number; cumulativeMs: number }>;
+      }
+    ).laps.push({
+      name: "corrupted-nan",
+      ms: Number.NaN,
+      cumulativeMs: Number.NaN,
+    });
+
+    timer.summary();
+    const summaryLog = loggerMocks.info.mock.calls.find((call) =>
+      call[0].includes("boot phase summary"),
+    );
+    expect(summaryLog).toBeDefined();
+    expect(summaryLog[0]).toContain("slow");
+    expect(summaryLog[0].indexOf("slow")).toBeLessThan(
+      summaryLog[0].indexOf("medium"),
+    );
+    expect(summaryLog[0].indexOf("medium")).toBeLessThan(
+      summaryLog[0].indexOf("fast"),
+    );
+    expect(summaryLog[0].indexOf("fast")).toBeLessThan(
+      summaryLog[0].indexOf("corrupted-nan"),
+    );
+  });
 });

@@ -73,7 +73,19 @@ export class BootTimer {
 
   summary(): void {
     const { totalMs, laps } = this.getSummary();
-    const slowest = [...laps].sort((a, b) => b.ms - a.ms);
+    const slowest = [...laps].sort((a, b) => {
+      const bMs = typeof b.ms === "number" && Number.isFinite(b.ms) ? b.ms : 0;
+      const aMs = typeof a.ms === "number" && Number.isFinite(a.ms) ? a.ms : 0;
+      const bCum =
+        typeof b.cumulativeMs === "number" && Number.isFinite(b.cumulativeMs)
+          ? b.cumulativeMs
+          : 0;
+      const aCum =
+        typeof a.cumulativeMs === "number" && Number.isFinite(a.cumulativeMs)
+          ? a.cumulativeMs
+          : 0;
+      return bMs - aMs || bCum - aCum || a.name.localeCompare(b.name);
+    });
     const lines = slowest.map(
       (p) => `    ${String(p.ms).padStart(7)}ms  ${p.name}`,
     );
