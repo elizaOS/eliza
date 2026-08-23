@@ -26,6 +26,7 @@ export * from "./agent-node-incarnation-histories";
 export * from "./agent-pairing-tokens";
 export * from "./agent-phone-contacts";
 export * from "./agent-phone-numbers";
+export * from "./agent-sandbox-replacement-attempts";
 export * from "./agent-sandboxes";
 export * from "./agent-server-wallets";
 export * from "./agent-vault-key-authority";

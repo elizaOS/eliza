@@ -2,7 +2,8 @@
  * Keyless catalog coverage for the plugin-app-control action surface against a
  * seeded set of scenario views. Runs on the pr-deterministic lane under the model provider.
  */
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type {
   CapturedAction,
@@ -85,8 +86,21 @@ function expectActionTurn(
   return undefined;
 }
 
-const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
-const repoRoot = "/tmp/eliza-app-control-scenario-load/repo";
+/**
+ * Fixture tree for this scenario. The seed and cleanup steps `rm -rf` this
+ * root, so it must never be a path a second runner process could also own:
+ * a shared constant under /tmp let two concurrent runs on one host delete
+ * each other's seeded apps and plugin sources mid-run, which surfaced as
+ * "Not a directory" / "Could not locate the source directory" failures on
+ * whichever run lost the race. Keying the root on the process id keeps
+ * concurrent runs isolated without adding module-load filesystem work.
+ */
+const fixtureRoot = path.join(
+  realpathSync(os.tmpdir()),
+  `eliza-app-control-scenario-load-${process.pid}`,
+);
+const appLoadDirectory = path.join(fixtureRoot, "apps");
+const repoRoot = path.join(fixtureRoot, "repo");
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const remoteLedgerPluginDir = path.join(
   repoRoot,
@@ -392,7 +406,7 @@ export default scenario({
           return "runtime actions unavailable";
         }
 
-        await fs.rm(path.dirname(appLoadDirectory), {
+        await fs.rm(fixtureRoot, {
           force: true,
           recursive: true,
         });
@@ -562,7 +576,7 @@ export default scenario({
       type: "custom",
       name: "remove app-control source fixtures",
       apply: async () => {
-        await fs.rm(path.dirname(appLoadDirectory), {
+        await fs.rm(fixtureRoot, {
           force: true,
           recursive: true,
         });

@@ -2596,7 +2596,7 @@ async function loadInboxChats(
       typeof a.lastMessageAt === "number" && Number.isFinite(a.lastMessageAt)
         ? a.lastMessageAt
         : 0;
-    return bLast - aLast || a.roomId.localeCompare(b.roomId);
+    return bLast - aLast || a.id.localeCompare(b.id);
   });
   return chats;
 }

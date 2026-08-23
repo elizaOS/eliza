@@ -4,19 +4,42 @@
  * Renders grouped section items with an account footer pinned to the bottom.
  * Uses NuPhy UI design tokens for the macOS settings aesthetic.
  */
-import { Check, ChevronUp, Circle } from "lucide-react";
+import { Check, ChevronUp, Circle, Loader2, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../../lib/utils";
 import { useAppSelector } from "../../../state";
-import { hasCloudManagementCredential } from "./cloud-management-auth";
 import { CLOUD_PANEL_GROUPS } from "./cloud-panel-groups";
 import {
+  type CloudPanelAccountFooterSection,
   type CloudPanelSection,
+  cloudPanelAccountFooterSections,
   groupedCloudPanelSections,
 } from "./cloud-panel-sections";
 
-function CloudAccountFooter() {
-  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+export type CloudAccountNavigationState =
+  | "connected"
+  | "disconnected"
+  | "signing-out"
+  | "sign-out-failed";
+
+export interface CloudPanelNavigationOptions {
+  replace?: boolean;
+  showSection?: boolean;
+}
+
+export function CloudAccountMenu({
+  accountState,
+  activeSection,
+  onSignOutAttemptFinish,
+  onSignOutAttemptStart,
+  onSelect,
+}: {
+  accountState: CloudAccountNavigationState;
+  activeSection: string;
+  onSignOutAttemptFinish: () => void;
+  onSignOutAttemptStart: () => void;
+  onSelect: (id: string, options?: CloudPanelNavigationOptions) => void;
+}) {
   const handleInteractiveCloudLogin = useAppSelector(
     (s) => s.handleInteractiveCloudLogin,
   );
@@ -24,12 +47,30 @@ function CloudAccountFooter() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [open, setOpen] = useState(false);
 
-  if (!elizaCloudConnected && !hasCloudManagementCredential()) {
+  const startSignOut = () => {
+    setOpen(false);
+    // Account-only data is unmounted synchronously and remains unavailable
+    // until the session is observably absent. A resolved disconnect can still
+    // mean the backend-owned helper reported its failure through app state, so
+    // every settled attempt is handed back to the panel for an explicit retry
+    // decision rather than being treated as success optimistically.
+    onSignOutAttemptStart();
+    onSelect("general", { replace: true, showSection: false });
+    void handleCloudSignOut()
+      .catch(() => {
+        // error-policy:J4 sign-out failure surfaces as a visible notice in
+        // addition to the persistent inline retry affordance below.
+        setActionNotice?.("Could not sign out of Eliza Cloud.", "error", 5000);
+      })
+      .finally(onSignOutAttemptFinish);
+  };
+
+  if (accountState === "disconnected") {
     return (
       <div className="border-t border-[var(--hairline)] px-3 py-3">
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--fill)]"
+          className="keyboard-focus-surface flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--fill)]"
           onClick={() => {
             void handleInteractiveCloudLogin().catch((error: unknown) => {
               // error-policy:J4 login failure surfaces as a visible notice.
@@ -50,11 +91,49 @@ function CloudAccountFooter() {
     );
   }
 
+  if (accountState === "signing-out") {
+    return (
+      <div className="border-t border-[var(--hairline)] px-3 py-3">
+        <div
+          aria-live="polite"
+          className="flex min-h-9 items-center gap-2 px-2 py-1.5 text-sm text-[var(--muted-foreground)]"
+          role="status"
+        >
+          <Loader2
+            aria-hidden="true"
+            className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+          />
+          Signing out…
+        </div>
+      </div>
+    );
+  }
+
+  if (accountState === "sign-out-failed") {
+    return (
+      <div className="space-y-2 border-t border-[var(--hairline)] px-3 py-3">
+        <p className="px-2 text-xs text-[var(--destructive)]" role="alert">
+          Cloud sign-out didn&apos;t finish.
+        </p>
+        <button
+          type="button"
+          className="keyboard-focus-surface flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--fill)]"
+          onClick={startSignOut}
+        >
+          <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+          Retry sign out
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="border-t border-[var(--hairline)] px-3 py-2">
       <button
         type="button"
-        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[var(--fill)]"
+        aria-controls="cloud-account-menu"
+        aria-expanded={open}
+        className="keyboard-focus-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[var(--fill)]"
         onClick={() => setOpen(!open)}
       >
         <span className="flex items-center gap-2 truncate">
@@ -71,26 +150,23 @@ function CloudAccountFooter() {
         />
       </button>
       {open && (
-        <div className="mt-1 space-y-0.5 rounded-md border border-[var(--hairline)] bg-[var(--surface)] p-1">
-          <FooterLink label="Manage billing" href="billing" />
-          <FooterLink label="API keys" href="api-keys" />
-          <FooterLink label="Sessions & privacy" href="security" />
-          <FooterLink label="Organization" href="organization" />
+        <div
+          id="cloud-account-menu"
+          className="mt-1 space-y-0.5 rounded-md border border-[var(--hairline)] bg-[var(--surface)] p-1"
+        >
+          {cloudPanelAccountFooterSections().map((section) => (
+            <FooterLink
+              key={section.id}
+              section={section}
+              active={section.id === activeSection}
+              onSelect={onSelect}
+            />
+          ))}
           <div className="my-1 border-t border-[var(--hairline)]" />
           <button
             type="button"
-            className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10"
-            onClick={() => {
-              setOpen(false);
-              void handleCloudSignOut().catch(() => {
-                // error-policy:J4 sign-out failure surfaces as a visible notice.
-                setActionNotice?.(
-                  "Could not sign out of Eliza Cloud.",
-                  "error",
-                  5000,
-                );
-              });
-            }}
+            className="keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10"
+            onClick={startSignOut}
           >
             Sign out
           </button>
@@ -100,13 +176,31 @@ function CloudAccountFooter() {
   );
 }
 
-function FooterLink({ label, href }: { label: string; href: string }) {
+function FooterLink({
+  section,
+  active,
+  onSelect,
+}: {
+  section: CloudPanelAccountFooterSection;
+  active: boolean;
+  onSelect: (id: string, options?: CloudPanelNavigationOptions) => void;
+}) {
   return (
     <a
-      href={`#cloud-${href}`}
-      className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm text-[var(--muted-foreground)] transition-colors hover:bg-[var(--fill)] hover:text-[var(--foreground)]"
+      href={`#${section.id}`}
+      onClick={(event) => {
+        event.preventDefault();
+        onSelect(section.id);
+      }}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors",
+        active
+          ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
+          : "text-[var(--muted-foreground)] hover:bg-[var(--fill)] hover:text-[var(--foreground)]",
+      )}
     >
-      {label}
+      {section.footerLabel}
     </a>
   );
 }
@@ -118,7 +212,7 @@ function SectionItem({
 }: {
   section: CloudPanelSection;
   active: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, options?: CloudPanelNavigationOptions) => void;
 }) {
   const Icon = section.icon;
   return (
@@ -127,7 +221,7 @@ function SectionItem({
       onClick={() => onSelect(section.id)}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+        "keyboard-focus-surface flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
         active
           ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
           : "text-[var(--muted-foreground)] hover:bg-[var(--fill)] hover:text-[var(--foreground)]",
@@ -150,11 +244,17 @@ function SectionItem({
 }
 
 export function CloudSettingsSidebar({
+  accountState,
   activeSection,
+  onSignOutAttemptFinish,
+  onSignOutAttemptStart,
   onSelect,
 }: {
+  accountState: CloudAccountNavigationState;
   activeSection: string;
-  onSelect: (id: string) => void;
+  onSignOutAttemptFinish: () => void;
+  onSignOutAttemptStart: () => void;
+  onSelect: (id: string, options?: CloudPanelNavigationOptions) => void;
 }) {
   const grouped = groupedCloudPanelSections();
 
@@ -186,7 +286,13 @@ export function CloudSettingsSidebar({
           );
         })}
       </div>
-      <CloudAccountFooter />
+      <CloudAccountMenu
+        accountState={accountState}
+        activeSection={activeSection}
+        onSignOutAttemptFinish={onSignOutAttemptFinish}
+        onSignOutAttemptStart={onSignOutAttemptStart}
+        onSelect={onSelect}
+      />
     </nav>
   );
 }

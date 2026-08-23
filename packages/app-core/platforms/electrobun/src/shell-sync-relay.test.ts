@@ -268,4 +268,46 @@ describe("ShellControllerAuthority data paths", () => {
     target.release();
     other.release();
   });
+
+  it("truncates error messages with surrogate safety", async () => {
+    const authority = new ShellControllerAuthority();
+    const owner = authority.register("main", vi.fn());
+    const follower = authority.register("tray", vi.fn());
+    const ownerState = owner.connect({
+      protocolVersion: SHELL_SYNC_PROTOCOL_VERSION,
+    });
+    const followerState = follower.connect({
+      protocolVersion: SHELL_SYNC_PROTOCOL_VERSION,
+    });
+
+    const longError = `${"a".repeat(1999)}😀${"b".repeat(10)}`;
+    const outcomePromise = follower.dispatchCommand({
+      commandId: "cmd-err-1",
+      command: {
+        kind: "routeOsIntent",
+        intent: {
+          type: "start-voice",
+          intentId: "launch-1",
+          source: "desktop-deep-link",
+          mode: "converse",
+        },
+        deliveryPolicy: "execute",
+      },
+    });
+
+    owner.completeCommand({
+      generation: ownerState.generation,
+      commandId: "cmd-err-1",
+      fromEndpointId: followerState.endpointId,
+      ok: false,
+      error: longError,
+    });
+
+    const res = await outcomePromise;
+    expect(res.ok).toBe(false);
+    expect(typeof res.error).toBe("string");
+    expect(res.error?.length).toBeLessThanOrEqual(2000);
+    expect(res.error?.endsWith("😀")).toBe(false);
+    expect(res.error?.endsWith("a")).toBe(true);
+  });
 });
