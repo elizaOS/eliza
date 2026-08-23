@@ -120,6 +120,17 @@ const BUTTON_STYLE: CSSProperties = {
   cursor: "pointer",
 };
 
+const LOCAL_SERVICE_UNAVAILABLE_MESSAGE =
+  "Eliza is offline or its local service is unavailable. Restart Eliza if needed, then retry.";
+
+function userFacingError(cause: unknown, fallback: string): string {
+  const message = cause instanceof Error ? cause.message.trim() : "";
+  if (/^(failed to fetch|load failed|network ?error)$/i.test(message)) {
+    return LOCAL_SERVICE_UNAVAILABLE_MESSAGE;
+  }
+  return message || fallback;
+}
+
 function accountEmail(account: LifeOpsGoogleConnectorStatus): string {
   const identity = account.identity;
   const email = identity?.email;
@@ -396,11 +407,8 @@ export function LifeOpsConnectionsView({
           ),
         );
       } catch (cause) {
-        setError(
-          cause instanceof Error && cause.message.trim()
-            ? cause.message
-            : "LifeOps connections could not load.",
-        );
+        // error-policy:J4 Network failures become a visible retryable local-service state.
+        setError(userFacingError(cause, "LifeOps connections could not load."));
       } finally {
         setLoading(false);
       }
@@ -454,9 +462,7 @@ export function LifeOpsConnectionsView({
     try {
       await adapter.connectGoogle([...capabilities]);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Google connect failed.",
-      );
+      setError(userFacingError(cause, "Google connect failed."));
       setBusy(null);
     }
   };
@@ -486,9 +492,7 @@ export function LifeOpsConnectionsView({
       });
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Calendar selection could not be saved.",
+        userFacingError(cause, "Calendar selection could not be saved."),
       );
     } finally {
       setBusy(null);
@@ -517,7 +521,7 @@ export function LifeOpsConnectionsView({
       setSeedReceipt(receipt);
       await refresh(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Initial sync failed.");
+      setError(userFacingError(cause, "Initial sync failed."));
     } finally {
       setBusy(null);
     }
@@ -533,9 +537,7 @@ export function LifeOpsConnectionsView({
       );
       await refresh(false);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Calendar permission failed.",
-      );
+      setError(userFacingError(cause, "Calendar permission failed."));
     } finally {
       setBusy(null);
     }
@@ -547,11 +549,7 @@ export function LifeOpsConnectionsView({
     try {
       await adapter.openApplePermissionSettings();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "System Settings could not be opened.",
-      );
+      setError(userFacingError(cause, "System Settings could not be opened."));
     } finally {
       setBusy(null);
     }
@@ -594,7 +592,7 @@ export function LifeOpsConnectionsView({
       }
       await refresh(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Action failed.");
+      setError(userFacingError(cause, "Action failed."));
     } finally {
       setBusy(null);
     }

@@ -284,6 +284,22 @@ function adapter(): LifeOpsConnectionsAdapter {
 describe("LifeOpsConnectionsView", () => {
   afterEach(cleanup);
 
+  it("turns an offline load failure into an actionable retry state", async () => {
+    const localAdapter = adapter();
+    localAdapter.load = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    render(<LifeOpsConnectionsView adapter={localAdapter} />);
+
+    expect(
+      await screen.findByText(
+        "Eliza is offline or its local service is unavailable. Restart Eliza if needed, then retry.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("explains scopes and renders partial, permission, provenance, and cursor states", async () => {
     const localAdapter = adapter();
     render(<LifeOpsConnectionsView adapter={localAdapter} />);
