@@ -4,9 +4,9 @@ import { anchorBundleSafety } from "./bundle-safety.ts";
 describe("anchorBundleSafety", () => {
 	it("stashes values on a namespaced global key", () => {
 		const values = [Symbol("a"), { x: 1 }];
-		anchorBundleSafety("test-barrel", values);
+		anchorBundleSafety("testbarrel", values);
 		const g = globalThis as Record<string, unknown>;
-		expect(g.__bundle_safety_test_barrel__).toBe(values);
+		expect(g.__bundle_safety_testbarrel__).toBe(values);
 	});
 
 	it("uses unique keys per name (no collisions)", () => {
