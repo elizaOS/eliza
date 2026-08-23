@@ -19,6 +19,12 @@ const scheduledInputs: Array<Record<string, unknown>> = [];
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
 const storedTodos: StoredTodo[] = [];
 const storedTodoMutations: TodoMutationRecord[] = [];
+function testPublicGroundingEvidence(url: string, text: string) {
+  return {
+    sourceUrls: [url],
+    sources: [{ url, text }],
+  };
+}
 function createStoredTodo(input: CreateTodoInput): StoredTodo {
   const now = new Date();
   const todo: StoredTodo = {
@@ -1262,6 +1268,10 @@ describe("Shared Eliza Workerd runtime", () => {
             query: adversarialQuery,
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             observedAt: observedAt - 2,
             truncated: false,
           },
@@ -1276,6 +1286,10 @@ describe("Shared Eliza Workerd runtime", () => {
             query: adversarialQuery,
             provider: "parallel",
             text: adversarialResult,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              adversarialResult,
+            ),
             observedAt: observedAt - 1,
             truncated: false,
           },
@@ -1510,6 +1524,10 @@ describe("Shared Eliza Workerd runtime", () => {
             query: "Tessera architecture GitHub project",
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             observedAt: observedAt - 2,
             truncated: false,
           },
@@ -1524,6 +1542,10 @@ describe("Shared Eliza Workerd runtime", () => {
             query: "Tessera architecture",
             provider: "parallel",
             text: "Tessera validates ARC resources through an origin guard and credential relay.",
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              "Tessera validates ARC resources through an origin guard and credential relay.",
+            ),
             observedAt: observedAt - 1,
             truncated: false,
           },
