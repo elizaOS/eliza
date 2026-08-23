@@ -463,6 +463,46 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     expect(loadPersistedActiveServer()?.accessToken).toBeUndefined();
   });
 
+  it("preserves the Electrobun host token while retrying local auth with its session cookie", async () => {
+    (
+      window as Window & { __electrobunWindowId?: number }
+    ).__electrobunWindowId = 1;
+    setBootConfig({
+      branding: {},
+      apiBase: "http://127.0.0.1:31337",
+      apiToken: "desktop-host-token",
+    });
+    const unauthorized = {
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: true,
+      },
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, unauthorized))
+      .mockResolvedValueOnce(jsonResponse(200, AUTH_ME_BODY));
+
+    await act(async () => {
+      primeAuthStatusProbe();
+    });
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    const retryHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
+    expect(firstHeaders.get("Authorization")).toBe("Bearer desktop-host-token");
+    expect(retryHeaders.has("Authorization")).toBe(false);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      credentials: "include",
+    });
+    expect(getBootConfig().apiToken).toBe("desktop-host-token");
+  });
+
   it("discards a mid-boot 503 prime and the activation fetch re-probes", async () => {
     // Prime hits the backend while it is still binding…
     fetchMock.mockResolvedValueOnce(jsonResponse(503, {}));
