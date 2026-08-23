@@ -50,6 +50,10 @@ const READ_ONLY_COMMANDS = new Set([
   "detect_elements",
   "ocr",
   "list_windows",
+  "get_current_window_id",
+  "get_application_windows",
+  "get_window_size",
+  "get_window_position",
 ]);
 
 export type ComputerUseSessionErrorCode =

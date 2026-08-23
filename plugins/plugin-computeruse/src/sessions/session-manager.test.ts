@@ -322,6 +322,43 @@ describe("ComputerUseSessionManager", () => {
     expect(JSON.stringify(manager.getEvents())).not.toContain("cG5n");
   });
 
+  it("lets read-only window inspectors run without consuming an observation", async () => {
+    const executed: string[] = [];
+    const manager = new ComputerUseSessionManager({
+      idFactory: () => "session-one",
+      executor: async (_target, input) => {
+        executed.push(input.command);
+        return { success: true };
+      },
+    });
+    const session = manager.create({ target: { kind: "host" } });
+    const commands = [
+      "get_current_window_id",
+      "get_application_windows",
+      "get_window_size",
+      "get_window_position",
+    ];
+
+    for (const [index, command] of commands.entries()) {
+      await expect(
+        manager.execute(
+          session.id,
+          action(`inspect-${index}`, index, { command }),
+        ),
+      ).resolves.toMatchObject({ result: { success: true } });
+    }
+
+    expect(executed).toEqual(commands);
+    await expect(
+      manager.execute(
+        session.id,
+        action("move-without-observation", commands.length, {
+          command: "set_window_bounds",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "STALE_OBSERVATION" });
+  });
+
   it("rejects missing, wrong-target, stale, and repeated observation-bound actions", async () => {
     let id = 0;
     const manager = new ComputerUseSessionManager({
