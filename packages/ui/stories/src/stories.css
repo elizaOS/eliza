@@ -38,6 +38,31 @@ body,
   min-height: 100vh;
 }
 
+.gallery-shell--focused {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gallery-focus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--gallery-muted);
+  font-size: 12px;
+}
+
+.gallery-focus-header a {
+  color: var(--gallery-fg);
+}
+
+.gallery-group--focused {
+  width: min(1040px, 100%);
+  margin: 0 auto;
+  padding: clamp(16px, 4vw, 40px);
+}
+
 .gallery-toc {
   position: sticky;
   top: 0;
@@ -220,6 +245,35 @@ body,
   }
 }
 
+.gallery-group--focused .gallery-triptych {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  .gallery-shell:not(.gallery-shell--focused) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gallery-toc {
+    position: static;
+    width: 100%;
+    height: auto;
+    max-height: 42vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--gallery-orange);
+  }
+
+  .gallery-hero,
+  .gallery-group {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .gallery-tile-body {
+    padding: 12px;
+  }
+}
+
 .gallery-tile {
   border-radius: 2px; /* xs */
   padding: 0;
@@ -266,6 +320,19 @@ body,
 
 .gallery-tile.theme-app {
   background: #0a0a0a;
+  color: var(--brand-white);
+}
+
+/* A focused product preview is not a contrast triptych: render the app theme
+ * on its own declared full-bleed background so its black text tokens remain
+ * truthful and readable. */
+.gallery-section--focused .gallery-tile.theme-app {
+  background: var(--bg);
+  color: var(--txt);
+}
+
+.gallery-section--focused .gallery-tile-label {
+  background: var(--brand-black);
   color: var(--brand-white);
 }
 

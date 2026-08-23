@@ -200,6 +200,11 @@ beforeAll(async () => {
     CREATE TABLE organizations (id uuid PRIMARY KEY);
     CREATE TABLE users (id uuid PRIMARY KEY);
     CREATE TABLE eliza_sandboxes (id uuid PRIMARY KEY);
+    CREATE TABLE conversations (
+      id uuid PRIMARY KEY,
+      settings jsonb NOT NULL DEFAULT
+        '{"temperature":0.7,"maxTokens":2000,"topP":1,"frequencyPenalty":0,"presencePenalty":0,"systemPrompt":"You are a helpful AI assistant."}'::jsonb
+    );
     INSERT INTO organizations VALUES ('${organizationId}');
     INSERT INTO users VALUES ('${ownerId}');
   `);
@@ -208,6 +213,9 @@ beforeAll(async () => {
     "0275_remote_sessions_first_class_expiry",
     "0305_secure_remote_hosts",
     "0306_secure_remote_command_relay",
+    "0307_twilio_outbound_call_audit",
+    "0308_remove_conversation_token_default",
+    "0311_remote_host_managed_network",
   ]) {
     await applyMigration(migration);
   }
@@ -224,6 +232,83 @@ afterAll(async () => {
 });
 
 describe("secure remote relay repositories", () => {
+  it("persists and clears managed-network compensation without storing an auth key", async () => {
+    hostToken = generateRemoteHostToken();
+    expect(
+      await hosts.createOwned({
+        id: hostId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        device_id: "linux-one",
+        display_name: "Linux One",
+        platform: "linux",
+        connection_mode: "relay",
+        runtime_key_id: targetKeyId,
+        signing_public_jwk: ecPublicJwk,
+        encryption_public_jwk: ecPublicJwk,
+        host_token_hash: await hashRemoteHostToken(hostToken),
+        status: "pending",
+      }),
+    ).toMatchObject({ kind: "created", host: { status: "pending" } });
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+    const pairingExpiry = new Date(Date.now() + 5 * 60_000);
+    expect(
+      await sessions.createPendingForOwnedHost({
+        id: sessionId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        host_id: hostId,
+        grant_id: grantId,
+        grant_revision: 1,
+        status: "pending",
+        requester_identity: ownerId,
+        pairing_token_hash: await deriveRemotePairingCodeVerifier(
+          pairingSecret,
+          { organizationId, userId: ownerId, hostId, sessionId },
+          "123456",
+          pairingExpiry,
+        ),
+        controller_device_id: controllerDeviceId,
+        controller_key_id: controllerKeyId,
+        controller_display_name: "Controller",
+        controller_platform: "linux",
+        controller_signing_public_jwk: ecPublicJwk,
+        controller_encryption_public_jwk: ecPublicJwk,
+        target_key_id: targetKeyId,
+        expires_at: pairingExpiry,
+        grant_expires_at: new Date(Date.now() + 60 * 60_000),
+      }),
+    ).toBeUndefined();
+    await hosts.recordManagedEnrollment({
+      hostId,
+      organizationId,
+      userId: ownerId,
+      hostname: "eliza-host-test",
+      preAuthKeyId: "123",
+    });
+    let [host] = await database.select().from(remoteHosts);
+    expect(host).toMatchObject({
+      headscale_hostname: "eliza-host-test",
+      headscale_preauth_key_id: "123",
+      headscale_cleanup_pending: true,
+      status: "active",
+    });
+    expect(JSON.stringify(host)).not.toContain("hskey-");
+
+    await hosts.completeManagedCleanup({
+      hostId,
+      organizationId,
+      userId: ownerId,
+    });
+    [host] = await database.select().from(remoteHosts);
+    expect(host).toMatchObject({
+      headscale_hostname: null,
+      headscale_preauth_key_id: null,
+      headscale_cleanup_pending: false,
+      headscale_cleanup_error: null,
+    });
+  });
+
   it("records a host heartbeat even when its active session has no command", async () => {
     await enrollAndPair();
     expect((await commands.claimNext({ sessionId, hostId, hostToken })).kind).toBe("empty");

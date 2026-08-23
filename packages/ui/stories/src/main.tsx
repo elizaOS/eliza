@@ -5,7 +5,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@ui-src/styles.ts";
 import { TooltipProvider } from "@ui-src/components/ui/tooltip.tsx";
-import { TranslationProvider } from "@ui-src/state/TranslationProvider.tsx";
+import { MockAppProvider } from "@ui-src/storybook/mock-providers.tsx";
 import { App } from "./App.tsx";
 import "./stories.css";
 
@@ -28,10 +28,10 @@ if (!container) {
 // must provide the same context wrappers the app shell does.
 createRoot(container).render(
   <StrictMode>
-    <TranslationProvider>
+    <MockAppProvider>
       <TooltipProvider delayDuration={200} skipDelayDuration={100}>
         <App />
       </TooltipProvider>
-    </TranslationProvider>
+    </MockAppProvider>
   </StrictMode>,
 );

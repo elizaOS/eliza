@@ -19,6 +19,7 @@ const cleanupHelper = path.resolve(
   "packages/scripts/rm-path-recursive.mjs",
 );
 const coreBrowserShim = path.resolve(here, "src/eliza-core-browser-shim.ts");
+const coreClientPublic = path.resolve(here, "src/eliza-core-browser-shim.ts");
 const fastRedactShim = path.resolve(here, "src/fast-redact-browser-shim.ts");
 const nodeBuiltinsShim = path.resolve(
   here,
@@ -91,7 +92,11 @@ export default defineConfig({
       // renderer modules and the thunk registry would come up empty.
       { find: /^@elizaos\/ui$/, replacement: path.resolve(uiSrc, "index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: `${uiSrc}/$1` },
-      { find: "@elizaos/core", replacement: coreBrowserShim },
+      {
+        find: /^@elizaos\/core\/client-public$/,
+        replacement: coreClientPublic,
+      },
+      { find: /^@elizaos\/core(?:\/browser)?$/, replacement: coreBrowserShim },
       { find: "@elizaos/logger", replacement: loggerSrc },
       { find: /^@elizaos\/shared$/, replacement: sharedSrc },
       { find: /^@elizaos\/shared\/(.+)$/, replacement: `${sharedSrc}/$1` },
@@ -122,6 +127,10 @@ export default defineConfig({
             build.onResolve({ filter: /^@elizaos\/core\/browser$/ }, () => ({
               path: coreBrowserShim,
             }));
+            build.onResolve(
+              { filter: /^@elizaos\/core\/client-public$/ },
+              () => ({ path: coreClientPublic }),
+            );
             build.onResolve({ filter: /^@elizaos\/logger$/ }, () => ({
               path: loggerSrc,
             }));
