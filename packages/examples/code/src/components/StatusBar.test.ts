@@ -6,10 +6,10 @@
  * forced off, and model-provider env keys cleared (the model indicator itself
  * is covered by status-bar-model.test.ts).
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { stringToUuid } from "@elizaos/core";
 import { visibleWidth } from "@elizaos/tui";
 import chalk from "chalk";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { getCwd, setCwd } from "../lib/cwd.js";
 import { useStore } from "../lib/store.js";
 import type { ChatRoom, CodeTask, TaskStatus } from "../types.js";
