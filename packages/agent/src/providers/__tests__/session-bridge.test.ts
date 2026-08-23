@@ -6,11 +6,21 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Mock @elizaos/core primitives used by session-bridge
 vi.mock("@elizaos/core", () => {
-  const ChannelType = { DM: "dm", SELF: "self", GROUP: "group", CHANNEL: "channel" };
+  const ChannelType = {
+    DM: "dm",
+    SELF: "self",
+    GROUP: "group",
+    CHANNEL: "channel",
+  };
   return {
     ChannelType,
-    buildAgentMainSessionKey: ({ agentId, mainKey }: { agentId: string; mainKey: string }) =>
-      `agent:${agentId}:main`,
+    buildAgentMainSessionKey: ({
+      agentId,
+      mainKey,
+    }: {
+      agentId: string;
+      mainKey: string;
+    }) => `agent:${agentId}:main`,
     parseAgentSessionKey: (key: string) => {
       // agent:{agentId}:main
       const m = /^agent:([^:]+):main$/.exec(key);
@@ -143,7 +153,11 @@ describe("createSessionKeyProvider", () => {
     const provider = createSessionKeyProvider({ defaultAgentId: "a1" });
     const runtime = {
       getRoom: vi.fn(async () =>
-        makeRoom({ type: ChannelType.GROUP, source: "telegram", channelId: "g-5" }),
+        makeRoom({
+          type: ChannelType.GROUP,
+          source: "telegram",
+          channelId: "g-5",
+        }),
       ),
     };
     const result = await provider.get(
