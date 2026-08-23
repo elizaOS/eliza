@@ -89,7 +89,7 @@ describe("trajectory-logger surrogate-safe error preview (#24933)", () => {
         "err",
         lone + "a".repeat(199),
       );
-      expect(isWellFormed(direct.message)).toBe(true);
+      expect(direct.message.isWellFormed()).toBe(true);
       expect(direct.message).not.toContain("\uD800");
       expect(direct.message).toContain("�");
     }

@@ -29,6 +29,7 @@ export {
   assertLiveChallengeReply,
   assertLiveReply,
   buildLivenessChallenge,
+  describeAnchoredLiveTurnState,
   extractLivenessChallengeToken,
   findAnchoredLiveTurn,
   isLiveReply,

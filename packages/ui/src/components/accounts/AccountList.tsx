@@ -56,7 +56,11 @@ export function AccountList({ providerId }: AccountListProps) {
   const sorted: AccountWithCredentialFlag[] = useMemo(
     () =>
       providerEntry
-        ? [...providerEntry.accounts].sort((a, b) => a.priority - b.priority)
+        ? [...providerEntry.accounts].sort(
+            (a, b) =>
+              (Number.isFinite(a.priority) ? a.priority : 0) -
+              (Number.isFinite(b.priority) ? b.priority : 0),
+          )
         : [],
     [providerEntry],
   );
