@@ -4,7 +4,7 @@
  * an in-process keyed queue over the cache-backed store.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
@@ -1537,17 +1537,20 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
     );
 
     if (!rememberResponse.ok) {
-      // error-policy:J6 best-effort read of the error body to enrich the error
-      // we throw next; a failed body read must not mask the non-ok status.
-      const body = await rememberResponse.text().catch((error) => {
+      let errorBodyPreview: string;
+      try {
+        const body = await rememberResponse.text();
+        errorBodyPreview = truncateWellFormed(toWellFormedUnicode(body), 200);
+      } catch (error) {
+        // error-policy:J1 translate body-read failure explicitly without fabricating an empty body.
         logger.warn("[eliza-app onboarding] failed to read remember error body", {
           agentId: session.agentId,
           status: rememberResponse.status,
           error: error instanceof Error ? error.message : String(error),
         });
-        return "";
-      });
-      throw new Error(`memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`);
+        errorBodyPreview = "[unreadable]";
+      }
+      throw new Error(`memory copy failed (${rememberResponse.status}) ${errorBodyPreview}`);
     }
 
     return {
