@@ -7312,6 +7312,24 @@ function withReplyGateMode(
 	return runtime;
 }
 
+function withReplyGateSlots(
+	runtime: IAgentRuntime,
+	userMode: string,
+	globalMode: string,
+): IAgentRuntime {
+	(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+		(type: string) =>
+			type === "PERSONALITY_STORE"
+				? {
+						getSlot: (id: UUID | "global") => ({
+							reply_gate: id === "global" ? globalMode : userMode,
+						}),
+					}
+				: null,
+	);
+	return runtime;
+}
+
 describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	// Live incident: in a busy multi-user group channel the agent replied to
 	// turns its own Stage-1 output tagged as addressed to another participant
@@ -7572,7 +7590,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	});
 
 	it("bypasses the gate when the effective personality reply_gate is an explicit 'always'", async () => {
-		const runtime = withReplyGateMode(
+		const runtime = withReplyGateSlots(
 			withRoomEntities(
 				makeRuntime([
 					stage1Response({
@@ -7584,6 +7602,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				]),
 			),
 			"always",
+			"addressed_or_ambient",
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -7597,6 +7616,74 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		expect(result.kind).toBe("direct_reply");
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Jumping in anyway!");
+		}
+		const stage1Params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).not.toContain("ambient_turn_policy:");
+	});
+
+	it("does not inject ambient policy for canonical or configured response bypasses", async () => {
+		const cases = [
+			{
+				label: "scheduled trigger",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trigger-prompt",
+				},
+				settings: undefined,
+			},
+			{
+				label: "configured source",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trusted_dispatch",
+				},
+				settings: { ALWAYS_RESPOND_SOURCES: "trusted_dispatch" },
+			},
+			{
+				label: "configured channel",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "test",
+				},
+				settings: { ALWAYS_RESPOND_CHANNELS: "group" },
+			},
+		] satisfies Array<{
+			label: string;
+			content: Partial<Memory["content"]>;
+			settings: Record<string, string> | undefined;
+		}>;
+
+		for (const testCase of cases) {
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						thought: "Bypass response.",
+						contexts: ["simple"],
+						replyText: "Delivered.",
+					}),
+				],
+				testCase.settings,
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(testCase.content),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000bd" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages?: Array<{ content?: string | null }>;
+			};
+			const prompt = (params.messages ?? [])
+				.map((entry) => entry.content ?? "")
+				.join("\n");
+
+			expect(result.kind, testCase.label).toBe("direct_reply");
+			expect(prompt, testCase.label).not.toContain("ambient_turn_policy:");
 		}
 	});
 
