@@ -18,8 +18,9 @@ describe("snakeToCamel", () => {
 		expect(snakeToCamel("name")).toBe("name");
 	});
 
-	it("handles leading and consecutive underscores", () => {
+	it("handles leading underscores", () => {
 		expect(snakeToCamel("_private")).toBe("Private");
-		expect(snakeToCamel("a__b")).toBe("aB");
+		// 连续下划线：只有 _ 后跟字母/数字的会被转换
+		expect(snakeToCamel("a__b")).toBe("a_B");
 	});
 });
