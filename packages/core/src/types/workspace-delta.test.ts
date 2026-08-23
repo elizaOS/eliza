@@ -204,6 +204,31 @@ describe("parseWorkspaceDeltaReceipt", () => {
 		).toBeNull();
 	});
 
+	it("ignores inherited fields, which are not evidence the receipt carries", () => {
+		// A bare status claim must stay rejected even when a prototype supplies
+		// the digests it is missing, so a polluted `Object.prototype` cannot
+		// turn an unprovable receipt into an accepted one.
+		const carrier = Object.create({
+			beforeFingerprint: before,
+			afterFingerprint: before,
+		});
+		carrier.version = 1;
+		carrier.status = "unchanged";
+		expect(parseWorkspaceDeltaReceipt(carrier)).toBeNull();
+
+		const proto = Object.prototype as Record<string, unknown>;
+		proto.beforeFingerprint = before;
+		proto.afterFingerprint = before;
+		try {
+			expect(
+				parseWorkspaceDeltaReceipt({ version: 1, status: "unchanged" }),
+			).toBeNull();
+		} finally {
+			delete proto.beforeFingerprint;
+			delete proto.afterFingerprint;
+		}
+	});
+
 	it("drops unknown extra fields from the validated receipt", () => {
 		// The receipt is content-free by contract; a producer that smuggles file
 		// names alongside a valid verdict must not have them pass through.

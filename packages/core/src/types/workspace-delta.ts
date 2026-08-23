@@ -120,8 +120,14 @@ export function parseWorkspaceDeltaReceipt(
 ): WorkspaceDeltaReceipt | null {
 	if (typeof value !== "object" || value === null) return null;
 	const candidate = value as Record<string, unknown>;
-	if (candidate.version !== WORKSPACE_DELTA_RECEIPT_VERSION) return null;
-	const status = candidate.status;
+	// Read own properties only. An inherited field is not evidence this receipt
+	// carries, and honouring one would let a polluted `Object.prototype` supply
+	// the digests a bare status claim is missing — turning a receipt this
+	// function must reject into an accepted one.
+	const own = (key: string): unknown =>
+		Object.hasOwn(candidate, key) ? candidate[key] : undefined;
+	if (own("version") !== WORKSPACE_DELTA_RECEIPT_VERSION) return null;
+	const status = own("status");
 	if (
 		typeof status !== "string" ||
 		!WORKSPACE_DELTA_STATUSES.includes(status as WorkspaceDeltaStatus)
@@ -129,19 +135,21 @@ export function parseWorkspaceDeltaReceipt(
 		return null;
 	}
 
+	const rawBefore = own("beforeFingerprint");
 	let beforeFingerprint: string | undefined;
-	if (candidate.beforeFingerprint !== undefined) {
-		if (!isFingerprint(candidate.beforeFingerprint)) return null;
-		beforeFingerprint = candidate.beforeFingerprint;
+	if (rawBefore !== undefined) {
+		if (!isFingerprint(rawBefore)) return null;
+		beforeFingerprint = rawBefore;
 	}
+	const rawAfter = own("afterFingerprint");
 	let afterFingerprint: string | undefined;
-	if (candidate.afterFingerprint !== undefined) {
-		if (!isFingerprint(candidate.afterFingerprint)) return null;
-		afterFingerprint = candidate.afterFingerprint;
+	if (rawAfter !== undefined) {
+		if (!isFingerprint(rawAfter)) return null;
+		afterFingerprint = rawAfter;
 	}
 
 	if (status === "indeterminate") {
-		const reason = candidate.reason;
+		const reason = own("reason");
 		if (
 			typeof reason !== "string" ||
 			!WORKSPACE_DELTA_INDETERMINATE_REASONS.includes(
@@ -173,7 +181,7 @@ export function parseWorkspaceDeltaReceipt(
 	// `changed` and `unchanged` are claims about a completed before/after pair:
 	// both digests must be present, a reason would contradict the status, and
 	// the digest relationship must be the one the verdict asserts.
-	if (candidate.reason !== undefined) return null;
+	if (own("reason") !== undefined) return null;
 	if (beforeFingerprint === undefined || afterFingerprint === undefined) {
 		return null;
 	}
