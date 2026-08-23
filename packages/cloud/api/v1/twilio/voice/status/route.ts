@@ -5,11 +5,16 @@ import { and, eq, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { dbWrite, writeTransaction } from "@/db/helpers";
-import { twilioCallStatusEvents, twilioOutboundCalls } from "@/db/schemas";
+import {
+  idempotencyKeys,
+  twilioCallStatusEvents,
+  twilioOutboundCalls,
+} from "@/db/schemas";
 import { logger } from "@/lib/utils/logger";
 import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
 import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { twilioCallFenceKey } from "../lib/twilio-call-fence";
 import {
   isTerminalTwilioCallStatus,
   normalizeTwilioProviderCallStatus,
@@ -78,6 +83,8 @@ app.post("/", async (c) => {
       id: twilioOutboundCalls.id,
       callSid: twilioOutboundCalls.call_sid,
       accountSid: twilioOutboundCalls.account_sid,
+      organizationId: twilioOutboundCalls.organization_id,
+      userId: twilioOutboundCalls.user_id,
       from: twilioOutboundCalls.from_number,
       to: twilioOutboundCalls.to_number,
     })
@@ -153,6 +160,15 @@ app.post("/", async (c) => {
         and(
           eq(twilioOutboundCalls.id, call.id),
           lt(twilioOutboundCalls.last_status_sequence, sequence),
+        ),
+      );
+
+    await tx
+      .delete(idempotencyKeys)
+      .where(
+        eq(
+          idempotencyKeys.key,
+          twilioCallFenceKey(call.organizationId, call.userId, call.to),
         ),
       );
   });

@@ -4,13 +4,14 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, lt, sql } from "drizzle-orm";
+import { ElizaError, isElizaError } from "@elizaos/core";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbWrite } from "@/db/helpers";
+import { dbWrite, writeTransaction } from "@/db/helpers";
 import { usersRepository } from "@/db/repositories/users";
 import { idempotencyKeys, twilioOutboundCalls } from "@/db/schemas";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireSessionUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -23,10 +24,14 @@ import {
 } from "@/lib/utils/phone-normalization";
 import { twilioApiRequest } from "@/lib/utils/twilio-api";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import {
+  TWILIO_CALL_FENCE_EXPIRY,
+  twilioCallFenceKey,
+} from "../lib/twilio-call-fence";
+import { normalizeTwilioProviderCallStatus } from "../lib/twilio-call-status";
 import { resolveTwilioPublicUrl } from "../lib/twilio-public-url";
 
 const app = new Hono<AppEnv>();
-const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 
 const StartCallBody = z.object({
   to: z.string().min(1).max(32).optional(),
@@ -41,9 +46,21 @@ interface PublicTwilioEnv {
   ELIZA_APP_TWILIO_PHONE_NUMBER?: string;
 }
 
-interface TwilioCallResponse {
-  sid: string;
+const TwilioCallResponse = z.object({
+  sid: z.string().regex(/^CA[a-fA-F0-9]{32}$/),
+  status: z.string().transform((status, context) => {
+    const normalized = normalizeTwilioProviderCallStatus(status);
+    if (normalized) return normalized;
+    context.addIssue({ code: "custom", message: "Invalid Twilio call status" });
+    return z.NEVER;
+  }),
+});
+
+interface ExistingCall {
+  id: string;
+  callSid: string | null;
   status: string;
+  to: string;
 }
 
 function resolveCallbackUrl(c: AppContext): string {
@@ -73,7 +90,7 @@ app.use(
 );
 
 app.post("/", async (c) => {
-  const auth = await requireUserOrApiKeyWithOrg(c);
+  const auth = await requireSessionUserWithOrg(c);
   const idempotencyHeader = c.req.header("Idempotency-Key")?.trim();
   if (!idempotencyHeader || idempotencyHeader.length > 128) {
     return c.json(
@@ -151,22 +168,37 @@ app.post("/", async (c) => {
     );
   }
 
+  const callId = randomUUID();
+  let callbackUrl: string;
+  let statusCallbackUrl: string;
+  try {
+    callbackUrl = resolveCallbackUrl(c);
+    statusCallbackUrl = resolveStatusCallbackUrl(c, callId);
+  } catch (error) {
+    // error-policy:J1 invalid server-owned callback configuration is known
+    // before provider dispatch and becomes an explicit unavailable response.
+    logger.error("[twilio-voice-outbound] public callback origin is invalid", {
+      errorCode: isElizaError(error) ? error.code : "TWILIO_PUBLIC_URL_INVALID",
+    });
+    return c.json(
+      {
+        error: "Eliza calling callback origin is not configured",
+        code: "voice_not_configured",
+      },
+      503,
+    );
+  }
+
   const idempotencyDigest = createHash("sha256")
     .update(`${auth.id}:${idempotencyHeader}`)
     .digest("hex");
-  const idempotencyKey = `twilio-call:${idempotencyDigest}`;
-  let [claim] = await dbWrite
-    .insert(idempotencyKeys)
-    .values({
-      key: idempotencyKey,
-      source: "twilio-voice-outbound",
-      expires_at: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
-    })
-    .onConflictDoNothing({ target: idempotencyKeys.key })
-    .returning({ key: idempotencyKeys.key });
-
-  if (!claim) {
-    const [existingCall] = await dbWrite
+  const fenceKey = twilioCallFenceKey(
+    auth.organization_id,
+    auth.id,
+    requestedPhoneNumber,
+  );
+  const admission = await writeTransaction(async (tx) => {
+    const [exactCall] = await tx
       .select({
         id: twilioOutboundCalls.id,
         callSid: twilioOutboundCalls.call_sid,
@@ -182,100 +214,190 @@ app.post("/", async (c) => {
         ),
       )
       .limit(1);
-    if (existingCall) {
-      return c.json(
-        {
-          success: true,
-          callId: existingCall.id,
-          callSid: existingCall.callSid,
-          status: existingCall.status,
-          to: maskPhoneNumber(existingCall.to),
-          replayed: true,
-        },
-        existingCall.callSid ? 200 : 202,
-      );
-    }
+    if (exactCall) return { existingCall: exactCall };
 
-    const now = new Date();
-    await dbWrite
-      .delete(idempotencyKeys)
-      .where(
-        and(
-          eq(idempotencyKeys.key, idempotencyKey),
-          lt(idempotencyKeys.expires_at, now),
-        ),
-      );
-
-    [claim] = await dbWrite
+    let [fenceClaim] = await tx
       .insert(idempotencyKeys)
       .values({
-        key: idempotencyKey,
-        source: "twilio-voice-outbound",
-        expires_at: new Date(now.getTime() + IDEMPOTENCY_TTL_MS),
+        key: fenceKey,
+        source: "twilio-voice-outbound-fence",
+        expires_at: TWILIO_CALL_FENCE_EXPIRY,
       })
       .onConflictDoNothing({ target: idempotencyKeys.key })
       .returning({ key: idempotencyKeys.key });
 
-    if (!claim) {
+    if (!fenceClaim) {
+      const [unresolvedCall] = await tx
+        .select({
+          id: twilioOutboundCalls.id,
+          callSid: twilioOutboundCalls.call_sid,
+          status: twilioOutboundCalls.call_status,
+          to: twilioOutboundCalls.to_number,
+        })
+        .from(twilioOutboundCalls)
+        .where(
+          and(
+            eq(twilioOutboundCalls.organization_id, auth.organization_id),
+            eq(twilioOutboundCalls.user_id, auth.id),
+            eq(twilioOutboundCalls.to_number, requestedPhoneNumber),
+            inArray(twilioOutboundCalls.call_status, [
+              "requesting",
+              "submission-unknown",
+            ]),
+          ),
+        )
+        .limit(1);
+      if (unresolvedCall) return { existingCall: unresolvedCall };
+
+      // A validated provider receipt or signed callback normally clears the
+      // fence. Recover a stale fence only after proving no unresolved call owns it.
+      await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.key, fenceKey));
+      [fenceClaim] = await tx
+        .insert(idempotencyKeys)
+        .values({
+          key: fenceKey,
+          source: "twilio-voice-outbound-fence",
+          expires_at: TWILIO_CALL_FENCE_EXPIRY,
+        })
+        .onConflictDoNothing({ target: idempotencyKeys.key })
+        .returning({ key: idempotencyKeys.key });
+      if (!fenceClaim) return { existingCall: null };
+    }
+
+    await tx.insert(twilioOutboundCalls).values({
+      id: callId,
+      request_digest: idempotencyDigest,
+      account_sid: accountSid,
+      organization_id: auth.organization_id,
+      user_id: auth.id,
+      from_number: fromNumber,
+      to_number: requestedPhoneNumber,
+      call_status: "requesting",
+    });
+    return { callId };
+  });
+
+  if ("existingCall" in admission) {
+    const existingCall: ExistingCall | null = admission.existingCall ?? null;
+    if (!existingCall) {
       return c.json(
         {
-          error: "This call request was already submitted",
-          code: "duplicate_call",
+          error: "Another call request is being admitted",
+          code: "duplicate_call_pending",
         },
         409,
       );
     }
+    return c.json(
+      {
+        success: true,
+        callId: existingCall.id,
+        callSid: existingCall.callSid,
+        status: existingCall.status,
+        to: maskPhoneNumber(existingCall.to),
+        replayed: true,
+      },
+      existingCall.callSid ? 200 : 202,
+    );
   }
 
-  const callId = randomUUID();
-  await dbWrite.insert(twilioOutboundCalls).values({
-    id: callId,
-    request_digest: idempotencyDigest,
-    account_sid: accountSid,
-    organization_id: auth.organization_id,
-    user_id: auth.id,
-    from_number: fromNumber,
-    to_number: requestedPhoneNumber,
-    call_status: "requesting",
-  });
-
-  let call: TwilioCallResponse;
+  let call: z.infer<typeof TwilioCallResponse>;
   try {
     const form = new URLSearchParams();
     form.set("To", requestedPhoneNumber);
     form.set("From", fromNumber);
-    form.set("Url", resolveCallbackUrl(c));
+    form.set("Url", callbackUrl);
     form.set("Method", "POST");
-    form.set("StatusCallback", resolveStatusCallbackUrl(c, callId));
+    form.set("StatusCallback", statusCallbackUrl);
     form.set("StatusCallbackMethod", "POST");
     for (const event of ["initiated", "ringing", "answered", "completed"]) {
       form.append("StatusCallbackEvent", event);
     }
 
-    call = await twilioApiRequest<TwilioCallResponse>(
+    const rawCall = await twilioApiRequest<unknown>(
       accountSid,
       authToken,
       "POST",
       "/Calls.json",
       form,
     );
+    const parsedCall = TwilioCallResponse.safeParse(rawCall);
+    if (!parsedCall.success) {
+      throw new ElizaError("Twilio accepted the call without a valid receipt", {
+        code: "TWILIO_RECEIPT_INVALID",
+        context: { callId, provider: "twilio" },
+        cause: parsedCall.error,
+        severity: "fatal",
+      });
+    }
+    call = parsedCall.data;
   } catch (error) {
-    // error-policy:J4 a missing or unusable provider response cannot prove
-    // rejection. Retain the claim and expose the durable call id so signed
-    // callbacks can reconcile an accepted call without authorizing a retry.
+    const providerRejected =
+      isElizaError(error) && error.code === "TWILIO_PROVIDER_REJECTED";
     logger.error("[twilio-voice-outbound] failed to queue call", {
       userId: auth.id,
       organizationId: auth.organization_id,
+      errorCode: isElizaError(error)
+        ? error.code
+        : "TWILIO_SUBMISSION_UNCERTAIN",
       error: error instanceof Error ? error.message : String(error),
     });
+    if (providerRejected) {
+      // error-policy:J1 an explicit provider 4xx proves the paid call was not
+      // accepted, so the boundary may terminalize and release the global fence.
+      await writeTransaction(async (tx) => {
+        await tx
+          .update(twilioOutboundCalls)
+          .set({
+            call_status: "provider-error",
+            provider_error_code: error.code,
+            terminal_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(twilioOutboundCalls.id, callId),
+              lt(twilioOutboundCalls.last_status_sequence, 0),
+              eq(twilioOutboundCalls.call_status, "requesting"),
+            ),
+          );
+        await tx
+          .delete(idempotencyKeys)
+          .where(eq(idempotencyKeys.key, fenceKey));
+      });
+      const providerStatus =
+        typeof error.context?.providerStatus === "number"
+          ? error.context.providerStatus
+          : undefined;
+      return c.json(
+        {
+          error: "Twilio rejected the call request",
+          code: "provider_rejected",
+          ...(providerStatus === undefined ? {} : { providerStatus }),
+        },
+        providerStatus === 429 ? 429 : 502,
+      );
+    }
+
+    // error-policy:J4 a missing or unusable provider response cannot prove
+    // rejection. Retain the fence and expose the durable call id so signed
+    // callbacks can reconcile an accepted call without authorizing a retry.
     await dbWrite
       .update(twilioOutboundCalls)
       .set({
         call_status: "submission-unknown",
-        provider_error_code: "provider_unavailable",
+        provider_error_code: isElizaError(error)
+          ? error.code
+          : "TWILIO_SUBMISSION_UNCERTAIN",
         updated_at: new Date(),
       })
-      .where(eq(twilioOutboundCalls.id, callId));
+      .where(
+        and(
+          eq(twilioOutboundCalls.id, callId),
+          lt(twilioOutboundCalls.last_status_sequence, 0),
+          eq(twilioOutboundCalls.call_status, "requesting"),
+        ),
+      );
     return c.json(
       {
         success: true,
@@ -291,17 +413,20 @@ app.post("/", async (c) => {
 
   let auditPending = false;
   try {
-    await dbWrite
-      .update(twilioOutboundCalls)
-      .set({
-        call_sid: call.sid,
-        call_status: sql`CASE
-          WHEN ${twilioOutboundCalls.last_status_sequence} < 0 THEN ${call.status}
-          ELSE ${twilioOutboundCalls.call_status}
-        END`,
-        updated_at: new Date(),
-      })
-      .where(eq(twilioOutboundCalls.id, callId));
+    await writeTransaction(async (tx) => {
+      await tx
+        .update(twilioOutboundCalls)
+        .set({
+          call_sid: call.sid,
+          call_status: sql`CASE
+            WHEN ${twilioOutboundCalls.last_status_sequence} < 0 THEN ${call.status}
+            ELSE ${twilioOutboundCalls.call_status}
+          END`,
+          updated_at: new Date(),
+        })
+        .where(eq(twilioOutboundCalls.id, callId));
+      await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.key, fenceKey));
+    });
   } catch (error) {
     // error-policy:J4 Twilio accepted the call; the signed callback keyed by
     // callId remains the authoritative reconciliation path for this row.

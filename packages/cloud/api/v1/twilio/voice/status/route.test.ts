@@ -9,6 +9,8 @@ const selectLimit = mock(async () => [
     id: requestId,
     callSid,
     accountSid: "AC123",
+    organizationId: "22222222-2222-4222-8222-222222222222",
+    userId: "11111111-1111-4111-8111-111111111111",
     from: "+14484080429",
     to: "+14155550100",
   },
@@ -23,6 +25,7 @@ const verifySignature = mock(
 );
 const insertConflict = mock(async () => undefined);
 const updateWhere = mock(async () => undefined);
+const deleteWhere = mock(async () => undefined);
 const updateSets: Record<string, unknown>[] = [];
 const tx = {
   insert: mock(() => ({
@@ -34,6 +37,7 @@ const tx = {
       return { where: updateWhere };
     },
   })),
+  delete: mock(() => ({ where: deleteWhere })),
 };
 const writeTransaction = mock(async (callback: (value: typeof tx) => unknown) =>
   callback(tx),
@@ -46,7 +50,11 @@ const dbWrite = {
 
 mock.module("@/db/helpers", () => ({ dbWrite, writeTransaction }));
 mock.module("@/lib/utils/twilio-api", () => ({
+  twilioApiRequest: mock(),
   verifyTwilioSignature: verifySignature,
+}));
+mock.module("@/lib/utils/logger", () => ({
+  logger: { error: mock(), info: mock() },
 }));
 
 const { default: app } = await import("./route");
@@ -92,6 +100,8 @@ describe("POST Twilio outbound status callback", () => {
         id: requestId,
         callSid,
         accountSid: "AC123",
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "11111111-1111-4111-8111-111111111111",
         from: "+14484080429",
         to: "+14155550100",
       },
@@ -107,6 +117,7 @@ describe("POST Twilio outbound status callback", () => {
     );
     insertConflict.mockClear();
     updateWhere.mockClear();
+    deleteWhere.mockClear();
     updateSets.length = 0;
     writeTransaction.mockClear();
   });
@@ -122,6 +133,7 @@ describe("POST Twilio outbound status callback", () => {
     expect(writeTransaction).toHaveBeenCalledTimes(1);
     expect(insertConflict).toHaveBeenCalledTimes(1);
     expect(updateWhere).toHaveBeenCalledTimes(1);
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
     expect(updateSets[0]).toMatchObject({
       call_sid: callSid,
       call_status: "completed",

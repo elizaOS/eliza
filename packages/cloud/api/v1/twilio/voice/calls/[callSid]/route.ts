@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { dbWrite } from "@/db/helpers";
 import { idempotencyKeys, twilioOutboundCalls } from "@/db/schemas";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireSessionUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -34,8 +34,8 @@ function maskPhoneNumber(phoneNumber: string): string {
 
 app.use("*", rateLimit({ ...RateLimitPresets.CRITICAL, failClosed: true }));
 
-async function ownedCall(c: Parameters<typeof requireUserOrApiKeyWithOrg>[0]) {
-  const auth = await requireUserOrApiKeyWithOrg(c);
+async function ownedCall(c: Parameters<typeof requireSessionUserWithOrg>[0]) {
+  const auth = await requireSessionUserWithOrg(c);
   const reference = c.req.param("callSid");
   const parsedSid = CallSid.safeParse(reference);
   const parsedId = CallId.safeParse(reference);
