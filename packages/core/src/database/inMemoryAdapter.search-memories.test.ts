@@ -244,6 +244,29 @@ describe("InMemoryDatabaseAdapter.searchMemories", () => {
 		});
 		expect(results.map((memory) => memory.content.text)).toEqual(["mine"]);
 	});
+
+	it("applies offset after stable similarity ordering", async () => {
+		const memories = Array.from({ length: 6 }, (_, index) => ({
+			entityId: entityA,
+			roomId: roomA,
+			agentId,
+			content: { text: `rank ${index}` },
+			embedding: offAxis(index * 0.1),
+		})) as Memory[];
+		const adapter = await seed(memories);
+
+		const results = await adapter.searchMemories({
+			tableName: "memories",
+			embedding: onAxis(),
+			count: 2,
+			offset: 3,
+		});
+
+		expect(results.map((memory) => memory.content.text)).toEqual([
+			"rank 3",
+			"rank 4",
+		]);
+	});
 });
 
 describe("InMemoryDatabaseAdapter.clearEmbeddingsOutsideActiveDimension", () => {

@@ -76,6 +76,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/fragments\.slice\(/,
 		/resolved\.slice\(/,
 		/toWellFormedUnicode\(contextPack\)/,
+		/options\.limit\s*\?\?/,
+		/count:\s*options\.limit/,
+	],
+	"packages/core/src/features/documents/service.ts": [
+		/limit:\s*(?:20|40|1_000)[,\n]/,
 	],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
