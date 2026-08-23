@@ -10,6 +10,7 @@ import { dbWrite } from "../../db/client";
 import {
   type BillingCancelCommandBundle,
   type BillingCancelLogicalIdentity,
+  type BillingCancelReceiptIdentity,
   billingCancelCommandsRepository,
 } from "../../db/repositories/billing-cancel-commands";
 import type { BillingCancelResourceType } from "../../db/schemas/billing-cancel-commands";
@@ -70,6 +71,8 @@ export interface RequestBillingCancellationOptions {
   authorizeInfrastructureMutation: () => Promise<string | null | undefined>;
 }
 
+export type ReadBillingCancellationReceiptOptions = BillingCancelReceiptIdentity;
+
 export const BILLING_CANCELLATION_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
 async function sha256Hex(value: string): Promise<string> {
@@ -97,6 +100,15 @@ function assertInput(options: RequestBillingCancellationOptions): void {
       "validation_error",
       "expectedLifecycleRevision must be a non-negative safe integer",
     );
+  }
+}
+
+function assertReceiptReadInput(options: ReadBillingCancellationReceiptOptions): void {
+  if (!isValidUUID(options.resourceId)) {
+    throw new ApiError(400, "validation_error", "resourceId must be a UUID");
+  }
+  if (!isValidUUID(options.receiptId)) {
+    throw new ApiError(400, "validation_error", "receiptId must be a UUID");
   }
 }
 
@@ -192,7 +204,7 @@ function projectReceipt(bundle: BillingCancelCommandBundle): BillingCancellation
           ? "terminal_attention"
           : "queued",
     acceptedAt: command.created_at.toISOString(),
-    pollEndpoint: `/api/v1/jobs/${command.job_id}`,
+    pollEndpoint: `/api/v1/billing/resources/${command.resource_id}/cancel?receiptId=${command.id}`,
   };
 }
 
@@ -295,6 +307,29 @@ export class BillingResourceCancellationsService {
   constructor(
     private readonly dependencies: BillingResourceCancellationsDependencies = defaultDependencies,
   ) {}
+
+  /**
+   * Reads and reprojects the durable cancellation authority from the primary
+   * database. Organization, path resource, and receipt must all match; every
+   * miss intentionally collapses to the same not-found response.
+   */
+  async readReceipt(
+    options: ReadBillingCancellationReceiptOptions,
+  ): Promise<BillingCancellationReceipt> {
+    assertReceiptReadInput(options);
+    const identity: BillingCancelReceiptIdentity = {
+      organizationId: options.organizationId,
+      resourceId: options.resourceId.toLowerCase(),
+      receiptId: options.receiptId.toLowerCase(),
+    };
+    const bundle = await this.dependencies.transact(async (tx) =>
+      billingCancelCommandsRepository.findReceipt(tx, identity),
+    );
+    if (!bundle) {
+      throw new ApiError(404, "resource_not_found", "Billing cancellation receipt not found");
+    }
+    return projectReceipt(bundle);
+  }
 
   async request(options: RequestBillingCancellationOptions): Promise<BillingCancellationResult> {
     assertInput(options);

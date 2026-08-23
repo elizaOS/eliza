@@ -236,6 +236,7 @@ export async function readCloudBearerToken(): Promise<string | null> {
 // ---------------------------------------------------------------------------
 
 const NATIVE_BODYLESS_STATUSES = new Set([204, 205, 304]);
+const NATIVE_HTTP_TIMEOUT_MS = 30_000;
 
 function headersToRecord(headers: Headers): Record<string, string> {
   const record: Record<string, string> = {};
@@ -297,6 +298,46 @@ function nativeResponseHeaders(
   return headers;
 }
 
+function requestAbortReason(signal: AbortSignal): unknown {
+  return (
+    signal.reason ?? new DOMException("The request was aborted", "AbortError")
+  );
+}
+
+/**
+ * Native bridge promises cannot be cancelled from the WebView. Bound the
+ * caller-facing request to its Fetch signal anyway, while retaining rejection
+ * handlers on the bridge promise so a later native failure is never unhandled.
+ */
+function requestNativeResponseWithAbort(
+  request: () => Promise<Response>,
+  signal: AbortSignal | null | undefined,
+): Promise<Response> {
+  if (signal?.aborted) return Promise.reject(requestAbortReason(signal));
+  const pending = request();
+  if (!signal) return pending;
+
+  return new Promise<Response>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(requestAbortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+
+    void pending.then(
+      (response) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(response);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function nativeApiFetch(
   url: string,
   init: { method?: string; headers: Headers; body?: BodyInit | null },
@@ -309,8 +350,8 @@ async function nativeApiFetch(
     headers: headersToRecord(init.headers),
     ...(data !== undefined ? { data } : {}),
     responseType: "json",
-    connectTimeout: 30_000,
-    readTimeout: 30_000,
+    connectTimeout: NATIVE_HTTP_TIMEOUT_MS,
+    readTimeout: NATIVE_HTTP_TIMEOUT_MS,
   });
   const { body, contentType } = nativeResponseBody(result.data);
   return new Response(
@@ -435,24 +476,35 @@ export async function apiFetch(
   // WKWebView request. Capacitor keeps its native plugin, while web retains the
   // original same-origin fetch path.
   const desktopTransport = desktopHttpTransportForUrl(url);
-  const res = desktopTransport
-    ? await desktopTransport.request(
-        url,
-        { ...rest, headers, body: requestBody },
-        undefined,
-      )
-    : Capacitor.isNativePlatform()
-      ? await nativeApiFetch(url, {
+  let res: Response;
+  if (desktopTransport) {
+    res = await requestNativeResponseWithAbort(
+      () =>
+        desktopTransport.request(
+          url,
+          { ...rest, headers, body: requestBody },
+          { timeoutMs: NATIVE_HTTP_TIMEOUT_MS },
+        ),
+      rest.signal,
+    );
+  } else if (Capacitor.isNativePlatform()) {
+    res = await requestNativeResponseWithAbort(
+      () =>
+        nativeApiFetch(url, {
           method: rest.method,
           headers,
           body: requestBody,
-        })
-      : await fetch(url, {
-          ...rest,
-          credentials: "include",
-          headers,
-          body: requestBody,
-        });
+        }),
+      rest.signal,
+    );
+  } else {
+    res = await fetch(url, {
+      ...rest,
+      credentials: "include",
+      headers,
+      body: requestBody,
+    });
+  }
 
   if (!res.ok) {
     // A 401 on an authed call means our session was rejected (token revoked or

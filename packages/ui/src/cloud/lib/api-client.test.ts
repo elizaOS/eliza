@@ -288,6 +288,37 @@ describe("cloud api-client transport bridge", () => {
       expect((err as ApiError).status).toBe(403);
       expect((err as ApiError).code).toBe("FORBIDDEN");
     });
+
+    it("rejects a hung Capacitor request when its signal aborts", async () => {
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      capacitorMocks.request.mockImplementation(() => {
+        markStarted();
+        return new Promise(() => {});
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const controller = new AbortController();
+      const pending = api("/api/v1/apps", {
+        method: "POST",
+        json: { name: "Bounded native request" },
+        signal: controller.signal,
+      });
+      await started;
+      const timeoutError = new DOMException(
+        "The operation timed out",
+        "TimeoutError",
+      );
+      const rejected = expect(pending).rejects.toBe(timeoutError);
+
+      controller.abort(timeoutError);
+
+      await rejected;
+      expect(capacitorMocks.request).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(desktopTransportMocks.request).not.toHaveBeenCalled();
+    });
   });
 
   // --- ELECTROBUN: same native-aware gate via the Electrobun detector --------
@@ -314,7 +345,7 @@ describe("cloud api-client transport bridge", () => {
       expect(desktopTransportMocks.request).toHaveBeenCalledWith(
         "https://api.eliza.app/api/v1/apps",
         expect.objectContaining({ body: null }),
-        undefined,
+        { timeoutMs: 30_000 },
       );
       const requestInit = desktopTransportMocks.request.mock.calls[0]?.[1] as
         | RequestInit
@@ -322,6 +353,53 @@ describe("cloud api-client transport bridge", () => {
       expect(new Headers(requestInit?.headers).get("Authorization")).toBe(
         `Bearer ${STEWARD_TOKEN}`,
       );
+    });
+
+    it("rejects a hung desktop POST when its signal aborts without retrying it", async () => {
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      desktopTransportMocks.request.mockImplementation(() => {
+        markStarted();
+        return new Promise<Response>(() => {});
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const controller = new AbortController();
+
+      const pending = api(
+        "/api/v1/billing/resources/11111111-1111-4111-8111-111111111111/cancel?resourceType=container",
+        {
+          method: "POST",
+          json: { expectedLifecycleRevision: 7, mode: "stop" },
+          signal: controller.signal,
+        },
+      );
+      await started;
+      const timeoutError = new DOMException(
+        "The operation timed out",
+        "TimeoutError",
+      );
+      const rejected = expect(pending).rejects.toBe(timeoutError);
+
+      controller.abort(timeoutError);
+
+      await rejected;
+      expect(desktopTransportMocks.request).toHaveBeenCalledTimes(1);
+      expect(desktopTransportMocks.request).toHaveBeenCalledWith(
+        "https://api.eliza.app/api/v1/billing/resources/11111111-1111-4111-8111-111111111111/cancel?resourceType=container",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            expectedLifecycleRevision: 7,
+            mode: "stop",
+          }),
+          signal: controller.signal,
+        }),
+        { timeoutMs: 30_000 },
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(capacitorMocks.request).not.toHaveBeenCalled();
     });
 
     it("STILL throws CROSS_ORIGIN_API_URL for a non-allowlisted host", async () => {
