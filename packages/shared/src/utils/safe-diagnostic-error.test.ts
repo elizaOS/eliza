@@ -3,7 +3,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { formatDiagnosticError, readDiagnosticProperty } from "./safe-diagnostic-error.js";
+import {
+  formatDiagnosticError,
+  readDiagnosticProperty,
+} from "./safe-diagnostic-error.js";
 
 describe("readDiagnosticProperty", () => {
   it("reads own property", () => {
