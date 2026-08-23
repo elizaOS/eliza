@@ -290,6 +290,18 @@ export function readDocumentSourceProjection(args: {
 	examinedSourceSegments?: number;
 	sourceQueryCount: number;
 }): DocumentRangeReadResult {
+	if (
+		!Number.isSafeInteger(args.params.offset) ||
+		args.params.offset < 0 ||
+		!Number.isSafeInteger(args.params.limit) ||
+		args.params.limit < 1 ||
+		args.params.offset > Number.MAX_SAFE_INTEGER - args.params.limit
+	) {
+		throw new ElizaError("Document source projection range is invalid", {
+			code: "DOCUMENT_READ_INVALID_RANGE",
+			context: { documentId: args.documentId },
+		});
+	}
 	const total =
 		args.params.unit === "byte"
 			? args.parent.sourceByteLength

@@ -111,6 +111,8 @@ export interface DocumentListOptions {
 	timeRangeStart?: number;
 	timeRangeEnd?: number;
 	tags?: string[];
+	/** Internal/provider filter that is pushed into storage. */
+	pinnedOnly?: boolean;
 }
 
 /** Machine-readable outcome of a document list request. */
@@ -985,6 +987,7 @@ export class DocumentService extends Service {
 				? { timeRangeEnd: options.timeRangeEnd }
 				: {}),
 			...(options.tags?.length ? { tags: options.tags } : {}),
+			...(options.pinnedOnly ? { pinnedOnly: true } : {}),
 		};
 		const stored = await queryDocumentsWithCapability(
 			this.runtime.adapter,

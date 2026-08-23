@@ -187,6 +187,29 @@ export const memorySchema: SchemaTable = {
 			where:
 				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
 		},
+		idx_documents_pinned_created: {
+			name: "idx_documents_pinned_created",
+			columns: [
+				{ expression: "created_at", isExpression: false },
+				{ expression: "id", isExpression: false },
+			],
+			isUnique: false,
+			where:
+				"type = 'documents' AND metadata->>'type' = 'document' AND metadata->>'pinned' = 'true'",
+		},
+		idx_document_source_search: {
+			name: "idx_document_source_search",
+			columns: [
+				{
+					expression:
+						"regexp_split_to_array(translate(trim(COALESCE(content->>'text', '')), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), E'[ \\t\\r\\n\\f]+')",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+		},
 	},
 	foreignKeys: {
 		fk_room: {

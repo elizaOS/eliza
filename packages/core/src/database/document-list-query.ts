@@ -665,10 +665,21 @@ export function documentSearchText(memory: Memory): string {
 		.join("\n");
 }
 
-function matchesDocumentQuery(memory: Memory, query: string): boolean {
+function matchesDocumentQuery(
+	memory: Memory,
+	query: string,
+	sourceSegmentsByDocument: ReadonlyMap<string, readonly Memory[]>,
+): boolean {
 	const haystack = new Set(
 		portableDocumentSearchTokens(documentSearchText(memory)),
 	);
+	for (const segment of sourceSegmentsByDocument.get(String(memory.id)) ?? []) {
+		for (const token of portableDocumentSearchTokens(
+			segment.content.text ?? "",
+		)) {
+			haystack.add(token);
+		}
+	}
 	const queryLexemes = portableDocumentSearchTokens(query);
 	return (
 		queryLexemes.length > 0 &&
@@ -846,6 +857,8 @@ export function validateDocumentListQueryParams(
 ): void {
 	validateDocumentRequesterContext(params);
 	if (
+		(params.pinnedOnly !== undefined &&
+			typeof params.pinnedOnly !== "boolean") ||
 		!Number.isSafeInteger(params.limit) ||
 		params.limit < 1 ||
 		params.limit > DOCUMENT_LIST_MAX_LIMIT
@@ -940,8 +953,24 @@ export function queryDocumentsInMemory(
 	params: DocumentListQueryParams,
 ): DocumentListQueryResult {
 	validateDocumentListQueryParams(params);
-	assertUniqueDocumentIds(memories);
-	const allVisibleDocuments = memories
+	const documents = memories.filter(isDocumentMemory);
+	assertUniqueDocumentIds(documents);
+	const sourceSegmentsByDocument = new Map<string, Memory[]>();
+	for (const memory of memories) {
+		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+		if (
+			memory.agentId !== params.agentId ||
+			metadata.type !== MemoryType.FRAGMENT ||
+			metadata.fragmentRole !== "source-segment" ||
+			typeof metadata.documentId !== "string"
+		) {
+			continue;
+		}
+		const rows = sourceSegmentsByDocument.get(metadata.documentId) ?? [];
+		rows.push(memory);
+		sourceSegmentsByDocument.set(metadata.documentId, rows);
+	}
+	const allVisibleDocuments = documents
 		.filter(
 			(memory) =>
 				memory.agentId === params.agentId &&
@@ -954,13 +983,17 @@ export function queryDocumentsInMemory(
 				isWithinDocumentSnapshot(memory, params.cursor as DocumentListCursor),
 			)
 		: allVisibleDocuments;
-	const availableDocuments = visibleDocuments.filter((memory) =>
-		matchesDocumentFilters(memory, params),
+	const availableDocuments = visibleDocuments.filter(
+		(memory) =>
+			matchesDocumentFilters(memory, params) &&
+			(!params.pinnedOnly ||
+				(memory.metadata as Record<string, unknown> | undefined)?.pinned ===
+					true),
 	);
 	const normalizedQuery = params.query?.trim();
 	const matchedDocuments = normalizedQuery
 		? availableDocuments.filter((memory) =>
-				matchesDocumentQuery(memory, normalizedQuery),
+				matchesDocumentQuery(memory, normalizedQuery, sourceSegmentsByDocument),
 			)
 		: availableDocuments;
 	const matchedPage = paginateDocuments(matchedDocuments, params);

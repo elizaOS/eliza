@@ -396,6 +396,9 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', schema_name, table_name);
       EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', schema_name, table_name);
       EXECUTE format('DROP POLICY IF EXISTS entity_isolation_policy ON %I.%I', schema_name, table_name);
+      EXECUTE format('DROP POLICY IF EXISTS entity_isolation_insert_policy ON %I.%I', schema_name, table_name);
+      EXECUTE format('DROP POLICY IF EXISTS entity_isolation_update_policy ON %I.%I', schema_name, table_name);
+      EXECUTE format('DROP POLICY IF EXISTS entity_isolation_delete_policy ON %I.%I', schema_name, table_name);
 
       IF room_column_name IS NOT NULL THEN
         IF require_entity THEN
@@ -403,6 +406,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             EXECUTE format('
               CREATE POLICY entity_isolation_policy ON %I.%I
               AS RESTRICTIVE
+              FOR SELECT
               USING (
                 current_entity_id() IS NOT NULL
                 AND (
@@ -415,8 +419,23 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
                     type IN (''documents'', ''document_fragments'')
                     AND agent_id = current_entity_id()
                   )
+                  OR (
+                    type IN (''documents'', ''document_fragments'')
+                    AND metadata->>''scope'' <> ''agent-private''
+                    AND EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements_text(
+                        COALESCE(metadata->''directGrantEntityIds'', ''[]''::jsonb)
+                      ) AS grant_id
+                      WHERE grant_id = current_entity_id()::text
+                    )
+                  )
                 )
               )
+            ', schema_name, table_name, room_column_name);
+            EXECUTE format('
+              CREATE POLICY entity_isolation_insert_policy ON %I.%I
+              AS RESTRICTIVE FOR INSERT
               WITH CHECK (
                 current_entity_id() IS NOT NULL
                 AND (
@@ -431,7 +450,36 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
                   )
                 )
               )
+            ', schema_name, table_name, room_column_name);
+            EXECUTE format('
+              CREATE POLICY entity_isolation_update_policy ON %I.%I
+              AS RESTRICTIVE FOR UPDATE
+              USING (
+                current_entity_id() IS NOT NULL
+                AND (
+                  %I IN (SELECT room_id FROM participants WHERE entity_id = current_entity_id())
+                  OR (type IN (''documents'', ''document_fragments'') AND agent_id = current_entity_id())
+                )
+              )
+              WITH CHECK (
+                current_entity_id() IS NOT NULL
+                AND (
+                  %I IN (SELECT room_id FROM participants WHERE entity_id = current_entity_id())
+                  OR (type IN (''documents'', ''document_fragments'') AND agent_id = current_entity_id())
+                )
+              )
             ', schema_name, table_name, room_column_name, room_column_name);
+            EXECUTE format('
+              CREATE POLICY entity_isolation_delete_policy ON %I.%I
+              AS RESTRICTIVE FOR DELETE
+              USING (
+                current_entity_id() IS NOT NULL
+                AND (
+                  %I IN (SELECT room_id FROM participants WHERE entity_id = current_entity_id())
+                  OR (type IN (''documents'', ''document_fragments'') AND agent_id = current_entity_id())
+                )
+              )
+            ', schema_name, table_name, room_column_name);
           ELSE
             EXECUTE format('
               CREATE POLICY entity_isolation_policy ON %I.%I
