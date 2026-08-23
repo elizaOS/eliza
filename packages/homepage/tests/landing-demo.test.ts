@@ -4,7 +4,7 @@
  * filtering for spoken and attachment steps, and attachment text rendering.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   findUndeclaredLandingDemoClaims,
   findUnsupportedLandingDemoClaims,
