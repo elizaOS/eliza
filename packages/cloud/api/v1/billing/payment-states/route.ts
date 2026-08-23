@@ -38,6 +38,8 @@ app.get("/", async (c) => {
       total: states.length,
     });
   } catch (error) {
+    // error-policy:J1 boundary translation: the transport boundary returns a
+    // structured failure instead of leaking the raw service error.
     logger.error(
       "[Billing Payment States API] Error listing payment states",
       error,

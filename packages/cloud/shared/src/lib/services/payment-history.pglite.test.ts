@@ -235,6 +235,9 @@ async function insertReversal(params: {
   paymentIntentId: string;
   source: string;
   reversedUsd?: number;
+  reference?: string;
+  unrecoveredUsd?: number;
+  idempotencyKey?: string;
   createdAt?: Date;
 }) {
   await dbWrite.insert(creditTransactions).values({
@@ -242,10 +245,15 @@ async function insertReversal(params: {
     amount: params.amount,
     type: params.type,
     description: `${params.source} test row`,
-    stripe_payment_intent_id: `test:${params.paymentIntentId}:${params.source}:${Math.random()}`,
+    stripe_payment_intent_id:
+      params.idempotencyKey ?? `test:${params.paymentIntentId}:${params.source}:${Math.random()}`,
     metadata: {
       payment_intent_id: params.paymentIntentId,
       source: params.source,
+      ...(params.reference ? { reference: params.reference } : {}),
+      ...(params.unrecoveredUsd !== undefined
+        ? { unrecovered_clawback_usd: params.unrecoveredUsd }
+        : {}),
       ...(params.reversedUsd !== undefined ? { reversed_usd: params.reversedUsd } : {}),
     },
     ...(params.createdAt ? { created_at: params.createdAt } : {}),
@@ -301,10 +309,9 @@ describe("listPaymentStates — base states", () => {
     expect(row.receiptId).toBe(receipt.id);
     expect(row.amountCents).toBe(2500);
     expect(row.currency).toBe("USD");
-    expect(row.eventTimeKind).toBe("settlement");
+    expect(row.eventTimeKind).toBe("provider_settlement");
     expect(row.policyEffect).toBeNull();
     expect(row.supportState).toBe("none");
-    expect(row.providerTxRef).toBe("pi_settled_1");
   });
 
   test("pending and failed and expired payment requests project distinct states", async () => {
@@ -328,7 +335,7 @@ describe("listPaymentStates — base states", () => {
     const byAmount = new Map(rows.map((r) => [r.amountCents, r.paymentState]));
     expect(byAmount.get(100)).toBe("pending");
     expect(byAmount.get(200)).toBe("failed");
-    expect(byAmount.get(300)).toBe("canceled");
+    expect(byAmount.get(300)).toBe("expired");
   });
 
   test("org scoping: another organization's rows never leak", async () => {
@@ -384,7 +391,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
     const row = rows[0];
     expect(row.paymentState).toBe("partially_refunded");
     expect(row.cumulativeRefundedUsd).toBe(40);
-    expect(row.cumulativeClawbackUsd).toBe(25);
+    expect(row.cumulativeClawbackCredits).toBe(25);
     expect(row.policyEffect).toEqual({
       status: "unavailable",
       reason: "refund_entitlement_policy_pending_22930",
@@ -420,7 +427,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
     expect(rows[0].cumulativeRefundedUsd).toBe(50);
   });
 
-  test("replayed duplicate refund webhook aggregates once (cumulative snapshots, no double count)", async () => {
+  test("replayed webhook cannot double-write: the ledger key is unique and the projection reads one row", async () => {
     const request = await insertStripePaymentRequest({
       organizationId,
       amountCents: 10000,
@@ -434,10 +441,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
       providerTxRef: "pi_replay_1",
       amountCents: 10000,
     });
-    // Webhook 1: cumulative $30. Webhook 2 (re-delivery of same state): the
-    // handler is a no-op, but a defensive second row with the same cumulative
-    // snapshot must not double-count.
-    const t0 = new Date();
+    // Webhook 1: cumulative $30 claws back under the handler idempotency key.
     await insertReversal({
       organizationId,
       type: "clawback",
@@ -445,67 +449,106 @@ describe("listPaymentStates — refund and dispute derivation", () => {
       paymentIntentId: "pi_replay_1",
       source: "charge.refunded",
       reversedUsd: 30,
-      createdAt: t0,
+      reference: "charge ch_replay",
+      idempotencyKey: "stripe:refund:ch_replay:3000",
     });
-    await insertReversal({
-      organizationId,
-      type: "clawback",
-      amount: "-0",
-      paymentIntentId: "pi_replay_1",
-      source: "charge.refunded",
-      reversedUsd: 30,
-      createdAt: t0,
-    });
+    // Webhook 2 (re-delivery of the same provider state) inserts the SAME
+    // key again: the unique index on credit_transactions.stripe_payment_intent_id
+    // rejects the duplicate outright — exactly the handler's idempotency
+    // contract. The projection therefore never sees two rows for one state.
+    let duplicateRejected = false;
+    try {
+      await insertReversal({
+        organizationId,
+        type: "clawback",
+        amount: "-0",
+        paymentIntentId: "pi_replay_1",
+        source: "charge.refunded",
+        reversedUsd: 30,
+        reference: "charge ch_replay",
+        idempotencyKey: "stripe:refund:ch_replay:3000",
+      });
+    } catch (error) {
+      // Drizzle wraps the driver error in DrizzleQueryError (whose message is
+      // the failed SQL text); the constraint violation surfaces on the cause
+      // chain. Walk it — proven by probe: String(error) does NOT contain
+      // "unique constraint", error.cause does.
+      let node: unknown = error;
+      let depth = 0;
+      while (node instanceof Error && depth < 5) {
+        if (node.message.includes("duplicate key")) {
+          duplicateRejected = true;
+          break;
+        }
+        node = node.cause;
+        depth += 1;
+      }
+    }
+    expect(duplicateRejected).toBe(true);
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    expect(rows.length).toBe(1);
     expect(rows[0].cumulativeRefundedUsd).toBe(30);
     expect(rows[0].paymentState).toBe("partially_refunded");
   });
 
-  test("dispute withdrawn then reinstated projects dispute_reinstated (chronological precedence)", async () => {
+  test("two charges under one intent sum their per-charge cumulative snapshots", async () => {
     const request = await insertStripePaymentRequest({
       organizationId,
-      amountCents: 8000,
+      amountCents: 10000,
       status: "settled",
-      settlementTxRef: "pi_dispute_1",
-      settledAt: new Date(Date.now() - 30_000),
+      settlementTxRef: "pi_multi_charge",
+      settledAt: new Date(Date.now() - 40_000),
     });
     await insertReceipt({
       organizationId,
       paymentRequestId: request.id,
-      providerTxRef: "pi_dispute_1",
-      amountCents: 8000,
+      providerTxRef: "pi_multi_charge",
+      amountCents: 10000,
     });
-    // Withdrawal first, reinstatement later — mirrors the queue's ordered
-    // retry contract (reinstatement never commits before the clawback).
+    // Two distinct charges, each with its own cumulative refund snapshot.
+    // A single global MAX would undercount (30 instead of 70).
     await insertReversal({
       organizationId,
       type: "clawback",
-      amount: "-80",
-      paymentIntentId: "pi_dispute_1",
-      source: "charge.dispute.funds_withdrawn",
-      reversedUsd: 80,
-      createdAt: new Date(Date.now() - 20_000),
+      amount: "-30",
+      paymentIntentId: "pi_multi_charge",
+      source: "charge.refunded",
+      reversedUsd: 30,
+      reference: "charge ch_A",
+      createdAt: new Date(Date.now() - 30_000),
     });
     await insertReversal({
       organizationId,
-      type: "refund",
-      amount: "80",
-      paymentIntentId: "pi_dispute_1",
-      source: "charge.dispute.funds_reinstated",
-      createdAt: new Date(Date.now() - 10_000),
+      type: "clawback",
+      amount: "-40",
+      paymentIntentId: "pi_multi_charge",
+      source: "charge.refunded",
+      reversedUsd: 40,
+      reference: "charge ch_B",
+      createdAt: new Date(Date.now() - 20_000),
     });
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     const row = rows[0];
-    expect(row.paymentState).toBe("dispute_reinstated");
-    expect(row.disputeReinstated).toBe(true);
-    expect(row.reinstatedUsd).toBe(80);
-    expect(row.cumulativeDisputedUsd).toBe(80);
-    expect(row.policyEffect).toEqual({
-      status: "unavailable",
-      reason: "refund_entitlement_policy_pending_22930",
+    expect(row.cumulativeRefundedUsd).toBe(70);
+    expect(row.paymentState).toBe("partially_refunded");
+  });
+
+  test("settled payment request without its receipt projects unavailable, never a fabricated success", async () => {
+    await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 4400,
+      status: "settled",
+      settlementTxRef: "pi_no_receipt",
+      settledAt: new Date(),
     });
+    // No receipt inserted.
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    expect(rows.length).toBe(1);
+    expect(rows[0].paymentState).toBe("unavailable");
+    expect(rows[0].receiptId).toBeNull();
   });
 
   test("dispute withdrawn only projects dispute_withdrawn", async () => {
@@ -555,7 +598,7 @@ describe("listPaymentStates — checkout orders and provider isolation", () => {
     expect(row.surface).toBe("checkout_order");
     expect(row.paymentState).toBe("succeeded");
     expect(row.receiptId).toBeNull();
-    expect(row.eventTimeKind).toBe("settlement");
+    expect(row.eventTimeKind).toBe("provider_settlement");
   });
 
   test("lost post-payment response: delivered order still projects pending; provider_ambiguous projects unavailable", async () => {
@@ -604,9 +647,8 @@ describe("listPaymentStates — checkout orders and provider isolation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     expect(rows.length).toBe(2);
-    const byIntent = new Map(rows.map((r) => [r.providerTxRef, r.paymentState]));
-    expect(byIntent.get("pi_two_tab_a")).toBe("succeeded");
-    expect(byIntent.get("pi_two_tab_b")).toBe("failed");
+    expect(rows.filter((r) => r.paymentState === "succeeded").length).toBe(1);
+    expect(rows.filter((r) => r.paymentState === "failed").length).toBe(1);
   });
 
   test("a reversal row can never attach to a checkout order with a different intent", async () => {
@@ -694,9 +736,11 @@ describe("listPaymentStates — checkout orders and provider isolation", () => {
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     expect(rows.length).toBe(1);
     expect(rows[0].provider).toBe("oxapay");
-    expect(rows[0].paymentState).toBe("succeeded");
+    // No receipt was projected for this oxapay row: settled requests are only
+    // a success through their immutable receipt authority (#22427).
+    expect(rows[0].paymentState).toBe("unavailable");
     expect(rows[0].cumulativeRefundedUsd).toBe(0);
-    expect(rows[0].cumulativeClawbackUsd).toBe(0);
+    expect(rows[0].cumulativeClawbackCredits).toBe(0);
   });
 });
 

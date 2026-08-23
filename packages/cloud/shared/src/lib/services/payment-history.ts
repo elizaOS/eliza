@@ -4,19 +4,22 @@
  * into the customer-visible billing history surface for #22966 (U15b).
  *
  * Every row is derived exclusively from server-authoritative tables; client
- * redirect payloads never influence a state. Reversal amounts are reported
- * from the two distinct authorities the ledger keeps: the provider-cumulative
- * reversed USD recorded by the Stripe queue handlers (`metadata.reversed_usd`)
- * and the applied credit clawback total (row amounts, which may be lower after
- * consumption). Policy effects are never invented: while the refund/chargeback
- * entitlement decision (#22930) is unresolved, every reversal row reports an
- * explicit unavailable policy effect instead of a fabricated outcome.
+ * redirect payloads never influence a state. Settled provider-neutral
+ * payment requests project from their immutable receipt (amount, currency,
+ * settlement time, provider); a settled request without its receipt is an
+ * explicit unavailable state, never a fabricated success. Reversal amounts
+ * keep the ledger's three distinct authorities separate: provider-cumulative
+ * reversed USD (per charge/dispute authority, summed across authorities),
+ * applied credit clawbacks (credit units — NOT USD for credit packs), and
+ * the unrecovered shortfall recorded by the clawback mutation. Policy
+ * effects are never invented: while the refund/chargeback entitlement
+ * decision (#22930) is unresolved, every reversal row reports an explicit
+ * unavailable policy effect.
  *
  * Purchase identity is typed and provider-scoped: Stripe rows unify on the
  * payment intent id; OxaPay rows join through `payment_request_id`, whose
- * grants carry the synthetic `payment-request:{org}:oxapay:{id}` key that can
- * never collide with a real Stripe intent, so no Stripe reversal can attach
- * to an OxaPay purchase.
+ * grants carry the synthetic `payment-request:{org}:oxapay:{id}` key that
+ * can never collide with a real Stripe intent.
  */
 
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -32,6 +35,7 @@ export const PAYMENT_STATE_STATUSES = [
   "succeeded",
   "failed",
   "canceled",
+  "expired",
   "partially_refunded",
   "refunded",
   "dispute_withdrawn",
@@ -76,45 +80,48 @@ export interface PaymentStateRow {
   amountCents: number;
   /** Uppercase currency code as normalized from the owning authority. */
   currency: string;
-  /** Provider-neutral event time: settlement when the provider settled, otherwise the authority's creation time. */
-  eventTime: string;
   /**
-   * Honest labeling of {@link eventTime}: "settlement" carries provider
-   * settlement authority; "creation" is the local server observation only.
+   * Event time of the row's current state: the provider settlement for
+   * unreversed purchases; the latest reversal's ledger observation time once
+   * a reversal decided the state. ISO string.
    */
-  eventTimeKind: "settlement" | "creation";
+  eventTime: string;
+  /** Honest labeling of {@link eventTime}. */
+  eventTimeKind: "provider_settlement" | "server_creation" | "reversal_ledger_observation";
   paymentState: PaymentStateStatus;
-  /** Provider-cumulative refunded USD from `charge.refunded` reversals (never dispute withdrawals). */
+  /** Provider-cumulative refunded USD summed across distinct charge authorities. */
   cumulativeRefundedUsd: number;
-  /** Provider-cumulative disputed USD withdrawn by `charge.dispute.funds_withdrawn` events. */
+  /** Provider-cumulative disputed USD summed across distinct dispute authorities. */
   cumulativeDisputedUsd: number;
-  /** Credits actually removed by clawbacks; may be below the provider amounts after consumption. */
-  cumulativeClawbackUsd: number;
-  /** Credits restored by a dispute reinstatement. */
-  reinstatedUsd: number;
+  /** Credits actually removed by clawbacks (credit units — not USD for credit packs). */
+  cumulativeClawbackCredits: number;
+  /** Credits restored by dispute reinstatement (credit units). */
+  reinstatedCredits: number;
+  /** USD the clawback could not recover from the balance, recorded by the mutation. */
+  unrecoveredShortfallUsd: number;
   /** True when a dispute reinstatement ledger row exists for this purchase. */
   disputeReinstated: boolean;
   /**
    * Current policy effect of the reversal state. Always an explicit
    * unavailable reason while #22930 is unresolved; null when no reversal
-   * applies (purchase rows without refunds/disputes).
+   * applies.
    */
   policyEffect: { status: "unavailable"; reason: PaymentStatePolicyEffectReason } | null;
   /** Structured support state; user-facing copy lives in the UI, never in data. */
   supportState: "none" | "contact_support";
-  /** Provider transaction reference (Stripe payment intent / OxaPay track id). */
-  providerTxRef: string;
 }
 
 interface ReversalAggregate {
   cumulativeRefundedUsd: number;
   cumulativeDisputedUsd: number;
-  cumulativeClawbackUsd: number;
-  reinstatedUsd: number;
+  cumulativeClawbackCredits: number;
+  reinstatedCredits: number;
+  unrecoveredShortfallUsd: number;
   disputeWithdrawn: boolean;
   disputeReinstated: boolean;
   lastReversalAt: number;
-  /** The most recent reversal event by ledger time decides the visible state. */
+  /** Ledger row id of the latest reversal — stable tie-breaker for equal timestamps. */
+  lastReversalRowId: string;
   lastReversalSource: ReversalSource | null;
 }
 
@@ -122,29 +129,48 @@ function emptyAggregate(): ReversalAggregate {
   return {
     cumulativeRefundedUsd: 0,
     cumulativeDisputedUsd: 0,
-    cumulativeClawbackUsd: 0,
-    reinstatedUsd: 0,
+    cumulativeClawbackCredits: 0,
+    reinstatedCredits: 0,
+    unrecoveredShortfallUsd: 0,
     disputeWithdrawn: false,
     disputeReinstated: false,
-    lastReversalAt: 0,
+    lastReversalAt: -1,
+    lastReversalRowId: "",
     lastReversalSource: null,
   };
 }
 
+function finiteNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /**
- * Aggregates reversal ledger rows per Stripe payment intent. Reconciliation
- * refunds (`recon:*` keys, no `payment_intent_id` metadata) never enter: only
- * Stripe queue handler rows carry that metadata key.
+ * Aggregates reversal ledger rows per Stripe payment intent.
+ *
+ * Provider-cumulative amounts are aggregated per authority first, then
+ * summed: Stripe keys refund idempotency on `charge.id + cumulative
+ * amount_refunded` and disputes on `dispute.id`, so the authoritative
+ * cumulative value for each charge/dispute is the max snapshot observed for
+ * that authority, and multiple charges/disputes under one intent add up.
+ * The authority identity is parsed from `metadata.reference`
+ * ("charge {id}" / "dispute {id} (...)"), falling back to the row's
+ * idempotency key (`stripe_payment_intent_id`) when the reference is absent.
  */
 function aggregateReversals(
   rows: Array<{
+    id: string;
     type: string;
     amount: string;
+    stripePaymentIntentId: string | null;
     metadata: Record<string, unknown> | null;
     createdAt: Date;
   }>,
 ): Map<string, ReversalAggregate> {
   const byIntent = new Map<string, ReversalAggregate>();
+  // intent -> source class -> authority id -> max provider-cumulative snapshot
+  const perAuthority = new Map<string, Map<"refund" | "dispute", Map<string, number>>>();
+
   for (const row of rows) {
     const metadata = row.metadata ?? {};
     const intentId = metadata.payment_intent_id;
@@ -159,20 +185,18 @@ function aggregateReversals(
     const current = byIntent.get(intentId) ?? emptyAggregate();
 
     if (row.type === "clawback") {
-      current.cumulativeClawbackUsd += amount;
-      if (at >= current.lastReversalAt) {
-        current.lastReversalAt = at;
-        current.lastReversalSource = source;
+      current.cumulativeClawbackCredits += amount;
+      const shortfall = finiteNumber(metadata.unrecovered_clawback_usd);
+      if (shortfall !== null && shortfall > 0) {
+        current.unrecoveredShortfallUsd += shortfall;
       }
-      // reversed_usd is the provider-cumulative snapshot; the latest row by
-      // ledger time carries the authoritative cumulative value.
-      const reversed = Number(metadata.reversed_usd);
-      if (Number.isFinite(reversed) && reversed >= 0) {
-        if (source === "charge.refunded") {
-          current.cumulativeRefundedUsd = Math.max(current.cumulativeRefundedUsd, reversed);
-        } else {
-          current.cumulativeDisputedUsd = Math.max(current.cumulativeDisputedUsd, reversed);
-        }
+      if (
+        at > current.lastReversalAt ||
+        (at === current.lastReversalAt && row.id > current.lastReversalRowId)
+      ) {
+        current.lastReversalAt = at;
+        current.lastReversalRowId = row.id;
+        current.lastReversalSource = source;
       }
       if (source !== "charge.refunded") {
         current.disputeWithdrawn = true;
@@ -180,20 +204,81 @@ function aggregateReversals(
     } else if (row.type === "refund" && source === "charge.dispute.funds_reinstated") {
       current.disputeWithdrawn = true;
       current.disputeReinstated = true;
-      current.reinstatedUsd += amount;
-      if (at >= current.lastReversalAt) {
+      current.reinstatedCredits += amount;
+      if (
+        at > current.lastReversalAt ||
+        (at === current.lastReversalAt && row.id > current.lastReversalRowId)
+      ) {
         current.lastReversalAt = at;
+        current.lastReversalRowId = row.id;
         current.lastReversalSource = source;
       }
+    } else {
+      continue;
     }
+
+    // Provider-cumulative snapshot per authority.
+    const reversed = finiteNumber(metadata.reversed_usd);
+    if (reversed !== null && reversed >= 0 && source === "charge.refunded") {
+      const authority = reversalAuthority(metadata, row.stripePaymentIntentId ?? row.id, "charge");
+      const classes = perAuthority.get(intentId) ?? new Map();
+      const refunds = classes.get("refund") ?? new Map<string, number>();
+      refunds.set(authority, Math.max(refunds.get(authority) ?? 0, reversed));
+      classes.set("refund", refunds);
+      perAuthority.set(intentId, classes);
+    }
+    if (
+      reversed !== null &&
+      reversed >= 0 &&
+      (source === "charge.dispute.funds_withdrawn" || source === "charge.dispute.funds_reinstated")
+    ) {
+      const authority = reversalAuthority(metadata, row.stripePaymentIntentId ?? row.id, "dispute");
+      const classes = perAuthority.get(intentId) ?? new Map();
+      const disputes = classes.get("dispute") ?? new Map<string, number>();
+      disputes.set(authority, Math.max(disputes.get(authority) ?? 0, reversed));
+      classes.set("dispute", disputes);
+      perAuthority.set(intentId, classes);
+    }
+
     byIntent.set(intentId, current);
+  }
+
+  for (const [intentId, classes] of perAuthority) {
+    const agg = byIntent.get(intentId);
+    if (!agg) continue;
+    let refunded = 0;
+    for (const v of classes.get("refund")?.values() ?? []) refunded += v;
+    let disputed = 0;
+    for (const v of classes.get("dispute")?.values() ?? []) disputed += v;
+    agg.cumulativeRefundedUsd = refunded;
+    agg.cumulativeDisputedUsd = disputed;
   }
   return byIntent;
 }
 
+/** Stable authority identity for per-charge/dispute cumulative snapshots. */
+function reversalAuthority(
+  metadata: Record<string, unknown>,
+  fallback: string,
+  kind: "charge" | "dispute",
+): string {
+  const reference = metadata.reference;
+  if (typeof reference === "string" && reference.trim()) {
+    const text = reference.trim();
+    if (kind === "charge" && text.startsWith("charge ")) {
+      return text;
+    }
+    if (kind === "dispute" && text.startsWith("dispute ")) {
+      // "dispute dp_1 (charge ch_1)" — the dispute id is the authority.
+      return text.split(" (")[0];
+    }
+  }
+  return `${kind}:fallback:${fallback}`;
+}
+
 /**
  * Chronological reversal→state precedence: the most recent authoritative
- * reversal event decides the visible state.
+ * reversal event decides the visible state (row id as the stable tie-breaker).
  */
 function reversalStatus(reversal: ReversalAggregate, amountCents: number): PaymentStateStatus {
   switch (reversal.lastReversalSource) {
@@ -211,28 +296,35 @@ function reversalStatus(reversal: ReversalAggregate, amountCents: number): Payme
   }
 }
 
-/** Maps a payment-request authority status onto the visible state vocabulary. */
+/**
+ * Maps a payment-request authority status onto the visible state vocabulary.
+ * A settled request is only a success through its immutable receipt —
+ * #22427's authority — otherwise the authority is incomplete and the row is
+ * explicitly unavailable.
+ */
 function derivePaymentRequestState(
   status: string,
-  settlementTxRef: string | null,
+  receiptPresent: boolean,
   reversal: ReversalAggregate | undefined,
   amountCents: number,
 ): PaymentStateStatus {
-  const succeeded = status === "settled" && Boolean(settlementTxRef);
-  if (succeeded && reversal && reversal.lastReversalSource) {
-    return reversalStatus(reversal, amountCents);
+  if (status === "settled") {
+    if (!receiptPresent) return "unavailable";
+    if (reversal && reversal.lastReversalSource) {
+      return reversalStatus(reversal, amountCents);
+    }
+    return "succeeded";
   }
   switch (status) {
-    case "settled":
-      return "succeeded";
     case "pending":
     case "delivered":
       return "pending";
     case "failed":
       return "failed";
     case "canceled":
-    case "expired":
       return "canceled";
+    case "expired":
+      return "expired";
     default:
       return "unavailable";
   }
@@ -241,7 +333,8 @@ function derivePaymentRequestState(
 /**
  * Maps a checkout-order authority status onto the visible state vocabulary.
  * A settled order with a bound payment intent is durable server authority —
- * it needs no receipt to be a success (legacy orders never project one).
+ * legacy orders never project a receipt, so receipt absence is not an error
+ * for this surface.
  */
 function deriveCheckoutOrderState(
   status: string,
@@ -277,10 +370,9 @@ function normalizeUppercaseCurrency(value: string): string {
 export class PaymentHistoryService {
   /**
    * Lists the organization's purchase payment states from server authorities.
-   * Purchases are selected first (bounded); every reversal row for their
-   * Stripe payment intents is then aggregated with no pre-aggregation
-   * truncation, so a purchase's refund history cannot be split across a
-   * query boundary.
+   * Purchases are selected first (bounded); reversal rows are then fetched in
+   * id-ordered batches covering EVERY selected intent with no truncation, so
+   * a purchase's refund history cannot be split across a query boundary.
    */
   async listPaymentStates(organizationId: string, limit = 50): Promise<PaymentStateRow[]> {
     const boundedLimit = Math.min(Math.max(limit, 1), 200);
@@ -316,10 +408,6 @@ export class PaymentHistoryService {
       .orderBy(desc(stripeCheckoutOrders.created_at))
       .limit(boundedLimit);
 
-    // Stripe reversal lookup keys: real payment intents only. OxaPay/x402/
-    // wallet-native purchases have no Stripe charge webhook path, so no
-    // reversal can legitimately reference them (their grants key on the
-    // synthetic `payment-request:{org}:{provider}:{id}` string).
     const stripeIntentIds = new Set<string>();
     for (const request of requestRows) {
       if (request.provider === "stripe" && request.settlementTxRef) {
@@ -332,17 +420,27 @@ export class PaymentHistoryService {
       }
     }
 
-    let reversalRows: Array<{
+    // Reversals: batched by intent until every selected intent is covered.
+    // No global row cap — an org with deep refund history on one purchase
+    // must not lose older rows to a sibling purchase's volume.
+    const reversalRows: Array<{
+      id: string;
       type: string;
       amount: string;
+      stripePaymentIntentId: string | null;
       metadata: Record<string, unknown> | null;
       createdAt: Date;
     }> = [];
-    if (stripeIntentIds.size > 0) {
-      reversalRows = await dbRead
+    const intentList = [...stripeIntentIds];
+    const BATCH = 100;
+    for (let i = 0; i < intentList.length; i += BATCH) {
+      const slice = intentList.slice(i, i + BATCH);
+      const rows = await dbRead
         .select({
+          id: creditTransactions.id,
           type: creditTransactions.type,
           amount: creditTransactions.amount,
+          stripePaymentIntentId: creditTransactions.stripe_payment_intent_id,
           metadata: creditTransactions.metadata,
           createdAt: creditTransactions.created_at,
         })
@@ -351,13 +449,11 @@ export class PaymentHistoryService {
           and(
             eq(creditTransactions.organization_id, organizationId),
             inArray(creditTransactions.type, ["clawback", "refund"]),
-            inArray(sql`${creditTransactions.metadata}->>'payment_intent_id'`, [
-              ...stripeIntentIds,
-            ]),
+            inArray(sql`${creditTransactions.metadata}->>'payment_intent_id'`, slice),
           ),
         )
-        .orderBy(desc(creditTransactions.created_at))
-        .limit(1000);
+        .orderBy(desc(creditTransactions.created_at), desc(creditTransactions.id));
+      reversalRows.push(...rows);
     }
 
     const reversals = aggregateReversals(reversalRows);
@@ -369,6 +465,9 @@ export class PaymentHistoryService {
           .select({
             paymentRequestId: paymentRequestReceipts.payment_request_id,
             id: paymentRequestReceipts.id,
+            amountCents: paymentRequestReceipts.amount_cents,
+            currency: paymentRequestReceipts.currency,
+            settledAt: paymentRequestReceipts.settled_at,
           })
           .from(paymentRequestReceipts)
           .where(
@@ -383,10 +482,27 @@ export class PaymentHistoryService {
     const rows: PaymentStateRow[] = [];
     for (const request of requestRows) {
       const receipt = receiptsByRequest.get(request.id) ?? null;
-      const amountCents = Number(request.amountCents);
       const reversalKey = request.provider === "stripe" ? request.settlementTxRef : null;
       const reversal = reversalKey ? reversals.get(reversalKey) : undefined;
       const reversed = Boolean(reversal?.lastReversalSource);
+      // Settled requests project purchase facts from the immutable receipt.
+      const amountCents = receipt ? Number(receipt.amountCents) : Number(request.amountCents);
+      const paymentState = derivePaymentRequestState(
+        request.status,
+        receipt !== null,
+        reversal,
+        amountCents,
+      );
+      const eventTime = reversal?.lastReversalSource
+        ? new Date(reversal.lastReversalAt).toISOString()
+        : request.settledAt
+          ? request.settledAt.toISOString()
+          : request.createdAt.toISOString();
+      const eventTimeKind: PaymentStateRow["eventTimeKind"] = reversal?.lastReversalSource
+        ? "reversal_ledger_observation"
+        : request.settledAt
+          ? "provider_settlement"
+          : "server_creation";
       rows.push({
         id: `payment_request:${request.id}`,
         surface: "payment_request",
@@ -394,19 +510,17 @@ export class PaymentHistoryService {
         receiptId: receipt?.id ?? null,
         provider: request.provider,
         amountCents,
-        currency: normalizeUppercaseCurrency(request.currency),
-        eventTime: (request.settledAt ?? request.createdAt).toISOString(),
-        eventTimeKind: request.settledAt ? "settlement" : "creation",
-        paymentState: derivePaymentRequestState(
-          request.status,
-          request.settlementTxRef,
-          reversal,
-          amountCents,
-        ),
+        currency: receipt
+          ? normalizeUppercaseCurrency(receipt.currency)
+          : normalizeUppercaseCurrency(request.currency),
+        eventTime,
+        eventTimeKind,
+        paymentState,
         cumulativeRefundedUsd: reversal?.cumulativeRefundedUsd ?? 0,
         cumulativeDisputedUsd: reversal?.cumulativeDisputedUsd ?? 0,
-        cumulativeClawbackUsd: reversal?.cumulativeClawbackUsd ?? 0,
-        reinstatedUsd: reversal?.reinstatedUsd ?? 0,
+        cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
+        reinstatedCredits: reversal?.reinstatedCredits ?? 0,
+        unrecoveredShortfallUsd: reversal?.unrecoveredShortfallUsd ?? 0,
         disputeReinstated: reversal?.disputeReinstated ?? false,
         policyEffect: reversed
           ? {
@@ -415,7 +529,6 @@ export class PaymentHistoryService {
             }
           : null,
         supportState: reversed ? "contact_support" : "none",
-        providerTxRef: request.settlementTxRef ?? "",
       });
     }
 
@@ -433,8 +546,16 @@ export class PaymentHistoryService {
         provider: "stripe",
         amountCents,
         currency: normalizeUppercaseCurrency(order.currency),
-        eventTime: (order.settledAt ?? order.createdAt).toISOString(),
-        eventTimeKind: order.settledAt ? "settlement" : "creation",
+        eventTime: reversal?.lastReversalSource
+          ? new Date(reversal.lastReversalAt).toISOString()
+          : order.settledAt
+            ? order.settledAt.toISOString()
+            : order.createdAt.toISOString(),
+        eventTimeKind: reversal?.lastReversalSource
+          ? "reversal_ledger_observation"
+          : order.settledAt
+            ? "provider_settlement"
+            : "server_creation",
         paymentState: deriveCheckoutOrderState(
           order.status,
           order.stripePaymentIntentId,
@@ -443,8 +564,9 @@ export class PaymentHistoryService {
         ),
         cumulativeRefundedUsd: reversal?.cumulativeRefundedUsd ?? 0,
         cumulativeDisputedUsd: reversal?.cumulativeDisputedUsd ?? 0,
-        cumulativeClawbackUsd: reversal?.cumulativeClawbackUsd ?? 0,
-        reinstatedUsd: reversal?.reinstatedUsd ?? 0,
+        cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
+        reinstatedCredits: reversal?.reinstatedCredits ?? 0,
+        unrecoveredShortfallUsd: reversal?.unrecoveredShortfallUsd ?? 0,
         disputeReinstated: reversal?.disputeReinstated ?? false,
         policyEffect: reversed
           ? {
@@ -453,7 +575,6 @@ export class PaymentHistoryService {
             }
           : null,
         supportState: reversed ? "contact_support" : "none",
-        providerTxRef: order.stripePaymentIntentId ?? "",
       });
     }
 
