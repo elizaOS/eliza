@@ -1,8 +1,6 @@
 /**
- * Deterministic test pinning the reserved action-name constants and the
- * canonical ordering of `NON_EXECUTABLE_RESPONSE_ACTION_NAMES`.
+ * Coverage for action-names.
  */
-
 import { describe, expect, it } from "vitest";
 import {
 	IGNORE_ACTION_NAME,
@@ -11,27 +9,39 @@ import {
 	NONE_ACTION_NAME,
 	REPLY_ACTION_NAME,
 	STOP_ACTION_NAME,
-} from "./action-names";
+} from "./action-names.js";
 
-describe("action name contracts", () => {
-	it("exports the non-executable response action names in canonical order", () => {
+describe("action-names", () => {
+	it("exposes the reserved names and the canonical non-executable set", () => {
+		expect(REPLY_ACTION_NAME).toBe("REPLY");
+		expect(NONE_ACTION_NAME).toBe("NONE");
+		expect(IGNORE_ACTION_NAME).toBe("IGNORE");
+		expect(STOP_ACTION_NAME).toBe("STOP");
 		expect(NON_EXECUTABLE_RESPONSE_ACTION_NAMES).toEqual([
-			REPLY_ACTION_NAME,
-			NONE_ACTION_NAME,
-			IGNORE_ACTION_NAME,
+			"REPLY",
+			"NONE",
+			"IGNORE",
 		]);
 	});
 
-	it("treats the exported envelope and planner-terminal STOP as non-tools", () => {
-		for (const name of [
-			...NON_EXECUTABLE_RESPONSE_ACTION_NAMES,
-			STOP_ACTION_NAME,
-			"stop",
-			"RE_PLY",
-		]) {
+	it("classifies every non-executable name as reserved", () => {
+		for (const name of NON_EXECUTABLE_RESPONSE_ACTION_NAMES) {
 			expect(isReservedNonToolActionName(name)).toBe(true);
 		}
-		expect(isReservedNonToolActionName("SHELL")).toBe(false);
-		expect(isReservedNonToolActionName("CONTINUE")).toBe(false);
+		expect(isReservedNonToolActionName(STOP_ACTION_NAME)).toBe(true);
+	});
+
+	it("normalizes case and underscores before matching", () => {
+		expect(isReservedNonToolActionName("reply")).toBe(true);
+		expect(isReservedNonToolActionName("RePlY")).toBe(true);
+		expect(isReservedNonToolActionName("R_E_P_L_Y")).toBe(true);
+		expect(isReservedNonToolActionName("stop")).toBe(true);
+		expect(isReservedNonToolActionName("none")).toBe(true);
+	});
+
+	it("rejects tool-like action names", () => {
+		expect(isReservedNonToolActionName("SEND_MESSAGE")).toBe(false);
+		expect(isReservedNonToolActionName("foo")).toBe(false);
+		expect(isReservedNonToolActionName("")).toBe(false);
 	});
 });
