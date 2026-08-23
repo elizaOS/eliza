@@ -1,6 +1,6 @@
 /**
  * Tests for the `migrate-agent` command orchestration: argument validation and
- * its ordering, --json stdout purity, firewal flag resolution, artifact
+ * its ordering, --json stdout purity, firewall flag resolution, artifact
  * emission, and encrypted archive writing. The REAL migrate pipeline runs over
  * OpenClaw-style fixture homes on disk; only the process streams are captured.
  */
@@ -293,11 +293,12 @@ describe("migrate-agent artifacts", () => {
 
   it("emits sovereign-local character JSON and memories JSONL with parent dirs", async () => {
     const target = makeHome({});
+    const sourceHome = PERSONA_HOME();
     const charPath = path.join(target, "deep", "dir", "character.json");
     const memPath = path.join(target, "deep", "dir", "memories.jsonl");
 
     const run = await captureRun({
-      from: PERSONA_HOME(),
+      from: sourceHome,
       agentId: "sol",
       emitCharacter: charPath,
       emitMemories: memPath,
@@ -325,7 +326,7 @@ describe("migrate-agent artifacts", () => {
     // The JSONL corpus matches the real plan's memory count for the same input.
     const { buildMigrationPlan } = await import("../migrate/index.js");
     const plan = buildMigrationPlan({
-      from: target,
+      from: sourceHome,
       agentId: "sol",
       memoryDays: 14,
       firewall: true,
