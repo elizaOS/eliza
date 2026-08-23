@@ -102,6 +102,22 @@ interface CandidateRecord {
 	lastRoomActivityAt?: number;
 }
 
+function toRoleScore(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareRoleScore(
+  a: { candidate: CandidateRecord; score: number },
+  b: { candidate: CandidateRecord; score: number },
+): number {
+  const aScore = toRoleScore(a.score);
+  const bScore = toRoleScore(b.score);
+  if (bScore !== aScore) return bScore - aScore;
+  return String(a.candidate.entityId).localeCompare(String(b.candidate.entityId));
+}
+
+export const __testCompareRoleScore = compareRoleScore;
+
 interface RoleHandlerParams {
 	action?: string;
 	subaction?: string;
@@ -339,7 +355,7 @@ async function resolveTargetEntityIdByName(args: {
 			return { candidate, score };
 		})
 		.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-		.sort((a, b) => b.score - a.score);
+		.sort(compareRoleScore);
 
 	if (ranked.length === 0) {
 		return {
