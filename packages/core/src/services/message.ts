@@ -2422,8 +2422,12 @@ function appendPriorDialogueEvents(
 			return text.length > 0;
 		})
 		.sort((a, b) => {
-			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
-			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			const aTime = Number.isFinite(a.createdAt as unknown as number)
+				? (a.createdAt as unknown as number)
+				: 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number)
+				? (b.createdAt as unknown as number)
+				: 0;
 			return aTime - bTime;
 		});
 	// Bound how many of the agent's own turns render (newest win): the planner
@@ -2755,8 +2759,12 @@ function getRecentConversationSearchText(
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => {
-			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
-			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			const aTime = Number.isFinite(a.createdAt as unknown as number)
+				? (a.createdAt as unknown as number)
+				: 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number)
+				? (b.createdAt as unknown as number)
+				: 0;
 			return bTime - aTime;
 		})
 		.map((memory) => memory.content.text.trim())
@@ -7917,17 +7925,32 @@ export async function runV5MessageRuntimeStage1(args: {
 	// are told never to answer AS that name (live 2026-08-23: bare "eliza" in
 	// a room with no Eliza drew "yeah?"). Fails open on lookup errors — a
 	// missing notice degrades to today's behavior, never to silence.
-	const vocativeClass = await classifyLeadingVocative({
-		runtime: args.runtime,
-		message: args.message,
-	}).catch((error) => {
-		// error-policy:J4 a failed room lookup must not affect the turn; the
-		// notice is advisory evidence only.
-		args.runtime.reportError("MessageService.classifyLeadingVocative", error, {
-			roomId: args.message.roomId,
-		});
-		return { kind: "none" } as const;
-	});
+	// Eligibility mirrors the suppression gate: only positively-identified
+	// unaddressed text-group turns are classified — DMs and addressed turns
+	// never carry the notice (review: the first cut emitted it on every turn).
+	const vocativeEligible =
+		args.message.content?.channelType !== ChannelType.DM &&
+		isUnaddressedTextGroupTurn(
+			args.message,
+			messageExplicitlyAddressesAgent(args.runtime, args.message),
+		);
+	const vocativeClass = !vocativeEligible
+		? ({ kind: "none" } as const)
+		: await classifyLeadingVocative({
+				runtime: args.runtime,
+				message: args.message,
+			}).catch((error) => {
+				// error-policy:J4 a failed room lookup must not affect the turn; the
+				// notice is advisory evidence only.
+				args.runtime.reportError(
+					"MessageService.classifyLeadingVocative",
+					error,
+					{
+						roomId: args.message.roomId,
+					},
+				);
+				return { kind: "none" } as const;
+			});
 	const unresolvedVocativeName =
 		vocativeClass.kind === "unresolved" ? vocativeClass.name : undefined;
 	const context = await createV5MessageContextObject({
