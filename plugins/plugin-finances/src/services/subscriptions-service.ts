@@ -714,6 +714,15 @@ function findServiceInText(
   };
 }
 
+export function compareSubscriptionCandidates(
+  a: { score: number },
+  b: { score: number },
+): number {
+  const bScore = typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+  const aScore = typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+  return bScore - aScore;
+}
+
 export class SubscriptionsService {
   public readonly repository: FinancesRepository;
   public readonly ownerEntityId: string | null;
@@ -846,7 +855,7 @@ export class SubscriptionsService {
           score: scoreMessageAgainstPlaybook(message, playbook),
         }))
         .filter((candidate) => candidate.score > 0)
-        .sort((left, right) => right.score - left.score);
+        .sort(compareSubscriptionCandidates);
       if (evidence.length === 0 && source !== "manual") {
         continue;
       }
