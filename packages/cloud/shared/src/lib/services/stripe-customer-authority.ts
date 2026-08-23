@@ -3,7 +3,7 @@
  * Provider metadata is a lookup hint; the attempt row and canonical organization row are authority.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type Stripe from "stripe";
 import { writeTransaction } from "../../db/helpers";
@@ -373,7 +373,7 @@ export class StripeCustomerAuthorityService {
         .update(stripeCustomerAttempts)
         .set({
           status: "provider_ambiguous",
-          ambiguous_reason: reason.slice(0, 500),
+          ambiguous_reason: truncateWellFormed(toWellFormedUnicode(reason), 500),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
@@ -396,7 +396,7 @@ export class StripeCustomerAuthorityService {
       await tx
         .update(stripeCustomerAttempts)
         .set({
-          ambiguous_reason: reason.slice(0, 500),
+          ambiguous_reason: truncateWellFormed(toWellFormedUnicode(reason), 500),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
@@ -416,7 +416,7 @@ export class StripeCustomerAuthorityService {
         .update(stripeCustomerAttempts)
         .set({
           status: "quarantined",
-          ambiguous_reason: reason.slice(0, 500),
+          ambiguous_reason: truncateWellFormed(toWellFormedUnicode(reason), 500),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
