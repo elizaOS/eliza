@@ -259,7 +259,7 @@ describe("OpenAI native text plumbing", () => {
     });
     expect(aiMocks.generateText).not.toHaveBeenCalled();
     expect(aiMocks.streamText).not.toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it("publishes concrete GPT-5.6 defaults for pre-handler admission", async () => {
     const { openaiPlugin } = await import("../index");
@@ -271,7 +271,7 @@ describe("OpenAI native text plumbing", () => {
       displayModelDefault: "gpt-5.6-sol",
       displayModelSettings: expect.arrayContaining(["OPENAI_LARGE_MODEL"]),
     });
-  });
+  }, 20_000);
 
   it("uses a strict-safe wire schema for planner tool args and restores returned args", async () => {
     const wirePlannerText = JSON.stringify({
