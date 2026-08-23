@@ -43,6 +43,7 @@ export type AgentSandboxReplacementAttemptState =
 export const ACTIVE_AGENT_SANDBOX_REPLACEMENT_ATTEMPT_STATES = [
   "in_flight_unresolved",
   "provider_succeeded",
+  "lifecycle_committed",
 ] as const satisfies readonly AgentSandboxReplacementAttemptState[];
 
 export const agentSandboxReplacementAttempts = pgTable(
@@ -162,7 +163,9 @@ export const agentSandboxReplacementAttempts = pgTable(
       "agent_sandbox_replacement_attempts_active_generation_uidx",
     )
       .on(table.organization_id, table.agent_id, table.activation_generation)
-      .where(sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded')`),
+      .where(
+        sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded', 'lifecycle_committed')`,
+      ),
     operation_kind_check: check(
       "agent_sandbox_replacement_attempts_operation_kind_check",
       sql`${table.operation_kind} IN ('provision', 'upgrade', 'downgrade')`,

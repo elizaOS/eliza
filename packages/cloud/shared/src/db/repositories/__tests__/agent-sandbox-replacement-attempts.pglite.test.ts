@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
+import { ElizaError } from "@elizaos/core";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -16,15 +17,17 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { agentBackupRestoreLeases } from "../../schemas/agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import {
   agentBackupCatalogAuthorities,
   agentSandboxBackups,
   agentSandboxes,
 } from "../../schemas/agent-sandboxes";
+import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
@@ -35,21 +38,23 @@ import {
   type CommitAgentSandboxReplacementLifecycleAdoptionInput,
   commitAgentSandboxReplacementLifecycleAdoptionInTransaction,
   getAgentSandboxReplacementAttempt,
-  recordAgentSandboxReplacementCleanupProven,
+  recordAgentSandboxReplacementCleanupProvenInTransaction,
   recordAgentSandboxReplacementCreated,
-  recordAgentSandboxReplacementIntent,
-  recordAgentSandboxReplacementLifecycleCommitted,
+  recordAgentSandboxReplacementIntentInTransaction,
   recordAgentSandboxReplacementProviderSucceeded,
   recordAgentSandboxReplacementVpnRegistered,
   type StartAgentSandboxReplacementAttemptInput,
-  startAgentSandboxReplacementAttempt,
+  startAgentSandboxReplacementAttemptInTransaction,
 } from "../agent-sandbox-replacement-attempts";
 
 const TIMEOUT = 120_000;
 const ORGANIZATION_ID = "00000000-0000-4000-8000-00000000a001";
 const AGENT_ID = "00000000-0000-4000-8000-00000000a002";
+const USER_ID = "00000000-0000-4000-8000-00000000a022";
+const OTHER_ORGANIZATION_ID = "00000000-0000-4000-8000-00000000a023";
 const ATTEMPT_ID = "00000000-0000-4000-8000-00000000a003";
 const OTHER_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a004";
+const THIRD_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a025";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000a005";
 const NODE_RECORD_ID = "00000000-0000-4000-8000-00000000a006";
 const LIFECYCLE_JOB_ID = "00000000-0000-4000-8000-00000000a007";
@@ -61,13 +66,44 @@ const RESTORE_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a00c";
 const RESTORE_LEASE_ID = "00000000-0000-4000-8000-00000000a00d";
 const RESTORE_FENCE = "00000000-0000-4000-8000-00000000a00e";
 const AGED_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a012";
-const AGED_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000a013";
 const CONTAINER_ID = "a".repeat(64);
 const BACKUP_DIGEST = "9".repeat(64);
 const PROVIDER_DIGEST = "b".repeat(64);
 const LIFECYCLE_DIGEST = "c".repeat(64);
 const CLEANUP_DIGEST = "d".repeat(64);
 const CONTAINER_NAME = `agent-${AGENT_ID}`;
+
+async function startAgentSandboxReplacementAttempt(
+  input: StartAgentSandboxReplacementAttemptInput,
+) {
+  return await dbWrite.transaction((tx) =>
+    startAgentSandboxReplacementAttemptInTransaction(tx, input),
+  );
+}
+
+async function recordAgentSandboxReplacementIntent(
+  attemptReference: AgentSandboxReplacementAttemptReference,
+  replacementLocator: AgentSandboxReplacementLocatorInput,
+) {
+  return await dbWrite.transaction((tx) =>
+    recordIntentAndReserveCapacityInTransaction(tx, attemptReference, replacementLocator),
+  );
+}
+
+async function recordAgentSandboxReplacementLifecycleCommitted(
+  input: CommitAgentSandboxReplacementLifecycleAdoptionInput,
+) {
+  return await dbWrite.transaction((tx) => commitLifecyclePlacementInTransaction(tx, input));
+}
+
+async function recordAgentSandboxReplacementCleanupProven(
+  attemptReference: AgentSandboxReplacementAttemptReference,
+  receiptDigest: string,
+) {
+  return await dbWrite.transaction((tx) =>
+    settleCleanupResourcesInTransaction(tx, attemptReference, receiptDigest),
+  );
+}
 
 const reference = (attemptId = ATTEMPT_ID): AgentSandboxReplacementAttemptReference => ({
   attemptId,
@@ -128,6 +164,285 @@ function adoptionInput(
     lifecycleReceiptDigest: LIFECYCLE_DIGEST,
     ...overrides,
   };
+}
+
+type ReplacementTransaction = Parameters<
+  typeof commitAgentSandboxReplacementLifecycleAdoptionInTransaction
+>[0];
+
+function callerConflict(
+  message: string,
+  attemptReference: AgentSandboxReplacementAttemptReference,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+    context: {
+      replacementAttemptId: attemptReference.attemptId,
+      organizationId: attemptReference.organizationId,
+      agentId: attemptReference.agentId,
+    },
+    severity: "fatal",
+  });
+}
+
+function deferredSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolvePromise = () => {
+    throw new Error("Deferred signal was resolved before initialization");
+  };
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: () => resolvePromise() };
+}
+
+async function recordIntentAndReserveCapacityInTransaction(
+  tx: ReplacementTransaction,
+  attemptReference: AgentSandboxReplacementAttemptReference,
+  replacementLocator: AgentSandboxReplacementLocatorInput,
+) {
+  const recorded = await recordAgentSandboxReplacementIntentInTransaction(
+    tx,
+    attemptReference,
+    replacementLocator,
+  );
+  if (recorded.replayed) return recorded;
+
+  const reserved = await tx
+    .update(dockerNodes)
+    .set({ allocated_count: sql`${dockerNodes.allocated_count} + 1` })
+    .where(
+      and(
+        eq(dockerNodes.id, replacementLocator.nodeRecordId),
+        eq(dockerNodes.node_id, replacementLocator.nodeId),
+        eq(dockerNodes.hostname, replacementLocator.nodeHostname),
+        eq(dockerNodes.ssh_port, replacementLocator.nodeSshPort),
+        eq(dockerNodes.ssh_user, replacementLocator.nodeSshUser),
+        eq(dockerNodes.host_key_fingerprint, replacementLocator.nodeHostKeyFingerprint),
+        eq(dockerNodes.enabled, true),
+        eq(dockerNodes.placement_state, "open"),
+        eq(dockerNodes.status, "healthy"),
+        sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
+      ),
+    )
+    .returning({ id: dockerNodes.id });
+  if (reserved.length !== 1) {
+    throw callerConflict("Replacement capacity reservation CAS failed", attemptReference);
+  }
+  return recorded;
+}
+
+async function commitLifecyclePlacementInTransaction(
+  tx: ReplacementTransaction,
+  input: CommitAgentSandboxReplacementLifecycleAdoptionInput,
+  currentPlacement: {
+    sandboxId: string;
+    nodeId: string;
+    containerName: string;
+  } = {
+    sandboxId: "old-sandbox",
+    nodeId: "old-node",
+    containerName: "old-container",
+  },
+) {
+  const consumed = await commitAgentSandboxReplacementLifecycleAdoptionInTransaction(tx, input);
+  if (consumed.replayed) {
+    const [committed] = await tx
+      .select({ id: agentSandboxes.id })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, input.agentId),
+          eq(agentSandboxes.organization_id, input.organizationId),
+          eq(agentSandboxes.lifecycle_revision, Number(input.lifecycleRevision) + 1),
+          eq(agentSandboxes.activation_generation, input.activationGeneration),
+          sql`${agentSandboxes.lifecycle_job_id} IS NOT DISTINCT FROM ${input.lifecycleJobId}`,
+          sql`${agentSandboxes.lifecycle_execution_generation}
+            IS NOT DISTINCT FROM ${input.lifecycleExecutionGeneration}`,
+          eq(agentSandboxes.sandbox_id, input.locator.sandboxId),
+          eq(agentSandboxes.node_id, input.locator.nodeId),
+          eq(agentSandboxes.container_name, input.locator.containerName),
+          eq(agentSandboxes.replacement_cleanup_sandbox_id, "old-sandbox"),
+          eq(agentSandboxes.replacement_cleanup_node_id, "old-node"),
+          eq(agentSandboxes.replacement_cleanup_container_name, "old-container"),
+          eq(agentSandboxes.replacement_cleanup_allocation_counted, true),
+          eq(agentSandboxes.replacement_cleanup_created_at, new Date("2026-08-23T12:04:00.000Z")),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!committed) {
+      throw callerConflict("Lifecycle placement replay authority does not match", input);
+    }
+    return consumed;
+  }
+
+  const placed = await tx
+    .update(agentSandboxes)
+    .set({
+      sandbox_id: input.locator.sandboxId,
+      node_id: input.locator.nodeId,
+      container_name: input.locator.containerName,
+      replacement_cleanup_sandbox_id: "old-sandbox",
+      replacement_cleanup_node_id: "old-node",
+      replacement_cleanup_container_name: "old-container",
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-08-23T12:04:00.000Z"),
+    })
+    .where(
+      and(
+        eq(agentSandboxes.id, input.agentId),
+        eq(agentSandboxes.organization_id, input.organizationId),
+        eq(agentSandboxes.lifecycle_revision, Number(input.lifecycleRevision)),
+        eq(agentSandboxes.activation_generation, input.activationGeneration),
+        sql`${agentSandboxes.lifecycle_job_id} IS NOT DISTINCT FROM ${input.lifecycleJobId}`,
+        sql`${agentSandboxes.lifecycle_execution_generation}
+          IS NOT DISTINCT FROM ${input.lifecycleExecutionGeneration}`,
+        eq(agentSandboxes.sandbox_id, currentPlacement.sandboxId),
+        eq(agentSandboxes.node_id, currentPlacement.nodeId),
+        eq(agentSandboxes.container_name, currentPlacement.containerName),
+        sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+        sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+      ),
+    )
+    .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+  if (placed.length !== 1) {
+    throw callerConflict("Lifecycle placement CAS failed", input);
+  }
+  return consumed;
+}
+
+async function settleCleanupResourcesInTransaction(
+  tx: ReplacementTransaction,
+  attemptReference: AgentSandboxReplacementAttemptReference,
+  receiptDigest: string,
+  afterAttemptSettled?: () => Promise<void> | void,
+) {
+  const settled = await recordAgentSandboxReplacementCleanupProvenInTransaction(
+    tx,
+    attemptReference,
+    receiptDigest,
+  );
+  if (settled.replayed) return settled;
+  await afterAttemptSettled?.();
+
+  const [sandbox] = await tx
+    .select({
+      cleanupSandboxId: agentSandboxes.replacement_cleanup_sandbox_id,
+      cleanupNodeId: agentSandboxes.replacement_cleanup_node_id,
+      cleanupContainerName: agentSandboxes.replacement_cleanup_container_name,
+      cleanupAttemptId: agentSandboxes.replacement_cleanup_attempt_id,
+      cleanupContainerId: agentSandboxes.replacement_cleanup_container_id,
+      cleanupVpnNodeId: agentSandboxes.replacement_cleanup_vpn_node_id,
+      cleanupVpnNodeName: agentSandboxes.replacement_cleanup_vpn_node_name,
+      cleanupPreviousVpnNodeId: agentSandboxes.replacement_cleanup_preserved_vpn_node_id,
+      cleanupVpnStartedAt: agentSandboxes.replacement_cleanup_vpn_registration_started_at,
+      cleanupAllocationCounted: agentSandboxes.replacement_cleanup_allocation_counted,
+      cleanupCreatedAt: agentSandboxes.replacement_cleanup_created_at,
+    })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, attemptReference.agentId),
+        eq(agentSandboxes.organization_id, attemptReference.organizationId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!sandbox) throw callerConflict("Cleanup sandbox authority is missing", attemptReference);
+
+  const attempt = settled.attempt;
+  if (attempt.locator_recorded_at === null) {
+    if (sandbox.cleanupSandboxId !== null) {
+      throw callerConflict(
+        "Locator-free cleanup found unrelated cleanup ownership",
+        attemptReference,
+      );
+    }
+    return settled;
+  }
+  if (
+    sandbox.cleanupSandboxId !== attempt.locator_sandbox_id ||
+    sandbox.cleanupNodeId !== attempt.locator_node_id ||
+    sandbox.cleanupContainerName !== attempt.locator_container_name ||
+    sandbox.cleanupAttemptId !== attempt.id ||
+    sandbox.cleanupContainerId !== attempt.locator_container_id ||
+    sandbox.cleanupVpnNodeId !== attempt.locator_vpn_node_id ||
+    sandbox.cleanupVpnNodeName !== attempt.locator_vpn_node_name ||
+    sandbox.cleanupPreviousVpnNodeId !== attempt.locator_previous_vpn_node_id ||
+    sandbox.cleanupVpnStartedAt?.getTime() !==
+      attempt.locator_vpn_registration_started_at?.getTime() ||
+    sandbox.cleanupAllocationCounted !== true ||
+    sandbox.cleanupCreatedAt === null
+  ) {
+    throw callerConflict("Cleanup locator authority does not match", attemptReference);
+  }
+
+  const cleared = await tx
+    .update(agentSandboxes)
+    .set({
+      replacement_cleanup_sandbox_id: null,
+      replacement_cleanup_node_id: null,
+      replacement_cleanup_container_name: null,
+      replacement_cleanup_attempt_id: null,
+      replacement_cleanup_container_id: null,
+      replacement_cleanup_vpn_node_id: null,
+      replacement_cleanup_vpn_node_name: null,
+      replacement_cleanup_preserved_vpn_node_id: null,
+      replacement_cleanup_vpn_registration_started_at: null,
+      replacement_cleanup_allocation_counted: null,
+      replacement_cleanup_created_at: null,
+    })
+    .where(
+      and(
+        eq(agentSandboxes.id, attemptReference.agentId),
+        eq(agentSandboxes.organization_id, attemptReference.organizationId),
+        sql`${agentSandboxes.replacement_cleanup_sandbox_id}
+          IS NOT DISTINCT FROM ${sandbox.cleanupSandboxId}`,
+        sql`${agentSandboxes.replacement_cleanup_node_id}
+          IS NOT DISTINCT FROM ${sandbox.cleanupNodeId}`,
+        sql`${agentSandboxes.replacement_cleanup_container_name}
+          IS NOT DISTINCT FROM ${sandbox.cleanupContainerName}`,
+        sql`${agentSandboxes.replacement_cleanup_attempt_id}
+          IS NOT DISTINCT FROM ${sandbox.cleanupAttemptId}`,
+        sql`${agentSandboxes.replacement_cleanup_container_id}
+          IS NOT DISTINCT FROM ${sandbox.cleanupContainerId}`,
+        sql`${agentSandboxes.replacement_cleanup_vpn_node_id}
+          IS NOT DISTINCT FROM ${sandbox.cleanupVpnNodeId}`,
+        sql`${agentSandboxes.replacement_cleanup_vpn_node_name}
+          IS NOT DISTINCT FROM ${sandbox.cleanupVpnNodeName}`,
+        sql`${agentSandboxes.replacement_cleanup_preserved_vpn_node_id}
+          IS NOT DISTINCT FROM ${sandbox.cleanupPreviousVpnNodeId}`,
+        sql`${agentSandboxes.replacement_cleanup_vpn_registration_started_at}
+          IS NOT DISTINCT FROM ${sandbox.cleanupVpnStartedAt}`,
+        eq(agentSandboxes.replacement_cleanup_allocation_counted, true),
+        sql`${agentSandboxes.replacement_cleanup_created_at}
+          IS NOT DISTINCT FROM ${sandbox.cleanupCreatedAt}`,
+      ),
+    )
+    .returning({ id: agentSandboxes.id });
+  if (cleared.length !== 1) {
+    throw callerConflict("Cleanup locator clear CAS failed", attemptReference);
+  }
+
+  const released = await tx
+    .update(dockerNodes)
+    .set({ allocated_count: sql`${dockerNodes.allocated_count} - 1` })
+    .where(
+      and(
+        eq(dockerNodes.id, attempt.locator_node_record_id!),
+        eq(dockerNodes.node_id, attempt.locator_node_id!),
+        eq(dockerNodes.hostname, attempt.locator_node_hostname!),
+        eq(dockerNodes.ssh_port, attempt.locator_node_ssh_port!),
+        eq(dockerNodes.ssh_user, attempt.locator_node_ssh_user!),
+        eq(dockerNodes.host_key_fingerprint, attempt.locator_node_host_key_fingerprint!),
+        gt(dockerNodes.allocated_count, 0),
+      ),
+    )
+    .returning({ id: dockerNodes.id });
+  if (released.length !== 1) {
+    throw callerConflict("Cleanup capacity release CAS failed", attemptReference);
+  }
+  return settled;
 }
 
 function rawSettledAttempt(input: {
@@ -455,6 +770,8 @@ beforeAll(async () => {
         users,
         userCharacters,
         agentSandboxes,
+        agentNodeIncarnationHistories,
+        dockerNodes,
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
         agentBackupRestoreLeases,
@@ -464,6 +781,25 @@ beforeAll(async () => {
     );
     await apply();
     await installReplacementAttemptGuards();
+    await dbWrite.execute(
+      sql.raw(`
+        CREATE FUNCTION test_advance_replacement_sandbox_lifecycle_revision()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          NEW.lifecycle_revision := OLD.lifecycle_revision + 1;
+          RETURN NEW;
+        END;
+        $$
+      `),
+    );
+    await dbWrite.execute(
+      sql.raw(`
+        CREATE TRIGGER test_replacement_sandbox_lifecycle_revision_trigger
+        BEFORE UPDATE ON agent_sandboxes
+        FOR EACH ROW
+        EXECUTE FUNCTION test_advance_replacement_sandbox_lifecycle_revision()
+      `),
+    );
   } catch (error) {
     // error-policy:J1 Test setup fails every case loudly instead of skipping DB proofs.
     const cause = (error as { cause?: unknown }).cause;
@@ -490,6 +826,8 @@ beforeEach(async () => {
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
+  await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(organizations);
   await dbWrite.execute(
     sql.raw(`ALTER TABLE agent_sandbox_replacement_attempts
@@ -503,6 +841,41 @@ beforeEach(async () => {
     id: ORGANIZATION_ID,
     name: "Replacement attempt tests",
     slug: "replacement-attempt-tests",
+  });
+  await dbWrite.insert(users).values({
+    id: USER_ID,
+    organization_id: ORGANIZATION_ID,
+    steward_user_id: "replacement-attempt-test-user",
+  });
+  await dbWrite.insert(agentSandboxes).values({
+    id: AGENT_ID,
+    organization_id: ORGANIZATION_ID,
+    user_id: USER_ID,
+    status: "provisioning",
+    lifecycle_job_id: LIFECYCLE_JOB_ID,
+    lifecycle_execution_generation: LIFECYCLE_EXECUTION_GENERATION,
+    activation_generation: ACTIVATION_GENERATION,
+    activation_lifecycle_revision: 7n,
+    activation_purpose: "provision",
+    activation_phase: "container_pending",
+    activation_token_hash: "1".repeat(64),
+    activation_token_ciphertext: "test-only-activation-token",
+    execution_tier: "dedicated-always",
+    sandbox_id: "old-sandbox",
+    node_id: "old-node",
+    container_name: "old-container",
+    lifecycle_revision: 7,
+  });
+  await dbWrite.insert(dockerNodes).values({
+    id: NODE_RECORD_ID,
+    node_id: "robot-node-a",
+    hostname: "robot-node-a.internal",
+    ssh_port: 22,
+    capacity: 8,
+    allocated_count: 0,
+    status: "healthy",
+    ssh_user: "root",
+    host_key_fingerprint: "SHA256:test-only-pinned-host-key",
   });
 });
 
@@ -528,6 +901,34 @@ describe("agent sandbox replacement attempts", () => {
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_INVALID_INPUT" });
 
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        await startAgentSandboxReplacementAttemptInTransaction(tx, startInput());
+        throw new Error("force start admission rollback");
+      }),
+    ).rejects.toThrow("force start admission rollback");
+    expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(0);
+    await expect(
+      startAgentSandboxReplacementAttempt(startInput({ organizationId: OTHER_ORGANIZATION_ID })),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    await expect(
+      startAgentSandboxReplacementAttempt(
+        startInput({
+          activationGeneration: "00000000-0000-4000-8000-00000000a024",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    await expect(
+      startAgentSandboxReplacementAttempt(startInput({ lifecycleRevision: "8" })),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    await expect(
+      startAgentSandboxReplacementAttempt(
+        startInput({
+          lifecycleExecutionGeneration: "00000000-0000-4000-8000-00000000a026",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+
     await startAgentSandboxReplacementAttempt(startInput());
     await expect(startAgentSandboxReplacementAttempt(startInput())).rejects.toMatchObject({
       code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
@@ -541,7 +942,11 @@ describe("agent sandbox replacement attempts", () => {
       startAgentSandboxReplacementAttempt(startInput({ attemptId: OTHER_ATTEMPT_ID })),
     ]);
     expect(contenders.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    expect(contenders.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const rejected = contenders.filter((result) => result.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({
+      reason: { code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" },
+    });
 
     const [owned] = await dbWrite.select().from(agentSandboxReplacementAttempts);
     if (!owned) throw new Error("Expected one active replacement attempt");
@@ -584,6 +989,14 @@ describe("agent sandbox replacement attempts", () => {
         locator("intent", { vpnRegistrationStartedAt: null }),
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_INVALID_INPUT" });
+    await expect(
+      recordAgentSandboxReplacementIntent(
+        reference(),
+        locator("intent", {
+          vpnRegistrationStartedAt: "2026-08-23T13:00:00.000+01:00",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_INVALID_INPUT" });
 
     await recordAgentSandboxReplacementIntent(reference(), locator("intent"));
     await recordAgentSandboxReplacementCreated(reference(), locator("created"));
@@ -604,6 +1017,46 @@ describe("agent sandbox replacement attempts", () => {
     await expect(
       recordAgentSandboxReplacementVpnRegistered(reference(), locator("vpn", { vpnNodeId: "43" })),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+  });
+
+  test("commits or rolls back capacity reservation and durable intent together", async () => {
+    await startAgentSandboxReplacementAttempt(startInput());
+
+    const reserveAndRecord = async (
+      tx: Parameters<typeof recordAgentSandboxReplacementIntentInTransaction>[0],
+    ) => await recordIntentAndReserveCapacityInTransaction(tx, reference(), locator("intent"));
+
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        await reserveAndRecord(tx);
+        throw new Error("force intent reservation rollback");
+      }),
+    ).rejects.toThrow("force intent reservation rollback");
+    expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.locator_recorded_at).toBeNull();
+
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 8 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    await expect(dbWrite.transaction(reserveAndRecord)).rejects.toMatchObject({
+      code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+    });
+    expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(8);
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.locator_recorded_at).toBeNull();
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 0 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+
+    const committed = await dbWrite.transaction(reserveAndRecord);
+    expect(committed.replayed).toBe(false);
+    expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.locator_node_record_id).toBe(
+      NODE_RECORD_ID,
+    );
+    expect((await dbWrite.transaction(reserveAndRecord)).replayed).toBe(true);
+    expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
   });
 
   test("makes exact stage and receipt replays idempotent and rejects conflicting bytes", async () => {
@@ -671,21 +1124,27 @@ describe("agent sandbox replacement attempts", () => {
       provider_receipt_digest: PROVIDER_DIGEST,
       lifecycle_receipt_digest: LIFECYCLE_DIGEST,
     });
-    await expect(startAgentSandboxReplacementAttempt(startInput())).rejects.toMatchObject({
-      code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
-    });
+    await expect(
+      startAgentSandboxReplacementAttempt(startInput({ lifecycleRevision: "8" })),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    await expect(
+      startAgentSandboxReplacementAttempt(
+        startInput({ attemptId: OTHER_ATTEMPT_ID, lifecycleRevision: "8" }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
   });
 
-  test("rolls lifecycle adoption back with its caller transaction and strictly replays it", async () => {
+  test("commits or rolls back lifecycle placement and adoption together", async () => {
     await startAgentSandboxReplacementAttempt(startInput());
     await persistSuccessfulProviderAttemptAfterExistingStart(ATTEMPT_ID);
 
+    const placeAndAdopt = async (
+      tx: Parameters<typeof commitAgentSandboxReplacementLifecycleAdoptionInTransaction>[0],
+    ) => await commitLifecyclePlacementInTransaction(tx, adoptionInput());
+
     await expect(
       dbWrite.transaction(async (tx) => {
-        const consumed = await commitAgentSandboxReplacementLifecycleAdoptionInTransaction(
-          tx,
-          adoptionInput(),
-        );
+        const consumed = await placeAndAdopt(tx);
         expect(consumed.attempt.state).toBe("lifecycle_committed");
         throw new Error("force outer lifecycle rollback");
       }),
@@ -693,6 +1152,42 @@ describe("agent sandbox replacement attempts", () => {
     expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
       "provider_succeeded",
     );
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      sandbox_id: "old-sandbox",
+      node_id: "old-node",
+      container_name: "old-container",
+      lifecycle_revision: 7,
+    });
+
+    await expect(
+      dbWrite.transaction((tx) =>
+        commitLifecyclePlacementInTransaction(tx, adoptionInput(), {
+          sandboxId: "stale-old-sandbox",
+          nodeId: "old-node",
+          containerName: "old-container",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
+      "provider_succeeded",
+    );
+
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 0 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    await expect(dbWrite.transaction(placeAndAdopt)).rejects.toMatchObject({
+      code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+    });
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
+      "provider_succeeded",
+    );
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 1 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
 
     await expect(
       dbWrite.transaction((tx) =>
@@ -702,13 +1197,27 @@ describe("agent sandbox replacement attempts", () => {
         ),
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
-    const committed = await dbWrite.transaction((tx) =>
-      commitAgentSandboxReplacementLifecycleAdoptionInTransaction(tx, adoptionInput()),
-    );
-    expect(committed.replayed).toBe(false);
-    const replayed = await dbWrite.transaction((tx) =>
-      commitAgentSandboxReplacementLifecycleAdoptionInTransaction(tx, adoptionInput()),
-    );
+    const adoptionRace = await Promise.allSettled([
+      dbWrite.transaction(placeAndAdopt),
+      startAgentSandboxReplacementAttempt(startInput({ attemptId: OTHER_ATTEMPT_ID })),
+    ]);
+    expect(adoptionRace[0]).toMatchObject({ status: "fulfilled", value: { replayed: false } });
+    expect(adoptionRace[1]).toMatchObject({
+      status: "rejected",
+      reason: { code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" },
+    });
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      sandbox_id: CONTAINER_NAME,
+      node_id: "robot-node-a",
+      container_name: CONTAINER_NAME,
+      lifecycle_revision: 8,
+      replacement_cleanup_sandbox_id: "old-sandbox",
+      replacement_cleanup_node_id: "old-node",
+      replacement_cleanup_container_name: "old-container",
+    });
+    const replayed = await dbWrite.transaction(placeAndAdopt);
     expect(replayed.replayed).toBe(true);
     await expect(
       dbWrite.transaction((tx) =>
@@ -792,7 +1301,7 @@ describe("agent sandbox replacement attempts", () => {
     ).toBe("lifecycle_committed");
   });
 
-  test("allows only the two cleanup paths and never reopens either terminal state", async () => {
+  test("serializes cleanup with a new start and never reopens either terminal state", async () => {
     await startAgentSandboxReplacementAttempt(startInput());
     await expect(
       recordAgentSandboxReplacementLifecycleCommitted(adoptionInput()),
@@ -815,17 +1324,136 @@ describe("agent sandbox replacement attempts", () => {
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
 
     await startAgentSandboxReplacementAttempt(startInput({ attemptId: OTHER_ATTEMPT_ID }));
-    await persistSuccessfulProviderAttemptAfterExistingStart(OTHER_ATTEMPT_ID);
     const otherReference = reference(OTHER_ATTEMPT_ID);
+    await recordAgentSandboxReplacementIntent(
+      otherReference,
+      locator("intent", { replacementAttemptId: OTHER_ATTEMPT_ID }),
+    );
+    await recordAgentSandboxReplacementCreated(
+      otherReference,
+      locator("created", { replacementAttemptId: OTHER_ATTEMPT_ID }),
+    );
+    await recordAgentSandboxReplacementVpnRegistered(
+      otherReference,
+      locator("vpn", { replacementAttemptId: OTHER_ATTEMPT_ID }),
+    );
+    await recordAgentSandboxReplacementProviderSucceeded(
+      otherReference,
+      locator("final", { replacementAttemptId: OTHER_ATTEMPT_ID }),
+      PROVIDER_DIGEST,
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        replacement_cleanup_sandbox_id: CONTAINER_NAME,
+        replacement_cleanup_node_id: "robot-node-a",
+        replacement_cleanup_container_name: CONTAINER_NAME,
+        replacement_cleanup_attempt_id: OTHER_ATTEMPT_ID,
+        replacement_cleanup_container_id: CONTAINER_ID,
+        replacement_cleanup_vpn_node_id: "42",
+        replacement_cleanup_vpn_node_name: CONTAINER_NAME,
+        replacement_cleanup_preserved_vpn_node_id: "41",
+        replacement_cleanup_vpn_registration_started_at: new Date("2026-08-23T12:00:00.000Z"),
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date("2026-08-23T12:03:00.000Z"),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, AGENT_ID),
+          eq(agentSandboxes.organization_id, ORGANIZATION_ID),
+          eq(agentSandboxes.lifecycle_revision, 7),
+        ),
+      );
+
+    const clearReleaseAndSettle = async (tx: ReplacementTransaction) =>
+      await settleCleanupResourcesInTransaction(tx, otherReference, CLEANUP_DIGEST);
+
+    await expect(
+      dbWrite.transaction(async (tx) => {
+        await clearReleaseAndSettle(tx);
+        throw new Error("force cleanup convergence rollback");
+      }),
+    ).rejects.toThrow("force cleanup convergence rollback");
+    expect((await getAgentSandboxReplacementAttempt(otherReference))?.state).toBe(
+      "provider_succeeded",
+    );
+    expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
     expect(
-      (await recordAgentSandboxReplacementCleanupProven(otherReference, CLEANUP_DIGEST)).attempt
-        .state,
-    ).toBe("cleanup_proven");
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      lifecycle_revision: 8,
+      replacement_cleanup_attempt_id: OTHER_ATTEMPT_ID,
+      replacement_cleanup_allocation_counted: true,
+    });
+
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 0 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    await expect(dbWrite.transaction(clearReleaseAndSettle)).rejects.toMatchObject({
+      code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+    });
+    expect((await getAgentSandboxReplacementAttempt(otherReference))?.state).toBe(
+      "provider_succeeded",
+    );
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      lifecycle_revision: 8,
+      replacement_cleanup_attempt_id: OTHER_ATTEMPT_ID,
+      replacement_cleanup_allocation_counted: true,
+    });
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 1 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+
+    const cleanupLocked = deferredSignal();
+    const allowCleanupCommit = deferredSignal();
+    const cleanupPromise = dbWrite.transaction((tx) =>
+      settleCleanupResourcesInTransaction(tx, otherReference, CLEANUP_DIGEST, async () => {
+        cleanupLocked.resolve();
+        await allowCleanupCommit.promise;
+      }),
+    );
+    await cleanupLocked.promise;
+    const nextStartPromise = startAgentSandboxReplacementAttempt(
+      startInput({ attemptId: THIRD_ATTEMPT_ID, lifecycleRevision: "9" }),
+    );
+    await Promise.resolve();
+    allowCleanupCommit.resolve();
+    const [cleanupResult, nextStartResult] = await Promise.allSettled([
+      cleanupPromise,
+      nextStartPromise,
+    ]);
+    expect(cleanupResult).toMatchObject({
+      status: "fulfilled",
+      value: { replayed: false, attempt: { state: "cleanup_proven" } },
+    });
+    expect(nextStartResult).toMatchObject({
+      status: "fulfilled",
+      value: { replayed: false, attempt: { id: THIRD_ATTEMPT_ID } },
+    });
+    expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      lifecycle_revision: 9,
+      replacement_cleanup_sandbox_id: null,
+      replacement_cleanup_allocation_counted: null,
+    });
+    expect((await dbWrite.transaction(clearReleaseAndSettle)).replayed).toBe(true);
+    expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    await expect(
+      recordAgentSandboxReplacementCleanupProven(otherReference, "e".repeat(64)),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
     await expect(
       recordAgentSandboxReplacementLifecycleCommitted(adoptionInput(OTHER_ATTEMPT_ID)),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
     await expect(
-      startAgentSandboxReplacementAttempt(startInput({ attemptId: OTHER_ATTEMPT_ID })),
+      startAgentSandboxReplacementAttempt(
+        startInput({ attemptId: OTHER_ATTEMPT_ID, lifecycleRevision: "9" }),
+      ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
   });
 
@@ -837,7 +1465,7 @@ describe("agent sandbox replacement attempts", () => {
       agent_id: AGENT_ID,
       operation_kind: "provision",
       lifecycle_revision: 0n,
-      activation_generation: AGED_ACTIVATION_GENERATION,
+      activation_generation: ACTIVATION_GENERATION,
       lifecycle_job_id: null,
       lifecycle_execution_generation: null,
       created_at: oldTimestamp,
@@ -851,7 +1479,6 @@ describe("agent sandbox replacement attempts", () => {
       startAgentSandboxReplacementAttempt(
         startInput({
           attemptId: OTHER_ATTEMPT_ID,
-          activationGeneration: AGED_ACTIVATION_GENERATION,
         }),
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
