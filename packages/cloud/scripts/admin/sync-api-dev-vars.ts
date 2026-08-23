@@ -110,6 +110,9 @@ const sourceEnvFiles = [
 const env: Record<string, string> = {};
 const providerOverrideKeys = new Set([
   "OPENROUTER_API_KEY",
+  // Deterministic and local test stacks may route the OpenRouter-compatible
+  // client to a loopback server without mutating developer .env files.
+  "OPENROUTER_BASE_URL",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "ANTHROPIC_API_KEY",
