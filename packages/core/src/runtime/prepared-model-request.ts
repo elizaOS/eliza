@@ -262,15 +262,17 @@ export function createPreparedModelRequestGuard(
 		) ??
 		contextLookup?.contextWindowTokens ??
 		DEFAULT_CONTEXT_WINDOW_TOKENS;
-	const outputReserveTokens = Math.max(
-		DEFAULT_INPUT_RESERVE_TOKENS,
-		assertFinitePositiveInteger(
-			args.outputReserveTokens,
-			"outputReserveTokens",
-		) ??
-			outputLookup?.maxOutputTokens ??
-			0,
+	const explicitOutputReserve = assertFinitePositiveInteger(
+		args.outputReserveTokens,
+		"outputReserveTokens",
 	);
+	const outputReserveTokens =
+		explicitOutputReserve ??
+		outputLookup?.maxOutputTokens ??
+		Math.min(
+			DEFAULT_INPUT_RESERVE_TOKENS,
+			Math.max(1, contextWindowTokens - 1),
+		);
 	const dispatchThresholdTokens = Math.max(
 		1,
 		contextWindowTokens - outputReserveTokens,
