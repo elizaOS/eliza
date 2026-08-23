@@ -39,7 +39,7 @@ describe("browser bridge hosted Windows native-host proof", () => {
     expect(proofSource).toContain("--target bun-windows-x64");
     expect(proofSource).toContain('"browser-bridge-secret.ps1"');
     expect(proofSource).toContain('ELIZA_STATE_DIR"] = $stateRoot');
-    expect(proofSource).toContain("StandardInputEncoding");
+    expect(proofSource).toContain("[Console]::InputEncoding");
     expect(proofSource).toContain('$response.code -eq "app_not_running"');
     expect(proofSource).toContain('$response.code -ne "broker_unavailable"');
   });
