@@ -10,7 +10,7 @@ import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import { CloudSettingsDragStrip } from "./CloudSettingsPanel";
-import { NuphyModal, SettingsGroup } from "./nuphy-settings-primitives";
+import { CloudModal, SettingsGroup } from "./cloud-settings-primitives";
 
 describe("SettingsGroup", () => {
   it("uses the scoped sibling-row separator contract", () => {
@@ -49,7 +49,7 @@ function ModalHarness() {
         Open connector
       </button>
       <button type="button">Background action</button>
-      <NuphyModal
+      <CloudModal
         open={open}
         title="Add connector"
         description="Enter connector details."
@@ -57,12 +57,12 @@ function ModalHarness() {
       >
         <input aria-label="Connector name" />
         <button type="button">Save connector</button>
-      </NuphyModal>
+      </CloudModal>
     </div>
   );
 }
 
-describe("NuphyModal", () => {
+describe("CloudModal", () => {
   it("contains focus and restores it to the opener when closed", async () => {
     const user = userEvent.setup();
     render(<ModalHarness />);

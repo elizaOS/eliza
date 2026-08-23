@@ -1,6 +1,6 @@
 /**
- * Visual states for the cloud settings primitives after the NuPhy → canonical
- * migration (#24495): grouped rows with inset separators, every row control
+ * Visual states for the cloud settings primitives: grouped rows with inset
+ * separators, every row control
  * (switch, select, segmented, slider, input, action button), and the modal /
  * confirm dialog compositions, all on Eliza brand tokens.
  */
@@ -8,19 +8,19 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { Button } from "../../ui/button";
 import {
+  CloudActionButton,
+  CloudConfirmDialog,
+  CloudInputRow,
+  CloudModal,
+  CloudRow,
+  CloudSegmentedRow,
+  CloudSelectRow,
+  CloudSliderRow,
+  CloudSwitchRow,
   DestructiveSecondaryButton,
-  NuphyActionButton,
-  NuphyConfirmDialog,
-  NuphyInputRow,
-  NuphyModal,
-  NuphyRow,
-  NuphySegmentedRow,
-  NuphySelectRow,
-  NuphySliderRow,
-  NuphySwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "./nuphy-settings-primitives";
+} from "./cloud-settings-primitives";
 
 const meta = {
   title: "Settings/CloudPanelPrimitives",
@@ -45,14 +45,14 @@ function AllRowsDemo() {
           title="Voice"
           footer="Rows keep agent-surface instrumentation and inset separators."
         >
-          <NuphySwitchRow
+          <CloudSwitchRow
             agentId="story-wake-word"
             label="Wake word"
             description="Listen for the wake word while idle."
             checked={wake}
             onCheckedChange={setWake}
           />
-          <NuphyInputRow
+          <CloudInputRow
             agentId="story-wake-word-text"
             label="Word"
             value={word}
@@ -60,7 +60,7 @@ function AllRowsDemo() {
             placeholder="e.g. Hey Eliza"
             disabled={!wake}
           />
-          <NuphySliderRow
+          <CloudSliderRow
             agentId="story-silence-threshold"
             label="Silence threshold"
             description="Auto-stop after this much silence."
@@ -74,7 +74,7 @@ function AllRowsDemo() {
         </SettingsGroup>
 
         <SettingsGroup title="Delivery">
-          <NuphySelectRow
+          <CloudSelectRow
             agentId="story-quality"
             label="Model quality"
             description="Trade speed for accuracy."
@@ -86,7 +86,7 @@ function AllRowsDemo() {
               { value: "best", label: "Best" },
             ]}
           />
-          <NuphySegmentedRow
+          <CloudSegmentedRow
             agentId="story-notify-mode"
             label="Notifications"
             value={tab}
@@ -97,14 +97,14 @@ function AllRowsDemo() {
               { value: "off", label: "Off" },
             ]}
           />
-          <NuphyActionButton
+          <CloudActionButton
             agentId="story-test-notification"
             label="Test notification"
             description="Send a sample to this device."
             buttonLabel="Send test"
             onActivate={() => {}}
           />
-          <NuphyRow
+          <CloudRow
             label="Danger zone"
             description="Destructive-secondary treatment stays on brand orange."
             control={
@@ -134,7 +134,7 @@ function ModalDemo() {
       <Button variant="outline" onClick={() => setConfirmOpen(true)}>
         Open confirm
       </Button>
-      <NuphyModal
+      <CloudModal
         open={open}
         title="Add connector"
         description="Enter connector details."
@@ -151,8 +151,8 @@ function ModalDemo() {
         }
       >
         <p className="text-sm text-muted-foreground">Modal body content.</p>
-      </NuphyModal>
-      <NuphyConfirmDialog
+      </CloudModal>
+      <CloudConfirmDialog
         open={confirmOpen}
         title="Remove connection?"
         description="This disconnects the integration immediately."

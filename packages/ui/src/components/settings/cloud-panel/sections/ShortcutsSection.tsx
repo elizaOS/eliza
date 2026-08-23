@@ -22,12 +22,12 @@ import {
 } from "../../../../state/push-to-talk-hotkey";
 import { Button } from "../../../ui/button";
 import {
-  NuphyRow,
-  NuphySelectRow,
-  NuphySwitchRow,
+  CloudRow,
+  CloudSelectRow,
+  CloudSwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../cloud-settings-primitives";
 
 /** Internal canonical combo form: lowercase modifier names + key, joined by `+`. */
 type Combo = string;
@@ -356,7 +356,7 @@ export function ShortcutsSection() {
           const isPending = pending?.id === shortcut.id;
           const conflictForThis = isPending ? conflict : undefined;
           return (
-            <NuphyRow
+            <CloudRow
               key={shortcut.id}
               label={shortcut.label}
               description={
@@ -438,7 +438,7 @@ export function ShortcutsSection() {
                   </div>
                 ) : null}
               </div>
-            </NuphyRow>
+            </CloudRow>
           );
         })}
       </SettingsGroup>
@@ -447,7 +447,7 @@ export function ShortcutsSection() {
         title="Mouse"
         footer="Use a mouse button as a recording trigger."
       >
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="shortcuts-mouse-enabled"
           group="shortcuts"
           icon={Mouse}
@@ -456,7 +456,7 @@ export function ShortcutsSection() {
           checked={mouseEnabled}
           onCheckedChange={setMouseEnabled}
         />
-        <NuphySelectRow
+        <CloudSelectRow
           agentId="shortcuts-mouse-click-action"
           group="shortcuts"
           label="Click action"
@@ -466,7 +466,7 @@ export function ShortcutsSection() {
           options={CLICK_ACTION_OPTIONS}
           disabled={!mouseEnabled}
         />
-        <NuphySelectRow
+        <CloudSelectRow
           agentId="shortcuts-mouse-hold-action"
           group="shortcuts"
           label="Hold action"
@@ -482,7 +482,7 @@ export function ShortcutsSection() {
         title="Recording"
         footer="Protect against accidentally discarding long recordings."
       >
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="shortcuts-confirm-cancel-long"
           group="shortcuts"
           label="Confirm cancel on long recordings"
@@ -491,7 +491,7 @@ export function ShortcutsSection() {
           onCheckedChange={setConfirmCancel}
         />
         {confirmCancel ? (
-          <NuphySelectRow
+          <CloudSelectRow
             agentId="shortcuts-cancel-threshold"
             group="shortcuts"
             label="Threshold"
