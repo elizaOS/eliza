@@ -128,6 +128,28 @@ describe("GET /api/inbox/messages limit query", () => {
     expect(result.json).toHaveBeenCalledWith(res, { messages: [], count: 0 });
   });
 
+  it("sorts inbox messages safely when timestamp contains NaN", () => {
+    const messages = [
+      { id: "msg-nan", timestamp: NaN },
+      { id: "msg-valid", timestamp: 1700000000000 },
+    ];
+
+    messages.sort((a, b) => {
+      const bTime =
+        typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+          ? b.timestamp
+          : 0;
+      const aTime =
+        typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+          ? a.timestamp
+          : 0;
+      return bTime - aTime || a.id.localeCompare(b.id);
+    });
+
+    expect(messages[0]?.id).toBe("msg-valid");
+    expect(messages[1]?.id).toBe("msg-nan");
+  });
+
   it.each(["1e3", "50abc", "0x10", "0", "01"])(
     "rejects malformed limit %j with 400 when runtime is unavailable",
     async (raw) => {

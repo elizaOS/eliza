@@ -221,7 +221,17 @@ export class VisionServiceLifecycleManager {
     const named = new Set(holders);
     const candidates = Array.from(this.subs.values())
       .filter((s) => s.loaded && (named.size === 0 || named.has(s.handle.id)))
-      .sort((a, b) => a.lastUsed - b.lastUsed);
+      .sort((a, b) => {
+        const aUsed =
+          typeof a.lastUsed === "number" && Number.isFinite(a.lastUsed)
+            ? a.lastUsed
+            : 0;
+        const bUsed =
+          typeof b.lastUsed === "number" && Number.isFinite(b.lastUsed)
+            ? b.lastUsed
+            : 0;
+        return aUsed - bUsed || a.handle.id.localeCompare(b.handle.id);
+      });
 
     for (const sub of candidates) {
       logger.info(`[VisionLifecycle] pressure release: ${sub.handle.id}`);

@@ -1,7 +1,7 @@
 /** Provides the typed browser client for account-deletion status and request endpoints. */
 
-import { logger } from "@elizaos/logger";
 import { api } from "../../lib/api-client";
+import { signOutFromSsoBridgedHost } from "../../sso-bridge/sso-bridge";
 
 export interface AccountDeletionRequestDto {
   requestId: string;
@@ -64,6 +64,7 @@ function parseRequest(value: unknown): AccountDeletionRequestDto {
   const completedAt = value.completedAt;
   if (
     typeof value.requestId !== "string" ||
+    value.requestId.trim().length === 0 ||
     !isAccountDeletionRequestStatus(value.status) ||
     !isServerTimestamp(value.requestedAt) ||
     !isServerTimestamp(value.scheduledDeletionAt) ||
@@ -136,15 +137,10 @@ export async function submitAccountDeletion(): Promise<AccountDeletionRequestDto
 }
 
 export async function endLocalSessionAfterDeletion(): Promise<void> {
-  try {
-    await api("/api/auth/logout", { method: "POST" });
-  } catch (error) {
-    // error-policy:J6 Logout is best-effort teardown after the server has retired the account.
-    // The account is already inactive, so the logout endpoint can reject its
-    // now-invalid token. Navigation still leaves the protected application.
-    logger.warn(
-      { error },
-      "[AccountDeletionClient] Logout failed after account deletion",
-    );
-  }
+  // Account deletion ends the same complete authority epoch as explicit
+  // sign-out: server sessions, Steward JWT storage, native/desktop owner-key
+  // mirrors, active-server/profile copies, and mounted auth consumers. The
+  // canonical teardown is intentionally awaited so a protected-store denial
+  // cannot be presented as a completed local retirement.
+  await signOutFromSsoBridgedHost();
 }

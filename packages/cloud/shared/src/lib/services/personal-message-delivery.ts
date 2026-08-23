@@ -190,7 +190,7 @@ export async function deliverPersonalTextMessage(params: {
     params.messageId,
     "platform",
     undefined,
-    undefined,
+    params.message,
     { type: ChannelType.DM, source: params.platform },
   );
   return {

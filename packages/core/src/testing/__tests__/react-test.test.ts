@@ -9,7 +9,7 @@ import {
 	type ReactTestInstance,
 	text,
 	textOf,
-} from "./react-test.ts";
+} from "../react-test.ts";
 
 function node(
 	type: string | object,

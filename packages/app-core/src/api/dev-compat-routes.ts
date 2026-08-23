@@ -8,7 +8,11 @@
  */
 import type http from "node:http";
 import type { InferenceTurnSummary, Log } from "@elizaos/core";
-import { INFERENCE_TRACE_ID_PATTERN } from "@elizaos/core";
+import {
+  INFERENCE_TRACE_ID_PATTERN,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { parseCanonicalInteger } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
@@ -251,7 +255,7 @@ export async function handleDevCompatRoutes(
           {
             error: "upstream screenshot failed",
             status: r.status,
-            detail: text.slice(0, 200),
+            detail: truncateWellFormed(toWellFormedUnicode(text), 200),
           },
         );
         return true;

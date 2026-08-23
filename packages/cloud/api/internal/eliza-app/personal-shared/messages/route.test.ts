@@ -467,6 +467,7 @@ describe("personal Shared messaging deliveries", () => {
         project: "eliza-app",
         chatId: "123456789",
       },
+      "hello",
     );
   });
 
@@ -704,7 +705,7 @@ describe("personal Shared messaging deliveries", () => {
     try {
       const response = await request({
         ...valid,
-        message: undefined,
+        message: "please verify it",
         voiceNote: {
           bytesBase64: bytes.toString("base64"),
           mimeType: "audio/ogg",
@@ -718,7 +719,7 @@ describe("personal Shared messaging deliveries", () => {
       expect(sharedRestMessageSend).toHaveBeenCalledWith(
         expect.anything(),
         expect.stringMatching(/^personal:/),
-        "remember the red bicycle",
+        "please verify it\n\n[Voice note transcript]\nremember the red bicycle",
         "Eliza",
         runtimeExecutionCtx,
         namespace,
@@ -729,6 +730,7 @@ describe("personal Shared messaging deliveries", () => {
           project: "eliza-app",
           chatId: "123456789",
         },
+        "please verify it\nremember the red bicycle",
       );
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
@@ -1118,7 +1120,7 @@ describe("personal Shared messaging deliveries", () => {
           version: canonicalGroupBinding.authority_version,
         },
       },
-      undefined,
+      validGroup.message,
       { type: "GROUP", source: "telegram" },
     );
   });
@@ -1483,6 +1485,7 @@ describe("personal Shared messaging deliveries", () => {
         project: "eliza-app",
         phoneNumber: "+15551234567",
       },
+      "hello from Messages",
     );
   });
 
@@ -1657,6 +1660,7 @@ describe("personal Shared messaging deliveries", () => {
         platform: "discord",
         discordUserId: "123456789012345678",
       },
+      "continue our conversation",
     );
   });
 

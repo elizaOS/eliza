@@ -33,6 +33,7 @@ import {
   logger,
   ModelType,
   resolveEffectiveSystemPrompt,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   generateText,
@@ -286,6 +287,94 @@ function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
     return undefined;
   }
 
+  // Sanitization for pre-built AI SDK Tool entries (#24698). The SDK's
+  // jsonSchema() wrapper exposes its schema through enumerable lazy getters,
+  // which deepToWellFormedUnicode fails closed on (#23159), so the wrapper's
+  // schema is read once — the same read enforceAnthropicStrictToolBudget
+  // already performs on every tool — sanitized, and reinstalled as a plain
+  // data property on a descriptor-preserving wrapper clone (custom `validate`
+  // survives). The WHOLE rebuilt tool is then passed through the deep walk:
+  // every other caller-controlled field (args, metadata, extra properties)
+  // sanitizes too, and any surviving hostile accessor fails closed rather
+  // than reaching the SDK.
+  const sanitizeSdkTool = (tool: unknown): unknown => {
+    if (!isRecord(tool)) return tool;
+    let sanitized: Record<string, unknown> | undefined;
+    const descriptionDescriptor = Object.getOwnPropertyDescriptor(tool, "description");
+    if (
+      descriptionDescriptor &&
+      "value" in descriptionDescriptor &&
+      typeof descriptionDescriptor.value === "string"
+    ) {
+      const description = toWellFormedUnicode(descriptionDescriptor.value);
+      if (description !== descriptionDescriptor.value) {
+        sanitized = Object.create(Object.getPrototypeOf(tool)) as Record<string, unknown>;
+        Object.defineProperties(sanitized, Object.getOwnPropertyDescriptors(tool));
+        Object.defineProperty(sanitized, "description", {
+          ...descriptionDescriptor,
+          value: description,
+        });
+      }
+    }
+    const source = sanitized ?? tool;
+    const schemaDescriptor = Object.getOwnPropertyDescriptor(source, "inputSchema");
+    let result: Record<string, unknown> = source;
+    if (schemaDescriptor && "value" in schemaDescriptor && isRecord(schemaDescriptor.value)) {
+      const wrapped = schemaDescriptor.value as {
+        jsonSchema?: unknown;
+        _type?: unknown;
+      };
+      // Only the SDK's own wrapper shape is unwrapped: the global registered
+      // marker Symbol.for("vercel.ai.schema") as an OWN DATA descriptor whose
+      // value is exactly true (the pinned SDK always sets it that way), with a
+      // single read of the lazy jsonSchema getter. A wrapper forged to match
+      // the marker exactly still gets its getter invoked here once — this is
+      // the same read develop's readToolStrictAndSchema has always performed
+      // on every tool (`.jsonSchema ?? entry.inputSchema`), so it introduces
+      // no new invocation class; the difference is the result is then
+      // sanitized and reinstalled as a plain data property, so nothing
+      // downstream (SDK included) reads the getter again. Forged markers that
+      // are accessors or non-true values skip the unwrap entirely and the
+      // whole-tool walk fails closed on the surviving accessors without
+      // invoking them.
+      const markerDescriptor = Object.getOwnPropertyDescriptor(
+        wrapped,
+        Symbol.for("vercel.ai.schema")
+      );
+      if (markerDescriptor && "value" in markerDescriptor && markerDescriptor.value === true) {
+        const plainSchema = wrapped.jsonSchema;
+        if (typeof plainSchema === "object" && plainSchema !== null) {
+          const sanitizedSchema = deepToWellFormedUnicode(plainSchema);
+          const rebuiltWrapper = Object.create(Object.getPrototypeOf(wrapped)) as Record<
+            string | symbol,
+            unknown
+          >;
+          Object.defineProperties(rebuiltWrapper, Object.getOwnPropertyDescriptors(wrapped));
+          Object.defineProperty(rebuiltWrapper, "jsonSchema", {
+            value: sanitizedSchema,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+          const clone = Object.create(Object.getPrototypeOf(source)) as Record<string, unknown>;
+          Object.defineProperties(clone, Object.getOwnPropertyDescriptors(source));
+          Object.defineProperty(clone, "inputSchema", {
+            ...schemaDescriptor,
+            value: rebuiltWrapper,
+          });
+          result = clone;
+        }
+      }
+    }
+    // Whole-tool walk over the (walk-safe) rebuilt tool: sanitizes every
+    // remaining field and fails closed on any accessor the rebuild could not
+    // normalize (r3 review). The rebuilt wrapper is walk-safe because its
+    // jsonSchema property is a plain data descriptor; the marker symbol is
+    // preserved by the descriptor-preserving clone on the (unchanged) clone
+    // the walk returns.
+    return deepToWellFormedUnicode(result);
+  };
+
   // Source can be either an array of ToolDefinition (each with .name) or a
   // Record<string, ...>. ELIZAOS upstream sometimes passes the array as a
   // Record with numeric keys (`{0: tool, 1: tool}`), which makes the AI SDK
@@ -298,48 +387,159 @@ function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
   // deterministically over an SDK passthrough at the same key, regardless of
   // iteration order.
   const isArr = Array.isArray(value);
-  const entries: Array<[string, unknown]> = isArr
-    ? (value as unknown[]).map((v, i) => [String(i), v] as [string, unknown])
-    : Object.entries(value as Record<string, unknown>);
+  // Object.entries would invoke enumerable accessors on the tool-set
+  // container, and a re-read after the descriptor check can re-enter a proxy
+  // get trap. Consume the descriptor's own value instead — one inspection per
+  // key, no property reads; an accessor (or a proxy reporting one) fails
+  // closed without its code ever running (#24698 r4/r5).
+  const container = value as unknown as Record<string | symbol, unknown> & { length?: unknown };
+  const readEntryValue = (key: string): unknown => {
+    const descriptor = Object.getOwnPropertyDescriptor(container, key);
+    if (!descriptor || !("value" in descriptor)) {
+      throw new ElizaError("[Anthropic] Tool set container has an accessor entry.", {
+        code: "ANTHROPIC_UNSAFE_TOOL_CONTAINER",
+        severity: "fatal",
+      });
+    }
+    return descriptor.value;
+  };
+  const entries: Array<[string, unknown]> = [];
+  if (isArr) {
+    // Array length is itself a caller-facing property on exotic containers;
+    // consume it from its descriptor too (a Proxy's length trap fires on
+    // inspection, but the value is never re-read as a property).
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(container, "length");
+    const length =
+      lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : undefined;
+    if (typeof length !== "number") {
+      return undefined;
+    }
+    for (let i = 0; i < length; i += 1) {
+      const key = String(i);
+      entries.push([key, readEntryValue(key)]);
+    }
+  } else {
+    for (const key of Object.keys(container)) {
+      entries.push([key, readEntryValue(key)]);
+    }
+  }
 
   const namedKeys = new Set<string>();
+  // Raw property reads on caller-supplied tools would execute enumerable
+  // accessors. Every wire-relevant field is read through its own descriptor;
+  // an accessor fails closed with a typed error naming the property instead
+  // (#24698 r4). The pinned SDK exposes its schema through exactly such
+  // accessors, so SDK passthrough tools (no .name) never reach this path.
+  const readToolField = (
+    tool: Record<string | symbol, unknown>,
+    key: string
+  ): { present: boolean; value: unknown } => {
+    const descriptor = Object.getOwnPropertyDescriptor(tool, key);
+    if (!descriptor) {
+      return { present: false, value: undefined };
+    }
+    if (!("value" in descriptor)) {
+      throw new ElizaError("[Anthropic] Tool field is an enumerable accessor.", {
+        code: "ANTHROPIC_UNSAFE_TOOL_FIELD",
+        severity: "fatal",
+        context: { propertyName: key },
+      });
+    }
+    return { present: true, value: descriptor.value };
+  };
   for (const [, rawTool] of entries) {
-    if (isRecord(rawTool) && typeof rawTool.name === "string" && rawTool.name) {
-      namedKeys.add(rawTool.name);
+    const nameField = isRecord(rawTool)
+      ? readToolField(rawTool as Record<string | symbol, unknown>, "name")
+      : { present: false, value: undefined };
+    if (nameField.present && typeof nameField.value === "string" && nameField.value) {
+      namedKeys.add(nameField.value);
     }
   }
 
   const tools: Record<string, unknown> = {};
+  const sourceKeysBySanitizedKey = new Map<string, string>();
   let sawNamedTool = false;
+  let sawUnsupportedEntry = false;
+  // Record keys become tool names on the wire, so they sanitize too; two
+  // DISTINCT source keys collapsing onto the same sanitized form must reject
+  // loudly (the openai plugin's OPENAI_TOOL_NAME_COLLISION contract) rather
+  // than silently drop a tool. An exact duplicate of the SAME source key keeps
+  // develop's last-write-wins overwrite semantics (#24698).
+  const sanitizeRecordKey = (key: string): string => toWellFormedUnicode(key);
+  const claimKey = (sanitizedKey: string, sourceKey: string): string => {
+    const previousSource = sourceKeysBySanitizedKey.get(sanitizedKey);
+    if (previousSource !== undefined && previousSource !== sourceKey) {
+      throw new ElizaError("[Anthropic] Native tool names collide after Unicode normalization.", {
+        code: "ANTHROPIC_TOOL_NAME_COLLISION",
+        severity: "ephemeral",
+      });
+    }
+    sourceKeysBySanitizedKey.set(sanitizedKey, sourceKey);
+    return sanitizedKey;
+  };
   for (const [origKey, rawTool] of entries) {
     if (!isRecord(rawTool)) {
+      sawUnsupportedEntry = true;
       continue;
     }
-    if (typeof rawTool.name === "string" && rawTool.name) {
+    const toolRecord = rawTool as Record<string | symbol, unknown>;
+    const nameField = readToolField(toolRecord, "name");
+    const name = nameField.present && typeof nameField.value === "string" ? nameField.value : "";
+    if (name) {
       sawNamedTool = true;
-      const schema = isRecord(rawTool.parameters)
-        ? (rawTool.parameters as JSONSchema7)
-        : isRecord(rawTool.input_schema)
-          ? (rawTool.input_schema as JSONSchema7)
-          : ({ type: "object" } satisfies JSONSchema7);
-      tools[rawTool.name] = {
-        ...(typeof rawTool.description === "string" ? { description: rawTool.description } : {}),
-        inputSchema: jsonSchema(schema),
+      const parametersField = readToolField(toolRecord, "parameters");
+      const inputSchemaField = readToolField(toolRecord, "inputSchema");
+      const inputSchemaUnderscoreField = readToolField(toolRecord, "input_schema");
+      const descriptionField = readToolField(toolRecord, "description");
+      const schema = isRecord(parametersField.value)
+        ? (parametersField.value as JSONSchema7)
+        : isRecord(inputSchemaField.value)
+          ? (inputSchemaField.value as JSONSchema7)
+          : isRecord(inputSchemaUnderscoreField.value)
+            ? (inputSchemaUnderscoreField.value as JSONSchema7)
+            : ({ type: "object" } satisfies JSONSchema7);
+      // Sanitize caller-controlled strings BEFORE the jsonSchema() wrap. The
+      // AI SDK wrapper exposes its schema through enumerable lazy accessors,
+      // so a deepToWellFormedUnicode pass over the assembled set hits the
+      // #23159 accessor guard and fails closed (#24698). Sanitizing the plain
+      // schema/description here keeps the wire guarantee without unwrapping
+      // SDK accessors — the same pre-wrap pattern plugin-openai established.
+      const sanitizedName = toWellFormedUnicode(name);
+      const sanitizedSchema = deepToWellFormedUnicode(schema);
+      tools[claimKey(sanitizedName, name)] = {
+        ...(descriptionField.present && typeof descriptionField.value === "string"
+          ? { description: toWellFormedUnicode(descriptionField.value) }
+          : {}),
+        inputSchema: jsonSchema(sanitizedSchema),
       };
     } else if (!isArr && !namedKeys.has(origKey)) {
       // Pre-built AI SDK Tool entry inside a Record — pass through under its
       // original string key, but only if no named tool will claim that key
       // later in the same pass; otherwise the named tool would silently
       // overwrite (or be overwritten by) this entry depending on order.
-      tools[origKey] = rawTool;
+      tools[claimKey(sanitizeRecordKey(origKey), origKey)] = sanitizeSdkTool(rawTool);
     }
   }
 
   if (sawNamedTool) {
     return Object.keys(tools).length > 0 ? (tools as ToolSet) : undefined;
   }
-  // Fall back to the original Record (already keyed by canonical names).
-  return !isArr && isRecord(value) ? (value as ToolSet) : undefined;
+  // SDK passthrough entries collected above were description-sanitized without
+  // touching their lazy schema accessors (#24698); return the rebuilt record
+  // instead of the original so the sanitized descriptions reach the wire.
+  // A non-record entry must not be silently dropped by the rebuild — fail
+  // closed so downstream callers see the same invalid-shape failure the
+  // original record would have produced (r2 review).
+  if (!isArr) {
+    if (sawUnsupportedEntry) {
+      throw new ElizaError("[Anthropic] Native tool set contains a non-object tool entry.", {
+        code: "ANTHROPIC_INVALID_TOOL_ENTRY",
+        severity: "ephemeral",
+      });
+    }
+    return Object.keys(tools).length > 0 ? (tools as ToolSet) : undefined;
+  }
+  return undefined;
 }
 
 function readToolChoice(value: GenerateTextParams["toolChoice"]): ToolChoice<ToolSet> | undefined {
@@ -1334,12 +1534,16 @@ async function generateTextWithModel(
   const sanitizedStopSequences = deepToWellFormedUnicode(
     resolved.stopSequences as string[] | undefined
   );
+  // Caller-controlled tool strings were already sanitized pre-wrap inside
+  // readToolSet (and the SDK passthrough branch below it): the AI SDK's
+  // jsonSchema() wrapper exposes its schema through enumerable lazy accessors,
+  // so a deepToWellFormedUnicode pass over the assembled set hits the #23159
+  // accessor guard and fails closed (#24698). applyToolsCacheBreakpoint only
+  // stamps providerOptions on the last tool and is walk-free.
   const sanitizedTools = paramsWithAttachments.tools
-    ? deepToWellFormedUnicode(
-        toolsCacheControl
-          ? applyToolsCacheBreakpoint(paramsWithAttachments.tools, toolsCacheControl)
-          : paramsWithAttachments.tools
-      )
+    ? toolsCacheControl
+      ? applyToolsCacheBreakpoint(paramsWithAttachments.tools, toolsCacheControl)
+      : paramsWithAttachments.tools
     : undefined;
   const sanitizedToolChoice = paramsWithAttachments.toolChoice
     ? deepToWellFormedUnicode(paramsWithAttachments.toolChoice)

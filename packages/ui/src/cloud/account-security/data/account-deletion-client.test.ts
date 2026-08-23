@@ -1,12 +1,26 @@
-/** Verifies that account-deletion transport data is validated before the UI trusts it. */
+/** Verifies deletion receipts and the real local authority teardown that follows confirmed success. */
+// @vitest-environment jsdom
 
+import { getElizaApiToken, setElizaApiToken } from "@elizaos/shared";
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../../api";
+import { getBootConfig, setBootConfig } from "../../../config/boot-config";
+import {
+  loadAgentProfileRegistry,
+  saveAgentProfileRegistry,
+} from "../../../state/agent-profiles";
+import {
+  loadPersistedActiveServer,
+  savePersistedActiveServer,
+} from "../../../state/persistence";
 
 const apiMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/api-client", () => ({ api: apiMock }));
 
 import {
+  endLocalSessionAfterDeletion,
   getAccountDeletionStatus,
   submitAccountDeletion,
 } from "./account-deletion-client";
@@ -108,7 +122,7 @@ describe("submitAccountDeletion", () => {
     );
   });
 
-  it("rejects unknown receipt statuses and invalid timestamps", async () => {
+  it("rejects unknown receipt statuses, blank ids, and invalid timestamps", async () => {
     const request = {
       requestId: "request-2",
       status: "scheduled",
@@ -117,6 +131,13 @@ describe("submitAccountDeletion", () => {
       identityDeactivated: true,
       completedAt: null,
     };
+
+    apiMock.mockResolvedValueOnce({
+      request: { ...request, requestId: "  " },
+    });
+    await expect(submitAccountDeletion()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
 
     apiMock.mockResolvedValueOnce({
       request: { ...request, status: "unexpected" },
@@ -138,5 +159,63 @@ describe("submitAccountDeletion", () => {
     await expect(submitAccountDeletion()).rejects.toThrow(
       "Account deletion receipt was malformed",
     );
+  });
+});
+
+describe("endLocalSessionAfterDeletion", () => {
+  it("retires every canonical Steward and owner-key mirror before returning", async () => {
+    const sharedBase =
+      "https://api.eliza.app/api/v1/eliza/agents/deleted-account-agent";
+    localStorage.clear();
+    sessionStorage.clear();
+    setBootConfig({ branding: {}, apiBase: sharedBase });
+    client.setToken("eliza_deleted-owner-key");
+    setElizaApiToken("eliza_deleted-owner-key");
+    localStorage.setItem(STEWARD_TOKEN_KEY, "deleted.steward.jwt");
+    savePersistedActiveServer({
+      id: "cloud:deleted-account-agent",
+      kind: "cloud",
+      label: "Deleted account agent",
+      apiBase: sharedBase,
+      accessToken: "eliza_deleted-owner-key",
+    });
+    saveAgentProfileRegistry({
+      version: 1,
+      activeProfileId: "deleted-account-profile",
+      profiles: [
+        {
+          id: "deleted-account-profile",
+          kind: "cloud",
+          label: "Deleted account agent",
+          apiBase: sharedBase,
+          accessToken: "eliza_deleted-owner-key",
+          createdAt: "2026-08-23T00:00:00.000Z",
+        },
+      ],
+    });
+    const sessionSync = vi.fn();
+    window.addEventListener("steward-token-sync", sessionSync);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    try {
+      await endLocalSessionAfterDeletion();
+    } finally {
+      window.removeEventListener("steward-token-sync", sessionSync);
+      fetchSpy.mockRestore();
+    }
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(getBootConfig().apiToken).toBeUndefined();
+    expect(getElizaApiToken()).toBeUndefined();
+    expect(client.apiToken).toBeNull();
+    expect(loadPersistedActiveServer()).toBeNull();
+    expect(loadAgentProfileRegistry()).toEqual({
+      version: 1,
+      activeProfileId: null,
+      profiles: [],
+    });
+    expect(sessionSync).toHaveBeenCalled();
   });
 });

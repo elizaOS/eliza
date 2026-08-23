@@ -1,7 +1,13 @@
 /** Renders every account-deletion admission state with deterministic client responses. */
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const deletionClient = vi.hoisted(() => ({
@@ -14,7 +20,11 @@ vi.mock("../data/account-deletion-client", () => deletionClient);
 
 import { AccountDeletionDialog } from "./account-deletion-dialog";
 
-beforeEach(() => deletionClient.getAccountDeletionStatus.mockReset());
+beforeEach(() => {
+  deletionClient.getAccountDeletionStatus.mockReset();
+  deletionClient.submitAccountDeletion.mockReset();
+  deletionClient.endLocalSessionAfterDeletion.mockReset();
+});
 afterEach(cleanup);
 
 describe("AccountDeletionDialog", () => {
@@ -107,5 +117,80 @@ describe("AccountDeletionDialog", () => {
       (screen.getByTestId("delete-account-confirm") as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("does not retire the session when the POST receipt is malformed", async () => {
+    deletionClient.getAccountDeletionStatus.mockResolvedValue({
+      state: "available",
+      request: null,
+    });
+    deletionClient.submitAccountDeletion.mockRejectedValue(
+      new Error("Account deletion response was malformed"),
+    );
+    const locationBefore = window.location.href;
+    render(<AccountDeletionDialog />);
+
+    fireEvent.click(await screen.findByText("Delete account"));
+    fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
+      target: { value: "DELETE" },
+    });
+    fireEvent.click(screen.getByTestId("delete-account-confirm"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Account deletion response was malformed"),
+      ).toBeTruthy();
+    });
+    expect(deletionClient.endLocalSessionAfterDeletion).not.toHaveBeenCalled();
+    expect(window.location.href).toBe(locationBefore);
+  });
+
+  it("does not retire the session when the server refuses the confirmed request", async () => {
+    deletionClient.getAccountDeletionStatus.mockResolvedValue({
+      state: "available",
+      request: null,
+    });
+    deletionClient.submitAccountDeletion.mockRejectedValue(
+      new Error("Permanent account deletion is unavailable"),
+    );
+    render(<AccountDeletionDialog />);
+
+    fireEvent.click(await screen.findByText("Delete account"));
+    fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
+      target: { value: "DELETE" },
+    });
+    fireEvent.click(screen.getByTestId("delete-account-confirm"));
+
+    await screen.findByText("Permanent account deletion is unavailable");
+    expect(deletionClient.endLocalSessionAfterDeletion).not.toHaveBeenCalled();
+  });
+
+  it("retires the local authority only after a validated confirmed receipt", async () => {
+    deletionClient.getAccountDeletionStatus.mockResolvedValue({
+      state: "available",
+      request: null,
+    });
+    deletionClient.submitAccountDeletion.mockResolvedValue({
+      requestId: "request-validated",
+      status: "scheduled",
+      requestedAt: "2026-08-23T00:00:00.000Z",
+      scheduledDeletionAt: "2026-09-22T00:00:00.000Z",
+      identityDeactivated: true,
+      completedAt: null,
+    });
+    deletionClient.endLocalSessionAfterDeletion.mockResolvedValue(undefined);
+    render(<AccountDeletionDialog />);
+
+    fireEvent.click(await screen.findByText("Delete account"));
+    fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
+      target: { value: "DELETE" },
+    });
+    fireEvent.click(screen.getByTestId("delete-account-confirm"));
+
+    await waitFor(() => {
+      expect(deletionClient.endLocalSessionAfterDeletion).toHaveBeenCalledTimes(
+        1,
+      );
+    });
   });
 });

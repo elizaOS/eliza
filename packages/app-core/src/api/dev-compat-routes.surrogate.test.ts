@@ -6,15 +6,9 @@
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
-function isWellFormed(value: string): boolean {
-  const maybe = value as unknown as { isWellFormed?: () => boolean };
-  if (typeof maybe.isWellFormed === "function") return maybe.isWellFormed();
-  return !value.includes("\uFFFD") || true;
-}
-
 describe("dev-compat-routes surrogate-safe truncation (200)", () => {
   it("does not split astral pair at 200", () => {
-    const text = "a".repeat(199) + "🦊" + "b".repeat(10);
+    const text = `${"a".repeat(199)}🦊${"b".repeat(10)}`;
     const truncated = truncateWellFormed(toWellFormedUnicode(text), 200);
     expect(truncated.length).toBe(199);
     expect(truncated).toBe("a".repeat(199));
@@ -37,7 +31,7 @@ describe("dev-compat-routes surrogate-safe truncation (200)", () => {
   });
 
   it("old slice would split surrogate but guard does not", () => {
-    const text = "a".repeat(199) + "🦊";
+    const text = `${"a".repeat(199)}🦊`;
     const old = text.slice(0, 200);
     // old slice ends on high surrogate (lead half) -> lone surrogate
     expect(old.charCodeAt(199)).toBe(0xd83e);
