@@ -32,34 +32,6 @@ export class LivenessAssertionError extends Error {
 }
 
 /**
- * Retain a privacy-safe diagnostic without allowing secondary persistence to
- * replace the primary liveness failure. A failed write is surfaced to the
- * Playwright reporter through a fixed annotation that never includes the
- * rejected value.
- *
- * @param {() => Promise<void>} writeArtifact persist the already-redacted record
- * @param {(annotation: { type: string, description: string }) => void} annotate
- * @returns {Promise<boolean>} whether the artifact was written
- */
-export async function retainPrivacySafeLivenessDiagnostic(
-  writeArtifact,
-  annotate,
-) {
-  try {
-    await writeArtifact();
-    return true;
-  } catch {
-    // error-policy:J4 the primary failure remains authoritative while the
-    // reporter receives a visibly distinct, content-free unavailable state.
-    annotate({
-      type: "diagnostic-artifact-unavailable",
-      description: "Privacy-safe liveness diagnostic artifact was not written.",
-    });
-    return false;
-  }
-}
-
-/**
  * Assert a rendered assistant reply proves a real model answered.
  *
  * A live reply must be a non-empty string that does not carry the stub fixture

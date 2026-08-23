@@ -35,7 +35,6 @@ export {
   isLiveReply,
   LIVENESS_CHALLENGE_PREFIX,
   LivenessAssertionError,
-  retainPrivacySafeLivenessDiagnostic,
   STUB_FIXTURE_MARKER,
 } from "./liveness-contract.mjs";
 

@@ -18,7 +18,6 @@ import {
   findAnchoredLiveTurn,
   isLiveReply,
   LivenessAssertionError,
-  retainPrivacySafeLivenessDiagnostic,
   STUB_FIXTURE_MARKER,
 } from "./liveness-contract.mjs";
 
@@ -52,42 +51,6 @@ describe("onboarding liveness contract", () => {
     expect(() =>
       assertLiveReply(STUB_FIXTURE_MARKER, { label: "android-onboarding" }),
     ).toThrow(/android-onboarding: /);
-  });
-});
-
-describe("privacy-safe liveness diagnostic retention", () => {
-  it("reports a successful artifact write without an annotation", async () => {
-    const annotations: Array<{ type: string; description: string }> = [];
-
-    await expect(
-      retainPrivacySafeLivenessDiagnostic(
-        async () => undefined,
-        (annotation) => annotations.push(annotation),
-      ),
-    ).resolves.toBe(true);
-    expect(annotations).toEqual([]);
-  });
-
-  it("makes write failure observable without retaining the rejected value", async () => {
-    const annotations: Array<{ type: string; description: string }> = [];
-    const privateFailure = "private filesystem path and provider token";
-
-    await expect(
-      retainPrivacySafeLivenessDiagnostic(
-        async () => {
-          throw new Error(privateFailure);
-        },
-        (annotation) => annotations.push(annotation),
-      ),
-    ).resolves.toBe(false);
-    expect(annotations).toEqual([
-      {
-        type: "diagnostic-artifact-unavailable",
-        description:
-          "Privacy-safe liveness diagnostic artifact was not written.",
-      },
-    ]);
-    expect(JSON.stringify(annotations)).not.toContain(privateFailure);
   });
 });
 

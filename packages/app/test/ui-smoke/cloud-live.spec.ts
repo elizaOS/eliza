@@ -43,7 +43,6 @@ import {
   findAnchoredLiveTurn,
   isLiveReply,
   readLivenessThreadLines,
-  retainPrivacySafeLivenessDiagnostic,
 } from "../liveness-contract";
 import { writeStagingCloudChatLatencyEvidence } from "../staging-cloud-chat-latency-evidence";
 import { openAppPath } from "./helpers";
@@ -869,27 +868,29 @@ test.describe("real cloud login + personal identity + chat", () => {
       const diagnosticPath = test
         .info()
         .outputPath("privacy-safe-liveness-history-network-diagnostics.json");
-      const diagnosticArtifactWritten =
-        await retainPrivacySafeLivenessDiagnostic(
-          async () => {
-            await mkdir(dirname(diagnosticPath), {
-              recursive: true,
-              mode: 0o700,
-            });
-            await writeFile(
-              diagnosticPath,
-              `${JSON.stringify(
-                {
-                  schema: "elizaos.cloud.liveness-failure-diagnostics/v1",
-                  ...diagnosticRecord,
-                },
-                null,
-                2,
-              )}\n`,
-              { encoding: "utf8", flag: "wx", mode: 0o600 },
-            );
-          },
-          (annotation) => test.info().annotations.push(annotation),
+      // error-policy:J2 retain only allowlisted counts, booleans, and enums.
+      // Artifact write failure must not replace the original liveness verdict.
+      const diagnosticArtifactWritten = await mkdir(dirname(diagnosticPath), {
+        recursive: true,
+        mode: 0o700,
+      })
+        .then(() =>
+          writeFile(
+            diagnosticPath,
+            `${JSON.stringify(
+              {
+                schema: "elizaos.cloud.liveness-failure-diagnostics/v1",
+                ...diagnosticRecord,
+              },
+              null,
+              2,
+            )}\n`,
+            { encoding: "utf8", flag: "wx", mode: 0o600 },
+          ),
+        )
+        .then(
+          () => true,
+          () => false,
         );
       const diagnostic = [
         ...Object.entries(diagnosticRecord).map(
