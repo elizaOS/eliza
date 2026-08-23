@@ -3317,6 +3317,12 @@ async function handleRequest(
   }
 
   // ── Runtime switch routes (/api/runtime/model-switch, /agent-switch) ──────
+  const runtimeManagementCallerAuthorization = resolveInboxRequestAuthorization(
+    req,
+    method,
+    pathname,
+    await resolveHostSessionAuthorization(),
+  );
   if (
     await handleRuntimeManagementRoutes({
       req,
@@ -3326,6 +3332,8 @@ async function handleRequest(
       json,
       error,
       broadcastWs: state.broadcastWs ?? undefined,
+      broadcastWsToClientId: state.broadcastWsToClientId ?? undefined,
+      callerAuthorization: runtimeManagementCallerAuthorization,
     })
   ) {
     return;

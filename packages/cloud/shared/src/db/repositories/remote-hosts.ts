@@ -140,6 +140,7 @@ export class RemoteHostsRepository {
     const [host] = await this.database
       .update(remoteHosts)
       .set({
+        status: "active",
         headscale_hostname: input.hostname,
         headscale_preauth_key_id: input.preAuthKeyId,
         headscale_cleanup_pending: true,
@@ -151,7 +152,7 @@ export class RemoteHostsRepository {
           eq(remoteHosts.id, input.hostId),
           eq(remoteHosts.organization_id, input.organizationId),
           eq(remoteHosts.user_id, input.userId),
-          eq(remoteHosts.status, "active"),
+          eq(remoteHosts.status, "pending"),
         ),
       )
       .returning();
@@ -161,6 +162,39 @@ export class RemoteHostsRepository {
       });
     }
     return host;
+  }
+
+  async recordManagedCleanupPending(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    hostname: string;
+    preAuthKeyId: string;
+    message: string;
+  }): Promise<void> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_hostname: input.hostname,
+        headscale_preauth_key_id: input.preAuthKeyId,
+        headscale_cleanup_pending: true,
+        headscale_cleanup_error: managedCleanupErrorPreview(input.message),
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+          eq(remoteHosts.status, "pending"),
+        ),
+      )
+      .returning({ id: remoteHosts.id });
+    if (!host) {
+      throw storageFailure("Pending managed-network cleanup could not be recorded", {
+        hostId: input.hostId,
+      });
+    }
   }
 
   async recordManagedCleanupFailure(input: {
@@ -340,7 +374,9 @@ export class RemoteHostsRepository {
         const [revoked] = await tx
           .update(remoteHosts)
           .set({ status: "revoked", revoked_at: now, updated_at: now })
-          .where(and(eq(remoteHosts.id, hostId), eq(remoteHosts.status, "active")))
+          .where(
+            and(eq(remoteHosts.id, hostId), inArray(remoteHosts.status, ["pending", "active"])),
+          )
           .returning();
         if (!revoked) {
           throw storageFailure("Locked remote host could not be revoked", { hostId });

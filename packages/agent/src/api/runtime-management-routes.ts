@@ -8,6 +8,7 @@ import {
   type RuntimeManagementResult,
   readJsonBody,
 } from "@elizaos/shared";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { PendingRequestMap } from "./pending-request-map.ts";
 
 const PREFIX = "/api/runtime/manage";
@@ -23,6 +24,8 @@ export interface RuntimeManagementRouteContext {
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   broadcastWs?: (payload: object) => void;
+  broadcastWsToClientId?: (clientId: string, payload: object) => number;
+  callerAuthorization: AgentHttpRequestAuthorization;
 }
 
 function boundedString(value: unknown, max = 512): string | undefined {
@@ -43,11 +46,20 @@ function parseRequest(
   body: Record<string, unknown>,
 ): RuntimeManagementRequest | null {
   if (!isRuntimeManagementOperation(body.op)) return null;
+  const normalizedKeys = new Set(
+    Object.keys(body).map((key) => key.replace(/[-_]/g, "").toLowerCase()),
+  );
   if (
-    "accessToken" in body ||
-    "privateKey" in body ||
-    "password" in body ||
-    "credential" in body
+    [
+      "accesstoken",
+      "apikey",
+      "bearertoken",
+      "credential",
+      "password",
+      "privatekey",
+      "secret",
+      "token",
+    ].some((key) => normalizedKeys.has(key))
   ) {
     return null;
   }
@@ -78,6 +90,14 @@ export async function handleRuntimeManagementRoutes(
 ): Promise<boolean> {
   const { req, res, method, pathname, json, error } = ctx;
   if (!pathname.startsWith(PREFIX)) return false;
+  if (!ctx.callerAuthorization.ok) {
+    error(res, "Runtime management authentication required.", 401);
+    return true;
+  }
+  if (ctx.callerAuthorization.role !== "OWNER") {
+    error(res, "Runtime management requires owner authority.", 403);
+    return true;
+  }
   purgeExpiredClaims();
 
   if (method === "POST" && pathname === PREFIX) {
@@ -90,7 +110,12 @@ export async function handleRuntimeManagementRoutes(
       error(res, "Invalid runtime operation or secret-bearing field.", 400);
       return true;
     }
-    if (!ctx.broadcastWs) {
+    const clientId = boundedString(body.clientId, 128);
+    if (clientId && !/^[A-Za-z0-9._-]{1,128}$/.test(clientId)) {
+      error(res, "Invalid runtime client id.", 400);
+      return true;
+    }
+    if (!ctx.broadcastWs && !ctx.broadcastWsToClientId) {
       json(res, { ok: false, op: request.op, error: "no-shell" });
       return true;
     }
@@ -101,7 +126,21 @@ export async function handleRuntimeManagementRoutes(
       expiresAt: Date.now() + SHELL_TIMEOUT_MS,
     });
     const outcome = pending.waitFor(requestId, SHELL_TIMEOUT_MS);
-    ctx.broadcastWs({ type: "shell:manage-runtime", requestId, request });
+    const frame = { type: "shell:manage-runtime", requestId, request };
+    let delivered: number | undefined;
+    if (clientId) {
+      delivered = ctx.broadcastWsToClientId?.(clientId, frame);
+    } else if (ctx.broadcastWs) {
+      ctx.broadcastWs(frame);
+      delivered = 1;
+    }
+    if (!delivered) {
+      claims.delete(requestId);
+      pending.resolve(requestId, { requestId, success: false });
+      await outcome;
+      json(res, { ok: false, op: request.op, error: "no-shell" });
+      return true;
+    }
     try {
       const resolved = await outcome;
       const detail =
@@ -171,9 +210,7 @@ export async function handleRuntimeManagementRoutes(
       success: body.ok === true,
       result: {
         ...(data ? { data } : {}),
-        ...(typeof body.error === "string"
-          ? { error: body.error.slice(0, 512) }
-          : {}),
+        ...(typeof body.error === "string" ? { error: body.error } : {}),
       },
     });
     json(res, { accepted: true });

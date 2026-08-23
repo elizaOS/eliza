@@ -80,8 +80,8 @@ The exact publication head must pass:
    integration, and Electrobun typecheck.
 3. Cloud remote API tests, shared repository/Headscale/PGlite tests, and both
    Cloud typechecks.
-4. Disposable real PostgreSQL composition of migrations 0305-0309, including
-   upstream 0307 and 0308 before the Devices managed-network suffix.
+4. Disposable real PostgreSQL composition of migrations 0305-0311, including
+   upstream 0307 through 0310 before the Devices managed-network suffix.
 5. Production story build plus responsive interaction at 380x844 and
    1440x1000 with no horizontal overflow and 44-point actions.
 6. An exact-head unsigned iOS Simulator build whose cloud-only attestation

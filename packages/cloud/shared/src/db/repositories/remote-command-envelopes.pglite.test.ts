@@ -233,7 +233,52 @@ afterAll(async () => {
 
 describe("secure remote relay repositories", () => {
   it("persists and clears managed-network compensation without storing an auth key", async () => {
-    await enrollAndPair(false);
+    hostToken = generateRemoteHostToken();
+    expect(
+      await hosts.createOwned({
+        id: hostId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        device_id: "linux-one",
+        display_name: "Linux One",
+        platform: "linux",
+        connection_mode: "relay",
+        runtime_key_id: targetKeyId,
+        signing_public_jwk: ecPublicJwk,
+        encryption_public_jwk: ecPublicJwk,
+        host_token_hash: await hashRemoteHostToken(hostToken),
+        status: "pending",
+      }),
+    ).toMatchObject({ kind: "created", host: { status: "pending" } });
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+    const pairingExpiry = new Date(Date.now() + 5 * 60_000);
+    expect(
+      await sessions.createPendingForOwnedHost({
+        id: sessionId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        host_id: hostId,
+        grant_id: grantId,
+        grant_revision: 1,
+        status: "pending",
+        requester_identity: ownerId,
+        pairing_token_hash: await deriveRemotePairingCodeVerifier(
+          pairingSecret,
+          { organizationId, userId: ownerId, hostId, sessionId },
+          "123456",
+          pairingExpiry,
+        ),
+        controller_device_id: controllerDeviceId,
+        controller_key_id: controllerKeyId,
+        controller_display_name: "Controller",
+        controller_platform: "linux",
+        controller_signing_public_jwk: ecPublicJwk,
+        controller_encryption_public_jwk: ecPublicJwk,
+        target_key_id: targetKeyId,
+        expires_at: pairingExpiry,
+        grant_expires_at: new Date(Date.now() + 60 * 60_000),
+      }),
+    ).toBeUndefined();
     await hosts.recordManagedEnrollment({
       hostId,
       organizationId,
@@ -246,6 +291,7 @@ describe("secure remote relay repositories", () => {
       headscale_hostname: "eliza-host-test",
       headscale_preauth_key_id: "123",
       headscale_cleanup_pending: true,
+      status: "active",
     });
     expect(JSON.stringify(host)).not.toContain("hskey-");
 
