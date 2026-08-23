@@ -64,8 +64,6 @@ export const providersProvider: Provider = {
 			return (
 				provider.description ??
 				providerSpec?.description ??
-				provider.descriptionCompressed ??
-				providerSpec?.descriptionCompressed ??
 				"No description available"
 			);
 		};

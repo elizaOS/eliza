@@ -23,7 +23,7 @@ import { recentConversationTextsFromState } from "./recent-context";
 export interface SubactionSpec<TParams = Record<string, unknown>> {
 	/** Full description (per-subaction; surfaced into LLM prompt). */
 	description: string;
-	/** Caveman compressed: max semantic info per token, drop articles/conjunctions. */
+	/** @deprecated Compatibility metadata; model prompts use `description`. */
 	descriptionCompressed: string;
 	/** Required parameter keys; missing any -> triggers extraction. */
 	required: ReadonlyArray<keyof TParams & string>;
@@ -63,7 +63,6 @@ export type ResolveActionArgsResult<TSubaction extends string, TParams> =
 
 // ── Internal helpers ──────────────────────────────────
 
-const RECENT_CONTEXT_LIMIT = 8;
 const MIN_CONFIDENCE = 0.5;
 const FALLBACK_CLARIFICATION =
 	"I'm not sure what you'd like to do — can you say it a bit differently?";
@@ -173,7 +172,7 @@ function describeSubactionsForPrompt<TSubaction extends string>(
 				: "—";
 		entries.push(
 			[
-				`- ${key}: ${spec.descriptionCompressed}`,
+				`- ${key}: ${spec.description}`,
 				`  required: ${required}`,
 				`  optional: ${optional}`,
 			].join("\n"),
@@ -335,10 +334,7 @@ export async function resolveActionArgs<
 
 	// 2. LLM extraction path for natural-language umbrella actions.
 	const intent = asTrimmedString(intentHint) || getMessageText(message);
-	const recentConversation = recentConversationTextsFromState(
-		state,
-		RECENT_CONTEXT_LIMIT,
-	).join("\n");
+	const recentConversation = recentConversationTextsFromState(state).join("\n");
 
 	const prompt = buildExtractionPrompt({
 		actionName,

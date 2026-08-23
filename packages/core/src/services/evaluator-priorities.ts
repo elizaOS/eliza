@@ -11,8 +11,7 @@
  *                   Facts are written first so identity / success can read
  *                   the freshly extracted state. Relationships reference
  *                   the entities those facts attach to.
- *  3. MEMORY      — summary then long-term. Summary is rolling text;
- *                   long-term may incorporate items the summary just merged.
+ *  3. MEMORY      — durable long-term facts extracted from complete dialogue.
  *  4. EXPERIENCE  — the agent's self-knowledge, distilled from facts and
  *                   relationships already extracted by reflection.
  *  5. SKILL       — proposal / refinement on the just-completed trajectory.
@@ -44,9 +43,8 @@ export const EvaluatorPriority = {
 	REFLECTION_IDENTITY: 120,
 	REFLECTION_SUCCESS: 130,
 
-	// Memory group: rolling summary, then long-term per-entity facts.
-	MEMORY_SUMMARY: 300,
-	MEMORY_LONG_TERM: 310,
+	// Memory group: long-term per-entity facts from complete retained dialogue.
+	MEMORY_LONG_TERM: 300,
 
 	// Experience: agent's distilled lessons from the just-extracted state.
 	EXPERIENCE: 320,

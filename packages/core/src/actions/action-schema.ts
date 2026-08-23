@@ -277,11 +277,7 @@ export function actionParameterSchemaToJsonSchema(
 function preferCompleteParamDescription(
 	parameter: ActionParameter,
 ): string | undefined {
-	return (
-		parameter.description ??
-		parameter.descriptionCompressed ??
-		parameter.compressedDescription
-	);
+	return parameter.description;
 }
 
 function appendParameterExamples(

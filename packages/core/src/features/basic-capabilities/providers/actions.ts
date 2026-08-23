@@ -129,7 +129,7 @@ function renderCompleteDescription(item: {
 	description?: string;
 	descriptionCompressed?: string;
 }): string {
-	return item.description ?? item.descriptionCompressed ?? "";
+	return item.description ?? "";
 }
 
 function actionCapabilityItem(action: Action): ContextCapabilityItem {

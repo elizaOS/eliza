@@ -214,10 +214,8 @@ export async function runBotNoiseTriage(
 	try {
 		const params: GenerateTextParams = {
 			prompt,
-			// One word is the contract, but reasoning-style small models may spend
-			// budget before the visible answer — leave headroom so the verdict is
-			// never truncated into a fail-open.
-			maxTokens: 64,
+			// One word is the requested shape, but the provider owns its complete
+			// generation budget. A local cap can cut reasoning before the verdict.
 			temperature: 0,
 			voiceOutput: "internal",
 		};

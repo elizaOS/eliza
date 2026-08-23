@@ -1,17 +1,9 @@
 /**
- * Regression for cloud MCP dynamic tool output truncation surrogate safety (8000).
+ * Regression for complete, well-formed cloud MCP dynamic tool output.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-
-const MCP_TOOL_OUTPUT_MAX_CHARS = 8_000;
-
-function truncateMcpToolOutput(output: string): string {
-  const wellFormed = toWellFormedUnicode(output);
-  if (wellFormed.length <= MCP_TOOL_OUTPUT_MAX_CHARS) return wellFormed;
-  return `${truncateWellFormed(wellFormed, MCP_TOOL_OUTPUT_MAX_CHARS)}\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
-}
+import { normalizeMcpToolOutput } from "./dynamic-tool-actions";
 
 function isWellFormed(v: string): boolean {
   if (!v) return true;
@@ -28,34 +20,34 @@ function isWellFormed(v: string): boolean {
   return true;
 }
 
-describe("cloud MCP truncateMcpToolOutput well-formed", () => {
-  it("keeps surrogate pair intact at 8000-char boundary", () => {
+describe("cloud MCP normalizeMcpToolOutput", () => {
+  it("preserves complete output across the former 8000-character boundary", () => {
     const fox = String.fromCharCode(0xd83e, 0xdd8a);
-    const input = `${"a".repeat(MCP_TOOL_OUTPUT_MAX_CHARS - 1)}${fox}${"b".repeat(50)}`;
-    const out = truncateMcpToolOutput(input);
+    const input = `${"a".repeat(7_999)}${fox}${"b".repeat(50)}`;
+    const out = normalizeMcpToolOutput(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.includes("[truncated MCP tool output at 8000 chars]")).toBe(true);
-    expect(out).not.toContain("\uD83E");
+    expect(out).toBe(input);
   });
 
   it("preserves fitting emoji under limit", () => {
     const fox = String.fromCharCode(0xd83e, 0xdd8a);
     const input = `${"a".repeat(5000)}${fox}`;
-    const out = truncateMcpToolOutput(input);
+    const out = normalizeMcpToolOutput(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe(input);
   });
 
-  it("sanitizes lone surrogate before truncation", () => {
+  it("sanitizes a lone surrogate while preserving all remaining output", () => {
     const lone = `mcp ${String.fromCharCode(0xd800)} ${"a".repeat(10000)}`;
-    const out = truncateMcpToolOutput(lone);
+    const out = normalizeMcpToolOutput(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("\uFFFD")).toBe(true);
+    expect(out.endsWith("a".repeat(10_000))).toBe(true);
   });
 
   it("sanitizes lone surrogate without truncation when fitting", () => {
     const lone = `mcp ${String.fromCharCode(0xd800)} ok`;
-    const out = truncateMcpToolOutput(lone);
+    const out = normalizeMcpToolOutput(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe("mcp \uFFFD ok");
   });
