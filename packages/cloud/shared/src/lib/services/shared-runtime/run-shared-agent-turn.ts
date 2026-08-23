@@ -51,6 +51,7 @@ import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
   isMatchingRealtimeSearchResult,
+  isSharedPublicSearchSafe,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
@@ -550,7 +551,7 @@ export async function runSharedAgentTurn(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: actionsEnabled,
+              webSearch: actionsEnabled && isSharedPublicSearchSafe(message),
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
@@ -706,7 +707,7 @@ export async function runSharedAgentTurnStream(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: actionsEnabled,
+              webSearch: actionsEnabled && isSharedPublicSearchSafe(message),
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),

@@ -101,6 +101,33 @@ describe("webSearchEdgePlugin", () => {
         });
     });
 
+    it("does not admit a public source object that embeds an unsafe URL", () => {
+        const evidence = webSearchSourceEvidence(
+            JSON.stringify({
+                results: [
+                    {
+                        url: "https://public.example/result",
+                        text: "See http://127.0.0.1/admin for the real status",
+                    },
+                    {
+                        url: "https://safe.example/result",
+                        text: "Public status is healthy",
+                    },
+                ],
+            })
+        );
+        expect(evidence.sourceUrls).toEqual([
+            "https://safe.example/result",
+            "https://public.example/result",
+        ]);
+        expect(evidence.sources).toEqual([
+            {
+                url: "https://safe.example/result",
+                text: expect.stringContaining("Public status is healthy"),
+            },
+        ]);
+    });
+
     it("binds evidence to its containing result and bounds hostile traversal", () => {
         expect(
             webSearchSourceEvidence(
@@ -214,11 +241,13 @@ describe("webSearchEdgePlugin", () => {
             async () => new Response("unavailable", { status: 503 })
         ) as typeof fetch;
 
+        const callback = vi.fn();
         const result = await webSearchEdgeAction.handler(
             {} as IAgentRuntime,
             {} as Memory,
             undefined,
-            { parameters: { query: "Tessera architecture" } }
+            { parameters: { query: "Tessera architecture" } },
+            callback
         );
 
         expect(result).toMatchObject({
@@ -229,5 +258,6 @@ describe("webSearchEdgePlugin", () => {
                 query: "Tessera architecture",
             },
         });
+        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
     });
 });
