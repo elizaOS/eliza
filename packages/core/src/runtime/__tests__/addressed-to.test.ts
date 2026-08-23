@@ -12,6 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import {
+	classifyLeadingVocative,
 	messageAddressedToOtherParticipant,
 	messageVocativelyAddressesOtherParticipant,
 } from "../addressed-to.ts";
@@ -521,5 +522,82 @@ describe("messageVocativelyAddressesOtherParticipant (structural vocative)", () 
 				}),
 			).toBe(true);
 		});
+	});
+});
+
+describe("classifyLeadingVocative (identity notice classifier)", () => {
+	const room = (): Partial<IAgentRuntime> =>
+		({
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: AGENT_ID, names: ["remilio nubilio"] },
+				{ id: HUMAN_X, names: ["shaw"] },
+				{ id: SENDER_ID, names: ["nubs"] },
+			]),
+		}) as unknown as Partial<IAgentRuntime>;
+	const rt = (): IAgentRuntime =>
+		makeRuntime({
+			character: { name: "remilio nubilio" },
+			...room(),
+		} as Partial<IAgentRuntime>);
+	const msg = (text: string) => makeMessage(undefined, undefined, text);
+
+	it('classifies "hey eliza" as unresolved in a room with no Eliza', async () => {
+		expect(
+			await classifyLeadingVocative({
+				runtime: rt(),
+				message: msg("hey eliza"),
+			}),
+		).toEqual({ kind: "unresolved", name: "eliza" });
+	});
+
+	it('classifies a bare "eliza" as unresolved', async () => {
+		expect(
+			await classifyLeadingVocative({ runtime: rt(), message: msg("eliza") }),
+		).toEqual({ kind: "unresolved", name: "eliza" });
+	});
+
+	it("classifies the agent's own name token as self", async () => {
+		expect(
+			await classifyLeadingVocative({
+				runtime: rt(),
+				message: msg("nubilio, you there?"),
+			}),
+		).toEqual({ kind: "self", name: "nubilio" });
+	});
+
+	it("classifies a real participant as participant", async () => {
+		expect(
+			await classifyLeadingVocative({
+				runtime: rt(),
+				message: msg("hey shaw what do you think"),
+			}),
+		).toEqual({ kind: "participant", name: "shaw" });
+	});
+
+	it("never classifies interjections or ordinary sentences", async () => {
+		for (const text of [
+			"ok cool",
+			"hey bro",
+			"whats my favorite color",
+			"thanks!",
+			"lol",
+			"yes please",
+		]) {
+			expect(
+				(await classifyLeadingVocative({ runtime: rt(), message: msg(text) }))
+					.kind,
+			).toBe("none");
+		}
+	});
+
+	it("mid-text names never classify (vocative position only)", async () => {
+		expect(
+			(
+				await classifyLeadingVocative({
+					runtime: rt(),
+					message: msg("i was talking to eliza"),
+				})
+			).kind,
+		).toBe("none");
 	});
 });

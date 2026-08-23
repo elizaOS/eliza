@@ -437,3 +437,104 @@ function vocativelyAddressesOtherParticipant(args: {
 	}
 	return false;
 }
+
+/**
+ * Interjections and generic address words that occupy the vocative position
+ * in ordinary chat ("ok cool", "hey bro") without naming anyone. A token on
+ * this list never classifies as an unresolved vocative.
+ */
+const VOCATIVE_STOP_TOKENS = new Set([
+	"ok",
+	"okay",
+	"cool",
+	"thanks",
+	"thx",
+	"ty",
+	"lol",
+	"lmao",
+	"yes",
+	"no",
+	"yeah",
+	"yep",
+	"nah",
+	"sure",
+	"hey",
+	"hi",
+	"yo",
+	"sup",
+	"hello",
+	"gm",
+	"gn",
+	"wtf",
+	"omg",
+	"bro",
+	"dude",
+	"man",
+	"guys",
+	"everyone",
+	"all",
+	"team",
+	"chat",
+	"u",
+	"you",
+	"pls",
+	"please",
+	"wait",
+	"stop",
+	"what",
+	"whats",
+	"why",
+	"how",
+	"who",
+	"when",
+]);
+
+/** Vocative-position token: "hey NAME …", "NAME, …", or a bare "NAME". */
+const VOCATIVE_TOKEN_RE =
+	/^\s*(?:(?:hey|hi|yo|sup|hello|gm|gn)(?=$|[^\p{L}\p{N}])\s*[,–—-]?\s*@?([\p{L}\p{N}_.-]{2,32})(?=$|[^\p{L}\p{N}])|@?([\p{L}\p{N}_.-]{2,32})\s*(?:[,!?.:;]|$))/iu;
+
+export type LeadingVocativeClass =
+	| { kind: "none" }
+	| { kind: "self"; name: string }
+	| { kind: "participant"; name: string }
+	| { kind: "unresolved"; name: string };
+
+/**
+ * Classifies who a message's opening vocative addresses. Deliberately
+ * narrower than the suppression matcher above: only "greeting NAME …",
+ * "NAME, …" and a bare "NAME" shapes count, and interjection tokens never
+ * classify — so an ordinary sentence's first word is not read as a name.
+ * "unresolved" (a name that is neither the agent nor any room participant)
+ * feeds the Stage-1 identity notice: live 2026-08-23, "hey eliza" and then a
+ * bare "eliza" in a room with no Eliza drew "hey. what's on your mind?" and
+ * "yeah?" — the agent answering AS a name that is not its own.
+ */
+export async function classifyLeadingVocative(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+}): Promise<LeadingVocativeClass> {
+	const { runtime, message } = args;
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	const match = VOCATIVE_TOKEN_RE.exec(text.slice(0, 80));
+	const raw = match?.[1] ?? match?.[2];
+	if (!raw) return { kind: "none" };
+	const name = normalizeName(raw);
+	if (name.length < 2 || VOCATIVE_STOP_TOKENS.has(name))
+		return { kind: "none" };
+
+	if (agentSelfNames(runtime).has(name)) return { kind: "self", name };
+
+	const speakerId = message.entityId;
+	const participants = await runtime.getEntitiesForRoom(message.roomId);
+	for (const participant of participants) {
+		if (!participant.id || participant.id === runtime.agentId) continue;
+		if (speakerId && participant.id === speakerId) continue;
+		for (const rawName of entityNames(participant)) {
+			if (normalizeName(rawName) === name) {
+				return { kind: "participant", name };
+			}
+		}
+	}
+	return { kind: "unresolved", name };
+}
