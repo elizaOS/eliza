@@ -94,6 +94,7 @@ import {
   auditIosCloudArtifact,
   resolveIosAppFromBuildSettingsJson,
 } from "./lib/ios-cloud-artifact-audit.mjs";
+import { isIosKeyboardExtensionEnabled } from "./lib/ios-extension-policy.mjs";
 import {
   androidUsesAppDirFor,
   MTP_FORK_SRC_CANDIDATES,
@@ -377,6 +378,13 @@ const IOS_PRIVILEGED_EXTENSION_LIST_ENTRY_IDS = [
   "DAMON000100000000000401",
   "DAREP000100000000000401",
   "EWDG00010000000000000401",
+  "EKBD00010000000000000401",
+];
+// The canonical template keeps the v2 custom keyboard, while v1 builds remove
+// only the entries that cause App schemes to build and embed it.
+const IOS_KEYBOARD_EXTENSION_LIST_ENTRY_IDS = [
+  "EKBD00010000000000000002",
+  "EKBD00010000000000000702",
   "EKBD00010000000000000401",
 ];
 const IOS_PERSONAL_TEAM_ENTITLEMENTS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -861,6 +869,7 @@ export function applyIosAppIdentity({
   developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ?? null,
   versionName = process.env.ELIZAOS_VERSION_NAME?.trim() || null,
   versionCode = process.env.ELIZAOS_VERSION_CODE?.trim() || null,
+  keyboardExtensionEnabled = isIosKeyboardExtensionEnabled(),
   log = console.log,
 } = {}) {
   const iosAppRoot = path.join(appDirValue, "ios", "App");
@@ -947,9 +956,20 @@ export function applyIosAppIdentity({
         `DEVELOPMENT_TEAM = ${developmentTeam};`,
       );
     }
+    if (!keyboardExtensionEnabled) {
+      project = removePbxListEntries(
+        project,
+        IOS_KEYBOARD_EXTENSION_LIST_ENTRY_IDS,
+      );
+    }
     if (project !== original) {
       fs.writeFileSync(projectPath, project, "utf8");
       changed.push(path.relative(iosAppRoot, projectPath));
+      if (!keyboardExtensionEnabled) {
+        log(
+          "[mobile-build] Excluded the v2 ElizaKeyboard extension from this v1 build.",
+        );
+      }
     }
   }
 
@@ -1007,7 +1027,7 @@ export function applyIosAppIdentity({
     `${appId}.DeviceActivityMonitorExtension`,
     `${appId}.DeviceActivityReportExtension`,
     `${appId}.ElizaWidgets`,
-    `${appId}.ElizaKeyboard`,
+    ...(keyboardExtensionEnabled ? [`${appId}.ElizaKeyboard`] : []),
   ].join(",");
   const fastlaneReplacements = [
     [

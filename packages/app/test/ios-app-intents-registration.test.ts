@@ -14,6 +14,10 @@ const appIntentsSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaAppIntents.swift"),
   "utf8",
 );
+const controlIntentsSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaControlIntents.swift"),
+  "utf8",
+);
 const pbxproj = readFileSync(
   path.join(iosAppRoot, "App.xcodeproj/project.pbxproj"),
   "utf8",
@@ -94,6 +98,41 @@ interface StringCatalog {
 const localizableCatalog = JSON.parse(
   readFileSync(path.join(iosAppRoot, "App/Localizable.xcstrings"), "utf8"),
 ) as StringCatalog;
+
+describe("iOS Mobile Signals UIKit isolation", () => {
+  it("captures UIApplication and UIDevice snapshot state on the main thread", () => {
+    const captureHelper = mobileSignalsPluginSwift.match(
+      /private func captureUIKitState\(\) -> UIKitStateCapture \{[\s\S]*?\n {4}\}/,
+    )?.[0];
+
+    expect(captureHelper).toBeDefined();
+    expect(captureHelper).toContain("Self.runOnMain");
+    expect(captureHelper).toContain("UIApplication.shared.applicationState");
+    expect(captureHelper).toContain(
+      "UIApplication.shared.isProtectedDataAvailable",
+    );
+    expect(captureHelper).toContain("UIDevice.current.batteryState");
+    expect(captureHelper).toContain("UIDevice.current.batteryLevel");
+    expect(
+      mobileSignalsPluginSwift.match(
+        /UIApplication\.shared\.applicationState/g,
+      ),
+    ).toHaveLength(1);
+    expect(mobileSignalsPluginSwift).toContain(
+      "DispatchQueue.main.sync(execute: work)",
+    );
+  });
+
+  it("presents the native Screen Time report from the main queue", () => {
+    const presenter = mobileSignalsPluginSwift.match(
+      /@objc func presentScreenTimeReport\([\s\S]*?\n {4}\}/,
+    )?.[0];
+
+    expect(presenter).toBeDefined();
+    expect(presenter).toContain("DispatchQueue.main.async");
+    expect(presenter).toContain("presentingViewController.present");
+  });
+});
 function parseAppleStrings(source: string): Map<string, string> {
   return new Map(
     [...source.matchAll(/^"([^"]+)"\s*=\s*"([^"]+)";$/gm)].map(
@@ -141,10 +180,6 @@ const deviceExtensionSurfaceUITestsSwift = readFileSync(
 );
 const iosDeviceLib = readFileSync(
   path.join(repoRoot, "packages/app/scripts/ios-device-lib.mjs"),
-  "utf8",
-);
-const iosDeviceCapture = readFileSync(
-  path.join(repoRoot, "packages/app/scripts/ios-device-capture.mjs"),
   "utf8",
 );
 const mobileBuildScript = readFileSync(
@@ -299,38 +334,35 @@ describe("native assistant entry contracts", () => {
   });
 
   it("exposes the expected iOS Siri and Shortcuts launch surfaces", () => {
-    for (const intentName of [
-      "AskElizaIntent",
-      "StartElizaVoiceIntent",
+    for (const intentName of ["AskElizaIntent", "StartElizaVoiceIntent"]) {
+      expect(appIntentsSwift).toContain(`struct ${intentName}: AppIntent`);
+    }
+
+    for (const removedIntentName of [
       "OpenElizaDailyBriefIntent",
       "CreateElizaTaskIntent",
       "DraftElizaSmartReplyIntent",
     ]) {
-      expect(appIntentsSwift).toContain(`struct ${intentName}: AppIntent`);
+      expect(appIntentsSwift).not.toContain(
+        `struct ${removedIntentName}: AppIntent`,
+      );
     }
 
     expect(appIntentsSwift).toContain("ios-app-intents");
-    expect(appIntentsSwift).toContain("Ask \\(.applicationName)");
-    expect(appIntentsSwift).toContain("Start \\(.applicationName) voice");
-    expect(appIntentsSwift).toContain("Open \\(.applicationName) daily brief");
-    expect(appIntentsSwift).toContain(
-      "Draft a reply with \\(.applicationName)",
-    );
+    expect(appIntentsSwift).toContain("Message \\(.applicationName)");
+    expect(appIntentsSwift).toContain("Talk to \\(.applicationName)");
+    expect(appIntentsSwift.match(/AppShortcut\(/g)).toHaveLength(2);
   });
 
   it("ships Spanish App Intent, widget, control, and Live Activity copy", () => {
     const requiredKeys = [
-      "Ask Eliza",
-      "Ask Eliza a question or hand off a request to chat.",
+      "Message Eliza",
+      "Message Eliza or hand off a request to chat.",
       "Prompt",
       "What would you like to ask Eliza?",
-      "Start Voice Chat",
-      "Open Daily Brief",
-      "Create LifeOps Task",
-      "Draft Smart Reply",
+      "Talk to Eliza",
       "Eliza Quick Actions",
-      "Ask, talk, and plan with Eliza from your Home and Lock Screen.",
-      "Eliza Voice",
+      "Message or talk to Eliza from your Home and Lock Screen.",
       "Keyboard dictation",
       "Recording",
       "Ready",
@@ -372,13 +404,8 @@ describe("native assistant entry contracts", () => {
 
   it("ships localized App Shortcut phrases with the required app-name token", () => {
     const expectedKeys = [
-      `Ask ${appNamePlaceholder}`,
-      `Start voice with ${appNamePlaceholder}`,
-      `Start ${appNamePlaceholder} voice`,
-      `Open ${appNamePlaceholder} daily brief`,
-      `Show my daily brief in ${appNamePlaceholder}`,
-      `Create a task in ${appNamePlaceholder}`,
-      `Draft a reply with ${appNamePlaceholder}`,
+      `Message ${appNamePlaceholder}`,
+      `Talk to ${appNamePlaceholder}`,
     ];
     expect([...englishAppShortcuts.keys()]).toEqual(expectedKeys);
     expect([...spanishAppShortcuts.keys()]).toEqual(expectedKeys);
@@ -469,16 +496,12 @@ describe("native assistant entry contracts", () => {
     expect(widgetsSwift).toContain("ios-widget");
     expect(widgetsSwift).toContain(".accessoryCircular");
     expect(widgetsSwift).toContain(".accessoryRectangular");
-    // The five quick actions mirror the app-target App Intents.
+    // The two quick actions mirror the app-target App Intents.
     expect(widgetsSwift).toContain('path: "assistant", action: "ask"');
     expect(widgetsSwift).toContain('path: "voice"');
-    expect(widgetsSwift).toContain(
-      'path: "lifeops/daily-brief", action: "lifeops.daily-brief"',
-    );
-    expect(widgetsSwift).toContain(
-      'path: "lifeops/task/new", action: "lifeops.create"',
-    );
-    expect(widgetsSwift).toContain('path: "chat", action: "smart-reply"');
+    expect(widgetsSwift).not.toContain("lifeops/daily-brief");
+    expect(widgetsSwift).not.toContain("lifeops/task/new");
+    expect(widgetsSwift).not.toContain("smart-reply");
   });
 
   it("exposes iOS 18 controls (Control Center / Lock Screen / Action button)", () => {
@@ -488,12 +511,53 @@ describe("native assistant entry contracts", () => {
     expect(widgetControlsSwift).toContain(
       "struct ElizaVoiceControl: ControlWidget",
     );
-    expect(widgetControlsSwift).toContain("ios-control");
-    // Controls foreground the app (mic needs foreground) and deep-link via
-    // OpenURLIntent instead of touching UIKit from the extension process.
-    expect(widgetControlsSwift).toContain("static var openAppWhenRun = true");
-    expect(widgetControlsSwift).toContain("OpenURLIntent");
+    expect(controlIntentsSwift).toContain("ios-control");
+    // Apple requires the intent implementation in both the widget extension
+    // and containing app when a control foregrounds the app. The shared file
+    // remains extension-safe and is compiled into exactly those two targets.
+    expect(controlIntentsSwift).toContain(
+      "enum MessageElizaControlTarget: String",
+    );
+    expect(controlIntentsSwift).toContain(
+      "enum TalkToElizaControlTarget: String",
+    );
+    expect(controlIntentsSwift).toContain(
+      "struct AskElizaControlIntent: OpenIntent",
+    );
+    expect(controlIntentsSwift).toContain(
+      "struct StartElizaVoiceControlIntent: OpenIntent",
+    );
+    expect(controlIntentsSwift).not.toContain(
+      "struct AskElizaControlIntent: AppIntent",
+    );
+    expect(controlIntentsSwift).not.toContain(
+      "struct StartElizaVoiceControlIntent: AppIntent",
+    );
+    expect(controlIntentsSwift).not.toContain("OpenURLIntent");
+    expect(controlIntentsSwift).toContain("#if !APP_EXTENSION");
+    expect(pbxproj.match(/APP_EXTENSION/g)).toHaveLength(2);
+    const controlIntentsFileRef = pbxproj.match(
+      /([A-Z0-9]+) \/\* ElizaControlIntents\.swift \*\/ = \{isa = PBXFileReference/,
+    )?.[1];
+    expect(controlIntentsFileRef).toBeTruthy();
+    expect(
+      pbxproj.match(
+        new RegExp(
+          `isa = PBXBuildFile; fileRef = ${controlIntentsFileRef} `,
+          "g",
+        ),
+      )?.length,
+    ).toBe(2);
+    expect(widgetControlsSwift).not.toContain(
+      "struct AskElizaControlIntent: AppIntent",
+    );
+    expect(widgetControlsSwift).not.toContain(
+      "struct StartElizaVoiceControlIntent: AppIntent",
+    );
     expect(widgetControlsSwift).toContain("@available(iOS 18.0, *)");
+    expect(
+      controlIntentsSwift.match(/static var isDiscoverable = false/g),
+    ).toHaveLength(2);
   });
 
   it("adds a dictation Live Activity to the ElizaWidgets extension target", () => {
@@ -526,7 +590,9 @@ describe("native assistant entry contracts", () => {
     );
 
     // The bundle registers the Live Activity behind the iOS 16.1 gate.
-    expect(widgetsSwift).toContain("ElizaDictationLiveActivity()");
+    expect(widgetsSwift.match(/ElizaDictationLiveActivity\(\)/g)).toHaveLength(
+      1,
+    );
     expect(widgetsSwift).toContain('case liveActivity = "ios-live-activity"');
 
     // App-side ActivityKit bridge in the App target (first-party, D2).
@@ -573,8 +639,8 @@ describe("native assistant entry contracts", () => {
     expect(iosDeviceLib).toContain(
       '"AppUITests/DeviceExtensionSurfaceUITests"',
     );
-    expect(iosDeviceCapture).toContain('"CODE_SIGNING_ALLOWED=YES"');
-    expect(iosDeviceCapture).toContain('"CODE_SIGN_IDENTITY=-"');
+    expect(iosDeviceLib).toContain('"CODE_SIGNING_ALLOWED=YES"');
+    expect(iosDeviceLib).toContain('"CODE_SIGN_IDENTITY=-"');
 
     // This is the assert-level counterpart to WidgetGalleryCaptureUITests.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
@@ -586,18 +652,40 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "testHomeScreenWidgetTapForegroundsApp",
     );
-    expect(deviceExtensionSurfaceUITestsSwift).toContain("Ask Eliza");
-    expect(deviceExtensionSurfaceUITestsSwift).toContain("Eliza Voice");
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testAppShortcutsListsV1Actions",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testTalkToElizaAppShortcutForegroundsApp",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testMessageElizaAppShortcutForegroundsApp",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("Message Eliza");
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("Talk to Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",
     );
-    // The custom keyboard and hardware Action Button pieces are documented as
-    // device-lane only instead of being faked in simulator evidence.
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "grantLocalNetworkPermissionIfPresent",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "label CONTAINS[c] 'local networks'",
+    );
+    // The custom keyboard's local dictation + ActivityKit path has a real
+    // provisioned-device shard; hardware Action Button assignment remains a
+    // device-only manual gate rather than a false simulator pass.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "Action Button physical press",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "custom keyboard requires a provisioned device lane",
+      "testKeyboardDictationStartsAndEndsLiveActivityOnDevice",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      'app.otherElements["Keyboard dictation, web dialog"]',
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      'springboard.staticTexts["Recording"]',
     );
     // Brand-aware widget gallery: stale hard-coded display name must be gone.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
@@ -611,6 +699,12 @@ describe("native assistant entry contracts", () => {
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "app.wait(for: .runningForeground",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "shortcuts.wait(for: .runningBackground",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "app.webViews.firstMatch.waitForExistence",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "label.isEmpty ? nil : label",

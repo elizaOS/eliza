@@ -29,6 +29,94 @@ export const IOS_APPEX_TARGET_NAMES = Object.freeze(
     .sort(),
 );
 
+/** App extensions included in v1; the custom keyboard is retained for v2. */
+export const IOS_V1_APPEX_TARGET_NAMES = Object.freeze(
+  IOS_APPEX_TARGET_NAMES.filter((targetName) => targetName !== "ElizaKeyboard"),
+);
+
+/**
+ * Test-process inputs that the physical/simulator capture wrapper may forward
+ * through Xcode's TEST_RUNNER_ environment convention. Keep this list explicit:
+ * it includes only AppUITest behavior knobs and prevents unrelated host secrets
+ * from entering the runner process.
+ */
+export const IOS_XCUITEST_FORWARDED_ENV_NAMES = Object.freeze([
+  "ELIZA_AGENT_READY_TIMEOUT_SECONDS",
+  "ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS",
+  "ELIZA_BOOT_TIMEOUT_SECONDS",
+  "ELIZA_FAIL_ON_SKIP",
+  "ELIZA_FIRSTRUN_TIMEOUT_SECONDS",
+  "ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS",
+  "ELIZA_LOOP_ACTIONS",
+  "ELIZA_LOOP_SEED",
+  "ELIZA_REPLY_SCREENSHOT_INTERVAL_SECONDS",
+  "ELIZA_REPLY_TIMEOUT_SECONDS",
+  "ELIZA_REQUIRE_HOME",
+  "ELIZA_REQUIRE_NO_SKIPS",
+  "ELIZA_REQUIRE_REPLY",
+  "ELIZA_SEND_PROMPT",
+  "ELIZA_TEST_CHAT_REPLY_MARKER",
+  "ELIZA_TEST_PAIRING_CODE",
+  "ELIZA_TEST_REMOTE_API_BASE",
+  "ELIZA_VIEW_PROMPT",
+  "ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS",
+]);
+
+/**
+ * Build the allowlisted TEST_RUNNER_ environment fragment consumed by
+ * xcodebuild. Values stay in the child-process environment rather than being
+ * serialized into the evidence .xctestrun plist.
+ *
+ * @param {Record<string, unknown>} env host environment
+ * @returns {Record<string, string>}
+ */
+export function buildIosXcuitestForwardedEnvironment(env = {}) {
+  const forwarded = {};
+  for (const name of IOS_XCUITEST_FORWARDED_ENV_NAMES) {
+    const value = env[name];
+    if (typeof value !== "string" || value.length === 0) continue;
+    forwarded[`TEST_RUNNER_${name}`] = value;
+  }
+  return forwarded;
+}
+
+/**
+ * Resolve the signing arguments for the XCUITest build. A command-line team
+ * assignment must override the template project's historical team when a
+ * developer runs under a separate paid Apple account.
+ *
+ * @param {{platform: "sim"|"device", xcodeSigning: boolean, developmentTeam?: string|null}} input
+ * @returns {string[]}
+ */
+export function buildIosXcuitestSigningArgs({
+  platform,
+  xcodeSigning,
+  developmentTeam = null,
+}) {
+  if (platform === "sim") {
+    return [
+      "CODE_SIGNING_ALLOWED=YES",
+      "CODE_SIGN_STYLE=Manual",
+      "CODE_SIGN_IDENTITY=-",
+      "ARCHS=arm64",
+      "ONLY_ACTIVE_ARCH=YES",
+      "EXCLUDED_ARCHS=x86_64",
+    ];
+  }
+  if (!xcodeSigning) return ["CODE_SIGNING_ALLOWED=NO"];
+
+  const team = developmentTeam?.trim() ?? "";
+  if (team && !/^[A-Z0-9]{10}$/.test(team)) {
+    throw new Error(
+      "ELIZA_IOS_DEVELOPMENT_TEAM must be a 10-character Apple team identifier.",
+    );
+  }
+  return [
+    "-allowProvisioningUpdates",
+    ...(team ? [`DEVELOPMENT_TEAM=${team}`] : []),
+  ];
+}
+
 export function entitlementSourceForTarget(targetName) {
   const source = IOS_TARGET_ENTITLEMENT_PATHS[targetName];
   if (!source) {
@@ -49,11 +137,17 @@ export function resolveMaintainedIosSigningTargets({
   appBundleId,
   appexes,
   requireAllAppexes = true,
+  keyboardExtensionEnabled = false,
 }) {
   const targets = [{ targetName: "App", bundleId: appBundleId }];
   const seen = new Set();
   for (const appex of appexes) {
     entitlementSourceForTarget(appex.targetName);
+    if (appex.targetName === "ElizaKeyboard" && !keyboardExtensionEnabled) {
+      throw new Error(
+        "Built App.app unexpectedly contains ElizaKeyboard; v1 builds must omit it unless ELIZA_IOS_KEYBOARD_EXTENSION_ENABLED=1.",
+      );
+    }
     if (seen.has(appex.targetName)) {
       throw new Error(`Duplicate maintained iOS appex ${appex.targetName}.`);
     }
@@ -70,7 +164,10 @@ export function resolveMaintainedIosSigningTargets({
     targets.push({ ...appex, bundleId: expected });
   }
   if (requireAllAppexes) {
-    const missing = IOS_APPEX_TARGET_NAMES.filter(
+    const requiredAppexes = keyboardExtensionEnabled
+      ? IOS_APPEX_TARGET_NAMES
+      : IOS_V1_APPEX_TARGET_NAMES;
+    const missing = requiredAppexes.filter(
       (targetName) => !seen.has(targetName),
     );
     if (missing.length > 0) {
@@ -531,6 +628,9 @@ const PROFILE_DERIVED_SIGNING_KEYS = Object.freeze([
 ]);
 
 function arrayGrantCovers(key, required, granted) {
+  if (key === "com.apple.developer.associated-domains" && granted === "*") {
+    return true;
+  }
   if (!Array.isArray(granted)) return false;
   if (key === "com.apple.security.application-groups") {
     return required.every((item) => granted.includes(item));
@@ -1199,6 +1299,7 @@ export const DEFAULT_IOS_XCUITEST_SHARDS = [
   "AppUITests/BootCaptureUITests/testBootReachesHomeOrErrorCard",
   "AppUITests/BootCaptureUITests/testComposerAcceptsTypedText",
   "AppUITests/BootCaptureUITests/testComposerSendsPromptAndWaitsForReply",
+  "AppUITests/BootCaptureUITests/testNotesViewActionOpensNotesSurface",
   "AppUITests/BootCaptureUITests/testCloudOnboardingChatAndVoice",
   "AppUITests/BootCaptureUITests/testLocalOnboardingChatAndVoice",
   "AppUITests/GestureSemanticsUITests",

@@ -29,6 +29,7 @@ const iosBoot = vi.hoisted(() => ({
   initializeKeyboard: vi.fn(async () => undefined),
   initializeNetworkListener: vi.fn(async () => undefined),
   preferenceSet: vi.fn(async () => undefined),
+  setStorageValue: vi.fn(async () => undefined),
 }));
 
 iosBoot.createRoot.mockReturnValue({ render: iosBoot.render });
@@ -40,7 +41,7 @@ vi.mock("react-dom/client", () => ({
 vi.mock("@elizaos/ui/App", () => ({ App: () => null }));
 vi.mock("@elizaos/ui/bridge/storage-bridge", () => ({
   initializeStorageBridge: iosBoot.initializeStorage,
-  setStorageValue: vi.fn(async () => undefined),
+  setStorageValue: iosBoot.setStorageValue,
 }));
 vi.mock("@elizaos/ui/bridge/capacitor-bridge", () => ({
   initializeCapacitorBridge: iosBoot.initializeCapacitor,
@@ -185,6 +186,18 @@ describe("renderer interactive iOS composition", () => {
       "elizaos://auth/callback?state=smoke&code=synthetic",
       "elizaos://unknown-path",
     ]) {
+      if (url.startsWith("elizaos://first-run/runtime/remote")) {
+        window.localStorage.setItem(
+          "elizaos:active-server",
+          JSON.stringify({
+            id: "remote:http://127.0.0.1:31337",
+            kind: "remote",
+            label: "127.0.0.1:31337",
+            apiBase: "http://127.0.0.1:31337",
+            accessToken: "paired-token",
+          }),
+        );
+      }
       handleDeepLink?.(url);
     }
 
@@ -203,6 +216,10 @@ describe("renderer interactive iOS composition", () => {
         gatewayUrl: "http://127.0.0.1:31337",
         completeFirstRun: true,
       }),
+    );
+    expect(iosBoot.setStorageValue).toHaveBeenCalledWith(
+      "elizaos:active-server",
+      expect.stringContaining('"accessToken":"paired-token"'),
     );
     removeConnectListener();
     window.removeEventListener(

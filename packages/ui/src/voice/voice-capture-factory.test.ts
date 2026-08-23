@@ -306,6 +306,36 @@ describe("createVoiceCapture", () => {
     });
   });
 
+  it("keeps explicit cloud ASR authoritative on native mobile without requesting Apple Speech", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const wav = new Uint8Array([4, 2]);
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(wav),
+      cancel: vi.fn(),
+      analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
+    });
+    const onTranscript = vi.fn();
+    const capture = createVoiceCapture({
+      asrProvider: "eliza-cloud",
+      onTranscript,
+    });
+
+    await capture.start();
+    await capture.stop();
+
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+    expect(talkMode.checkPermissions).not.toHaveBeenCalled();
+    expect(talkMode.requestPermissions).not.toHaveBeenCalled();
+    expect(talkMode.start).not.toHaveBeenCalled();
+    expect(transcribeCloudWavMock).toHaveBeenCalledWith(wav);
+    expect(onTranscript).toHaveBeenCalledWith(
+      expect.objectContaining({ backend: "cloud", text: "Grace Hopper" }),
+    );
+  });
+
   it("finalizeOnStop commits the running interim as the final turn (push-to-talk)", async () => {
     isNativePlatformMock.mockReturnValue(true);
     const talkMode = makeFakeTalkMode();
@@ -505,11 +535,17 @@ describe("createVoiceCapture", () => {
     expect(onTranscript).not.toHaveBeenCalled();
   });
 
-  it("falls back to browser ONLY when WAV capture is unsupported for eliza-cloud", async () => {
-    // No getUserMedia/AudioContext → no WAV path exists, so the honest fallback
-    // is the browser recognizer. jsdom has no SpeechRecognition, so start()
-    // rejects — the point is the cloud recorder was never started.
+  it("fails cloud capture without provider-swapping when WAV primitives are unavailable", async () => {
+    // No getUserMedia/AudioContext means the selected cloud capture cannot
+    // work. The factory must fail honestly, not prompt for Apple Speech or use
+    // browser SpeechRecognition under a different privacy/provider contract.
     isLocalAsrCaptureSupportedMock.mockReturnValue(false);
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    startLocalAsrRecorderMock.mockRejectedValue(
+      new Error("WAV microphone capture unavailable"),
+    );
     const onStateChange = vi.fn();
     const capture = createVoiceCapture({
       asrProvider: "eliza-cloud",
@@ -517,8 +553,11 @@ describe("createVoiceCapture", () => {
       onTranscript: vi.fn(),
     });
 
-    await expect(capture.start()).rejects.toThrow(/SpeechRecognition/);
-    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+    await expect(capture.start()).rejects.toThrow(/WAV microphone capture/);
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+    expect(talkMode.checkPermissions).not.toHaveBeenCalled();
+    expect(talkMode.requestPermissions).not.toHaveBeenCalled();
+    expect(talkMode.start).not.toHaveBeenCalled();
     expect(transcribeCloudWavMock).not.toHaveBeenCalled();
     expect(onStateChange).toHaveBeenLastCalledWith("error", expect.any(Error));
   });

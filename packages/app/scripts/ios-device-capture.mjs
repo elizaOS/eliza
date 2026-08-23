@@ -48,7 +48,9 @@ import {
 import {
   assertDeviceUnlocked,
   buildCodesignVerificationPlan,
+  buildIosXcuitestForwardedEnvironment,
   buildIosXcuitestShardPlan,
+  buildIosXcuitestSigningArgs,
   buildPlistXml,
   buildRunnerCodesignPlan,
   buildSimctlListappsArgs,
@@ -764,18 +766,11 @@ async function main() {
         // lets xcodebuild mint the ai.elizaos.app.xctrunner wildcard team
         // profile via -allowProvisioningUpdates (requires the Xcode account
         // session that minted the app profile in the first place).
-        ...(platform === "sim"
-          ? [
-              "CODE_SIGNING_ALLOWED=YES",
-              "CODE_SIGN_STYLE=Manual",
-              "CODE_SIGN_IDENTITY=-",
-              "ARCHS=arm64",
-              "ONLY_ACTIVE_ARCH=YES",
-              "EXCLUDED_ARCHS=x86_64",
-            ]
-          : args["xcode-signing"]
-            ? ["-allowProvisioningUpdates"]
-            : ["CODE_SIGNING_ALLOWED=NO"]),
+        ...buildIosXcuitestSigningArgs({
+          platform,
+          xcodeSigning: Boolean(args["xcode-signing"]),
+          developmentTeam: process.env.ELIZA_IOS_DEVELOPMENT_TEAM,
+        }),
         "build-for-testing",
       ],
       { cwd: iosProjectDir },
@@ -1145,6 +1140,9 @@ async function main() {
   }
   const harnessEnv = {
     ...process.env,
+    // Forward only declared AppUITest knobs. This includes the short-lived
+    // pairing code without copying it into the evidence .xctestrun or logs.
+    ...buildIosXcuitestForwardedEnvironment(process.env),
     TEST_RUNNER_ELIZA_BOOT_TIMEOUT_SECONDS:
       args["boot-timeout"] ?? process.env.ELIZA_BOOT_TIMEOUT_SECONDS ?? "180",
     TEST_RUNNER_ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS:

@@ -7,8 +7,9 @@
  *  - ElevenLabs for opt-in/custom voices.
  *  - Browser SpeechSynthesis only when it is the configured provider.
  *
- * STT: local-inference ASR on local desktop, then native TalkMode or browser
- * SpeechRecognition fallback.
+ * STT: configured cloud/local WAV transcription first. Native TalkMode or
+ * browser SpeechRecognition are fallbacks only for non-cloud preferences; an
+ * explicit cloud provider never silently changes the permission contract.
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -647,6 +648,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       if (cloudAsrSupported) {
         if (!cancelled) {
           setSupported(true);
+        }
+        return;
+      }
+      // A configured cloud provider is authoritative. When WAV primitives are
+      // missing, voice is unavailable rather than silently provider-swapping to
+      // Apple Speech Recognition and presenting an unexpected second prompt.
+      if (shouldUseCloudAsr(voiceConfigRef.current)) {
+        if (!cancelled) {
+          setSupported(false);
         }
         return;
       }
@@ -1326,6 +1336,26 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           });
           return;
         }
+        if (asrProvider === "eliza-cloud" || asrProvider === "openai") {
+          // The selected cloud provider owns this request. A failed WAV capture
+          // must not fall through to native/browser speech recognition because
+          // that changes provider truth and asks for a different OS permission.
+          setSupported(false);
+          voiceCaptureDebug("provider:none", {
+            mode,
+            note: "cloud WAV capture failed — provider fallback disabled",
+          });
+          return;
+        }
+      }
+
+      if (asrProvider === "eliza-cloud" || asrProvider === "openai") {
+        setSupported(false);
+        voiceCaptureDebug("provider:none", {
+          mode,
+          note: "cloud WAV capture unavailable — provider fallback disabled",
+        });
+        return;
       }
 
       if (shouldPreferNativeTalkMode()) {

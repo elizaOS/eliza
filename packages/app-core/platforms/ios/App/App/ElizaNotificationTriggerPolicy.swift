@@ -36,6 +36,18 @@ enum ElizaNotificationTriggerPolicy {
     }
 }
 
+#if DEBUG
+enum ElizaNotificationUITestLaunchPolicy {
+    static let enabledEnvironmentKey = "ELIZA_UI_TEST_LOCAL_NOTIFICATION"
+    static let title = "Eliza notification check"
+    static let deliveryDelay: TimeInterval = 12
+
+    static func isRequested(environment: [String: String]) -> Bool {
+        environment[enabledEnvironmentKey] == "1"
+    }
+}
+#endif
+
 enum ElizaNotificationTapPayload {
     static func userInfo(
         deepLink: String?,

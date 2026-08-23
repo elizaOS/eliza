@@ -27,6 +27,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         ElizaBrandTint.install(on: window)
 
         UNUserNotificationCenter.current().delegate = self
+#if DEBUG
+        ElizaNotificationUITestLaunch.scheduleIfRequested()
+#endif
         BackgroundRunnerPlugin.registerBackgroundTask()
         BackgroundRunnerPlugin.handleApplicationDidFinishLaunching(launchOptions: launchOptions)
 
@@ -162,6 +165,42 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         completionHandler(payload.isEmpty ? .noData : .newData)
     }
 }
+
+#if DEBUG
+/// Schedules a real app-owned notification only when the signed Debug app is
+/// launched by the device harness with the explicit opt-in environment flag.
+enum ElizaNotificationUITestLaunch {
+    static func isRequested(environment: [String: String]) -> Bool {
+        ElizaNotificationUITestLaunchPolicy.isRequested(environment: environment)
+    }
+
+    static func scheduleIfRequested(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        guard isRequested(environment: environment) else { return }
+        ElizaIntentPlugin.scheduleNotification(
+            timeIso: ISO8601DateFormatter().string(
+                from: Date().addingTimeInterval(
+                    ElizaNotificationUITestLaunchPolicy.deliveryDelay
+                )
+            ),
+            title: ElizaNotificationUITestLaunchPolicy.title,
+            body: "Tap to open Notifications.",
+            deepLink: "/notifications",
+            deepLinkOnTap: "elizaos://notifications"
+        ) { result, errorMessage in
+            if let errorMessage {
+                NSLog("[ElizaNotificationUITest] Scheduling failed: %@", errorMessage)
+                return
+            }
+            NSLog(
+                "[ElizaNotificationUITest] Scheduled app-owned notification: %@",
+                result?["scheduledId"] as? String ?? "missing-id"
+            )
+        }
+    }
+}
+#endif
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(

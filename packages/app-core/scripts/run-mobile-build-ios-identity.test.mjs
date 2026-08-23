@@ -42,6 +42,7 @@ const TEMPLATE_FILES = [
   path.join("App", "ElizaWidgets", "ElizaWidgets.entitlements"),
   path.join("App", "ElizaKeyboard", "ElizaKeyboard.entitlements"),
 ];
+const FASTLANE_FILES = ["Appfile", "Fastfile", "Matchfile"];
 
 const tempDirs = [];
 
@@ -54,6 +55,12 @@ function stageTemplateAppDir() {
   for (const relPath of TEMPLATE_FILES) {
     const source = path.join(templateIosAppRoot, relPath);
     const target = path.join(iosAppRoot, relPath);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+  }
+  for (const name of FASTLANE_FILES) {
+    const source = path.resolve(templateIosAppRoot, "..", "fastlane", name);
+    const target = path.join(appDirValue, "ios", "fastlane", name);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(source, target);
   }
@@ -122,6 +129,84 @@ describe("applyIosAppIdentity (template pbxproj + entitlements)", () => {
       );
       expect(entitlements).not.toContain("group.ai.elizaos.app");
     }
+  });
+
+  it("omits the custom keyboard from v1 builds without removing its source target", () => {
+    const { appDirValue, iosAppRoot } = stageTemplateAppDir();
+    applyIosAppIdentity({
+      appDirValue,
+      appId: "ai.elizaos.app",
+      appName: "Eliza",
+      keyboardExtensionEnabled: false,
+      versionName: null,
+      versionCode: null,
+      log: () => {},
+    });
+    const pbxproj = readStaged(
+      iosAppRoot,
+      path.join("App.xcodeproj", "project.pbxproj"),
+    );
+    expect(pbxproj).toContain('PBXNativeTarget "ElizaKeyboard"');
+    const embedPhase = pbxproj.match(
+      /WBCB00010000000000000201 \/\* Embed App Extensions \*\/ = \{([\s\S]*?)\n\t\t\};/,
+    )?.[1];
+    expect(embedPhase).not.toContain("EKBD00010000000000000002");
+    const appTarget = pbxproj.match(
+      /504EC3031FED79650016851F \/\* App \*\/ = \{([\s\S]*?)\n\t\t\};\n\t\tWBCB00010000000000000401/,
+    )?.[1];
+    expect(appTarget).not.toContain("EKBD00010000000000000702");
+    for (const retainedId of [
+      "WBCB00010000000000000702",
+      "DAMON000100000000000702",
+      "DAREP000100000000000702",
+      "EWDG00010000000000000702",
+    ]) {
+      expect(appTarget).toContain(retainedId);
+    }
+    const projectTargets = pbxproj.match(
+      /targets = \(([\s\S]*?)\);\n\t\t};\n\/\* End PBXProject section \*\//,
+    )?.[1];
+    expect(projectTargets).not.toContain(
+      "EKBD00010000000000000401 /* ElizaKeyboard */",
+    );
+    expect(projectTargets).toContain(
+      "EWDG00010000000000000401 /* ElizaWidgets */",
+    );
+    expect(
+      readStaged(iosAppRoot, path.join("..", "fastlane", "Fastfile")),
+    ).not.toContain("ai.elizaos.app.ElizaKeyboard");
+  });
+
+  it("retains the custom keyboard only for an explicit v2 development build", () => {
+    const { appDirValue, iosAppRoot } = stageTemplateAppDir();
+    applyIosAppIdentity({
+      appDirValue,
+      appId: "ai.elizaos.app",
+      appName: "Eliza",
+      keyboardExtensionEnabled: true,
+      versionName: null,
+      versionCode: null,
+      log: () => {},
+    });
+    const pbxproj = readStaged(
+      iosAppRoot,
+      path.join("App.xcodeproj", "project.pbxproj"),
+    );
+    expect(pbxproj).toContain(
+      "EKBD00010000000000000002 /* ElizaKeyboard.appex in Embed App Extensions */",
+    );
+    expect(pbxproj).toContain(
+      "EKBD00010000000000000702 /* PBXTargetDependency */",
+    );
+    const projectTargets = pbxproj.match(
+      /targets = \(([\s\S]*?)\);\n\t\t};\n\/\* End PBXProject section \*\//,
+    )?.[1];
+    expect(projectTargets).toContain(
+      "EKBD00010000000000000401 /* ElizaKeyboard */",
+    );
+    expect(
+      readStaged(iosAppRoot, path.join("..", "fastlane", "Fastfile")),
+    ).toContain("ai.elizaos.app.ElizaKeyboard");
   });
 
   it("threads versionName/versionCode into every target's version settings", () => {
