@@ -566,6 +566,7 @@ function resolveStage1ReplyGateMode(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): ReplyGateMode | null {
+	if (typeof runtime.getService !== "function") return null;
 	const store = getPersonalityStore(runtime);
 	if (!store || message.entityId === runtime.agentId) {
 		return null;
@@ -574,6 +575,90 @@ function resolveStage1ReplyGateMode(
 		store.getSlot(message.entityId),
 		store.getSlot("global"),
 	).mode;
+}
+
+const BUILTIN_ALWAYS_RESPOND_CHANNELS: readonly ChannelType[] = [
+	ChannelType.DM,
+	ChannelType.VOICE_DM,
+	ChannelType.SELF,
+	ChannelType.API,
+];
+
+const BUILTIN_ALWAYS_RESPOND_SOURCES: readonly string[] = [
+	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_TRIGGER_PROMPT,
+];
+
+function normalizeResponseBypassList(value: unknown): string[] {
+	if (typeof value !== "string") return [];
+	return value
+		.trim()
+		.replace(/^\[|\]$/g, "")
+		.split(",")
+		.map((entry) => entry.trim().toLowerCase())
+		.filter(Boolean);
+}
+
+/**
+ * Canonical structural response bypass used before Stage 1 and by the legacy
+ * response gate. A bypassed turn must never receive an ambient-silence prompt
+ * that contradicts the routing contract which guarantees a response.
+ */
+function messageBypassesResponseEvaluation(
+	runtime: IAgentRuntime,
+	message: Memory,
+): boolean {
+	const configuredChannels = normalizeResponseBypassList(
+		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
+	);
+	const configuredSources = normalizeResponseBypassList(
+		runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
+			runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
+	);
+	const channel = String(message.content?.channelType ?? "")
+		.trim()
+		.toLowerCase();
+	const source = String(message.content?.source ?? "")
+		.trim()
+		.toLowerCase();
+	const channels = [
+		...BUILTIN_ALWAYS_RESPOND_CHANNELS.map((entry) =>
+			String(entry).toLowerCase(),
+		),
+		...configuredChannels,
+	];
+	const sources = [
+		...BUILTIN_ALWAYS_RESPOND_SOURCES.map((entry) => entry.toLowerCase()),
+		...configuredSources,
+	];
+	return (
+		channels.includes(channel) ||
+		sources.some((pattern) => pattern.length > 0 && source.includes(pattern))
+	);
+}
+
+function isAmbientStage1Turn(
+	runtime: IAgentRuntime,
+	message: Memory,
+	explicitlyAddressesAgent: boolean,
+): boolean {
+	let replyGateMode: ReplyGateMode | null;
+	try {
+		replyGateMode = resolveStage1ReplyGateMode(runtime, message);
+	} catch (error) {
+		// error-policy:J7 personality lookup is advisory routing context. A store
+		// failure must fail open to the ordinary addressed prompt, not convert a
+		// potentially explicit always-response turn into silence.
+		runtime.reportError("MessageService.resolveAmbientReplyGate", error, {
+			roomId: message.roomId,
+			entityId: message.entityId,
+		});
+		return false;
+	}
+	if (replyGateMode === "always") return false;
+	if (messageBypassesResponseEvaluation(runtime, message)) return false;
+	return isUnaddressedTextGroupTurn(message, explicitlyAddressesAgent);
 }
 
 function getPlannerActionObjectName(action: Record<string, unknown>): string {
@@ -947,7 +1032,8 @@ function ambientTurnProviderExclusions(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): readonly string[] {
-	return isUnaddressedTextGroupTurn(
+	return isAmbientStage1Turn(
+		runtime,
 		message,
 		messageExplicitlyAddressesAgent(runtime, message),
 	)
@@ -7969,6 +8055,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		args.runtime.contexts,
 		senderRole,
 	);
+	const directMessageChannel =
+		args.message.content?.channelType === ChannelType.DM ||
+		args.message.content?.channelType === ChannelType.VOICE_DM ||
+		args.message.content?.channelType === ChannelType.API ||
+		args.message.content?.channelType === ChannelType.SELF;
 	// Ambient turn = a positively-identified unaddressed text-group turn
 	// (structural classifier only — channel type + addressing + source
 	// metadata, never message text; anything uncertain fails open to
@@ -7978,17 +8069,11 @@ export async function runV5MessageRuntimeStage1(args: {
 	// got a reply to nearly every message — the Stage-1 field guidance alone
 	// ("active in the conversation") reads as RESPOND. Also drives the planner's
 	// ambient-turn policy instruction and the deliberate-silence terminal below.
-	const directMessageChannel =
-		args.message.content?.channelType === ChannelType.DM ||
-		args.message.content?.channelType === ChannelType.VOICE_DM ||
-		args.message.content?.channelType === ChannelType.API ||
-		args.message.content?.channelType === ChannelType.SELF;
-	const ambientTurn =
-		!directMessageChannel &&
-		isUnaddressedTextGroupTurn(
-			args.message,
-			messageExplicitlyAddressesAgent(args.runtime, args.message),
-		);
+	const ambientTurn = isAmbientStage1Turn(
+		args.runtime,
+		args.message,
+		messageExplicitlyAddressesAgent(args.runtime, args.message),
+	);
 	const context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
@@ -14796,39 +14881,22 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		function normalizeEnvList(value: unknown): string[] {
-			if (!value || typeof value !== "string") return [];
-			const cleaned = value.trim().replace(/^\[|\]$/g, "");
-			return cleaned
-				.split(",")
-				.map((v) => v.trim())
-				.filter(Boolean);
-		}
-
 		// Channel types that always trigger a response (private channels)
-		const alwaysRespondChannels = [
-			ChannelType.DM,
-			ChannelType.VOICE_DM,
-			ChannelType.SELF,
-			ChannelType.API,
-		];
+		const alwaysRespondChannels = BUILTIN_ALWAYS_RESPOND_CHANNELS;
 
 		// Sources that always trigger a response. A trigger-prompt message is
 		// the agent's OWN scheduled intent firing (a reminder or prompt
 		// automation it created earlier) — gating it behind "should I respond
 		// to this ambient message?" is a category error and silently eats
 		// reminders.
-		const alwaysRespondSources = [
-			MESSAGE_SOURCE_CLIENT_CHAT,
-			MESSAGE_SOURCE_TRIGGER_PROMPT,
-		];
+		const alwaysRespondSources = BUILTIN_ALWAYS_RESPOND_SOURCES;
 
 		// Support runtime-configurable overrides via env settings
-		const customChannels = normalizeEnvList(
+		const customChannels = normalizeResponseBypassList(
 			runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
 				runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
 		);
-		const customSources = normalizeEnvList(
+		const customSources = normalizeResponseBypassList(
 			runtime.getSetting("ALWAYS_RESPOND_SOURCES") ??
 				runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
 		);

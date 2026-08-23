@@ -3,7 +3,7 @@ import {
 	__resetSendPolicyForTests,
 	getSendPolicy,
 	registerSendPolicy,
-} from "./send-policy.ts";
+} from "../send-policy.ts";
 
 const policy = {
 	shouldRequireApproval: async () => false,

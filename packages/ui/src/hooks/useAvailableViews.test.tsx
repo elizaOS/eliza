@@ -256,6 +256,41 @@ describe("useAvailableViews", () => {
     );
   });
 
+  it("keeps a runtime bundle when an unavailable app-shell fallback shares its id", async () => {
+    registerAppShellPage({
+      id: "cloud",
+      pluginId: "@elizaos/ui",
+      label: "Managed Cloud",
+      path: "/cloud",
+      availability: "managed-cloud",
+      Component: () => null,
+    });
+    fetchWithCsrf.mockResolvedValueOnce(
+      response(200, {
+        views: [
+          view("cloud", {
+            label: "Cloud plugin",
+            path: "/__audit/plugin-view/cloud",
+            bundleUrl: "/api/views/cloud/bundle.js",
+          }),
+        ],
+      }),
+    );
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.views).toContainEqual(
+      expect.objectContaining({
+        id: "cloud",
+        label: "Cloud plugin",
+        path: "/__audit/plugin-view/cloud",
+        bundleUrl: "/api/views/cloud/bundle.js",
+        pluginName: "test-plugin",
+      }),
+    );
+  });
+
   it("accepts the current view-capability transport contract", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {

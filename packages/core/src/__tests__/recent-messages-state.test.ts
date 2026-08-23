@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getRecentMessagesData } from "./recent-messages-state.ts";
+import { getRecentMessagesData } from "../recent-messages-state.ts";
 
 describe("getRecentMessagesData", () => {
 	it("reads the canonical provider path", () => {

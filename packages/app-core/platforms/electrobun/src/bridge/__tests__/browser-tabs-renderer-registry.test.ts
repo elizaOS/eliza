@@ -1,3 +1,7 @@
+/**
+ * Exercises the renderer registry's unattached, attached, and detached states.
+ */
+
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 beforeAll(() => {
@@ -7,9 +11,7 @@ beforeAll(() => {
 import {
   getBrowserTabsRendererImpl,
   setBrowserTabsRendererImpl,
-} from "./browser-tabs-renderer-registry.ts";
-
-const KEY = "__ELIZA_BROWSER_TABS_REGISTRY__";
+} from "../browser-tabs-renderer-registry.ts";
 
 const fakeImpl = {
   evaluate: async () => ({ ok: true }),
@@ -18,8 +20,7 @@ const fakeImpl = {
 
 describe("browser-tabs-renderer-registry", () => {
   afterEach(() => {
-    // @ts-expect-error window 类型收窄
-    delete window[KEY];
+    setBrowserTabsRendererImpl(null);
   });
 
   it("returns a not-attached fallback before any impl is set", () => {
