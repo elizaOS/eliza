@@ -1,8 +1,12 @@
+/**
+ * Verifies desktop devtools frame-refresh scheduling with deterministic mocked
+ * window geometry and timer callbacks.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS,
   scheduleDevtoolsLayoutRefresh,
-} from "./devtools-layout.ts";
+} from "../devtools-layout.ts";
 
 function collectWindow(initial: {
   x: number;
@@ -25,7 +29,7 @@ function collectWindow(initial: {
 }
 
 describe("scheduleDevtoolsLayoutRefresh", () => {
-  it("schedules one refresh per delay", () => {
+  it("schedules every refresh and nudges the height at 32 ms", () => {
     const { window, calls } = collectWindow({
       x: 1,
       y: 2,
@@ -38,8 +42,9 @@ describe("scheduleDevtoolsLayoutRefresh", () => {
       return 0;
     });
     expect(scheduled).toHaveLength(DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.length);
-    scheduled.forEach((cb) => cb());
-    // 32ms 步会 nudge 高度 -1，其余恢复原帧
+    scheduled.forEach((cb) => {
+      cb();
+    });
     expect(calls).toHaveLength(DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.length);
     const nudge = calls[DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.indexOf(32)];
     expect(nudge[3]).toBe(399);
