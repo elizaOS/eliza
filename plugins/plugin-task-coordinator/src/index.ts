@@ -17,13 +17,15 @@
  * (e.g. `@radix-ui/react-slot`) are pruned from the Docker runtime-dep closure.
  */
 import type { Plugin, ViewCapability } from "@elizaos/core";
-import { isHumanOnlyOrchestratorCapability } from "./orchestrator-capability-authority";
 import {
   orchestratorStatusCommandAction,
   registerOrchestratorCommands,
 } from "./orchestrator-command";
 
-const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
+// Keep this manifest as a literal array so the repository view inventory can
+// prove every capability id statically. Authority is explicit on each guarded
+// descriptor and checked against the runtime authority set by the parity suite.
+const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   { id: "orchestrator-status", description: "Get orchestrator status" },
   {
     id: "orchestrator-list-tasks",
@@ -79,6 +81,7 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   {
     id: "orchestrator-pause-task",
     description: "Pause an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to pause" },
     },
@@ -86,6 +89,7 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   {
     id: "orchestrator-resume-task",
     description: "Resume an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to resume" },
     },
@@ -93,14 +97,17 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   {
     id: "orchestrator-pause-all",
     description: "Pause all active orchestrator tasks",
+    authority: "human",
   },
   {
     id: "orchestrator-resume-all",
     description: "Resume all paused orchestrator tasks",
+    authority: "human",
   },
   {
     id: "orchestrator-delete-task",
     description: "Delete an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to delete" },
     },
@@ -108,6 +115,7 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   {
     id: "orchestrator-fork-task",
     description: "Fork an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Source task thread id" },
       title: { type: "string", description: "Title for the fork" },
@@ -126,6 +134,7 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
     id: "orchestrator-update-task",
     description:
       "Update an orchestrator task's title, goal, summary, priority, or acceptance criteria",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to update" },
       title: { type: "string", description: "New task title" },
@@ -144,6 +153,7 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   {
     id: "orchestrator-validate-task",
     description: "Record a validation result for an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to validate" },
       passed: { type: "boolean", description: "Whether validation passed" },
@@ -161,6 +171,7 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   {
     id: "orchestrator-add-agent",
     description: "Add a sub-agent to an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Target task thread id" },
       framework: {
@@ -182,6 +193,7 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   {
     id: "orchestrator-stop-agent",
     description: "Stop a sub-agent on an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id" },
       sessionId: {
@@ -199,13 +211,6 @@ const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
     },
   },
 ];
-
-const ORCHESTRATOR_CAPABILITIES = ORCHESTRATOR_CAPABILITY_DECLARATIONS.map(
-  (capability): ViewCapability =>
-    isHumanOnlyOrchestratorCapability(capability.id)
-      ? { ...capability, authority: "human" }
-      : capability,
-);
 
 const taskCoordinatorPlugin: Plugin = {
   name: "@elizaos/plugin-task-coordinator",
