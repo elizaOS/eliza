@@ -64,6 +64,9 @@ function Invoke-SecurePipeRoundTrip {
       throw "secure pipe response forwarding mismatch"
     }
   } catch {
+    if (-not $process.HasExited) {
+      [void]$process.WaitForExit(2000)
+    }
     if ($process.HasExited) {
       $helperError = $process.StandardError.ReadToEnd()
       throw "secure pipe helper exited with code $($process.ExitCode): $helperError $($_.Exception.Message)"
