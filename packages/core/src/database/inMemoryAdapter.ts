@@ -26,6 +26,15 @@ import {
 	readDocumentSourceProjection,
 	requireDocumentSourceReadMetadata,
 } from "../features/documents/source-segments";
+import {
+	authorizeMessageContentRead,
+	canonicalAttachmentText,
+	hashAttachmentIdForLocator,
+	MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+	MESSAGE_CONTENT_READ_MAX_SEGMENTS,
+	readMessageContentProjection,
+	resolveMessageContentSourceDescriptor,
+} from "../features/messaging/content-segments";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -66,6 +75,10 @@ import type {
 	LogBody,
 	Memory,
 	MemoryMetadata,
+	MessageContentPublicationParams,
+	MessageContentPublicationResult,
+	MessageContentRangeReadParams,
+	MessageContentRangeReadResult,
 	MessageSearchHit,
 	Metadata,
 	OAuthFlowRecord,
@@ -144,6 +157,24 @@ function documentSourceIndexKey(args: {
 function sourceSegmentIndexKey(memory: Memory): string | null {
 	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 	if (
+		typeof memory.agentId === "string" &&
+		metadata.type === "message-content-segment" &&
+		metadata.segmentVersion === 1 &&
+		typeof metadata.messageId === "string" &&
+		(metadata.sourceKind === "message-text" ||
+			metadata.sourceKind === "attachment-text") &&
+		typeof metadata.sourceRevision === "string"
+	) {
+		return JSON.stringify([
+			"message-content",
+			memory.agentId,
+			metadata.messageId,
+			metadata.sourceKind,
+			metadata.attachmentIdHash ?? null,
+			metadata.sourceRevision,
+		]);
+	}
+	if (
 		typeof memory.agentId !== "string" ||
 		metadata.type !== MemoryType.FRAGMENT ||
 		metadata.fragmentRole !== "source-segment" ||
@@ -164,8 +195,8 @@ function sourceSegmentIndexKey(memory: Memory): string | null {
 }
 
 function sourceSegmentPosition(memory: Memory): number {
-	const position = (memory.metadata as Record<string, unknown> | undefined)
-		?.position;
+	const metadata = memory.metadata as Record<string, unknown> | undefined;
+	const position = metadata?.position ?? metadata?.ordinal;
 	return typeof position === "number" && Number.isSafeInteger(position)
 		? position
 		: Number.MAX_SAFE_INTEGER;
@@ -350,6 +381,7 @@ function dataContainsFilter(
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
+	readonly messageContentSegmentCapability = 1 as const;
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
 	readonly documentRangeReadCapability = 2 as const;
 	db: Record<string, never> = {};
@@ -962,6 +994,239 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		_options?: { entityContext?: UUID },
 	): Promise<void> {
 		// Components are already stored as whole records; patch operations are not modeled here.
+	}
+
+	async publishMessageContentSegments(
+		params: MessageContentPublicationParams,
+	): Promise<MessageContentPublicationResult> {
+		const parentId =
+			params.mode === "create" ? params.parent.id : params.messageId;
+		const publicationAgentId =
+			params.mode === "create" ? params.parent.agentId : params.agentId;
+		if (!publicationAgentId) {
+			throw new ElizaError("Message content publication requires an agent ID", {
+				code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+			});
+		}
+		const removed =
+			params.mode === "replace" ? new Set(params.removeSegmentIds) : new Set();
+		if (params.mode === "create" && this.memoriesById.has(String(parentId))) {
+			return { status: "conflict" };
+		}
+		const existing = this.memoriesById.get(String(parentId));
+		if (params.mode === "replace") {
+			if (!existing || existing.agentId !== params.agentId) {
+				return { status: "not_found" };
+			}
+			if (
+				JSON.stringify(existing.content) !==
+				JSON.stringify(params.expectedContent)
+			) {
+				return { status: "conflict" };
+			}
+			for (const segmentId of params.removeSegmentIds) {
+				const segment = this.memoriesById.get(String(segmentId));
+				const metadata = segment?.metadata as
+					| Record<string, unknown>
+					| undefined;
+				if (
+					!segment ||
+					segment.agentId !== params.agentId ||
+					metadata?.type !== "message-content-segment" ||
+					metadata.messageId !== params.messageId
+				) {
+					throw new ElizaError(
+						"Message content replacement cannot remove an unrelated or missing segment",
+						{
+							code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+							context: { messageId: params.messageId, segmentId },
+						},
+					);
+				}
+			}
+		}
+		for (const segment of params.segments) {
+			if (!segment.id || segment.agentId !== publicationAgentId) {
+				throw new ElizaError("Message content segment identity is invalid", {
+					code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+					context: { messageId: parentId },
+				});
+			}
+			if (
+				this.memoriesById.has(String(segment.id)) &&
+				!removed.has(segment.id)
+			) {
+				throw new ElizaError("Message content segment id already exists", {
+					code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+					context: { messageId: parentId, segmentId: segment.id },
+				});
+			}
+		}
+		if (params.mode === "replace" && params.removeSegmentIds.length > 0) {
+			await this.deleteMemories(params.removeSegmentIds);
+		}
+		if (params.segments.length > 0) {
+			await this.createMemories(
+				params.segments.map((memory) => ({
+					memory,
+					tableName: "message_content_segments",
+				})),
+			);
+		}
+		if (params.mode === "create") {
+			await this.createMemories([
+				{ memory: params.parent, tableName: "messages" },
+			]);
+			return {
+				status: "created",
+				parent: this.memoriesById.get(String(parentId)) as Memory,
+				removedSegmentIds: [],
+			};
+		}
+		const replacement: Memory = {
+			...(existing as Memory),
+			content: params.replacementContent,
+		};
+		await this.updateMemories([
+			{ id: params.messageId, content: replacement.content },
+		]);
+		return {
+			status: "updated",
+			parent: replacement,
+			removedSegmentIds: [...params.removeSegmentIds],
+		};
+	}
+
+	async readMessageContentRange(
+		params: MessageContentRangeReadParams,
+	): Promise<MessageContentRangeReadResult> {
+		if (
+			!Number.isSafeInteger(params.offset) ||
+			params.offset < 0 ||
+			!Number.isSafeInteger(params.limit) ||
+			params.limit < 1 ||
+			params.limit > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+		) {
+			throw new ElizaError("Message content range is invalid", {
+				code: "MESSAGE_CONTENT_INVALID_RANGE",
+			});
+		}
+		const parent = this.memoriesById.get(String(params.messageId));
+		if (
+			!parent ||
+			parent.agentId !== params.agentId ||
+			parent.roomId !== params.authorizedRoomId
+		) {
+			return { status: "not_found" };
+		}
+		const participantCurrent = Boolean(
+			this.participantsByRoom
+				.get(String(parent.roomId))
+				?.has(String(params.accessContext.requesterEntityId)),
+		);
+		if (
+			!authorizeMessageContentRead({
+				parent,
+				authorizedRoomId: params.authorizedRoomId,
+				requester: params.accessContext,
+				agentId: params.agentId,
+				participantCurrent,
+				selector: params.source,
+			})
+		) {
+			return { status: "forbidden" };
+		}
+		const descriptor = resolveMessageContentSourceDescriptor(
+			parent.content,
+			params.source,
+		);
+		if (!descriptor) {
+			let inline = "";
+			if (params.source.kind === "message-text") {
+				inline = parent.content.text ?? "";
+			} else {
+				const attachment = (parent.content.attachments ?? []).find(
+					(item) =>
+						hashAttachmentIdForLocator(item.id) ===
+						params.source.attachmentIdHash,
+				);
+				inline = attachment ? canonicalAttachmentText(attachment) : "";
+			}
+			if (
+				new TextEncoder().encode(inline).length >
+				MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+			) {
+				throw new ElizaError(
+					"Legacy content requires explicit segmented reindexing",
+					{
+						code:
+							params.source.kind === "message-text"
+								? "MESSAGE_REINDEX_REQUIRED"
+								: "ATTACHMENT_REINDEX_REQUIRED",
+						context: { messageId: params.messageId },
+					},
+				);
+			}
+			return { status: "inline", parent, text: inline };
+		}
+		if (params.offset > 0 && !params.expectedRevision) {
+			throw new ElizaError("Message content continuation requires a revision", {
+				code: "MESSAGE_CONTENT_EXPECTED_REVISION_REQUIRED",
+			});
+		}
+		if (
+			params.expectedRevision &&
+			params.expectedRevision !== descriptor.revision
+		) {
+			throw new ElizaError("Message content changed before continuation", {
+				code: "MESSAGE_CONTENT_STALE_REVISION",
+				context: { messageId: params.messageId },
+			});
+		}
+		const key = JSON.stringify([
+			"message-content",
+			params.agentId,
+			params.messageId,
+			params.source.kind,
+			params.source.attachmentIdHash ?? null,
+			descriptor.revision,
+		]);
+		const active = this.sourceSegmentsByGeneration.get(key) ?? [];
+		let low = 0;
+		let high = active.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			const end = Number(
+				(active[middle].metadata as Record<string, unknown>).byteEnd ?? -1,
+			);
+			if (end <= params.offset) low = middle + 1;
+			else high = middle;
+		}
+		const requestedEnd = Math.min(
+			params.offset + params.limit,
+			descriptor.byteLength,
+		);
+		const selected: Memory[] = [];
+		for (let index = low; index < active.length; index++) {
+			const segment = active[index];
+			const start = Number(
+				(segment.metadata as Record<string, unknown>).byteStart ?? -1,
+			);
+			if (start >= requestedEnd) break;
+			selected.push(segment);
+			if (selected.length >= MESSAGE_CONTENT_READ_MAX_SEGMENTS) break;
+		}
+		return {
+			status: "ok",
+			parent,
+			page: readMessageContentProjection({
+				descriptor,
+				segments: selected,
+				messageId: params.messageId,
+				offset: params.offset,
+				limit: params.limit,
+			}),
+		};
 	}
 
 	async queryDocuments(

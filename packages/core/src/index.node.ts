@@ -521,6 +521,7 @@ export * from "./utils/well-formed";
 export * from "./utils/workspace-folder-config";
 // Export validation utilities
 export * from "./validation";
+export * from "./features/messaging/content-segments";
 
 // Node-specific exports
 export const isBrowser = false;
