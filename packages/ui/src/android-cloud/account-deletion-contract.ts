@@ -1,6 +1,6 @@
 /**
  * Android-owned runtime parser for the identifier-minimal wire contract in
- * account-deletion owner checkpoint e6f002fd2e.
+ * frozen account-deletion admission contract at PR #25738 head 90343b7265.
  */
 
 export type AccountDeletionStatus =

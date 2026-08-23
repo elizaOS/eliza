@@ -53,7 +53,12 @@ describe("Android Cloud renderer entry", () => {
   it("wires account deletion only to canonical Cloud HTTPS transport", () => {
     expect(source).toContain("androidCloudAccountLifecycle");
     expect(source).toContain("CapacitorHttp.request");
-    expect(source).toContain('data: { confirmation: "DELETE" }');
+    expect(source).toContain("new Uint8Array(32)");
+    expect(source).toContain("crypto.getRandomValues(bytes)");
+    expect(source).toContain('"accountDeletionAdmission"');
+    expect(source).toContain(
+      'data: { confirmation: "DELETE", admissionCredential }',
+    );
     expect(source).toContain('data: { confirmation: "CANCEL DELETION" }');
     expect(source).toContain('"/api/public/account-deletion"');
     expect(source).toContain('"X-Account-Deletion-Status"');

@@ -333,6 +333,9 @@ describe("Android Cloud renderer behavior", () => {
     playEntry.secureSet.mockImplementation(async ({ key, value }) => {
       secure.set(key ?? "session", value);
     });
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
+    });
     playEntry.httpRequest.mockResolvedValueOnce({
       status: 202,
       data: {
@@ -349,7 +352,10 @@ describe("Android Cloud renderer behavior", () => {
       expect.objectContaining({
         url: "https://api.eliza.app/api/v1/me/account-deletion",
         method: "POST",
-        data: { confirmation: "DELETE" },
+        data: {
+          confirmation: "DELETE",
+          admissionCredential: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+        },
         disableRedirects: true,
         headers: expect.objectContaining({
           Authorization: "Bearer steward-token",
@@ -359,6 +365,95 @@ describe("Android Cloud renderer behavior", () => {
     );
     expect(secure.get("accountDeletionStatus")).toBe(STATUS_CAPABILITY);
     expect(secure.get("accountDeletionRecovery")).toBe(RECOVERY_CAPABILITY);
+    expect(secure.has("accountDeletionAdmission")).toBe(false);
+  });
+
+  it("reuses the persisted admission credential after a lost response", async () => {
+    const secure = new Map<string, string>([["session", "steward-token"]]);
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: secure.get(options?.key ?? "session") ?? null,
+    }));
+    playEntry.secureSet.mockImplementation(async ({ key, value }) => {
+      secure.set(key ?? "session", value);
+    });
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
+    });
+    playEntry.httpRequest
+      .mockRejectedValueOnce(new TypeError("response lost"))
+      .mockResolvedValueOnce({
+        status: 202,
+        data: {
+          request: deletionRequest(),
+          statusCredential: STATUS_CAPABILITY,
+          recoveryCredential: RECOVERY_CAPABILITY,
+        },
+      });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.requestDeletion(),
+    ).rejects.toThrow("response lost");
+    const pendingAdmission = secure.get("accountDeletionAdmission");
+    expect(pendingAdmission).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    await expect(
+      entry.androidCloudAccountLifecycle.requestDeletion(),
+    ).resolves.toMatchObject({ status: "reserved" });
+    expect(playEntry.httpRequest).toHaveBeenCalledTimes(2);
+    expect(playEntry.httpRequest.mock.calls[0]?.[0]).toMatchObject({
+      data: {
+        confirmation: "DELETE",
+        admissionCredential: pendingAdmission,
+      },
+    });
+    expect(playEntry.httpRequest.mock.calls[1]?.[0]).toMatchObject({
+      data: {
+        confirmation: "DELETE",
+        admissionCredential: pendingAdmission,
+      },
+    });
+    expect(secure.has("accountDeletionAdmission")).toBe(false);
+    expect(secure.get("accountDeletionStatus")).toBe(STATUS_CAPABILITY);
+    expect(secure.get("accountDeletionRecovery")).toBe(RECOVERY_CAPABILITY);
+  });
+
+  it("does not grant capabilities to a rejected wrong admission secret", async () => {
+    const wrongAdmission = "w".repeat(43);
+    const secure = new Map<string, string>([
+      ["session", "steward-token"],
+      ["accountDeletionAdmission", wrongAdmission],
+    ]);
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: secure.get(options?.key ?? "session") ?? null,
+    }));
+    playEntry.secureSet.mockImplementation(async ({ key, value }) => {
+      secure.set(key ?? "session", value);
+    });
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
+    });
+    playEntry.httpRequest.mockResolvedValueOnce({
+      status: 409,
+      data: {
+        code: "REQUEST_REPLAYED",
+        error: "An account deletion request is already active",
+      },
+    });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.requestDeletion(),
+    ).rejects.toMatchObject({ code: "REQUEST_REPLAYED", status: 409 });
+    expect(playEntry.httpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          confirmation: "DELETE",
+          admissionCredential: wrongAdmission,
+        },
+      }),
+    );
+    expect(secure.has("accountDeletionAdmission")).toBe(false);
+    expect(secure.has("accountDeletionStatus")).toBe(false);
+    expect(secure.has("accountDeletionRecovery")).toBe(false);
   });
 
   it("uses separate header capabilities for status, undo, and export", async () => {
@@ -423,13 +518,18 @@ describe("Android Cloud renderer behavior", () => {
   });
 
   it("cancels a reservation if durable recovery storage fails", async () => {
+    const secure = new Map<string, string>([["session", "steward-token"]]);
     playEntry.secureGet.mockImplementation(async (options) => ({
-      value: options?.key ? null : "steward-token",
+      value: secure.get(options?.key ?? "session") ?? null,
     }));
-    playEntry.secureSet.mockImplementation(async ({ key }) => {
+    playEntry.secureSet.mockImplementation(async ({ key, value }) => {
       if (key === "accountDeletionRecovery") {
         throw new Error("keystore unavailable");
       }
+      secure.set(key ?? "session", value);
+    });
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
     });
     playEntry.httpRequest
       .mockResolvedValueOnce({

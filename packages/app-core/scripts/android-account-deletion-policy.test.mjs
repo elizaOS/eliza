@@ -43,13 +43,21 @@ describe("Android Play account-deletion contract", () => {
     const settings = read("ui/src/android-cloud/AndroidCloudSettings.tsx");
     const seam = read("ui/src/android-cloud/ACCOUNT_DELETION_CONTRACT_SEAM.md");
 
-    expect(seam).toContain("e6f002fd2eaeecdbee031ba75d63ba32844a3afe");
+    expect(seam).toContain("90343b7265d3fef2c717c1ab6701cbe3d8b59036");
     expect(entry).toContain('"/api/v1/me/account-deletion"');
     expect(entry).toContain('"/api/public/account-deletion"');
     expect(entry).toContain('"X-Account-Deletion-Status"');
     expect(entry).toContain('"X-Account-Deletion-Recovery"');
     expect(entry).toContain('confirmation: "CANCEL DELETION"');
+    expect(entry).toContain('"accountDeletionAdmission"');
+    expect(entry).toContain("new Uint8Array(32)");
+    expect(entry).toContain("crypto.getRandomValues(bytes)");
+    expect(entry).toContain(
+      'data: { confirmation: "DELETE", admissionCredential }',
+    );
+    expect(entry).toContain("getOrCreateDeletionAdmissionCredential");
     expect(entry).toContain("persistDeletionCapabilities");
+    expect(entry).not.toContain("Math.random");
     expect(entry).not.toContain("statusAccessEstablished");
     expect(parser).toContain("statusCredential: string;");
     expect(parser).toContain("recoveryCredential: string;");

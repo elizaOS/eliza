@@ -86,6 +86,8 @@ const PlayExport = registerPlugin<PlayExportPlugin>("ElizaPlayExport");
 
 const DELETION_STATUS_CREDENTIAL_KEY = "accountDeletionStatus";
 const DELETION_RECOVERY_CREDENTIAL_KEY = "accountDeletionRecovery";
+const DELETION_ADMISSION_CREDENTIAL_KEY = "accountDeletionAdmission";
+const DELETION_ADMISSION_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 function secureCredentialStore(key?: string): AndroidCloudCredentialStore {
   return {
@@ -111,6 +113,9 @@ const deletionStatusCredentialStore = secureCredentialStore(
 );
 const deletionRecoveryCredentialStore = secureCredentialStore(
   DELETION_RECOVERY_CREDENTIAL_KEY,
+);
+const deletionAdmissionCredentialStore = secureCredentialStore(
+  DELETION_ADMISSION_CREDENTIAL_KEY,
 );
 let volatileDeletionStatusCredential: string | null = null;
 let volatileDeletionRecoveryCredential: string | null = null;
@@ -268,6 +273,49 @@ async function persistDeletionCapabilities(input: {
   }
 }
 
+function createDeletionAdmissionCredential(): string {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  const credential = globalThis
+    .btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+  if (!DELETION_ADMISSION_CREDENTIAL_PATTERN.test(credential)) {
+    throw new AndroidCloudLifecycleError(
+      "This device could not create secure account deletion recovery access.",
+      "ADMISSION_CREDENTIAL_INVALID",
+    );
+  }
+  return credential;
+}
+
+async function getOrCreateDeletionAdmissionCredential(): Promise<string> {
+  try {
+    const existing = await deletionAdmissionCredentialStore.read();
+    if (existing) {
+      if (DELETION_ADMISSION_CREDENTIAL_PATTERN.test(existing)) return existing;
+      await deletionAdmissionCredentialStore.clear();
+      throw new Error("stored admission credential was malformed");
+    }
+
+    const credential = createDeletionAdmissionCredential();
+    await deletionAdmissionCredentialStore.write(credential);
+    if ((await deletionAdmissionCredentialStore.read()) !== credential) {
+      throw new Error("secure admission credential read-back failed");
+    }
+    return credential;
+  } catch (cause) {
+    await Promise.allSettled([deletionAdmissionCredentialStore.clear()]);
+    throw new AndroidCloudLifecycleError(
+      "This device could not preserve account deletion admission access. No deletion request was sent.",
+      "ADMISSION_STORAGE_UNAVAILABLE",
+      null,
+      { cause },
+    );
+  }
+}
+
 async function cancelWithRecoveryCredential(
   recoveryCredential: string,
 ): Promise<AccountDeletionRequestDto> {
@@ -310,11 +358,35 @@ export const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter =
       return await readPublicLifecycleStatus();
     },
     async requestDeletion() {
-      const response = await lifecycleRequest("/api/v1/me/account-deletion", {
-        method: "POST",
-        authenticated: true,
-        data: { confirmation: "DELETE" },
-      });
+      const admissionCredential =
+        await getOrCreateDeletionAdmissionCredential();
+      let response: Awaited<ReturnType<typeof lifecycleRequest>>;
+      try {
+        response = await lifecycleRequest("/api/v1/me/account-deletion", {
+          method: "POST",
+          authenticated: true,
+          data: { confirmation: "DELETE", admissionCredential },
+        });
+      } catch (error) {
+        const status =
+          error instanceof AndroidCloudLifecycleError ? error.status : null;
+        const ambiguousHttpOutcome =
+          status === 408 ||
+          status === 425 ||
+          status === 429 ||
+          (status !== null && status >= 500);
+        if (
+          error instanceof AndroidCloudLifecycleError &&
+          !ambiguousHttpOutcome
+        ) {
+          // A concrete server response means no ambiguous accepted response is
+          // being recovered. Never let a rejected/wrong secret become the next
+          // admission attempt. Transport, timeout, throttling, and 5xx failures
+          // deliberately retain it for an idempotent replay.
+          await Promise.allSettled([deletionAdmissionCredentialStore.clear()]);
+        }
+        throw error;
+      }
       const accepted = parseAccountDeletionAccepted(response.body);
       try {
         await persistDeletionCapabilities(accepted);
@@ -324,6 +396,7 @@ export const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter =
             accepted.recoveryCredential,
           );
           volatileDeletionRecoveryCredential = null;
+          await Promise.allSettled([deletionAdmissionCredentialStore.clear()]);
           return canceling;
         } catch (rollbackError) {
           throw new AndroidCloudLifecycleError(
@@ -333,6 +406,16 @@ export const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter =
             { cause: new AggregateError([storageError, rollbackError]) },
           );
         }
+      }
+      try {
+        await deletionAdmissionCredentialStore.clear();
+      } catch (cause) {
+        throw new AndroidCloudLifecycleError(
+          `Deletion receipt ${accepted.request.requestId} was reserved and recovery access was stored, but this device could not clear its pending admission credential. Retry to finish secure cleanup.`,
+          "ADMISSION_CLEANUP_UNAVAILABLE",
+          null,
+          { cause },
+        );
       }
       return accepted.request;
     },

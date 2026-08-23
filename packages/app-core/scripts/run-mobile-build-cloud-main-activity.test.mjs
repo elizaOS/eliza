@@ -103,6 +103,7 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("Cipher.getInstance(TRANSFORMATION)");
     expect(source).toContain("KeyProperties.BLOCK_MODE_GCM");
     expect(source).toContain(".setRandomizedEncryptionRequired(true)");
+    expect(source).toContain('"accountDeletionAdmission".equals(key)');
     expect(source).toContain('"accountDeletionStatus".equals(key)');
     expect(source).toContain('"accountDeletionRecovery".equals(key)');
     expect(source).toContain("putString(storageKey, encoded).commit()");

@@ -4,26 +4,29 @@ This directory owns only the Google Play Android consumer of the account-
 deletion lifecycle. Cloud reservation, provider reconciliation, irreversible
 erasure, and the generic public deletion page remain outside this lane.
 
-The authoritative contract inspected read-only is the account-deletion owner's
-stable provisioning-fence checkpoint
-`e6f002fd2eaeecdbee031ba75d63ba32844a3afe`. Later committed descendants
-observed through `3cf64cf3f554178cc7585ef64a04f6b55d709b43` do not change the
-shared lifecycle type, service mapping, authenticated route, public
-status/cancel route, or public export route. Concurrent uncommitted backend
-work is excluded from this compatibility claim. No backend or public-page file
-is copied or modified here.
+The authoritative admission contract inspected read-only is frozen for this
+integration at account-deletion PR #25738 exact head
+`90343b7265d3fef2c717c1ab6701cbe3d8b59036`. That PR remains unmerged and under
+changes-requested review; this is source compatibility evidence, not hosted or
+production acceptance. No backend or public-page file is copied or modified
+here.
 
 ## Stable server boundary
 
 | Method | Path | Authority | Android behavior |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/me/account-deletion` | Recent ordinary bearer session | Read an existing open request while ordinary authentication remains usable. |
-| `POST` | `/api/v1/me/account-deletion` | Recent ordinary bearer session | Send exact `DELETE`; accept only a valid request plus two distinct 43-character capabilities. |
+| `POST` | `/api/v1/me/account-deletion` | Recent ordinary bearer session or matching replay admission | Send exact `DELETE` plus the persisted 43-character `admissionCredential`; accept only a valid request plus two distinct 43-character capabilities. |
 | `GET` | `/api/public/account-deletion` | `X-Account-Deletion-Status` | Read identifier-minimal server state after ordinary access is revoked. |
 | `DELETE` | `/api/public/account-deletion` | `X-Account-Deletion-Recovery` | Send exact `CANCEL DELETION`; trust only the returned request DTO. |
 | `POST` | `/api/public/account-deletion/export` | `X-Account-Deletion-Recovery` | Send exact `EXPORT MY DATA`; stream the verified JSON bytes into Android's standard document picker. |
 
-Initial acceptance returns
+Before the first POST, Android generates 32 cryptographically random bytes,
+base64url-encodes them without padding, and writes/reads back the resulting
+43-character `admissionCredential` in its own Android Keystore-backed namespace.
+An ambiguous transport or response failure retains that credential so the next
+request replays the same admission; an explicit server rejection clears it so a
+wrong credential cannot become a future intent. Initial acceptance returns
 `{ request, statusCredential, recoveryCredential }`. Android validates both
 opaque capabilities, stores them in separate Android Keystore-backed
 namespaces, reads both back, and only then reports reservation success. If
@@ -34,10 +37,12 @@ instead of pretending the account remains unchanged. Android treats
 `canceling` as fenced and nonterminal; it never reports restored access until
 the server returns terminal `canceled` with `accessState: active`.
 
-The public status capability is read-only. The separate recovery capability is
-required for cancellation and export and is never placed in a URL, query
-parameter, log, local storage, Preferences, or artifact. Every mutating native
-request uses the canonical paired Eliza API/app origins and disables redirects.
+After successful capability persistence Android removes the pending admission
+credential. The public status capability is read-only. The separate recovery
+capability is required for cancellation and export and is never placed in a URL,
+query parameter, log, local storage, Preferences, or artifact. Every mutating
+native request uses the canonical paired Eliza API/app origins and disables
+redirects.
 
 ## Stable DTO consumed by Android
 
@@ -77,9 +82,9 @@ projection therefore generates a narrow `ElizaPlayExport` plugin that:
 
 ## Remaining integration gate
 
-Checkpoint `e6f002fd2e` is the stable owner handoff; committed descendants
-through observed `3cf64cf3f5` are wire- and service-mapping-compatible by exact
-blob/diff comparison. Android authenticated and physical acceptance still
-requires this contract in an isolated Cloud environment. Never infer deletion,
-cancellation completion, restored access, or export success from a redirect,
-query parameter, local value, receipt ID, or successful request alone.
+PR #25738 head `90343b7265` is the frozen source contract for this narrow
+integration, but its changes-requested review, merge, deployment, and disposable
+hosted acceptance remain external gates. Android authenticated and physical
+acceptance still requires this contract in an isolated Cloud environment. Never
+infer deletion, cancellation completion, restored access, or export success from
+a redirect, query parameter, local value, receipt ID, or successful request alone.

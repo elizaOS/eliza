@@ -6299,6 +6299,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     private static final String KEY_ALIAS = "ai.elizaos.app.android_cloud_token_key_v1";
     private static final String PREFERENCES = "eliza_secure_credentials_v1";
     private static final String SESSION_CIPHERTEXT = "steward_token_ciphertext";
+    private static final String ADMISSION_CIPHERTEXT = "account_deletion_admission_ciphertext";
     private static final String STATUS_CIPHERTEXT = "account_deletion_status_ciphertext";
     private static final String RECOVERY_CIPHERTEXT = "account_deletion_recovery_ciphertext";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
@@ -6377,6 +6378,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     private String storageKey(PluginCall call) {
         String key = call.getString("key", "session");
         if ("session".equals(key)) return SESSION_CIPHERTEXT;
+        if ("accountDeletionAdmission".equals(key)) return ADMISSION_CIPHERTEXT;
         if ("accountDeletionStatus".equals(key)) return STATUS_CIPHERTEXT;
         if ("accountDeletionRecovery".equals(key)) return RECOVERY_CIPHERTEXT;
         call.reject("The credential namespace is invalid.", "SECURE_CREDENTIAL_INVALID");
