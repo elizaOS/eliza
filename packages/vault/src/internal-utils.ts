@@ -26,29 +26,52 @@ const HIGH_SURROGATE_END = 0xdbff;
 const LOW_SURROGATE_START = 0xdc00;
 const LOW_SURROGATE_END = 0xdfff;
 const REPLACEMENT_CHARACTER = "�";
-function isHighSurrogate(code: number): boolean { return code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END; }
-function isLowSurrogate(code: number): boolean { return code >= LOW_SURROGATE_START && code <= LOW_SURROGATE_END; }
+function isHighSurrogate(code: number): boolean {
+  return code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END;
+}
+function isLowSurrogate(code: number): boolean {
+  return code >= LOW_SURROGATE_START && code <= LOW_SURROGATE_END;
+}
 function replaceLoneSurrogates(text: string): string {
   let out = "";
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i);
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
     if (isHighSurrogate(code)) {
-      if (i + 1 < text.length && isLowSurrogate(text.charCodeAt(i + 1))) { out += text[i]! + text[i + 1]!; i++; } else { out += REPLACEMENT_CHARACTER; }
-    } else if (isLowSurrogate(code)) { out += REPLACEMENT_CHARACTER; } else { out += text[i]!; }
+      if (
+        index + 1 < text.length &&
+        isLowSurrogate(text.charCodeAt(index + 1))
+      ) {
+        out += text.charAt(index) + text.charAt(index + 1);
+        index++;
+      } else {
+        out += REPLACEMENT_CHARACTER;
+      }
+    } else if (isLowSurrogate(code)) {
+      out += REPLACEMENT_CHARACTER;
+    } else {
+      out += text.charAt(index);
+    }
   }
   return out;
 }
 export function toWellFormedUnicode(text: string): string {
-  const nativeToWellFormed = (String.prototype as { toWellFormed?: (this: string) => string }).toWellFormed;
+  const nativeToWellFormed = (
+    String.prototype as { toWellFormed?: (this: string) => string }
+  ).toWellFormed;
   if (nativeToWellFormed) return nativeToWellFormed.call(text);
-  const nativeIsWellFormed = (String.prototype as { isWellFormed?: (this: string) => boolean }).isWellFormed;
+  const nativeIsWellFormed = (
+    String.prototype as { isWellFormed?: (this: string) => boolean }
+  ).isWellFormed;
   if (nativeIsWellFormed?.call(text)) return text;
   return replaceLoneSurrogates(text);
 }
 export function truncateWellFormed(text: string, maxLength: number): string {
   if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
   if (text.length <= maxLength) return text;
-  const end = isHighSurrogate(text.charCodeAt(maxLength - 1)) && isLowSurrogate(text.charCodeAt(maxLength)) ? maxLength - 1 : maxLength;
+  const end =
+    isHighSurrogate(text.charCodeAt(maxLength - 1)) &&
+    isLowSurrogate(text.charCodeAt(maxLength))
+      ? maxLength - 1
+      : maxLength;
   return text.slice(0, end);
 }
-

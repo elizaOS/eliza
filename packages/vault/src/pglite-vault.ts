@@ -13,7 +13,12 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { AuditLog } from "./audit.js";
 import { decrypt, encrypt } from "./crypto.js";
-import { assertKey, optsCaller, toWellFormedUnicode, truncateWellFormed } from "./internal-utils.js";
+import {
+  assertKey,
+  optsCaller,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
 import { readStore, type StoreData } from "./store.js";

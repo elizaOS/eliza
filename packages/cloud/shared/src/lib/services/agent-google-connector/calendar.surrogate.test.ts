@@ -18,7 +18,16 @@ describe("buildUtcDateFromLocalParts NaN handling (#24990)", () => {
   });
 
   test("filters invalid candidates and does not select epoch-zero for non-finite", () => {
-    expect(() => buildUtcDateFromLocalParts("UTC", { year: NaN, month: NaN, day: NaN, hour: NaN, minute: NaN, second: NaN } as any)).toThrow(RangeError);
+    expect(() =>
+      buildUtcDateFromLocalParts("UTC", {
+        year: NaN,
+        month: NaN,
+        day: NaN,
+        hour: NaN,
+        minute: NaN,
+        second: NaN,
+      } as any),
+    ).toThrow(RangeError);
   });
 
   test("existing valid disambiguation still chooses earliest repeat and skips correctly", () => {

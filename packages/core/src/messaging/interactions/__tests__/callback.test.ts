@@ -3,7 +3,6 @@ import {
 	decodeCallback,
 	encodeReplyCallback,
 	isInteractionCallback,
-	MAX_CALLBACK_BYTES,
 } from "./callback.ts";
 
 describe("encodeReplyCallback", () => {
