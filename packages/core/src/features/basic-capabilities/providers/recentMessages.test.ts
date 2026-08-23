@@ -31,6 +31,18 @@ vi.mock(
 	},
 );
 
+vi.mock("../../../access-context.ts", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../access-context.ts")>();
+	return {
+		...actual,
+		buildAccessContext: vi.fn(async () => ({
+			requesterEntityId: "00000000-0000-0000-0000-000000000003",
+			source: "discord",
+		})),
+	};
+});
+
 import {
 	ChannelType,
 	type IAgentRuntime,
@@ -644,10 +656,13 @@ describe("recentMessagesProvider", () => {
 
 		expect(runtime.getRoomsForParticipants).toHaveBeenCalledWith([USER_ID]);
 		expect(runtime.getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
-		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
-			tableName: "messages",
-			roomIds: [OTHER_ROOM_ID],
-		});
+		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tableName: "messages",
+				roomIds: [OTHER_ROOM_ID],
+				accessContext: expect.any(Object),
+			}),
+		);
 		expect(result.data?.recentInteractions).toHaveLength(1);
 		expect(result.values?.recentMessageInteractions).toContain(
 			"the blue key is under the mat",

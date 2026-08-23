@@ -24,6 +24,7 @@
  * after the live destination is revalidated as an owner-exclusive DM.
  */
 
+import { buildAccessContext } from "../../../access-context.ts";
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
@@ -35,6 +36,7 @@ import {
 	revalidateOwnerExclusiveDisclosure,
 } from "../../../security/trusted-delivery-audience.ts";
 import type {
+	AccessContext,
 	CustomMetadata,
 	Entity,
 	IAgentRuntime,
@@ -320,6 +322,7 @@ const getRecentInteractions = async (
 	message: Memory,
 	targetEntityId: UUID,
 	excludeRoomId: UUID,
+	accessContext: AccessContext,
 ): Promise<Memory[]> => {
 	// The standalone agent installs a richer, always-on provider for this exact
 	// cross-room surface. Let it own those rows so Stage 1 does not render the
@@ -371,6 +374,7 @@ const getRecentInteractions = async (
 	const interactions = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: otherRooms,
+		accessContext,
 	});
 	if (interactions.length > 0) {
 		markOwnerExclusiveDisclosureUsed(message);
@@ -421,6 +425,7 @@ export const recentMessagesProvider: Provider = {
 	): Promise<ProviderResult> => {
 		try {
 			const { roomId } = message;
+			const accessContext = await buildAccessContext(runtime, message);
 
 			// Parallelize initial data fetching operations including recentInteractions
 			const [entitiesData, recentMessagesData, recentInteractionsData, room] =
@@ -430,9 +435,16 @@ export const recentMessagesProvider: Provider = {
 						tableName: "messages",
 						roomId,
 						unique: false,
+						accessContext,
 					}),
 					message.entityId !== runtime.agentId
-						? getRecentInteractions(runtime, message, runtime.agentId, roomId)
+						? getRecentInteractions(
+								runtime,
+								message,
+								runtime.agentId,
+								roomId,
+								accessContext,
+							)
 						: Promise.resolve([]),
 					runtime.getRoom(roomId),
 				]);
