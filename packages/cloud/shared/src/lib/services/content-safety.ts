@@ -3,6 +3,7 @@ import { ApiError } from "../api/cloud-worker-errors";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 const OPENAI_MODERATIONS_URL = "https://api.openai.com/v1/moderations";
 const DEFAULT_MODERATION_MODEL = "omni-moderation-latest";
@@ -98,7 +99,7 @@ function redactProviderErrorDetail(detail: string): string {
 
 async function readModerationErrorDetail(response: Response): Promise<string> {
   try {
-    return redactProviderErrorDetail(await response.text()).slice(0, 300);
+    return truncateWellFormed(toWellFormedUnicode(redactProviderErrorDetail(await response.text())), 300);
   } catch (error) {
     // error-policy:J7 diagnostics-must-not-kill-the-loop — the moderation
     // response is already failed; keep that boundary decision intact while
