@@ -118,8 +118,6 @@ export {
 // Loopback port availability checker
 export { canBindLoopback } from "./loopback";
 export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime";
-export * from "./progressive-content-conformance";
-export * from "./progressive-content-mutants";
 export {
 	createTestRuntimeWithModelProvider,
 	type ModelProviderTestRuntime,
@@ -144,6 +142,9 @@ export {
 	type TestPgliteStorageMode,
 	testPgliteStorageMode,
 } from "./pglite-storage";
+export * from "./progressive-content-conformance";
+export * from "./progressive-content-mutants";
+export * from "./progressive-content-stress";
 // React test-renderer helpers
 export { findButtonByText, flush, text, textOf } from "./react-test";
 // Real connector helpers (Discord, Telegram)
