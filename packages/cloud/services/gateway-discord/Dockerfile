@@ -28,6 +28,13 @@ ARG SERVICE_DIR=packages/cloud/services/gateway-discord
 ARG COMMON_DIR=packages/cloud/services/_common
 ARG SHARED_DIR=packages/shared
 ARG CORE_DIR=packages/core
+# @discordjs/opus publishes portable N-API v3 Alpine binaries, but its bundled
+# legacy node-pre-gyp crosswalk stops at Node 18 while Bun 1.3.14 identifies its
+# compatibility ABI as 137. Selecting the published Node 18 ABI only for native
+# dependency installation lets amd64 and arm64 use that N-API artifact instead
+# of entering the upstream ARM64-musl source-build failure. The service itself
+# still runs on the pinned Bun image above.
+ARG OPUS_PREBUILD_NODE_TARGET=18.4.0
 
 # Install dependencies
 FROM base AS deps
@@ -35,6 +42,7 @@ ARG SERVICE_DIR
 ARG COMMON_DIR
 ARG SHARED_DIR
 ARG CORE_DIR
+ARG OPUS_PREBUILD_NODE_TARGET
 RUN apk add --no-cache python3 make g++ pkgconf opus-dev
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
@@ -43,7 +51,8 @@ COPY ${CORE_DIR}/package.json ${CORE_DIR}/
 RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:{"./discord-dm-policy":"./src/discord-dm-policy.ts"}}));' "${SHARED_DIR}/package.json" \
     && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:{"./errors":"./src/errors.ts"}}));' "${CORE_DIR}/package.json" \
     && printf '{"name":"gateway-discord-build","private":true,"workspaces":["packages/shared","packages/cloud/services/*","packages/core"]}\n' > package.json \
-    && bun install --production
+    && npm_config_target="${OPUS_PREBUILD_NODE_TARGET}" bun install --production \
+    && bun -e 'import { existsSync, readdirSync } from "node:fs"; const root = `${Bun.argv.at(-1)}/node_modules/@discordjs/opus`; const builds = readdirSync(`${root}/prebuild`).filter((entry) => existsSync(`${root}/prebuild/${entry}/opus.node`)); if (builds.length !== 1) throw new Error(`expected one installed Opus N-API build, found ${builds.length}`); const path = `${root}/package.json`; const manifest = await Bun.file(path).json(); const modulePath = builds[0].replace(/napi-v\d+/, "napi-v{napi_build_version}"); if (modulePath === builds[0]) throw new Error("installed Opus build lacks an N-API version segment"); manifest.binary.module_path = `./prebuild/${modulePath}/`; await Bun.write(path, JSON.stringify(manifest));' "${SERVICE_DIR}"
 
 # Build stage
 FROM deps AS builder
