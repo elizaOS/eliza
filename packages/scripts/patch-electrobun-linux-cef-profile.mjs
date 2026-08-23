@@ -36,6 +36,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findElectrobunBrowserWindowEntrypoints } from "./lib/electrobun-browser-window-entrypoints.mjs";
 
 const requirePatch = process.argv.includes("--require");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -156,15 +157,14 @@ if (packageRoots.size === 0) {
 let patchedCount = 0;
 let browserWindowPatchedCount = 0;
 for (const packageRoot of packageRoots) {
-  for (const distName of ["dist", "dist-linux-x64"]) {
-    const browserWindowPath = path.join(
-      packageRoot,
-      distName,
-      "api",
-      "bun",
-      "core",
-      "BrowserWindow.ts",
+  const browserWindowPaths =
+    findElectrobunBrowserWindowEntrypoints(packageRoot);
+  if (browserWindowPaths.length === 0) {
+    fail(
+      `Electrobun BrowserWindow entrypoint is missing below ${packageRoot}.`,
     );
+  }
+  for (const browserWindowPath of browserWindowPaths) {
     if (patchBrowserWindow(browserWindowPath)) {
       browserWindowPatchedCount += 1;
     }
