@@ -261,7 +261,11 @@ export class AppAnalyticsService {
           exitPath: last?.path ?? first?.path ?? "/",
         };
       })
-      .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+      .sort((a, b) => {
+        const aTime = Number.isFinite(Date.parse(a.startedAt)) ? Date.parse(a.startedAt) : 0;
+        const bTime = Number.isFinite(Date.parse(b.startedAt)) ? Date.parse(b.startedAt) : 0;
+        return bTime - aTime;
+      });
 
     const uniqueVisitors = new Set(sessionRows.map((s) => s.visitorId)).size;
     const totalPageViews = sessionRows.reduce((sum, s) => sum + s.pageViews, 0);
