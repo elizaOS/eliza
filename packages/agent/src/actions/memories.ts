@@ -614,8 +614,19 @@ async function doDeleteByQuery(
 ): Promise<ActionResult> {
   const type =
     params.type && MEMORY_TYPES.includes(params.type) ? params.type : undefined;
+  // A malformed entityId cannot widen this delete's scope when the message
+  // carries its own entity: the requester always wins below, and the param is
+  // only consulted for entity-less internal invocations. Hard-failing on it
+  // therefore breaks a legitimate forget for no safety gain — live 2026-08-23,
+  // "forget my dogs name" failed because the model copied the redacted
+  // placeholder it sees in context ("[REDACTED:…]") into entityId. Ignore it
+  // and disclose; keep the hard fail where it would actually set the scope.
   const entityParam = parseUuidParam(params.entityId, "entityId");
-  if (!entityParam.ok) return entityParam.result;
+  const ignoredEntityId =
+    !entityParam.ok && message.entityId ? params.entityId?.trim() : undefined;
+  if (!entityParam.ok && !ignoredEntityId) return entityParam.result;
+  // A malformed roomId has no requester fallback — ignoring it would widen the
+  // scan across rooms, so it stays fatal.
   const roomParam = parseUuidParam(params.roomId, "roomId");
   if (!roomParam.ok) return roomParam.result;
 
@@ -623,7 +634,8 @@ async function doDeleteByQuery(
   // text and could name another user, reopening the cross-user match this
   // scope exists to close. The parsed param is a fallback only for messages
   // that carry no entity (internal maintenance invocations).
-  const scopeEntityId = message.entityId ?? entityParam.id;
+  const scopeEntityId =
+    message.entityId ?? (entityParam.ok ? entityParam.id : undefined);
 
   const limit = clampLimit(params.limit, 50);
   const strongMatches = (scan: CandidateScan) =>
@@ -645,7 +657,9 @@ async function doDeleteByQuery(
     complete: true,
   });
   let matched = strongMatches(scan);
-  let widenedNote = "";
+  let widenedNote = ignoredEntityId
+    ? ` (ignored invalid entityId "${ignoredEntityId}"; scoped to the requester)`
+    : "";
 
   // The table is an implementation detail the caller routinely guesses wrong
   // (live 2026-08-23: "forget my dog's name" arrived as type=memories while
@@ -675,7 +689,7 @@ async function doDeleteByQuery(
       // The delete loop removes EVERY matched row, and identical normalized
       // text can exist in more than one table — name them all.
       const matchedTables = [...new Set(matched.map((c) => c.type))];
-      widenedNote = ` (no match in the requested "${type}" table; found in ${matchedTables.join(", ")}).`;
+      widenedNote += ` (no match in the requested "${type}" table; found in ${matchedTables.join(", ")}).`;
     }
   }
 
