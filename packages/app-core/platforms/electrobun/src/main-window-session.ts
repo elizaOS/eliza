@@ -111,13 +111,15 @@ export function shouldUseIsolatedMainView({
     return false;
   }
 
-  // Electrobun 1.18 BrowserWindow does not forward `partition` to its implicit
-  // BrowserView. Linux CEF therefore needs the explicit view path below or it
-  // silently opens persist:default and loses the requested profile on relaunch.
-  return (
-    forceMainWindowCef ||
-    (platform === "linux" && buildInfo.defaultRenderer === "cef")
-  );
+  // The pinned Linux Electrobun preflight patches BrowserWindow to forward its
+  // partition to the implicit BrowserView. Keep Linux on that single-view path:
+  // creating and removing an unpartitioned bootstrap CEF view can race the
+  // partitioned replacement and write storage to the wrong profile.
+  if (platform === "linux") {
+    return false;
+  }
+
+  return forceMainWindowCef;
 }
 
 export function resolveBootstrapShellRenderer(buildInfo: BuildInfo): Renderer {

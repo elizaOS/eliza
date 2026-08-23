@@ -1,5 +1,5 @@
 diff --git a/package/src/native/linux/nativeWrapper.cpp b/package/src/native/linux/nativeWrapper.cpp
-index c3765d71..d14e6105 100644
+index c3765d71..02282f25 100644
 --- a/package/src/native/linux/nativeWrapper.cpp
 +++ b/package/src/native/linux/nativeWrapper.cpp
 @@ -2341,6 +2341,12 @@ bool initializeCEF() {
@@ -13,7 +13,7 @@ index c3765d71..d14e6105 100644
 +        g_mkdir_with_parents(defaultProfilePath.c_str(), 0755);
 +        CefString(&settings.cache_path) = defaultProfilePath;
      }
- 
+     
      // Set language
 @@ -4009,8 +4015,16 @@ namespace electrobun {
  std::string buildAndEnsurePartitionCachePath(const std::string& partitionName) {
@@ -33,4 +33,74 @@ index c3765d71..d14e6105 100644
 +    g_free(digest);
      g_mkdir_with_parents(cachePath.c_str(), 0755);
      return cachePath;
+ }
+@@ -5993,11 +6007,9 @@ void on_library_load() {
+ 
+ // Timer callback to process CEF message loop
+ gboolean cef_timer_callback(gpointer user_data) {
+-    // Check if we're shutting down
+-    if (g_shuttingDown.load()) {
+-        return G_SOURCE_REMOVE;
+-    }
+-
++    // Keep pumping CEF while shutdown closes live browsers. Stopping this
++    // source before OnBeforeClose prevents profile-backed storage from
++    // committing and violates CEF's required browser-before-CefShutdown order.
+     if (g_cefInitialized) {
+         CefDoMessageLoopWork();
+     }
+@@ -9480,9 +9492,52 @@ ELECTROBUN_EXPORT void stopEventLoop() {
+     g_shuttingDown.store(true);
+     printf("[stopEventLoop] Initiating clean event loop exit\n");
+ 
+-    // gtk_main_quit should be called from the GTK thread
++    // Close every live CEF browser on the GTK/CEF UI thread, then keep the
++    // external message loop alive until OnBeforeClose has run. CefShutdown is
++    // called by runCEFEventLoop only after gtk_main exits, as required by CEF.
+     g_idle_add([](gpointer) -> gboolean {
+-        gtk_main_quit();
++        std::vector<CefRefPtr<CefBrowser>> browsers;
++        {
++            std::lock_guard<std::mutex> lock(g_webviewMapMutex);
++            for (const auto& [webviewId, view] : g_webviewMap) {
++                (void)webviewId;
++                if (auto* cefView = dynamic_cast<CEFWebViewImpl*>(view.get())) {
++                    if (cefView->browser) browsers.push_back(cefView->browser);
++                }
++            }
++        }
++
++        for (const auto& browser : browsers) {
++            browser->GetHost()->CloseBrowser(false);
++        }
++
++        if (browsers.empty()) {
++            gtk_main_quit();
++            return G_SOURCE_REMOVE;
++        }
++
++        struct ShutdownWait {
++            gint64 deadline;
++        };
++        auto* wait = new ShutdownWait{g_get_monotonic_time() + 3000000};
++        g_timeout_add(10, [](gpointer data) -> gboolean {
++            auto* wait = static_cast<ShutdownWait*>(data);
++            bool allClosed = false;
++            {
++                std::lock_guard<std::mutex> lock(g_browserIdToWebviewIdMutex);
++                allClosed = g_browserIdToWebviewId.empty();
++            }
++            if (allClosed || g_get_monotonic_time() >= wait->deadline) {
++                if (!allClosed) {
++                    fprintf(stderr,
++                            "[stopEventLoop] Timed out waiting for CEF browsers to close\n");
++                }
++                delete wait;
++                gtk_main_quit();
++                return G_SOURCE_REMOVE;
++            }
++            return G_SOURCE_CONTINUE;
++        }, wait);
+         return G_SOURCE_REMOVE;
+     }, nullptr);
  }
