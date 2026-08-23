@@ -16,8 +16,8 @@
 import type {
   AdminModerationStatusResponse,
   AdminRole,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
-import { isAdminRole } from "@elizaos/cloud-shared/lib/types/cloud-api";
+} from "@elizaos/cloud-sdk";
+import { isAdminRole } from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api-client";
 import { useSessionAuth } from "../../lib/use-session-auth";

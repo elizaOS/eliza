@@ -59,7 +59,10 @@ export function normalizePricingDimensions(
   return Object.fromEntries(
     Object.entries(dimensions)
       .filter(([, value]) => value !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
+      // Code-unit order, not localeCompare: ICU collation is locale-dependent, so
+      // the same dimension set would build different lookup keys per host and
+      // split one resolved price across several cache entries.
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, value]) => [key, normalizeDimensionValue(value)]),
   );
 }

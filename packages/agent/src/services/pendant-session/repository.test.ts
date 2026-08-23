@@ -2,6 +2,7 @@ import type { PendantSegment } from "@elizaos/shared/contracts/pendant-session-s
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  InMemoryPendantSessionRepository,
   SqlPendantSessionRepository,
   type StoredPendantSessionDocument,
 } from "./repository.ts";
@@ -244,5 +245,66 @@ describe("pendant session relational persistence", () => {
     expect(queryText(tx.execute.mock.calls[2]?.[0])).toContain(
       "INSERT INTO app_lifeops.pendant_session_insight_refs",
     );
+  });
+});
+
+describe("InMemoryPendantSessionRepository", () => {
+  it("sorts saved segments deterministically with safe NaN handling", async () => {
+    const repo = new InMemoryPendantSessionRepository();
+    const doc = stored();
+    await repo.create(doc);
+
+    const seg1: PendantSegment = {
+      ...segment(),
+      id: "seg-1",
+      ordinal: 2,
+    };
+    const seg0: PendantSegment = {
+      ...segment(),
+      id: "seg-0",
+      ordinal: 0,
+    };
+    const segNaN: PendantSegment = {
+      ...segment(),
+      id: "seg-nan",
+      ordinal: NaN as unknown as number,
+    };
+
+    let current = await repo.load({
+      ownerId: "owner-1",
+      agentId: "agent-1",
+      sessionId: "session-1",
+    });
+    if (!current) throw new Error("session not found");
+    await repo.saveSegment(current, seg1);
+
+    current = await repo.load({
+      ownerId: "owner-1",
+      agentId: "agent-1",
+      sessionId: "session-1",
+    });
+    if (!current) throw new Error("session not found");
+    await repo.saveSegment(current, seg0);
+
+    current = await repo.load({
+      ownerId: "owner-1",
+      agentId: "agent-1",
+      sessionId: "session-1",
+    });
+    if (!current) throw new Error("session not found");
+    await repo.saveSegment(current, segNaN);
+
+    const fetched = await repo.load({
+      ownerId: "owner-1",
+      agentId: "agent-1",
+      sessionId: "session-1",
+    });
+    expect(fetched).not.toBeNull();
+    expect(fetched?.segments.length).toBe(3);
+    expect(fetched?.segments.map((s) => s.id)).toEqual([
+      "seg-0",
+      "seg-nan",
+      "seg-1",
+    ]);
   });
 });

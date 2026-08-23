@@ -5,8 +5,8 @@
  * unusable star count treated as none, then package name. Pure function, no I/O.
  */
 import { describe, expect, it } from "vitest";
-import type { RegistryPluginInfo } from "./registry-client-types.ts";
 import { scoreEntries } from "./registry-client-queries.ts";
+import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 function entry(name: string, stars: number): RegistryPluginInfo {
   return {

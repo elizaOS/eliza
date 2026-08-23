@@ -24,6 +24,18 @@ import {
   formatSpeakerLabel,
 } from "../shared/conversation-format.ts";
 
+/**
+ * Normalizes a memory timestamp for ordering. A missing or non-finite
+ * `createdAt` (NaN reaches this provider when a storage row carries an
+ * unparseable timestamp) would otherwise make every comparison return NaN,
+ * which the sort treats as "equal" and leaves the transcript in whatever order
+ * storage returned it. Collapsing those to 0 keeps the ordering total so the
+ * oldest-first transcript stays deterministic.
+ */
+export function safeCreatedAt(createdAt: number | undefined): number {
+  return Number.isFinite(createdAt) ? (createdAt as number) : 0;
+}
+
 export const automationTerminalBridgeProvider: Provider = {
   name: "automation-terminal-bridge",
   description:
@@ -68,7 +80,10 @@ export const automationTerminalBridgeProvider: Provider = {
       });
       const visibleMessages = memories
         .filter((entry) => entry.content.text)
-        .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0));
+        .sort(
+          (left, right) =>
+            safeCreatedAt(left.createdAt) - safeCreatedAt(right.createdAt),
+        );
 
       if (visibleMessages.length === 0) {
         return { text: "", values: {}, data: {} };

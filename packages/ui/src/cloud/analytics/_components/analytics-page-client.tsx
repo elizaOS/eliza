@@ -11,7 +11,7 @@
 import type {
   EnhancedAnalyticsDataDto,
   ProjectionsDataDto,
-} from "@elizaos/cloud-shared/types";
+} from "@elizaos/cloud-sdk";
 import { format } from "date-fns";
 import {
   Activity,

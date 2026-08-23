@@ -1,6 +1,7 @@
 /** Surrogate-safe truncateWellFormed in api-client. */
-import { describe, expect, it } from "vitest";
+
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 describe("api-client surrogate-safe", () => {
   it("does not split surrogate pair at 500", () => {

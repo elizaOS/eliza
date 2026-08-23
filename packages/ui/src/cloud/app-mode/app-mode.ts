@@ -26,11 +26,6 @@
  * runs first there, so apex behavior can never be affected by this module.
  */
 
-import type {
-  AgentExecutionTier,
-  AgentSandboxStatus,
-  IsoDateString,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
@@ -104,10 +99,10 @@ export function isAppModeHost(): boolean {
 export interface AppModeAgent {
   id: string;
   agentName: string | null;
-  status: AgentSandboxStatus;
-  executionTier: AgentExecutionTier;
-  lastHeartbeatAt: IsoDateString | null;
-  updatedAt: IsoDateString;
+  status: string;
+  executionTier: string;
+  lastHeartbeatAt: string | null;
+  updatedAt: string;
 }
 
 /** The deploy-first-agent flow: `/join` select-or-provisions a Cloud agent and

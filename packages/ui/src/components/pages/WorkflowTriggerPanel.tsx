@@ -198,7 +198,7 @@ export function WorkflowTriggerPanel({
     <section aria-label="Workflow triggers" className="bg-card/40 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
         <span
-          className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+          className="h-2 w-2 shrink-0 rounded-full bg-status-success"
           title="Manual"
         >
           <span className="sr-only">Manual</span>

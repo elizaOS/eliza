@@ -3,7 +3,7 @@
  * shell's typed {@link api} client + auth gate.
  */
 
-import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { CreditBalanceResponse } from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../lib/api-client";
 import {

@@ -17,7 +17,12 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
-import { elizaLogger, resolveStateDir } from "@elizaos/core";
+import {
+  elizaLogger,
+  resolveStateDir,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { Flags as YtDlpFlags } from "youtube-dl-exec";
 import youtubeDl from "youtube-dl-exec";
 
@@ -663,7 +668,7 @@ async function installFfmpegStaticOnce(): Promise<
       // error-policy:J3 optional packaged binary — caller reports unavailable tool.
       return {
         installed: false,
-        reason: `ffmpeg-static install failed: ${describeError(err).slice(0, 160)}`,
+        reason: formatInstallErrorReason(err),
       };
     }
   })();
@@ -794,4 +799,8 @@ function errorMessage(err: unknown): string {
 
 function describeError(err: unknown): string {
   return errorMessage(err) || "(no message)";
+}
+
+export function formatInstallErrorReason(err: unknown): string {
+  return `ffmpeg-static install failed: ${truncateWellFormed(toWellFormedUnicode(describeError(err)), 160)}`;
 }
