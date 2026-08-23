@@ -8,7 +8,7 @@ vi.mock("./postwrap-diagnostics", () => ({
 	resolveWrapperBundlePath: () => "/tmp/bundle.app",
 }));
 
-import { shouldSignDevMacApp } from "./sign-dev-macos-app.ts";
+import { shouldSignDevMacApp } from "../sign-dev-macos-app.ts";
 
 const DEV_ENV = {
 	ELECTROBUN_BUILD_ENV: "dev",
