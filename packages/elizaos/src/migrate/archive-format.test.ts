@@ -3,13 +3,13 @@
  * salt/iv/tag framing, password policy, and AES-256-GCM round-trip via the
  * matching node built-ins.
  */
-import { createCipheriv, createDecipheriv, pbkdf2Sync } from "node:crypto";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { createDecipheriv, pbkdf2Sync } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   buildElizaAgentArchive,
   MIN_PASSWORD_LENGTH,
-} from "./archive-format.ts";
+} from "./archive-format.js";
 
 const MAGIC = Buffer.from("ELIZA_AGENT_V1\n", "utf-8");
 
@@ -28,10 +28,16 @@ function parseArchive(buffer: Buffer) {
 
 describe("buildElizaAgentArchive", () => {
   it("rejects short or empty passwords", () => {
-    expect(() => buildElizaAgentArchive({}, "short")).toThrow(
-      /at least 12 characters/,
+    const tooShort = "x".repeat(MIN_PASSWORD_LENGTH - 1);
+    expect(() => buildElizaAgentArchive({}, tooShort)).toThrow(
+      new RegExp(`at least ${MIN_PASSWORD_LENGTH} characters`),
     );
-    expect(() => buildElizaAgentArchive({}, "")).toThrow(/at least 12/);
+    expect(() => buildElizaAgentArchive({}, "")).toThrow(
+      new RegExp(`at least ${MIN_PASSWORD_LENGTH}`),
+    );
+    expect(() =>
+      buildElizaAgentArchive({}, "y".repeat(MIN_PASSWORD_LENGTH)),
+    ).not.toThrow();
   });
 
   it("writes the V1 magic header and fixed framing", () => {
