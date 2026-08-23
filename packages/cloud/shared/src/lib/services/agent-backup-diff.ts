@@ -326,7 +326,12 @@ export function resolveBackupChainBytes(
 export function selectPrunableBackupIds(nodes: BackupChainNode[], keep: number): string[] {
   if (nodes.length <= keep) return [];
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const newestFirst = [...nodes].sort((a, b) => b.createdAtMs - a.createdAtMs);
+  const newestFirst = [...nodes].sort((a, b) => {
+    const aTime = Number.isFinite(a.createdAtMs) ? a.createdAtMs : 0;
+    const bTime = Number.isFinite(b.createdAtMs) ? b.createdAtMs : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return a.id.localeCompare(b.id);
+  });
 
   const keepSet = new Set<string>();
   for (const node of newestFirst.slice(0, Math.max(0, keep))) keepSet.add(node.id);

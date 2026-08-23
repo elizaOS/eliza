@@ -147,7 +147,9 @@ import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
+import { anxietyProvider } from "./providers/anxiety.ts";
 import { attachmentsProvider } from "./providers/attachments.ts";
+import { botAwarenessProvider } from "./providers/botAwareness.ts";
 import { channelTopicsProvider } from "./providers/channelTopics.ts";
 import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
@@ -1417,7 +1419,9 @@ const events: PluginEvents = {
 export const basicProviders = [
 	actionsProvider,
 	actionStateProvider,
+	anxietyProvider,
 	attachmentsProvider,
+	botAwarenessProvider,
 	channelTopicsProvider,
 	characterProvider,
 	choiceProvider,
