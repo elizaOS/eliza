@@ -998,4 +998,26 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect(active[0].platform).toBe("zoom");
     expect(service.listSessions().map((s) => s.id)).toContain(first.id);
   });
+
+  it("sorts sessions safely when requestedAt contains NaN", () => {
+    const sessions = [
+      { id: "session-nan", requestedAt: NaN },
+      { id: "session-1", requestedAt: 1000 },
+    ];
+
+    sessions.sort((a, b) => {
+      const bReq =
+        typeof b.requestedAt === "number" && Number.isFinite(b.requestedAt)
+          ? b.requestedAt
+          : 0;
+      const aReq =
+        typeof a.requestedAt === "number" && Number.isFinite(a.requestedAt)
+          ? a.requestedAt
+          : 0;
+      return bReq - aReq || a.id.localeCompare(b.id);
+    });
+
+    expect(sessions[0]?.id).toBe("session-1");
+    expect(sessions[1]?.id).toBe("session-nan");
+  });
 });
