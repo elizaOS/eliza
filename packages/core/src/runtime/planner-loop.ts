@@ -2488,17 +2488,14 @@ async function callPlanner(params: {
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
-		providerOptions: withModelInputBudgetProviderOptions(
-			cacheProviderOptions({
-				prefixHash,
-				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-				promptSegments: renderedInput.promptSegments,
-				provider: params.provider,
-				hasTools,
-				conversationId: params.trajectoryId,
-			}),
-			modelInputBudget,
-		),
+		providerOptions: cacheProviderOptions({
+			prefixHash,
+			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			promptSegments: renderedInput.promptSegments,
+			provider: params.provider,
+			hasTools,
+			conversationId: params.trajectoryId,
+		}),
 	};
 	const configuredMaxTokens = resolvePlannerMaxTokens(
 		params.trajectory.codingMode === true,
