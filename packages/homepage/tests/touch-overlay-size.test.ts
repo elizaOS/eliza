@@ -3,7 +3,7 @@
  * 44 CSS-pixel floor without ever shrinking a larger dimension.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   resolveTouchOverlaySize,
   TOUCH_OVERLAY_MIN_SIZE,
