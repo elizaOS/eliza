@@ -68,7 +68,10 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
-import { createMatchingRealtimeSearchRunner } from "./shared-realtime-grounding";
+import {
+  createMatchingRealtimeSearchRunner,
+  isSharedPublicSearchSafe,
+} from "./shared-realtime-grounding";
 import {
   createSharedRuntimeCapabilitiesPlugin,
   REQUEST_DEDICATED_UPGRADE_ACTION,
@@ -250,6 +253,7 @@ function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
   actionsEnabled: boolean;
+  webSearchEnabled: boolean;
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
@@ -261,7 +265,7 @@ function createRuntime(options: {
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
     agentId: options.agentKey,
-    webSearch: options.actionsEnabled,
+    webSearch: options.webSearchEnabled,
     reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
     todos: options.actionsEnabled && Boolean(options.todoPlugin),
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
@@ -290,7 +294,7 @@ function createRuntime(options: {
       options.modelPlugin,
       ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
-      ...(options.actionsEnabled ? [options.webSearchPlugin ?? webSearchEdgePlugin] : []),
+      ...(options.webSearchEnabled ? [options.webSearchPlugin ?? webSearchEdgePlugin] : []),
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
@@ -313,6 +317,7 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
     const runtime = createRuntime({
       agentKey: "shared-runtime-kernel-prewarm",
       actionsEnabled: true,
+      webSearchEnabled: true,
       adapter: new InMemoryDatabaseAdapter(),
       character: {
         name: "Shared Eliza",
@@ -729,6 +734,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
   const modelPlugin = sharedModelPlugin(modelHandler);
   const actionsEnabled = input.messageRole !== "system";
+  const webSearchEnabled = actionsEnabled && isSharedPublicSearchSafe(input.message);
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -757,6 +763,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     agentKey: input.agentKey,
     agentId,
     actionsEnabled,
+    webSearchEnabled,
     adapter,
     character: input.character,
     modelPlugin,
@@ -807,8 +814,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         );
       }
     } else {
-      if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
+      if (
+        webSearchEnabled &&
+        !runtime.actions.some((action) => action.name === webSearchEdgeAction.name)
+      ) {
         throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
+      }
+      if (
+        !webSearchEnabled &&
+        runtime.actions.some((action) => action.name === webSearchEdgeAction.name)
+      ) {
+        throw new Error("Eliza Shared runtime exposed WEB_SEARCH to a private-state turn");
       }
       if (!runtime.actions.some((action) => action.name === REQUEST_DEDICATED_UPGRADE_ACTION)) {
         throw new Error("Eliza Shared runtime initialized without its Dedicated review action");

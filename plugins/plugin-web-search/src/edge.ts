@@ -53,6 +53,7 @@ export interface WebSearchSourceEvidence {
 
 const MAX_PROVIDER_JSON_NODES = 512;
 const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"]);
+const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 
 function publicHttpUrl(value: unknown): string | undefined {
     if (typeof value !== "string") return undefined;
@@ -71,6 +72,14 @@ function publicHttpUrl(value: unknown): string | undefined {
         // error-policy:J3 malformed provider URLs are explicit non-sources.
     }
     return undefined;
+}
+
+function containsUnsafeHttpUrl(value: string): boolean {
+    HTTP_URL.lastIndex = 0;
+    for (const match of value.matchAll(HTTP_URL)) {
+        if (!publicHttpUrl(match[0])) return true;
+    }
+    return false;
 }
 
 /**
@@ -103,19 +112,29 @@ export function webSearchSourceEvidence(text: string): {
             const record = value as Record<string, unknown>;
             const recordUrls = new Set<string>();
             const scalarRecord: Record<string, unknown> = {};
+            let recordContainsUnsafeUrl = false;
             for (const [key, item] of Object.entries(record)) {
                 if (SOURCE_URL_KEYS.has(key)) {
                     const parsed = publicHttpUrl(item);
-                    if (parsed) recordUrls.add(parsed);
+                    if (parsed) {
+                        recordUrls.add(parsed);
+                        scalarRecord[key] = parsed;
+                    } else if (typeof item === "string") {
+                        recordContainsUnsafeUrl = true;
+                    }
+                    continue;
                 }
                 if (item && typeof item === "object") {
                     pending.push(item);
                 } else {
                     scalarRecord[key] = item;
+                    if (typeof item === "string" && containsUnsafeHttpUrl(item)) {
+                        recordContainsUnsafeUrl = true;
+                    }
                 }
             }
             for (const url of recordUrls) sourceUrls.add(url);
-            if (recordUrls.size === 1) {
+            if (recordUrls.size === 1 && !recordContainsUnsafeUrl) {
                 const [recordUrl] = recordUrls;
                 sourceTextByUrl.set(recordUrl, JSON.stringify(scalarRecord));
             }
@@ -231,6 +250,9 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const result = await runner(query, {
                 numResults: readResultCount(parameters),
             });
+            if (runner === runWebSearchEdge && result.success !== true && result.text) {
+                await callback?.({ text: result.text });
+            }
             return result;
         },
     };

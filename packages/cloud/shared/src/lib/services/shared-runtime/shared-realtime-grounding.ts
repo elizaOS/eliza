@@ -25,15 +25,32 @@ const WEB_VERIFICATION =
 const CORRECTION =
   /\b(?:wrong|incorrect|not right|made that up|hallucinat(?:e|ed|ion)|check again|try again|prove it|where did (?:that|you) (?:come|get) from)\b|^\s*\?+\s*$/i;
 const PRIVATE_STATE =
-  /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts)\b/i;
+  /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts|password|passcode|secret|api[- ]?key|credential|ssn|social security|credit card|bank balance|phone number|home address|location)\b/i;
+const SENSITIVE_LITERAL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b\d{3}[- ]\d{2}[- ]\d{4}\b/i;
 const MARKETS =
   /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
-const WEATHER = /\b(?:weather|forecast|temperature|rain|snow|wind|air quality|uv index)\b/i;
 const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
 const SPORTS = /\b(?:score|standings|fixture|match result|game result|playoffs|season record)\b/i;
 const PUBLIC_MUTABLE_FACT =
   /\b(?:president|prime minister|governor|mayor|senator|representative|ceo|chief executive|officeholder|software version|release version|public outage|public traffic)\b/i;
+const FACTUAL_REQUEST =
+  /^\s*(?:what|what['’]?s|how|who|where|when|which|is|are|was|were|do|does|did|can|could|would|will|give me|show me|tell me|find|check|search|look up|verify|please\s+(?:find|check|search|look up|verify))\b/i;
+const NON_FACTUAL_REQUEST =
+  /\b(?:joke|pun|riddle|poem|fiction|fictional|role[- ]?play|imagine|make[- ]?believe|write|draft|compose|create|design|build|code|implement|edit|rewrite)\b/i;
+const HISTORICAL_CONTEXT =
+  /\b(?:yesterday|ago|last (?:night|week|month|year|season)|in (?:the )?past|historically|history|was|were|used to|\d{4})\b/i;
+const MARKET_METRIC =
+  /\b(?:price|quote|exchange rate|market cap|market price|share price|bond yield|gold price|oil price|trading at|worth)\b/i;
+const MARKET_SUBJECT =
+  /\b(?:stock|shares?|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond|commodity|gold|oil|currency|usd|eur|gbp|jpy|cad|aud)\b/i;
+const WEATHER_TOPIC = /\b(?:weather|forecast|air quality|uv index)\b/i;
+const WEATHER_CONDITION = /\b(?:temperature|rain|snow|wind)\b/i;
+const WEATHER_LOCATION = /\b(?:in|at|for|near|around)\s+[\p{L}\p{N}]/iu;
+const SPORTS_CONTEXT =
+  /\b(?:sports?|game|match|team|league|tournament|playoffs?|season|nba|wnba|nfl|nhl|mlb|epl|ipl)\b/i;
+const NAMED_TEAM_SCORE = /\b\p{Lu}[\p{L}\p{N}.'’-]*(?:\s+\p{Lu}[\p{L}\p{N}.'’-]*){0,3}\s+score\b/u;
 const SOURCE_MARKER = /\[\[SOURCE_URL:(https?:\/\/[^\]\s]+)\]\]/giu;
+const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const CURRENCY = /\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH)\b/giu;
 const ATTRIBUTION = /\b(?:according to|reported by)\s+([^,.;\n]{1,80})/giu;
 const NEGATION =
@@ -82,25 +99,44 @@ const CLAIM_STOP_WORDS = new Set([
 ]);
 
 function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefined {
-  if (PRIVATE_STATE.test(text)) return undefined;
-  if (WEATHER.test(text)) return "weather";
+  if (!isSharedPublicSearchSafe(text)) return undefined;
+  if (NON_FACTUAL_REQUEST.test(text) || (HISTORICAL_CONTEXT.test(text) && !FRESHNESS.test(text))) {
+    return undefined;
+  }
+  const factualRequest = FACTUAL_REQUEST.test(text);
+  if (
+    (WEATHER_TOPIC.test(text) &&
+      (FRESHNESS.test(text) || factualRequest || WEATHER_LOCATION.test(text))) ||
+    (WEATHER_CONDITION.test(text) &&
+      (FRESHNESS.test(text) || (factualRequest && WEATHER_LOCATION.test(text))))
+  ) {
+    return "weather";
+  }
   if (
     MARKETS.test(text) &&
-    (FRESHNESS.test(text) || /\b(?:price|quote|exchange rate)\b/i.test(text))
+    MARKET_METRIC.test(text) &&
+    MARKET_SUBJECT.test(text) &&
+    (FRESHNESS.test(text) || factualRequest)
   ) {
     return "markets";
   }
-  if (NEWS.test(text) && (FRESHNESS.test(text) || /\b(?:news|headline|breaking)\b/i.test(text))) {
+  if (NEWS.test(text) && (FRESHNESS.test(text) || factualRequest)) {
     return "news";
   }
   if (
     SPORTS.test(text) &&
-    (FRESHNESS.test(text) || /\b(?:score|standings|fixture)\b/i.test(text))
+    (FRESHNESS.test(text) ||
+      (factualRequest && (SPORTS_CONTEXT.test(text) || NAMED_TEAM_SCORE.test(text))))
   ) {
     return "sports";
   }
   if (PUBLIC_MUTABLE_FACT.test(text) && FRESHNESS.test(text)) return "mutable_fact";
   return undefined;
+}
+
+/** Denies Shared public-network tools when the authenticated utterance is private or sensitive. */
+export function isSharedPublicSearchSafe(message: string): boolean {
+  return !PRIVATE_STATE.test(message) && !SENSITIVE_LITERAL.test(message);
 }
 
 /** Identifies public current-data turns and corrections that inherit that exact public topic. */
@@ -145,6 +181,14 @@ function canonicalPublicUrl(value: unknown): string | undefined {
   }
 }
 
+function containsUnsafeHttpUrl(value: string): boolean {
+  HTTP_URL.lastIndex = 0;
+  for (const match of value.matchAll(HTTP_URL)) {
+    if (!canonicalPublicUrl(match[0].replace(/[),.;]+$/u, ""))) return true;
+  }
+  return false;
+}
+
 function sourceEvidence(value: unknown): SourceEvidence[] | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined;
   const sources: SourceEvidence[] = [];
@@ -153,7 +197,7 @@ function sourceEvidence(value: unknown): SourceEvidence[] | undefined {
     const record = item as Record<string, unknown>;
     const url = canonicalPublicUrl(record.url);
     const text = typeof record.text === "string" ? record.text.trim() : "";
-    if (!url || !text) return undefined;
+    if (!url || !text || containsUnsafeHttpUrl(text)) return undefined;
     sources.push({ url, text });
   }
   return sources;
@@ -217,10 +261,14 @@ function numericSupported(claim: number, evidence: readonly number[]): boolean {
   });
 }
 
-function replyUrls(value: string): string[] {
-  return [...value.matchAll(/https?:\/\/[^\s<>"'\]]+/gu)]
-    .map((match) => canonicalPublicUrl(match[0].replace(/[),.;]+$/u, "")))
-    .filter((url): url is string => Boolean(url));
+function replyUrls(value: string): string[] | undefined {
+  const urls: string[] = [];
+  for (const match of value.matchAll(/https?:\/\/[^\s<>"'\]]+/gu)) {
+    const url = canonicalPublicUrl(match[0].replace(/[),.;]+$/u, ""));
+    if (!url) return undefined;
+    urls.push(url);
+  }
+  return urls;
 }
 
 function claimWords(value: string): string[] {
@@ -240,17 +288,27 @@ function evidenceClauses(value: string): string[] {
     while (pending.length > 0 && visited < 128) {
       const item = pending.pop();
       visited += 1;
-      if (typeof item === "string") {
-        strings.push(item);
-      } else if (Array.isArray(item)) {
+      if (Array.isArray(item)) {
         pending.push(...item);
       } else if (item && typeof item === "object") {
-        pending.push(...Object.values(item as Record<string, unknown>));
+        const scalarValues: string[] = [];
+        for (const child of Object.values(item as Record<string, unknown>)) {
+          if (child && typeof child === "object") {
+            pending.push(child);
+          } else if (typeof child === "string") {
+            if (!/^https?:\/\//iu.test(child.trim())) scalarValues.push(child);
+          } else if (typeof child === "number" || typeof child === "boolean") {
+            scalarValues.push(String(child));
+          }
+        }
+        if (scalarValues.length > 0) strings.push(scalarValues.join(" "));
+      } else if (typeof item === "string" && !/^https?:\/\//iu.test(item.trim())) {
+        strings.push(item);
       }
     }
   } catch {
     // error-policy:J3 non-JSON evidence remains an untrusted text fragment.
-    strings.push(value);
+    strings.push(value.replace(HTTP_URL, " "));
   }
   return strings.flatMap((item) =>
     item
@@ -258,6 +316,33 @@ function evidenceClauses(value: string): string[] {
       .map((clause) => clause.trim())
       .filter(Boolean),
   );
+}
+
+function orderedWordsSupported(claim: readonly string[], evidence: readonly string[]): boolean {
+  let cursor = 0;
+  for (const word of claim) {
+    const index = evidence.indexOf(word, cursor);
+    if (index < 0) return false;
+    cursor = index + 1;
+  }
+  return true;
+}
+
+function orderedNumbersSupported(claim: readonly number[], evidence: readonly number[]): boolean {
+  let cursor = 0;
+  for (const value of claim) {
+    let matched = false;
+    while (cursor < evidence.length) {
+      const candidate = evidence[cursor];
+      cursor += 1;
+      if (numericSupported(value, [candidate])) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+  }
+  return true;
 }
 
 function sourceForUrl(
@@ -272,27 +357,25 @@ function sourceForUrl(
 function claimSupported(claim: string, source: SourceEvidence): boolean {
   const normalized = claim.trim();
   if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) return false;
-  const evidenceNumbers = numericValues(source.text);
-  if (numericValues(normalized).some((value) => !numericSupported(value, evidenceNumbers))) {
-    return false;
-  }
-  const evidenceCurrencies = new Set(source.text.toUpperCase().match(CURRENCY) ?? []);
-  if (
-    (normalized.toUpperCase().match(CURRENCY) ?? []).some((unit) => !evidenceCurrencies.has(unit))
-  ) {
-    return false;
-  }
-  for (const url of replyUrls(normalized)) {
+  const urls = replyUrls(normalized);
+  if (!urls) return false;
+  for (const url of urls) {
     if (url !== canonicalPublicUrl(source.url)) return false;
   }
-  for (const match of normalized.matchAll(ATTRIBUTION)) {
-    if (!source.text.toLowerCase().includes(match[1].trim().toLowerCase())) return false;
-  }
+  const claimNumbers = numericValues(normalized);
+  const claimCurrencies = normalized.toUpperCase().match(CURRENCY) ?? [];
+  const attributions = [...normalized.matchAll(ATTRIBUTION)].map((match) =>
+    match[1].trim().toLowerCase(),
+  );
   const words = claimWords(normalized);
   return evidenceClauses(source.text).some((clause) => {
     if (NEGATION.test(normalized) !== NEGATION.test(clause)) return false;
-    const evidence = new Set(claimWords(clause));
-    return words.length === 0 || words.every((word) => evidence.has(word));
+    if (!orderedNumbersSupported(claimNumbers, numericValues(clause))) return false;
+    const evidenceCurrencies = new Set(clause.toUpperCase().match(CURRENCY) ?? []);
+    if (claimCurrencies.some((unit) => !evidenceCurrencies.has(unit))) return false;
+    const lowerClause = clause.toLowerCase();
+    if (attributions.some((attribution) => !lowerClause.includes(attribution))) return false;
+    return orderedWordsSupported(words, claimWords(clause));
   });
 }
 
