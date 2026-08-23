@@ -2,6 +2,15 @@
 
 Desktop automation for elizaOS agents — screenshots, mouse/keyboard control, browser CDP automation, window management, and a multi-display scene model.
 
+The macOS app-control lane is distinct from raw desktop input. It exposes
+running-app discovery, screenshot plus Accessibility state/diffs, ephemeral
+`element_index` targets, and app-scoped AX/PID actions. Dispatch is semantic AX
+first, registered Set-of-Marks/OCR second, and approval-gated physical-pointer
+fallback last. The orange target overlay is virtual; planning and hover must
+never invoke the physical input driver. The native helper checks Accessibility
+trust without prompting and must fail closed when helper or permission is
+unavailable.
+
 Ported from [`coasty-ai/open-computer-use`](https://github.com/coasty-ai/open-computer-use) (Apache 2.0).
 
 ## Purpose / role
@@ -81,6 +90,12 @@ src/
     types.ts                 BrainOutput, ProposedAction, …
     index.ts                 Public re-exports
 
+  app-control/
+    types.ts                 App state, ephemeral target, action, and receipt contracts
+    coordinator.ts           Fresh state/diffs plus semantic-to-visual fallback policy
+    macos-ax-adapter.ts      Bounded JSON subprocess adapter for the packaged helper
+    defaults.ts              Multi-display capture, grounder, and guarded pointer wiring
+
   platform/
     browser.ts               Puppeteer-core CDP browser automation
     capture.ts               captureDisplay / captureAllDisplays
@@ -137,6 +152,9 @@ src/
   views/
     ComputerUseSessionsView.tsx          Responsive live monitor and floating-view launcher
     computer-use-sessions-view-bundle.ts Host-loadable view bundle entry
+
+native/
+  macos-ax-helper.swift      NSWorkspace/AX helper compiled into dist/native at package build
 
   mobile/
     ocr-provider.ts          OcrProvider / CoordOcrProvider interfaces (plugin-vision contributes impls)

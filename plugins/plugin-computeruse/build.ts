@@ -9,6 +9,8 @@
  * declaration-only from tsconfig.build.json, preserving the package's
  * established `dist/` layout for downstream imports.
  */
+import { chmod, mkdir } from "node:fs/promises";
+import path from "node:path";
 import { buildPlugin } from "../plugin-build";
 
 const naming = { entry: "[name].[ext]" };
@@ -58,3 +60,29 @@ await buildPlugin({
   dtsProject: "tsconfig.build.json",
   dtsEmitDeclarationOnly: true,
 });
+
+if (process.platform === "darwin") {
+  const outputDirectory = path.resolve("dist/native");
+  const output = path.join(outputDirectory, "macos-ax-helper");
+  await mkdir(outputDirectory, { recursive: true });
+  const build = Bun.spawn(
+    [
+      "xcrun",
+      "swiftc",
+      "-O",
+      "-framework",
+      "ApplicationServices",
+      "-framework",
+      "AppKit",
+      "native/macos-ax-helper.swift",
+      "-o",
+      output,
+    ],
+    { cwd: import.meta.dir, stdout: "inherit", stderr: "inherit" },
+  );
+  const status = await build.exited;
+  if (status !== 0) {
+    throw new Error(`macOS AX helper build failed with exit ${status}`);
+  }
+  await chmod(output, 0o755);
+}

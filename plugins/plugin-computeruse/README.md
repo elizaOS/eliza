@@ -45,6 +45,17 @@ the other.
 | Windows | PowerShell + `System.Drawing` | PowerShell |
 | Browser | — | `puppeteer-core` + Chrome / Edge / Brave |
 
+On macOS, the packaged v2 app-control lane adds direct Accessibility control
+through `dist/native/macos-ax-helper`. It lists running apps and returns a
+focused-window screenshot plus the AX tree, incremental diff, and ephemeral
+`element_index` values. App-scoped actions prefer semantic AX operations,
+then registered Set-of-Marks/OCR grounding, and only use the guarded physical
+pointer when session policy and approval both permit it. Planning and target
+hover use the orange agent overlay and never move the physical pointer. macOS
+still exposes only one true system pointer, so an approved coordinate fallback
+can move it. The helper reads permission state without requesting or changing
+TCC grants.
+
 The Linux X11 release-evidence path is executable with
 `bun run capture:linux-desktop-evidence`; it uses a disposable controlled xterm
 and emits a strict-validator-compatible evidence bundle. The lane requires
@@ -84,7 +95,14 @@ loopback fixture; it never opens an existing profile or logs the credential.
   `VisionContextProvider` exposes scene context.
 - **Providers** — `computerStateProvider`, `sceneProvider`.
 - **Routes** — approval inbox + SSE stream + approval-mode toggle under
-  `/api/computer-use/...`.
+  `/api/computer-use/...`; authenticated app discovery/state endpoints are
+  `/api/computer-use/apps` and `/api/computer-use/apps/state?app=...`.
+- **MCP app tools** — `computer_list_apps` and `computer_get_app_state` expose
+  the bundled-style read contract; `computer_app_click`, `computer_app_key`,
+  `computer_app_type`, `computer_app_paste`, `computer_app_scroll`,
+  `computer_app_set_value`, `computer_app_select_text`,
+  `computer_app_secondary_action`, and `computer_app_hover_target` reuse the
+  same service and approval/session authority.
 - **Sessions** — authenticated `/api/computer-use/sessions` CRUD, action,
   read-only frame, lease-renewal, pause/resume/stop, and SSE routes expose
   exclusive physical-host ownership plus concurrent
@@ -114,6 +132,8 @@ on the SHELL action. They are **not** exposed by this plugin.
 
 - [`docs/MULTI_MONITOR.md`](./docs/MULTI_MONITOR.md) — multi-display
   capture and coordinate translation.
+- [`docs/CODEX_COMPUTER_PARITY.md`](./docs/CODEX_COMPUTER_PARITY.md) —
+  evidence-bounded parity matrix and macOS app-control limitations.
 - Scene composition — how windows, a11y, screen, and OCR are composed into a
   single `Scene` (the separate design note was never committed).
 - [`docs/IOS_CONSTRAINTS.md`](./docs/IOS_CONSTRAINTS.md) /

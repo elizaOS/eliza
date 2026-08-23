@@ -50,6 +50,11 @@ const READ_ONLY_COMMANDS = new Set([
   "detect_elements",
   "ocr",
   "list_windows",
+  "app_list_apps",
+  "app_get_state",
+  "list_apps",
+  "get_app_state",
+  "app_hover_target",
 ]);
 
 export type ComputerUseSessionErrorCode =
@@ -217,11 +222,17 @@ function cloneSnapshot(session: MutableSession): ComputerUseSessionSnapshot {
     ...snapshot,
     target: { ...snapshot.target },
     cursor: cloneCursor(snapshot.cursor),
+    ...(snapshot.targetOverlay
+      ? { targetOverlay: { ...snapshot.targetOverlay } }
+      : {}),
     ...(snapshot.lastObservation
       ? { lastObservation: { ...snapshot.lastObservation } }
       : {}),
     ...(snapshot.lastOutcome
       ? { lastOutcome: { ...snapshot.lastOutcome } }
+      : {}),
+    ...(snapshot.lastReceipt
+      ? { lastReceipt: { ...snapshot.lastReceipt } }
       : {}),
   };
 }
@@ -551,15 +562,61 @@ export class ComputerUseSessionManager {
     );
 
     try {
-      const result = await this.executor(
+      let result = await this.executor(
         { ...session.target },
         action,
         abortController.signal,
       );
+      if (
+        result.success &&
+        !READ_ONLY_COMMANDS.has(action.command) &&
+        this.frameProvider &&
+        !abortController.signal.aborted
+      ) {
+        try {
+          const frame = await this.frameProvider(
+            { ...session.target },
+            abortController.signal,
+          );
+          const data = this.requireFrameData(frame.data);
+          const observedAt = timestamp(this.now());
+          const provenance: ComputerUseObservationProvenance = {
+            observationId: `${session.id}:observation:${session.observationSequence + 1}`,
+            sequence: ++session.observationSequence,
+            observedAt,
+            sha256: createHash("sha256").update(data).digest("hex"),
+            mimeType: frame.mimeType,
+            ...(frame.width !== undefined ? { width: frame.width } : {}),
+            ...(frame.height !== undefined ? { height: frame.height } : {}),
+            source: session.target.kind,
+          };
+          session.lastObservation = provenance;
+          result = { ...result, verificationObservation: provenance };
+          this.emit(
+            "observation.captured",
+            session,
+            undefined,
+            undefined,
+            undefined,
+            provenance.observationId,
+          );
+        } catch (error) {
+          // error-policy:J1 a side effect without a fresh verification frame
+          // is explicitly uncertain, never reported as successful.
+          result = {
+            ...result,
+            success: false,
+            outcomeStatus: "UNCERTAIN_EFFECT",
+            errorCode: "FRESH_VERIFICATION_FAILED",
+            error: `Action may have occurred, but fresh-frame verification failed: ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      }
       const occurredAt = timestamp(this.now());
       const stopRequested = abortController.signal.aborted;
       const cursor = cursorFromAction(action, result, occurredAt);
       if (cursor) session.cursor = cursor;
+      this.recordAppActionPresentation(session, result, occurredAt);
       session.status = stopRequested ? "closed" : "idle";
       session.canonicalState = stopRequested ? "stopped" : "ready";
       if (stopRequested) this.releaseSessionOwnership(session);
@@ -576,11 +633,14 @@ export class ComputerUseSessionManager {
         (result.permissionDenied
           ? `${(result.permissionType ?? "computer_use").toUpperCase()}_PERMISSION_DENIED`
           : undefined);
+      const outcomeObservation = result.verificationObservation ?? observation;
       session.lastOutcome = {
         actionId: action.actionId,
         status: outcomeStatus,
         completedAt: occurredAt,
-        ...(observation ? { observationId: observation.observationId } : {}),
+        ...(outcomeObservation
+          ? { observationId: outcomeObservation.observationId }
+          : {}),
         ...(resultErrorCode ? { errorCode: resultErrorCode } : {}),
       };
       if (observation) {
@@ -637,6 +697,83 @@ export class ComputerUseSessionManager {
       );
       this.expireHostLease(this.now());
       throw error;
+    }
+  }
+
+  private recordAppActionPresentation(
+    session: MutableSession,
+    result: ComputerUseSessionActionResult,
+    occurredAt: string,
+  ): void {
+    if (
+      !result.data ||
+      typeof result.data !== "object" ||
+      Array.isArray(result.data)
+    ) {
+      return;
+    }
+    const outcome = result.data as Record<string, unknown>;
+    const receiptValue = outcome.receipt;
+    if (
+      !receiptValue ||
+      typeof receiptValue !== "object" ||
+      Array.isArray(receiptValue)
+    ) {
+      return;
+    }
+    const receipt = receiptValue as Record<string, unknown>;
+    if (
+      typeof receipt.receiptId !== "string" ||
+      typeof receipt.appId !== "string" ||
+      typeof receipt.kind !== "string" ||
+      typeof receipt.beforeStateId !== "string" ||
+      typeof receipt.afterStateId !== "string" ||
+      typeof receipt.executionMode !== "string" ||
+      typeof receipt.completedAt !== "string" ||
+      typeof receipt.changed !== "boolean" ||
+      typeof receipt.physicalPointerMoved !== "boolean"
+    ) {
+      return;
+    }
+    session.lastReceipt = {
+      receiptId: receipt.receiptId,
+      appId: receipt.appId,
+      kind: receipt.kind,
+      beforeStateId: receipt.beforeStateId,
+      afterStateId: receipt.afterStateId,
+      executionMode: receipt.executionMode,
+      completedAt: receipt.completedAt,
+      changed: receipt.changed,
+      physicalPointerMoved: receipt.physicalPointerMoved,
+      ...(typeof receipt.clipboardRestored === "boolean"
+        ? { clipboardRestored: receipt.clipboardRestored }
+        : {}),
+      ...(typeof receipt.element_index === "number"
+        ? { element_index: receipt.element_index }
+        : {}),
+    };
+    const bounds = receipt.targetBounds;
+    if (bounds && typeof bounds === "object" && !Array.isArray(bounds)) {
+      const box = bounds as Record<string, unknown>;
+      if (
+        typeof box.x === "number" &&
+        typeof box.y === "number" &&
+        typeof box.width === "number" &&
+        typeof box.height === "number"
+      ) {
+        session.targetOverlay = {
+          x: box.x,
+          y: box.y,
+          width: box.width,
+          height: box.height,
+          ...(typeof receipt.element_index === "number"
+            ? { elementIndex: receipt.element_index }
+            : {}),
+          appId: receipt.appId,
+          updatedAt: occurredAt,
+          physicalPointerMoved: receipt.physicalPointerMoved,
+        };
+      }
     }
   }
 
