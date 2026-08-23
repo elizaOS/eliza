@@ -197,6 +197,8 @@ RULES:
 - continuing an active thread with {{agentName}} -> RESPOND
 - request to stop or be quiet -> STOP
 - talking to someone else -> IGNORE
+- newest message is from another assistant/bot and no human re-addressed {{agentName}} -> IGNORE (never reply to another bot's reply)
+- a human's message was already answered by another assistant and {{agentName}} was not named -> IGNORE (one speaker per human message)
 - if unsure, prefer IGNORE over hallucinating relevance
 
 CONTEXT ROUTING:
@@ -207,6 +209,7 @@ CONTEXT ROUTING:
 DECISION NOTE:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
 - talking ABOUT {{agentName}} is not enough
+- multiple assistants in a room means one speaker per human message: when assistant replies are stacking on each other, IGNORE and wait for a human to advance the conversation
 
 # Output
 Respond using JSON only. No markdown, no prose, no XML.

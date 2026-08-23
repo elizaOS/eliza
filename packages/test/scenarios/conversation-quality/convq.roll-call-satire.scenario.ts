@@ -26,7 +26,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const LITERAL_STATUS =
-  /(how can i (help|assist)|what (do you need|can i do for)|i('| a)?m (awake|online|here|active|operational|up and running)|status report|standing by|at your service|ready to (help|assist)|anything you need)/i;
+  /(how can i (help|assist)|what (do you need|can i do for)|i('| a)?m (awake|online|here|active|operational|up and running)|status report|standing by|at your service|ready to (help|assist)|anything you (need|want)|all three (tagged |of us )?are)/i;
 
 export default scenario({
   lane: "live-only",
