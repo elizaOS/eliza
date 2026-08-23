@@ -266,7 +266,15 @@ describe("DockerEngine", () => {
     expect(engine.imageExists(MISSING_IMAGE)).toBe(false);
   });
 
-  it("swallows stop and remove failures for a missing container", async () => {
+  it("swallows stop and remove failures for a name the host does not own", async () => {
+    // Teardown ownership guard (#25883): with a daemon installed these calls
+    // issue real stop/rm CLI commands, so coverage must first prove the host
+    // owns no such resource (ps -a also covers stopped containers). A
+    // non-empty listing means a developer's live container carries this name
+    // — skip the destructive assertions rather than touch it.
+    if (engine.listContainers(MISSING_CONTAINER).length > 0) {
+      return;
+    }
     await expect(
       engine.stopContainer(MISSING_CONTAINER),
     ).resolves.toBeUndefined();
@@ -328,7 +336,14 @@ describe("AppleContainerEngine", () => {
     expect(engine.imageExists(MISSING_IMAGE)).toBe(false);
   });
 
-  it("swallows stop and remove failures for a missing container", async () => {
+  it("swallows stop and remove failures for a name the host does not own", async () => {
+    // Teardown ownership guard (#25883): with a daemon installed these calls
+    // issue real stop/rm CLI commands, so coverage must first prove the host
+    // owns no such resource. A non-empty listing means a live container
+    // carries this name — skip the destructive assertions rather than touch it.
+    if (engine.listContainers(MISSING_CONTAINER).length > 0) {
+      return;
+    }
     await expect(
       engine.stopContainer(MISSING_CONTAINER),
     ).resolves.toBeUndefined();

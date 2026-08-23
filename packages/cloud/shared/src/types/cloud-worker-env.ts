@@ -532,6 +532,8 @@ export interface Bindings {
   NODE_ENV?: string;
   /** Exact local full-stack test gate; never set on deployed Workers. */
   CLOUD_E2E?: string;
+  /** Unique local-only receipt used to bind Worker E2E probes to their owner. */
+  CLOUD_E2E_RUN_RECEIPT?: string;
   /**
    * Git commit stamped at deploy time so `/api/health` can prove which Worker
    * revision is currently served before CI allows another deploy to overwrite it.

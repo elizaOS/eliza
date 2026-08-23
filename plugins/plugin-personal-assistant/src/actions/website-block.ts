@@ -304,6 +304,25 @@ function shouldTrustExplicitWebsites(
   );
 }
 
+function createdAtSortKey(memory: { createdAt?: number }): number {
+  const value = memory.createdAt;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareConversationTurnByCreatedAtAsc(
+  a: { createdAt?: number; id?: string },
+  b: { createdAt?: number; id?: string },
+): number {
+  const aSafe = createdAtSortKey(a);
+  const bSafe = createdAtSortKey(b);
+  if (aSafe !== bSafe) return aSafe - bSafe;
+  return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+export const __testCompareConversationTurnByCreatedAtAsc =
+  compareConversationTurnByCreatedAtAsc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 async function collectWebsiteBlockConversationTurns(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -330,7 +349,7 @@ async function collectWebsiteBlockConversationTurns(args: {
 
     return memories
       .slice()
-      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .sort(compareConversationTurnByCreatedAtAsc)
       .map((memory) => {
         const text =
           typeof memory.content.text === "string"

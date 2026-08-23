@@ -108,7 +108,7 @@ export const TelegramConnected: Story = {
       <div className="space-y-4">
         <ConnectionIdentityPanel
           icon={<Send className="h-6 w-6 text-white" />}
-          iconClassName="bg-sky-500"
+          iconClassName="bg-accent"
           title="@eliza_assistant_bot"
           subtitle="Webhook healthy — 1,284 messages handled"
         />

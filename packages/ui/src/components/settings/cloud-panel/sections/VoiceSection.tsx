@@ -37,14 +37,14 @@ import {
 import { SaveFooter } from "../../../ui/save-footer";
 import { useSettingsSave } from "../../settings-control-primitives.hooks";
 import {
-  NuphyActionButton,
-  NuphyInputRow,
-  NuphySelectRow,
-  NuphySliderRow,
-  NuphySwitchRow,
+  CloudActionButton,
+  CloudInputRow,
+  CloudSelectRow,
+  CloudSliderRow,
+  CloudSwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../cloud-settings-primitives";
 
 const TTS_CONFIG_KEY = "tts";
 const VOICE_PREFS_CONFIG_KEY = "voice";
@@ -422,7 +422,7 @@ export function VoiceSection() {
     <SettingsStack>
       {configLoadError ? (
         <SettingsGroup title="Voice settings unavailable">
-          <NuphyActionButton
+          <CloudActionButton
             agentId="cloud-voice-config-retry"
             label={configLoadError}
             agentLabel="Retry loading voice settings"
@@ -441,7 +441,7 @@ export function VoiceSection() {
         })}
         footer="Configure how Eliza speaks aloud."
       >
-        <NuphySelectRow
+        <CloudSelectRow
           agentId="cloud-voice-tts-provider"
           label={t("settings.voice.provider", { defaultValue: "Provider" })}
           value={provider}
@@ -452,7 +452,7 @@ export function VoiceSection() {
             { value: "edge", label: "Edge" },
           ]}
         />
-        <NuphySelectRow
+        <CloudSelectRow
           agentId="cloud-voice-tts-voice"
           label={t("common.voice", { defaultValue: "Voice" })}
           value={visibleVoicePresetId ?? ""}
@@ -460,7 +460,7 @@ export function VoiceSection() {
           onValueChange={handleVoiceSelect}
           disabled={!configLoaded || configLoading}
         />
-        <NuphyActionButton
+        <CloudActionButton
           agentId="cloud-voice-tts-test"
           label={t("settings.voice.testVoice", {
             defaultValue: "Test voice",
@@ -479,7 +479,7 @@ export function VoiceSection() {
           }
           variant={voiceTesting ? "destructive" : "ghost"}
         />
-        <NuphySliderRow
+        <CloudSliderRow
           agentId="cloud-voice-tts-speed"
           label={t("settings.voice.speed", { defaultValue: "Speed" })}
           value={speed}
@@ -500,7 +500,7 @@ export function VoiceSection() {
         footer="Configure how Eliza listens and transcribes."
       >
         {profilesLoadError ? (
-          <NuphyActionButton
+          <CloudActionButton
             agentId="cloud-voice-profiles-retry"
             label={profilesLoadError}
             agentLabel="Retry loading voice profiles"
@@ -511,7 +511,7 @@ export function VoiceSection() {
             size="sm"
           />
         ) : null}
-        <NuphySelectRow
+        <CloudSelectRow
           agentId="cloud-voice-stt-profile"
           label={t("settings.voice.voiceProfile", {
             defaultValue: "Voice profile",
@@ -526,7 +526,7 @@ export function VoiceSection() {
             profiles.length === 0
           }
         />
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="cloud-voice-vad-autostop"
           label={t("settings.voice.vadAutoStop", {
             defaultValue: "VAD auto-stop",
@@ -538,7 +538,7 @@ export function VoiceSection() {
           }
         />
         {prefs.vadAutoStopEnabled ? (
-          <NuphySliderRow
+          <CloudSliderRow
             agentId="cloud-voice-silence-threshold"
             label={t("settings.voice.silenceThreshold", {
               defaultValue: "Silence threshold",
@@ -552,13 +552,13 @@ export function VoiceSection() {
             disabled={!configLoaded || configLoading}
           />
         ) : null}
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="cloud-voice-wake-word"
           label={t("settings.voice.wakeWord", { defaultValue: "Wake word" })}
           checked={wakeWordEnabled}
           onCheckedChange={handleWakeWordToggle}
         />
-        <NuphyInputRow
+        <CloudInputRow
           agentId="cloud-voice-wake-word-text"
           label={t("settings.voice.wakeWordText", { defaultValue: "Word" })}
           value={prefs.wakeWord}
@@ -577,7 +577,7 @@ export function VoiceSection() {
         })}
         footer="Control continuous and voice-triggered conversation modes."
       >
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="cloud-voice-continuous-chat"
           label={t("settings.voice.continuousChat", {
             defaultValue: "Continuous chat",
@@ -588,7 +588,7 @@ export function VoiceSection() {
             updatePrefs({ continuous: checked ? "vad-gated" : "off" })
           }
         />
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="cloud-voice-intent-autostart-voice"
           label={t("settings.voice.intentAutoStartVoice", {
             defaultValue: "OS intent auto-start voice",
@@ -599,7 +599,7 @@ export function VoiceSection() {
             updatePrefs({ osIntentAutoStartVoice: checked })
           }
         />
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="cloud-voice-intent-autostart-transcription"
           label={t("settings.voice.intentAutoStartTranscription", {
             defaultValue: "OS intent auto-start transcription",

@@ -11,7 +11,7 @@ const noop = () => {};
 
 const methodColors: Record<string, string> = {
   GET: "bg-emerald-500/20 text-emerald-300",
-  POST: "bg-sky-500/20 text-sky-300",
+  POST: "bg-accent/20 text-accent",
   PUT: "bg-amber-500/20 text-amber-300",
   DELETE: "bg-red-500/20 text-red-300",
 };

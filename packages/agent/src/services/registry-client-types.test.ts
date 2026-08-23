@@ -418,14 +418,15 @@ describe("getPluginInfoFromRegistry over RegistryPluginInfo", () => {
     expect(getPluginInfoFromRegistry(registry, "calendar")).toBe(appPrefixed);
   });
 
-  it("returns the first insertion-order key whose suffix matches the bare name", () => {
+  it("reserves insertion-order suffix matching for unscoped input", () => {
     const first = plugin({ name: "@aaa/sql", gitRepo: "aaa/sql" });
     const second = plugin({ name: "@bbb/sql", gitRepo: "bbb/sql" });
     const registry = new Map<string, RegistryPluginInfo>([
       [first.name, first],
       [second.name, second],
     ]);
-    expect(getPluginInfoFromRegistry(registry, "@foo/sql")).toBe(first);
+    expect(getPluginInfoFromRegistry(registry, "@foo/sql")).toBeNull();
+    expect(getPluginInfoFromRegistry(registry, "sql")).toBe(first);
   });
 
   it("matches a npm.package alias after prefix tries miss", () => {

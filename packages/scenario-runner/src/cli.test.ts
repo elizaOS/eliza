@@ -230,6 +230,7 @@ function createDependencies(
       pgliteDir: tmpdir(),
       executionProfile: "simulated" as const,
       registeredPluginPackages: [],
+      scenarioDeclaredActionNames: [],
       providerName: DETERMINISTIC_PROVIDER_NAME,
       providerConfig: {
         name: DETERMINISTIC_PROVIDER_NAME,
@@ -430,6 +431,7 @@ describe("scenario-runner CLI", () => {
       pgliteDir: tmpdir(),
       executionProfile: "simulated" as const,
       registeredPluginPackages: ["@elizaos/plugin-maps"],
+      scenarioDeclaredActionNames: [],
       providerName: DETERMINISTIC_PROVIDER_NAME,
       providerConfig: {
         name: DETERMINISTIC_PROVIDER_NAME,
@@ -505,6 +507,7 @@ describe("scenario-runner CLI", () => {
       pgliteDir: tmpdir(),
       executionProfile: "provider-qualified" as const,
       registeredPluginPackages: ["@elizaos/plugin-personal-assistant"],
+      scenarioDeclaredActionNames: [],
       providerName: "openai" as const,
       providerConfig: {
         name: "openai" as const,
@@ -607,6 +610,7 @@ describe("scenario-runner CLI", () => {
         pgliteDir: tmpdir(),
         executionProfile: "provider-qualified" as const,
         registeredPluginPackages: [],
+        scenarioDeclaredActionNames: [],
         providerName: "openai" as const,
         providerConfig: {
           name: "openai" as const,
@@ -651,6 +655,7 @@ describe("scenario-runner CLI", () => {
         pgliteDir: tmpdir(),
         executionProfile: "provider-qualified" as const,
         registeredPluginPackages: [],
+        scenarioDeclaredActionNames: [],
         providerName: "openai" as const,
         providerConfig: {
           name: "openai" as const,

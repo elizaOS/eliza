@@ -10,7 +10,11 @@ import { pruneMainChatTail } from "./page-scoped-context.ts";
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
 
-function row(id: string, createdAt: number, role: "user" | "assistant"): Memory {
+function row(
+  id: string,
+  createdAt: number,
+  role: "user" | "assistant",
+): Memory {
   return {
     id: `00000000-0000-0000-0000-00000000${id}` as UUID,
     entityId: role === "assistant" ? AGENT_ID : USER_ID,

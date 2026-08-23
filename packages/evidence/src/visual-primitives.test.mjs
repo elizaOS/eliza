@@ -25,10 +25,22 @@ describe("quantizePalette", () => {
     // written in an order that is the exact reverse of the required rgb order,
     // so insertion-dependent ordering is distinguishable from the tie-break.
     const data = Uint8Array.from([
-      200, 0, 0, 255, // bin { r: 200, g: 8, b: 8 }
-      0, 200, 0, 255, // bin { r: 8, g: 200, b: 8 }
-      0, 0, 200, 255, // bin { r: 8, g: 8, b: 200 }
-      0, 0, 0, 255, // bin { r: 8, g: 8, b: 8 }
+      200,
+      0,
+      0,
+      255, // bin { r: 200, g: 8, b: 8 }
+      0,
+      200,
+      0,
+      255, // bin { r: 8, g: 200, b: 8 }
+      0,
+      0,
+      200,
+      255, // bin { r: 8, g: 8, b: 200 }
+      0,
+      0,
+      0,
+      255, // bin { r: 8, g: 8, b: 8 }
     ]);
 
     const { swatches } = quantizePalette(data);
@@ -44,9 +56,18 @@ describe("quantizePalette", () => {
 
   it("still orders by coverage before applying the rgb tie-break", () => {
     const data = Uint8Array.from([
-      0, 0, 0, 255, // { r: 8, g: 8, b: 8 }
-      200, 0, 0, 255, // { r: 200, g: 8, b: 8 }
-      200, 0, 0, 255,
+      0,
+      0,
+      0,
+      255, // { r: 8, g: 8, b: 8 }
+      200,
+      0,
+      0,
+      255, // { r: 200, g: 8, b: 8 }
+      200,
+      0,
+      0,
+      255,
     ]);
 
     const { swatches } = quantizePalette(data);

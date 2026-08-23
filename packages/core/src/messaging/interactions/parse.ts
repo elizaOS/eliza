@@ -26,6 +26,7 @@ import type {
 	InteractionOption,
 	TaskInteraction,
 } from "../../types/interactions";
+import { truncateWellFormed } from "../../utils/well-formed.ts";
 import { stripDashboardOnlyMarkers } from "./dashboard-markers";
 
 /** Hard caps mirroring the dashboard parsers — keep a runaway template safe. */
@@ -364,7 +365,7 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
 			if (!/^[a-f0-9-]{8,64}$/.test(threadId) || !rawTitle) continue;
 			const title =
 				rawTitle.length > MAX_TASK_TITLE_LEN
-					? `${rawTitle.slice(0, MAX_TASK_TITLE_LEN - 1)}…`
+					? `${truncateWellFormed(rawTitle, MAX_TASK_TITLE_LEN - 1)}…`
 					: rawTitle;
 			block = { kind: "task", threadId, title } satisfies TaskInteraction;
 		}

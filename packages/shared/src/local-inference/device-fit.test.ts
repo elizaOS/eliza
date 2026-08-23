@@ -110,4 +110,43 @@ describe("selectBestEliza1Fit — biggest tier that fits, 128k target, QJL alway
     expect(fit).not.toBeNull();
     expect(fit?.tierId).toBe("eliza-1-2b");
   });
+
+  it("returns null instead of a NaN-bearing fit when only the NaN row survives the RAM floor (#25906)", () => {
+    // Same catalog as above, but the valid 4 GB tier no longer fits: the
+    // insufficient-RAM path must route to Cloud (null), never hand back the
+    // non-finite row whose `freeRamGb < NaN` guard is always false.
+    const customCatalog = [
+      {
+        id: "tier-nan",
+        minRamGb: Number.NaN,
+        sizeGb: 1,
+        contextLength: 131072,
+        contextStep: 4096,
+      } as unknown as (typeof MODEL_CATALOG)[number],
+      {
+        id: "eliza-1-2b",
+        minRamGb: 4,
+        sizeGb: 1.4,
+        contextLength: 131072,
+        contextStep: 4096,
+      } as unknown as (typeof MODEL_CATALOG)[number],
+    ];
+
+    expect(selectBestEliza1Fit(2, customCatalog)).toBeNull();
+  });
+
+  it("rejects a catalog row whose contextLength is NaN even when its RAM fields are finite (#25906)", () => {
+    const customCatalog = [
+      {
+        id: "tier-nan-ctx",
+        minRamGb: 2,
+        sizeGb: 1.4,
+        contextLength: Number.NaN,
+        contextStep: 4096,
+      } as unknown as (typeof MODEL_CATALOG)[number],
+    ];
+
+    const fit = selectBestEliza1Fit(8, customCatalog);
+    expect(fit).toBeNull();
+  });
 });

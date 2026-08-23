@@ -37,18 +37,22 @@ export function getPluginInfoFromRegistry(
   let p = registry.get(name);
   if (p) return p;
 
-  const requestedBare = name.replace(/^@[^/]+\//, "").toLowerCase();
+  // An explicit npm scope is a publisher boundary, not a display alias. The
+  // public wrapper may try an explicitly enumerated spelling correction first,
+  // but a missing scoped key must never fall through to another publisher's
+  // suffix, npm-package, or route-slug alias.
+  if (name.startsWith("@")) return null;
 
-  if (!name.startsWith("@")) {
-    p = registry.get(`@elizaos/${name}`);
-    if (p) return p;
+  const requestedBare = name.toLowerCase();
 
-    p = registry.get(`@elizaos/plugin-${name}`);
-    if (p) return p;
+  p = registry.get(`@elizaos/${name}`);
+  if (p) return p;
 
-    p = registry.get(`@elizaos/app-${name}`);
-    if (p) return p;
-  }
+  p = registry.get(`@elizaos/plugin-${name}`);
+  if (p) return p;
+
+  p = registry.get(`@elizaos/app-${name}`);
+  if (p) return p;
 
   for (const [key, value] of registry) {
     if (key.toLowerCase().endsWith(`/${requestedBare}`)) return value;

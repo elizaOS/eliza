@@ -19,7 +19,11 @@ import {
 	getDefaultMessageRefStore,
 	type MessageRefStore,
 } from "./message-ref-store.ts";
-import { rankScored, scoreMessages } from "./triage-engine.ts";
+import {
+	compareMessageRefsByRecency,
+	rankScored,
+	scoreMessages,
+} from "./triage-engine.ts";
 import type {
 	DraftRecord,
 	DraftRequest,
@@ -311,7 +315,7 @@ export class TriageService {
 			throw failures[0].error;
 		}
 		this.store.saveMessages(merged);
-		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
+		merged.sort(compareMessageRefsByRecency);
 		const hasMore =
 			requestedLimit === null ? null : merged.length > requestedLimit;
 		return {
