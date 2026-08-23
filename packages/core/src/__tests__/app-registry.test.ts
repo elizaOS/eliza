@@ -11,7 +11,7 @@ vi.mock("./ambient-context", () => ({
 import {
 	getRegisteredCuratedApps,
 	registerCuratedApp,
-} from "./app-registry.ts";
+} from "../app-registry.ts";
 
 describe("app-registry", () => {
 	it("registers and returns curated apps", () => {
