@@ -45,7 +45,9 @@ export interface AuditEmitterOptions {
 
 function truncateUserAgent(value: string | null): string | null {
   if (!value) return null;
-  return value.length > 200 ? truncateWellFormed(toWellFormedUnicode(value), 200) : value;
+  return value.length > 200
+    ? truncateWellFormed(toWellFormedUnicode(value), 200)
+    : value;
 }
 
 /**
