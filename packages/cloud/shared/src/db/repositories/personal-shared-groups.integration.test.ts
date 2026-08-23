@@ -667,6 +667,121 @@ describe("personalSharedGroupsRepository", () => {
     ).resolves.toEqual({ recorded: true, inserted: 1 });
   });
 
+  test("fences an old writer in the database and reports its durable committed state", async () => {
+    await issue({
+      codeHash: "claim-old-writer-fence",
+      organizationId: ORG_A,
+      ownerUserId: USER_A,
+      personalAgentId: "personal:owner-a",
+      platformUserId: "+155****0001",
+    });
+    const initial = await consume("claim-old-writer-fence", "+155****0001");
+    if (initial.status !== "bound") throw new Error("expected initial binding");
+    const sourceMessageId = "incoming-old-writer-fence";
+    const leaseToken = "71000000-0000-4000-8000-0000000000b1";
+    const conflictingToken = "71000000-0000-4000-8000-0000000000b2";
+    const database = getPgliteClientForTests();
+
+    // This is the pre-migration writer's direct binding commit. The migration
+    // trigger must materialize its attempt without application cooperation.
+    await database.exec(`
+      UPDATE personal_shared_group_bindings
+      SET delivery_lease_source_id = '${sourceMessageId}',
+          delivery_lease_token = '${leaseToken}',
+          delivery_lease_expires_at = now() + interval '90 seconds',
+          delivery_lease_committed_at = now()
+      WHERE id = '${initial.binding.id}';
+    `);
+    expect(
+      await repository.authorizeDelivery({
+        authority: {
+          bindingId: initial.binding.id,
+          ownerUserId: USER_A,
+          personalAgentId: "personal:owner-a",
+          version: initial.binding.authority_version,
+        },
+        platform: "blooio",
+        project: "eliza-app",
+        connectorAccountId: CONNECTOR_ID,
+        providerChatId: CHAT_ID,
+        invocation: "mention",
+        sourceMessageId,
+        leaseToken: conflictingToken,
+      }),
+    ).toMatchObject({
+      authorized: false,
+      reason: "source_already_attempted",
+      deliveryState: "committed",
+    });
+    await expect(
+      database.exec(`
+        UPDATE personal_shared_group_bindings
+        SET delivery_lease_token = '${conflictingToken}'
+        WHERE id = '${initial.binding.id}';
+      `),
+    ).rejects.toThrow("delivery source was already attempted");
+    expect(
+      await repository.recordDeliveryReceipts({
+        authority: {
+          bindingId: initial.binding.id,
+          ownerUserId: USER_A,
+          personalAgentId: "personal:owner-a",
+          version: initial.binding.authority_version,
+        },
+        platform: "blooio",
+        project: "eliza-app",
+        connectorAccountId: CONNECTOR_ID,
+        providerChatId: CHAT_ID,
+        sourceMessageId,
+        providerMessageIds: ["outgoing-old-writer-fenced"],
+        leaseToken,
+      }),
+    ).toEqual({ recorded: true, inserted: 1 });
+  });
+
+  test("materializes an immediate old-writer receipt when no attempt row exists", async () => {
+    await issue({
+      codeHash: "claim-old-writer-receipt",
+      organizationId: ORG_A,
+      ownerUserId: USER_A,
+      personalAgentId: "personal:owner-a",
+      platformUserId: "+155****0001",
+    });
+    const initial = await consume("claim-old-writer-receipt", "+155****0001");
+    if (initial.status !== "bound") throw new Error("expected initial binding");
+    const sourceMessageId = "incoming-old-writer-receipt";
+    const leaseToken = "71000000-0000-4000-8000-0000000000c1";
+    await getPgliteClientForTests().exec(`
+      UPDATE personal_shared_group_bindings
+      SET delivery_lease_source_id = '${sourceMessageId}',
+          delivery_lease_token = '${leaseToken}',
+          delivery_lease_expires_at = now() + interval '90 seconds',
+          delivery_lease_committed_at = now()
+      WHERE id = '${initial.binding.id}';
+      DELETE FROM personal_shared_group_delivery_attempts
+      WHERE binding_id = '${initial.binding.id}'
+        AND source_message_id = '${sourceMessageId}';
+    `);
+
+    expect(
+      await repository.recordDeliveryReceipts({
+        authority: {
+          bindingId: initial.binding.id,
+          ownerUserId: USER_A,
+          personalAgentId: "personal:owner-a",
+          version: initial.binding.authority_version,
+        },
+        platform: "blooio",
+        project: "eliza-app",
+        connectorAccountId: CONNECTOR_ID,
+        providerChatId: CHAT_ID,
+        sourceMessageId,
+        providerMessageIds: ["outgoing-immediate-old-writer"],
+        leaseToken,
+      }),
+    ).toEqual({ recorded: true, inserted: 1 });
+  });
+
   test("preserves an uncertain accepted send while allowing distinct future delivery and late reconciliation", async () => {
     await issue({
       codeHash: "claim-orphan-initial",
