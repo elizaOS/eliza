@@ -13,7 +13,7 @@ import {
 	CANONICAL_EMBEDDING_CAPABILITY_SETTING,
 	CANONICAL_TEXT_CAPABILITY_SETTING,
 	isCanonicalModelCapabilityDisabled,
-} from "./canonical-model-capabilities.ts";
+} from "../canonical-model-capabilities.ts";
 
 function runtime() {
 	return { getSetting: mocks.getSetting } as never;
