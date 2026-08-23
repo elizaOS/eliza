@@ -310,9 +310,17 @@ function parseViewCapability(entry: unknown): ViewCapability | null {
 	const params =
 		parseCapabilityParams(entry.params) ??
 		parseJsonSchemaParams(entry.inputSchema);
+	// `authority` travels on the wire from the view registry; only the two
+	// declared values survive parsing so a malformed entry cannot widen or
+	// narrow what the planner may dispatch.
+	const authority =
+		entry.authority === "agent" || entry.authority === "human"
+			? entry.authority
+			: undefined;
 	return {
 		id: rawId.trim(),
 		description: typeof entry.description === "string" ? entry.description : "",
+		...(authority ? { authority } : {}),
 		...(params ? { params } : {}),
 	};
 }

@@ -321,9 +321,12 @@ const taskCoordinatorPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "CockpitRoute",
       // The cockpit drives the same orchestrator interact protocol (list /
-      // open-task / create-task / add-agent / stop-agent …) as /orchestrator,
-      // so it advertises the same capabilities — this is what lets app-control
-      // route session-control intents ("stop that agent") to the cockpit.
+      // open-task / create-task / send-message / stop-agent …) as
+      // /orchestrator, so it advertises the same capability descriptors,
+      // including their `authority`. app-control may route the agent-callable
+      // ones (status/list/open/create/send-message) to the cockpit; the
+      // human-only mutations such as stop-agent are listed so the shared
+      // dispatcher refuses them uniformly, never so the planner selects them.
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "cockpit"],
       visibleInManager: true,
