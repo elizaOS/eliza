@@ -1,6 +1,8 @@
 /**
  * Proves the temporary usage-quotas release barrier pauses the destructive
- * pair before SQL, repairs ledgers already at 0282, and rejects suffix drift.
+ * pair before SQL, repairs ledgers already at 0282, rejects suffix drift, and
+ * lets an empty ledger (a fresh database with no served Worker) apply the
+ * whole journal.
  */
 
 import { describe, expect, spyOn, test } from "bun:test";
@@ -234,6 +236,144 @@ describe("usage-quotas migration release barrier", () => {
       action: "pause",
       stopBeforeJournalIndex: 2,
     });
+  });
+
+  // The barrier protects a LIVE deployment: a Worker already serving traffic
+  // must never see the window between the drop and the restore. An empty
+  // ledger has no served Worker and no rows, so pausing there protects
+  // nothing; it only strands fresh environments at 0281. A ledger with even
+  // one applied migration is still a barrier target and still pauses.
+  test("continues from an empty ledger but still pauses any older validated ledger", () => {
+    const migrations = barrierMigrations();
+
+    expect(evaluateMigrationReleaseBarrier(migrations, -1)).toEqual({
+      action: "continue",
+    });
+    expect(evaluateMigrationReleaseBarrier(migrations, 0)).toEqual({
+      action: "pause",
+      stopBeforeJournalIndex: 2,
+    });
+    expect(evaluateMigrationReleaseBarrier(migrations, 1)).toEqual({
+      action: "pause",
+      stopBeforeJournalIndex: 2,
+    });
+  });
+
+  // The fresh-ledger carve-out sits behind the structural checks, so a fresh
+  // database still refuses a journal whose guarded pair is missing, duplicated,
+  // interleaved, or reversed instead of applying it without the barrier.
+  test("still validates the guarded pair's shape for an empty ledger", () => {
+    const [checkpoint, before, drop, restore] = barrierMigrations();
+
+    expect(() =>
+      evaluateMigrationReleaseBarrier(
+        [
+          checkpoint,
+          before,
+          drop,
+          migration(2825, "0282b_interleaved", "SELECT interleaved"),
+          restore,
+        ],
+        -1,
+      ),
+    ).toThrow("adjacent journal entries");
+    expect(() =>
+      evaluateMigrationReleaseBarrier([checkpoint, before, restore, drop], -1),
+    ).toThrow("adjacent journal entries");
+    expect(() =>
+      evaluateMigrationReleaseBarrier([checkpoint, before, drop], -1),
+    ).toThrow("requires exactly one of each suffix entry");
+    expect(() =>
+      evaluateMigrationReleaseBarrier(
+        [
+          checkpoint,
+          before,
+          drop,
+          restore,
+          migration(284, RESTORE_TAG, "SELECT duplicate"),
+        ],
+        -1,
+      ),
+    ).toThrow("requires exactly one of each suffix entry");
+  });
+
+  // End to end through runMigrations: an empty ledger applies every journal
+  // entry in order, the drop immediately followed by the restore and then the
+  // later suffixes, each individually ledgered, with no pause reported.
+  test("applies the whole journal from an empty ledger, including 0282, 0282_01, and later suffixes", async () => {
+    const migrations = [
+      ...barrierMigrations(),
+      migration(284, "0284_first_future_feature", "SELECT future_one"),
+      migration(285, "0285_second_future_feature", "SELECT future_two"),
+    ];
+    const harness = migrationClient(appliedRows(migrations, -1));
+    let convergenceCalls = 0;
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+    const warnings: string[] = [];
+    const warningLog = spyOn(console, "warn").mockImplementation(
+      (message: string) => {
+        warnings.push(message);
+      },
+    );
+
+    try {
+      await runMigrations(
+        harness.client,
+        migrations,
+        OPTIONS,
+        undefined,
+        undefined,
+        async () => {
+          convergenceCalls += 1;
+        },
+      );
+    } finally {
+      outputLog.mockRestore();
+      warningLog.mockRestore();
+    }
+
+    const appliedInOrder = [
+      ["SELECT checkpoint", CHECKPOINT_TAG],
+      ["SELECT before_drop", "0281_before_usage_quotas_release"],
+      ["DROP TABLE usage_quotas", DROP_TAG],
+      ["CREATE TABLE usage_quotas (id uuid)", RESTORE_TAG],
+      ["SELECT future_one", "0284_first_future_feature"],
+      ["SELECT future_two", "0285_second_future_feature"],
+    ] as const;
+    let searchFrom = 0;
+    for (const [statement, tag] of appliedInOrder) {
+      const begin = harness.queries.indexOf("BEGIN", searchFrom);
+      const run = harness.queries.indexOf(statement, searchFrom);
+      const ledgered = harness.queries.findIndex(
+        (query, index) =>
+          index > run &&
+          query.includes("INSERT INTO") &&
+          query.includes("__drizzle_migrations"),
+      );
+      const commit = harness.queries.indexOf("COMMIT", ledgered);
+      expect(begin).toBeGreaterThanOrEqual(0);
+      expect(run).toBeGreaterThan(begin);
+      expect(ledgered).toBeGreaterThan(run);
+      expect(commit).toBeGreaterThan(ledgered);
+      expect(harness.queryParams[ledgered]).toContain(`hash-${tag}`);
+      searchFrom = commit + 1;
+    }
+    expect(harness.queries.filter((query) => query === "BEGIN")).toHaveLength(
+      appliedInOrder.length,
+    );
+    expect(harness.queries.filter((query) => query === "COMMIT")).toHaveLength(
+      appliedInOrder.length,
+    );
+    // Journal order end to end, with the restore directly after the drop.
+    const statements = new Set(migrations.flatMap((item) => item.statements));
+    expect(harness.queries.filter((query) => statements.has(query))).toEqual(
+      appliedInOrder.map(([statement]) => statement),
+    );
+    expect(
+      warnings.some((message) => message.includes("release barrier paused")),
+    ).toBe(false);
+    expect(convergenceCalls).toBe(1);
+    expect(harness.ended()).toBe(true);
   });
 
   test("fails closed when either guarded migration is missing or duplicated", () => {
