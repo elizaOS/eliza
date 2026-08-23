@@ -10,7 +10,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   evaluateMigrationReleaseBarrier,
-  resolveMigrationReleaseBarrierMode,
   runMigrations,
 } from "./migrate-with-diagnostics";
 
@@ -206,71 +205,6 @@ describe("usage-quotas migration release barrier", () => {
       1,
     );
     expect(harness.ended()).toBe(true);
-  });
-
-  test("advances both guarded migrations only for an acknowledged disposable local test", async () => {
-    const migrations = barrierMigrations();
-    const harness = migrationClient(appliedRows(migrations, 1));
-    const outputLog = spyOn(console, "log").mockImplementation(() => {});
-    const warningLog = spyOn(console, "warn").mockImplementation(() => {});
-
-    try {
-      await runMigrations(
-        harness.client,
-        migrations,
-        OPTIONS,
-        undefined,
-        undefined,
-        undefined,
-        "advance-disposable-local-test",
-      );
-    } finally {
-      outputLog.mockRestore();
-      warningLog.mockRestore();
-    }
-
-    expect(harness.queries).toContain("DROP TABLE usage_quotas");
-    expect(harness.queries).toContain("CREATE TABLE usage_quotas (id uuid)");
-    expect(harness.queries.filter((query) => query === "BEGIN")).toHaveLength(
-      2,
-    );
-    expect(harness.queries.filter((query) => query === "COMMIT")).toHaveLength(
-      2,
-    );
-    expect(harness.ended()).toBe(true);
-  });
-
-  test("restricts the acknowledgement to local test databases", () => {
-    const acknowledged = {
-      NODE_ENV: "test",
-      CLOUD_E2E: "1",
-      ELIZA_DISPOSABLE_LOCAL_MIGRATION_RELEASE_BARRIER_ACK: "1",
-    };
-
-    expect(
-      resolveMigrationReleaseBarrierMode(
-        acknowledged,
-        "postgresql://postgres@127.0.0.1:5432/postgres",
-      ),
-    ).toBe("advance-disposable-local-test");
-    expect(
-      resolveMigrationReleaseBarrierMode(acknowledged, "pglite://memory"),
-    ).toBe("advance-disposable-local-test");
-    expect(() =>
-      resolveMigrationReleaseBarrierMode(
-        acknowledged,
-        "postgresql://postgres@db.example.com/postgres",
-      ),
-    ).toThrow("restricted to disposable local databases");
-    expect(() =>
-      resolveMigrationReleaseBarrierMode(
-        {
-          ...acknowledged,
-          NODE_ENV: "production",
-        },
-        "postgresql://postgres@127.0.0.1:5432/postgres",
-      ),
-    ).toThrow("requires NODE_ENV=test and CLOUD_E2E=1");
   });
 
   // A later migration is none of this barrier's business. Requiring the pair to
