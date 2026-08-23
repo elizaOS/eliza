@@ -179,7 +179,13 @@ export function resolveLocalHHMMToIso(
     const exactCandidates = [...offsets]
       .map((offset) => new Date(wallClockAsUtc - offset * MINUTE_MS))
       .filter((candidate) => sameLocalMinute(candidate, target, timeZone))
-      .sort((left, right) => left.getTime() - right.getTime());
+      .sort((left, right) => {
+        const leftTime = Number.isFinite(left.getTime()) ? left.getTime() : 0;
+        const rightTime = Number.isFinite(right.getTime())
+          ? right.getTime()
+          : 0;
+        return leftTime - rightTime;
+      });
     if (exactCandidates.length > 0) {
       return exactCandidates[0].toISOString();
     }

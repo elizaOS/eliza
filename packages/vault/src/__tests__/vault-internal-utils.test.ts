@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertKey, optsCaller } from "./internal-utils.ts";
+import { assertKey, optsCaller } from "../internal-utils.js";
 
 describe("assertKey", () => {
   it("accepts valid keys", () => {
@@ -27,3 +27,5 @@ describe("optsCaller", () => {
     expect(optsCaller({} as never)).toEqual({});
   });
 });
+import { toWellFormedUnicode, truncateWellFormed } from "../internal-utils.js";
+describe("well-formed truncation", () => { it("normalizes lone surrogate to U+FFFD", () => { expect(toWellFormedUnicode("a\uD800b")).toBe("a\uFFFDb"); }); it("does not split surrogate pair at truncation boundary", () => { expect(truncateWellFormed("x".repeat(199)+"🦊"+"y".repeat(10),200)).toBe("x".repeat(199)); expect(truncateWellFormed("x".repeat(198)+"🦊",200)).toBe("x".repeat(198)+"🦊"); }); });
