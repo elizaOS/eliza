@@ -12,6 +12,20 @@
 import os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { AppControlCoordinator } from "../app-control/coordinator.js";
+import {
+  guardedPhysicalPointer,
+  RegisteredVisualGrounder,
+  WindowRegionCapture,
+} from "../app-control/defaults.js";
+import { MacosAxAdapter } from "../app-control/macos-ax-adapter.js";
+import type {
+  AppActionOutcome,
+  AppActionRequest,
+  AppControlPermissionState,
+  AppDescriptor,
+  AppState,
+} from "../app-control/types.js";
 import {
   ComputerUseApprovalManager,
   isApprovalMode,
@@ -236,6 +250,19 @@ const HOST_SESSION_COMMANDS = new Set([
   "maximize_window",
   "restore_window",
   "close_window",
+  "app_list_apps",
+  "app_get_state",
+  "list_apps",
+  "get_app_state",
+  "app_click",
+  "app_key",
+  "app_type",
+  "app_paste",
+  "app_scroll",
+  "app_set_value",
+  "app_select_text",
+  "app_secondary_action",
+  "app_hover_target",
   ...BROWSER_SESSION_COMMANDS,
 ]);
 
@@ -331,9 +358,16 @@ export class ComputerUseService extends Service {
     ComputerUseSessionFrameProvider
   >();
   private readonly sessionManager = new ComputerUseSessionManager({
-    executor: (target, action) =>
-      this.executeSessionTargetAction(target, action),
-    frameProvider: (target) => this.captureSessionTargetFrame(target),
+    executor: (target, action, signal) =>
+      this.executeSessionTargetAction(target, action, signal),
+    frameProvider: (target, signal) =>
+      this.captureSessionTargetFrame(target, signal),
+  });
+  private readonly appControl = new AppControlCoordinator({
+    adapter: new MacosAxAdapter(),
+    capture: new WindowRegionCapture(),
+    grounder: new RegisteredVisualGrounder(),
+    pointer: guardedPhysicalPointer,
   });
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
@@ -425,6 +459,30 @@ export class ComputerUseService extends Service {
     parameters: Record<string, unknown> = {},
   ): Promise<ComputerUseResult> {
     switch (command) {
+      case "app_list_apps":
+      case "list_apps":
+        return {
+          success: true,
+          data: { apps: await this.listApps() },
+        } as ComputerActionResult;
+      case "app_get_state":
+      case "get_app_state": {
+        const app = this.requireStringParameter(parameters, "app");
+        const state = await this.getAppState(app, {
+          disableDiff: parameters.disableDiff === true,
+        });
+        return { success: true, data: { state } } as ComputerActionResult;
+      }
+      case "app_click":
+      case "app_key":
+      case "app_type":
+      case "app_paste":
+      case "app_scroll":
+      case "app_set_value":
+      case "app_select_text":
+      case "app_secondary_action":
+      case "app_hover_target":
+        return this.executeAppAction(command, parameters);
       case "screenshot":
       case "click":
       case "click_with_modifiers":
@@ -528,6 +586,180 @@ export class ComputerUseService extends Service {
     }
   }
 
+  listApps(signal?: AbortSignal): Promise<AppDescriptor[]> {
+    return this.appControl.listApps(signal);
+  }
+
+  getAppState(
+    app: string,
+    options: { disableDiff?: boolean; signal?: AbortSignal } = {},
+  ): Promise<AppState> {
+    return this.appControl.getAppState(app, options);
+  }
+
+  getAppControlReadiness(): {
+    available: boolean;
+    adapter: string;
+    permission: AppControlPermissionState | "unknown";
+  } {
+    return this.appControl.readiness();
+  }
+
+  private async executeAppAction(
+    command: string,
+    parameters: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<ComputerActionResult> {
+    const request: AppActionRequest = {
+      app: this.requireStringParameter(parameters, "app"),
+      stateId: this.requireStringParameter(parameters, "stateId"),
+      kind: this.appActionKind(command),
+      ...(typeof parameters.element_index === "number"
+        ? { element_index: parameters.element_index }
+        : {}),
+      ...(typeof parameters.text === "string" ? { text: parameters.text } : {}),
+      ...(typeof parameters.key === "string" ? { key: parameters.key } : {}),
+      ...(Array.isArray(parameters.modifiers)
+        ? {
+            modifiers: parameters.modifiers.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          }
+        : {}),
+      ...(parameters.direction === "up" ||
+      parameters.direction === "down" ||
+      parameters.direction === "left" ||
+      parameters.direction === "right"
+        ? { direction: parameters.direction }
+        : {}),
+      ...(typeof parameters.amount === "number"
+        ? { amount: parameters.amount }
+        : {}),
+      ...(parameters.format === "text" ||
+      parameters.format === "markdown" ||
+      parameters.format === "html"
+        ? { format: parameters.format }
+        : {}),
+      ...(typeof parameters.secondaryAction === "string"
+        ? { secondaryAction: parameters.secondaryAction }
+        : {}),
+      ...(parameters.allowPhysicalFallback === true
+        ? { allowPhysicalFallback: true }
+        : {}),
+    };
+    try {
+      this.validateAppActionRequest(request);
+    } catch (error) {
+      // error-policy:J1 reject malformed app actions before approval.
+      return { success: false, error: errorMessage(error) };
+    }
+    const approvalError = await this.awaitApproval(
+      command,
+      this.appApprovalParameters(parameters),
+    );
+    if (approvalError) return { success: false, error: approvalError };
+    try {
+      const outcome: AppActionOutcome = await this.appControl.act(
+        request,
+        signal,
+      );
+      return outcome.success
+        ? { success: true, data: outcome }
+        : { success: false, error: outcome.error };
+    } catch (error) {
+      // error-policy:J1 action boundary translates the app-control failure.
+      return { success: false, error: errorMessage(error) };
+    }
+  }
+
+  private validateAppActionRequest(request: AppActionRequest): void {
+    const elementRequired = new Set<AppActionRequest["kind"]>([
+      "click",
+      "scroll",
+      "set_value",
+      "select_text",
+      "secondary_action",
+      "hover_target",
+    ]);
+    if (
+      elementRequired.has(request.kind) &&
+      (!Number.isSafeInteger(request.element_index) ||
+        (request.element_index ?? 0) < 1)
+    ) {
+      throw new Error(
+        `element_index from the latest app state is required for ${request.kind}`,
+      );
+    }
+    if (
+      (request.kind === "type_text" ||
+        request.kind === "paste" ||
+        request.kind === "set_value" ||
+        request.kind === "select_text") &&
+      request.text === undefined
+    ) {
+      throw new Error(`text is required for ${request.kind}`);
+    }
+    if (request.kind === "press_key" && !request.key) {
+      throw new Error("key is required for press_key");
+    }
+    if (request.kind === "secondary_action" && !request.secondaryAction) {
+      throw new Error("secondaryAction is required for secondary_action");
+    }
+    if (
+      request.amount !== undefined &&
+      (!Number.isFinite(request.amount) || request.amount <= 0)
+    ) {
+      throw new Error("amount must be a positive finite number");
+    }
+  }
+
+  private appApprovalParameters(
+    parameters: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return {
+      ...parameters,
+      ...(typeof parameters.text === "string"
+        ? { text: "[redacted app input]" }
+        : {}),
+    };
+  }
+
+  private appActionKind(command: string): AppActionRequest["kind"] {
+    switch (command) {
+      case "app_click":
+        return "click";
+      case "app_key":
+        return "press_key";
+      case "app_type":
+        return "type_text";
+      case "app_paste":
+        return "paste";
+      case "app_scroll":
+        return "scroll";
+      case "app_set_value":
+        return "set_value";
+      case "app_select_text":
+        return "select_text";
+      case "app_secondary_action":
+        return "secondary_action";
+      case "app_hover_target":
+        return "hover_target";
+      default:
+        throw new Error(`Unknown app-control command: ${command}`);
+    }
+  }
+
+  private requireStringParameter(
+    parameters: Record<string, unknown>,
+    key: string,
+  ): string {
+    const value = parameters[key];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`${key} is required`);
+    }
+    return value;
+  }
+
   createSession(
     input: CreateComputerUseSessionInput,
   ): ComputerUseSessionSnapshot {
@@ -617,6 +849,7 @@ export class ComputerUseService extends Service {
   private async executeSessionTargetAction(
     target: ComputerUseSessionTarget,
     action: ComputerUseSessionAction,
+    signal?: AbortSignal,
   ): Promise<ComputerUseSessionActionResult> {
     if (target.kind === "host") {
       if (!HOST_SESSION_COMMANDS.has(action.command)) {
@@ -624,6 +857,40 @@ export class ComputerUseService extends Service {
           success: false,
           error: `Command is not allowed in a host computer-use session: ${action.command}`,
         };
+      }
+      if (
+        action.command === "app_list_apps" ||
+        action.command === "list_apps"
+      ) {
+        return {
+          success: true,
+          data: { apps: await this.listApps(signal) },
+        };
+      }
+      if (
+        action.command === "app_get_state" ||
+        action.command === "get_app_state"
+      ) {
+        const parameters = action.parameters ?? {};
+        return {
+          success: true,
+          data: {
+            state: await this.getAppState(
+              this.requireStringParameter(parameters, "app"),
+              {
+                disableDiff: parameters.disableDiff === true,
+                signal,
+              },
+            ),
+          },
+        };
+      }
+      if (action.command.startsWith("app_")) {
+        return this.executeAppAction(
+          action.command,
+          action.parameters ?? {},
+          signal,
+        );
       }
       return this.executeCommand(action.command, action.parameters ?? {});
     }
@@ -635,7 +902,7 @@ export class ComputerUseService extends Service {
     const registered = this.sessionTargetExecutors.get(
       `${target.kind}:${targetId}`,
     );
-    if (registered) return registered(target, action);
+    if (registered) return registered(target, action, signal);
 
     if (target.kind === "browser" && targetId === "default") {
       if (!BROWSER_SESSION_COMMANDS.has(action.command)) {
@@ -655,6 +922,7 @@ export class ComputerUseService extends Service {
 
   private async captureSessionTargetFrame(
     target: ComputerUseSessionTarget,
+    signal?: AbortSignal,
   ): Promise<Omit<ComputerUseSessionFrame, "capturedAt" | "provenance">> {
     if (target.kind === "host") {
       const result = await this.executeDesktopAction({ action: "screenshot" });
@@ -668,7 +936,7 @@ export class ComputerUseService extends Service {
     const registered = this.sessionTargetFrameProviders.get(
       `${target.kind}:${targetId}`,
     );
-    if (registered) return registered(target);
+    if (registered) return registered(target, signal);
     if (target.kind === "browser" && targetId === "default") {
       const result = await this.executeBrowserAction({ action: "screenshot" });
       if (!result.success || !result.screenshot) {

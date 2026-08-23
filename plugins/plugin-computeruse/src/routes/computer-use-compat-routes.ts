@@ -10,6 +10,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { ModelType, resolveAliasedEnvValue } from "@elizaos/core";
+import type { AppDescriptor, AppState } from "../app-control/types.js";
 import { ComputerUseSessionError } from "../sessions/session-manager.js";
 import type {
   ComputerUseSessionAction,
@@ -212,6 +213,16 @@ type ComputerUseServiceLike = {
 };
 
 type ComputerUseSessionServiceLike = {
+  listApps?(signal?: AbortSignal): Promise<AppDescriptor[]>;
+  getAppState?(
+    app: string,
+    options?: { disableDiff?: boolean; signal?: AbortSignal },
+  ): Promise<AppState>;
+  getAppControlReadiness?(): {
+    available: boolean;
+    adapter: string;
+    permission: string;
+  };
   createSession(
     input: CreateComputerUseSessionInput,
   ): ComputerUseSessionSnapshot;
@@ -320,6 +331,11 @@ function computerUseReadiness(
     capture: capabilities.screenshot,
     input: capabilities.computerUse,
     browser: capabilities.browser,
+    accessibility: service.getAppControlReadiness?.() ?? {
+      available: false,
+      adapter: "unavailable",
+      permission: "helper_unavailable",
+    },
     vision: {
       available: Boolean(
         state.current?.getModel?.(ModelType.IMAGE_DESCRIPTION),
@@ -408,6 +424,57 @@ export async function handleComputerUseCompatRoutes(
 
   if (!url.pathname.startsWith("/api/computer-use/")) {
     return false;
+  }
+
+  if (method === "GET" && url.pathname === "/api/computer-use/apps") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    const service = getComputerUseSessionService(state);
+    if (!service || typeof service.listApps !== "function") {
+      sendJsonErrorResponse(res, 404, "Computer use app service not available");
+      return true;
+    }
+    try {
+      res.setHeader("cache-control", "no-store");
+      sendJsonResponse(res, 200, { apps: await service.listApps() });
+    } catch (error) {
+      // error-policy:J1 read-only app enumeration boundary.
+      sendJsonErrorResponse(
+        res,
+        422,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    return true;
+  }
+
+  if (method === "GET" && url.pathname === "/api/computer-use/apps/state") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    const service = getComputerUseSessionService(state);
+    if (!service || typeof service.getAppState !== "function") {
+      sendJsonErrorResponse(res, 404, "Computer use app service not available");
+      return true;
+    }
+    const app = url.searchParams.get("app")?.trim();
+    if (!app) {
+      sendJsonErrorResponse(res, 400, "app query parameter is required");
+      return true;
+    }
+    try {
+      res.setHeader("cache-control", "no-store");
+      sendJsonResponse(res, 200, {
+        state: await service.getAppState(app, {
+          disableDiff: url.searchParams.get("disableDiff") === "true",
+        }),
+      });
+    } catch (error) {
+      // error-policy:J1 read-only app-state boundary.
+      sendJsonErrorResponse(
+        res,
+        422,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    return true;
   }
 
   if (
