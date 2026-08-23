@@ -1,67 +1,64 @@
 # Account deletion lifecycle status
 
-Updated: 2026-08-22 (America/Los_Angeles)
+Updated: 2026-08-23 (America/Los_Angeles)
 
 ## Done
 
-- Isolated worktree: \`/Users/nubs/.codex/worktrees/bc7e/eliza\`; branch: \`codex/account-deletion-lifecycle-23098\`.
-- Exact starting base: \`origin/develop@d54d91ea36d217ad8d1bf2c1d47b7dcd91183111\`. Preserved detached snapshot \`e58da6bfe0495709dc4844c30e39b32d706e8590\`; no reset, clean, push, deploy, or other-worktree mutation.
-- Audited repository instructions, issue #23098, merged fail-closed PR #22854 / \`c276ccf007dd8f1e6102b8d5799b5ec6109394ef\`, and UI-only draft PRs #24253/#24256.
-- Claimed the Cloud/Security implementation lane on issue #23098: https://github.com/elizaOS/eliza/issues/23098#issuecomment-5378961151.
-- Classified all 215 direct user/organization foreign-key edges with a fail-closed digest-pinned policy: 69 external reconciliation, 10 shared transfer, remaining cascade/anonymize; unknown restrictive edges fail tests.
-- Published four separate typed operations: agent stop/wake, subscription cancellation, shared-member exit/ownership transfer, and personal account deletion.
-- Reconciled the append-only migrations after upstream `0304_personal_shared_group_delivery_lease`: `0305_account_deletion_lifecycle_authority`, `0306_account_deletion_phase_receipts`, and `0307_account_deletion_exports`; journal idx 288-290. Historical `0276_account_deletion_requests` remains intact.
-- Implemented primary-writer organization/user/request locking; one durable request receipt; lifecycle revision; immediate fences for sessions, API keys, auto-top-up, paid work, and account authority; generation-fenced saga phase receipts; separate opaque status and recovery capabilities.
-- Implemented exact-confirmation, recent direct Steward auth, origin checks, fail-closed rate limiting, authenticated and public request paths, post-session status, recovery-window undo, and Steward deactivation/reactivation reconciliation.
-- Shared personal deletion fails with actionable \`TRANSFER_REQUIRED\` and does not mutate shared tenant authority.
-- Added final-boundary auto-top-up lifecycle/revision checks before authorization and immediately before Stripe.
-- Preserved the legacy due-worker \`LIFECYCLE_RESERVATION_REQUIRED\` fence; irreversible purge is not enabled prematurely.
+- Preserved sealed candidate `d6131f9c36d3d0528118132caa822211014663dd` and tag `account-deletion-authoritative-backup-fence-20260822` untouched in `/Users/nubs/.codex/worktrees/account-deletion-current-tip-20260822/eliza`.
+- Created isolated current-base worktree `/Users/nubs/.codex/worktrees/account-deletion-current-base-20260823/eliza` on branch `codex/account-deletion-current-base-20260823`.
+- Rebased the smallest code series onto `origin/develop@f43ecfe0679038579f291e003ef2820678970e06`; code head before this ledger commit is `b243045d62bd5dea37189b737dffce195d47e255`.
+- Preserved merged #24256 (`a224539647c1f61663a928fc249ea6450625095c`) tenant-scoped fail-closed behavior and merged #24803 (`e9e441d307e8890478a92b3cc19e4e1cb989943d`) runtime receipt validation, while superseding their unavailable-only state with the authoritative lifecycle.
+- Replayed 17 code commits from the sealed candidate and intentionally omitted its 14 historical `STATUS.md`-only commits. Added two current-base compatibility commits: tenant-scoped primary receipt reads plus strict DTO/state validation, and the 219-edge schema ratchet.
+- Renumbered the deletion migration tail append-only after upstream `0305`-`0309`: `0310_account_deletion_lifecycle_authority` (journal idx 293), `0311_account_deletion_phase_receipts` (294), `0312_account_deletion_exports` (295), and `0313_account_deletion_canceling_state` (296). Historical `0276_account_deletion_requests` remains intact.
+- Reconciled the only final-base conflict in `auto-top-up.ts`: retained upstream Unicode-safe error handling and the deletion lifecycle/revision checks before Stripe.
+- Classified all 219 direct user/organization foreign keys with a fail-closed digest (`8a6994f84435d169a0efd2c105b18782e9b3b3dae3fb02e7f63b30addbfb183b`): 69 external reconciliation, 10 shared transfer, 50 retained/anonymized, and 90 private cascade edges. The four current-base additions are `remote_hosts` and `remote_command_envelopes` user/org cascade edges.
+- Regenerated the API router at 702 routes / 127 shards / 0 unconverted; regeneration is clean.
+- No push, deployment, hosted mutation, production migration, provider call, real deletion, or GitHub mutation was performed.
 
-## Doing
+## Recomposition identity
 
-- Build a verifiable export receipt and encrypted disposable export artifact, then transition reserved requests into the disclosed recovery state.
-- Replace the parked legacy worker with a phase-ordered, leased, reconciliation-first external saga.
-- Define provider adapters and discovery receipts for Stripe/subscriptions, Steward, compute/containers, GitHub/repos, connectors/OAuth, voice, domains, primary objects, secondary backups, spools, Vault/key bindings, and other grants.
+- `git range-diff c6a8c6a54f..d6131f9c36 origin/develop..b243045d62` maps all 17 code commits: 9 patch-identical and 8 current-base adaptations. The omitted entries are historical ledger-only commits; the two new entries are the explicit #24256/#24803 compatibility and schema-ratchet commits.
+- The authoritative spool and backup adapter implementation plus lost-response tests are byte-for-byte identical to `d6131f9c36`:
+  - `packages/cloud/shared/src/lib/services/account-deletion-provider-adapters.ts`
+  - `packages/cloud/shared/src/lib/services/account-deletion-provider-adapters.test.ts`
+- `packages/cloud/api/cron/process-account-deletions/route.ts` is also byte-for-byte identical. Expected deltas in authenticated route/service files are limited to organization-scoped primary receipt lookup and current runtime DTO validation.
+- Added-line secret-pattern scan found no private-key, live-token, AWS-key, or password-assignment candidates.
 
-## Next
+## Shared ownership audit
 
-1. Add export generation/download capability and recovery-state transition tests.
-2. Add shared-member transfer/exit and explicit subscription-cancellation authorities under locks.
-3. Implement provider phase reconciliation with crash-before/call/commit and stale-lease tests.
-4. Wire lifecycle checks into provisioning, renewal, backup/restore, connectors, voice, domains, and webhook reactivation boundaries.
-5. Implement final schema anonymization/erasure and bounded non-identifying completion receipt.
-6. Add the generic external deletion page and legal/retention copy using the shared server-authoritative contract.
-7. Exercise disposable staging only after exact-source serialization; capture redacted provider/database receipts and verified absence.
-8. Produce rollout/rollback/runbook, focused draft PR metadata, and reviewer matrix.
-
-## Reused prior work
-
-- Reused content from #22854: base request receipt, resource-purge helpers, primary-writer erasure foundation, Steward helpers, app/sandbox/voice cleanup hooks, cron entry, and local E2E harness.
-- The guard was not reverted. Provider cleanup and database erasure remain fenced until all durable authority and reconciliation phases are present.
-- #24253/#24256 remain truthful unavailable-state UI drafts only; this lane supplies the backend/shared/public contract without mutating those branches.
+- Shared staging owner remains separate at `/Users/nubs/Documents/ChatGPT/eliza/work/eliza-shared-agent-staging-owner-current-20260822` (`5be2d8df...` at audit); it owns staging serialization and was not modified.
+- Current Shared grounding worktree `/Users/nubs/Documents/ChatGPT/eliza/work/eliza-shared-agent-grounding-current-20260823` (`02eef891...` at audit) and open PR #24779 did not touch account-deletion paths.
+- PR #25306, which overlapped `migrate-with-diagnostics.ts` and its release-barrier test, is now closed unmerged. This candidate preserves its own deletion migration-barrier logic; landing review must still compare any successor before composition.
+- Security issue #23098 remains open and unassigned. No duplicate PR was opened and no other branch was mutated.
 
 ## Tests and evidence
 
-- Shared typecheck: pass.
-- Focused auto-top-up state machine: 72/72 pass, including deletion fence and lifecycle-revision race with zero Stripe calls.
-- Account deletion service: 10/10 pass.
-- Public API route: 6/6 pass.
-- Authenticated API route: 3/3 pass.
-- Recent-auth policy: 3/3 pass.
-- Lifecycle authority: 2/2 pass.
-- Four-operation contract: pass.
-- Full-schema FK policy: 3/3 pass; pinned digest \`15534d...\` across 215 direct edges.
-- Migration authority test: 3/3 pass.
-- Real PGlite reservation/undo: 4/4 pass; locked fencing, concurrent receipt reuse, safe undo, and expired-window denial.
-- Real PGlite lifecycle integration: 2/2 pass; personal reservation/status and shared transfer-required state.
-- API-wide typecheck currently has one unchanged baseline failure at \`packages/cloud/api/v1/voice/session/__tests__/ws-lifecycle.test.ts:1089\` (optional trace ID used where required); account-deletion diagnostics are clean.
-- Drizzle generation command is blocked before generation by existing package export failure: \`ERR_PACKAGE_PATH_NOT_EXPORTED: No "exports" main defined in packages/core/node_modules/@elizaos/prompts/package.json\`. Migrations were reviewed, append-only, and independently applied in isolated PGlite.
-- Staging mutations/provider calls/production mutations: none.
+- Pinned install: pass (`bun install --frozen-lockfile`, 6,893 packages).
+- Current-base core build: 60/60 tasks pass.
+- Current-base typechecks: Cloud shared, Cloud API (including Worker dry-run), Cloud e2e, Cloud test-mocks, and UI pass.
+- Current-base post-conflict rerun: 122/122 pass across auto-top-up (72), full-schema FK policy (3), lifecycle service (13), backup/spool provider authority (9), PGlite reservation/undo/atomic erasure (11), and migration release barrier (14).
+- Focused lifecycle matrix on the same recomposed series before the final non-deletion upstream rebase: saga 3/3, encrypted export 7/7, resource purge 5/5, lifecycle authority 2/2, domain renewal 1/1, provisioning fence 3/3, migration authority 4/4, authenticated API 5/5, public request API 6/6, public export API 3/3, UI DTO parser 8/8, cancellation dialog 1/1, public deletion page 2/2, and Android policy contract 3/3 (59 assertions).
+- Full app visual audit: 223/227 captures pass. Four unrelated baseline failures remain: `plugin-cloud-gui` never mounts an active lifecycle slot in four viewports; the audit also reports the unchanged settings index missing its declared `Settings` semantic header. No deletion-owned file controls either failure.
+- Dedicated Cloud visual audit: account-deletion desktop and mobile both pass; 96/101 overall pass with one skipped. Unrelated baseline failures are `cloud-agents` desktop/mobile missing fixture `Smoke Agent`, and `auth-bridge` desktop/mobile redirecting to `/chat` instead of `/`.
+- App-core aggregate typecheck remains blocked by unrelated current-base failures: agent recent-conversation optional timestamps, stale server-security test arities, and missing native Capacitor package declarations/unknown bridge responses. The deletion policy contract itself passes 3/3.
+- `git diff --check` and targeted Biome checks pass.
 
-## Remaining gates
+## Doing
 
-- Export artifact proof, complete provider adapters, final anonymization/erasure, and comprehensive failure/concurrency/security tests.
-- Disposable staging source/deploy serialization with the shared staging owner.
-- Canonical staging provider credentials and fixtures for actual absence proof.
-- Independent Cloud, Security, SRE, Steward, billing, and provider-owner review.
-- No production deployment, migration, push, merge, or real-user deletion is authorized.
+- Local current-base recomposition is complete. Keep the worktree clean and parked at the local authority-fence tag; do not expand architecture or mutate hosted state.
+
+## Next / external gates
+
+1. Shared staging owner must select the exact local tag and serialize an isolated non-production deployment; this lane must not dispatch a competing Cloud release.
+2. SRE/Cloud must provide disposable database and object-store fixtures plus canonical injected backup/spool authorities. Absence must be proved from both stores and every provider boundary; missing authority remains `BACKUP_SPOOL_AUTHORITY_UNAVAILABLE`.
+3. Run the disposable hosted acceptance matrix: authenticated and public request, export/download, cancel/reactivation, shared-owner transfer/exit, provider failure/lost-response reconciliation, recovery expiry, final database erasure, post-session status, and verified absence. Never repeat an uncertain destructive provider call; reconcile by inspection.
+4. Resolve or baseline the unrelated app/cloud audit failures before repository-wide visual closure.
+5. Obtain Cloud, Security, SRE, Steward, billing, compute, storage/backup, connector, voice, domain, Vault/key, and GitHub/repository owner review.
+6. Only after hosted receipts and review: prepare publication/rollback metadata and Android contract handoff. No production deploy, migration, push, merge, real-user deletion, or Google Play acceptance claim is authorized here.
+
+## Stable server contract
+
+- Authenticated request/status: `GET|POST /api/v1/me/account-deletion` with recent-auth, exact `DELETE` confirmation, origin protection, tenant-scoped primary receipt lookup, and 202 acceptance only after atomic reservation.
+- Public request/status/cancel: `POST /api/public/account-deletion`, `/status`, and `/cancel`, using distinct opaque status/recovery capabilities; credentials are never query-parameter proof.
+- Export: `/api/public/account-deletion/export` uses the status capability and generation-fenced encrypted receipt/download contract.
+- Cancellation is nonterminal `canceling` while provider reactivation reconciles: `accessState=fenced`, `canCancel=false`, `nextAction=wait_for_reconciliation`. Only terminal `canceled` restores `accessState=active`, `canCancel=false`, `nextAction=none`; sessions and API keys remain revoked and require fresh authentication.
