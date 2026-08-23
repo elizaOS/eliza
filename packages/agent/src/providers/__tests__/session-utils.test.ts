@@ -13,7 +13,7 @@ vi.mock("@elizaos/core", () => ({
 import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
-} from "./session-utils.ts";
+} from "../session-utils.ts";
 
 describe("resolveDefaultSessionStorePath", () => {
   it("resolves the sessions.json path under the state dir", () => {
