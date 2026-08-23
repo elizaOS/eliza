@@ -14,6 +14,7 @@
  */
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { logger } from "@/lib/utils/logger";
 
 let activeTarget: {
@@ -361,6 +362,7 @@ describe("blooio inbound media enrichment at the messaging route", () => {
     const denials: LedgerAdmission[] = [
       { kind: "in_flight" },
       { kind: "previously_failed", reason: "media_fetch_failed" },
+      { kind: "identity_mismatch" },
       { kind: "media_mismatch" },
       { kind: "exhausted", scope: "sender", limit: 20, used: 20, requested: 1 },
       {
@@ -383,9 +385,25 @@ describe("blooio inbound media enrichment at the messaging route", () => {
     expect(ledgerFail).not.toHaveBeenCalled();
   });
 
+  test("a lost settlement keeps the raw turn instead of using uncommitted OCR text", async () => {
+    describeInboundImageMedia.mockResolvedValue("must not enter the turn");
+    ledgerComplete.mockResolvedValue(false);
+    const response = await request(blooioDelivery());
+    expect(response.status).toBe(200);
+    expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    expect(ledgerComplete).toHaveBeenCalledWith(
+      LEDGER_CLAIM,
+      "must not enter the turn",
+    );
+  });
+
   test("a missing admission decision fails closed: raw turn, no spend, no 500", async () => {
     describeInboundImageMedia.mockResolvedValue("must not be used");
-    ledgerAdmit.mockRejectedValue(new Error("primary database unreachable"));
+    ledgerAdmit.mockRejectedValue(
+      new ElizaError("primary database unreachable", {
+        code: "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE",
+      }),
+    );
     const response = await request(blooioDelivery());
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Eliza-Failure-Stage")).toBeNull();

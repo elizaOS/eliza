@@ -62,6 +62,7 @@ export type InboundMediaDescriptionAdmission =
   | { kind: "reused"; description: string }
   | { kind: "in_flight" }
   | { kind: "previously_failed"; reason: string }
+  | { kind: "identity_mismatch" }
   | { kind: "media_mismatch" }
   | {
       kind: "exhausted";
@@ -78,11 +79,16 @@ class QuotaExhaustedSignal extends Error {
   }
 }
 
-function storageFailure(message: string, context: Record<string, unknown>): ElizaError {
+function storageFailure(
+  message: string,
+  context: Record<string, unknown>,
+  cause?: unknown,
+): ElizaError {
   return new ElizaError(message, {
     code: "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE",
     severity: "fatal",
     context,
+    cause,
   });
 }
 
@@ -180,10 +186,23 @@ export class PersonalSharedInboundMediaRepository {
               sourceMessageId: input.sourceMessageId,
             });
           }
+          // The connector message key identifies one immutable tenant, user,
+          // and media payload. A later resolver result or replay must never
+          // inherit stored OCR text or rewrite a claim that belongs to a
+          // different account/payload.
+          if (
+            existing.organization_id !== input.organizationId ||
+            existing.user_id !== input.userId
+          ) {
+            return { kind: "identity_mismatch" };
+          }
+          if (
+            existing.media_digest !== input.mediaDigest ||
+            existing.image_count !== input.imageCount
+          ) {
+            return { kind: "media_mismatch" };
+          }
           if (existing.state === "described") {
-            if (existing.media_digest !== input.mediaDigest) {
-              return { kind: "media_mismatch" };
-            }
             if (existing.description === null) {
               throw storageFailure("Described inbound media row carries no description", {
                 id: existing.id,
@@ -202,10 +221,6 @@ export class PersonalSharedInboundMediaRepository {
           const [reclaimed] = await tx
             .update(personalSharedInboundMediaDescriptions)
             .set({
-              organization_id: input.organizationId,
-              user_id: input.userId,
-              media_digest: input.mediaDigest,
-              image_count: input.imageCount,
               claim_token: claimToken,
               lease_expires_at: leaseExpiresAt,
               attempt_count: sql`${personalSharedInboundMediaDescriptions.attempt_count} + 1`,
@@ -215,6 +230,7 @@ export class PersonalSharedInboundMediaRepository {
               and(
                 eq(personalSharedInboundMediaDescriptions.id, existing.id),
                 eq(personalSharedInboundMediaDescriptions.state, "pending"),
+                eq(personalSharedInboundMediaDescriptions.claim_token, existing.claim_token),
               ),
             )
             .returning({ attempt_count: personalSharedInboundMediaDescriptions.attempt_count });
@@ -250,7 +266,16 @@ export class PersonalSharedInboundMediaRepository {
         // any sender increment never became visible.
         return error.denial;
       }
-      throw error;
+      if (error instanceof ElizaError && error.code === "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE") {
+        throw error;
+      }
+      // error-policy:J2 repository failures become the typed storage boundary
+      // consumed by the fail-closed enrichment orchestrator.
+      throw storageFailure(
+        "Inbound media admission transaction failed",
+        { sourceMessageId: input.sourceMessageId },
+        error,
+      );
     }
   }
 
@@ -276,19 +301,25 @@ export class PersonalSharedInboundMediaRepository {
       | { state: "described"; description: string; failure_reason: null }
       | { state: "failed"; description: null; failure_reason: string },
   ): Promise<boolean> {
-    const now = new Date();
-    const [settled] = await this.database
-      .update(personalSharedInboundMediaDescriptions)
-      .set({ ...outcome, completed_at: now, updated_at: now })
-      .where(
-        and(
-          eq(personalSharedInboundMediaDescriptions.id, claim.id),
-          eq(personalSharedInboundMediaDescriptions.claim_token, claim.claimToken),
-          eq(personalSharedInboundMediaDescriptions.state, "pending"),
-        ),
-      )
-      .returning({ id: personalSharedInboundMediaDescriptions.id });
-    return settled !== undefined;
+    try {
+      const now = new Date();
+      const [settled] = await this.database
+        .update(personalSharedInboundMediaDescriptions)
+        .set({ ...outcome, completed_at: now, updated_at: now })
+        .where(
+          and(
+            eq(personalSharedInboundMediaDescriptions.id, claim.id),
+            eq(personalSharedInboundMediaDescriptions.claim_token, claim.claimToken),
+            eq(personalSharedInboundMediaDescriptions.state, "pending"),
+          ),
+        )
+        .returning({ id: personalSharedInboundMediaDescriptions.id });
+      return settled !== undefined;
+    } catch (error) {
+      // error-policy:J2 callers distinguish an unavailable settlement store
+      // from an unowned claim token and fail closed on either result.
+      throw storageFailure("Inbound media claim settlement failed", { claimId: claim.id }, error);
+    }
   }
 }
 

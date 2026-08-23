@@ -7,6 +7,7 @@
  * fakes; the helper's real typed errors drive the settlement branches.
  */
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import type {
   AdmitInboundMediaDescriptionInput,
   InboundMediaDescriptionAdmission,
@@ -77,7 +78,7 @@ beforeEach(() => {
 });
 
 describe("resolveInboundMediaVisionCeilings", () => {
-  test("unset or blank bindings keep the defaults", () => {
+  test("unset bindings keep the defaults, while explicit blank bindings fail closed", () => {
     expect(resolveInboundMediaVisionCeilings({})).toEqual({
       senderDailyImages: DEFAULT_INBOUND_MEDIA_SENDER_DAILY_IMAGES,
       connectorDailyImages: DEFAULT_INBOUND_MEDIA_CONNECTOR_DAILY_IMAGES,
@@ -85,12 +86,13 @@ describe("resolveInboundMediaVisionCeilings", () => {
     expect(
       resolveInboundMediaVisionCeilings({
         ELIZA_APP_INBOUND_MEDIA_VISION_SENDER_DAILY_IMAGES: "  ",
+      }),
+    ).toBeNull();
+    expect(
+      resolveInboundMediaVisionCeilings({
         ELIZA_APP_INBOUND_MEDIA_VISION_CONNECTOR_DAILY_IMAGES: "",
       }),
-    ).toEqual({
-      senderDailyImages: DEFAULT_INBOUND_MEDIA_SENDER_DAILY_IMAGES,
-      connectorDailyImages: DEFAULT_INBOUND_MEDIA_CONNECTOR_DAILY_IMAGES,
-    });
+    ).toBeNull();
   });
 
   test("non-negative integer bindings tune each ceiling, zero included", () => {
@@ -169,7 +171,11 @@ describe("enrichInboundImageMedia — gates before the ledger", () => {
 
   test("an unavailable ledger skips without spending and reports the fault", async () => {
     const errorSpy = spyOn(logger, "error");
-    admit.mockRejectedValue(new Error("connection refused"));
+    admit.mockRejectedValue(
+      new ElizaError("connection refused", {
+        code: "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE",
+      }),
+    );
     expect(await enrich()).toEqual({ kind: "skipped", reason: "admission_unavailable" });
     expect(describeMedia).not.toHaveBeenCalled();
     expect(complete).not.toHaveBeenCalled();
@@ -198,6 +204,7 @@ describe("enrichInboundImageMedia — ledger decisions", () => {
     const cases: Array<[InboundMediaDescriptionAdmission, string]> = [
       [{ kind: "in_flight" }, "in_flight"],
       [{ kind: "previously_failed", reason: "media_fetch_failed" }, "previously_failed"],
+      [{ kind: "identity_mismatch" }, "identity_mismatch"],
       [{ kind: "media_mismatch" }, "media_mismatch"],
       [{ kind: "exhausted", scope: "sender", limit: 20, used: 20, requested: 2 }, "exhausted"],
       [
@@ -266,25 +273,21 @@ describe("enrichInboundImageMedia — behind a claim", () => {
     expect(fail).not.toHaveBeenCalled();
   });
 
-  test("a lost or unwritable settlement never discards a paid-for description", async () => {
+  test("a lost or unwritable settlement cannot inject an uncommitted description", async () => {
     const errorSpy = spyOn(logger, "error");
     const warnSpy = spyOn(logger, "warn");
     complete.mockResolvedValue(false);
-    expect(await enrich()).toEqual({
-      kind: "described",
-      description: "a cat on a keyboard",
-      reused: false,
-    });
+    expect(await enrich()).toEqual({ kind: "skipped", reason: "settlement_failed" });
     expect(
       warnSpy.mock.calls.some(([message]) => String(message).includes("reclaimed before")),
     ).toBe(true);
 
-    complete.mockRejectedValue(new Error("ledger down"));
-    expect(await enrich()).toEqual({
-      kind: "described",
-      description: "a cat on a keyboard",
-      reused: false,
-    });
+    complete.mockRejectedValue(
+      new ElizaError("ledger down", {
+        code: "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE",
+      }),
+    );
+    expect(await enrich()).toEqual({ kind: "skipped", reason: "settlement_failed" });
     const settlementFault = errorSpy.mock.calls.find(([message]) =>
       String(message).includes("failed to settle"),
     );
