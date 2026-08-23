@@ -1924,6 +1924,7 @@ export class DocumentService extends Service {
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
 		const fragments: Memory[] = [];
+		const seenIds = new Set<UUID>();
 		let offset = 0;
 		let previousPage: readonly Memory[] = [];
 
@@ -1958,7 +1959,19 @@ export class DocumentService extends Service {
 				});
 			}
 
-			fragments.push(...page);
+			for (const fragment of page) {
+				if (fragment.id && seenIds.has(fragment.id)) {
+					throw new ElizaError(
+						"Document fragment traversal returned a duplicate id",
+						{
+							code: "DOCUMENT_SEARCH_PAGINATION_STALLED",
+							context: { offset, fragmentId: fragment.id },
+						},
+					);
+				}
+				if (fragment.id) seenIds.add(fragment.id);
+				fragments.push(fragment);
+			}
 			if (page.length < DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE) {
 				const continuation = await this.runtime.adapter.queryDocumentFragments({
 					...params,
@@ -2000,7 +2013,20 @@ export class DocumentService extends Service {
 	): Promise<Memory[]> {
 		const first = await this.scanDocumentFragments(params);
 		const verified = await this.scanDocumentFragments(params);
-		if (JSON.stringify(first) !== JSON.stringify(verified)) {
+		const verifiedById = new Map(
+			verified.map((fragment) => [fragment.id, JSON.stringify(fragment)]),
+		);
+		const verifiedWithoutIds = new Set(
+			verified
+				.filter((fragment) => !fragment.id)
+				.map((fragment) => JSON.stringify(fragment)),
+		);
+		const firstChanged = first.some((fragment) =>
+			fragment.id
+				? verifiedById.get(fragment.id) !== JSON.stringify(fragment)
+				: !verifiedWithoutIds.has(JSON.stringify(fragment)),
+		);
+		if (firstChanged) {
 			throw new ElizaError(
 				"Document fragment source changed during traversal",
 				{

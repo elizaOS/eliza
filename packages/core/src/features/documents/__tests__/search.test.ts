@@ -372,6 +372,23 @@ describe("DocumentService.searchDocuments", () => {
 			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_PAGINATION_STALLED" });
 		});
 
+		it("rejects overlapping non-identical fragment pages", async () => {
+			const fragments = Array.from({ length: 1_001 }, (_, index) =>
+				makeFragment(`frag-${index}`, `needle ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) =>
+				(params.offset ?? 0) === 0
+					? fragments.slice(0, 1_000)
+					: fragments.slice(999),
+			);
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
+			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_PAGINATION_STALLED" });
+		});
+
 		it("rejects a fragment source that changes between traversals", async () => {
 			const rt = buildRuntime({ hasEmbedding: false });
 			let read = 0;
@@ -385,6 +402,34 @@ describe("DocumentService.searchDocuments", () => {
 			await expect(
 				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
 			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_SOURCE_UNSTABLE" });
+		});
+
+		it("accepts a complete verified snapshot when a newer fragment is appended", async () => {
+			const oldFragment = makeFragment("frag-old", "needle old");
+			const newFragment = makeFragment("frag-new", "needle new");
+			const rt = buildRuntime({ hasEmbedding: false });
+			let completeReads = 0;
+			let corpus = [oldFragment];
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				const offset = params.offset ?? 0;
+				if (offset === 0) {
+					completeReads += 1;
+					corpus =
+						completeReads === 1 ? [oldFragment] : [newFragment, oldFragment];
+				}
+				return corpus.slice(offset, offset + params.limit);
+			});
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("needle"),
+				undefined,
+				"keyword",
+			);
+			expect(results.map((result) => result.id)).toEqual([
+				"frag-new",
+				"frag-old",
+			]);
 		});
 
 		it("filters user-private fragments to the scoped user", async () => {

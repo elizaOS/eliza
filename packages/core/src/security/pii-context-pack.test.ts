@@ -427,7 +427,10 @@ describe("sourcesFromRuntime", () => {
 			text: "John Smith",
 		});
 		expect(searchMemories).toHaveBeenCalledWith(
-			expect.objectContaining({ tableName: "messages", query: "John Smith" }),
+			expect.objectContaining({ tableName: "messages" }),
+		);
+		expect(searchMemories).not.toHaveBeenCalledWith(
+			expect.objectContaining({ query: expect.anything() }),
 		);
 		expect(fragments).toEqual([
 			{ text: "found memory", origin: "memory", ref: "mem1", score: 0.8 },
@@ -493,6 +496,38 @@ describe("sourcesFromRuntime", () => {
 		expect(searchMemories).toHaveBeenCalledWith(
 			expect.objectContaining({ count: 256, offset: 0 }),
 		);
+	});
+
+	test("reranks once after reading a complete stable memory corpus", async () => {
+		const memories = Array.from({ length: 130 }, (_, index) => ({
+			id: `mem-${index}` as UUID,
+			entityId: AGENT_ID,
+			roomId: AGENT_ID,
+			content: {
+				text: index === 129 ? "John unique evidence" : `other ${index}`,
+			},
+			similarity: 1 - index / 1_000,
+		})) as Memory[];
+		const searchMemories = vi.fn(
+			async (params: { count?: number; offset?: number; query?: string }) => {
+				expect(params.query).toBeUndefined();
+				const offset = params.offset ?? 0;
+				return memories.slice(offset, offset + (params.count ?? 10));
+			},
+		);
+		const runtime = {
+			agentId: AGENT_ID,
+			getModel: () => vi.fn(),
+			useModel: vi.fn(async () => [0.1, 0.2]),
+			searchMemories,
+			getService: () => null,
+			adapter: { searchMessages: vi.fn() },
+		} as unknown as IAgentRuntime;
+
+		const fragments =
+			await sourcesFromRuntime(runtime).searchMemories?.("John");
+		expect(fragments).toHaveLength(130);
+		expect(fragments?.[0]?.ref).toBe("mem-129");
 	});
 
 	test("rejects a source that ignores continuation offsets", async () => {
