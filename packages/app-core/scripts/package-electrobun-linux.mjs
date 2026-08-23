@@ -13,11 +13,15 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   renameSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { cp } from "node:fs/promises";
@@ -104,6 +108,12 @@ export const DEBIAN_RUNTIME_DEPENDS = [
   "libgbm1",
   "libdrm2",
   "libxkbcommon0",
+  "libdbus-1-3",
+  "libexpat1",
+  "libxcb1",
+  "libpango-1.0-0",
+  "libudev1",
+  "libatspi2.0-0t64 | libatspi2.0-0",
   "ca-certificates",
   "xdg-utils",
 ];
@@ -145,6 +155,12 @@ export const RPM_RUNTIME_REQUIRES = [
   "mesa-libgbm",
   "libdrm",
   "libxkbcommon",
+  "dbus-libs",
+  "expat",
+  "libxcb",
+  "pango",
+  "systemd-libs",
+  "at-spi2-core",
   "ca-certificates",
   "xdg-utils",
 ];
@@ -364,7 +380,7 @@ export function renderAppImageLauncher(relativeExecutable = "bin/launcher") {
   const bundleRoot = path.posix.dirname(path.posix.dirname(posixExecutable));
   const payloadRoot = path.posix.join(optDir, bundleRoot);
   const nativeWrapper = path.posix.join(payloadRoot, "bin/libNativeWrapper.so");
-  const cefLibrary = path.posix.join(payloadRoot, "cef/libcef.so");
+  const cefLibrary = path.posix.join(payloadRoot, "bin/cef/libcef.so");
   const inferenceLibrary = path.posix.join(
     payloadRoot,
     "Resources/app/eliza-dist/local-inference/lib/libelizainference.so",
@@ -457,6 +473,52 @@ export function debArchiveBuildArgs(packageRoot, outputPath) {
   return ["--root-owner-group", "--build", packageRoot, outputPath];
 }
 
+function normalizeAbsoluteStagedSymlinks(sourceRoot, destinationRoot) {
+  const pending = [sourceRoot];
+  while (pending.length > 0) {
+    const sourcePath = pending.pop();
+    if (!sourcePath) continue;
+    const stats = lstatSync(sourcePath);
+    if (stats.isDirectory()) {
+      for (const entry of readdirSync(sourcePath)) {
+        pending.push(path.join(sourcePath, entry));
+      }
+      continue;
+    }
+    if (!stats.isSymbolicLink()) continue;
+
+    const target = readlinkSync(sourcePath);
+    const resolvedTarget = path.resolve(path.dirname(sourcePath), target);
+    const sourceRelativeTarget = path.relative(sourceRoot, resolvedTarget);
+    if (
+      sourceRelativeTarget === ".." ||
+      sourceRelativeTarget.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(sourceRelativeTarget)
+    ) {
+      throw new Error(
+        `Linux package payload contains an escaping symlink: ${sourcePath} -> ${target}`,
+      );
+    }
+    if (!existsSync(resolvedTarget)) {
+      throw new Error(
+        `Linux package payload contains a dangling symlink: ${sourcePath} -> ${target}`,
+      );
+    }
+    if (!path.isAbsolute(target)) continue;
+
+    const stagedLink = path.join(
+      destinationRoot,
+      path.relative(sourceRoot, sourcePath),
+    );
+    const stagedTarget = path.join(destinationRoot, sourceRelativeTarget);
+    unlinkSync(stagedLink);
+    symlinkSync(
+      path.relative(path.dirname(stagedLink), stagedTarget),
+      stagedLink,
+    );
+  }
+}
+
 export async function stagePackageRoot(buildDir, destRoot) {
   removePathRecursive(destRoot);
   mkdirSync(path.join(destRoot, optDir), { recursive: true });
@@ -472,6 +534,7 @@ export async function stagePackageRoot(buildDir, destRoot) {
     dereference: false,
     verbatimSymlinks: true,
   });
+  normalizeAbsoluteStagedSymlinks(buildDir, path.join(destRoot, optDir));
 
   const executable = findElectrobunLauncher(path.join(destRoot, optDir));
   const relativeExecutable = path.relative(
