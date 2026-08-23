@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDarwinWindowScript,
+  darwinWindowListSwiftArgs,
   findWindowsByQuery,
   parseDarwinWindowOutput,
   resolveWindowMatch,
@@ -99,6 +100,16 @@ describe("parseDarwinWindowOutput", () => {
     expect(parseDarwinWindowOutput("")).toEqual([]);
     expect(parseDarwinWindowOutput("<<WIN>><<WIN>>")).toEqual([]);
     expect(parseDarwinWindowOutput("|||<<WIN>>")).toEqual([]);
+  });
+});
+
+describe("darwinWindowListSwiftArgs", () => {
+  it("passes source with -e instead of relying on packaged Bun stdin EOF", () => {
+    const args = darwinWindowListSwiftArgs();
+
+    expect(args[0]).toBe("-e");
+    expect(args[1]).toContain("CGWindowListCopyWindowInfo");
+    expect(args).not.toContain("-");
   });
 });
 

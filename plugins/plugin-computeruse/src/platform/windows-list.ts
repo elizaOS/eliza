@@ -335,6 +335,17 @@ for w in list {
 }
 print(out.joined(separator: "<<WIN>>"))`;
 
+/**
+ * Pass the interpreter source as an argument instead of piping it to `swift -`.
+ * The Bun binary embedded by Electrobun can leave the synchronous stdin pipe
+ * open long enough for Swift to hit our timeout, even though the same script
+ * executes immediately via `swift -e`. Keeping this boundary pure also makes
+ * the packaged-runtime invocation contract deterministic in unit coverage.
+ */
+export function darwinWindowListSwiftArgs(): string[] {
+  return ["-e", DARWIN_WINDOW_LIST_SWIFT];
+}
+
 export function parseDarwinWindowOutput(output: string): WindowInfo[] {
   return output
     .split("<<WIN>>")
@@ -350,8 +361,7 @@ export function parseDarwinWindowOutput(output: string): WindowInfo[] {
 function listWindowsDarwinViaSwift(): WindowInfo[] | null {
   if (!commandExists("swift")) return null;
   try {
-    const output = execFileSync("swift", ["-"], {
-      input: DARWIN_WINDOW_LIST_SWIFT,
+    const output = execFileSync("swift", darwinWindowListSwiftArgs(), {
       encoding: "utf-8",
       timeout: 15000,
       stdio: ["pipe", "pipe", "ignore"],
