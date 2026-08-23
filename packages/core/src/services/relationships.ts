@@ -1104,7 +1104,17 @@ export class RelationshipsService extends Service {
 					message.entityId === sourceEntityId ||
 					message.entityId === targetEntityId,
 			)
-			.sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
+			.sort((a, b) => {
+				const aTime =
+					typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+						? a.createdAt
+						: 0;
+				const bTime =
+					typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+						? b.createdAt
+						: 0;
+				return aTime - bTime || (a.id ?? "").localeCompare(b.id ?? "");
+			});
 
 		if (!relationship && interactions.length === 0) {
 			return null;
