@@ -47,14 +47,16 @@ Seven assertions, all of which must pass for a PASS verdict:
 | `restraintAtUnscriptedPoints` | unsolicited sends across all silent windows plus a trailing sweep are at most `UNSOLICITED_MAX` (default 2) |
 | `noEchoedHumanText` | no Eliza output is a near-copy of a human line already sent (exact, containment of a 4+ token line, or token-Jaccard >= 0.8 against a 3+ token line) |
 | `keyFactsReferenced` | at least `FACTS_MIN` distinct room facts appear across non-echo replies (default 2, floor 1) |
-| `zeroForbiddenClaims` | no output (link/ambient acks included) trips a homepage forbidden-claim rule outside the categories the room's scripted capabilities allow (for example `reminder` in Community, `web-search` in Friends and Trip) |
+| `zeroForbiddenClaims` | no output (link/ambient acks included) trips a homepage forbidden-claim rule inside a first-person span, outside the categories the room's scripted capabilities allow (for example `reminder` in Community, `web-search` in Friends and Trip). A span is where Eliza asserts or offers her own capability: "I can", "I'll", "I could", "let me", "want me to", "shall I", "I'm able", "I sent", "I checked", "I booked", "I added it to your order". Rule vocabulary in a human's clause ("if you send the address", "you could buy", "set up your personal workspace"), in a todo or quoted line ("Created: [ ] Buy coffee"), or under a negation ("I can't book") does not count; "Want me to check if any of these take reservations?" does. `first-person-claims.ts` documents the markers, the subject switches that end a span and the accepted blind spots (elided "Booked.", third-person self-reference) |
 | `speakerAwareness` | some non-echo reply names a room member |
 
 Anti-gaming rules, adversarially reviewed so a broken, echoing or
 reply-to-everything agent cannot pass: echoed human text fails the run and
 earns no fact or speaker credit; only outbound, non-human capture entries are
 ever scored and human text never enters a matcher; acks are scanned for
-forbidden claims; `FACTS_MIN` and `MIN_RESPONSES` cannot be zeroed. A
+forbidden claims; the first-person filter narrows where the homepage rules
+run, never what they match (the rule set is imported untouched); `FACTS_MIN`
+and `MIN_RESPONSES` cannot be zeroed. A
 canned-reply bot, an echo bot and a chatty bot all fail in the test suite, and
 a spec-faithful bot passes every room (the positive control).
 
@@ -64,7 +66,11 @@ a spec-faithful bot passes every room (the positive control).
   Choreography, HTTP transport, signing, capture normalization, pure scoring
   and the results writer. The run loop takes an injectable transport so the
   tests drive the real choreography with a scripted bot.
-- `rooms-spec.ts`: builds the room spec from the homepage module at runtime.
+- `rooms-spec.ts`: builds the room spec from the homepage module at runtime;
+  `forbiddenHits` runs the homepage rules over first-person spans only.
+- `first-person-claims.ts`: first-person span extraction for the
+  forbidden-claim sweep (markers, negations, subject switches, todo and quote
+  masking) with its documented blind spots.
 - `room-facts.ts`: hand-written key facts and `FACT_PATTERNS` per room.
 - `mock-blooio-provider.ts`: mock Blooio API for the gateway's outbound sends;
   records every request to a JSONL outbox, returns receipts, and serves
@@ -182,7 +188,7 @@ Then the transcript in order. `**Name:** ...` lines are the synthetic humans
 trailing `_[...]_` note marks `UNSOLICITED` (arrived in a silent window or
 the trailing sweep), `ECHO of: "..."` (near-copy of a human line; scored
 zero), `facts: ...` (fact labels credited) and `FORBIDDEN: ...` (claim
-categories tripped). `_(silent: expected speaking point at position N)_`
+categories tripped inside a first-person span). `_(silent: expected speaking point at position N)_`
 means the script had Eliza speak there and nothing arrived inside `WAIT_MS`.
 The attachment steps (positions 20 in four rooms: place, task list, handoff,
 itinerary) follow an Eliza line rather than a human one, so a

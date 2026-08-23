@@ -29,6 +29,7 @@ import {
   type LandingDemoUnsupportedClaimCategory,
   landingDemoStepText,
 } from "../../../homepage/src/lib/landing-demo";
+import { firstPersonClaimSpans } from "./first-person-claims";
 
 /** Sender name the spec uses for `user` steps (the group owner). */
 export const OWNER_SENDER = "You";
@@ -110,14 +111,25 @@ function deriveAllowedClaims(): RoomsSpec["allowedClaimsByCapability"] {
 /**
  * Forbidden-claim categories a piece of Eliza output trips, minus the ones
  * the room's scripted capabilities allow. Runs the homepage module's own
- * UNSUPPORTED_CLAIM_RULES, in rule order.
+ * UNSUPPORTED_CLAIM_RULES, but only over the output's first-person spans
+ * (./first-person-claims.ts): the rules are written for marketing copy and
+ * fire on bare vocabulary, so a hit counts only where Eliza is asserting or
+ * offering her own capability, never where the verb belongs to a human
+ * ("if you send the address", "you could buy") or to a todo line. Result is
+ * in rule order, which the tests pin to the module's category list.
  */
 export function forbiddenHits(
   allowedCategories: ReadonlySet<string>,
   text: string,
 ): string[] {
-  return findUnsupportedLandingDemoClaims(text).filter(
-    (category) => !allowedCategories.has(category),
+  const tripped = new Set<string>();
+  for (const span of firstPersonClaimSpans(text)) {
+    for (const category of findUnsupportedLandingDemoClaims(span)) {
+      tripped.add(category);
+    }
+  }
+  return LANDING_DEMO_UNSUPPORTED_CLAIM_CATEGORIES.filter(
+    (category) => tripped.has(category) && !allowedCategories.has(category),
   );
 }
 

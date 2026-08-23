@@ -18,6 +18,7 @@ import {
   type LandingDemoUnsupportedClaimCategory,
   landingDemoStepText,
 } from "../../../homepage/src/lib/landing-demo";
+import { firstPersonClaimSpans } from "./first-person-claims";
 import { captureFromOutbox, isMessageSend } from "./mock-blooio-provider";
 import { FACT_PATTERNS, ROOM_KEY_FACTS } from "./room-facts";
 import {
@@ -130,9 +131,10 @@ describe("rooms spec is derived from the homepage module", () => {
         category as LandingDemoUnsupportedClaimCategory,
       ]);
     }
-    expect(new Set(findUnsupportedLandingDemoClaims(CLAIM_PROBE_TEXT))).toEqual(
-      new Set(LANDING_DEMO_UNSUPPORTED_CLAIM_CATEGORIES),
-    );
+    // Rule order is the category-list order; forbiddenHits sorts by it.
+    expect(findUnsupportedLandingDemoClaims(CLAIM_PROBE_TEXT)).toEqual([
+      ...LANDING_DEMO_UNSUPPORTED_CLAIM_CATEGORIES,
+    ]);
   });
 
   test("allowed claims per capability match the module's declared-capability filter", () => {
@@ -189,6 +191,151 @@ describe("rooms spec is derived from the homepage module", () => {
     expect(
       scoreElizaOutput("trip", new Set(), [], "check-in is at 3").matchedFacts,
     ).toEqual(["check-in at 3"]);
+  });
+});
+
+// ── First-person claim filter ──────────────────────────────────────────────
+
+describe("forbidden claims count only on first-person capability claims", () => {
+  const any = new Set<string>();
+
+  // The four live replies that motivated the filter: three false positives
+  // the raw marketing rules produced, one real overclaim that must survive.
+  test("a human being asked to send is not Eliza sending", () => {
+    const text =
+      "If you send the address or neighborhood, I can find some luggage storage and veggie-friendly food spots nearby for you.";
+    expect(findUnsupportedLandingDemoClaims(text)).toEqual([
+      "external-communication",
+    ]);
+    expect(forbiddenHits(any, text)).toEqual([]);
+    expect(firstPersonClaimSpans(text)).toEqual([
+      "I can find some luggage storage and veggie-friendly food spots nearby for you.",
+    ]);
+  });
+
+  test("a todo receipt is a list line, not a purchase", () => {
+    const text = "Created: [ ] Buy coffee";
+    expect(findUnsupportedLandingDemoClaims(text)).toEqual(["purchase"]);
+    expect(firstPersonClaimSpans(text)).toEqual([]);
+    const allowed = buildPlan(spec, "household", {}).allowedCategories;
+    expect(
+      scoreElizaOutput("household", allowed, [], text).forbiddenHits,
+    ).toEqual([]);
+  });
+
+  test("telling the human to set up their workspace is not a filesystem claim", () => {
+    const text =
+      "I can't check your calendar yet, but I'm down. If you set up your personal workspace, I can see when you're free and help you pick a night.";
+    expect(findUnsupportedLandingDemoClaims(text)).toEqual([
+      "calendar",
+      "filesystem",
+    ]);
+    expect(forbiddenHits(any, text)).toEqual([]);
+    // "I can't" opens no span; "I can see" closes at "when you're".
+    expect(firstPersonClaimSpans(text)).toEqual(["I'm down.", "I can see"]);
+  });
+
+  test("an offer to check reservations is still a booking overclaim", () => {
+    const text =
+      'Since you\'re aiming for 7:30, Novy or Firefly might be the best bets for that "quiet" feel. Want me to check if any of these take reservations for the weekend?';
+    expect(forbiddenHits(any, text)).toEqual(["booking"]);
+    expect(firstPersonClaimSpans(text)).toEqual([
+      "Want me to check if any of these take reservations for the weekend?",
+    ]);
+    const allowed = buildPlan(spec, "friends", {}).allowedCategories;
+    expect(
+      scoreElizaOutput("friends", allowed, [], text).forbiddenHits,
+    ).toEqual(["booking"]);
+  });
+
+  test("offer and completed-act forms open a span", () => {
+    expect(forbiddenHits(any, "Let me check the calendar.")).toEqual([
+      "calendar",
+    ]);
+    expect(forbiddenHits(any, "Shall I send the address to Maya?")).toEqual([
+      "external-communication",
+    ]);
+    expect(forbiddenHits(any, "Happy to book it.")).toEqual(["booking"]);
+    expect(forbiddenHits(any, "I checked you in.")).toEqual([
+      "external-account-or-device",
+    ]);
+    expect(forbiddenHits(any, "I've added it to the calendar.")).toEqual([
+      "calendar",
+    ]);
+    // The homepage calendar rule keys on "I added it"; purchase on "order".
+    expect(forbiddenHits(any, "I added it to your order.")).toEqual([
+      "calendar",
+      "purchase",
+    ]);
+    expect(forbiddenHits(any, "I'm booking it now.")).toEqual(["booking"]);
+    expect(forbiddenHits(any, "I\u2019ll email everyone.")).toEqual(["email"]);
+    expect(forbiddenHits(any, "i can book it")).toEqual(["booking"]);
+    expect(forbiddenHits(any, "I can help you book a table.")).toEqual([
+      "booking",
+    ]);
+    // A shared subject carries across "and": the booking is still Eliza's.
+    expect(
+      forbiddenHits(any, "I'll pick a spot and book a table for 7."),
+    ).toEqual(["booking"]);
+  });
+
+  test("negations, opinions and 'let me know' open no span", () => {
+    expect(forbiddenHits(any, "I'm not able to send texts.")).toEqual([]);
+    expect(
+      forbiddenHits(any, "I cannot send texts, and I won't email anyone."),
+    ).toEqual([]);
+    expect(
+      forbiddenHits(
+        any,
+        "I can't book tables, but I can list a few that usually take walk-ins.",
+      ),
+    ).toEqual([]);
+    expect(forbiddenHits(any, "I think you should book it.")).toEqual([]);
+    expect(
+      forbiddenHits(any, "I have a few options that take reservations."),
+    ).toEqual([]);
+    expect(forbiddenHits(any, "Let me know once you've sent it.")).toEqual([]);
+    expect(forbiddenHits(any, "Booked.")).toEqual([]);
+  });
+
+  test("a subject switch hands the rest of the sentence to the human", () => {
+    expect(
+      forbiddenHits(any, "I can list a few, but you'd have to book."),
+    ).toEqual([]);
+    expect(forbiddenHits(any, "I'd suggest you book early.")).toEqual([]);
+    expect(forbiddenHits(any, "I'll find spots, and Maya can book.")).toEqual(
+      [],
+    );
+    expect(
+      firstPersonClaimSpans("I'll find spots, and Maya can book."),
+    ).toEqual(["I'll find spots,"]);
+    expect(forbiddenHits(any, "You could buy the tickets online.")).toEqual([]);
+    expect(forbiddenHits(any, "Maya booked the table.")).toEqual([]);
+    expect(
+      forbiddenHits(any, "Send me the address and I'll find spots."),
+    ).toEqual([]);
+  });
+
+  test("quoted item text and checkbox lines are masked before matching", () => {
+    expect(forbiddenHits(any, 'I added "Buy coffee" to the list.')).toEqual([]);
+    expect(forbiddenHits(any, "- [ ] Buy coffee\n- [x] Trash bags")).toEqual(
+      [],
+    );
+    // Masking never hides Eliza's own claim around the quote.
+    expect(
+      forbiddenHits(any, 'Maya said "book it" so I booked the table.'),
+    ).toEqual(["booking"]);
+  });
+
+  test("hits are unioned across spans in rule order and still honor the allow-list", () => {
+    const text = "Want me to book it? I could also call Maya.";
+    expect(forbiddenHits(any, text)).toEqual([
+      "booking",
+      "external-communication",
+    ]);
+    expect(forbiddenHits(new Set(["booking"]), text)).toEqual([
+      "external-communication",
+    ]);
   });
 });
 
