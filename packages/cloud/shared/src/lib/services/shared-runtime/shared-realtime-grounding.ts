@@ -380,6 +380,27 @@ export function validateSharedRealtimeReply(reply: string, grounding: AvailableG
   return count > 0 && reply.slice(cursor).trim().length === 0;
 }
 
+function supportedRealtimeReply(
+  reply: string,
+  grounding: AvailableGrounding,
+): { reply: string; selectedUrls: string[] } | undefined {
+  if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
+  SOURCE_MARKER.lastIndex = 0;
+  let cursor = 0;
+  const segments: string[] = [];
+  const selectedUrls: string[] = [];
+  for (const marker of reply.matchAll(SOURCE_MARKER)) {
+    const source = sourceForUrl(grounding, marker[1]);
+    const claim = reply.slice(cursor, marker.index).trim();
+    if (source && claimSupported(claim, source)) {
+      segments.push(claim);
+      selectedUrls.push(marker[1]);
+    }
+    cursor = (marker.index ?? 0) + marker[0].length;
+  }
+  return segments.length > 0 ? { reply: segments.join("\n"), selectedUrls } : undefined;
+}
+
 /** Produces Telegram-safe attribution or an honest deterministic recovery. */
 export function finalizeSharedRealtimeReply(
   reply: string,
@@ -388,18 +409,16 @@ export function finalizeSharedRealtimeReply(
   if (!hasTraceableRealtimeGrounding(grounding)) {
     return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
   }
-  if (!validateSharedRealtimeReply(reply, grounding)) {
+  const supported = supportedRealtimeReply(reply, grounding);
+  if (!supported) {
     return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
   }
-  SOURCE_MARKER.lastIndex = 0;
-  const selectedUrls = [...reply.matchAll(SOURCE_MARKER)].map((marker) => marker[1]);
-  const answer = reply.replace(SOURCE_MARKER, "").trim();
-  const sources = [...new Set(selectedUrls)].map((url) => {
+  const sources = [...new Set(supported.selectedUrls)].map((url) => {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
     return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}, checked ${new Date(grounding.observedAt).toISOString()})`;
   });
-  return `${answer}\n\n${sources.join("\n")}`;
+  return `${supported.reply}\n\n${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
