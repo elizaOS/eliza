@@ -11,7 +11,9 @@ describe("detail-extension-registry", () => {
 
   it("returns null for unregistered panel ids", () => {
     expect(
-      getAppDetailExtension({ uiExtension: { detailPanelId: "nope" } } as never),
+      getAppDetailExtension({
+        uiExtension: { detailPanelId: "nope" },
+      } as never),
     ).toBeNull();
   });
 
