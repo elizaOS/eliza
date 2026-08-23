@@ -551,13 +551,14 @@ describe("v5 planner loop skeleton", () => {
 	});
 	const workspaceDelta = (
 		outcome: "changed" | "unchanged" | "indeterminate",
+		root = "/workspace",
 	) => ({
 		workspaceDeltaReceipt: {
 			version: 1,
 			kind: "workspace_delta",
 			scope: {
 				kind: "git_worktree",
-				root: "/workspace",
+				root,
 				coverage: "tracked_and_untracked_nonignored",
 			},
 			outcome,
@@ -1005,6 +1006,145 @@ describe("v5 planner loop skeleton", () => {
 			});
 		},
 	);
+
+	it("requires verification from the exact mutation receipt scope", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "mutate-a",
+								name: "SHELL",
+								arguments: { command: "node generate.js" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-b",
+								name: "SHELL",
+								arguments: { command: "npm test", cwd: "/workspace-b" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("wrong-root", "Verified."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-a",
+								name: "SHELL",
+								arguments: { command: "npm test", cwd: "/workspace-a" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("right-root", "Verified in the changed workspace."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "generated",
+					data: workspaceDelta("changed", "/workspace-a"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "wrong workspace passed",
+					data: workspaceDelta("unchanged", "/workspace-b"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "right workspace passed",
+					data: workspaceDelta("unchanged", "/workspace-a"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Verified in the changed workspace.");
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+		});
+	});
+
+	it("does not accept start_background as completed verification", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write",
+								name: "WRITE",
+								arguments: { path: "file.ts", content: "ok" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "background-test",
+								name: "SHELL",
+								arguments: { action: "start_background", command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("too-early", "Verified."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "foreground-test",
+								name: "SHELL",
+								arguments: { command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("done", "Verified in foreground."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "ok",
+			}));
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "WRITE", description: "Write." },
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Verified in foreground.");
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+		});
+	});
 
 	it("does not treat a successful inspection command as coding verification", async () => {
 		await withCodingRequiredToolDefaults(async () => {

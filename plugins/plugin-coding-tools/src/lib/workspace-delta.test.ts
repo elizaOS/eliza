@@ -30,12 +30,14 @@ async function repository(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(
-    cleanup.splice(0).map((root) => fs.rm(root, { recursive: true })),
+    cleanup
+      .splice(0)
+      .map((root) => fs.rm(root, { recursive: true, force: true })),
   );
 });
 
 describe("local workspace delta observation", () => {
-  it("detects a content change when the porcelain status code was already dirty", async () => {
+  it("detects a content change when the tracked path was already dirty", async () => {
     const root = await repository();
     await fs.writeFile(
       path.join(root, "tracked.txt"),
@@ -106,6 +108,97 @@ describe("local workspace delta observation", () => {
       (await execFileAsync("git", ["status", "--porcelain"], { cwd: root }))
         .stdout,
     ).toBe("");
+  });
+
+  it.each(["--assume-unchanged", "--skip-worktree"])(
+    "detects content changes hidden by %s",
+    async (flag) => {
+      const root = await repository();
+      await execFileAsync("git", ["update-index", flag, "tracked.txt"], {
+        cwd: root,
+      });
+      const before = await beginLocalWorkspaceDeltaObservation(root);
+      await fs.writeFile(path.join(root, "tracked.txt"), `${flag}\n`, "utf8");
+
+      expect(
+        (await finishLocalWorkspaceDeltaObservation(before))?.outcome,
+      ).toBe("changed");
+    },
+  );
+
+  it("detects further changes inside an already-dirty submodule", async () => {
+    const child = await repository();
+    const root = await repository();
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        child,
+        "nested",
+      ],
+      { cwd: root },
+    );
+    await execFileAsync("git", ["commit", "-qam", "add nested"], { cwd: root });
+    const nestedFile = path.join(root, "nested", "tracked.txt");
+    await fs.writeFile(nestedFile, "dirty-before\n", "utf8");
+    const before = await beginLocalWorkspaceDeltaObservation(root);
+    await fs.writeFile(nestedFile, "dirty-after\n", "utf8");
+
+    expect((await finishLocalWorkspaceDeltaObservation(before))?.outcome).toBe(
+      "changed",
+    );
+  });
+
+  it("supports an unborn repository before its first commit", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-unborn-"));
+    cleanup.push(root);
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    const before = await beginLocalWorkspaceDeltaObservation(root);
+    await fs.writeFile(path.join(root, "first.txt"), "first\n", "utf8");
+
+    expect((await finishLocalWorkspaceDeltaObservation(before))?.outcome).toBe(
+      "changed",
+    );
+  });
+
+  it("fails closed at file-byte, Git-output, and wall-clock budgets", async () => {
+    const root = await repository();
+    const byteBefore = await beginLocalWorkspaceDeltaObservation(root, {
+      maxFileBytes: 4,
+    });
+    await fs.writeFile(path.join(root, "large.txt"), "12345", "utf8");
+    expect(
+      await finishLocalWorkspaceDeltaObservation(byteBefore),
+    ).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "OBSERVATION_BYTE_BUDGET_EXCEEDED",
+    });
+
+    const outputBefore = await beginLocalWorkspaceDeltaObservation(root, {
+      maxGitOutputBytes: 1,
+    });
+    expect(
+      await finishLocalWorkspaceDeltaObservation(outputBefore),
+    ).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "OBSERVATION_OUTPUT_BUDGET_EXCEEDED",
+    });
+
+    let clock = 0;
+    const timedBefore = await beginLocalWorkspaceDeltaObservation(root, {
+      maxObservationMs: 1,
+      now: () => clock++,
+    });
+    expect(
+      await finishLocalWorkspaceDeltaObservation(timedBefore),
+    ).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "OBSERVATION_TIME_BUDGET_EXCEEDED",
+    });
   });
 
   it("reports indeterminate when a known worktree's Git probe fails", async () => {
