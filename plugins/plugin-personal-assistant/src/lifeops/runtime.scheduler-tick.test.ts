@@ -4,6 +4,7 @@ import { TaskService } from "@elizaos/core/node";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { escalateUnacknowledgedIntents } from "./intent-sync.js";
 import {
+  executeLifeOpsReminderTask,
   executeLifeOpsSchedulerTask,
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
@@ -17,6 +18,11 @@ const scheduledWorkFixture = vi.hoisted(() => ({
   scheduledTaskCompletionTimeouts: [],
   subsystemFailures: [{ subsystem: "reminders", error: "reminders down" }],
 }));
+const reminderFixture = vi.hoisted(() => ({
+  now: "2026-07-01T12:00:00.000Z",
+  attempts: [{ id: "attempt-1", status: "sent" }],
+}));
+const processRemindersMock = vi.hoisted(() => vi.fn());
 const householdFixture = vi.hoisted(() => ({
   reconcileGrantExpiryWarnings: vi.fn(async () => [
     {
@@ -50,6 +56,10 @@ vi.mock("./app-state.js", () => ({
 
 vi.mock("./service.js", () => ({
   LifeOpsService: class {
+    async processReminders(options: { now?: string; limit?: number }) {
+      return processRemindersMock(options);
+    }
+
     async processScheduledWork() {
       return scheduledWorkFixture;
     }
@@ -67,6 +77,24 @@ vi.mock("./household/service.js", () => ({
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ee" as UUID;
 const runtime = { agentId: AGENT_ID } as unknown as IAgentRuntime;
+
+describe("executeLifeOpsReminderTask", () => {
+  it("runs only the production reminder processor with the requested bounds", async () => {
+    processRemindersMock.mockResolvedValueOnce(reminderFixture);
+
+    await expect(
+      executeLifeOpsReminderTask(runtime, {
+        now: "2026-07-01T12:00:00.000Z",
+        limit: 7,
+      }),
+    ).resolves.toEqual(reminderFixture);
+    expect(processRemindersMock).toHaveBeenCalledExactlyOnceWith({
+      now: "2026-07-01T12:00:00.000Z",
+      limit: 7,
+      scope: "definitions",
+    });
+  });
+});
 
 describe("registerLifeOpsTaskWorker", () => {
   it("keeps the task identity valid without executing when scheduler is disabled", async () => {

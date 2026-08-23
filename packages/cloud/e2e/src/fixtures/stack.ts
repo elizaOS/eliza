@@ -13,10 +13,10 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { type AddressInfo, createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   type RunningControlPlaneMock,
@@ -48,6 +48,9 @@ import { type RunningMockLlm, startMockLlm } from "./mock-llm";
  */
 function resolveBun(): string {
   if (process.env.BUN && existsSync(process.env.BUN)) return process.env.BUN;
+  if (process.versions.bun && existsSync(process.execPath)) {
+    return process.execPath;
+  }
   const names = process.platform === "win32" ? ["bun.exe", "bun"] : ["bun"];
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const dirs = [
@@ -150,6 +153,42 @@ async function waitForTcp(
   }
   throw new Error(
     `[stack] ${label} TCP did not open within ${timeoutMs}ms: ${String(lastErr)}`,
+  );
+}
+
+async function waitForOwnedPglite(
+  proc: SpawnedProc,
+  logFile: string,
+  dataDir: string,
+  opts: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+  const intervalMs = opts.intervalMs ?? 100;
+  const ownershipMarker = `(data: ${dataDir})`;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (proc.child.exitCode !== null || proc.child.signalCode !== null) {
+      throw new Error(
+        `[stack] owned PGlite exited before readiness (code=${String(proc.child.exitCode)}, signal=${String(proc.child.signalCode)})`,
+      );
+    }
+    const output = await readFile(logFile, "utf8").catch((error: unknown) => {
+      // error-policy:J3 The log may not exist until the spawned process opens it.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return "";
+      }
+      throw error;
+    });
+    if (output.includes(ownershipMarker)) return;
+    await delay(intervalMs);
+  }
+  throw new Error(
+    `[stack] owned PGlite did not publish its data-directory marker within ${timeoutMs}ms`,
   );
 }
 
@@ -267,12 +306,18 @@ async function withFakeStripeBootstrapRollback<T>(
 }
 
 export interface StartCloudStackOptions {
+  /** Per-run subprocess log directory; defaults to the package `.logs` path. */
+  logDir?: string;
   /** Skip running cloud-shared migrations. Defaults to false. */
   skipMigrate?: boolean;
   /** Override API port. Default: free port. */
   apiPort?: number;
   /** Override frontend port. Default: free port. */
   frontendPort?: number;
+  /** Override the PGlite bridge port. Default: free port. */
+  pglitePort?: number;
+  /** Test-only fault proving transactional cleanup after PGlite ownership. */
+  testFailAfterPgliteStart?: boolean;
   /**
    * Boot the packages/app (apex) Vite dev server. Defaults to true. Set to false
    * for API-only stacks (e.g. the monetized-app loop) that never drive a browser
@@ -312,20 +357,50 @@ export interface StartCloudStackOptions {
   env?: Readonly<Record<string, string>>;
 }
 
+class PartialStackOwner {
+  private cleanups: Array<() => Promise<void>> = [];
+
+  add(cleanup: () => Promise<void>): void {
+    this.cleanups.push(cleanup);
+  }
+
+  release(): void {
+    this.cleanups = [];
+  }
+
+  async cleanup(): Promise<unknown[]> {
+    const failures: unknown[] = [];
+    for (const cleanup of [...this.cleanups].reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        // error-policy:J6 Startup rollback continues in strict ownership order
+        // so later resources cannot recreate state after an earlier deletion.
+        failures.push(error);
+      }
+    }
+    this.cleanups = [];
+    return failures;
+  }
+}
+
 /**
  * Start the full cloud test stack. Heavy — only call once per worker.
  */
-export async function startCloudStack(
+async function startCloudStackOwned(
   opts: StartCloudStackOptions = {},
+  startup: PartialStackOwner,
 ): Promise<StackHandle> {
-  await mkdir(LOG_DIR, { recursive: true });
+  const logDir = opts.logDir ? resolve(opts.logDir) : LOG_DIR;
+  await mkdir(logDir, { recursive: true });
   const dataDir = await mkdtemp(join(tmpdir(), "cloud-e2e-"));
+  startup.add(() => rm(dataDir, { recursive: true, force: true }));
   const pgDataDir = join(dataDir, "pgdata");
   await mkdir(pgDataDir, { recursive: true });
 
   const hetznerPort = await pickFreePort();
   const controlPlanePort = await pickFreePort();
-  const pglitePort = await pickFreePort();
+  const pglitePort = opts.pglitePort ?? (await pickFreePort());
   const apiPort = opts.apiPort ?? (await pickFreePort());
   const frontendPort = opts.frontendPort ?? (await pickFreePort());
 
@@ -334,16 +409,20 @@ export async function startCloudStack(
     port: hetznerPort,
     actionMs: Number(process.env.MOCK_HETZNER_ACTION_MS ?? "30"),
   });
+  startup.add(() => hetzner.stop());
   const controlPlane = await startControlPlaneMock({
     port: controlPlanePort,
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
+  startup.add(() => controlPlane.stop());
   const steward = await startStewardMock();
+  startup.add(() => steward.stop());
   const mockLlm =
     opts.mockLlm || opts.mockLlmEchoContext
       ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
       : undefined;
+  if (mockLlm) startup.add(() => mockLlm.stop());
   const mockLlmEnv: Record<string, string> = mockLlm
     ? {
         OPENAI_API_KEY: "mock-llm-key",
@@ -368,6 +447,9 @@ export async function startCloudStack(
       STEWARD_API_URL: steward.url,
       STEWARD_PLATFORM_KEYS: "steward-e2e-platform-key",
       ...opts.env,
+      PATH: [isAbsolute(BUN) ? dirname(BUN) : undefined, process.env.PATH]
+        .filter((entry): entry is string => Boolean(entry))
+        .join(delimiter),
     },
   );
 
@@ -380,6 +462,7 @@ export async function startCloudStack(
     PGLITE_DATA_DIR: pgDataDir,
     PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
   };
+  const pgliteLogFile = join(logDir, "pglite.log");
   procs.push(
     spawnLogged(
       "pglite",
@@ -388,14 +471,23 @@ export async function startCloudStack(
       {
         env: pgliteEnv,
         cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "pglite.log"),
+        logFile: pgliteLogFile,
       },
     ),
   );
+  const pgliteProc = procs[procs.length - 1];
+  startup.add(() => killProc(pgliteProc));
+  await waitForOwnedPglite(pgliteProc, pgliteLogFile, pgDataDir);
   await waitForTcp("127.0.0.1", pglitePort, {
     timeoutMs: 60_000,
     label: "pglite",
   });
+  if (opts.testFailAfterPgliteStart) {
+    if (process.env.NODE_ENV !== "test") {
+      throw new Error("testFailAfterPgliteStart requires NODE_ENV=test");
+    }
+    throw new Error("injected Cloud stack startup failure after PGlite");
+  }
 
   const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
   const stackEnv: NodeJS.ProcessEnv = {
@@ -411,6 +503,14 @@ export async function startCloudStack(
   const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
   process.env.DATABASE_URL = databaseUrl;
   process.env.TEST_DATABASE_URL = databaseUrl;
+  startup.add(async () => {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+    if (previousTestDatabaseUrl === undefined)
+      delete process.env.TEST_DATABASE_URL;
+    else process.env.TEST_DATABASE_URL = previousTestDatabaseUrl;
+  });
+  startup.add(() => closeCloudSharedDatabaseConnections());
 
   if (!opts.skipMigrate) {
     await runLoggedStep(
@@ -420,7 +520,7 @@ export async function startCloudStack(
       {
         env: stackEnv,
         cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "cloud-migrate.log"),
+        logFile: join(logDir, "cloud-migrate.log"),
       },
     );
   }
@@ -450,11 +550,13 @@ export async function startCloudStack(
         {
           env: stackEnv,
           cwd: REPO_ROOT,
-          logFile: join(LOG_DIR, "cloud-api.log"),
+          logFile: join(logDir, "cloud-api.log"),
         },
       ),
     ),
   );
+  const cloudApiProc = procs[procs.length - 1];
+  startup.add(() => killProc(cloudApiProc));
 
   const apiUrl = `http://127.0.0.1:${apiPort}`;
   await withFakeStripeBootstrapRollback(fakeStripe, () =>
@@ -509,11 +611,13 @@ export async function startCloudStack(
           {
             env: frontendEnv,
             cwd: frontendDir,
-            logFile: join(LOG_DIR, "frontend.log"),
+            logFile: join(logDir, "frontend.log"),
           },
         ),
       ),
     );
+    const frontendProc = procs[procs.length - 1];
+    startup.add(() => killProc(frontendProc));
 
     frontendUrl = `http://127.0.0.1:${frontendPort}`;
     await withFakeStripeBootstrapRollback(fakeStripe, () =>
@@ -574,7 +678,7 @@ export async function startCloudStack(
   process.once("SIGINT", handler);
   process.once("SIGTERM", handler);
 
-  return {
+  const handle: StackHandle = {
     stop,
     urls: {
       api: apiUrl,
@@ -596,6 +700,28 @@ export async function startCloudStack(
       ...(backendFaults ? { backendFaults } : {}),
     },
     dataDir,
-    logDir: LOG_DIR,
+    logDir,
   };
+  startup.release();
+  return handle;
+}
+
+/** Starts the stack transactionally and tears down every acquired resource on boot failure. */
+export async function startCloudStack(
+  opts: StartCloudStackOptions = {},
+): Promise<StackHandle> {
+  const startup = new PartialStackOwner();
+  try {
+    return await startCloudStackOwned(opts, startup);
+  } catch (error) {
+    // error-policy:J2 Startup failure remains authoritative and cleanup failures retain their causes.
+    const cleanupFailures = await startup.cleanup();
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupFailures],
+        "Cloud stack startup and partial cleanup failed",
+      );
+    }
+    throw error;
+  }
 }

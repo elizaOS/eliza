@@ -1,0 +1,108 @@
+name: Cloud Agent Stability
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cloud-stability.yml"
+      - "packages/cloud/e2e/**"
+      - "packages/cloud/test-mocks/**"
+      - "packages/scenario-runner/**"
+      - "packages/shared/src/synthetic-control/**"
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Production model provider; all service providers remain mock-backed
+        required: true
+        default: openai
+        type: choice
+        options: [openai, anthropic]
+      model:
+        description: Optional production model override
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-stability-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  deterministic-keyless:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      NODE_ENV: test
+      CLOUD_E2E: "1"
+      MOCK_REDIS: "1"
+      MOCK_HETZNER_LATENCY: "0"
+      MOCK_HETZNER_ACTION_MS: "30"
+      CONTROL_PLANE_TICK_MS: "50"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      HCLOUD_TOKEN: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Run exact-three keyless AgentRuntime scenario
+        run: >-
+          bun run --cwd packages/cloud/e2e stability:keyless --
+          --run-id cloud-pr-${{ github.run_id }}-${{ github.run_attempt }}
+          --output ${{ github.workspace }}/artifacts/cloud-stability/pr
+      - name: Upload deterministic trajectories and ledgers
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stability-keyless-${{ github.run_attempt }}
+          path: |
+            artifacts/cloud-stability/pr
+            packages/cloud/e2e/.logs
+          retention-days: 14
+          include-hidden-files: true
+          if-no-files-found: error
+
+  real-model-mock-services:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: "true"
+      NODE_ENV: test
+      CLOUD_E2E: "1"
+      MOCK_REDIS: "1"
+      MOCK_HETZNER_LATENCY: "0"
+      MOCK_HETZNER_ACTION_MS: "30"
+      CONTROL_PLANE_TICK_MS: "50"
+      OPENAI_API_KEY: ${{ (github.event_name == 'schedule' || inputs.provider == 'openai') && secrets.OPENAI_API_KEY || '' }}
+      ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      HCLOUD_TOKEN: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Run exact-three real-model scenario over mock services
+        run: >-
+          bun run --cwd packages/cloud/e2e stability:real --
+          --provider ${{ github.event_name == 'schedule' && 'openai' || inputs.provider }}
+          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
+          --run-id cloud-real-${{ github.run_id }}-${{ github.run_attempt }}
+          --output ${{ github.workspace }}/artifacts/cloud-stability/real
+      - name: Upload real-model trajectories and mock-service ledgers
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stability-real-${{ github.run_attempt }}
+          path: |
+            artifacts/cloud-stability/real
+            packages/cloud/e2e/.logs
+          retention-days: 30
+          include-hidden-files: true
+          if-no-files-found: error

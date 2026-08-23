@@ -76,6 +76,7 @@ export {
   browserBridgeProvider,
   delegationContractsProvider,
   ensureLifeOpsSchedulerTask,
+  executeLifeOpsReminderTask,
   executeLifeOpsSchedulerTask,
   handleLifeOpsRoutes,
   handleWebsiteBlockerRoutes,
@@ -90,6 +91,7 @@ export {
   resolveLifeOpsTaskIntervalMs,
 } from "./plugin.js";
 export * from "./public.js";
+export { personalAssistantRemindersPlugin } from "./reminders-plugin.js";
 export {
   type CloudFeaturesRouteState,
   handleCloudFeaturesRoute,

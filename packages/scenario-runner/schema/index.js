@@ -565,14 +565,56 @@ function validateScenarioModelFixtures(value) {
           `scenario model fixture "${fixture.name}" has invalid response`,
         );
       }
+      const unknownResponseKeys = Object.keys(fixture.response).filter(
+        (key) =>
+          ![
+            "json",
+            "text",
+            "toolCalls",
+            "finishReason",
+            "thought",
+            "messageToUser",
+            "completed",
+            "usage",
+          ].includes(key),
+      );
+      if (unknownResponseKeys.length > 0) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" response has unknown field(s): ${unknownResponseKeys.join(", ")}`,
+        );
+      }
       if (
         fixture.response.json !== undefined &&
-        ["text", "toolCalls", "finishReason", "usage"].some(
-          (key) => fixture.response[key] !== undefined,
-        )
+        [
+          "text",
+          "toolCalls",
+          "finishReason",
+          "thought",
+          "messageToUser",
+          "completed",
+          "usage",
+        ].some((key) => fixture.response[key] !== undefined)
       ) {
         throw new Error(
           `scenario model fixture "${fixture.name}" response.json is exclusive`,
+        );
+      }
+      for (const key of ["text", "finishReason", "thought", "messageToUser"]) {
+        if (
+          fixture.response[key] !== undefined &&
+          typeof fixture.response[key] !== "string"
+        ) {
+          throw new Error(
+            `scenario model fixture "${fixture.name}" has invalid response.${key}`,
+          );
+        }
+      }
+      if (
+        fixture.response.completed !== undefined &&
+        typeof fixture.response.completed !== "boolean"
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid response.completed`,
         );
       }
       if (
