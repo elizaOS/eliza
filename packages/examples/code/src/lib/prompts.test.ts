@@ -1,5 +1,5 @@
 /** Asserts the shared Code-example system-prompt contract against its real constant: deterministic, no device. */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 
 describe("CODE_ASSISTANT_SYSTEM_PROMPT", () => {
