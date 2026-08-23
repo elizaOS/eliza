@@ -8,6 +8,7 @@
  * without `tool_choice`.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { GenerateTextResult, TextStreamResult, TokenUsage, ToolCall } from "@elizaos/core";
 import type { ModelMessage, ToolSet } from "ai";
 import { estimateUsage } from "./modelUsage";
@@ -685,7 +686,7 @@ export async function zerollamaEmbedMany(args: {
     // with nothing.
   } else if (nativeResponse.status !== 400 && nativeResponse.status !== 501) {
     throw new ZerollamaHttpError({
-      message: `zerollama /api/embed failed (${nativeResponse.status}): ${nativeRaw.slice(0, 300)}`,
+      message: `zerollama /api/embed failed (${nativeResponse.status}): ${truncateWellFormed(toWellFormedUnicode(nativeRaw), 300)}`,
       statusCode: nativeResponse.status,
       responseBody: nativeRaw,
       url: nativeUrl,
@@ -704,7 +705,7 @@ export async function zerollamaEmbedMany(args: {
   const v1Raw = await readErrorBody(v1Response);
   if (!v1Response.ok) {
     throw new ZerollamaHttpError({
-      message: `zerollama embed failed (/api/embed ${nativeResponse.status}: ${nativeRaw.slice(0, 160)}; /v1/embeddings ${v1Response.status}: ${v1Raw.slice(0, 160)}) [model=${model}]`,
+      message: `zerollama embed failed (/api/embed ${nativeResponse.status}: ${truncateWellFormed(toWellFormedUnicode(nativeRaw), 160)}; /v1/embeddings ${v1Response.status}: ${truncateWellFormed(toWellFormedUnicode(v1Raw), 160)}) [model=${model}]`,
       statusCode: v1Response.status,
       responseBody: v1Raw || nativeRaw,
       url: v1Url,
@@ -713,7 +714,7 @@ export async function zerollamaEmbedMany(args: {
   const v1Vectors = parseEmbedVectors(v1Raw, v1Url);
   if (v1Vectors.length === 0 || v1Vectors.some((row) => row.length === 0)) {
     throw new Error(
-      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${nativeRaw.slice(0, 120)})`
+      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${truncateWellFormed(toWellFormedUnicode(nativeRaw), 120)})`
     );
   }
   return v1Vectors;
