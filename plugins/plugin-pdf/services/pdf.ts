@@ -161,8 +161,11 @@ function clampInt(value: string | undefined, min: number, max: number, fallback:
  * local `Date` constructor rather than fabricating a `Z` UTC claim. Returns
  * undefined for any string that is not a spec date so an unparseable value is
  * dropped rather than surfaced as an Invalid Date.
+ *
+ * Exported so regression tests can drive years 0-99 through the real parser
+ * (`Date.UTC(10, …)` is 1910; `setUTCFullYear(10, …)` is year 10).
  */
-function parsePdfSpecDate(value: string): Date | undefined {
+export function parsePdfSpecDate(value: string): Date | undefined {
   const matches = PDF_SPEC_DATE_REGEX.exec(value);
   if (!matches) {
     return undefined;
@@ -177,11 +180,13 @@ function parsePdfSpecDate(value: string): Date | undefined {
   const relation = matches[7];
 
   // Absent UT relation: the document time zone is unknown and the components are
-  // local time. Do not substitute `Z` and claim UTC. Build the instant from the
-  // local `Date` constructor so the wall-clock the document declared is
-  // preserved as-is in the host's local time zone.
+  // local time. Do not substitute `Z` and claim UTC. Build the instant with
+  // setFullYear so years 0-99 stay literal (the Date constructor maps them to
+  // 1900-1999). Preserve the declared wall-clock in the host's local time zone.
   if (relation === undefined) {
-    const localDate = new Date(year, monthIndex, day, hour, minute, second);
+    const localDate = new Date(0);
+    localDate.setFullYear(year, monthIndex, day);
+    localDate.setHours(hour, minute, second, 0);
     return Number.isFinite(localDate.getTime()) ? localDate : undefined;
   }
 
