@@ -2379,6 +2379,16 @@ ElizaClient.prototype.getCloudBillingSummary = async function (
       hostedCheckoutEnabled: true,
       cryptoEnabled:
         typeof pricing.x402Enabled === "boolean" ? pricing.x402Enabled : false,
+      // The server nests the authoritative checkout bounds under `pricing`;
+      // surface them as top-level fields the dashboard gates on (#22963).
+      minimumTopUp:
+        typeof pricing.minimumTopUp === "number"
+          ? pricing.minimumTopUp
+          : undefined,
+      maximumTopUp:
+        typeof pricing.maximumTopUp === "number"
+          ? pricing.maximumTopUp
+          : undefined,
       low: typeof balance === "number" ? balance < 2 : undefined,
       critical: typeof balance === "number" ? balance < 0.5 : undefined,
     };

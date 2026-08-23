@@ -183,6 +183,47 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
     });
   });
 
+  it("getCloudBillingSummary: surfaces the server-advertised checkout bounds (#22963)", async () => {
+    // The dashboard gates top-up input on billingSummary.minimumTopUp; the
+    // server nests it under `pricing`. Before #22963 the direct adapter never
+    // flattened it, so the UI silently fell back to its own invented $1 while
+    // the summary advertised a different (stale) value.
+    vi.stubGlobal(
+      "fetch",
+      routeFetch({
+        "/api/v1/credits/summary": () =>
+          jsonResponse(200, {
+            organization: { creditBalance: 12.5 },
+            pricing: {
+              x402Enabled: false,
+              minimumTopUp: 1,
+              maximumTopUp: 1000,
+            },
+          }),
+      }),
+    );
+    const summary = await client.getCloudBillingSummary();
+    expect(summary.minimumTopUp).toBe(1);
+    expect(summary.maximumTopUp).toBe(1000);
+    expect(summary.cryptoEnabled).toBe(false);
+  });
+
+  it("getCloudBillingSummary: omits checkout bounds when the server omits them", async () => {
+    vi.stubGlobal(
+      "fetch",
+      routeFetch({
+        "/api/v1/credits/summary": () =>
+          jsonResponse(200, {
+            organization: { creditBalance: 0 },
+            pricing: { x402Enabled: true },
+          }),
+      }),
+    );
+    const summary = await client.getCloudBillingSummary();
+    expect(summary.minimumTopUp).toBeUndefined();
+    expect(summary.maximumTopUp).toBeUndefined();
+  });
+
   it("updateCloudCompatAgent: normalizes a successful direct PATCH response", async () => {
     vi.stubGlobal(
       "fetch",

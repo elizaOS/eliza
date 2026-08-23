@@ -6,6 +6,31 @@ const checkoutCreate = mock(async () => ({
   url: "https://checkout.stripe.test/session",
 }));
 
+const orderRow = {
+  id: "30000000-0000-4000-8000-000000000001",
+  status: "quoted",
+  stripe_customer_id: null,
+  updated_at: new Date(),
+};
+
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {
+    create: mock(async () => ({ ...orderRow })),
+    bindCustomer: mock(async (id: string, customerId: string) => ({
+      ...orderRow,
+      id,
+      stripe_customer_id: customerId,
+    })),
+    markProviderStarted: mock(async () => undefined),
+    bindSession: mock(async () => undefined),
+    markProviderAmbiguous: mock(async () => undefined),
+  },
+}));
+
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: mock(async () => "cus_created") },
+}));
+
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey: async () => undefined,
   validateServiceKey: async () => null,
@@ -26,7 +51,13 @@ mock.module("@/db/helpers", () => ({
       from: () => ({ where: () => ({ limit: async () => [] }) }),
     }),
   },
+  // The mocked namespace replaces the real module's full re-export surface
+  // (db/dbWrite/writeTransaction/getDbConnectionInfo); sibling modules
+  // imported by the route still request those names, so they must exist.
+  db: {},
   dbWrite: {},
+  writeTransaction: async () => undefined,
+  getDbConnectionInfo: () => ({}),
 }));
 
 const checkoutOrder = {

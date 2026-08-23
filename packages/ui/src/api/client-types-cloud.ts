@@ -166,6 +166,7 @@ export interface CloudBillingSummary {
   hostedCheckoutEnabled?: boolean;
   cryptoEnabled?: boolean;
   minimumTopUp?: number;
+  maximumTopUp?: number;
   hasPaymentMethod?: boolean;
   paymentMethods?: CloudBillingPaymentMethod[];
   history?: CloudBillingHistoryItem[];

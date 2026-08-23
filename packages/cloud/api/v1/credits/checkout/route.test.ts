@@ -467,4 +467,179 @@ describe("credits checkout service-key agent bridge", () => {
       "cus_created",
     );
   });
+
+  test("enforces the canonical checkout bounds at both edges (#22963)", async () => {
+    // Expectations derive from the shared contract so a deliberate contract
+    // change breaks this test instead of silently diverging from the seam.
+    const { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } = await import(
+      "@elizaos/cloud-shared/billing"
+    );
+    const min = ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd;
+    const max = ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd;
+
+    const post = async (key: string, amount: number) =>
+      await app.fetch(
+        new Request("https://api.example.test/", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "X-Service-Key": "svc",
+            "Idempotency-Key": key,
+          },
+          body: JSON.stringify({
+            amountUsd: amount,
+            agent_id: agentId,
+            success_url: "https://waifu.example.test/success",
+            cancel_url: "https://waifu.example.test/cancel",
+          }),
+        }),
+        { WAIFU_SERVICE_KEY: "svc" },
+      );
+
+    for (const amount of [min, max, min + 0.5, max - 0.01]) {
+      checkoutCreate.mockClear();
+      createOrder.mockClear();
+      const response = await post(`v1-bounds-ok-${String(amount)}`, amount);
+      expect(response.status).toBe(200);
+      expect(createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          creditsToGrant: amount.toFixed(6),
+          chargeAmountCents: Math.round(amount * 100),
+        }),
+      );
+    }
+
+    for (const amount of [min - 0.01, max + 0.01, 0, -5]) {
+      checkoutCreate.mockClear();
+      createOrder.mockClear();
+      const response = await post(`v1-bounds-bad-${String(amount)}`, amount);
+      expect(response.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(checkoutCreate).not.toHaveBeenCalled();
+    }
+  });
+
+  test("rejects sub-cent amounts that cannot resolve to exact whole cents (#22963)", async () => {
+    const post = (key: string, amount: number) =>
+      app.fetch(
+        new Request("https://api.example.test/", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "X-Service-Key": "svc",
+            "Idempotency-Key": key,
+          },
+          body: JSON.stringify({
+            amountUsd: amount,
+            agent_id: agentId,
+            success_url: "https://waifu.example.test/success",
+            cancel_url: "https://waifu.example.test/cancel",
+          }),
+        }),
+        { WAIFU_SERVICE_KEY: "svc" },
+      );
+
+    for (const amount of [1.001, 1000.999, 10.005, 0.1 + 0.2 - 0.29]) {
+      checkoutCreate.mockClear();
+      createOrder.mockClear();
+      const response = await post(`v1-subcent-${String(amount)}`, amount);
+      expect(response.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(checkoutCreate).not.toHaveBeenCalled();
+    }
+  });
+
+  test("rejects a null amountUsd before any order or provider work (#22963)", async () => {
+    checkoutCreate.mockClear();
+    createOrder.mockClear();
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+          "Idempotency-Key": "v1-null-amount-1",
+        },
+        // JSON.stringify renders an explicit null; the schema must reject the
+        // wrong type exactly as it rejects an out-of-range number.
+        body: JSON.stringify({
+          amountUsd: null,
+          agent_id: agentId,
+          success_url: "https://waifu.example.test/success",
+          cancel_url: "https://waifu.example.test/cancel",
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+    expect(response.status).toBe(400);
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(checkoutCreate).not.toHaveBeenCalled();
+  });
+
+  test("accepts decimal amounts whose float product is noisy but cent-exact (#22963)", async () => {
+    // 1.15 * 100 === 114.99999999999999 in binary floating point; the
+    // decimal-safe conversion must accept these VALID amounts and charge
+    // exact cents (the agent bridge supports arbitrary custom top-ups).
+    for (const [amount, expectedCents] of [
+      [1.15, 115],
+      [4.35, 435],
+      [19.99, 1999],
+      [8.07, 807],
+    ] as const) {
+      checkoutCreate.mockClear();
+      createOrder.mockClear();
+      const response = await app.fetch(
+        new Request("https://api.example.test/", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "X-Service-Key": "svc",
+            "Idempotency-Key": `v1-float-cent-${String(amount)}`,
+          },
+          body: JSON.stringify({
+            amountUsd: amount,
+            agent_id: agentId,
+            success_url: "https://waifu.example.test/success",
+            cancel_url: "https://waifu.example.test/cancel",
+          }),
+        }),
+        { WAIFU_SERVICE_KEY: "svc" },
+      );
+      expect(response.status).toBe(200);
+      expect(createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ chargeAmountCents: expectedCents }),
+      );
+    }
+  });
+
+  test("rejects non-null wrong-typed amountUsd values before any order or provider work (#22963)", async () => {
+    for (const [label, amountUsd] of [
+      ["string", "5"],
+      ["object", {}],
+      ["array", []],
+    ] as const) {
+      checkoutCreate.mockClear();
+      createOrder.mockClear();
+      const response = await app.fetch(
+        new Request("https://api.example.test/", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "X-Service-Key": "svc",
+            "Idempotency-Key": `v1-wrong-type-${label}`,
+          },
+          body: JSON.stringify({
+            amountUsd,
+            agent_id: agentId,
+            success_url: "https://waifu.example.test/success",
+            cancel_url: "https://waifu.example.test/cancel",
+          }),
+        }),
+        { WAIFU_SERVICE_KEY: "svc" },
+      );
+      expect(response.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(checkoutCreate).not.toHaveBeenCalled();
+    }
+  });
 });
