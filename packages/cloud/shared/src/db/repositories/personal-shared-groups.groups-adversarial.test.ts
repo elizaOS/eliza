@@ -70,10 +70,17 @@ beforeAll(async () => {
     CREATE TABLE organizations (id uuid PRIMARY KEY);
     CREATE TABLE users (id uuid PRIMARY KEY);
   `);
-  const migration = await Bun.file(
-    new URL("../migrations/0297_personal_shared_group_bindings.sql", import.meta.url),
-  ).text();
-  await database.exec(migration);
+  // The repository reads authority_version and delivery_lease_* columns, so
+  // the schema must include the authority (0303) and lease (0304) migrations
+  // that extend the base group tables from 0297.
+  for (const file of [
+    "0297_personal_shared_group_bindings.sql",
+    "0303_personal_shared_group_authority_version.sql",
+    "0304_personal_shared_group_delivery_lease.sql",
+  ]) {
+    const migration = await Bun.file(new URL(`../migrations/${file}`, import.meta.url)).text();
+    await database.exec(migration);
+  }
 });
 
 beforeEach(async () => {
@@ -132,9 +139,9 @@ describe("personalSharedGroupsRepository adversarial claim lifecycle", () => {
     await issue({ codeHash: "claim-first", platformUserId: "+15551110001" });
     await issue({ codeHash: "claim-second", platformUserId: "+15551110001" });
 
-    expect(
-      await consume({ codeHash: "claim-first", platformUserId: "+15551110001" }),
-    ).toEqual({ status: "already_used" });
+    expect(await consume({ codeHash: "claim-first", platformUserId: "+15551110001" })).toEqual({
+      status: "already_used",
+    });
     expect(
       (
         await consume({
