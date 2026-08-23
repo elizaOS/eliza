@@ -16,6 +16,7 @@ export async function enrollRemoteTarget(input: {
   ownerId: string;
   ownerAccessToken: string;
   displayName: string;
+  managedNetwork?: boolean;
 }): Promise<{ hostId: string; identity: RemoteTargetPublicIdentity }> {
   const result = await invokeDesktopBridgeRequest<{
     hostId: string;

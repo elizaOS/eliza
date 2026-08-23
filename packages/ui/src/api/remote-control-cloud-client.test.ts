@@ -87,6 +87,38 @@ describe("RemoteControlCloudClient", () => {
     );
   });
 
+  it("preserves pending managed hosts so the owner can revoke incomplete enrollment", async () => {
+    const client = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "owner-token",
+      request: vi.fn().mockResolvedValue(
+        response({
+          ownerId: OWNER_ID,
+          hosts: [
+            {
+              id: HOST_ID,
+              deviceId: "device-1",
+              displayName: "Pending Linux host",
+              platform: "linux",
+              connectionMode: "relay",
+              runtimeKeyId: "target-key-1",
+              signingPublicKeyJwk: PUBLIC_JWK,
+              encryptionPublicKeyJwk: PUBLIC_JWK,
+              status: "pending",
+              lastSeenAt: null,
+              createdAt: "2026-08-22T00:00:00.000Z",
+              revokedAt: null,
+            },
+          ],
+        }),
+      ),
+    });
+
+    await expect(client.listHosts()).resolves.toMatchObject({
+      hosts: [{ id: HOST_ID, status: "pending" }],
+    });
+  });
+
   it("rejects a Cloud response that exposes private JWK material", async () => {
     const client = new RemoteControlCloudClient({
       baseUrl: "https://cloud.example",

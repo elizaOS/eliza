@@ -22,6 +22,7 @@ import type { SshHostInspection } from "../../platform/ssh-runtime";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 export type RuntimeTargetStatus = "connected" | "offline" | "error" | "pairing";
@@ -86,7 +87,7 @@ export interface DevicesRuntimesSectionProps {
     sshPort: number;
   }) => void | Promise<void>;
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
-  onEnrollLinuxTarget?: () => void | Promise<void>;
+  onEnrollLinuxTarget?: (managedNetwork: boolean) => void | Promise<void>;
   onActivateLinuxTarget?: (input: {
     sessionId?: string;
     code: string;
@@ -108,7 +109,7 @@ function LinuxTargetPanel({
   target: LinuxRemoteTargetView;
   pairing?: DevicePairingView | null;
   busy: boolean;
-  onEnroll?: () => void | Promise<void>;
+  onEnroll?: (managedNetwork: boolean) => void | Promise<void>;
   onActivate?: (input: {
     sessionId?: string;
     code: string;
@@ -118,6 +119,7 @@ function LinuxTargetPanel({
 }) {
   const [code, setCode] = useState("");
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const [managedNetwork, setManagedNetwork] = useState(false);
   const localPairing = pairing?.hostId === target.hostId ? pairing : null;
   return (
     <SettingsGroup
@@ -143,7 +145,7 @@ function LinuxTargetPanel({
               type="button"
               className="min-h-11"
               disabled={busy || !onEnroll}
-              onClick={() => void onEnroll?.()}
+              onClick={() => void onEnroll?.(managedNetwork)}
             >
               Enroll this computer
             </Button>
@@ -172,6 +174,28 @@ function LinuxTargetPanel({
             </div>
           )}
         </div>
+        {!target.enrolled ? (
+          <div className="mt-4 flex min-h-11 items-start gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-txt-strong">
+            <Switch
+              checked={managedNetwork}
+              onCheckedChange={setManagedNetwork}
+              disabled={busy}
+              aria-labelledby="managed-network-enrollment-label"
+            />
+            <span>
+              <span
+                id="managed-network-enrollment-label"
+                className="block font-medium"
+              >
+                Use Eliza managed private network
+              </span>
+              <span className="mt-1 block text-xs leading-relaxed text-muted">
+                Advanced. Requires a running Tailscale client. Eliza uses a
+                one-use key and never resets an existing tailnet automatically.
+              </span>
+            </span>
+          </div>
+        ) : null}
         {confirmingRevoke ? (
           <div
             role="alert"

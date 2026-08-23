@@ -52,6 +52,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // it's a daemon-superseded parity endpoint (the real prune runs in the
     // provisioning-worker, which owns the SSH credential + docker_nodes truth).
     "/api/v1/cron/node-disk-cleanup",
+    // Retry external Headscale compensation for revoked hosts and pending
+    // enrollments stranded beyond their one-use key window.
+    "/api/v1/cron/remote-host-managed-cleanup",
     // node-autoscale, agent-hot-pool, pool-drain-idle moved to the
     // provisioning-worker daemon's infra-maintenance cycle so the
     // orchestrator host owns docker_nodes truth. The control-plane still

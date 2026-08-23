@@ -25,7 +25,7 @@ export interface RemoteHostSummary {
   runtimeKeyId: string;
   signingPublicKeyJwk: JsonWebKey;
   encryptionPublicKeyJwk: JsonWebKey;
-  status: "active" | "offline" | "revoked";
+  status: "pending" | "active" | "offline" | "revoked";
   lastSeenAt: string | null;
   createdAt: string;
   revokedAt: string | null;
@@ -222,6 +222,7 @@ function parseHost(value: unknown): RemoteHostSummary {
       "encryption key",
     ),
     status: exactEnum(item.status, "host status", [
+      "pending",
       "active",
       "offline",
       "revoked",

@@ -668,10 +668,11 @@ export function DevicesRuntimesContainer({
       await refresh();
     });
 
-  const onEnrollLinuxTarget = () =>
+  const onEnrollLinuxTarget = (managedNetwork: boolean) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
         op: "enroll_host",
+        managedNetwork,
       });
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
