@@ -287,6 +287,17 @@ export type ScenarioTurn = {
   expectedValidation?: "accepted" | "rejected";
   /** For multi-room scenarios, the `rooms[].id` this turn is sent to. */
   room?: string;
+  /**
+   * Optional authenticated sender for a message turn in a shared room. The
+   * executor materializes a distinct connector principal and stamps bot
+   * authorship as trusted memory metadata; never simulate speakers with text
+   * labels inside one user's message.
+   */
+  sender?: {
+    id: string;
+    name: string;
+    kind: "human" | "bot";
+  };
   method?: string;
   path?: string;
   body?: unknown;

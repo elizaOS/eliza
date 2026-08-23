@@ -349,7 +349,10 @@ import { toWellFormedUnicode } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
-import { runBotLoopGate } from "./message/bot-loop-gate";
+import {
+	runBotGroupAddressGate,
+	runBotLoopGate,
+} from "./message/bot-loop-gate";
 import { runBotNoiseTriage } from "./message/bot-noise-triage";
 import {
 	type DirectCurrentRequestCandidateInference,
@@ -13597,6 +13600,35 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 
+		// Trusted-metadata group floor. A bot-authored group turn that does not
+		// address this agent is deterministically silent; human text containing a
+		// spoofed "(bot)" label never qualifies. Direct address wins so deliberate
+		// agent-to-agent orchestration remains available.
+		const botGroupAddressGate = await runBotGroupAddressGate({
+			runtime,
+			message,
+			explicitlyAddressesAgent,
+		});
+		if (botGroupAddressGate.ignored) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					entityId: message.entityId,
+				},
+				"Unaddressed bot-authored group turn ignored by deterministic address gate",
+			);
+			runTerminalOwner.request("bot_group_address_gate");
+			return {
+				didRespond: false,
+				responseContent: null,
+				responseMessages: [],
+				state: { values: {}, data: {}, text: "" } as State,
+				mode: "none",
+			};
+		}
+
 		// Cheap-tier triage for unaddressed bot/webhook traffic. A relay channel
 		// flooding automated embeds otherwise burns a full composeState + Stage 1
 		// RESPONSE_HANDLER call (the most expensive model in the stack — on
@@ -13640,7 +13672,11 @@ export class DefaultMessageService implements IMessageService {
 		// deterministically with IGNORE before any model call. Every
 		// unverifiable input (untagged sender, unknown channel, read failure)
 		// fails OPEN — the gate only ever biases toward silence, never speech.
-		const botLoopGate = await runBotLoopGate({ runtime, message });
+		const botLoopGate = await runBotLoopGate({
+			runtime,
+			message,
+			explicitlyAddressesAgent,
+		});
 		if (botLoopGate.ignored) {
 			runtime.logger.info(
 				{

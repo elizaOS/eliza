@@ -257,6 +257,7 @@ export type RunEventStatus =
 	| "off"
 	| "muted"
 	| "personality_gate"
+	| "bot_group_address_gate"
 	| "bot_noise_triage"
 	| "bot_loop_gate"
 	| "replaced"
