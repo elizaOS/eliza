@@ -16,6 +16,7 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "./adapters/types";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/cloud-services-common";
 import { PlatformDeliveryError } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
@@ -1254,7 +1255,7 @@ async function sendPersonalSharedReply(
   if (!response.ok) {
     let diagnostics: string;
     try {
-      diagnostics = (await response.text()).slice(0, 200);
+      diagnostics = truncateWellFormed(toWellFormedUnicode(await response.text()), 200);
     } catch (error) {
       // error-policy:J1 preserve a failed optional diagnostic body read.
       diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
@@ -1604,7 +1605,7 @@ async function sendOnboardingReply(
   if (!response.ok) {
     let diagnostics: string;
     try {
-      diagnostics = (await response.text()).slice(0, 200);
+      diagnostics = truncateWellFormed(toWellFormedUnicode(await response.text()), 200);
     } catch (error) {
       // error-policy:J1 The HTTP status is authoritative at this delivery
       // boundary; preserve a failed optional body read in its diagnostic.
