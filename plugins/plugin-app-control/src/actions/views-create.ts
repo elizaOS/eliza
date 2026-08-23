@@ -29,6 +29,7 @@ import {
 } from "./scaffold-env.js";
 import { buildVerifiedPluginTaskParameters } from "./verified-plugin-task.js";
 import type { ViewSummary } from "./views-client.js";
+import { compareScoredView } from "./views-comparators.ts";
 import { seedGuiViewScaffold } from "./views-create-scaffold.js";
 import { writeViewHeroAsset } from "./views-hero.js";
 import { isRestrictedPlatform } from "./views-platform.js";
@@ -122,6 +123,11 @@ function tokenize(value: string): string[] {
 		.filter((t) => t.length > 1 && !STOP_WORDS.has(t));
 }
 
+export {
+	__testCompareScoredView,
+	compareScoredView,
+} from "./views-comparators.ts";
+
 function rankViewMatches(
 	intent: string,
 	views: readonly ViewSummary[],
@@ -140,20 +146,7 @@ function rankViewMatches(
 		}
 		if (score > 0) ranked.push({ view, score });
 	}
-	ranked.sort((a, b) => {
-		const bS =
-			typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
-		const aS =
-			typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
-		if (bS !== aS) return bS - aS;
-		return String(
-			(a.view as { id?: string })?.id ?? (a as { id?: string }).id ?? "",
-		).localeCompare(
-			String(
-				(b.view as { id?: string })?.id ?? (b as { id?: string }).id ?? "",
-			),
-		);
-	});
+	ranked.sort(compareScoredView);
 	return ranked;
 }
 

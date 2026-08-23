@@ -23,6 +23,7 @@ import {
 import { matchViewCommand } from "./view-command-matcher.js";
 import { isRealtimeVoiceTurn } from "./view-delivery.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
+import { compareScoredViewShow } from "./views-comparators.ts";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { scoreView } from "./views-search.js";
 
@@ -291,6 +292,11 @@ export function resolveIntentView(text: string | undefined): string | null {
 	return null;
 }
 
+export {
+	__testCompareScoredViewShow,
+	compareScoredViewShow,
+} from "./views-comparators.ts";
+
 function resolveView(
 	target: string,
 	views: readonly ViewSummary[],
@@ -312,20 +318,7 @@ function resolveView(
 	const scored = views
 		.map((v) => ({ view: v, score: scoreView(v, target) }))
 		.filter(({ score }) => score > 0)
-		.sort((a, b) => {
-			const bS =
-				typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
-			const aS =
-				typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
-			if (bS !== aS) return bS - aS;
-			return String(
-				(a.view as { id?: string })?.id ?? (a as { id?: string }).id ?? "",
-			).localeCompare(
-				String(
-					(b.view as { id?: string })?.id ?? (b as { id?: string }).id ?? "",
-				),
-			);
-		});
+		.sort(compareScoredViewShow);
 
 	if (scored.length === 0) return { kind: "none" };
 	if (scored.length === 1) return { kind: "match", view: scored[0].view };
