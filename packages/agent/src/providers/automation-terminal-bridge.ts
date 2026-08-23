@@ -68,7 +68,12 @@ export const automationTerminalBridgeProvider: Provider = {
       });
       const visibleMessages = memories
         .filter((entry) => entry.content.text)
-        .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0));
+        .sort((left, right) => {
+        const leftSafe = Number.isFinite(left.createdAt ?? 0) ? (left.createdAt ?? 0) : 0;
+        const rightSafe = Number.isFinite(right.createdAt ?? 0) ? (right.createdAt ?? 0) : 0;
+        if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+        return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+      });
 
       if (visibleMessages.length === 0) {
         return { text: "", values: {}, data: {} };
