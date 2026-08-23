@@ -42,7 +42,7 @@ describe("checkSecretHandler", () => {
 		expect(JSON.stringify(result)).not.toContain("the-value");
 	});
 
-	it("handles string and missing key params", async () => {
+	it("handles string params and rejects missing keys", async () => {
 		mocks.secretContextFromMessage.mockReturnValue(undefined);
 		const service = { exists: vi.fn(async () => false) };
 		const runtime = { getService: () => service } as never;
@@ -50,9 +50,11 @@ describe("checkSecretHandler", () => {
 			parameters: { key: "SINGLE" },
 		} as never);
 		expect(r1.success).toBe(true);
+		// 无 key 参数 → 显式失败（不是静默成功）
 		const r2 = await checkSecretHandler(runtime, {} as never, undefined, {
 			parameters: {},
 		} as never);
-		expect(r2.success).toBe(true);
+		expect(r2.success).toBe(false);
+		expect(r2.text).toBe("Missing required parameter: key");
 	});
 });
