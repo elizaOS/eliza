@@ -5,7 +5,7 @@ vi.mock("@elizaos/core", () => ({
   hasActionTags: (...args: unknown[]) => hasActionTags(...args),
 }));
 
-import { classifyRuntimeActionNode } from "./automation-action-classifier.ts";
+import { classifyRuntimeActionNode } from "../automation-action-classifier.ts";
 
 describe("classifyRuntimeActionNode", () => {
   it("classifies agent-orchestration + delegate actions as agent", () => {
