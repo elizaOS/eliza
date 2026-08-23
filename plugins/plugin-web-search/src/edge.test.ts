@@ -155,6 +155,24 @@ describe("webSearchEdgePlugin", () => {
         });
     });
 
+    it("binds Parallel excerpts that are direct fields of their result URL", () => {
+        const [source] = webSearchSourceEvidence(
+            JSON.stringify({
+                results: [
+                    {
+                        url: "https://example.com/current",
+                        title: "Current result",
+                        excerpts: ["BTC is 77,730.07 USD."],
+                    },
+                ],
+            })
+        ).sources;
+        expect(source).toEqual({
+            url: "https://example.com/current",
+            text: expect.stringContaining("BTC is 77,730.07 USD."),
+        });
+    });
+
     it("does not emit raw successful provider text through the channel callback", async () => {
         const callback = vi.fn();
         globalThis.fetch = vi.fn(async () =>
