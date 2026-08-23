@@ -59,6 +59,14 @@ describe("parseExplicitLocalDate — relative phrasing (#8795)", () => {
     });
   });
 
+  it("numeric 2/1/0010 is year 10, not a 1910 Date.UTC round-trip reject", () => {
+    expect(parseExplicitLocalDate("2/1/0010", "UTC")).toEqual({
+      year: 10,
+      month: 2,
+      day: 1,
+    });
+  });
+
   it("returns null when there is no resolvable date", () => {
     expect(parseExplicitLocalDate("sometime soon maybe", TZ)).toBeNull();
     expect(parseExplicitLocalDate("", TZ)).toBeNull();
