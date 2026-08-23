@@ -16,7 +16,12 @@ import {
 	type RuntimeManagementResult,
 } from "@elizaos/shared";
 import { getAppControlApiBase } from "../loopback-api.js";
-import { normalizeActionOptions, readStringOption } from "../params.js";
+import {
+	normalizeActionOptions,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
+import { readViewInteractionClientId } from "./view-delivery.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export type RuntimeManagementFn = (
@@ -34,6 +39,21 @@ const CONFIRMATION_REQUIRED: ReadonlySet<RuntimeManagementRequest["op"]> =
 			(op) => op !== "list" && op !== "inspect_ssh",
 		),
 	);
+
+const SECRET_OPTION_NAMES = new Set([
+	"accesstoken",
+	"apikey",
+	"bearertoken",
+	"credential",
+	"password",
+	"privatekey",
+	"secret",
+	"token",
+]);
+
+function isSecretOptionName(key: string): boolean {
+	return SECRET_OPTION_NAMES.has(key.replace(/[-_]/g, "").toLowerCase());
+}
 
 function readNumberOption(
 	options: Record<string, unknown>,
@@ -60,6 +80,9 @@ export function parseRuntimeManagementRequest(
 	optionsValue?: Record<string, unknown>,
 ): RuntimeManagementRequest | null {
 	const options = normalizeActionOptions(optionsValue) ?? {};
+	if (Object.keys(options).some(isSecretOptionName)) {
+		return null;
+	}
 	const opValue =
 		readStringOption(options, "op") ?? readStringOption(options, "action");
 	if (!isRuntimeManagementOperation(opValue)) return null;
@@ -80,13 +103,30 @@ export function parseRuntimeManagementRequest(
 	};
 }
 
+function userExplicitlyConfirmed(message: Memory): boolean {
+	const text = userRequestMessageText(message).trim();
+	return /(?:^|\b)(?:confirm(?:ed)?|yes|yep|proceed|do it|go ahead)(?:\b|$)/i.test(
+		text,
+	);
+}
+
 async function defaultManageRuntime(
 	request: RuntimeManagementRequest,
+	message: Memory,
 ): Promise<RuntimeManagementResult> {
+	const clientId = readViewInteractionClientId(message);
+	if (!clientId) {
+		return {
+			ok: false,
+			op: request.op,
+			error:
+				"open the Eliza app and send this request from its chat so the operation is bound to that device",
+		};
+	}
 	const response = await fetch(`${getAppControlApiBase()}/api/runtime/manage`, {
 		method: "POST",
 		headers: createViewsRequestHeaders(),
-		body: JSON.stringify(request),
+		body: JSON.stringify({ ...request, clientId }),
 		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 	});
 	const body = (await response
@@ -107,7 +147,18 @@ function successText(result: RuntimeManagementResult): string {
 		const runtimes = Array.isArray(result.data?.runtimes)
 			? result.data.runtimes
 			: [];
-		return `Found ${runtimes.length} saved runtime${runtimes.length === 1 ? "" : "s"}.`;
+		if (runtimes.length === 0) return "No saved runtimes were found.";
+		const rows = runtimes.map((runtime) => {
+			if (!runtime || typeof runtime !== "object" || Array.isArray(runtime)) {
+				return `- ${JSON.stringify(runtime)}`;
+			}
+			const item = runtime as Record<string, unknown>;
+			const label = String(item.label ?? "Unnamed runtime");
+			const id = String(item.id ?? "unknown-id");
+			const kind = String(item.connectionMode ?? item.kind ?? "unknown");
+			return `- ${label} (${id}) — ${kind}${item.active === true ? ", active" : ""}`;
+		});
+		return `Saved runtimes (${runtimes.length}):\n${rows.join("\n")}`;
 	}
 	if (result.op === "pair") {
 		const receipt =
@@ -117,7 +168,24 @@ function successText(result: RuntimeManagementResult): string {
 		return `Pairing is ready. Session ${String(receipt.sessionId ?? "unknown")}, one-use code ${String(receipt.code ?? "unknown")}, expires ${String(receipt.expiresAt ?? "soon")}.`;
 	}
 	if (result.op === "inspect_ssh") {
-		return "Read the SSH host keys without trusting or connecting to the host. Verify the fingerprint out of band before connecting.";
+		const inspection =
+			result.data?.inspection &&
+			typeof result.data.inspection === "object" &&
+			!Array.isArray(result.data.inspection)
+				? (result.data.inspection as Record<string, unknown>)
+				: {};
+		const fingerprints = Array.isArray(inspection.fingerprints)
+			? inspection.fingerprints
+			: [];
+		const rows = fingerprints.map((entry) => {
+			if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+				return `- ${JSON.stringify(entry)}`;
+			}
+			const key = entry as Record<string, unknown>;
+			return `- ${String(key.algorithm ?? "unknown")}: ${String(key.fingerprint ?? "unknown")}`;
+		});
+		const preferred = String(inspection.preferredFingerprint ?? "unavailable");
+		return `SSH host keys read without trusting or connecting:\n${rows.join("\n")}\nPreferred fingerprint: ${preferred}\nVerify it out of band before connecting.`;
 	}
 	const labels: Record<string, string> = {
 		revoke: "Revoked the selected controller session.",
@@ -138,7 +206,7 @@ function successText(result: RuntimeManagementResult): string {
 export function createRuntimeManagementAction(
 	deps: RuntimeManagementActionDeps = {},
 ): Action {
-	const manageRuntime = deps.manageRuntime ?? defaultManageRuntime;
+	const manageRuntime = deps.manageRuntime;
 	return {
 		name: "RUNTIMES",
 		contexts: ["general", "settings", "admin", "system"],
@@ -250,19 +318,23 @@ export function createRuntimeManagementAction(
 		validate: async (): Promise<boolean> => true,
 		handler: async (
 			_runtime: IAgentRuntime,
-			_message: Memory,
+			message: Memory,
 			_state?: State,
 			options?: Record<string, unknown>,
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const request = parseRuntimeManagementRequest(options);
 			if (!request) {
-				const reply = "Tell me which Devices & Runtimes operation to perform.";
+				const reply =
+					"Tell me which Devices & Runtimes operation to perform, without including passwords, private keys, tokens, API keys, or credentials.";
 				await callback?.({ text: reply });
 				return { success: false, text: reply };
 			}
 			const normalized = normalizeActionOptions(options) ?? {};
-			if (CONFIRMATION_REQUIRED.has(request.op) && !isConfirmed(normalized)) {
+			if (
+				CONFIRMATION_REQUIRED.has(request.op) &&
+				(!isConfirmed(normalized) || !userExplicitlyConfirmed(message))
+			) {
 				const reply = `Please confirm before I run the ${request.op} Devices & Runtimes operation.`;
 				await callback?.({ text: reply });
 				return {
@@ -275,7 +347,9 @@ export function createRuntimeManagementAction(
 			}
 
 			logger.info(`[plugin-app-control] RUNTIMES op=${request.op}`);
-			const result = await manageRuntime(request);
+			const result = manageRuntime
+				? await manageRuntime(request)
+				: await defaultManageRuntime(request, message);
 			if (!result.ok) {
 				const reply = `I couldn't complete ${request.op}: ${result.error ?? "the connected app refused the operation"}.`;
 				await callback?.({ text: reply });
@@ -289,7 +363,10 @@ export function createRuntimeManagementAction(
 				userFacingText: reply,
 				verifiedUserFacing: true,
 				turnComplete: true,
-				values: { op: request.op },
+				values: {
+					op: request.op,
+					...(result.data ? { resultJson: JSON.stringify(result.data) } : {}),
+				},
 			};
 		},
 	};
