@@ -728,7 +728,7 @@ export class DocumentService extends Service {
 	): Promise<DocumentRangeReadResult | null> {
 		const adapter = this.runtime.adapter;
 		if (
-			adapter.documentRangeReadCapability !== 1 ||
+			adapter.documentRangeReadCapability !== 2 ||
 			typeof adapter.readDocumentRange !== "function"
 		) {
 			throw new ElizaError(

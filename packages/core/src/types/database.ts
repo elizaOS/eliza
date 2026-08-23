@@ -103,7 +103,7 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 }
 
 /** Exact unit used by an authorized bounded document read. */
-export type DocumentRangeUnit = "line" | "fragment";
+export type DocumentRangeUnit = "line" | "fragment" | "byte";
 
 /**
  * Authorized bounded document read. Offsets and limits count exact retained
@@ -122,6 +122,7 @@ export interface DocumentRangeReadParams extends DocumentRequesterContext {
  * opaque public revision before it leaves DocumentService.
  */
 export interface DocumentRangeReadResult {
+	unit: DocumentRangeUnit;
 	text: string;
 	start: number;
 	end: number;
@@ -129,6 +130,10 @@ export interface DocumentRangeReadResult {
 	documentRevision: number;
 	revisionAttemptId?: string;
 	sourceFingerprint: string;
+	examinedSourceSegments: number;
+	sourceQueryCount: number;
+	returnedSourceSegments: number;
+	returnedSourceBytes: number;
 }
 
 /**
@@ -1162,7 +1167,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	readonly documentListQueryCapability: 4;
 	/** Native bounded source projection; absent adapters must fail explicitly. */
-	readonly documentRangeReadCapability?: 1;
+	readonly documentRangeReadCapability?: 1 | 2;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
