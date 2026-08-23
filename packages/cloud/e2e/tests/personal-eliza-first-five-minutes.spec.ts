@@ -2,7 +2,7 @@
  * Proves the launch-critical personal Eliza path against the real local Worker,
  * PGlite database, and Durable Objects. External model credentials are blanked,
  * so no paid provider can be dialed; the OpenRouter backup (the route the
- * shared default model takes once Cerebras is unconfigured) is pointed at an
+ * shared default model takes once Cerebras is unconfigured) is pointed at a
  * strict fixture model that answers the first turn with one fixed capability
  * refusal. Since #22844 the Shared capability wall is no longer a canned reply
  * but a constraint the runtime injects into the model prompt, so the refusal is
