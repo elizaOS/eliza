@@ -419,6 +419,22 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 	},
 ];
 
+function toContextScore(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareContextScore(
+  a: { score: number; context: string },
+  b: { score: number; context: string },
+): number {
+  const aScore = toContextScore(a.score);
+  const bScore = toContextScore(b.score);
+  if (bScore !== aScore) return bScore - aScore;
+  return a.context.localeCompare(b.context);
+}
+
+export const __testCompareContextScore = compareContextScore;
+
 export function inferContextRoutingFromText(
 	text: string | null | undefined,
 ): ContextRoutingDecision {
@@ -437,7 +453,7 @@ export function inferContextRoutingFromText(
 		),
 	}))
 		.filter((entry) => entry.score > 0)
-		.sort((left, right) => right.score - left.score);
+		.sort(compareContextScore);
 
 	if (scored.length === 0) {
 		return { primaryContext: "general", secondaryContexts: [] };
