@@ -264,7 +264,10 @@ export function CloudSettingsPanel() {
   if (!isWide) {
     const showHub = narrowView === "hub";
     return (
-      <div className="flex h-full flex-col bg-bg pt-8">
+      <div
+        data-chat-clearance-aware="true"
+        className="flex h-full flex-col bg-bg pt-8 pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+      >
         <CloudSettingsDragStrip />
         {showHub ? (
           <HubList
@@ -295,7 +298,10 @@ export function CloudSettingsPanel() {
 
   // Wide layout: sidebar + content side-by-side.
   return (
-    <div className="flex h-full bg-bg">
+    <div
+      data-chat-clearance-aware="true"
+      className="flex h-full bg-bg pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+    >
       <CloudSettingsDragStrip />
       <CloudSettingsSidebar
         accountState={accountNavigationState}

@@ -65,7 +65,11 @@ describe("CloudSettingsPanel narrow navigation", () => {
   });
 
   it("returns from section content to the settings hub", () => {
-    render(<CloudSettingsPanel />);
+    const { container } = render(<CloudSettingsPanel />);
+
+    const panel = container.querySelector("[data-chat-clearance-aware='true']");
+    expect(panel?.className).toContain("--eliza-chat-clearance");
+    expect(panel?.className).toContain("--eliza-chat-side-clearance");
 
     fireEvent.click(screen.getByRole("button", { name: /Voice/ }));
     expect(screen.getByText("Voice section")).toBeTruthy();

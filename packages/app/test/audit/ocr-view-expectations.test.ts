@@ -110,6 +110,17 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     });
   });
 
+  it("matches the current Settings navigation vocabulary", () => {
+    const policy = resolveViewOcrPolicy("builtin-settings");
+    expect(policy).toEqual({
+      kind: "expectation",
+      expectation: {
+        requireAll: ["General"],
+        requireAny: ["Desktop", "Voice", "Agent", "Connections", "Permissions"],
+      },
+    });
+  });
+
   it("recognizes Contacts by stable empty-state content rather than a removed heading", () => {
     for (const slug of ["builtin-contacts", "plugin-contacts-gui"]) {
       const policy = resolveViewOcrPolicy(slug);

@@ -83,6 +83,9 @@ describe("positiveExpectationMatches", () => {
     ],
     ["builtin-tasks", "Tasks No coding tasks yet.", true],
     ["builtin-automations", "Automations Nothing scheduled yet", true],
+    ["builtin-settings", "General Voice Agent Connections", true],
+    ["builtin-settings", "General Desktop Launch at login", true],
+    ["builtin-settings", "Settings Models & Providers", false],
   ])("matches %s semantic readiness for %j", (slug, text, expected) => {
     expect(
       positiveExpectationMatches(normalize(text), expectationFor(slug)),
