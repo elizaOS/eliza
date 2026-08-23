@@ -441,6 +441,7 @@ import {
   buildPluginDiagnosticEntry,
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
+import { handleRuntimeManagementRoutes } from "./runtime-management-routes.ts";
 import {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
@@ -3316,6 +3317,20 @@ async function handleRequest(
   }
 
   // ── Runtime switch routes (/api/runtime/model-switch, /agent-switch) ──────
+  if (
+    await handleRuntimeManagementRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      broadcastWs: state.broadcastWs ?? undefined,
+    })
+  ) {
+    return;
+  }
+
   if (
     await handleRuntimeSwitchRoutes({
       req,
