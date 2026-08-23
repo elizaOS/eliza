@@ -96,6 +96,21 @@ function isVisibleMessage(msg: Memory): boolean {
  * - receivedMessageHeader: Header showing the current message being responded to
  * - focusHeader: Instruction to focus response on the received message
  */
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtAsc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 export const recentMessagesProvider: Provider = {
   name: "RECENT_MESSAGES",
   description: "Provides recent conversation messages with detailed context",
@@ -199,7 +214,7 @@ export const recentMessagesProvider: Provider = {
       // Format conversation logs (simple format without IDs)
       const formatConversationLog = (messages: Memory[], includeThoughts: boolean): string => {
         return messages
-          .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+          .sort(compareMemoryByCreatedAtAsc)
           .map((msg) => {
             const entity = entitiesData.find((e: Entity) => e.id === msg.entityId);
             const entityName = entity
