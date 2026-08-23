@@ -123,7 +123,9 @@ function isoDay(year: number, monthIndex: number, day: number): string | null {
     return null;
   }
   const fullYear = year < 100 ? 2000 + year : year;
-  const date = new Date(Date.UTC(fullYear, monthIndex, day));
+  const d = new Date(0);
+  d.setUTCFullYear(fullYear, monthIndex, day);
+  const date = d;
   if (Number.isNaN(date.getTime())) return null;
   // Reject roll-overs (e.g. Feb 30 → Mar 2).
   if (

@@ -183,7 +183,12 @@ function dayOfWeekInTz(date: Date, timeZone: string): number {
   // from a UTC anchor. Avoids any reliance on locale-specific weekday strings.
   const parts = getZonedDateParts(date, timeZone);
   return new Date(
-    Date.UTC(parts.year, Math.max(0, parts.month - 1), parts.day, 12, 0, 0),
+    (() => {
+      const d = new Date(0);
+      d.setUTCFullYear(parts.year, Math.max(0, parts.month - 1), parts.day);
+      d.setUTCHours(12, 0, 0, 0);
+      return d.getTime();
+    })(),
   ).getUTCDay();
 }
 

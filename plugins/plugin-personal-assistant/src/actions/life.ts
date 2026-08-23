@@ -2118,7 +2118,12 @@ export function resolveOnceDueAt(args: {
     for (let offset = 0; offset <= 7; offset += 1) {
       const localDate = addDaysToLocalDate(today, offset);
       const weekday = new Date(
-        Date.UTC(localDate.year, localDate.month - 1, localDate.day, 12),
+        (() => {
+          const d = new Date(0);
+          d.setUTCFullYear(localDate.year, localDate.month - 1, localDate.day);
+          d.setUTCHours(12, 0, 0, 0);
+          return d.getTime();
+        })(),
       ).getUTCDay();
       if (weekday !== args.dueWeekday) {
         continue;

@@ -163,13 +163,14 @@ function buildActivitySession(
   const startParts = getZonedDateParts(new Date(startAt), timezone);
   const endParts = getZonedDateParts(new Date(endAt), timezone);
   const startDayKey = getLocalDateKey(startParts);
-  const startDayOrdinal = Math.floor(
-    Date.UTC(startParts.year, startParts.month - 1, startParts.day) /
-      86_400_000,
-  );
-  const endDayOrdinal = Math.floor(
-    Date.UTC(endParts.year, endParts.month - 1, endParts.day) / 86_400_000,
-  );
+  const dStart = new Date(0);
+  dStart.setUTCFullYear(startParts.year, startParts.month - 1, startParts.day);
+  dStart.setUTCHours(12, 0, 0, 0);
+  const startDayOrdinal = Math.floor(dStart.getTime() / 86_400_000);
+  const dEnd = new Date(0);
+  dEnd.setUTCFullYear(endParts.year, endParts.month - 1, endParts.day);
+  dEnd.setUTCHours(12, 0, 0, 0);
+  const endDayOrdinal = Math.floor(dEnd.getTime() / 86_400_000);
 
   return {
     startAt,
@@ -817,9 +818,12 @@ export function enrichWithCalendar(
       // Weekday in the OWNER's zone (0=Sun, 1=Mon, ...): hours already come
       // from the zoned parts; `getDay()` would classify by the SERVER zone
       // and mislabel events near local midnight (weekday vs weekend).
-      dayOfWeek: new Date(
-        Date.UTC(startParts.year, startParts.month - 1, startParts.day),
-      ).getUTCDay(),
+      dayOfWeek: (() => {
+        const d = new Date(0);
+        d.setUTCFullYear(startParts.year, startParts.month - 1, startParts.day);
+        d.setUTCHours(12, 0, 0, 0);
+        return d;
+      })().getUTCDay(),
     });
   }
 

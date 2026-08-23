@@ -195,7 +195,12 @@ const WEEKDAY_NAMES = [
 function describeNowForPrompt(now: Date, timeZone: string): string {
   const parts = getZonedDateParts(now, timeZone);
   const weekday = new Date(
-    Date.UTC(parts.year, parts.month - 1, parts.day, 12),
+    (() => {
+      const d = new Date(0);
+      d.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+      d.setUTCHours(12, 0, 0, 0);
+      return d.getTime();
+    })(),
   ).getUTCDay();
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${WEEKDAY_NAMES[weekday]} ${parts.year}-${pad(parts.month)}-${pad(parts.day)} ${pad(parts.hour)}:${pad(parts.minute)} (${timeZone})`;
