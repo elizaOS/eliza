@@ -307,6 +307,14 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 	"claude-haiku-4-5": 200_000,
 
 	// ---- OpenAI -------------------------------------------------------------
+	// Source: https://developers.openai.com/api/docs/models/text
+	// (captured 2026-08-23). Every GPT-5.6 tier publishes a 1.05M context
+	// window and a separate 128K maximum output. Keep those limits distinct:
+	// this table describes the combined context ceiling, while the output table
+	// below supplies admission's generated-token reserve.
+	"gpt-5.6-sol": 1_050_000,
+	"gpt-5.6-terra": 1_050_000,
+	"gpt-5.6-luna": 1_050_000,
 	// Source: https://platform.openai.com/docs/models (captured 2026-05-11)
 	"gpt-5.5": 200_000,
 	"gpt-5.5-mini": 128_000,
@@ -337,6 +345,15 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 	"openai/gpt-oss-120b": 131_000,
 	"llama-3.3-70b-versatile": 131_000,
 	"llama-3.1-8b-instant": 131_000,
+};
+
+/** Published maximum generated-token counts used as final-request reserves. */
+export const MODEL_MAX_OUTPUT_TOKENS: Record<string, number> = {
+	// Source: https://developers.openai.com/api/docs/models/text
+	// (captured 2026-08-23).
+	"gpt-5.6-sol": 128_000,
+	"gpt-5.6-terra": 128_000,
+	"gpt-5.6-luna": 128_000,
 };
 
 /**
@@ -491,6 +508,31 @@ function withOverrides<T>(
 export interface ContextWindowLookupResult {
 	matchedKey: string;
 	contextWindowTokens: number;
+}
+
+export interface MaxOutputLookupResult {
+	matchedKey: string;
+	maxOutputTokens: number;
+}
+
+/** Resolve a provider-published maximum output count by exact/family id. */
+export function lookupModelMaxOutputTokens(
+	modelName: string | undefined,
+): MaxOutputLookupResult | null {
+	if (!modelName) return null;
+	const exact = MODEL_MAX_OUTPUT_TOKENS[modelName];
+	if (typeof exact === "number") {
+		return { matchedKey: modelName, maxOutputTokens: exact };
+	}
+	const normalized = modelName.toLowerCase();
+	const match = Object.keys(MODEL_MAX_OUTPUT_TOKENS)
+		.filter((key) => normalized.includes(key.toLowerCase()))
+		.sort((left, right) => right.length - left.length)[0];
+	if (!match) return null;
+	const maxOutputTokens = MODEL_MAX_OUTPUT_TOKENS[match];
+	return typeof maxOutputTokens === "number"
+		? { matchedKey: match, maxOutputTokens }
+		: null;
 }
 
 /**

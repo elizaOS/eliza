@@ -237,6 +237,18 @@ afterEach(() => {
 });
 
 describe("OpenAI native text plumbing", () => {
+  it("publishes concrete GPT-5.6 defaults for pre-handler admission", async () => {
+    const { openaiPlugin } = await import("../index");
+    expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_SMALL]).toMatchObject({
+      displayModelDefault: "gpt-5.6-luna",
+      displayModelSettings: expect.arrayContaining(["OPENAI_SMALL_MODEL"]),
+    });
+    expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_LARGE]).toMatchObject({
+      displayModelDefault: "gpt-5.6-sol",
+      displayModelSettings: expect.arrayContaining(["OPENAI_LARGE_MODEL"]),
+    });
+  });
+
   it("uses a strict-safe wire schema for planner tool args and restores returned args", async () => {
     const wirePlannerText = JSON.stringify({
       thought: "Need the calendar tool.",
