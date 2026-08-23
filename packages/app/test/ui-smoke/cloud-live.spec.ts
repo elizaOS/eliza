@@ -39,6 +39,7 @@ import {
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import {
   assertOnboardingLivenessWithTiming,
+  chatComposer,
   describeAnchoredLiveTurnState,
   findAnchoredLiveTurn,
   isLiveReply,
