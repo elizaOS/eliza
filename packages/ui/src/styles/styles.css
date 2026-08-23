@@ -7,6 +7,19 @@
 /* NuPhy tokens and its package-specific utilities remain inside the settings
    container; no NuPhy @theme or :root declarations enter the shared app. */
 @import "./nuphy-scope.css";
+
+/* Tailwind v4 defaults bare `border` utilities to currentColor, which paints
+   near-white text-colored frames on dark surfaces. Restore the themed default
+   so an unqualified border always means the subtle `--border` token. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border, currentColor);
+  }
+}
 @import "./shadcn-utilities.css";
 @import "./base.css";
 @import "./tailwind-theme.css";
