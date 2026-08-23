@@ -351,6 +351,39 @@ function buildTransactionId(args: {
   return crypto.createHash("sha1").update(key).digest("hex").slice(0, 32);
 }
 
+export function compareSpendingCategoryByTotal(
+  a: { totalUsd?: unknown; category: string },
+  b: { totalUsd?: unknown; category: string },
+): number {
+  const bTotal =
+    typeof (b as any).totalUsd === "number" && Number.isFinite((b as any).totalUsd)
+      ? (b as any).totalUsd
+      : 0;
+  const aTotal =
+    typeof (a as any).totalUsd === "number" && Number.isFinite((a as any).totalUsd)
+      ? (a as any).totalUsd
+      : 0;
+  return bTotal - aTotal || String((a as any).category).localeCompare(String((b as any).category));
+}
+
+export function compareSpendingMerchantByTotal(
+  a: { totalUsd?: unknown; merchantNormalized: string },
+  b: { totalUsd?: unknown; merchantNormalized: string },
+): number {
+  const bTotal =
+    typeof (b as any).totalUsd === "number" && Number.isFinite((b as any).totalUsd)
+      ? (b as any).totalUsd
+      : 0;
+  const aTotal =
+    typeof (a as any).totalUsd === "number" && Number.isFinite((a as any).totalUsd)
+      ? (a as any).totalUsd
+      : 0;
+  return (
+    bTotal - aTotal ||
+    String((a as any).merchantNormalized).localeCompare(String((b as any).merchantNormalized))
+  );
+}
+
 function computeSpendingSummary(args: {
   transactions: readonly LifeOpsPaymentTransaction[];
   recurring: readonly LifeOpsRecurringCharge[];
@@ -409,7 +442,7 @@ function computeSpendingSummary(args: {
       totalUsd: Number(agg.total.toFixed(2)),
       transactionCount: agg.count,
     }))
-    .sort((a, b) => b.totalUsd - a.totalUsd)
+    .sort(compareSpendingCategoryByTotal)
     .slice(0, 6);
 
   const topMerchants = Array.from(merchantTotals.entries())
@@ -419,7 +452,7 @@ function computeSpendingSummary(args: {
       totalUsd: Number(agg.total.toFixed(2)),
       transactionCount: agg.count,
     }))
-    .sort((a, b) => b.totalUsd - a.totalUsd)
+    .sort(compareSpendingMerchantByTotal)
     .slice(0, 10);
 
   const recurringSpendUsd = args.recurring.reduce((total, charge) => {

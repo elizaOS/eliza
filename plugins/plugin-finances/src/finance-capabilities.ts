@@ -406,6 +406,23 @@ export interface FinanceSubscriptionRecord {
 const SUBSCRIPTION_MIN_CONFIDENCE = 0.5;
 
 /** Projects regular-cadence recurring charges into subscription records. */
+export function compareSubscriptionsByAnnualizedCost(
+  a: { annualizedCostUsd?: unknown; merchantNormalized: string },
+  b: { annualizedCostUsd?: unknown; merchantNormalized: string },
+): number {
+  const bCost =
+    typeof (b as any).annualizedCostUsd === "number" &&
+    Number.isFinite((b as any).annualizedCostUsd)
+      ? (b as any).annualizedCostUsd
+      : 0;
+  const aCost =
+    typeof (a as any).annualizedCostUsd === "number" &&
+    Number.isFinite((a as any).annualizedCostUsd)
+      ? (a as any).annualizedCostUsd
+      : 0;
+  return bCost - aCost || String((a as any).merchantNormalized).localeCompare(String((b as any).merchantNormalized));
+}
+
 export function normalizeSubscriptions(
   charges: readonly LifeOpsRecurringCharge[],
 ): FinanceSubscriptionRecord[] {
@@ -426,5 +443,5 @@ export function normalizeSubscriptions(
       confidence: charge.confidence,
       sourceIds: charge.sourceIds,
     }))
-    .sort((a, b) => b.annualizedCostUsd - a.annualizedCostUsd);
+    .sort(compareSubscriptionsByAnnualizedCost);
 }
