@@ -503,6 +503,47 @@ describe("MEMORY op:delete by query", () => {
     expect(rows[0].memory.content.text).toBe("nubs lives on a boat");
   });
 
+  it("ignores a malformed entityId when the requester's own id already scopes the delete", async () => {
+    // Live 2026-08-23: "forget my dogs name" hard-failed because the model
+    // copied the redacted placeholder it sees in context into entityId. The
+    // requester always wins below, so the param cannot widen scope — ignore
+    // it and disclose rather than failing a legitimate forget.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "the user's dog is named biscuit",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "dog",
+      entityId: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("ignored invalid entityId");
+    expect(rows).toHaveLength(0);
+  });
+
+  it("still fails on a malformed roomId, which has no requester fallback", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "the user's dog is named biscuit",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "dog",
+      roomId: "not-a-uuid",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(rows).toHaveLength(1);
+  });
+
   it("scopes delete-by-query to the requesting user's identity cluster", async () => {
     // Multi-user room: another entity holds a fact with the exact same text.
     // "Forget that I play guitar" from USER_ID must remove only USER_ID's
