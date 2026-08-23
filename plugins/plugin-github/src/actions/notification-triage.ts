@@ -143,17 +143,6 @@ function formatTriageSummary(
     : `Triaged ${triagedCount} unread notification(s)`;
 }
 
-export function compareTriagedNotifications(
-  a: TriagedNotification,
-  b: TriagedNotification,
-): number {
-  const bScore =
-    typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
-  const aScore =
-    typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
-  return bScore - aScore || a.id.localeCompare(b.id);
-}
-
 export { formatTriageSummary, scoreNotification };
 
 export const notificationTriageAction: Action = {

@@ -336,8 +336,8 @@ function dedupeKey(item: InboxItem): string {
 }
 
 export function compareInboxItemsByReceivedAt(
-  a: InboxItem,
-  b: InboxItem,
+  a: Pick<InboxItem, "id" | "receivedAt">,
+  b: Pick<InboxItem, "id" | "receivedAt">,
 ): number {
   const aTime = Date.parse(a.receivedAt);
   const bTime = Date.parse(b.receivedAt);
@@ -349,7 +349,9 @@ export function compareInboxItemsByReceivedAt(
   return bTime - aTime || a.id.localeCompare(b.id);
 }
 
-export function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
+export function dedupeAndOrder(
+  items: readonly InboxItem[],
+): readonly InboxItem[] {
   const seen = new Map<string, InboxItem>();
   for (const item of items) {
     const key = dedupeKey(item);

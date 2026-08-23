@@ -16,12 +16,20 @@ type ElectrobunHandlers = {
   receiveInternalMessageFromBun: (m: unknown) => unknown;
 };
 
-function makeWindow() {
-  const w = {} as Window & {
-    __electrobun?: ElectrobunHandlers | null;
-  };
-  (globalThis as { window?: typeof w }).window = w;
+type ElectrobunTestWindow = {
+  __electrobun?: ElectrobunHandlers | null;
+};
+
+function makeWindow(): ElectrobunTestWindow {
+  const w: ElectrobunTestWindow = {};
+  (globalThis as { window?: ElectrobunTestWindow }).window = w;
   return w;
+}
+
+function readElectrobun(
+  windowValue: ElectrobunTestWindow,
+): ElectrobunHandlers | null | undefined {
+  return windowValue.__electrobun;
 }
 
 describe("ensureElectrobunGlobal", () => {
@@ -38,10 +46,9 @@ describe("ensureElectrobunGlobal", () => {
     const w = makeWindow();
     w.__electrobun = undefined;
     ensureElectrobunGlobal();
-    expect(typeof w.__electrobun?.receiveMessageFromBun).toBe("function");
-    expect(typeof w.__electrobun?.receiveInternalMessageFromBun).toBe(
-      "function",
-    );
+    const installed = readElectrobun(w);
+    expect(typeof installed?.receiveMessageFromBun).toBe("function");
+    expect(typeof installed?.receiveInternalMessageFromBun).toBe("function");
   });
 
   it("leaves an existing global untouched", () => {

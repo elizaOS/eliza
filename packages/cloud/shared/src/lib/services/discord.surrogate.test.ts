@@ -1,6 +1,7 @@
 /** Surrogate-safe discord error truncation. */
-import { describe, expect, it } from "vitest";
+
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 describe("discord surrogate-safe", () => {
   it("truncates at 1000 without splitting surrogate", () => {

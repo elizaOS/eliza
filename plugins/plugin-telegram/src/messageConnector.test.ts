@@ -5,7 +5,6 @@
  * no resolvable target. Runtime and Telegraf are mocked.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { compareMessageConnectorTargets } from "./service.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   claimTelegramPollerToken,
@@ -14,6 +13,7 @@ import {
   releaseTelegramPollerToken,
 } from "./poller-lock";
 import { TelegramService } from "./service";
+import { compareMessageConnectorTargets } from "./service.js";
 
 function createRuntime() {
   const runtime = {

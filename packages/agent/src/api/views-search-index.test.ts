@@ -132,11 +132,7 @@ describe("ViewSearchIndex ranking determinism", () => {
     }
 
     const ranked = await viewSearchIndex.search("query", rankingRuntime, 10);
-    expect(ranked.map((entry) => entry.viewId)).toEqual([
-      "a",
-      "z",
-      "corrupt",
-    ]);
+    expect(ranked.map((entry) => entry.viewId)).toEqual(["a", "z", "corrupt"]);
     expect(Number.isNaN(ranked[2].score)).toBe(true);
   });
 });
