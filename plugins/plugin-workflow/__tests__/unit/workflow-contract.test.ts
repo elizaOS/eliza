@@ -34,4 +34,20 @@ describe('workflow contract', () => {
     expect('nodes' in definition).toBe(false);
     expect('connections' in definition).toBe(false);
   });
+
+  test('sorts searched workflow candidates safely when score contains NaN', () => {
+    const candidates = [
+      { workflow: { id: 'wf-nan' }, score: NaN },
+      { workflow: { id: 'wf-valid' }, score: 5 },
+    ];
+
+    candidates.sort((a, b) => {
+      const bScore = typeof b.score === 'number' && Number.isFinite(b.score) ? b.score : 0;
+      const aScore = typeof a.score === 'number' && Number.isFinite(a.score) ? a.score : 0;
+      return bScore - aScore || a.workflow.id.localeCompare(b.workflow.id);
+    });
+
+    expect(candidates[0]?.workflow.id).toBe('wf-valid');
+    expect(candidates[1]?.workflow.id).toBe('wf-nan');
+  });
 });
