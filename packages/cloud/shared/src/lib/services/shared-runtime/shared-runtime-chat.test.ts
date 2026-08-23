@@ -308,8 +308,10 @@ type TestMemoryPair = {
 };
 const memoryPairs: TestMemoryPair[] = [];
 const memoryScopes: Array<{ agentKey: string; roomKey: string }> = [];
+let memoryCommitGate: Promise<void> | null = null;
 const recordTurnPair = mock(async (pair: TestMemoryPair) => {
   memoryPairs.push(pair);
+  if (memoryCommitGate) await memoryCommitGate;
 });
 const createSharedMemoryStore = mock((scope: { agentKey: string; roomKey: string }) => {
   memoryScopes.push(scope);
@@ -514,6 +516,7 @@ beforeEach(() => {
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
   memoryPairs.length = 0;
   memoryScopes.length = 0;
+  memoryCommitGate = null;
   recordTurnPair.mockClear();
   createSharedMemoryStore.mockClear();
   turn = {
@@ -1195,6 +1198,81 @@ describe("SharedRuntimeChatService", () => {
     expect(memoryScopes[0]?.roomKey).not.toBe(agent.id);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("does not hold the terminal frame behind a stalled long-term memory mirror", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const memoryCommit = Promise.withResolvers<void>();
+    memoryCommitGate = memoryCommit.promise;
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    let collectedMemoryPromise: Promise<unknown> | undefined;
+    h.executionCtx.waitUntil = (promise: Promise<unknown>) => {
+      h.background.push(promise);
+      if (memoryPairs.length === 1 && !collectedMemoryPromise) {
+        collectedMemoryPromise = promise;
+      }
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+
+    expect(body).toContain("event: done");
+    expect(h.history()).toEqual([
+      { role: "assistant", content: "prior" },
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({ role: "assistant", content: "hello back" }),
+    ]);
+    expect(memoryPairs).toEqual([
+      expect.objectContaining({
+        userMessage: "hello",
+        assistantReply: "hello back",
+        interrupted: false,
+      }),
+    ]);
+    expect(collectedMemoryPromise).toBeDefined();
+    let memoryPromiseSettled = false;
+    void collectedMemoryPromise?.then(() => {
+      memoryPromiseSettled = true;
+    });
+    await Promise.resolve();
+    expect(memoryPromiseSettled).toBe(false);
+
+    memoryCommit.resolve();
+    await collectedMemoryPromise;
+    expect(memoryPromiseSettled).toBe(true);
+    await Promise.all(h.background);
+
+    const inlineMemoryCommit = Promise.withResolvers<void>();
+    memoryCommitGate = inlineMemoryCommit.promise;
+    const inlineHarness = harness();
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "hello " };
+        yield {
+          type: "finish",
+          text: "hello back",
+          usage: { inputTokens: 12, outputTokens: 4 },
+        };
+      })(),
+    };
+
+    const inlineResponse = await service.stream(agent, rpc, {
+      ...inlineHarness,
+      executionCtx: undefined,
+    });
+    const bodyPromise = inlineResponse.text();
+    let bodySettled = false;
+    void bodyPromise.then(() => {
+      bodySettled = true;
+    });
+    await Promise.resolve();
+    expect(bodySettled).toBe(false);
+
+    inlineMemoryCommit.resolve();
+    expect(await bodyPromise).toContain("event: done");
+    expect(bodySettled).toBe(true);
   });
 
   test("keeps a trusted transient prompt out of history and long-term memory", async () => {
