@@ -56,6 +56,16 @@ function buildTrie(leaves: ReadonlyArray<TokenSequence>): TrieNode {
     if (leaf.tokens.length === 0) continue;
     let node = root;
     for (const tok of leaf.tokens) {
+      if (
+        typeof tok !== "number" ||
+        !Number.isInteger(tok) ||
+        tok < 0 ||
+        tok > 2_147_483_647
+      ) {
+        throw new Error(
+          `invalid tokenId: ${String(tok)}; token IDs must be non-negative 32-bit integers`,
+        );
+      }
       let next = node.children.get(tok);
       if (!next) {
         next = { tokenId: tok, terminal: false, children: new Map() };

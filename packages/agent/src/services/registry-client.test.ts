@@ -727,4 +727,38 @@ describe("listNonAppPlugins and searchNonAppPlugins", () => {
     );
     expect(await searchNonAppPlugins("search", 0)).toEqual([]);
   });
+
+  it("sorts apps and non-app plugins deterministically when stars contains NaN or non-finite numbers", async () => {
+    const app1 = appPlugin("app-nan", NaN as unknown as number, {
+      displayName: "App NaN",
+    });
+    const app2 = appPlugin("app-high", 50, { displayName: "App High" });
+    const app3 = appPlugin("app-low", 10, { displayName: "App Low" });
+
+    const plug1 = plugin({ name: "plug-nan", stars: NaN });
+    const plug2 = plugin({ name: "plug-high", stars: 100 });
+    const plug3 = plugin({ name: "plug-low", stars: 5 });
+
+    fetchImpl = async () =>
+      new Map([
+        [app1.name, app1],
+        [app2.name, app2],
+        [app3.name, app3],
+        [plug1.name, plug1],
+        [plug2.name, plug2],
+        [plug3.name, plug3],
+      ]);
+
+    const { listApps, listNonAppPlugins } = await loadModule();
+
+    const apps = await listApps();
+    expect(apps.map((a) => a.name)).toEqual(["app-high", "app-low", "app-nan"]);
+
+    const plugins = await listNonAppPlugins();
+    expect(plugins.map((p) => p.name)).toEqual([
+      "plug-high",
+      "plug-low",
+      "plug-nan",
+    ]);
+  });
 });

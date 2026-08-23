@@ -445,10 +445,16 @@ function isoFromTimestamp(value?: number | null): string | undefined {
 		: undefined;
 }
 
-function laterIso(left?: string, right?: string): string | undefined {
+export function laterIso(left?: string, right?: string): string | undefined {
 	if (!left) return right;
 	if (!right) return left;
-	return Date.parse(left) >= Date.parse(right) ? left : right;
+	const leftTime = Date.parse(left);
+	const rightTime = Date.parse(right);
+	const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+	const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+	if (rightSafe === leftSafe)
+		return left.localeCompare(right) <= 0 ? left : right;
+	return rightSafe > leftSafe ? right : left;
 }
 
 function relationshipStatus(relationship: Relationship): string {
@@ -1912,9 +1918,12 @@ async function buildFacts(
 	const facts = factGroups.flat();
 
 	return facts.sort((left, right) => {
-		const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : 0;
 		const leftTime = left.updatedAt ? Date.parse(left.updatedAt) : 0;
-		return rightTime - leftTime;
+		const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : 0;
+		const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+		const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+		if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+		return left.id.localeCompare(right.id);
 	});
 }
 
@@ -1991,13 +2000,16 @@ async function buildRecentConversations(
 				snippet !== null,
 		)
 		.sort((left, right) => {
-			const rightTime = right.lastActivityAt
-				? Date.parse(right.lastActivityAt)
-				: 0;
 			const leftTime = left.lastActivityAt
 				? Date.parse(left.lastActivityAt)
 				: 0;
-			return rightTime - leftTime;
+			const rightTime = right.lastActivityAt
+				? Date.parse(right.lastActivityAt)
+				: 0;
+			const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+			const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+			if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+			return left.roomId.localeCompare(right.roomId);
 		});
 }
 
@@ -2063,9 +2075,12 @@ async function buildRelevantMemories(
 			} satisfies RelationshipsRelevantMemory;
 		})
 		.sort((left, right) => {
-			const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
 			const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
-			return rightTime - leftTime;
+			const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+			const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+			const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+			if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+			return left.id.localeCompare(right.id);
 		});
 }
 
@@ -2116,9 +2131,12 @@ async function buildUserPersonalityPreferences(
 	}
 
 	return preferences.sort((left, right) => {
-		const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
 		const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
-		return rightTime - leftTime;
+		const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+		const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+		const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+		if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+		return left.id.localeCompare(right.id);
 	});
 }
 

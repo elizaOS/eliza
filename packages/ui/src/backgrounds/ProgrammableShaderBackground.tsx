@@ -19,6 +19,7 @@
  * rAF, which would fabricate a slow frame for the watchdog on resume.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type * as React from "react";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
@@ -33,7 +34,6 @@ import {
   type ShaderUniformValues,
   uniformsEqual,
 } from "./shader-schema";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /** Present cap while the home↔launcher rail is mid-gesture (#15282): the
  * compositor is already translating the promoted rail layer (plus, on one half,

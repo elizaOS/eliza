@@ -704,40 +704,6 @@ function extractSharedTurnFactsOffPath(
   });
 }
 
-/**
- * Mirror one already-landed streamed turn into the long-term memory tables
- * without holding the terminal SSE frame behind Hyperdrive or the optional
- * embeddings sidecar. Conversation history and the idempotency claim remain
- * the authoritative pre-terminal durability boundary; this mirror uses those
- * same deterministic message ids. The mirror is detached from the response
- * stream. Production DurableObjectState.waitUntil is API compatibility only
- * and has no lifecycle effect; real pending Hyperdrive/embedding I/O keeps the
- * object active automatically. Without an execution context the helper remains
- * awaited. A Queue/outbox is the stronger guaranteed-delivery architecture
- * across process/platform termination.
- */
-function recordSharedTurnMemoryOffPath(
-  executionCtx: BridgeExecutionContext | undefined,
-  store: SharedMemoryStore | null,
-  agentId: string,
-  pair: Parameters<SharedMemoryStore["recordTurnPair"]>[0],
-): Promise<void> {
-  if (!store) return Promise.resolve();
-  return settleOffResponsePath(executionCtx, async () => {
-    try {
-      await store.recordTurnPair(pair);
-    } catch (error) {
-      // error-policy:J7 the authoritative conversation history already landed;
-      // a secondary memory-mirror failure stays observable without converting
-      // a real model reply into an endless in-flight turn.
-      logger.warn("[SharedRuntimeChatService] streamed memory mirror failed", {
-        agentId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-}
-
 function stableUuid(raw: string): string {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
     return raw;
@@ -1753,13 +1719,31 @@ export class SharedRuntimeChatService {
           options.historyStore,
         );
         if (streamMemoryStore && !isProviderFreeTurn(turn)) {
-          await recordSharedTurnMemoryOffPath(options.executionCtx, streamMemoryStore, agent.id, {
-            userMessage: text.trim(),
-            assistantReply: reply,
-            messageIds,
-            messageRole,
-            interrupted,
-            channel: options.channel,
+          // The long-term-memory mirror is secondary to the durability boundary
+          // above (merged history) and the claim completion below: a stalled
+          // Hyperdrive or embeddings-sidecar write must not hold the terminal
+          // done frame open (#25689). settleOffResponsePath defers it under
+          // waitUntil and runs it inline only without an executionCtx.
+          await settleOffResponsePath(options.executionCtx, async () => {
+            try {
+              await streamMemoryStore.recordTurnPair({
+                userMessage: text.trim(),
+                assistantReply: reply,
+                messageIds,
+                messageRole,
+                interrupted,
+                channel: options.channel,
+              });
+            } catch (error) {
+              // error-policy:J4 the mirror is an enhancement on the landed turn;
+              // report the storage fault instead of failing a reply whose
+              // history and claim already committed.
+              logger.warn("[SharedRuntimeChat] long-term-memory mirror failed", {
+                agentId: agent.id,
+                roomId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
           });
         }
         if (!interrupted && messageRole === "user" && reply.trim()) {

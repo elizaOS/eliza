@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  LIVENESS_DIAGNOSTIC_ARTIFACT_FIELDS,
   LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
   LIVENESS_DIAGNOSTIC_WRITE_FAILURE_ANNOTATION,
   writePrivacySafeLivenessDiagnostic,
@@ -14,14 +15,54 @@ import {
 describe("privacy-safe liveness diagnostic artifact", () => {
   it("writes the exact closed schema with private file permissions", async () => {
     const mkdirFn = vi.fn(async () => undefined);
-    const writeFileFn = vi.fn(async () => undefined);
+    let writtenPath: string | undefined;
+    let writtenData = "";
+    let writtenOptions:
+      | { encoding: string; flag: string; mode: number }
+      | undefined;
+    const writeFileFn = vi.fn(
+      async (
+        path: string,
+        data: string,
+        options: { encoding: string; flag: string; mode: number },
+      ) => {
+        writtenPath = path;
+        writtenData = data;
+        writtenOptions = options;
+      },
+    );
     const annotations: Array<{ type: string; description: string }> = [];
-    const diagnosticRecord = {
-      schema: "caller-must-not-override-the-closed-schema",
-      historyGetDelta: 1,
-      retryObservationAvailable: true,
-      phase: "terminal",
-    };
+    const allowedRecord = Object.fromEntries(
+      LIVENESS_DIAGNOSTIC_ARTIFACT_FIELDS.map((field, index) => [
+        field,
+        field === "originalErrorName"
+          ? "AssertionError"
+          : field === "assistantPhase"
+            ? "reply"
+            : field.endsWith("Delta") || field.endsWith("Count")
+              ? index
+              : index % 2 === 0,
+      ]),
+    );
+    const privateMarker = "private-transcript-must-not-escape";
+    const diagnosticRecord = Object.defineProperties(
+      {
+        ...allowedRecord,
+        schema: "caller-must-not-override-the-closed-schema",
+        assistantHasText: { privateMarker },
+        provider: "private-provider",
+        path: "/private/path",
+        token: "private-token",
+      },
+      {
+        transcript: {
+          enumerable: true,
+          get: () => {
+            throw new Error(privateMarker);
+          },
+        },
+      },
+    ) as unknown as Record<string, string | number | boolean | null>;
 
     await expect(
       writePrivacySafeLivenessDiagnostic({
@@ -37,18 +78,23 @@ describe("privacy-safe liveness diagnostic artifact", () => {
       recursive: true,
       mode: 0o700,
     });
-    expect(writeFileFn).toHaveBeenCalledWith(
-      "/tmp/eliza-run/diagnostic.json",
-      `${JSON.stringify(
-        {
-          ...diagnosticRecord,
-          schema: LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
-        },
-        null,
-        2,
-      )}\n`,
-      { encoding: "utf8", flag: "wx", mode: 0o600 },
-    );
+    expect(writeFileFn).toHaveBeenCalledOnce();
+    expect(writtenPath).toBe("/tmp/eliza-run/diagnostic.json");
+    expect(writtenOptions).toEqual({
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    const expectedRecord = { ...allowedRecord };
+    delete expectedRecord.assistantHasText;
+    expect(JSON.parse(writtenData)).toEqual({
+      ...expectedRecord,
+      schema: LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
+    });
+    expect(writtenData).not.toContain(privateMarker);
+    expect(writtenData).not.toContain("private-provider");
+    expect(writtenData).not.toContain("/private/path");
+    expect(writtenData).not.toContain("private-token");
     expect(annotations).toEqual([]);
   });
 

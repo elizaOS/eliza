@@ -349,7 +349,9 @@ export function compareInboxItemsByReceivedAt(
   return bTime - aTime || a.id.localeCompare(b.id);
 }
 
-export function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
+export function dedupeAndOrder(
+  items: readonly InboxItem[],
+): readonly InboxItem[] {
   const seen = new Map<string, InboxItem>();
   for (const item of items) {
     const key = dedupeKey(item);

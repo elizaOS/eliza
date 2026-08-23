@@ -157,4 +157,31 @@ describe("LocalGrounderLoop.predictClick", () => {
     });
     expect(result).toBeNull();
   });
+
+  it("sorts agent loops safely when priority contains NaN and preserves -Infinity floor", () => {
+    registerAgentLoop({
+      name: "loop-nan",
+      matches: () => false,
+      create: () => noopLoop("loop-nan"),
+      priority: Number.NaN,
+    });
+    registerAgentLoop({
+      name: "loop-high",
+      matches: () => false,
+      create: () => noopLoop("loop-high"),
+      priority: 100,
+    });
+    registerAgentLoop({
+      name: "loop-neg",
+      matches: () => false,
+      create: () => noopLoop("loop-neg"),
+      priority: -10,
+    });
+
+    const loops = listAgentLoops();
+    expect(loops[0]?.name).toBe("loop-high");
+    expect(loops[1]?.name).toBe("loop-nan");
+    expect(loops[2]?.name).toBe("loop-neg");
+    expect(loops[loops.length - 1]?.name).toBe(DEFAULT_AGENT_LOOP_MODEL);
+  });
 });

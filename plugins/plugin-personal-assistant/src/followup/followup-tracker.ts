@@ -277,7 +277,13 @@ export async function computeOverdueFollowups(
     });
   }
 
-  overdue.sort((a, b) => b.daysOverdue - a.daysOverdue);
+  // Ties on daysOverdue previously kept whatever order searchContacts returned,
+  // which is not stable across stores; break them on displayName so the digest
+  // is deterministic.
+  overdue.sort((a, b) => {
+    if (a.daysOverdue !== b.daysOverdue) return b.daysOverdue - a.daysOverdue;
+    return a.displayName.localeCompare(b.displayName);
+  });
 
   return {
     generatedAt: new Date(now).toISOString(),

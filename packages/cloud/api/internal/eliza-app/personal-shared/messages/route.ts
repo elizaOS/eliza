@@ -8,6 +8,10 @@ import {
   PersonalDeliveryAccountResolutionError,
   resolvePersonalDeliveryProjection,
 } from "@/api-app/personal-delivery-projection";
+import {
+  type GroupParticipantIdentity,
+  personalSharedGroupParticipantsRepository,
+} from "@/db/repositories/personal-shared-group-participants";
 import { personalSharedGroupsRepository } from "@/db/repositories/personal-shared-groups";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
@@ -22,6 +26,11 @@ import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
+import {
+  GROUP_OWNER_FALLBACK_LABEL,
+  groupParticipantLabel,
+  redactGroupParticipantHandles,
+} from "@/lib/services/shared-runtime/group-participant-labels";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
@@ -285,6 +294,20 @@ function groupBindingDelivery(binding: {
   };
 }
 
+/**
+ * Last stop before a group reply leaves for the provider. The model is never
+ * shown a participant's raw connector handle, so this normally returns the
+ * text unchanged; it exists because the one thing worse than a group turn
+ * mis-attributing a person is one broadcasting their phone number. Direct
+ * turns keep no roster and are passed through.
+ */
+function guardGroupReply(
+  text: string,
+  roster: readonly GroupParticipantIdentity[] | undefined,
+): string {
+  return roster ? redactGroupParticipantHandles(text, roster) : text;
+}
+
 function isGroupMessage(message: SharedMessage): message is GroupMessage {
   return "chatType" in message;
 }
@@ -538,6 +561,7 @@ app.post("/", async (c) => {
     let accountResolution = "phone-query";
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
+    let groupParticipantRoster: GroupParticipantIdentity[] | undefined;
     let groupPersonalAgentId: string | undefined;
     let groupDeliveryAuthority: GroupDeliveryAuthority | undefined;
     let groupTrustedDelivery: SharedGroupReminderDelivery | undefined;
@@ -744,16 +768,26 @@ app.post("/", async (c) => {
           project: parsed.data.project,
           connectorAccountId: parsed.data.connectorAccountId,
           chatId: parsed.data.chatId,
-          ownerLabel: parsed.data.actor.displayName ?? "the group owner",
+          ownerLabel:
+            parsed.data.actor.displayName ?? GROUP_OWNER_FALLBACK_LABEL,
           authority: groupDeliveryAuthority,
         };
       }
-      const actorDigest = (
-        await sha256Hex(
-          `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
-        )
-      ).slice(0, 8);
-      groupActorLabel = `${parsed.data.actor.displayName ?? "Participant"} [participant ${actorDigest}]`;
+      // The speaker's identity is registry-resolved, never taken from the
+      // payload as-is. A connector that sends a name (Telegram, Discord) gets
+      // that name once the registry has checked it cannot forge a label, an
+      // owner destination, a handle, or another member's identity; a connector
+      // that sends none (Blooio sends none at all) gets its stable ordinal.
+      // Either way the label is enumerable, which is what lets
+      // `guardGroupReply` redact a handle back to it.
+      const participants =
+        await personalSharedGroupParticipantsRepository.recordTurn({
+          bindingId: binding.id,
+          platformUserId: parsed.data.actor.platformUserId,
+          displayName: parsed.data.actor.displayName,
+        });
+      groupParticipantRoster = participants.roster;
+      groupActorLabel = groupParticipantLabel(participants.actor);
     } else if (parsed.data.platform === "telegram") {
       const delivery = await resolvePersonalDeliveryProjection(
         c.env,
@@ -1189,7 +1223,7 @@ app.post("/", async (c) => {
             userId: account.userId,
             organizationId: account.organizationId,
           },
-          reply: result.text,
+          reply: guardGroupReply(result.text, groupParticipantRoster),
           ...(groupDeliveryAuthority
             ? {
                 groupDelivery: {
@@ -1276,7 +1310,7 @@ app.post("/", async (c) => {
           userId: account.userId,
           organizationId: account.organizationId,
         },
-        reply: result.text,
+        reply: guardGroupReply(result.text, groupParticipantRoster),
         ...(groupDeliveryAuthority
           ? {
               groupDelivery: {

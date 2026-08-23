@@ -26,9 +26,9 @@ import {
 	type Service,
 	ServiceType,
 	stringToUuid,
+	TurnAbortedError,
 	toWellFormedUnicode,
 	truncateWellFormed,
-	TurnAbortedError,
 	type UUID,
 } from "@elizaos/core";
 import {
