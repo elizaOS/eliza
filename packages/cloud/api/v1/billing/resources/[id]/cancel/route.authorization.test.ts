@@ -150,4 +150,40 @@ describe("billing resource cancellation authorization", () => {
 
     expect(requestCancellation).not.toHaveBeenCalled();
   });
+
+  test("returns 400 when Idempotency-Key is missing", async () => {
+    requireCurrentBillingManagerSession.mockResolvedValue({
+      id: "owner-1",
+      organization_id: "org-current",
+      role: "owner",
+    });
+    requestCancellation.mockImplementation(async (options) => {
+      if (options.idempotencyKey === "") {
+        throw new ApiError(
+          400,
+          "validation_error",
+          "A valid Idempotency-Key header is required for billing cancellation",
+        );
+      }
+      throw new Error("Expected the route to forward an empty idempotency key");
+    });
+
+    const response = await app.request(
+      "https://api.test/api/v1/billing/resources/00000000-0000-4000-8000-000000000001/cancel",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          resourceType: "container",
+          mode: "stop",
+          expectedLifecycleRevision: 7,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(requestCancellation).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "" }),
+    );
+  });
 });

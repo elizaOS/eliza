@@ -326,6 +326,8 @@ export class BillingResourceCancellationsService {
 
     if (result.shouldNudge && normalizedOptions.triggerEnv) {
       void this.dependencies.triggerImmediate(normalizedOptions.triggerEnv).catch((error) => {
+        // error-policy:J5 The provisioning-jobs durable poller observes the
+        // committed job and retries it.
         logger.warn(
           "[billing-cancel] Immediate job trigger failed; durable polling remains active",
           {
