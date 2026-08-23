@@ -4,6 +4,7 @@
  * Used by `DiscordService` via the channel debouncer; DMs bypass this and are
  * dispatched directly.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 
 export interface DiscordMessageCoalesceConfig {
@@ -90,7 +91,10 @@ export function getDiscordMessageMeta(
 			message.author?.displayName ??
 			message.author?.username,
 		createdTimestamp: message.createdTimestamp,
-		contentPreview: String(message.content || "").slice(0, 300),
+		contentPreview: truncateWellFormed(
+			toWellFormedUnicode(String(message.content || "")),
+			300,
+		),
 	};
 }
 
