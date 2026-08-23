@@ -1,15 +1,16 @@
 /**
  * Resolves the entity id representing an agent's owner: prefers the canonical
  * configured owner id, otherwise scans the agent's rooms for a world whose
- * metadata carries ownership.ownerId, and finally falls back to a deterministic
- * synthetic id derived from the character name. Used to attribute owner-scoped
- * trust and permissions.
+ * metadata carries ownership.ownerId, and finally falls back to core's
+ * deterministic agent-ID-seeded owner id — the same fallback the chat, pendant,
+ * and LifeOps surfaces use, so owner trust attaches to the entity those
+ * surfaces write under. Used to attribute owner-scoped trust and permissions.
  */
 import {
+  deterministicOwnerEntityId,
   type IAgentRuntime,
   logger,
   resolveCanonicalOwnerId,
-  stringToUuid,
 } from "@elizaos/core";
 
 type WorldMetadataShape = {
@@ -17,10 +18,9 @@ type WorldMetadataShape = {
 };
 
 export function resolveFallbackOwnerEntityId(
-  runtime: Pick<IAgentRuntime, "agentId" | "character">,
+  runtime: Pick<IAgentRuntime, "agentId">,
 ): string {
-  const agentName = runtime.character.name?.trim() || runtime.agentId;
-  return stringToUuid(`${agentName}-admin-entity`);
+  return deterministicOwnerEntityId(runtime.agentId);
 }
 
 export async function resolveOwnerEntityId(

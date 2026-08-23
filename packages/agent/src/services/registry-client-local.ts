@@ -189,6 +189,15 @@ async function readLocalDiscoveryJson<T>(
     const value = await readJsonFile<T>(filePath);
     return value === null ? { status: "missing" } : { status: "valid", value };
   } catch (error) {
+    if (isMissingPathError(error)) {
+      // error-policy:J3 a candidate whose path component is a file rather
+      // than a directory (ENOTDIR — e.g. a foreign repo symlinking
+      // CLAUDE.md -> AGENTS.md under a scanned packages/ root) has no
+      // metadata here, exactly like ENOENT. One such foreign entry must
+      // degrade to "not a package" instead of aborting discovery of valid
+      // peers.
+      return { status: "missing" };
+    }
     if (!(error instanceof SyntaxError)) throw error;
     // error-policy:J3 workspace metadata is untrusted discovery input. One
     // malformed candidate is reported and rejected without hiding valid peers.
@@ -356,6 +365,20 @@ async function collectWorkspacePackageCandidates(
     if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
     const repoDir = path.join(searchRoot, entry.name);
+    if (!entry.isDirectory()) {
+      // A dirent's `isSymbolicLink()` says nothing about the target type;
+      // foreign checkouts commonly symlink plain files (CLAUDE.md ->
+      // AGENTS.md). Only directory targets can be package candidates.
+      try {
+        const stats = await fs.stat(repoDir);
+        if (!stats.isDirectory()) continue;
+      } catch (err) {
+        if (!isMissingPathError(err)) throw err;
+        // error-policy:J3 a broken symlink in a scanned foreign workspace is
+        // "not a package", never a discovery failure.
+        continue;
+      }
+    }
     candidates.set(repoDir, {
       packageDir: repoDir,
       dirName: entry.name,
