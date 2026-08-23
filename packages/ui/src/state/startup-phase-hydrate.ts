@@ -647,11 +647,14 @@ export function bindReadyPhase(
             body: JSON.stringify({ requestId }),
           },
         );
-        const claim = (await claimResponse.json().catch(() => null)) as {
-          claimed?: boolean;
-          claimToken?: string;
-        } | null;
-        if (!claimResponse.ok || claim?.claimed !== true || !claim.claimToken) {
+        const claim = (await claimResponse.json().catch(() => {
+          // error-policy:J3 an invalid claim response remains explicitly invalid.
+          return null;
+        })) as { claimed?: boolean; claimToken?: string } | null;
+        if (!claimResponse.ok) {
+          throw new Error("The runtime operation could not claim this app.");
+        }
+        if (claim?.claimed !== true || !claim.claimToken) {
           return;
         }
 
@@ -662,6 +665,7 @@ export function bindReadyPhase(
           );
           result = await executeRuntimeManagementCommand(request);
         } catch (cause) {
+          // error-policy:J1 the shell boundary returns an explicit failed result.
           result = {
             ok: false,
             op: request.op,
@@ -671,17 +675,27 @@ export function bindReadyPhase(
                 : "The runtime operation failed before it could start.",
           };
         }
-        await fetch(`${originBase}/api/runtime/manage/result`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            requestId,
-            claimToken: claim.claimToken,
-            ok: result.ok,
-            data: result.data,
-            error: result.error,
-          }),
-        });
+        const resultResponse = await fetch(
+          `${originBase}/api/runtime/manage/result`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requestId,
+              claimToken: claim.claimToken,
+              ok: result.ok,
+              data: result.data,
+              error: result.error,
+            }),
+          },
+        );
+        if (!resultResponse.ok) {
+          throw new Error(
+            result.ok
+              ? "The runtime operation completed locally, but Eliza could not verify the result."
+              : "The runtime operation failed locally, and Eliza could not receive the failure details.",
+          );
+        }
         depsRef.current?.setActionNotice(
           result.ok
             ? "Devices & Runtimes updated."
@@ -689,6 +703,13 @@ export function bindReadyPhase(
           result.ok ? "success" : "error",
         );
       })().catch((cause) => {
+        // error-policy:J4 surface bridge failure as a visible error state.
+        depsRef.current?.setActionNotice(
+          cause instanceof Error && cause.message.trim()
+            ? cause.message
+            : "The runtime management bridge failed.",
+          "error",
+        );
         logger.warn(
           `[startup-phase-hydrate] runtime management bridge failed: ${
             cause instanceof Error ? cause.message : String(cause)

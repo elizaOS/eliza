@@ -84,6 +84,28 @@ describe("RUNTIMES action", () => {
 		expect(manageRuntime).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		"Can you confirm the runtime status?",
+		"I don't confirm removing it.",
+		"No, do not proceed.",
+	])("rejects non-authorizing confirmation language: %s", async (text) => {
+		const manageRuntime = vi.fn();
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text } } as Memory,
+			undefined,
+			{
+				op: "remove",
+				runtimeId: "runtime-1",
+				confirm: "yes",
+			},
+		);
+
+		expect(result?.success).toBe(false);
+		expect(manageRuntime).not.toHaveBeenCalled();
+	});
+
 	it("dispatches a confirmed pairing and narrates the one-use receipt", async () => {
 		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
 			ok: true,

@@ -132,6 +132,7 @@ function readPersistedReceipts(): SshRuntimeLifecycleReceipt[] {
   try {
     parsed = JSON.parse(raw);
   } catch (cause) {
+    // error-policy:J2 retain the parser cause while identifying the corrupt store.
     throw new Error("Saved SSH cleanup receipts are not valid JSON.", {
       cause,
     });
@@ -194,6 +195,7 @@ async function cleanupReceipt(
       store.delete(receipt.operationId);
       return { complete: true, receipt, failures };
     } catch (cause) {
+      // error-policy:J1 lifecycle cleanup returns this explicit failed step.
       failures.push({ step: "receipt-persist", message: messageFor(cause) });
       return { complete: false, receipt, failures };
     }
@@ -210,6 +212,7 @@ async function cleanupReceipt(
       receipt.pending[pending] = false;
       store.put(receipt);
     } catch (cause) {
+      // error-policy:J1 lifecycle cleanup returns this explicit failed step.
       failures.push({ step, message: messageFor(cause) });
     }
   };
@@ -244,12 +247,14 @@ async function cleanupReceipt(
     try {
       store.delete(receipt.operationId);
     } catch (cause) {
+      // error-policy:J1 lifecycle cleanup returns this explicit failed step.
       failures.push({ step: "receipt-persist", message: messageFor(cause) });
     }
   } else {
     try {
       store.put(receipt);
     } catch (cause) {
+      // error-policy:J1 lifecycle cleanup returns this explicit failed step.
       failures.push({ step: "receipt-persist", message: messageFor(cause) });
     }
   }
@@ -268,6 +273,7 @@ function serializeLifecycle<T>(operation: () => Promise<T>): Promise<T> {
   const started = lifecycleTail.then(operation, operation);
   lifecycleTail = started.then(
     () => undefined,
+    // error-policy:J5 the caller observes the same rejection from `started`.
     () => undefined,
   );
   return started;
@@ -345,6 +351,7 @@ export function setupSshRuntime(
       receipt.state = "committed";
       store.put(receipt);
     } catch (cause) {
+      // error-policy:J2 rollback failures are attached to the typed setup error.
       const cleanup = await cleanupReceipt(receipt, dependencies, store);
       const pending = pendingStepNames(cleanup.receipt);
       throw new SshRuntimeLifecycleError(
@@ -358,6 +365,7 @@ export function setupSshRuntime(
     try {
       store.delete(receipt.operationId);
     } catch {
+      // error-policy:J6 the durable committed marker is safe restart cleanup.
       // The committed marker is intentionally retained: restart recovery prunes
       // it without tearing down a successfully configured runtime.
     }
