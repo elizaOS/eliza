@@ -98,6 +98,41 @@ interface StringCatalog {
 const localizableCatalog = JSON.parse(
   readFileSync(path.join(iosAppRoot, "App/Localizable.xcstrings"), "utf8"),
 ) as StringCatalog;
+
+describe("iOS Mobile Signals UIKit isolation", () => {
+  it("captures UIApplication and UIDevice snapshot state on the main thread", () => {
+    const captureHelper = mobileSignalsPluginSwift.match(
+      /private func captureUIKitState\(\) -> UIKitStateCapture \{[\s\S]*?\n {4}\}/,
+    )?.[0];
+
+    expect(captureHelper).toBeDefined();
+    expect(captureHelper).toContain("Self.runOnMain");
+    expect(captureHelper).toContain("UIApplication.shared.applicationState");
+    expect(captureHelper).toContain(
+      "UIApplication.shared.isProtectedDataAvailable",
+    );
+    expect(captureHelper).toContain("UIDevice.current.batteryState");
+    expect(captureHelper).toContain("UIDevice.current.batteryLevel");
+    expect(
+      mobileSignalsPluginSwift.match(
+        /UIApplication\.shared\.applicationState/g,
+      ),
+    ).toHaveLength(1);
+    expect(mobileSignalsPluginSwift).toContain(
+      "DispatchQueue.main.sync(execute: work)",
+    );
+  });
+
+  it("presents the native Screen Time report from the main queue", () => {
+    const presenter = mobileSignalsPluginSwift.match(
+      /@objc func presentScreenTimeReport\([\s\S]*?\n {4}\}/,
+    )?.[0];
+
+    expect(presenter).toBeDefined();
+    expect(presenter).toContain("DispatchQueue.main.async");
+    expect(presenter).toContain("presentingViewController.present");
+  });
+});
 function parseAppleStrings(source: string): Map<string, string> {
   return new Map(
     [...source.matchAll(/^"([^"]+)"\s*=\s*"([^"]+)";$/gm)].map(
