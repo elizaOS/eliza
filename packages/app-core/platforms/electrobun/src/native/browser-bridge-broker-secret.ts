@@ -27,8 +27,18 @@ export interface BrowserBridgeBrokerSecretOptions {
 export function resolveWindowsBrowserBridgeSecretHelper(
   moduleDir = MODULE_DIR,
   exists: (candidate: string) => boolean = fs.existsSync,
+  executablePath = process.execPath,
 ): string {
+  const executablePathApi = path.win32.isAbsolute(executablePath)
+    ? path.win32
+    : path;
   const candidates = [
+    // Bun-compiled native hosts expose source modules under /$bunfs/root, while
+    // the packaged helper is copied beside the executable.
+    executablePathApi.resolve(
+      executablePathApi.dirname(executablePath),
+      "browser-bridge-secret.ps1",
+    ),
     path.resolve(moduleDir, "browser-bridge-secret.ps1"),
     path.resolve(moduleDir, "..", "browser-bridge-secret.ps1"),
     path.resolve(moduleDir, "..", "..", "scripts", "browser-bridge-secret.ps1"),
