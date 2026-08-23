@@ -236,4 +236,16 @@ describe("selectAudioRedactionSentinels", () => {
       ),
     ).toThrow(/plan exceeds/);
   });
+
+  it("handles non-finite timestamps safely and preserves exact sentinel position ordering", () => {
+    const words = [
+      { text: "bravo", startMs: 200, endMs: 300 },
+      { text: "delta", startMs: 600, endMs: 700 },
+      { text: "alpha", startMs: 0, endMs: 100 },
+      { text: "charlie", startMs: 400, endMs: 500 },
+      { text: "echo", startMs: Number.NaN, endMs: 10 },
+    ];
+    const sentinels = selectAudioRedactionSentinels(words, []);
+    expect(sentinels).toEqual(["echo", "bravo", "delta"]);
+  });
 });

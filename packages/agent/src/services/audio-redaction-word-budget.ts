@@ -206,12 +206,36 @@ export function selectAudioRedactionSentinels(
       },
     );
   }
-  const orderedSpans = [...spans].sort(
-    (a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
-  );
-  const orderedWords = [...words].sort(
-    (a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
-  );
+  const orderedSpans = [...spans].sort((a, b) => {
+    const aStart =
+      typeof a.startMs === "number" && Number.isFinite(a.startMs)
+        ? a.startMs
+        : 0;
+    const bStart =
+      typeof b.startMs === "number" && Number.isFinite(b.startMs)
+        ? b.startMs
+        : 0;
+    const aEnd =
+      typeof a.endMs === "number" && Number.isFinite(a.endMs) ? a.endMs : 0;
+    const bEnd =
+      typeof b.endMs === "number" && Number.isFinite(b.endMs) ? b.endMs : 0;
+    return aStart - bStart || aEnd - bEnd;
+  });
+  const orderedWords = [...words].sort((a, b) => {
+    const aStart =
+      typeof a.startMs === "number" && Number.isFinite(a.startMs)
+        ? a.startMs
+        : 0;
+    const bStart =
+      typeof b.startMs === "number" && Number.isFinite(b.startMs)
+        ? b.startMs
+        : 0;
+    const aEnd =
+      typeof a.endMs === "number" && Number.isFinite(a.endMs) ? a.endMs : 0;
+    const bEnd =
+      typeof b.endMs === "number" && Number.isFinite(b.endMs) ? b.endMs : 0;
+    return aStart - bStart || aEnd - bEnd || a.text.localeCompare(b.text);
+  });
   const candidates: SentinelCandidate[] = [];
   let spanIndex = 0;
   for (const word of orderedWords) {
@@ -230,7 +254,17 @@ export function selectAudioRedactionSentinels(
     };
     if (candidate.normalized.length > 0) candidates.push(candidate);
   }
-  candidates.sort((a, b) => a.midpoint - b.midpoint);
+  candidates.sort((a, b) => {
+    const aMid =
+      typeof a.midpoint === "number" && Number.isFinite(a.midpoint)
+        ? a.midpoint
+        : 0;
+    const bMid =
+      typeof b.midpoint === "number" && Number.isFinite(b.midpoint)
+        ? b.midpoint
+        : 0;
+    return aMid - bMid || a.text.localeCompare(b.text);
+  });
   const preferred = candidates.filter((word) => word.normalized.length >= 3);
   const pool = preferred.length > 0 ? preferred : candidates;
   const unique = uniqueSentinelCandidates(pool);
