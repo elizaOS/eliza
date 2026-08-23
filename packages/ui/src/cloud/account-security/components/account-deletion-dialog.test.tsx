@@ -144,4 +144,53 @@ describe("AccountDeletionDialog", () => {
     expect(deletionClient.endLocalSessionAfterDeletion).not.toHaveBeenCalled();
     expect(window.location.href).toBe(locationBefore);
   });
+
+  it("does not retire the session when the server refuses the confirmed request", async () => {
+    deletionClient.getAccountDeletionStatus.mockResolvedValue({
+      state: "available",
+      request: null,
+    });
+    deletionClient.submitAccountDeletion.mockRejectedValue(
+      new Error("Permanent account deletion is unavailable"),
+    );
+    render(<AccountDeletionDialog />);
+
+    fireEvent.click(await screen.findByText("Delete account"));
+    fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
+      target: { value: "DELETE" },
+    });
+    fireEvent.click(screen.getByTestId("delete-account-confirm"));
+
+    await screen.findByText("Permanent account deletion is unavailable");
+    expect(deletionClient.endLocalSessionAfterDeletion).not.toHaveBeenCalled();
+  });
+
+  it("retires the local authority only after a validated confirmed receipt", async () => {
+    deletionClient.getAccountDeletionStatus.mockResolvedValue({
+      state: "available",
+      request: null,
+    });
+    deletionClient.submitAccountDeletion.mockResolvedValue({
+      requestId: "request-validated",
+      status: "scheduled",
+      requestedAt: "2026-08-23T00:00:00.000Z",
+      scheduledDeletionAt: "2026-09-22T00:00:00.000Z",
+      identityDeactivated: true,
+      completedAt: null,
+    });
+    deletionClient.endLocalSessionAfterDeletion.mockResolvedValue(undefined);
+    render(<AccountDeletionDialog />);
+
+    fireEvent.click(await screen.findByText("Delete account"));
+    fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
+      target: { value: "DELETE" },
+    });
+    fireEvent.click(screen.getByTestId("delete-account-confirm"));
+
+    await waitFor(() => {
+      expect(deletionClient.endLocalSessionAfterDeletion).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+  });
 });
