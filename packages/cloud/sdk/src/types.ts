@@ -245,6 +245,8 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
     creditsPerDollar: 1;
     usdPerCredit: 1;
     minimumTopUp: number;
+    /** Largest one-off top-up the checkout seams accept; mirrors the enforced contract. */
+    maximumTopUp?: number;
     x402Enabled: boolean;
   };
 }

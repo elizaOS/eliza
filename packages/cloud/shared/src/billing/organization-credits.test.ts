@@ -6,6 +6,7 @@ import {
   LEGACY_MCP_POINTS_PER_DOLLAR,
   legacyMcpPointsToOrganizationCredits,
   mcpUsageChargeReceiptFromLegacyPoints,
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
   ORGANIZATION_CREDIT_PRICING,
   organizationCreditsToLegacyMcpPoints,
   RETRIEVE_MEMORIES_PRICE_USD,
@@ -19,6 +20,16 @@ describe("organization credit unit", () => {
       creditsPerDollar: 1,
       usdPerCredit: 1,
     });
+  });
+
+  test("publishes the canonical one-off checkout bounds once (#22963)", () => {
+    expect(ORGANIZATION_CREDIT_CHECKOUT_LIMITS).toEqual({
+      minAmountUsd: 1,
+      maxAmountUsd: 1000,
+    });
+    // The contract is the single derivation point: mutating a shared reference
+    // must not be able to silently widen it for every importer.
+    expect(Object.isFrozen(ORGANIZATION_CREDIT_CHECKOUT_LIMITS)).toBe(true);
   });
 
   test("publishes the memory prices used by execution and discovery", () => {
