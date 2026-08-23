@@ -4406,6 +4406,7 @@ export class AcpService extends Service {
   } {
     const protocolSessionId = extractSessionId(event);
     const sessionId = localSessionId ?? protocolSessionId;
+    let terminalFailure: AcpTerminalFailure | undefined;
     if (
       localSessionId &&
       protocolSessionId &&
@@ -4662,7 +4663,7 @@ export class AcpService extends Service {
     }
 
     if (sessionId && result && typeof result.stopReason === "string") {
-      const terminalFailure = readAcpTerminalFailure(result);
+      terminalFailure = readAcpTerminalFailure(result);
       stopReason = terminalFailure ? "error" : result.stopReason;
       if (emitPromptTerminalEvents) {
         // Per-turn token usage rides on the terminal result (claude-agent-acp
@@ -4744,7 +4745,7 @@ export class AcpService extends Service {
       this.emitSessionEvent(sessionId, "error", { message });
     }
 
-    return { finalText, stopReason };
+    return { finalText, stopReason, terminalFailure };
   }
 
   emitSessionEvent(
