@@ -1,8 +1,8 @@
 /**
  * Exercises `ELIZA_PROMPT_COMPRESS` token-budget mode: the optimized-prompt
- * resolver drops few-shot demonstrations and the planner-loop routing-hints
- * block is skipped when the env flag is set. Deterministic — toggles the env var
- * directly, no model.
+ * resolver keeps every few-shot demonstration regardless of the flag, and the
+ * planner-loop routing-hints block is skipped when the env flag is set.
+ * Deterministic — toggles the env var directly, no model.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import type { OptimizedPromptService } from "../../services/optimized-prompt";
@@ -58,7 +58,7 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		delete process.env.ELIZA_PROMPT_COMPRESS;
 	});
 
-	it("drops few-shot demonstrations from the resolved prompt when enabled", () => {
+	it("keeps every few-shot demonstration in the resolved prompt even when enabled", () => {
 		const service = makeService({
 			prompt: "Base optimized prompt body.",
 			fewShot: 4,
@@ -69,15 +69,22 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		expect(before).toContain("Demonstrations:");
 		expect(before).toContain("example user 0");
 
+		// Prompt integrity (repository CLAUDE.md): model-facing content is never
+		// dropped to fit a token budget. `ELIZA_PROMPT_COMPRESS` used to strip the
+		// in-context demonstrations here; #24134 removed that so the flag can no
+		// longer change what the model is taught from.
 		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		const compressed = resolveOptimizedPrompt(
 			service,
 			"message-handler",
 			baseline,
 		);
-		expect(compressed).toBe("Base optimized prompt body.");
-		expect(compressed).not.toContain("Demonstrations:");
-		expect(compressed).not.toContain("example user 0");
+		expect(compressed).toBe(before);
+		expect(compressed).toContain("Demonstrations:");
+		for (let i = 0; i < 4; i += 1) {
+			expect(compressed).toContain(`example user ${i}`);
+			expect(compressed).toContain(`example out ${i}`);
+		}
 	});
 
 	it("falls back to baseline when no service is registered", () => {
