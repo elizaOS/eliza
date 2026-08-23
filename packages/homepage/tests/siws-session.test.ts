@@ -4,7 +4,7 @@
  * collaborators; deterministic, no network, storage, or DOM involvement.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import type { SiwsVerifyResponse } from "../src/lib/api/siws";
 import {
   assertCanonicalSiwsIdentity,
