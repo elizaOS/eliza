@@ -91,11 +91,25 @@ function chargeText(
 	// proportional UTF-8 allocation and full scan for a value whose rejection is
 	// certain (#24778). Strings that might still fit fall through to the precise
 	// byte check below, so multibyte values on the boundary stay accepted.
+	//
+	// The value.length measured here is a code-unit count, NOT a byte count,
+	// and it can materially understate multibyte input (e.g. "é" is 1 unit/2
+	// bytes, "🦊" is 2 units/4 bytes). Reporting it as bytes would be a lie,
+	// and fabricating an exact byte count would defeat the encode-avoidance
+	// that is this path's entire point. Report only what was actually measured
+	// and the minimum-bytes invariant (#24888).
 	if (value.length > MAX_CONNECTOR_JSON_STRING_BYTES) {
-		return overflow(options, "leaf", { [kind]: value.length });
+		return overflow(options, "leaf", {
+			[kind === "keyBytes" ? "keyCodeUnits" : "stringCodeUnits"]:
+				value.length,
+			minimumUtf8Bytes: value.length,
+			exactUtf8BytesAvailable: false,
+		});
 	}
 	const bytes = utf8Encoder.encode(value).byteLength;
 	if (bytes > MAX_CONNECTOR_JSON_STRING_BYTES) {
+		// The precise byte count is available here because encoding was
+		// required to reach this branch.
 		return overflow(options, "leaf", { [kind]: bytes });
 	}
 	return charge(state, Math.max(1, Math.ceil(bytes / 1024)), options);
