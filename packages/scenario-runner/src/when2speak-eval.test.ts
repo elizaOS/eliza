@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeTimingMetrics,
   parseWhen2SpeakLine,
+  summarizeTimingPredictions,
 } from "./when2speak-eval.ts";
 
 describe("When2Speak evaluator", () => {
@@ -55,29 +56,51 @@ describe("When2Speak evaluator", () => {
       accuracy: 0.7,
       speakPrecision: 0.6,
       speakRecall: 0.75,
+      silentPrecision: 0.8,
+      silentRecall: 2 / 3,
       falseInterventionRate: 2 / 6,
       missedInterventionRate: 0.25,
     });
+    expect(
+      computeTimingMetrics({
+        total: 10,
+        correct: 7,
+        trueSpeak: 3,
+        falseSpeak: 2,
+        trueSilent: 4,
+        falseSilent: 1,
+      }).silentF1,
+    ).toBeCloseTo(8 / 11);
   });
 
-  it("keeps row-level decisions auditable without copying corpus text", () => {
-    const prediction = {
-      row: 17,
-      gold: "SPEAK" as const,
-      predicted: "SILENT" as const,
-      directlyAddressesAgent: false,
-      speakerCount: 4,
-      contextTurns: 7,
-    };
+  it("summarizes row-level decisions into auditable slices", () => {
+    const report = summarizeTimingPredictions([
+      {
+        row: 17,
+        gold: "SPEAK",
+        predicted: "SILENT",
+        directlyAddressesAgent: false,
+        speakerCount: 4,
+        contextTurns: 7,
+      },
+      {
+        row: 18,
+        gold: "SILENT",
+        predicted: "SILENT",
+        directlyAddressesAgent: true,
+        speakerCount: 2,
+        contextTurns: 3,
+      },
+    ]);
 
-    expect(prediction).toEqual({
-      row: 17,
-      gold: "SPEAK",
-      predicted: "SILENT",
-      directlyAddressesAgent: false,
-      speakerCount: 4,
-      contextTurns: 7,
+    expect(report.metrics).toMatchObject({ total: 2, correct: 1 });
+    expect(report.slices.address.ambient).toMatchObject({
+      total: 1,
+      falseSilent: 1,
     });
-    expect(JSON.stringify(prediction)).not.toContain("messages");
+    expect(report.slices.contextTurns["3-5"]).toMatchObject({
+      total: 1,
+      trueSilent: 1,
+    });
   });
 });

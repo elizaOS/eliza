@@ -38,8 +38,19 @@ export interface TimingMetrics extends TimingCounts {
   speakPrecision: number | null;
   speakRecall: number | null;
   speakF1: number | null;
+  silentPrecision: number | null;
+  silentRecall: number | null;
+  silentF1: number | null;
   falseInterventionRate: number | null;
   missedInterventionRate: number | null;
+}
+export interface TimingPrediction {
+  row: number;
+  gold: TimingLabel;
+  predicted: TimingLabel;
+  directlyAddressesAgent: boolean;
+  speakerCount: number;
+  contextTurns: number;
 }
 export interface TimingReport {
   schema: 1;
@@ -55,14 +66,7 @@ export interface TimingReport {
     speakers: Record<string, TimingMetrics>;
     contextTurns: Record<string, TimingMetrics>;
   };
-  predictions: Array<{
-    row: number;
-    gold: TimingLabel;
-    predicted: TimingLabel;
-    directlyAddressesAgent: boolean;
-    speakerCount: number;
-    contextTurns: number;
-  }>;
+  predictions: TimingPrediction[];
   failures: Array<{ row: number; error: string }>;
 }
 
@@ -149,6 +153,14 @@ export function computeTimingMetrics(counts: TimingCounts): TimingMetrics {
     counts.trueSpeak,
     counts.trueSpeak + counts.falseSilent,
   );
+  const silentPrecision = ratio(
+    counts.trueSilent,
+    counts.trueSilent + counts.falseSilent,
+  );
+  const silentRecall = ratio(
+    counts.trueSilent,
+    counts.trueSilent + counts.falseSpeak,
+  );
   return {
     ...counts,
     accuracy: ratio(counts.correct, counts.total),
@@ -160,6 +172,15 @@ export function computeTimingMetrics(counts: TimingCounts): TimingMetrics {
       speakPrecision + speakRecall === 0
         ? null
         : (2 * speakPrecision * speakRecall) / (speakPrecision + speakRecall),
+    silentPrecision,
+    silentRecall,
+    silentF1:
+      silentPrecision === null ||
+      silentRecall === null ||
+      silentPrecision + silentRecall === 0
+        ? null
+        : (2 * silentPrecision * silentRecall) /
+          (silentPrecision + silentRecall),
     falseInterventionRate: ratio(
       counts.falseSpeak,
       counts.falseSpeak + counts.trueSilent,
@@ -249,6 +270,40 @@ function metricRecord(
       .map(([key, value]) => [key, computeTimingMetrics(value)]),
   );
 }
+export function summarizeTimingPredictions(
+  predictions: readonly TimingPrediction[],
+): Pick<TimingReport, "metrics" | "slices"> {
+  const overall = emptyCounts();
+  const address = new Map<string, TimingCounts>();
+  const speakers = new Map<string, TimingCounts>();
+  const contextTurns = new Map<string, TimingCounts>();
+  for (const prediction of predictions) {
+    recordPrediction(overall, prediction.gold, prediction.predicted);
+    recordPrediction(
+      bucket(address, prediction.directlyAddressesAgent ? "direct" : "ambient"),
+      prediction.gold,
+      prediction.predicted,
+    );
+    recordPrediction(
+      bucket(speakers, String(prediction.speakerCount)),
+      prediction.gold,
+      prediction.predicted,
+    );
+    recordPrediction(
+      bucket(contextTurns, sliceKey(prediction.contextTurns)),
+      prediction.gold,
+      prediction.predicted,
+    );
+  }
+  return {
+    metrics: computeTimingMetrics(overall),
+    slices: {
+      address: metricRecord(address),
+      speakers: metricRecord(speakers),
+      contextTurns: metricRecord(contextTurns),
+    },
+  };
+}
 export async function runWhen2SpeakEval(options: {
   input: string;
   trajectoryDir: string;
@@ -272,10 +327,6 @@ export async function runWhen2SpeakEval(options: {
     }
     throw error;
   }
-  const overall = emptyCounts();
-  const address = new Map<string, TimingCounts>();
-  const speakers = new Map<string, TimingCounts>();
-  const contextTurns = new Map<string, TimingCounts>();
   const predictions: TimingReport["predictions"] = [];
   const failures: TimingReport["failures"] = [];
   try {
@@ -287,7 +338,8 @@ export async function runWhen2SpeakEval(options: {
     for await (const line of lines) {
       row += 1;
       if (!line.trim()) continue;
-      if (options.limit !== undefined && overall.total >= options.limit) break;
+      if (options.limit !== undefined && predictions.length >= options.limit)
+        break;
       let example: When2SpeakExample;
       try {
         example = parseWhen2SpeakLine(line, row);
@@ -311,22 +363,6 @@ export async function runWhen2SpeakEval(options: {
         speakerCount: example.speakerCount,
         contextTurns: example.turns.length,
       });
-      recordPrediction(overall, example.label, predicted);
-      recordPrediction(
-        bucket(address, example.directlyAddressesAgent ? "direct" : "ambient"),
-        example.label,
-        predicted,
-      );
-      recordPrediction(
-        bucket(speakers, String(example.speakerCount)),
-        example.label,
-        predicted,
-      );
-      recordPrediction(
-        bucket(contextTurns, sliceKey(example.turns.length)),
-        example.label,
-        predicted,
-      );
     }
   } finally {
     await runtimeResult.cleanup();
@@ -336,6 +372,7 @@ export async function runWhen2SpeakEval(options: {
       process.env.ELIZA_TRAJECTORY_DIR = previousTrajectoryDir;
     }
   }
+  const summary = summarizeTimingPredictions(predictions);
   return {
     schema: 1,
     dataset: "duke-trust-lab/When2Speak",
@@ -344,12 +381,7 @@ export async function runWhen2SpeakEval(options: {
     trajectoryDir,
     startedAt,
     finishedAt: new Date().toISOString(),
-    metrics: computeTimingMetrics(overall),
-    slices: {
-      address: metricRecord(address),
-      speakers: metricRecord(speakers),
-      contextTurns: metricRecord(contextTurns),
-    },
+    ...summary,
     predictions,
     failures,
   };

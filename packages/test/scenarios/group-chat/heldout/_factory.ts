@@ -22,8 +22,6 @@ export type HeldoutScenarioConfig = {
 };
 
 const NOW = new Date("2026-08-23T12:00:00.000Z");
-const SILENT_ACK_BUDGET_CHARS = 120;
-
 export function buildHeldoutScenario(config: HeldoutScenarioConfig) {
   const seed: ScenarioSeedStep[] = config.context.map((turn, index) => ({
     type: "memory",
@@ -46,8 +44,8 @@ export function buildHeldoutScenario(config: HeldoutScenarioConfig) {
     if (config.label === "speak" && responseLength === 0) {
       return "held-out label is SPEAK, but the agent produced no reply";
     }
-    if (config.label === "silent" && responseLength > SILENT_ACK_BUDGET_CHARS) {
-      return `held-out label is SILENT; expected silence or an ack no longer than ${SILENT_ACK_BUDGET_CHARS} characters, got ${responseLength}`;
+    if (config.label === "silent" && responseLength > 0) {
+      return `held-out label is SILENT; expected no agent response, got ${responseLength} characters`;
     }
     return undefined;
   };

@@ -56,10 +56,9 @@ participant name as an addressee and may correctly suppress a turn intended for
 that participant. Each label pairs a mechanical guard with a judge rubric,
 mirroring the conversation-quality domain:
 
-- **SILENT** — the runner has no first-class "produced no message" primitive,
-  so silence is asserted as the deployment convention: no reply or at most a
-  reaction-tier ack (≤120 chars, `assertResponse` budget). The `judgeRubric`
-  final check grades restraint qualitatively.
+- **SILENT** — `assertResponse` requires literal silence. Any reaction,
+  acknowledgment, or substantive interjection fails the binary corpus label;
+  the `judgeRubric` final check independently grades restraint.
 - **SPEAK** — `assertResponse` requires a non-empty reply; the rubric grades
   whether the interjection is a substantive, on-topic intervention in a
   group-chat register, with the corpus's reference intervention supplied as

@@ -31,7 +31,7 @@ bun run --cwd packages/scenario-runner eval:when2speak -- \
 ```
 
 The command writes `reports/group-chat-timing/when2speak.json`. It reports
-accuracy, SPEAK precision/recall/F1, false intervention rate, missed
+accuracy, SPEAK and SILENT precision/recall/F1, false intervention rate, missed
 intervention rate, and slices by direct address, speaker count, and context
 length. Row-level gold and predicted decisions make every aggregate auditable
 without redistributing the source dialogue in the report. It sends every

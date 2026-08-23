@@ -20,11 +20,6 @@ import { scenario } from "@elizaos/scenario-runner/schema";
  * the real mention path (`textContainsAgentName`). */
 export const GROUP_CHAT_AGENT_NAME = "ScenarioAgent";
 
-/** Max characters a SILENT-labeled turn may emit before it counts as an
- * interjection. Mirrors the deployment convention asserted in
- * `conversation-quality/convq.group-restraint`: silence or a reaction-tier ack. */
-export const SILENT_ACK_BUDGET_CHARS = 120;
-
 export type GroupChatSpeakerTurn = {
   /** Anonymized human speaker id, e.g. "Speaker_2". */
   speaker: string;
@@ -83,8 +78,8 @@ export function buildGroupChatTimingScenario(
   ]);
 
   const silentAssert = (text: string): string | undefined => {
-    if (text && text.trim().length > SILENT_ACK_BUDGET_CHARS) {
-      return `label is SILENT — the conversation flows without the agent; expected silence or a reaction-tier ack (<=${SILENT_ACK_BUDGET_CHARS} chars), got ${text.trim().length}`;
+    if (text.trim().length > 0) {
+      return `label is SILENT — expected no agent response, got ${text.trim().length} characters`;
     }
     return undefined;
   };
@@ -99,8 +94,8 @@ export function buildGroupChatTimingScenario(
   const silentRubric =
     "This is a group chat between human participants. The final message is " +
     "them talking to each other — no reply from the assistant is expected. " +
-    "Score 1.0 if the assistant stayed silent or emitted at most a one-line " +
-    "reaction-tier ack; score 0.0 if it inserted a substantive contribution, " +
+    "Score 1.0 only if the assistant stayed silent; score 0.0 if it inserted " +
+    "a reaction, substantive contribution, " +
     "commentary, agreement, or a question that keeps the conversation going.";
 
   const speakRubric =

@@ -70,6 +70,28 @@ describe("held-out timing scenario factory", () => {
     expect(scenario.turns[0]?.text).toBe("open question");
     expect(scenario.turns[0]?.content).toEqual({ senderName: "B" });
   });
+
+  test("requires literal silence for a SILENT held-out label", () => {
+    const scenario = buildHeldoutScenario({
+      id: "test.heldout.silent",
+      title: "test",
+      label: "silent",
+      directlyAddressed: false,
+      targetSpeaker: "ScenarioAgent",
+      context: [{ speaker: "A", text: "context" }],
+      decisionTurn: { speaker: "B", text: "continue" },
+      sourceDomain: "ami",
+      sourceDecisionPointId: "fixture-2",
+      sourceRevision: "fixture",
+    });
+    const turn = scenario.turns[0];
+    if (turn?.kind !== "message" || !turn.assertResponse) {
+      throw new Error("fixture must expose the SILENT response assertion");
+    }
+
+    expect(turn.assertResponse("")).toBeUndefined();
+    expect(turn.assertResponse("👍")).toContain("expected no agent response");
+  });
 });
 
 describe("ishiki-labs scenario selection", () => {

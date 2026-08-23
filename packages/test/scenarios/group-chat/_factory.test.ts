@@ -21,4 +21,23 @@ describe("group-chat timing scenario factory", () => {
     expect(scenario.turns[0]?.text).toBe("open question");
     expect(scenario.turns[0]?.content).toEqual({ senderName: "Speaker_1" });
   });
+
+  it("requires literal silence for a SILENT corpus label", () => {
+    const scenario = buildGroupChatTimingScenario({
+      id: "test.timing.silent",
+      title: "test",
+      label: "silent",
+      directlyAddressed: false,
+      context: [{ speaker: "Speaker_0", text: "context" }],
+      decisionTurn: { speaker: "Speaker_1", text: "continue" },
+      sourceRow: "fixture",
+    });
+    const turn = scenario.turns[0];
+    if (turn?.kind !== "message" || !turn.assertResponse) {
+      throw new Error("fixture must expose the SILENT response assertion");
+    }
+
+    expect(turn.assertResponse("")).toBeUndefined();
+    expect(turn.assertResponse("👍")).toContain("expected no agent response");
+  });
 });
