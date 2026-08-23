@@ -6,7 +6,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
@@ -433,14 +433,28 @@ export class ApiKeysService {
       throw new Error("Invalid userId or organizationId for default API key provisioning");
     }
 
+    // Build and encrypt outside the transaction so KMS work does not extend
+    // the advisory-lock hold. Existing-key calls may discard this candidate;
+    // direct signup is the latency-sensitive path and always needs it.
+    const { apiKey } = await this.buildApiKeyInsert({
+      user_id: userId,
+      organization_id: organizationId,
+      name: "Default API Key",
+      is_active: true,
+    });
+
     await dbWrite.transaction(async (tx) => {
+      // Keep lock acquisition in its own statement. Under READ COMMITTED, a
+      // waiter gets a fresh snapshot for the conditional INSERT after the lock
+      // holder commits. Folding lock + existence check into one statement
+      // would preserve the pre-wait snapshot and could mint a duplicate.
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`default_api_key:${userId}:${organizationId}`}))`,
       );
 
       const now = new Date();
-      const existingKeys = await tx
-        .select()
+      const usableDefaultKey = tx
+        .select({ id: apiKeys.id })
         .from(apiKeys)
         .where(
           and(
@@ -449,19 +463,54 @@ export class ApiKeysService {
             eq(apiKeys.name, "Default API Key"),
             eq(apiKeys.is_active, true),
             isNull(apiKeys.deleted_at),
+            or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, now)),
           ),
         );
-      if (existingKeys.some((key) => !key.expires_at || key.expires_at > now)) {
-        return;
-      }
 
-      const { apiKey } = await this.buildApiKeyInsert({
-        user_id: userId,
-        organization_id: organizationId,
-        name: "Default API Key",
-        is_active: true,
-      });
-      await tx.insert(apiKeys).values(apiKey);
+      // Drizzle's INSERT ... SELECT requires every insertable column in schema
+      // order. Supplying the table's defaults explicitly keeps this one
+      // statement equivalent to values(apiKey), while NOT EXISTS performs the
+      // post-lock readiness check and conditional insert in the same snapshot.
+      await tx.insert(apiKeys).select(
+        tx
+          .select({
+            id: sql<string>`${apiKey.id}::uuid`.as("id"),
+            name: sql<string>`${apiKey.name}::text`.as("name"),
+            description: sql<string | null>`${apiKey.description ?? null}::text`.as("description"),
+            key_hash: sql<string>`${apiKey.key_hash}::text`.as("key_hash"),
+            key_prefix: sql<string>`${apiKey.key_prefix}::text`.as("key_prefix"),
+            key_ciphertext: sql<string | null>`${apiKey.key_ciphertext ?? null}::text`.as(
+              "key_ciphertext",
+            ),
+            key_nonce: sql<string | null>`${apiKey.key_nonce ?? null}::text`.as("key_nonce"),
+            key_auth_tag: sql<string | null>`${apiKey.key_auth_tag ?? null}::text`.as(
+              "key_auth_tag",
+            ),
+            key_kms_key_id: sql<string | null>`${apiKey.key_kms_key_id ?? null}::text`.as(
+              "key_kms_key_id",
+            ),
+            key_kms_key_version: sql<
+              number | null
+            >`${apiKey.key_kms_key_version ?? null}::integer`.as("key_kms_key_version"),
+            organization_id: sql<string>`${apiKey.organization_id}::uuid`.as("organization_id"),
+            user_id: sql<string>`${apiKey.user_id}::uuid`.as("user_id"),
+            source_app_id: sql<string | null>`${apiKey.source_app_id ?? null}::uuid`.as(
+              "source_app_id",
+            ),
+            rate_limit: sql<number>`${apiKey.rate_limit ?? 1000}::integer`.as("rate_limit"),
+            is_active: sql<boolean>`${apiKey.is_active ?? true}::boolean`.as("is_active"),
+            usage_count: sql<number>`${apiKey.usage_count ?? 0}::integer`.as("usage_count"),
+            expires_at: sql<Date | null>`${apiKey.expires_at ?? null}::timestamp`.as("expires_at"),
+            last_used_at: sql<Date | null>`${apiKey.last_used_at ?? null}::timestamp`.as(
+              "last_used_at",
+            ),
+            created_at: sql<Date>`NOW()`.as("created_at"),
+            updated_at: sql<Date>`NOW()`.as("updated_at"),
+            deleted_at: sql<Date | null>`${apiKey.deleted_at ?? null}::timestamp`.as("deleted_at"),
+          })
+          .from(sql`(SELECT 1) AS singleton`)
+          .where(notExists(usableDefaultKey)),
+      );
     });
   }
 

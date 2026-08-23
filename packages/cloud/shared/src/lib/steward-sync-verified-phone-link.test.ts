@@ -46,9 +46,12 @@ function linkedStewardUser(stewardUserId: string): TestUser | undefined {
 }
 
 const promotePhonePersonalAccountToSteward = mock(async () => ({ status: "not_found" as const }));
-const findPendingPhoneTelegramPersonalAccountConvergence = mock(async () => ({
-  status: "not_found" as const,
-}));
+const findPendingPhoneTelegramPersonalAccountConvergence = mock(
+  async ({ stewardUserId }: { stewardUserId: string }) => {
+    const user = linkedStewardUser(stewardUserId);
+    return user ? { status: "canonical_user" as const, user } : { status: "not_found" as const };
+  },
+);
 const linkVerifiedPhone = mock(async (userId: string, phoneNumber: string) => {
   record("linkVerifiedPhone", userId, phoneNumber);
   if (phoneLinkConflict) {
@@ -76,6 +79,14 @@ mock.module("../db/repositories/users", () => ({
 
 mock.module("./services/users", () => ({
   usersService: {
+    createFreshStewardSignupUser: async () => {
+      record("create");
+      if (createConflict) {
+        throw Object.assign(new Error("duplicate account"), { code: "23505" });
+      }
+      throw new Error("unexpected new account creation");
+    },
+    initializeFreshStewardIdentity: async () => undefined,
     create: async () => {
       record("create");
       if (createConflict) {
@@ -168,7 +179,12 @@ beforeEach(() => {
   createConflict = false;
   phoneLinkConflict = false;
   findPendingPhoneTelegramPersonalAccountConvergence.mockReset();
-  findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({ status: "not_found" });
+  findPendingPhoneTelegramPersonalAccountConvergence.mockImplementation(
+    async ({ stewardUserId }) => {
+      const user = linkedStewardUser(stewardUserId);
+      return user ? { status: "canonical_user", user } : { status: "not_found" };
+    },
+  );
   promotePhonePersonalAccountToSteward.mockReset();
   promotePhonePersonalAccountToSteward.mockResolvedValue({ status: "not_found" });
   linkVerifiedPhone.mockClear();

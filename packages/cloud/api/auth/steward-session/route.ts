@@ -44,6 +44,7 @@ import {
   syncUserFromSteward,
 } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
+import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
@@ -352,6 +353,7 @@ app.post("/", async (c) => {
       }
     }
 
+    const executionCtx = getWorkerExecutionContext(c);
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
     if (claims.stagingSessionBinding) {
       if (telegramContinuation) {
@@ -385,7 +387,27 @@ app.post("/", async (c) => {
           telegramContinuation: telegramContinuation ?? undefined,
           sharedRuntimeConversationNamespace:
             c.env.SHARED_RUNTIME_CONVERSATIONS,
-          executionCtx: getWorkerExecutionContext(c),
+          executionCtx,
+          afterRequiredSignupProvisioning: async (user) => {
+            try {
+              // The first authenticated browser request follows immediately.
+              // Prime its authorization projection after strict API-key
+              // readiness but before optional onboarding work starts, so that
+              // request does not race into the slower durable cache-miss path.
+              await primeVerifiedUserSessionCache(token, user);
+            } catch (error) {
+              // error-policy:J4 Cache priming is a latency optimization. Identity is
+              // already durable and the ordinary authenticated cache-miss path can
+              // recover, so a cache write failure must not strand the new account.
+              logger.warn(
+                "[steward-auth] New-user session cache prime failed",
+                {
+                  userId: user.id,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              );
+            }
+          },
         });
       } catch (error) {
         if (error instanceof StewardPhoneAccountConflictError) {
@@ -419,20 +441,6 @@ app.post("/", async (c) => {
           errorBody("Could not sync Steward user", "steward_user_sync_failed"),
           500,
         );
-      }
-    }
-
-    if (cloudUser.postCommitProvisioningDeferred) {
-      try {
-        await primeVerifiedUserSessionCache(token, cloudUser);
-      } catch (error) {
-        // error-policy:J4 Cache priming is a latency optimization. Identity is
-        // already durable and the ordinary authenticated cache-miss path can
-        // recover, so a Redis write failure must not strand the new account.
-        logger.warn("[steward-auth] New-user session cache prime failed", {
-          userId: cloudUser.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
       }
     }
 
@@ -486,28 +494,32 @@ app.post("/", async (c) => {
     });
 
     logStewardAuth("ok", ttl);
-    await getAuditDispatcher()
-      .emit({
-        actor: { type: "user", id: cloudUser.id },
-        action: "auth.login",
-        result: "success",
-        resource: null,
-        org_id: cloudUser.organization_id ?? undefined,
-        ip: getRequestIp(c),
-        user_agent: c.req.header("user-agent") ?? undefined,
-        request_id: c.get("requestId"),
-        metadata: { provider: "steward", method: "session_exchange" },
-      })
-      // error-policy:J7 audit write must not block the login response; a dropped auth audit is logged.
-      .catch((err) =>
-        logger.error(
-          "[StewardSession] audit emit for successful login failed",
-          {
-            userId: cloudUser.id,
-            error: err instanceof Error ? err.message : String(err),
-          },
-        ),
-      );
+    // The required sink remains owned by the Worker lifetime, but its database
+    // RTT is not account readiness and must not delay the successful response.
+    await settleOffResponsePath(executionCtx, async () => {
+      await getAuditDispatcher()
+        .emit({
+          actor: { type: "user", id: cloudUser.id },
+          action: "auth.login",
+          result: "success",
+          resource: null,
+          org_id: cloudUser.organization_id ?? undefined,
+          ip: getRequestIp(c),
+          user_agent: c.req.header("user-agent") ?? undefined,
+          request_id: c.get("requestId"),
+          metadata: { provider: "steward", method: "session_exchange" },
+        })
+        // error-policy:J7 audit write must not block the login response; a dropped auth audit is logged.
+        .catch((err) =>
+          logger.error(
+            "[StewardSession] audit emit for successful login failed",
+            {
+              userId: cloudUser.id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          ),
+        );
+    });
     const response: StewardSessionResponse = {
       ok: true,
       userId: cloudUser.id,

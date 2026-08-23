@@ -2,9 +2,9 @@
  * Deterministic coverage for direct-signup post-commit provisioning.
  *
  * Worker callers return only after the canonical user, organization, identity,
- * and required default API key are ready. waitUntil owns only the independently
- * self-healing default-character and Steward-tenant tail; non-Worker callers
- * retain the strict inline ordering for every provisioning resource.
+ * required default API key, and an optional caller barrier are ready. waitUntil
+ * owns only the independently self-healing default-character and Steward-tenant
+ * tail; non-Worker callers retain strict inline provisioning without a barrier.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -33,7 +33,16 @@ let tenantProvision = deferred<{ tenantId: string }>();
 let apiKeyProvisionStarted = false;
 let characterProvisionStarted = false;
 let tenantProvisionStarted = false;
-let finalIdentityReadCompleted = false;
+let welcomeEmailStarted = false;
+let discordLogStarted = false;
+let freshUserCreateCompleted = false;
+let freshIdentityInitializeCompleted = false;
+let genericCreateAttempted = false;
+let genericIdentityUpsertAttempted = false;
+let finalIdentityReadAttempted = false;
+let organizationCreateAttempts = 0;
+let organizationSlugPreflightAttempts = 0;
+const organizationCreateErrors: unknown[] = [];
 const loggerErrors: Array<{ message: string; context?: unknown }> = [];
 const loggerInfos: Array<{ message: string; context?: unknown }> = [];
 const loggerWarnings: Array<{ message: string; context?: unknown }> = [];
@@ -43,8 +52,7 @@ const createdOrg = {
   slug: "alice-abc123",
   credit_balance: "0.00",
 };
-const createdUser = { id: "user-new-1", organization_id: "org-new-1" };
-const finalUserWithOrg = {
+const createdUser = {
   id: "user-new-1",
   organization_id: "org-new-1",
   steward_user_id: "steward-123",
@@ -54,7 +62,6 @@ const finalUserWithOrg = {
   role: "owner",
   email_verified: true,
   wallet_verified: false,
-  organization: { id: "org-new-1", name: "alice's Organization" },
 };
 
 mock.module("./services/credits", () => ({
@@ -68,8 +75,16 @@ mock.module("./services/credits", () => ({
 }));
 mock.module("./services/organizations", () => ({
   organizationsService: {
-    getBySlug: async () => undefined,
-    create: async () => createdOrg,
+    getBySlug: async () => {
+      organizationSlugPreflightAttempts += 1;
+      return undefined;
+    },
+    create: async () => {
+      organizationCreateAttempts += 1;
+      const error = organizationCreateErrors.shift();
+      if (error) throw error;
+      return createdOrg;
+    },
     update: async () => createdOrg,
     delete: async () => undefined,
   },
@@ -82,13 +97,28 @@ mock.module("./services/users", () => ({
     getByWalletAddressWithOrganization: async () => undefined,
     getStewardIdentityForWrite: async () => undefined,
     getByStewardIdForWrite: async () => {
-      finalIdentityReadCompleted = true;
-      return finalUserWithOrg;
+      finalIdentityReadAttempted = true;
+      return undefined;
     },
-    create: async () => createdUser,
+    createFreshStewardSignupUser: async () => {
+      freshUserCreateCompleted = true;
+      return createdUser;
+    },
+    initializeFreshStewardIdentity: async ({ user, stewardUserId }) => {
+      expect(freshUserCreateCompleted).toBe(true);
+      expect(user).toBe(createdUser);
+      expect(stewardUserId).toBe("steward-123");
+      freshIdentityInitializeCompleted = true;
+    },
+    create: async () => {
+      genericCreateAttempted = true;
+      return createdUser;
+    },
+    upsertStewardIdentity: async () => {
+      genericIdentityUpsertAttempted = true;
+    },
     update: async () => undefined,
     linkStewardId: async () => undefined,
-    upsertStewardIdentity: async () => undefined,
   },
 }));
 mock.module("../db/repositories/users", () => ({
@@ -107,7 +137,8 @@ mock.module("./services/api-keys", () => ({
     listByOrganization: async () => [],
     create: async () => ({ id: "key-1" }),
     provisionDefaultApiKey: async () => {
-      expect(finalIdentityReadCompleted).toBe(true);
+      expect(freshIdentityInitializeCompleted).toBe(true);
+      expect(finalIdentityReadAttempted).toBe(false);
       apiKeyProvisionStarted = true;
       await apiKeyProvision.promise;
     },
@@ -117,7 +148,8 @@ mock.module("./services/characters/characters", () => ({
   charactersService: {
     hasHealthyCloudCharacterMirror: async () => false,
     create: async () => {
-      expect(finalIdentityReadCompleted).toBe(true);
+      expect(freshIdentityInitializeCompleted).toBe(true);
+      expect(finalIdentityReadAttempted).toBe(false);
       characterProvisionStarted = true;
       return characterProvision.promise;
     },
@@ -125,7 +157,8 @@ mock.module("./services/characters/characters", () => ({
 }));
 mock.module("./services/steward-tenant-config", () => ({
   ensureStewardTenant: async () => {
-    expect(finalIdentityReadCompleted).toBe(true);
+    expect(freshIdentityInitializeCompleted).toBe(true);
+    expect(finalIdentityReadAttempted).toBe(false);
     tenantProvisionStarted = true;
     return tenantProvision.promise;
   },
@@ -134,10 +167,18 @@ mock.module("./services/steward-tenant-config", () => ({
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
 mock.module("./services/discord", () => ({
-  discordService: { logUserSignup: async () => undefined },
+  discordService: {
+    logUserSignup: async () => {
+      discordLogStarted = true;
+    },
+  },
 }));
 mock.module("./services/email", () => ({
-  emailService: { sendWelcomeEmail: async () => undefined },
+  emailService: {
+    sendWelcomeEmail: async () => {
+      welcomeEmailStarted = true;
+    },
+  },
 }));
 mock.module("./utils/logger", () => ({
   logger: {
@@ -177,35 +218,70 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
     apiKeyProvisionStarted = false;
     characterProvisionStarted = false;
     tenantProvisionStarted = false;
-    finalIdentityReadCompleted = false;
+    welcomeEmailStarted = false;
+    discordLogStarted = false;
+    freshUserCreateCompleted = false;
+    freshIdentityInitializeCompleted = false;
+    genericCreateAttempted = false;
+    genericIdentityUpsertAttempted = false;
+    finalIdentityReadAttempted = false;
+    organizationCreateAttempts = 0;
+    organizationSlugPreflightAttempts = 0;
+    organizationCreateErrors.length = 0;
     loggerErrors.length = 0;
     loggerInfos.length = 0;
     loggerWarnings.length = 0;
   });
 
-  test("Worker waits for the required API key, then hands one concurrent safe tail to waitUntil", async () => {
+  test("Worker orders key, caller barrier, safe tail, then best-effort notifications", async () => {
     const background: Promise<unknown>[] = [];
+    const callerBarrier = deferred<void>();
+    let callerBarrierStarted = false;
 
     const syncPromise = syncUserFromSteward({
       ...baseParams,
       executionCtx: {
         waitUntil: (promise) => background.push(promise),
       },
+      afterRequiredSignupProvisioning: async (user) => {
+        expect(user.id).toBe("user-new-1");
+        callerBarrierStarted = true;
+        await callerBarrier.promise;
+      },
     });
     await waitFor(() => apiKeyProvisionStarted);
 
-    expect(finalIdentityReadCompleted).toBe(true);
+    expect(freshUserCreateCompleted).toBe(true);
+    expect(freshIdentityInitializeCompleted).toBe(true);
+    expect(genericCreateAttempted).toBe(false);
+    expect(genericIdentityUpsertAttempted).toBe(false);
+    expect(finalIdentityReadAttempted).toBe(false);
+    expect(organizationCreateAttempts).toBe(1);
+    expect(organizationSlugPreflightAttempts).toBe(0);
     expect(background).toHaveLength(0);
     expect(characterProvisionStarted).toBe(false);
     expect(tenantProvisionStarted).toBe(false);
+    expect(callerBarrierStarted).toBe(false);
+    expect(welcomeEmailStarted).toBe(false);
+    expect(discordLogStarted).toBe(false);
 
     apiKeyProvision.resolve();
+    await waitFor(() => callerBarrierStarted);
+    expect(background).toHaveLength(0);
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
+    expect(welcomeEmailStarted).toBe(false);
+    expect(discordLogStarted).toBe(false);
+
+    callerBarrier.resolve();
     const user = await syncPromise;
 
     expect(user.id).toBe("user-new-1");
     expect(user.postCommitProvisioningDeferred).toBe(true);
     expect(background).toHaveLength(1);
     await waitFor(() => characterProvisionStarted && tenantProvisionStarted);
+    expect(welcomeEmailStarted).toBe(true);
+    expect(discordLogStarted).toBe(true);
 
     characterProvision.resolve({ id: "char-1" });
     tenantProvision.resolve({ tenantId: "elizacloud-org-new-1" });
@@ -287,5 +363,42 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
     await expect(syncPromise).rejects.toThrow("strict default-key failure");
     expect(characterProvisionStarted).toBe(false);
     expect(tenantProvisionStarted).toBe(false);
+  });
+
+  test("retries the exact organization slug constraint without a preflight read", async () => {
+    organizationCreateErrors.push(
+      Object.assign(new Error("generated slug collision"), {
+        code: "23505",
+        constraint: "organizations_slug_unique",
+      }),
+    );
+    apiKeyProvision.resolve();
+    characterProvision.resolve({ id: "char-1" });
+    tenantProvision.resolve({ tenantId: "elizacloud-org-new-1" });
+
+    await expect(syncUserFromSteward(baseParams)).resolves.toMatchObject({
+      id: "user-new-1",
+      organization: { id: "org-new-1" },
+    });
+
+    expect(organizationCreateAttempts).toBe(2);
+    expect(organizationSlugPreflightAttempts).toBe(0);
+    expect(freshIdentityInitializeCompleted).toBe(true);
+  });
+
+  test("does not retry an unrelated organization unique violation", async () => {
+    organizationCreateErrors.push(
+      Object.assign(new Error("unrelated organization authority collision"), {
+        code: "23505",
+        constraint: "organizations_steward_tenant_id_unique",
+      }),
+    );
+
+    await expect(syncUserFromSteward(baseParams)).rejects.toThrow(
+      "unrelated organization authority collision",
+    );
+    expect(organizationCreateAttempts).toBe(1);
+    expect(organizationSlugPreflightAttempts).toBe(0);
+    expect(freshUserCreateCompleted).toBe(false);
   });
 });

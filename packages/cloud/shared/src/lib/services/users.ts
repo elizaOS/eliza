@@ -2,6 +2,7 @@
  * Users service for managing user accounts and organization relationships.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
   apiKeysRepository,
   type NewUser,
@@ -41,6 +42,16 @@ const PERSONAL_DELIVERY_ROUTING_FIELDS = [
   "discord_id",
   "phone_number",
 ] as const;
+
+type FreshStewardSignupUserData = NewUser & {
+  organization_id: string;
+  steward_user_id: string;
+};
+
+type FreshStewardIdentityInput = {
+  user: Pick<User, "id" | "organization_id" | "steward_user_id">;
+  stewardUserId: string;
+};
 
 function personalDeliveryRoutingIdentities(
   ...sources: Array<PersonalDeliveryIdentitySource | undefined>
@@ -312,6 +323,16 @@ export class UsersService {
   }
 
   /**
+   * Inserts a direct-signup user after the caller has proved the Steward
+   * subject and account lookup keys are absent. User readers cache only
+   * positive rows, so this fresh insert has no negative cache entry to clear.
+   * Linking, restoration, and other existing-account flows must use `create`.
+   */
+  async createFreshStewardSignupUser(data: FreshStewardSignupUserData): Promise<User> {
+    return await usersRepository.create(data);
+  }
+
+  /**
    * Inference hot path (#9981 review gap): drop every cached IAC identity for a
    * user's API keys so a deactivated/deleted user stops fast-pathing inference
    * immediately rather than authorizing until the authContext TTL expires. The
@@ -482,6 +503,40 @@ export class UsersService {
     }
 
     await Promise.all(cacheDeletes);
+  }
+
+  /**
+   * Initializes the Steward projection for a user and organization returned by
+   * the direct-signup inserts. A fresh user ID has no prior binding, session
+   * generation, or positive cache projection to revoke; the new binding still
+   * becomes active only after the identity projection commits.
+   */
+  async initializeFreshStewardIdentity(input: FreshStewardIdentityInput): Promise<void> {
+    const { user, stewardUserId } = input;
+    const organizationId = user.organization_id;
+    const canonicalStewardUserId = user.steward_user_id;
+    if (
+      user.id.trim().length === 0 ||
+      !organizationId?.trim() ||
+      canonicalStewardUserId.trim().length === 0 ||
+      stewardUserId.trim().length === 0 ||
+      canonicalStewardUserId !== stewardUserId
+    ) {
+      throw new ElizaError("Fresh Steward identity input does not match the created user", {
+        code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID",
+        context: {
+          hasUserId: user.id.trim().length > 0,
+          hasOrganizationId: Boolean(organizationId?.trim()),
+          hasCanonicalStewardUserId: canonicalStewardUserId.trim().length > 0,
+          hasRequestedStewardUserId: stewardUserId.trim().length > 0,
+          stewardUserIdMatches: canonicalStewardUserId === stewardUserId,
+        },
+        severity: "fatal",
+      });
+    }
+
+    await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
+    await setInferenceSessionBindingActive(organizationId, user.id, stewardUserId, true);
   }
 
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
