@@ -4,10 +4,18 @@
  * Companion to tests/provisioning-poll-hook.test.ts (which owns the poll
  * loop): this suite drives sendMessage, retryProvisioning, transcript
  * shaping, and session-reset behaviour through the real React DOM with a
- * mocked elizacloudAuthFetch transport, under bun:test — the runner that
- * actually gates packages/homepage.
+ * mocked elizacloudAuthFetch transport under the repository's targeted
+ * Vitest runner.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 const nativeSetTimeout = globalThis.setTimeout;
 
@@ -52,8 +60,8 @@ function asObject(value: unknown): Json | null {
   return typeof value === "object" && value !== null ? (value as Json) : null;
 }
 
-mock.module("@/lib/api/client", () => ({
-  elizacloudAuthFetch: mock(async (url: string, init?: RequestInit) => {
+vi.mock("@/lib/api/client", () => ({
+  elizacloudAuthFetch: vi.fn(async (url: string, init?: RequestInit) => {
     const rawBody = init?.body as string | undefined;
     let parsedBody: unknown;
     if (rawBody) {
@@ -117,7 +125,7 @@ mock.module("@/lib/api/client", () => ({
     return { success: true, data: {} };
   }),
 }));
-mock.module("@/lib/provisioning-poll-body", () =>
+vi.mock("@/lib/provisioning-poll-body", () =>
   import("../src/lib/provisioning-poll-body").then((m) => m),
 );
 
@@ -137,6 +145,19 @@ interface CapturedTimer {
 let capturedTimers: CapturedTimer[] = [];
 let activeTimers: Set<CapturedTimer> = new Set();
 let activeWindow: (Window & typeof globalThis) | null = null;
+const domGlobalKeys = [
+  "window",
+  "document",
+  "navigator",
+  "HTMLElement",
+  "localStorage",
+] as const;
+const originalDomGlobals = new Map(
+  domGlobalKeys.map((key) => [
+    key,
+    Object.getOwnPropertyDescriptor(globalThis, key),
+  ]),
+);
 
 function setupDom() {
   const dom = new JSDOM('<!DOCTYPE html><div id="root"></div>', {
@@ -145,11 +166,29 @@ function setupDom() {
   });
   const { window } = dom;
   const g = globalThis as unknown as Record<string, unknown>;
-  g.window = window;
-  g.document = window.document;
-  g.navigator = window.navigator;
-  g.HTMLElement = window.HTMLElement;
-  g.localStorage = window.localStorage;
+  Object.defineProperties(g, {
+    window: { configurable: true, writable: true, value: window },
+    document: {
+      configurable: true,
+      writable: true,
+      value: window.document,
+    },
+    navigator: {
+      configurable: true,
+      writable: true,
+      value: window.navigator,
+    },
+    HTMLElement: {
+      configurable: true,
+      writable: true,
+      value: window.HTMLElement,
+    },
+    localStorage: {
+      configurable: true,
+      writable: true,
+      value: window.localStorage,
+    },
+  });
 
   window.setTimeout = ((callback: () => void, delay: number) => {
     const timer: CapturedTimer = { callback, cleared: false, delay };
@@ -297,6 +336,19 @@ describe("useElizaAppProvisioningChat — chat surface, transcripts, lifecycle r
   afterEach(() => {
     activeWindow?.close();
     activeWindow = null;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const g = globalThis as unknown as Record<string, unknown>;
+    for (const key of domGlobalKeys) {
+      const descriptor = originalDomGlobals.get(key);
+      if (descriptor) {
+        Object.defineProperty(g, key, descriptor);
+      } else {
+        delete g[key];
+      }
+    }
   });
 
   test("a successful poll that carries no transcript preserves exactly the welcome card", async () => {
