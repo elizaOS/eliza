@@ -49,6 +49,7 @@ const READ_ONLY_COMMANDS = new Set([
   "get_cursor_position",
   "detect_elements",
   "ocr",
+  "accessibility_snapshot",
   "list_windows",
   "app_list_apps",
   "app_get_state",
