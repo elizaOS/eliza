@@ -324,12 +324,32 @@ function negatedDirective(
   const prefix = policy.negationBefore
     .flatMap((pattern) => patternSpans(before, pattern))
     .filter((span) => span.end === before.length)
-    .sort((left, right) => right.start - left.start)[0];
+    .sort((left, right) => {
+      const rightStart =
+        typeof right.start === "number" && Number.isFinite(right.start)
+          ? right.start
+          : 0;
+      const leftStart =
+        typeof left.start === "number" && Number.isFinite(left.start)
+          ? left.start
+          : 0;
+      return rightStart - leftStart || left.end - right.end;
+    })[0];
   const after = text.slice(positive.end);
   const suffix = policy.negationAfter
     .flatMap((pattern) => patternSpans(after, pattern))
     .filter((span) => span.start === 0)
-    .sort((left, right) => right.end - left.end)[0];
+    .sort((left, right) => {
+      const rightEnd =
+        typeof right.end === "number" && Number.isFinite(right.end)
+          ? right.end
+          : 0;
+      const leftEnd =
+        typeof left.end === "number" && Number.isFinite(left.end)
+          ? left.end
+          : 0;
+      return rightEnd - leftEnd || left.start - right.start;
+    })[0];
   if (!prefix && !suffix) return null;
   return {
     kind: "deny",

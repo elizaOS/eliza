@@ -599,7 +599,13 @@ function applyRanking(
   topN: number,
 ): readonly PrioritizeRankedItem[] {
   const itemMap = new Map(items.map((item) => [item.id, item]));
-  const sorted = [...ranking].sort((a, b) => b.score - a.score);
+  const sorted = [...ranking].sort((a, b) => {
+    const bScore =
+      typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+    const aScore =
+      typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+    return bScore - aScore || a.id.localeCompare(b.id);
+  });
   const ranked: PrioritizeRankedItem[] = [];
   for (const entry of sorted) {
     const source = itemMap.get(entry.id);

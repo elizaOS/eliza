@@ -199,7 +199,13 @@ function buildBusyIntervals(
       end: Date.parse(e.endAt) + bufferMs,
     }))
     .filter((i) => Number.isFinite(i.start) && Number.isFinite(i.end))
-    .sort((a, b) => a.start - b.start);
+    .sort((a, b) => {
+      const aStart =
+        typeof a.start === "number" && Number.isFinite(a.start) ? a.start : 0;
+      const bStart =
+        typeof b.start === "number" && Number.isFinite(b.start) ? b.start : 0;
+      return aStart - bStart || a.end - b.end;
+    });
 
   const merged: Array<{ start: number; end: number }> = [];
   for (const interval of intervals) {
