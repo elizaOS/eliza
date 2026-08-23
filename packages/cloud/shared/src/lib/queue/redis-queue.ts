@@ -12,9 +12,9 @@
  * Wadis locally) and circuit-breaker behavior.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { cache } from "../cache/client";
 import { logger } from "../utils/logger";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 interface Envelope<T> {
   body: T;
