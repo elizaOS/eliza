@@ -491,14 +491,26 @@ export async function countScenarioCorpus(
   multiplierAdded: number;
 }> {
   const base = await listScenarioMetadata(root, filter, fileGlobs, false);
-  const existing = base.length;
-  const added = existing * SCENARIO_EDGE_VARIANTS.length;
+  // Count only the expanded ids that actually pass the filter — an edge
+  // variant id is `${baseId}--edge-${suffix}`, so a `--scenario <id>` filter
+  // targeting base ids excludes every variant of that base. Blindly
+  // multiplying by SCENARIO_EDGE_VARIANTS.length overreported totals and
+  // made `validateScenarioCorpus` reject a perfectly valid filtered corpus
+  // (expanded length ≠ projected total).
+  const added = base.reduce((sum, scenario) => {
+    const variantIds = expandScenarioMetadata(scenario).map((s) => s.id);
+    const included =
+      !filter || variantIds.every((id) => filter.has(id))
+        ? variantIds.length
+        : variantIds.filter((id) => filter.has(id)).length;
+    return sum + included;
+  }, 0);
   return {
     suite: "scenario-runner",
-    existing,
+    existing: base.length,
     added,
-    total: existing + added,
-    multiplierAdded: existing > 0 ? added / existing : 0,
+    total: base.length + added,
+    multiplierAdded: base.length > 0 ? added / base.length : 0,
   };
 }
 

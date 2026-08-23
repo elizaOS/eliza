@@ -112,6 +112,45 @@ describe("scenario-runner edge expansion", () => {
     });
   });
 
+  it("counts filtered corpora without phantom edge variants (regression)", async () => {
+    // Regression: `countScenarioCorpus` multiplied the filtered base count by
+    // SCENARIO_EDGE_VARIANTS.length even when the filter targets a base id —
+    // edge variant ids are `${baseId}--edge-${suffix}` and are NOT in the
+    // filter. That overreported totals and made `validateScenarioCorpus`
+    // reject a perfectly valid filtered corpus ("invalid expanded corpus").
+    const dir = await writeFixtureScenario();
+    const filter = new Set(["fixture.todo.create"]);
+
+    const counts = await countScenarioCorpus(dir, filter);
+    expect(counts.existing).toBe(1);
+    expect(counts.added).toBe(0); // no edge ids pass the base-id filter
+    expect(counts.total).toBe(1);
+
+    // The filtered expanded corpus now validates instead of throwing.
+    await expect(validateScenarioCorpus(dir, filter)).resolves.toMatchObject({
+      valid: true,
+      total: 1,
+      expansionMatches: true,
+    });
+  });
+
+  it("counts partial edge-id filters exactly", async () => {
+    const dir = await writeFixtureScenario();
+    const filter = new Set([
+      "fixture.todo.create",
+      "fixture.todo.create--edge-prompt-injection",
+    ]);
+
+    const counts = await countScenarioCorpus(dir, filter);
+    expect(counts.total).toBe(2);
+
+    await expect(validateScenarioCorpus(dir, filter)).resolves.toMatchObject({
+      valid: true,
+      total: 2,
+      expansionMatches: true,
+    });
+  });
+
   it("detects authored ids that collide with generated edge ids", async () => {
     const dir = await makeTempScenarioDir();
     await writeScenarioFile(dir, "base.scenario.ts", [
