@@ -45,6 +45,19 @@ function mockRuntime(connectors: unknown[]): IAgentRuntime {
 		agentId: "00000000-0000-0000-0000-000000000001",
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		getMessageConnectors: () => connectors,
+		// #25284: the umbrella resolves the caller's principal role before
+		// dispatching; give the harness sender an explicit world grant so these
+		// op-logic tests exercise their op, not the role floor.
+		getRoom: async () => ({
+			id: "00000000-0000-0000-0000-0000000000bb",
+			worldId: "00000000-0000-0000-0000-0000000000dd",
+		}),
+		getWorld: async () => ({
+			id: "00000000-0000-0000-0000-0000000000dd",
+			metadata: {
+				roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+			},
+		}),
 	} as unknown as IAgentRuntime;
 }
 
@@ -362,7 +375,19 @@ describe("MESSAGE op=send owner-binding gate", () => {
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 			getService: (type: string) =>
 				type === "connector_account" ? manager : null,
-			getRoom: async () => null,
+			// #25284: the umbrella resolves the caller's principal role before
+			// dispatching; grant the harness sender ADMIN so these owner-binding
+			// tests exercise the account gate, not the role floor.
+			getRoom: async () => ({
+				id: "00000000-0000-0000-0000-0000000000bb",
+				worldId: "00000000-0000-0000-0000-0000000000dd",
+			}),
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			getMessageConnectors: () => [
 				{
 					source: "matrix",
@@ -492,7 +517,18 @@ describe("MESSAGE op=send delivery evidence", () => {
 					contexts: [],
 				},
 			],
-			getRoom: async () => null,
+			// #25284: grant the harness sender ADMIN so these delivery-evidence
+			// tests exercise the send path, not the role floor.
+			getRoom: async () => ({
+				id: "00000000-0000-0000-0000-0000000000bb",
+				worldId: "00000000-0000-0000-0000-0000000000dd",
+			}),
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			sendMessageToTarget: async () => outcome,
 			ensureWorldExists: async () => undefined,
 			ensureRoomExists: async () => undefined,
@@ -745,6 +781,9 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 			source: "discord",
 			channelId: "chan-1",
 			serverId: "guild-1",
+			// #25284: link the room to a world that grants the harness sender
+			// ADMIN so these resolution tests exercise routing, not the floor.
+			worldId: "00000000-0000-0000-0000-0000000000dd",
 		};
 	}
 
@@ -776,6 +815,13 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 				},
 			],
 			getRoom: async () => roomFixture(),
+			// #25284: grant the harness sender ADMIN in the fixture world.
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			getEntitiesForRoom: async () => options.roomEntities,
 			getMemories: async () => [],
 			getEntityById: (options.getEntityById ??
@@ -988,7 +1034,18 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 					],
 				},
 			],
+			// #25284: getRoom returns null (the entity-search path must stay
+			// relationship-free); the caller's world is resolved from the
+			// message's discordServerId metadata instead, granting the harness
+			// sender ADMIN so these gate tests exercise the recipient gate, not
+			// the role floor.
 			getRoom: async () => null,
+			getWorld: async () => ({
+				id: "00000000-0000-0000-0000-0000000000dd",
+				metadata: {
+					roles: { "00000000-0000-0000-0000-0000000000cc": "ADMIN" },
+				},
+			}),
 			getEntitiesForRoom: async () => options.roomEntities ?? [],
 			getEntityById: (async (id: string) =>
 				options.known
@@ -1057,7 +1114,13 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 	): Promise<ActionResult> {
 		const result = await messageAction.handler(
 			runtime,
-			{ ...message, content: { text, source: "discord" } } as Memory,
+			{
+				...message,
+				content: { text, source: "discord" },
+				// #25284: the harness world (which grants this sender ADMIN)
+				// is resolved from the discord world-id metadata key.
+				metadata: { discordServerId: "00000000-0000-0000-0000-0000000000dd" },
+			} as Memory,
 			undefined,
 			{
 				parameters: {

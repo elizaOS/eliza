@@ -408,7 +408,6 @@ export function parseDraftFollowupParams(
 
 export interface SendDraftParams {
 	draftId: string;
-	confirmed: boolean;
 }
 export function parseSendDraftParams(
 	options: HandlerOptions | undefined,
@@ -416,8 +415,7 @@ export function parseSendDraftParams(
 	const params = getParams(options);
 	const draftId = asString(params.draftId ?? params.id);
 	if (!draftId) return { error: "draftId is required" };
-	const confirmed = asBool(params.confirmed) ?? false;
-	return { draftId, confirmed };
+	return { draftId };
 }
 
 export function parseSearchMessagesParams(

@@ -56,6 +56,21 @@ type GoogleGmailAdapterService = Pick<IGoogleGmailService, (typeof GMAIL_ADAPTER
 interface GmailDraftContext {
   readonly request: DraftRequest;
   readonly preview: string;
+  /**
+   * Immutable reply envelope captured at createDraft time (#25284): the
+   * consent-relevant recipient, account, subject, and threading headers are
+   * resolved from the message ONCE, when the preview the user confirms is
+   * built, and never re-read at send time. A cache refresh between preview
+   * and delivery must not change what Gmail sends.
+   */
+  readonly replyEnvelope?: {
+    readonly accountId: string;
+    readonly to: string;
+    readonly subject: string;
+    readonly inReplyTo: string | null;
+    readonly references: string | null;
+    readonly externalId: string;
+  };
 }
 
 const GMAIL_READ_REFERENCE_PREFIX = "gmail-email-v1.";
@@ -551,10 +566,23 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       this.draftCache.set(draftId, { request: draft, preview });
       return { draftId, preview };
     }
-    await this.ensureMessage(runtime, draft.inReplyToId);
+    const message = await this.ensureMessage(runtime, draft.inReplyToId);
     const messageId = externalMessageId(draft.inReplyToId);
     const draftId = `gmail-draft:${messageId}:${Date.now()}`;
-    this.draftCache.set(draftId, { request: draft, preview });
+    // Capture the complete reply envelope now: sendDraft must deliver
+    // exactly these bytes/headers, never a re-resolved mutable ref (#25284).
+    this.draftCache.set(draftId, {
+      request: draft,
+      preview,
+      replyEnvelope: {
+        accountId: messageAccountId(message),
+        to: metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier,
+        subject: message.subject ?? "Re: your message",
+        inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
+        references: metadataString(message.metadata ?? {}, "references"),
+        externalId: message.externalId,
+      },
+    });
     return { draftId, preview };
   }
 
@@ -577,26 +605,27 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       });
       return { externalId: sent.messageId ?? `gmail-new:${draftId}` };
     }
-    const message = await this.ensureMessage(runtime, request.inReplyToId);
-    const replyTarget =
-      metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier;
+    const envelope = draft.replyEnvelope;
+    if (!envelope) {
+      throw new Error(`[GoogleGmailAdapter] cached draft ${draftId} has no reply envelope`);
+    }
     const sent = await service.sendGmailReply({
-      accountId: messageAccountId(message),
-      to: [replyTarget],
-      subject: message.subject ?? "Re: your message",
+      accountId: envelope.accountId,
+      to: [envelope.to],
+      subject: envelope.subject,
       bodyText: request.body,
-      inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
-      references: metadataString(message.metadata ?? {}, "references"),
+      inReplyTo: envelope.inReplyTo,
+      references: envelope.references,
     });
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {
-        messageId: message.externalId,
+        messageId: envelope.externalId,
         operation: "replied",
-        domainEventId: `gmail_reply:${messageAccountId(message)}:${sent.messageId}`,
+        domainEventId: `gmail_reply:${envelope.accountId}:${sent.messageId}`,
       });
     }
     return {
-      externalId: sent.messageId ?? `gmail-reply:${message.externalId}`,
+      externalId: sent.messageId ?? `gmail-reply:${envelope.externalId}`,
     };
   }
 
