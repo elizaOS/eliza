@@ -3,8 +3,8 @@
  * expiry against the real PGlite repository across fresh service instances.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
 import { randomUUID } from "node:crypto";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   type BrowserBridgeCompanionPairingResponse,
   createBrowserBridgeCompanionStatus,
