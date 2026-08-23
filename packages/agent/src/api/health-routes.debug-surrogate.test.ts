@@ -25,6 +25,7 @@ describe("serializeForRuntimeDebug surrogate safety", () => {
     expect(result.preview.endsWith("...")).toBe(true);
     expect(result.preview.includes("😀")).toBe(false);
     // The real invariant: truncation must not leave an unpaired surrogate.
+    expect(result.preview).toBe(result.preview.toWellFormed());
     expect(
       /[\uD800-\uDFFF]/.test(
         result.preview.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""),

@@ -6,44 +6,16 @@
  * keys, so a mismatched casing is silently dropped.
  */
 
+export type * from "./types.cloud-api.js";
 export type {
-  AgentDatabaseStatus,
-  AgentDetailDto,
   AgentDetailDto as Agent,
-  AgentListItemDto,
-  AgentResponse,
-  AgentSandboxStatus,
   AgentsResponse as AgentListResponse,
-  AgentWalletStatus,
-  ApiSuccessEnvelope,
-  ConnectedAccountCapabilityDto,
-  ConnectedAccountDetailDto,
-  ConnectedAccountDto,
-  ConnectedAccountModeDto,
-  ConnectedAccountPageDto,
-  ConnectedAccountStatusDto,
-  ConnectedCapabilityStatusDto,
-  CreditBalanceResponse,
-  CurrentUserDto,
-  CurrentUserOrganizationDto,
-  CurrentUserResponse,
   CurrentUserResponse as UserProfileResponse,
-  IsoDateString,
-  SubscriptionAllowanceDto,
-  SubscriptionBillingInterval,
-  SubscriptionCatalogVersion,
-  SubscriptionCurrency,
-  SubscriptionDto,
-  SubscriptionFundingClass,
-  SubscriptionPlanDto,
-  SubscriptionPlanKey,
-  SubscriptionPlansDto,
-  SubscriptionPlansResponse,
-  SubscriptionPublicState,
-  SubscriptionRateEnvelopeDto,
-  SubscriptionResourceCeilingsDto,
-  UpdatedUserDto,
-  UpdatedUserResponse,
+} from "./types.cloud-api.js";
+export {
+  ADMIN_ROLE_RANK,
+  adminRoleRank,
+  isAdminRole,
 } from "./types.cloud-api.js";
 
 export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://eliza.app";
@@ -748,6 +720,9 @@ export type AppReviewStatus =
   | "approved"
   | "rejected";
 
+/** Provisioning lifecycle of an app-owned database. */
+export type UserDatabaseStatus = "none" | "provisioning" | "ready" | "error";
+
 /** Discord social-automation config stored on an app (jsonb column). */
 export interface AppDiscordAutomation {
   enabled: boolean;
@@ -846,6 +821,10 @@ export interface AppDto {
   telegram_automation: AppTelegramAutomation | null;
   twitter_automation: AppTwitterAutomation | null;
   promotional_assets: AppPromotionalAsset[] | null;
+  user_database_status: UserDatabaseStatus;
+  user_database_uri: string | null;
+  user_database_region: string | null;
+  user_database_error: string | null;
   email_notifications: boolean | null;
   response_notifications: boolean | null;
   is_active: boolean;

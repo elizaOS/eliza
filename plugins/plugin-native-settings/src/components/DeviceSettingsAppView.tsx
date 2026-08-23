@@ -262,11 +262,11 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
+            className="size-9 shrink-0 text-muted hover:text-txt"
             onClick={exitToApps}
             aria-label={t("nav.back", { defaultValue: "Back" })}
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
           </Button>
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-txt">
@@ -279,13 +279,13 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 text-muted hover:text-txt"
+          className="size-9 text-muted hover:text-txt"
           onClick={() => void refresh()}
           disabled={loading}
           aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
           data-testid="device-settings-refresh"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </header>
 
@@ -306,8 +306,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <Sun className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <Sun className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Brightness</h2>
@@ -341,7 +341,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="inline-flex items-center gap-1.5 text-xs text-muted">
                   <CheckCircle2
-                    className={`h-3.5 w-3.5 ${
+                    className={`size-3.5 ${
                       deviceSettings?.canWriteSettings
                         ? "text-ok"
                         : "text-muted"
@@ -379,8 +379,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
 
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <Settings className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <Settings className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Android</h2>
@@ -394,7 +394,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("settings", "System settings")}
                 data-testid="device-settings-open-system"
               >
-                <MonitorCog className="mr-2 h-4 w-4" />
+                <MonitorCog className="mr-2 size-4" />
                 System settings
               </Button>
               <Button
@@ -403,7 +403,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("display", "Display settings")}
                 data-testid="device-settings-open-display"
               >
-                <Sun className="mr-2 h-4 w-4" />
+                <Sun className="mr-2 size-4" />
                 Display
               </Button>
               <Button
@@ -412,7 +412,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("sound", "Sound settings")}
                 data-testid="device-settings-open-sound"
               >
-                <Volume2 className="mr-2 h-4 w-4" />
+                <Volume2 className="mr-2 size-4" />
                 Sound
               </Button>
               <Button
@@ -421,7 +421,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("network", "Network settings")}
                 data-testid="device-settings-open-network"
               >
-                <Wifi className="mr-2 h-4 w-4" />
+                <Wifi className="mr-2 size-4" />
                 Network
               </Button>
             </div>
@@ -429,8 +429,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
 
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <Volume2 className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <Volume2 className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Volume</h2>
@@ -452,9 +452,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         {volume.stream === "notification" ? (
-                          <Bell className="h-4 w-4 text-muted" />
+                          <Bell className="size-4 text-muted" />
                         ) : (
-                          <Volume2 className="h-4 w-4 text-muted" />
+                          <Volume2 className="size-4 text-muted" />
                         )}
                         <div className="text-sm font-medium text-txt">
                           {label}
@@ -507,8 +507,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
 
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <ShieldCheck className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <ShieldCheck className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">
@@ -534,9 +534,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                       </div>
                     </div>
                     {role.held ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" />
+                      <CheckCircle2 className="size-4 shrink-0 text-ok" />
                     ) : (
-                      <SlidersHorizontal className="h-4 w-4 shrink-0 text-muted" />
+                      <SlidersHorizontal className="size-4 shrink-0 text-muted" />
                     )}
                   </div>
                   <Button

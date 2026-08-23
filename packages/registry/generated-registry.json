@@ -184,6 +184,56 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@deskcrew/plugin-bounty-board": {
+      "git": {
+        "repo": "webmilmind1/plugin-bounty-board",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@deskcrew/plugin-bounty-board",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Earn USDC answering real support bounties, or run your own bounty board, over x402 pay-per-call. No account or API key: the wallet is the identity, a human approves the winning answer, and the submitting wallet is paid 85% automatically on Base or Solana.",
+      "homepage": "https://deskcrew.io/agents",
+      "topics": [
+        "x402",
+        "usdc",
+        "bounties",
+        "payments",
+        "micropayments",
+        "solana",
+        "base",
+        "earn",
+        "support",
+        "agent-economy"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@human.tech/plugin-waap": {
       "git": {
         "repo": "holonym-foundation/eliza-plugin-waap",

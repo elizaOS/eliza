@@ -37,7 +37,7 @@ function Fixture() {
   if (error) return <div data-testid="fixture-error">{error}</div>;
   if (!user) return <div data-testid="fixture-loading">loading user…</div>;
   return (
-    <div className="min-h-screen bg-bg font-body text-txt">
+    <div className="min-h-dvh bg-bg font-body text-txt">
       <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
         <CredentialsTab user={user} autoContribute={autoContribute} />
       </main>

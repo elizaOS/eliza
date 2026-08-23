@@ -8,6 +8,7 @@ import {
   callOpeningPrompt,
   callStartedEvent,
   claimInboundCallOpeningContext,
+  ELIZA_AI_VOICE_DISCLOSURE,
   type InboundCallOpeningClaim,
   prewarmAndRecordVoiceCallStart,
   relativeInteractionAge,
@@ -18,8 +19,12 @@ describe("voice continuity", () => {
   const now = Date.UTC(2026, 7, 15, 12);
 
   test("uses an immediate deterministic greeting while the cold path prewarms", () => {
-    expect(callOpeningGreeting(false)).toBe("Hello? Who's this?");
-    expect(callOpeningGreeting(true)).toBe("Hey, what's up?");
+    expect(callOpeningGreeting(false)).toBe(
+      `Hello? Who's this? ${ELIZA_AI_VOICE_DISCLOSURE}`,
+    );
+    expect(callOpeningGreeting(true)).toBe(
+      `Hey, what's up? ${ELIZA_AI_VOICE_DISCLOSURE}`,
+    );
   });
 
   test("describes first contact without inventing history", () => {

@@ -274,17 +274,16 @@ describe("resolveDefaultAgentWorkspaceDir", () => {
     expect(resolved).toBe(path.join(stateDir, "workspace"));
   });
 
-  it("propagates an unreadable legacy folder config when no registry exists", () => {
+  it("falls back to the state-dir workspace when unreadable legacy state has no registry (#25884)", () => {
     const stateDir = makeTmp("ws-legacy-throw-");
     mkdirSync(path.join(stateDir, "workspace-folder.json"));
 
-    expect(() =>
-      resolveDefaultAgentWorkspaceDir(
-        isolatedEnv(stateDir),
-        () => stateDir,
-        () => "/",
-      ),
-    ).toThrow();
+    const resolved = resolveDefaultAgentWorkspaceDir(
+      isolatedEnv(stateDir),
+      () => stateDir,
+      () => "/",
+    );
+    expect(resolved).toBe(path.join(stateDir, "workspace"));
   });
 
   it("falls through malformed workspace-folder JSON to the state-dir default", () => {

@@ -444,9 +444,9 @@ export function DesktopGameWindowControls({
         disabled={!gameWindowId || busyAction === "game-native-always-on-top"}
       >
         {alwaysOnTop ? (
-          <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
+          <PinOff className="size-3.5" aria-hidden="true" />
         ) : (
-          <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+          <Pin className="size-3.5" aria-hidden="true" />
         )}
         {alwaysOnTop
           ? t("gameview.NormalWindow", { defaultValue: "Normal Window" })
@@ -1538,7 +1538,7 @@ export function FullscreenView() {
         ) : null}
         {/* Optional hero telemetry dashboard */}
         {activeSessionState?.telemetry?.heroClass != null ? (
-          <div className="px-2 py-2 text-2xs space-y-1.5">
+          <div className="p-2 text-2xs space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-txt">
                 {String(activeSessionState.telemetry.heroClass)
@@ -1670,7 +1670,7 @@ export function FullscreenView() {
           </div>
         ) : null}
         {activeSessionState?.suggestedPrompts?.length ? (
-          <div className="flex flex-wrap gap-1 px-2 py-2">
+          <div className="flex flex-wrap gap-1 p-2">
             {activeSessionState.suggestedPrompts.slice(0, 4).map((prompt) => (
               <Button
                 key={prompt}
@@ -1686,7 +1686,7 @@ export function FullscreenView() {
           </div>
         ) : null}
         {activeSessionState?.recommendations?.length ? (
-          <div className="px-2 py-2 text-2xs space-y-1.5">
+          <div className="p-2 text-2xs space-y-1.5">
             <div className="font-semibold text-txt">
               {t("gameview.Recommendations", {
                 defaultValue: "Recommendations",
@@ -1716,7 +1716,7 @@ export function FullscreenView() {
           </div>
         ) : null}
         {/* Chat input for sending commands to agent */}
-        <div className="flex items-center gap-2 px-2 py-2">
+        <div className="flex items-center gap-2 p-2">
           <Input
             type="text"
             data-testid="game-command-input"
@@ -2047,7 +2047,7 @@ export function FullscreenView() {
             onClick={() => void handleAttachViewer()}
             disabled={attachingViewer}
           >
-            {attachingViewer ? "Reattaching..." : "Reattach viewer"}
+            {attachingViewer ? "Reattaching…" : "Reattach viewer"}
           </Button>
         ) : null}
         {canDetachViewer ? (
@@ -2058,7 +2058,7 @@ export function FullscreenView() {
             onClick={() => void handleDetachViewer()}
             disabled={detachingViewer}
           >
-            {detachingViewer ? "Detaching..." : "Detach viewer"}
+            {detachingViewer ? "Detaching…" : "Detach viewer"}
           </Button>
         ) : null}
         {useNativeGameWindow ? (

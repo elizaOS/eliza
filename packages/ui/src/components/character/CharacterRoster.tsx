@@ -118,7 +118,7 @@ export function CharacterRoster({
               >
                 {isSelected && (
                   <div
-                    className="pointer-events-none absolute -inset-3 bg-[rgba(var(--accent-rgb,240,185,11),0.15)] blur-xl"
+                    className="pointer-events-none absolute -inset-3 bg-[rgba(var(--accent-rgb),0.15)] blur-xl"
                     style={{ clipPath: SLANT_CLIP }}
                   />
                 )}

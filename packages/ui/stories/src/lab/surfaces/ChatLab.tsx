@@ -123,7 +123,7 @@ export function ChatLab({
       <ControlGroup label="Cloud provisioning (in-chat)">
         <Hint>
           The dedicated cloud-agent setup status now renders INSIDE the chat,
-          above the composer — not as a home widget above it. Fire a handoff
+          above the composer, not as a home widget above it. Fire a handoff
           phase to see it.
         </Hint>
         <Row>
@@ -146,7 +146,7 @@ export function ChatLab({
 
       <ControlGroup label="Drive the thread">
         <Hint>
-          Exercise the drag / scroll behaviours by hand — no agent needed.
+          Exercise the drag / scroll behaviours by hand. No agent needed.
         </Hint>
         <Row>
           <ActionButton onClick={() => chat.sendUser("Try the maximize drag")}>
@@ -174,7 +174,7 @@ export function ChatLab({
         <h1>Workspace</h1>
         <p>
           The live view behind the floating chat. Clicking here must NOT close
-          the chat — it only closes on a pull-down or Escape.
+          the chat. It only closes on a pull-down or Escape.
         </p>
         <div className="lab-fakeview-chips">
           {["Files", "Tasks", "Notes", "Settings"].map((t) => (

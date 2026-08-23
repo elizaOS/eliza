@@ -490,7 +490,7 @@ export function SkillsModalView() {
         ) : (
           <div className="plugins-game-detail-empty">
             <span className="plugins-game-detail-empty-icon">
-              <Brain className="h-5 w-5" />
+              <Brain className="size-5" />
             </span>
             <span className="plugins-game-detail-empty-text">
               {t("skillsview.SelectATalentToConf", {

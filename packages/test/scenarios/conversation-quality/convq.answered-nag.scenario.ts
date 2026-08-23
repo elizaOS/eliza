@@ -14,11 +14,16 @@
  * fires, `forbiddenActions` will surface it as a caught bug — see PR body.)
  *
  * Assertion strategy:
- *   - Mechanical (load-bearing): turn 1 must acknowledge the answer (contains
- *     "thursday") and must NOT contain re-nag phrasing. Turns 2/3 must not
- *     resurrect the closed dentist-call thread.
- *   - Qualitative: judgeRubric confirms the answer is registered cleanly with
- *     zero re-nag and no accountability victory lap.
+ *   - Mechanical (load-bearing): turn 1 must NOT contain re-nag phrasing and
+ *     must not re-fire a reminder/todo action. Turns 2/3 must not resurrect
+ *     the closed dentist-call thread. (A "response contains thursday" check
+ *     on turn 1 was intentionally removed: the user states "thursday" in
+ *     that same turn's own text, so the check could never fail for the real
+ *     reason — an agent that only echoes the prompt would still pass it. See
+ *     echo-assertion-integrity.test.ts.)
+ *   - Qualitative: judgeRubric confirms the answer is registered cleanly
+ *     (including that Thursday 9am is actually acknowledged), with zero
+ *     re-nag and no accountability victory lap.
  *
  * Synthetic persona (Marcus Oyelaran, invented). No real data.
  */
@@ -79,7 +84,6 @@ export default scenario({
       text: "ok you can stop bugging me, i called the dentist this morning. appointment is thursday 9am",
       // Re-firing a reminder/todo action on the resolution turn is the bug.
       forbiddenActions: ["CREATE_TASK", "SCHEDULE_FOLLOW_UP", "REMINDER"],
-      responseIncludesAny: ["thursday"],
       responseExcludes: [RENAG],
       assertResponse: (text: string) => {
         if (text.length > 350) {

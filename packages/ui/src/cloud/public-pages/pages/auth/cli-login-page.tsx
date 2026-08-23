@@ -195,10 +195,10 @@ function CliLoginPanel({
       <div className="relative my-auto w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <div
-            className={`flex h-14 w-14 items-center justify-center ${toneClasses.container}`}
+            className={`flex size-14 items-center justify-center ${toneClasses.container}`}
           >
             <Icon
-              className={`h-7 w-7 ${toneClasses.icon} ${iconClassName ?? ""}`}
+              className={`size-7 ${toneClasses.icon} ${iconClassName ?? ""}`}
             />
           </div>
           <div className="space-y-1">
@@ -555,9 +555,9 @@ export default function CliLoginPage() {
         tone="accent"
       >
         <div className="flex gap-1.5 mt-2">
-          <div className="h-2 w-2 animate-bounce rounded-full bg-accent [animation-delay:-0.3s] motion-reduce:animate-none" />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-accent [animation-delay:-0.15s] motion-reduce:animate-none" />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-accent motion-reduce:animate-none" />
+          <div className="size-2 animate-pulse rounded-full bg-accent [animation-delay:-0.3s] motion-reduce:animate-none" />
+          <div className="size-2 animate-pulse rounded-full bg-accent [animation-delay:-0.15s] motion-reduce:animate-none" />
+          <div className="size-2 animate-pulse rounded-full bg-accent motion-reduce:animate-none" />
         </div>
       </CliLoginPanel>
     );
@@ -588,7 +588,7 @@ export default function CliLoginPage() {
       >
         <div className="w-full border border-status-success/20 bg-status-success-bg p-4">
           <p className="text-sm text-status-success flex items-center justify-center gap-2">
-            <CheckCircle2 className="h-4 w-4" />
+            <CheckCircle2 className="size-4" />
             {t("cloud.cliLogin.returnToApp", {
               defaultValue: "Return to your app to continue.",
             })}

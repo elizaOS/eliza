@@ -188,7 +188,7 @@ function Harness(): React.JSX.Element {
       style={{
         maxWidth: 480,
         margin: "0 auto",
-        height: "100vh",
+        height: "100dvh",
         display: "flex",
         flexDirection: "column",
       }}

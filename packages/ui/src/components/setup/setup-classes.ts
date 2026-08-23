@@ -16,14 +16,12 @@ export const setupReadableTextFaintClassName =
   "text-[var(--first-run-text-faint)] [text-shadow:var(--first-run-text-shadow-muted)]";
 export const setupHelperTextClassName = `text-xs leading-relaxed ${setupReadableTextMutedClassName}`;
 export const setupFieldLabelClassName = `text-xs font-semibold uppercase tracking-[0.14em] ${setupReadableTextMutedClassName}`;
-export const setupTextSupportClassName =
-  "rounded-sm bg-[var(--first-run-text-support-bg)] px-3 py-2 my-2";
 const setupInputSurfaceClassName = "bg-[var(--first-run-input-bg)]";
 export const setupInputClassName = `h-12 w-full rounded-sm px-4 text-left ${setupReadableTextPrimaryClassName} transition-[border-color,background-color] duration-200 placeholder:text-[var(--first-run-text-subtle)]    ${setupInputSurfaceClassName}`;
 
 export const setupEyebrowClass = `text-center text-xs font-semibold uppercase tracking-[0.3em] ${setupReadableTextMutedClassName}`;
 export const setupTitleClass = `text-center text-xl font-light leading-[1.4] ${setupReadableTextStrongClassName}`;
-export const setupDescriptionClass = `mx-auto max-w-[36ch] text-center text-sm leading-relaxed ${setupReadableTextMutedClassName} ${setupTextSupportClassName}`;
+export const setupDescriptionClass = `mx-auto my-2 max-w-[36ch] text-center text-sm leading-relaxed ${setupReadableTextMutedClassName}`;
 export const setupHeaderBlockClass = "mb-5 max-md:mb-4";
 export const setupFooterClass =
   "mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-4";

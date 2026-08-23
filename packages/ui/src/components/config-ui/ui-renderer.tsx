@@ -703,7 +703,7 @@ const RadioComponent: ComponentFn = (props, _children, ctx) => {
             value={o.value}
             checked={value === o.value}
             onChange={() => setValue(o.value)}
-            className="h-4 w-4 p-0"
+            className="size-4 p-0"
           />
           <span>{o.label}</span>
         </span>
@@ -1067,8 +1067,8 @@ const ProgressComponent: ComponentFn = (props) => {
       ) : null}
       <div className="w-full h-2 bg-[var(--bg-hover)] border border-border overflow-hidden">
         <div
-          className="h-full bg-accent transition-[width] duration-300"
-          style={{ width: `${pct}%` }}
+          className="h-full w-full origin-left bg-accent transition-transform duration-300"
+          style={{ transform: `scaleX(${pct / 100})` }}
         />
       </div>
     </div>

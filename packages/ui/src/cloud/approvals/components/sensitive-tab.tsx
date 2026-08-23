@@ -75,14 +75,14 @@ export function SensitiveTab() {
           className="font-mono text-xs"
         />
         <Button type="submit" disabled={!pendingId.trim()}>
-          <Search className="h-4 w-4" />
+          <Search className="size-4" />
           Look up
         </Button>
       </form>
 
       {lookupId && query.isLoading ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-muted" />
+          <Loader2 className="size-5 animate-spin text-muted" />
         </div>
       ) : null}
 
@@ -102,7 +102,7 @@ export function SensitiveTab() {
         <div className="rounded-md border border-border bg-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
-              <LockKeyhole className="h-5 w-5 text-accent" />
+              <LockKeyhole className="size-5 text-accent" />
               <div>
                 <p className="text-sm font-medium text-txt">
                   {request.target?.key ?? request.kind}
@@ -136,7 +136,7 @@ export function SensitiveTab() {
                 disabled={cancel.isPending}
               >
                 {cancel.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : null}
                 Cancel request
               </Button>

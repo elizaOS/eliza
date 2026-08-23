@@ -12,7 +12,7 @@ import {
   type RedemptionNetwork,
   type RedemptionQuote,
   type RedemptionQuoteRequest,
-} from "@elizaos/cloud-shared/types/redemption-contract";
+} from "@elizaos/cloud-sdk/redemption-contract";
 
 /**
  * Parse the USD-denominated form value into the integer points expected by the

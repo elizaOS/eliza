@@ -2,15 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   deterministicOwnerEntityId: vi.fn((agentId: string) => `owner(${agentId})`),
-  resolveCanonicalOwnerId: vi.fn((_runtime: unknown): string | null => null),
+  resolveCanonicalOwnerId: vi.fn(),
   logger: { debug: vi.fn(), warn: vi.fn() },
 }));
 
 vi.mock("@elizaos/core", () => ({
-  deterministicOwnerEntityId: (agentId: string) =>
-    mocks.deterministicOwnerEntityId(agentId),
-  resolveCanonicalOwnerId: (runtime: unknown) =>
-    mocks.resolveCanonicalOwnerId(runtime),
+  deterministicOwnerEntityId: mocks.deterministicOwnerEntityId,
+  resolveCanonicalOwnerId: mocks.resolveCanonicalOwnerId,
   logger: mocks.logger,
 }));
 
@@ -20,7 +18,7 @@ import {
 } from "../owner-entity.ts";
 
 describe("resolveFallbackOwnerEntityId", () => {
-  it("derives a synthetic id from the agent id", () => {
+  it("derives a deterministic owner id from the agent id", () => {
     const runtime = {
       agentId: "agent-1",
       character: { name: "Alice" },

@@ -33,10 +33,7 @@ describe("createElectrobunBrowserWindow", () => {
   });
 
   it("constructs a BrowserWindow with the given options and returns it", () => {
-    const options = {
-      frame: { x: 0, y: 0, width: 800, height: 600 },
-      icon: "app.png",
-    };
+    const options = { title: "Main", icon: "app.png" };
 
     const win = createElectrobunBrowserWindow(options);
 
@@ -47,7 +44,7 @@ describe("createElectrobunBrowserWindow", () => {
 
   it("passes the extended icon and partition fields straight through", () => {
     const options = {
-      frame: { x: 0, y: 0, width: 100, height: 100 },
+      title: "Secondary",
       partition: "persist:x",
       icon: "i.png",
     };
@@ -63,16 +60,12 @@ describe("createElectrobunBrowserWindow", () => {
   });
 
   it("forwards a null partition instead of dropping the field", () => {
-    const options = {
-      frame: { x: 0, y: 0, width: 10, height: 10 },
-      partition: null,
-    };
-    createElectrobunBrowserWindow(options);
+    createElectrobunBrowserWindow({ title: "Null partition", partition: null });
 
     const passed = electrobunMock.constructorCalls[0]?.[0] as
       | Record<string, unknown>
       | undefined;
-    expect(passed).toEqual(options);
+    expect(passed).toEqual({ title: "Null partition", partition: null });
     expect(passed && "partition" in passed).toBe(true);
   });
 });

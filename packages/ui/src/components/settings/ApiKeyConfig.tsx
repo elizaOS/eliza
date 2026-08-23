@@ -351,7 +351,7 @@ function ApiKeyConfigBody({
           }`}
         >
           <span
-            className={`h-1.5 w-1.5 rounded-full ${configured ? "bg-ok" : "bg-warn"}`}
+            className={`size-1.5 rounded-full ${configured ? "bg-ok" : "bg-warn"}`}
           />
           {configured
             ? t("config-field.Configured")

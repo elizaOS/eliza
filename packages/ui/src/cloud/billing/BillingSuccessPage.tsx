@@ -70,8 +70,8 @@ function PaymentIssue({
     <div className="flex items-center justify-center min-h-[80vh]">
       <Card className="max-w-md w-full" role="alert" aria-live="assertive">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
-            <XCircle className="h-10 w-10 text-red-500" />
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-red-500/10">
+            <XCircle className="size-10 text-red-500" />
           </div>
           <CardTitle className="text-2xl">
             {t("cloud.billingSuccess.paymentIssue", {
@@ -260,8 +260,8 @@ function BillingVerificationAttempt({
     <div className="flex items-center justify-center min-h-[80vh]">
       <Card className="max-w-md w-full">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
-            <CheckCircle className="h-10 w-10 text-green-500" />
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-green-500/10">
+            <CheckCircle className="size-10 text-green-500" />
           </div>
           <CardTitle className="text-2xl">
             {t("cloud.billingSuccess.purchaseSuccessful", {
@@ -310,7 +310,7 @@ function BillingVerificationAttempt({
               {t("cloud.billingSuccess.goToDashboard", {
                 defaultValue: "Go to Dashboard",
               })}
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <ArrowRight className="ml-2 size-4" />
             </Link>
           </Button>
         </CardFooter>

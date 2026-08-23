@@ -263,7 +263,11 @@ export function VoiceCaptureHud() {
               className="flex items-baseline gap-1 whitespace-nowrap tabular-nums"
             >
               <span className="text-white/60">+{line.offsetMs}</span>
-              <span className={line.bad ? "text-red-400" : "text-emerald-300"}>
+              <span
+                className={
+                  line.bad ? "text-destructive" : "text-status-success"
+                }
+              >
                 {line.step}
               </span>
               {line.token ? (
@@ -282,7 +286,7 @@ export function VoiceCaptureHud() {
           onClick={dismiss}
           className="shrink-0 self-start text-white/50 hover:text-white"
         >
-          <X aria-hidden="true" className="h-2.5 w-2.5" />
+          <X aria-hidden="true" className="size-2.5" />
         </button>
       </div>
     </div>

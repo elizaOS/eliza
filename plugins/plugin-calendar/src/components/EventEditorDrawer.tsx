@@ -339,7 +339,7 @@ function EventEditorCalendarSelect({
             {calendar.accountEmail ? (
               <>
                 <span
-                  className="mx-1.5 inline-block h-1 w-1 rounded-full bg-current opacity-55"
+                  className="mx-1.5 inline-block size-1 rounded-full bg-current opacity-55"
                   aria-hidden
                 />
                 <span>{calendar.accountEmail}</span>
@@ -907,18 +907,18 @@ export function EventEditorDrawer({
               aria-label={t("common.close", { defaultValue: "Close" })}
               className="p-1.5 text-muted transition-colors hover:text-txt"
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
             </Button>
           </div>
 
-          <div className="space-y-4 px-5 py-5">
+          <div className="space-y-4 p-5">
             {error ? (
-              <div className="px-1 py-1 text-xs text-danger">{error}</div>
+              <div className="p-1 text-xs text-danger">{error}</div>
             ) : null}
 
             {readOnlyReason ? (
               <p
-                className="px-1 py-1 text-xs leading-5 text-muted"
+                className="p-1 text-xs leading-5 text-muted"
                 role="note"
                 data-testid="event-editor-read-only-reason"
               >
@@ -1156,10 +1156,10 @@ export function EventEditorDrawer({
                   description="Open chat about this event"
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 text-muted"
+                  className="size-8 p-0 text-muted"
                   onClick={() => onChat(event)}
                 >
-                  <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+                  <MessageSquare className="size-3.5" aria-hidden />
                   <span className="sr-only">
                     {t("common.chat", { defaultValue: "Chat" })}
                   </span>
@@ -1178,16 +1178,16 @@ export function EventEditorDrawer({
                   }
                   variant="surfaceDestructive"
                   size="sm"
-                  className="h-8 w-8 p-0"
+                  className="size-8 p-0"
                   disabled={deleting || saving || !deleteCapable}
                   onClick={() => setConfirmDeleteOpen(true)}
                 >
                   {deleting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
                   ) : declinesInvitation ? (
-                    <X className="h-3.5 w-3.5" aria-hidden />
+                    <X className="size-3.5" aria-hidden />
                   ) : (
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    <Trash2 className="size-3.5" aria-hidden />
                   )}
                   <span className="sr-only">
                     {declinesInvitation
@@ -1206,11 +1206,11 @@ export function EventEditorDrawer({
                 description="Close the event editor without saving"
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="size-8 p-0"
                 onClick={onClose}
                 disabled={saving}
               >
-                <X className="h-3.5 w-3.5" aria-hidden />
+                <X className="size-3.5" aria-hidden />
                 <span className="sr-only">
                   {t("common.cancel", { defaultValue: "Cancel" })}
                 </span>
@@ -1223,17 +1223,14 @@ export function EventEditorDrawer({
                     description="Save the event and keep the editor open"
                     variant="outline"
                     size="sm"
-                    className="h-8 w-8 p-0"
+                    className="size-8 p-0"
                     disabled={saving || !form.title.trim() || !calendarReady}
                     onClick={() => void handleSave({ keepOpen: true })}
                   >
                     {saving ? (
-                      <Loader2
-                        className="h-3.5 w-3.5 animate-spin"
-                        aria-hidden
-                      />
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
                     ) : (
-                      <Save className="h-3.5 w-3.5" aria-hidden />
+                      <Save className="size-3.5" aria-hidden />
                     )}
                     <span className="sr-only">
                       {saving
@@ -1248,19 +1245,16 @@ export function EventEditorDrawer({
                     label={isCreate ? "Create event" : "Save event"}
                     description="Save the calendar event and close the editor"
                     size="sm"
-                    className="h-8 w-8 p-0"
+                    className="size-8 p-0"
                     disabled={saving || !form.title.trim() || !calendarReady}
                     onClick={() => void handleSave()}
                   >
                     {saving ? (
-                      <Loader2
-                        className="h-3.5 w-3.5 animate-spin"
-                        aria-hidden
-                      />
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden />
                     ) : isCreate ? (
-                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                      <Plus className="size-3.5" aria-hidden />
                     ) : (
-                      <Check className="h-3.5 w-3.5" aria-hidden />
+                      <Check className="size-3.5" aria-hidden />
                     )}
                     <span className="sr-only">
                       {saving ? primaryActionLoadingLabel : primaryActionLabel}

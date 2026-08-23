@@ -86,7 +86,7 @@ function OutcomeDot({ outcome, review }: { outcome: string; review: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
+      className="mt-1.5 inline-block size-2 shrink-0 rounded-full"
       style={{ background: color }}
     />
   );
@@ -575,7 +575,7 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
       variant="ghost"
       aria-pressed={isSelected}
       data-testid={`experience-row-${experience.id}`}
-      className={`h-auto w-full min-w-0 flex-col items-start justify-start gap-2 rounded-none px-4 py-4 text-left font-normal transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
+      className={`h-auto w-full min-w-0 flex-col items-start justify-start gap-2 rounded-none p-4 text-left font-normal transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
@@ -840,7 +840,7 @@ export function CharacterExperienceWorkspace({
           I haven&rsquo;t learned anything yet.
         </div>
         <p className="mt-1 max-w-xl">
-          As we work together I&rsquo;ll keep notes here — what worked, what
+          As we work together I&rsquo;ll keep notes here: what worked, what
           didn&rsquo;t, things I want to remember next time. Each lesson lands
           with the context that produced it so you can review or correct me.
         </p>
@@ -938,7 +938,7 @@ export function CharacterExperienceWorkspace({
         </div>
 
         {visibleSelectedExperience ? (
-          <div className="flex min-w-0 flex-col gap-4 px-4 py-4">
+          <div className="flex min-w-0 flex-col gap-4 p-4">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-start gap-2">
@@ -980,7 +980,7 @@ export function CharacterExperienceWorkspace({
                     {...deleteAgentProps}
                   >
                     {deletingExperienceId === visibleSelectedExperience.id
-                      ? "Deleting..."
+                      ? "Deleting…"
                       : "Delete"}
                   </Button>
                 ) : null}
@@ -999,7 +999,7 @@ export function CharacterExperienceWorkspace({
                     {...saveAgentProps}
                   >
                     {savingExperienceId === visibleSelectedExperience.id
-                      ? "Saving..."
+                      ? "Saving…"
                       : "Save review"}
                   </Button>
                 ) : null}

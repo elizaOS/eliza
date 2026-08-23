@@ -98,11 +98,11 @@ export function PaymentWaitingOverlay({
       <div className="w-full max-w-md border border-border bg-card p-6 text-txt-strong">
         <div className="flex flex-col items-center text-center">
           {isConfirmed ? (
-            <CheckCircle2 className="h-12 w-12 text-emerald-300" />
+            <CheckCircle2 className="size-12 text-emerald-300" />
           ) : isFailed ? (
-            <XCircle className="h-12 w-12 text-red-300" />
+            <XCircle className="size-12 text-red-300" />
           ) : (
-            <Loader2 className="h-12 w-12 animate-spin text-txt" />
+            <Loader2 className="size-12 animate-spin text-txt" />
           )}
 
           <h2 className="mt-5 text-xl font-semibold">
@@ -169,7 +169,7 @@ export function PaymentWaitingOverlay({
                   {t("cloud.paymentWaiting.viewOnExplorer", {
                     defaultValue: "View on explorer",
                   })}
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>
               )}
             </div>

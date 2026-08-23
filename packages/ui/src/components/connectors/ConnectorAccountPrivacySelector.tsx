@@ -125,7 +125,7 @@ export function ConnectorAccountPrivacySelector({
   return (
     <>
       <div className="flex min-w-[210px] items-center gap-2">
-        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
+        <span className="shrink-0 text-2xs font-medium uppercase tracking-wider text-muted">
           {t("connectorprivacy.label", { defaultValue: "Privacy" })}
         </span>
         <Select
@@ -265,7 +265,7 @@ export function ConnectorAccountPrivacySelector({
               onClick={() => void handleConfirm()}
             >
               {confirmBusy ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : (
                 t("connectorprivacy.confirm", { defaultValue: "Confirm" })
               )}

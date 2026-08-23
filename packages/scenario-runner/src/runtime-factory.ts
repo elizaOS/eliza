@@ -126,6 +126,13 @@ export interface RuntimeFactoryResult {
   pgliteDir: string;
   executionProfile: ScenarioExecutionProfile;
   registeredPluginPackages: readonly string[];
+  /**
+   * Action names this runtime carries *only* because some scenario declared the
+   * contributing package. Actions the runtime registers regardless are absent,
+   * so per-scenario scoping can hide a batch peer's plugin without ever hiding
+   * a baseline capability an undeclaring scenario legitimately uses.
+   */
+  scenarioDeclaredActionNames: readonly string[];
   providerName: LiveProviderName | typeof DETERMINISTIC_MODEL_PROVIDER_NAME;
   providerConfig:
     | LiveProviderConfig
@@ -1016,11 +1023,20 @@ export async function createScenarioRuntime(
     }
   }
 
+  // Anything already on the runtime at this point is baseline capability that
+  // exists no matter which scenarios are batched; only the delta below belongs
+  // to a scenario's own `requires.plugins` declaration.
+  const baselineActionNames = new Set(
+    runtime.actions.map((action) => action.name),
+  );
   const requiredPluginPackages = await registerScenarioRequiredPlugins(
     runtime,
     options?.requiredPlugins ?? [],
     executionProfile,
   );
+  const scenarioDeclaredActionNames = runtime.actions
+    .map((action) => action.name)
+    .filter((name) => !baselineActionNames.has(name));
   for (const packageName of requiredPluginPackages) {
     registeredPluginPackages.add(packageName);
   }
@@ -1173,6 +1189,9 @@ export async function createScenarioRuntime(
     pgliteDir,
     executionProfile,
     registeredPluginPackages: [...registeredPluginPackages].sort(),
+    scenarioDeclaredActionNames: [
+      ...new Set(scenarioDeclaredActionNames),
+    ].sort(),
     providerName: providerConfig.name,
     providerConfig,
     cleanup,

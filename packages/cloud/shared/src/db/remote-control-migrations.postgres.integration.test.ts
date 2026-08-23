@@ -17,8 +17,8 @@ const migrations = [
   "0308_remove_conversation_token_default",
   "0309_retire_legacy_bluebubbles_gateways",
   "0310_personal_shared_inbound_media_admission",
-  "0311_remote_session_two_phase_activation",
-  "0312_remote_host_managed_network",
+  "0312_remote_session_two_phase_activation",
+  "0313_remote_host_managed_network",
 ] as const;
 
 async function applyMigration(
@@ -92,7 +92,7 @@ realPostgresTest(
       `);
       expect(managedColumnsBeforeUpgrade.rows).toEqual([{ count: "0" }]);
 
-      await applyMigration(client, "0312_remote_host_managed_network");
+      await applyMigration(client, "0313_remote_host_managed_network");
 
       const tables = await client.query<{ table_name: string }>(`
         SELECT table_name

@@ -73,7 +73,7 @@ export default function ProfileEditPage() {
   if (isLoading || !isAuthenticated) {
     return (
       <main className="theme-app profile-edit-loading" aria-live="polite">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Loader2 className="size-8 animate-spin" />
         <h1>Opening payout profile…</h1>
         <p>Sign in is required. We’ll bring you back here afterward.</p>
       </main>

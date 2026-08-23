@@ -22,14 +22,8 @@ type ElectrobunTestWindow = {
 
 function makeWindow(): ElectrobunTestWindow {
   const w: ElectrobunTestWindow = {};
-  (globalThis as { window?: ElectrobunTestWindow }).window = w;
+  (globalThis as { window?: Window }).window = w as Window;
   return w;
-}
-
-function readElectrobun(
-  windowValue: ElectrobunTestWindow,
-): ElectrobunHandlers | null | undefined {
-  return windowValue.__electrobun;
 }
 
 describe("ensureElectrobunGlobal", () => {
@@ -46,7 +40,7 @@ describe("ensureElectrobunGlobal", () => {
     const w = makeWindow();
     w.__electrobun = undefined;
     ensureElectrobunGlobal();
-    const installed = readElectrobun(w);
+    const installed = w.__electrobun as ElectrobunHandlers | null | undefined;
     expect(typeof installed?.receiveMessageFromBun).toBe("function");
     expect(typeof installed?.receiveInternalMessageFromBun).toBe("function");
   });

@@ -78,7 +78,7 @@ export function CockpitTerminalPanel({
       className="flex min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/70 bg-bg"
     >
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-black/20 px-3">
-        <TerminalSquare className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+        <TerminalSquare className="size-4 shrink-0 text-accent" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           Terminal
         </span>
@@ -124,7 +124,7 @@ export function CockpitTerminalPanel({
             data-testid="cockpit-terminal-empty"
             className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center"
           >
-            <TerminalSquare className="h-6 w-6 text-muted" aria-hidden />
+            <TerminalSquare className="size-6 text-muted" aria-hidden />
             <p className="text-sm font-medium text-txt">No active session</p>
             <p className="text-xs text-muted">
               Start or select a coding session to attach a terminal.

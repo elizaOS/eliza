@@ -111,7 +111,7 @@ function SaveStatus({
         role="status"
         className="inline-flex items-center gap-1.5 text-xs text-muted"
       >
-        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        <Loader2 className="size-3.5 animate-spin" aria-hidden />
         {t("modelconfig.saving", { defaultValue: "Saving…" })}
       </span>
     );
@@ -122,7 +122,7 @@ function SaveStatus({
         role="status"
         className="inline-flex items-center gap-1.5 text-xs text-muted"
       >
-        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        <Loader2 className="size-3.5 animate-spin" aria-hidden />
         {t("modelconfig.restarting", { defaultValue: "Restarting agent…" })}
       </span>
     );
@@ -134,7 +134,7 @@ function SaveStatus({
         className="inline-flex flex-col items-end gap-0.5 text-xs text-ok"
       >
         <span className="inline-flex items-center gap-1.5">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+          <CheckCircle2 className="size-3.5" aria-hidden />
           {restartCopy
             ? t("modelconfig.savedRestarted", { defaultValue: "Saved" })
             : t("modelconfig.savedNoRestart", {
@@ -468,7 +468,7 @@ export function ModelConfigurationPanelView({
             defaultValue: "Loading model catalog…",
           })}
         >
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
           {t("modelconfig.loading", {
             defaultValue: "Loading model catalog…",
           })}

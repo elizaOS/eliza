@@ -649,11 +649,8 @@ export default function AuthSuccessPage() {
       <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
         <div className="relative w-full max-w-md bg-card border border-border p-8">
           <div className="flex flex-col items-center gap-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center bg-bg-muted">
-              <Loader2
-                className="h-7 w-7 animate-spin text-muted"
-                aria-hidden
-              />
+            <div className="flex size-14 items-center justify-center bg-bg-muted">
+              <Loader2 className="size-7 animate-spin text-muted" aria-hidden />
             </div>
             <div className="space-y-2">
               <h1 className="text-xl font-semibold text-txt">
@@ -678,8 +675,8 @@ export default function AuthSuccessPage() {
       <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
         <div className="relative w-full max-w-md bg-card border border-border p-8">
           <div className="flex flex-col items-center gap-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center bg-bg-muted">
-              <AlertCircle className="h-7 w-7 text-muted" aria-hidden />
+            <div className="flex size-14 items-center justify-center bg-bg-muted">
+              <AlertCircle className="size-7 text-muted" aria-hidden />
             </div>
             <div className="space-y-2">
               <h1 className="text-xl font-semibold text-txt">
@@ -699,7 +696,7 @@ export default function AuthSuccessPage() {
                 onClick={() => window.location.reload()}
                 className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
               >
-                <RefreshCw className="h-4 w-4 mr-2" aria-hidden />
+                <RefreshCw className="size-4 mr-2" aria-hidden />
                 {t("cloud.authSuccess.tryAgain", {
                   defaultValue: "Try Again",
                 })}
@@ -710,7 +707,7 @@ export default function AuthSuccessPage() {
                 className="w-full h-11 border-border hover:bg-bg-hover"
               >
                 <Link to="/">
-                  <Home className="h-4 w-4 mr-2" aria-hidden />
+                  <Home className="size-4 mr-2" aria-hidden />
                   {t("cloud.authSuccess.goHome", { defaultValue: "Go Home" })}
                 </Link>
               </Button>
@@ -737,8 +734,8 @@ export default function AuthSuccessPage() {
       <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
         <div className="relative w-full max-w-md bg-card border border-border p-8">
           <div className="flex flex-col items-center gap-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center bg-destructive-subtle">
-              <AlertCircle className="h-7 w-7 text-destructive" aria-hidden />
+            <div className="flex size-14 items-center justify-center bg-destructive-subtle">
+              <AlertCircle className="size-7 text-destructive" aria-hidden />
             </div>
             <div className="space-y-2">
               <h1 className="text-xl font-semibold text-txt">
@@ -754,7 +751,7 @@ export default function AuthSuccessPage() {
                 onClick={() => navigate("/login")}
                 className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
               >
-                <RefreshCw className="h-4 w-4 mr-2" aria-hidden />
+                <RefreshCw className="size-4 mr-2" aria-hidden />
                 {t("cloud.authSuccess.backToSignIn", {
                   defaultValue: "Back to Sign In",
                 })}
@@ -765,7 +762,7 @@ export default function AuthSuccessPage() {
                 className="w-full h-11 border-border hover:bg-bg-hover"
               >
                 <Link to="/">
-                  <Home className="h-4 w-4 mr-2" aria-hidden />
+                  <Home className="size-4 mr-2" aria-hidden />
                   {t("cloud.authSuccess.goHome", { defaultValue: "Go Home" })}
                 </Link>
               </Button>
@@ -782,8 +779,8 @@ export default function AuthSuccessPage() {
     <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
       <div className="relative w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center bg-status-success-bg">
-            <CheckCircle className="h-7 w-7 text-status-success" aria-hidden />
+          <div className="flex size-14 items-center justify-center bg-status-success-bg">
+            <CheckCircle className="size-7 text-status-success" aria-hidden />
           </div>
           <div className="space-y-2">
             <h1 className="text-xl font-semibold text-txt">

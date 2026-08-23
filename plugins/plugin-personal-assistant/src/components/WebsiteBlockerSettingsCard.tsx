@@ -149,8 +149,8 @@ export function WebsiteBlockerSettingsCard({
     <div className="px-1 py-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
-            <ShieldBan className="h-5 w-5 text-txt" aria-hidden />
+          <div className="flex size-9 shrink-0 items-center justify-center">
+            <ShieldBan className="size-5 text-txt" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -162,7 +162,7 @@ export function WebsiteBlockerSettingsCard({
                   }`}
                 >
                   {badge.ready ? (
-                    <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden />
+                    <CheckCircle2 className="mr-1 size-3" aria-hidden />
                   ) : null}
                   {badge.label}
                 </span>
@@ -188,7 +188,7 @@ export function WebsiteBlockerSettingsCard({
               className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
               onClick={() => void primary.action()}
             >
-              <Settings className="mr-1.5 h-4 w-4" aria-hidden />
+              <Settings className="mr-1.5 size-4" aria-hidden />
               {primary.label}
             </Button>
           </div>

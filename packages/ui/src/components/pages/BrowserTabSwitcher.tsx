@@ -135,7 +135,7 @@ export function BrowserTabFoldControl({
       data-testid="browser-workspace-tab-fold-control"
       className="flex h-11 min-h-11 min-w-0 shrink-0 items-center gap-2 rounded-full border-transparent bg-card/70 px-3 text-sm text-txt shadow-inset"
     >
-      <Globe className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+      <Globe className="size-4 shrink-0 text-muted" aria-hidden />
       <span className="min-w-0 max-w-[9rem] truncate font-medium">
         {activeLabel}
       </span>
@@ -215,7 +215,7 @@ function BrowserTabCard({
       >
         <span className="flex w-full min-w-0 items-center gap-2">
           <span
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+            className={`inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
               isAgent
                 ? "bg-bg-muted text-txt border border-border/70"
                 : "bg-card text-muted"
@@ -223,7 +223,7 @@ function BrowserTabCard({
           >
             {tab.hasSessionFocus ? (
               <>
-                <span aria-hidden className="h-2 w-2 rounded-full bg-txt" />
+                <span aria-hidden className="size-2 rounded-full bg-txt" />
                 <span className="sr-only">{agentActiveLabel}</span>
               </>
             ) : (
@@ -253,9 +253,9 @@ function BrowserTabCard({
             onClose();
           }}
           data-testid={`browser-tab-card-close-${tab.id}`}
-          className="absolute right-1 top-1 h-11 w-11 rounded-full text-muted transition-colors hover:bg-bg-muted/60 hover:text-danger"
+          className="absolute right-1 top-1 size-11 rounded-full text-muted transition-colors hover:bg-bg-muted/60 hover:text-danger"
         >
-          <X className="h-4 w-4" />
+          <X className="size-4" />
         </Button>
       ) : null}
     </div>
@@ -308,7 +308,7 @@ export function BrowserTabSwitcher({
         data-view-overlay="browser-tabs"
         data-chat-clearance-aware="true"
         overlayClassName="z-[8800] bg-black/70"
-        className="z-[8810] grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-3xl border-border/60 bg-bg shadow-[0_24px_80px_rgba(0,0,0,.48)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
+        className="z-[8810] grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-3xl border-border/60 bg-bg shadow-[0_24px_80px_rgba(16,10,5,.48)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
         style={{
           top: "calc((100dvh - var(--eliza-chat-clearance, 5.25rem)) / 2)",
           bottom: "auto",
@@ -334,7 +334,7 @@ export function BrowserTabSwitcher({
             data-testid="browser-workspace-tab-switcher-new-tab"
             aria-label={newTabLabel}
           >
-            <Plus className="h-4 w-4" aria-hidden />
+            <Plus className="size-4" aria-hidden />
             <span className="truncate">{newTabLabel}</span>
           </Button>
         </DialogHeader>
@@ -382,9 +382,9 @@ export function BrowserTabSwitcher({
         </div>
         <DialogClose
           aria-label="Close"
-          className="absolute right-1 top-1 inline-flex h-11 w-11 items-center justify-center rounded-sm text-muted opacity-70 transition-opacity hover:text-txt hover:opacity-100 disabled:pointer-events-none"
+          className="absolute right-1 top-1 inline-flex size-11 items-center justify-center rounded-sm text-muted opacity-70 transition-opacity hover:text-txt hover:opacity-100 disabled:pointer-events-none"
         >
-          <X className="h-4 w-4" aria-hidden />
+          <X className="size-4" aria-hidden />
         </DialogClose>
       </DialogContent>
     </Dialog>

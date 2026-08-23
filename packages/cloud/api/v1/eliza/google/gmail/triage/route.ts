@@ -5,7 +5,7 @@
  * the managed Google connector.
  */
 
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -27,11 +27,11 @@ app.get("/", async (c) => {
     if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
       return c.json({ error: "side must be owner or agent." }, 400);
     }
-    const hasMaxResults = Boolean(rawMaxResults?.trim());
-    const maxResults = hasMaxResults ? parsePositiveInteger(rawMaxResults) : 12;
-    if (maxResults === undefined) {
+    const parsedMaxResults = parseCanonicalInteger(rawMaxResults, { min: 1 });
+    if (parsedMaxResults === "invalid") {
       return c.json({ error: "maxResults must be a positive integer." }, 400);
     }
+    const maxResults = parsedMaxResults ?? 12;
 
     const result = await fetchManagedGoogleGmailTriage({
       organizationId: user.organization_id,

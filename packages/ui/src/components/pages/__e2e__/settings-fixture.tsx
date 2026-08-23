@@ -13,7 +13,7 @@ import { SettingsView } from "../SettingsView";
 function Harness(): React.JSX.Element {
   return (
     <TranslationProvider>
-      <div className="min-h-screen w-full bg-bg text-txt">
+      <div className="min-h-dvh w-full bg-bg text-txt">
         <SettingsView />
       </div>
     </TranslationProvider>

@@ -61,12 +61,12 @@ function formatRelativeTime(ms: number | null): string {
 }
 
 function DeviceIcon({ userAgent }: { userAgent: string | null }) {
-  if (!userAgent) return <Monitor className="h-4 w-4 shrink-0 opacity-50" />;
+  if (!userAgent) return <Monitor className="size-4 shrink-0 opacity-50" />;
   const ua = userAgent.toLowerCase();
   if (/mobile|android|iphone|ipad/.test(ua)) {
-    return <Smartphone className="h-4 w-4 shrink-0 opacity-70" />;
+    return <Smartphone className="size-4 shrink-0 opacity-70" />;
   }
-  return <Laptop className="h-4 w-4 shrink-0 opacity-70" />;
+  return <Laptop className="size-4 shrink-0 opacity-70" />;
 }
 
 function SectionShell({
@@ -453,7 +453,7 @@ function AccessModeSection({
 
   return (
     <SectionShell
-      icon={<Shield className="h-4 w-4 opacity-60" />}
+      icon={<Shield className="size-4 opacity-60" />}
       title={t("security.access.sectionTitle", { defaultValue: "Access" })}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -464,7 +464,7 @@ function AccessModeSection({
         <SecurityStatusBadge tone={statusTone}>
           {state.phase === "loading" ? (
             <span className="inline-flex items-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="size-3 animate-spin" />
               {status}
             </span>
           ) : (
@@ -533,7 +533,7 @@ function AccessModeSection({
           onClick={() => void onRefresh()}
           className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
         >
-          <RefreshCw className="h-3 w-3" />
+          <RefreshCw className="size-3" />
           {t("security.refresh", { defaultValue: "Refresh" })}
         </Button>
         <AdvancedToggle label="Advanced" />
@@ -616,14 +616,14 @@ function SessionsSection() {
 
   return (
     <SectionShell
-      icon={<Shield className="h-4 w-4 opacity-60" />}
+      icon={<Shield className="size-4 opacity-60" />}
       title={t("security.sessions.title", {
         defaultValue: "Active sessions",
       })}
     >
       {state.phase === "loading" && (
         <div className="flex items-center gap-2 py-3 text-sm text-muted">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
           {t("security.sessions.loading", {
             defaultValue: "Loading sessions...",
           })}
@@ -664,7 +664,7 @@ function SessionsSection() {
               onClick={load}
               className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
             >
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="size-3" />
               {t("security.refresh", { defaultValue: "Refresh" })}
             </Button>
 
@@ -715,7 +715,7 @@ const SessionRow = memo(function SessionRow({
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="capitalize">{session.kind}</span>
           {session.current ? (
-            <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            <span className="rounded-full border border-border px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-muted">
               {t("security.sessions.thisSession", {
                 defaultValue: "This session",
               })}
@@ -762,9 +762,9 @@ const SessionRow = memo(function SessionRow({
             data-testid={`security-session-revoke-${session.id}`}
           >
             {revoking ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="size-3 animate-spin" />
             ) : (
-              <Trash2 className="h-3 w-3" />
+              <Trash2 className="size-3" />
             )}
           </Button>
         )
@@ -877,13 +877,13 @@ function RemotePasswordSection({
   if (accessState.phase === "loading") {
     return (
       <SectionShell
-        icon={<KeyRound className="h-4 w-4 opacity-60" />}
+        icon={<KeyRound className="size-4 opacity-60" />}
         title={t("security.password.title", {
           defaultValue: "Remote password",
         })}
       >
         <div className="flex items-center gap-2 py-3 text-sm text-muted">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
           {t("security.password.loading", {
             defaultValue: "Loading password settings...",
           })}
@@ -905,7 +905,7 @@ function RemotePasswordSection({
           });
     return (
       <SectionShell
-        icon={<KeyRound className="h-4 w-4 opacity-60" />}
+        icon={<KeyRound className="size-4 opacity-60" />}
         title={t("security.password.title", {
           defaultValue: "Remote password",
         })}
@@ -926,7 +926,7 @@ function RemotePasswordSection({
 
   return (
     <SectionShell
-      icon={<KeyRound className="h-4 w-4 opacity-60" />}
+      icon={<KeyRound className="size-4 opacity-60" />}
       title={t("security.password.title", {
         defaultValue: "Remote password",
       })}

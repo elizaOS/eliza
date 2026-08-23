@@ -258,7 +258,7 @@ export function DesktopTalkModePanel() {
   if (!desktopRuntime) {
     return (
       <Card className="border-border/60 bg-card/92 ">
-        <CardContent className="px-4 py-4 text-xs leading-5 text-muted">
+        <CardContent className="p-4 text-xs leading-5 text-muted">
           {t("voiceconfigview.DesktopTalkModeDesktopOnly")}
         </CardContent>
       </Card>
@@ -267,7 +267,7 @@ export function DesktopTalkModePanel() {
 
   return (
     <Card className="border-border/60 bg-card/92 ">
-      <CardHeader className="px-4 py-4 pb-0">
+      <CardHeader className="p-4 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <CardTitle className="text-sm">
             {t("voiceconfigview.DesktopTalkMode")}
@@ -454,7 +454,7 @@ function RemoveTriggerButton({
       ref={ref}
       variant="ghost"
       size="icon"
-      className="ml-1 h-5 w-5 rounded-full p-0 leading-none text-muted-strong hover:bg-bg-hover hover:text-txt"
+      className="ml-1 size-5 rounded-full p-0 leading-none text-muted-strong hover:bg-bg-hover hover:text-txt"
       onClick={onRemove}
       aria-label={label}
       {...agentProps}
@@ -752,7 +752,7 @@ export function WakeWordSection({
         <span className="text-xs font-semibold">
           {t("voiceconfigview.Triggers")}
         </span>
-        <div className="flex min-h-10 flex-wrap gap-1.5 rounded-sm border border-border/60 bg-bg px-2 py-2">
+        <div className="flex min-h-10 flex-wrap gap-1.5 rounded-sm border border-border/60 bg-bg p-2">
           {triggers.map((trigger) => (
             <span
               key={trigger}
@@ -929,7 +929,7 @@ function AsrAdvancedSection({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
           {t("voiceconfigview.AsrProvider", {
             defaultValue: "Speech-to-text",
           })}

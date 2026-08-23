@@ -283,12 +283,12 @@ function ToolCallCard({
       >
         {hasBody ? (
           <ChevronRight
-            className={`h-3 w-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
+            className={`size-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
           />
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-strong" />
+        <Icon className="size-3.5 shrink-0 text-muted-strong" />
         <span className="shrink-0 text-xs font-semibold text-txt">
           {toolVerb(tool)}
         </span>
@@ -308,9 +308,7 @@ function ToolCallCard({
         <span
           className={`flex shrink-0 items-center gap-1 text-2xs ${badge.tone}`}
         >
-          <BadgeIcon
-            className={`h-3 w-3 ${badge.spin ? "animate-spin" : ""}`}
-          />
+          <BadgeIcon className={`size-3 ${badge.spin ? "animate-spin" : ""}`} />
           {badge.label}
         </span>
         {meta.length > 0 ? (
@@ -366,7 +364,7 @@ export function ConversationBlockView({
       >
         <div className="mb-1 flex items-center gap-2 text-3xs text-muted">
           <span
-            className="inline-block h-1.5 w-1.5 rounded-full bg-muted-strong"
+            className="inline-block size-1.5 rounded-full bg-muted-strong"
             aria-hidden
           />
           <span className="font-semibold tracking-tight text-txt/90">
@@ -411,7 +409,7 @@ export function ConversationBlockView({
       data-testid="orchestrator-notice"
     >
       <span className="h-px flex-1 bg-border/40" />
-      <Icon className={`h-3 w-3 shrink-0 ${block.tone}`} />
+      <Icon className={`size-3 shrink-0 ${block.tone}`} />
       <span className={`min-w-0 shrink truncate font-medium ${block.tone}`}>
         {block.text}
       </span>

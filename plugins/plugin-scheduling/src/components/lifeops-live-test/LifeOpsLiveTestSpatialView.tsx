@@ -212,7 +212,7 @@ function RunPanel({
         <OutcomeCardView outcome={run.outcome} />
       ) : (
         <Text style="caption" tone="muted">
-          Seeds a real due-now task and fires it through the scheduler — watch
+          Seeds a real due-now task and fires it through the scheduler. Watch
           the outcome below.
         </Text>
       )}
@@ -285,7 +285,7 @@ function TasksSection({
         </>
       ) : tasks.rows.length === 0 ? (
         <Text style="caption" tone="muted">
-          No scheduled tasks yet — run a validation above to create one.
+          No scheduled tasks yet. Run a validation above to create one.
         </Text>
       ) : (
         <List gap={1}>

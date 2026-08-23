@@ -70,8 +70,8 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           onClick={() => navigate("/settings#cloud-billing")}
           className="group flex min-h-touch items-center gap-2 font-mono text-sm text-muted hover:text-txt-strong transition-colors"
         >
-          <div className="flex items-center justify-center w-8 h-8 rounded-sm bg-bg-elevated group-hover:bg-bg-hover transition-colors">
-            <ArrowLeft className="h-4 w-4" />
+          <div className="flex items-center justify-center size-8 rounded-sm bg-bg-elevated group-hover:bg-bg-hover transition-colors">
+            <ArrowLeft className="size-4" />
           </div>
           <span className="font-medium">
             {t("cloud.invoiceDetail.backToBilling", {
@@ -88,7 +88,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
         <div className="relative z-10 space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-accent" />
+              <div className="size-2 rounded-full bg-accent" />
               <h1 className="text-2xl font-mono text-txt-strong uppercase">
                 {t("cloud.invoiceDetail.title", {
                   defaultValue: "Invoice Details",
@@ -105,7 +105,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   }
                   className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
-                  <Download className="h-4 w-4" />
+                  <Download className="size-4" />
                   {t("cloud.invoiceDetail.downloadPdf", {
                     defaultValue: "Download PDF",
                   })}
@@ -121,7 +121,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   }
                   className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="size-4" />
                   {t("cloud.invoiceDetail.viewInStripe", {
                     defaultValue: "View in Stripe",
                   })}
@@ -168,7 +168,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-accent" />
+            <div className="size-2 rounded-full bg-accent" />
             <h2 className="text-base font-mono text-txt-strong uppercase">
               {t("cloud.invoiceDetail.transactionSummary", {
                 defaultValue: "Transaction Summary",
@@ -258,7 +258,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-accent" />
+            <div className="size-2 rounded-full bg-accent" />
             <h2 className="text-base font-mono text-txt-strong uppercase">
               {t("cloud.invoiceDetail.paymentInformation", {
                 defaultValue: "Payment Information",

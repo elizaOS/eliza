@@ -1,34 +1,22 @@
 /**
  * Storybook story for ProviderPicker — the command-palette provider chooser
- * in the Add Account dialog. Renders under a stub AppContext supplying `t`.
+ * in the Add Account dialog. Renders under the shared MockAppProvider.
  */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { ProviderPicker } from "./ProviderPicker";
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? "";
-    }
-    if (prop === "uiLanguage") return "en";
-    return () => {};
-  },
-});
 
 const meta = {
   title: "Accounts/ProviderPicker",
   component: ProviderPicker,
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider>
         <div className="max-w-md bg-bg p-4">
           <Story />
         </div>
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
   args: {

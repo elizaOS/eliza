@@ -119,7 +119,7 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
     <div data-testid="workbench-todo-row" className="py-1.5">
       <div className="flex items-start gap-2">
         <span
-          className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
+          className={`mt-1.5 inline-block size-2 shrink-0 rounded-full ${
             todo.isUrgent
               ? "bg-danger"
               : todo.priority != null
@@ -190,10 +190,10 @@ function TodayTodoRow({
       data-testid="today-todo-row"
       aria-label={`Complete todo "${todo.title}"`}
       onClick={onComplete}
-      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 p-3 text-left text-white"
+      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 px-3 py-2 text-left text-white"
     >
       <Circle
-        className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
+        className={`mt-0.5 size-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
       />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -246,7 +246,7 @@ function GoalAttentionRow({
       }`}
     >
       <Target
-        className={`mt-0.5 h-4 w-4 shrink-0 ${
+        className={`mt-0.5 size-4 shrink-0 ${
           isHome ? "text-white/75" : atRisk ? "text-danger" : "text-accent"
         }`}
       />
@@ -296,7 +296,7 @@ function WorkbenchTodoItems({
   if (openTodos.length === 0) {
     return (
       <EmptyWidgetState
-        icon={<ListTodo className="h-8 w-8" />}
+        icon={<ListTodo className="size-8" />}
         title="No open todos"
       />
     );
@@ -522,7 +522,7 @@ function TodayHomeCard({
     <div className={`min-w-0 ${spanClassName}`}>
       <WidgetSection
         title={t("taskseventspanel.Today", { defaultValue: "Today" })}
-        icon={<ListTodo className="h-4 w-4" />}
+        icon={<ListTodo className="size-4" />}
         testId="chat-widget-todos"
         tone="home"
         onTitleClick={() => nav.openView("/todos", "todos")}
@@ -645,7 +645,7 @@ function WorkbenchTodoSidebar({ events }: ChatSidebarWidgetProps) {
   return (
     <WidgetSection
       title={t("taskseventspanel.Todos", { defaultValue: "Todos" })}
-      icon={<ListTodo className="h-4 w-4" />}
+      icon={<ListTodo className="size-4" />}
       testId="chat-widget-todos"
     >
       <WorkbenchTodoItems todos={todos} loading={todosLoading} />

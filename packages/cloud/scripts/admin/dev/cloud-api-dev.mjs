@@ -245,6 +245,14 @@ async function main() {
     ? [
         "--var",
         "NODE_ENV:test",
+        ...(process.env.CLOUD_E2E_RUN_RECEIPT
+          ? [
+              "--var",
+              "CLOUD_E2E:1",
+              "--var",
+              `CLOUD_E2E_RUN_RECEIPT:${process.env.CLOUD_E2E_RUN_RECEIPT}`,
+            ]
+          : []),
         "--var",
         `ELIZA_KMS_BACKEND:${kmsBackend}`,
         ...(localRootKey

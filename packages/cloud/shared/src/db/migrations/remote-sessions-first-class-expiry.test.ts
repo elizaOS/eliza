@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const createUrl = new URL("./0068_add_remote_sessions.sql", import.meta.url);
 const expiryUrl = new URL("./0275_remote_sessions_first_class_expiry.sql", import.meta.url);
-const twoPhaseUrl = new URL("./0311_remote_session_two_phase_activation.sql", import.meta.url);
+const twoPhaseUrl = new URL("./0312_remote_session_two_phase_activation.sql", import.meta.url);
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
@@ -119,7 +119,7 @@ describe("remote session first-class expiry migration", () => {
     expect(columns.rows).toHaveLength(1);
   });
 
-  test("0311 admits only the non-authoritative activating phase and remains idempotent", async () => {
+  test("0312 admits only the non-authoritative activating phase and remains idempotent", async () => {
     await insertPending("40000000-0000-4000-8000-000000000004");
     await apply(twoPhaseSource);
     await pg.exec("UPDATE remote_sessions SET status = 'activating' WHERE status = 'pending'");

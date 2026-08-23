@@ -275,7 +275,7 @@ export function BrowserSessionPolicyPanel({
         data-testid="browser-session-policy-loading"
         className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
       >
-        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+        <span className="inline-block size-1.5 animate-pulse rounded-full bg-accent" />
         Loading browser sessions…
       </div>
     );
@@ -400,7 +400,7 @@ export function BrowserSessionPolicyPanel({
             {intercepted.length > 0 ? (
               <div
                 data-testid={`browser-session-${session.id}-intercepted`}
-                className="rounded-sm border border-accent/40 bg-accent/10 px-2 py-1.5 text-xs"
+                className="border-l-2 border-accent/60 bg-accent/10 px-3 py-2 text-xs"
               >
                 <span className="font-medium">Held for confirmation:</span>{" "}
                 {intercepted.map((action) => action.label).join(", ")}

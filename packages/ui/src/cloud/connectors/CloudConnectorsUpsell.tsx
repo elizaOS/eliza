@@ -105,7 +105,7 @@ function CloudConnectorsUpsell(): React.JSX.Element {
             disabled={elizaCloudLoginBusy}
             {...agentProps}
           >
-            <Cloud className="h-4 w-4" aria-hidden />
+            <Cloud className="size-4" aria-hidden />
             {elizaCloudLoginBusy
               ? t("settings.cloudConnectorsUpsell.connecting", {
                   defaultValue: "Connecting...",

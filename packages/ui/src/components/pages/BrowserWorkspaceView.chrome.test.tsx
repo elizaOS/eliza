@@ -251,7 +251,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     ).toBe(true);
     const back = screen.getByRole("button", { name: "Back to launcher" });
     expect(toolbar.contains(back)).toBe(true);
-    expect(back.className).toMatch(/(?:^|\s)h-11(?:\s|$)/);
+    expect(back.className).toMatch(/(?:^|\s)(?:h-11|size-11)(?:\s|$)/);
   });
 
   it("invokes launcher navigation once from the toolbar back button", async () => {
@@ -309,7 +309,8 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       screen.getByTestId("browser-workspace-address-input").className,
     ).not.toContain("sm:col-span-1");
     for (const control of toolbar.querySelectorAll("button, input")) {
-      expect(control.className).toMatch(/(?:h-11|min-h-11)/);
+      // size-11 is the merged h-11 w-11 form; all three satisfy the 44px floor.
+      expect(control.className).toMatch(/(?:h-11|min-h-11|size-11)/);
     }
   });
 

@@ -534,7 +534,7 @@ function Harness(): React.JSX.Element {
         <h1 style={{ fontSize: 30, fontWeight: 600, margin: 0 }}>Workspace</h1>
         <p style={{ opacity: 0.7, marginTop: 12, lineHeight: 1.6 }}>
           This is the live view behind the floating chat. Clicking here must NOT
-          close the chat — the sheet only closes on a pull-down or Escape.
+          close the chat. The sheet only closes on a pull-down or Escape.
         </p>
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           {["Files", "Tasks", "Notes", "Settings"].map((t) => (

@@ -127,7 +127,7 @@ async function loadAccount(fetchers: CloudViewFetchers): Promise<LoadState> {
 
 function Card(props: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <section className="rounded-lg border border-border bg-card px-4 py-4">
+    <section className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-txt">{props.title}</h2>
         {props.action}

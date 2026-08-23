@@ -252,7 +252,7 @@ export function BlooioConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Smartphone className="h-6 w-6 text-green-600" />}
+            icon={<Smartphone className="size-6 text-green-600" />}
             iconClassName="bg-green-100"
             title={status?.phoneNumber}
             subtitle={t("cloud.blooio.connectedVia", {
@@ -336,7 +336,7 @@ export function BlooioConnection() {
                     size="sm"
                   >
                     {isSavingSecret ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="size-4 animate-spin" />
                     ) : (
                       t("cloud.blooio.save", { defaultValue: "Save" })
                     )}
@@ -407,7 +407,7 @@ export function BlooioConnection() {
                   className="text-green-600 hover:underline inline-flex items-center gap-1"
                 >
                   app.blooio.com
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>
               </li>
               <li>
@@ -517,14 +517,14 @@ export function BlooioConnection() {
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.blooio.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <MessageCircle className="h-4 w-4 mr-2" />
+                <MessageCircle className="size-4 mr-2" />
                 {t("cloud.blooio.connectButton", {
                   defaultValue: "Connect iMessage",
                 })}

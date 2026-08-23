@@ -262,6 +262,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private turnSttMs = 0;
   private turnTtsChars = 0;
   private firstLlmTextEmitted = false;
+  private callerResponseTurnCount = 0;
 
   // Metering accrual (server-derived): count uplink bytes, convert to seconds.
   private unmeteredUplinkBytes = 0;
@@ -682,6 +683,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         logger.info("[voice-session] end-of-turn latency", {
           traceId: this.currentTraceId,
           transcriptChars: event.transcript?.length ?? 0,
+          callerResponseTurnIndex: event.transcript?.trim()
+            ? this.callerResponseTurnCount + 1
+            : null,
+          isFirstCallerResponse: event.transcript?.trim()
+            ? this.callerResponseTurnCount === 0
+            : null,
           configuredEndTimeoutMs: CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
           turnActiveMs:
             this.sttTurnStartedAtMs === null
@@ -894,7 +901,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }
 
     this.state = "thinking";
-    void this.runResponseTurn(transcript, traceId);
+    this.callerResponseTurnCount += 1;
+    void this.runResponseTurn(transcript, traceId, {
+      callerResponseTurnIndex: this.callerResponseTurnCount,
+    });
   }
 
   /** Speak a fixed live opener while the first agent context is warming. */
@@ -1035,6 +1045,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       historyCutoffAt?: number;
       transientInput?: true;
       fallbackGreeting?: string;
+      callerResponseTurnIndex?: number;
     } = {},
   ): Promise<void> {
     const responseStartedAt = this.now();
@@ -1075,6 +1086,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           logger.info("[voice-session] first-turn latency", {
             traceId,
             transcriptChars: transcript.length,
+            callerResponseTurnIndex: options.callerResponseTurnIndex ?? null,
+            isFirstCallerResponse: options.callerResponseTurnIndex === 1,
             firstModelTextMs:
               firstModelTextAt === null
                 ? null

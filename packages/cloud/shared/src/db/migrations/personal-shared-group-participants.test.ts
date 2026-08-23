@@ -7,7 +7,7 @@ const bindingsMigration = await Bun.file(
   new URL("./0297_personal_shared_group_bindings.sql", import.meta.url),
 ).text();
 const migration = await Bun.file(
-  new URL("./0313_personal_shared_group_participants.sql", import.meta.url),
+  new URL("./0311_personal_shared_group_participants.sql", import.meta.url),
 ).text();
 const databases: PGlite[] = [];
 const ORG = "22222222-2222-4222-8222-222222222222";
@@ -62,7 +62,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0313 Personal Shared group participants", () => {
+describe("0311 Personal Shared group participants", () => {
   test("keeps one row per connector handle within a binding", async () => {
     const db = await database();
     await insertParticipant(db, {});

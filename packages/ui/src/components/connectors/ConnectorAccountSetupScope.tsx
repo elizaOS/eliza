@@ -52,7 +52,7 @@ export function ConnectorAccountSetupScope({
     <>
       {accounts.accounts.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-sm border border-border/45 bg-bg-accent/35 px-3 py-2">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted">
+          <span className="text-2xs font-medium uppercase tracking-wider text-muted">
             {t("connectorsetupscope.setupAccount", {
               defaultValue: "Setup account",
             })}
@@ -86,10 +86,7 @@ export function ConnectorAccountSetupScope({
                     <div className="flex flex-col gap-0.5 py-0.5">
                       <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-txt">
                         <span className="truncate">{account.label}</span>
-                        <Badge
-                          variant="outline"
-                          className="text-[9px] uppercase"
-                        >
+                        <Badge variant="outline" className="text-2xs uppercase">
                           {account.role}
                         </Badge>
                       </span>
@@ -98,7 +95,7 @@ export function ConnectorAccountSetupScope({
                           {account.handle ?? account.externalId}
                         </span>
                       ) : null}
-                      <span className="text-[10px] capitalize text-muted">
+                      <span className="text-2xs capitalize text-muted">
                         {account.status}
                         {usable
                           ? ""

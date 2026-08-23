@@ -3,7 +3,7 @@
  *
  * Legacy checkout/invoice/crypto DTOs remain local for now. New billing
  * snapshot code imports its canonical versioned contract directly from
- * `@elizaos/cloud-shared/types`; do not add another local snapshot copy here.
+ * `@elizaos/cloud-sdk`; do not add another local snapshot copy here.
  */
 
 export type IsoDateString = string;

@@ -105,7 +105,7 @@ if (el) {
         color: "#eee",
         background: "#0d1117",
         padding: 28,
-        minHeight: "100vh",
+        minHeight: "100dvh",
       }}
     >
       <AgentSurfaceProvider viewId={VIEW} viewType="gui">

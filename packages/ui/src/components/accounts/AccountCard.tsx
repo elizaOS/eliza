@@ -101,7 +101,7 @@ function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
       {/* Auto width, never a fixed box: "SESSION" (uppercase, tracked) is wider
           than the old w-9 (36px) box, so the flexed bar rendered on top of the
           overflowing text. */}
-      <span className="shrink-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider text-muted">
+      <span className="shrink-0 whitespace-nowrap text-2xs font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
       <div className="relative h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-bg-accent">
@@ -110,7 +110,7 @@ function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
           style={{ width: `${clamped ?? 0}%` }}
         />
       </div>
-      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-muted">
+      <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-muted">
         {clamped == null ? "—" : `${Math.round(clamped)}%`}
       </span>
     </div>
@@ -237,13 +237,13 @@ export function AccountCard({
               persisted) — never duplicate it. */}
           {account.email && account.email !== account.label ? (
             <span
-              className="min-w-0 shrink truncate text-[11px] text-muted"
+              className="min-w-0 shrink truncate text-xs-tight text-muted"
               title={account.email}
             >
               {account.email}
             </span>
           ) : null}
-          <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
+          <Badge variant="outline" className="shrink-0 text-2xs uppercase">
             {isCodingPlan
               ? t("accounts.source.codingPlan", {
                   defaultValue: "Coding plan",
@@ -253,14 +253,14 @@ export function AccountCard({
                 : t("accounts.source.apiKey", { defaultValue: "API key" })}
           </Badge>
           <span
-            className="shrink-0 text-[10px] tabular-nums text-muted"
+            className="shrink-0 text-2xs tabular-nums text-muted"
             title={t("accounts.priority.tooltip", {
               defaultValue: "Lower priority value runs first",
             })}
           >
             #{account.priority}
           </span>
-          <span className="shrink-0 text-[10px] text-muted">
+          <span className="shrink-0 text-2xs text-muted">
             {t("accounts.lastUsed", {
               defaultValue: `Last used ${lastUsed}`,
               lastUsed,
@@ -277,9 +277,9 @@ export function AccountCard({
             onClick={() => void onMoveUp()}
             aria-label={t("accounts.moveUp", { defaultValue: "Move up" })}
             title={t("accounts.moveUp", { defaultValue: "Move up" })}
-            className="h-7 w-7 p-0"
+            className="size-7 p-0"
           >
-            <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+            <ChevronUp className="size-3.5" aria-hidden />
           </Button>
           <Button
             type="button"
@@ -289,9 +289,9 @@ export function AccountCard({
             onClick={() => void onMoveDown()}
             aria-label={t("accounts.moveDown", { defaultValue: "Move down" })}
             title={t("accounts.moveDown", { defaultValue: "Move down" })}
-            className="h-7 w-7 p-0"
+            className="size-7 p-0"
           >
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+            <ChevronDown className="size-3.5" aria-hidden />
           </Button>
           <div className="ml-1 inline-flex items-center gap-1.5 text-xs text-muted">
             <Checkbox
@@ -315,7 +315,7 @@ export function AccountCard({
               onClick={onReauthenticate}
               className="h-7 gap-1.5 px-2 text-xs"
             >
-              <KeyRound className="h-3.5 w-3.5" aria-hidden />
+              <KeyRound className="size-3.5" aria-hidden />
               {account.source === "oauth"
                 ? t("accounts.reauthenticate", {
                     defaultValue: "Reauthenticate",
@@ -334,7 +334,7 @@ export function AccountCard({
             className="h-7 px-2 text-xs"
           >
             {testBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
               t("accounts.test", { defaultValue: "Test" })
             )}
@@ -348,7 +348,7 @@ export function AccountCard({
             className="h-7 px-2 text-xs"
           >
             {refreshBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
               t("accounts.refresh", { defaultValue: "Refresh" })
             )}
@@ -363,9 +363,9 @@ export function AccountCard({
               defaultValue: "Delete account",
             })}
             title={t("accounts.delete", { defaultValue: "Delete account" })}
-            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+            className="size-7 p-0 text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            <Trash2 className="size-3.5" aria-hidden />
           </Button>
         </div>
       </div>
@@ -405,7 +405,7 @@ export function AccountCard({
         )}
         {requiresCredentialRepair && healthReason ? (
           <span
-            className="min-w-0 truncate text-[10px] text-destructive"
+            className="min-w-0 truncate text-2xs text-destructive"
             title={healthReason}
           >
             {healthReason}
@@ -413,7 +413,7 @@ export function AccountCard({
         ) : null}
         {!account.hasCredential ? (
           <span
-            className="text-[10px] text-warn"
+            className="text-2xs text-warn"
             title={t("accounts.orphan.tooltip", {
               defaultValue:
                 "Pool metadata exists but no on-disk credential was found.",
@@ -462,7 +462,7 @@ export function AccountCard({
               onClick={handleConfirmDelete}
             >
               {deleteBusy ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : (
                 t("accounts.delete.confirm", { defaultValue: "Remove account" })
               )}

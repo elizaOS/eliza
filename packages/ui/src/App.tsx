@@ -1181,9 +1181,9 @@ function ViewLayoutSurface({
             title="Close layout"
             data-testid="view-layout-close"
             onClick={onClear}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted transition-colors hover:bg-border/35 hover:text-txt    "
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted transition-colors hover:bg-border/35 hover:text-txt    "
           >
-            <X className="h-4 w-4" aria-hidden />
+            <X className="size-4" aria-hidden />
           </Button>
         </header>
         <div

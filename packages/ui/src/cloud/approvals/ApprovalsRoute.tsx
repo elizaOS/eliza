@@ -45,7 +45,7 @@ export function ApprovalsSurface() {
   if (!authenticated) {
     return (
       <div className="mx-auto max-w-md py-16 text-center">
-        <ShieldCheck className="mx-auto h-8 w-8 text-accent" />
+        <ShieldCheck className="mx-auto size-8 text-accent" />
         <h1 className="mt-4 text-lg font-semibold text-txt">
           Sign in required
         </h1>
@@ -60,7 +60,7 @@ export function ApprovalsSurface() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4">
       <header className="flex items-center gap-2">
-        <ShieldCheck className="h-6 w-6 text-accent" />
+        <ShieldCheck className="size-6 text-accent" />
         <div>
           <h1 className="text-xl font-semibold text-txt">Approvals</h1>
           <p className="text-sm text-muted">

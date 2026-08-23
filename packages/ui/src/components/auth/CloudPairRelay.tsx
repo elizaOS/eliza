@@ -405,7 +405,7 @@ export function CloudHostedAgentAuthNotice({
   return (
     <main className="flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-[#08090b] px-6 text-center font-body text-white">
       <div className="my-auto w-full max-w-[25rem]">
-        <div className="mx-auto mb-6 h-2 w-2 rotate-45 bg-[#f3a51f]" />
+        <div className="mx-auto mb-6 size-2 rotate-45 bg-[#f3a51f]" />
         <p className="mb-4 text-sm font-semibold text-white/45">Eliza</p>
         <h1 className="text-2xl font-semibold text-white">
           {nativeRecoveryMode === "retry"
@@ -530,7 +530,7 @@ export function CloudPairRelay({
     // scrolls-from-top when the error copy pushes it past the fold.
     <main className="flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-[#08090b] px-6 text-center font-body text-white">
       <div className="my-auto w-full max-w-[24rem]">
-        <div className="mx-auto mb-6 h-2 w-2 rotate-45 bg-[#f3a51f]" />
+        <div className="mx-auto mb-6  size-2 rotate-45 bg-[#f3a51f]" />
         <p className="mb-4 text-sm font-semibold text-white/45">Eliza</p>
         <h1 className="text-2xl font-semibold text-white">{title}</h1>
         <p

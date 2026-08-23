@@ -1202,8 +1202,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(stack.style.paddingBottom).toBe("16px");
     // The producer tile is vertically centered and carries the stack total.
     const sourceIcon = screen.getByTestId("notification-source-icon");
-    expect(sourceIcon.className).toContain("h-10");
-    expect(sourceIcon.className).toContain("w-10");
+    expect(sourceIcon.className).toContain("size-10");
     expect(sourceIcon.className).toContain("items-center");
     const count = screen.getByTestId("notification-source-count");
     expect(count.textContent).toBe("3");

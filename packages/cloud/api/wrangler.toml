@@ -199,8 +199,9 @@ storage = "sqlite"
 type = "durable-object"
 storage = "sqlite"
 
-# General API limits and queues may use Railway Redis via REDIS_URL. Inference
-# routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
+# General API limits and queues use the environment's Railway Redis. Worker
+# direct consumers reach it through redis-rest; non-Worker services use
+# REDIS_URL. Inference routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
 # Durable Objects serialize organization/anonymous quotas, and CACHE_KV serves
 # revisioned metadata. Local development can use embedded Wadis when configured.
 
@@ -210,8 +211,9 @@ storage = "sqlite"
 # index_name = "eliza-cloud-embeddings"
 
 # -----------------------------------------------------------------------------
-# Queue: Stripe webhook fan-out runs on Redis (Railway TCP via REDIS_URL in
-# cloud, embedded Wadis locally), not Cloudflare Queues. The webhook route LPUSHes a JSON
+# Queue: Stripe webhook fan-out runs on Redis (redis-rest in Workers, Railway
+# TCP in non-Worker cloud services, embedded Wadis locally), not Cloudflare
+# Queues. The webhook route LPUSHes a JSON
 # envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
 # which drains a bounded batch via the queue helper in
 # `packages/lib/queue/redis-queue.ts`. Failed messages are retried with
@@ -351,7 +353,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   DATABASE_URL                       Railway Postgres (Worker reaches it via the HYPERDRIVE binding;
 #       DATABASE_URL is the origin string for the sidecar/scripts — public-proxy DSNs need
 #       ?sslmode=no-verify or DATABASE_SSL_NO_VERIFY=true for direct node-pg consumers)
-#   REDIS_URL                          Railway TCP Redis (primary cache/queue/rate-limit; rediss://...)
+#   REDIS_URL                          Railway TCP Redis for non-Worker consumers (rediss://...)
 #   STEWARD_API_URL                    Optional Steward base URL override;
 #       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
 #   STEWARD_JWT_SECRET                 Canonical HS256 secret for Steward JWT verify (jose); MUST match Steward host
@@ -390,9 +392,9 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   OXAPAY_MERCHANT_API_KEY            OxaPay crypto checkout + webhook verification
 #   OXAPAY_WEBHOOK_IPS                 Optional OxaPay webhook source IP allowlist
 #   OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL Payment-request settlement callback override
-#   KV_REST_API_URL                    Upstash Redis REST (LEGACY fallback only; primary is REDIS_URL)
-#   KV_REST_API_TOKEN                  Upstash auth (legacy fallback)
-#   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token (legacy fallback)
+#   KV_REST_API_URL                    Environment-local redis-rest adapter URL for Worker direct consumers
+#   KV_REST_API_TOKEN                  redis-rest bearer token
+#   KV_REST_API_READ_ONLY_TOKEN        Optional read-only token for compatible hosted Redis REST providers
 #   OPENROUTER_API_KEY                 OpenRouter BYOK key (backup for non-native models)
 #   ANTHROPIC_API_KEY                  Claude
 #   OPENAI_API_KEY                     OpenAI direct
@@ -917,6 +919,10 @@ CACHE_ENABLED = "true"
 # auto: Workers prefer CACHE_KV; non-Worker services use REDIS_URL when set.
 # Explicit "redis" / "redis-rest" overrides remain compatibility options.
 CACHE_BACKEND = "auto"
+# Direct Redis consumers (auth nonces, rate limits, voice replay protection,
+# relay state) use the environment-isolated Railway redis-rest proxy. Raw
+# Railway TCP is not reliable from production Workers.
+DIRECT_REDIS_BACKEND = "redis-rest"
 REDIS_RATE_LIMITING = "true"
 # Enables post-provider billing for cache-only Worker admission. Worker cache
 # misses warm and retry instead of joining an authoritative database fallback.

@@ -240,12 +240,12 @@ describe("DevicesRuntimesSection", () => {
       <DevicesRuntimesSection {...props({ sshInspection: changed })} />,
     );
     expect(
-      screen.getByText("Host key changed — connection blocked"),
+      screen.getByText("Host key changed: connection blocked"),
     ).toBeTruthy();
     expect(
       (
         screen.getByRole("button", {
-          name: "I verified this fingerprint — connect",
+          name: "Fingerprint verified, connect",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);

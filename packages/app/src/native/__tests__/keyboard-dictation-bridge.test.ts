@@ -1,4 +1,11 @@
+/**
+ * Unit coverage for the iOS-only ElizaKeyboard Capacitor shim. Capacitor is
+ * mocked at the host boundary; getKeyboardDictationBridge is the real module,
+ * re-imported after each case so the module-level cache does not leak.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { KeyboardDictationBridge } from "../keyboard-dictation-bridge.js";
 
 const mocks = vi.hoisted(() => ({
   getPlatform: vi.fn(),
@@ -12,6 +19,14 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
+function makePlugin(): KeyboardDictationBridge {
+  return {
+    setDictationState: async () => ({ saved: true }),
+    clearDictationState: async () => ({ cleared: true }),
+    getDictationState: async () => ({ pending: false }),
+  };
+}
+
 describe("getKeyboardDictationBridge", () => {
   beforeEach(() => {
     mocks.getPlatform.mockReset();
@@ -19,26 +34,83 @@ describe("getKeyboardDictationBridge", () => {
     vi.resetModules();
   });
 
-  it("returns null off iOS", async () => {
-    const { getKeyboardDictationBridge: g } = await import(
-      "../keyboard-dictation-bridge.ts"
-    );
-    mocks.getPlatform.mockReturnValue("android");
-    expect(g()).toBeNull();
-    expect(mocks.registerPlugin).not.toHaveBeenCalled();
-  });
+  it.each(["web", "android", "electron", "iOS", "IOS", "ios ", " ios", ""])(
+    "returns null on platform %j without registering ElizaKeyboard",
+    async (platform) => {
+      const { getKeyboardDictationBridge } = await import(
+        "../keyboard-dictation-bridge.js"
+      );
+      mocks.getPlatform.mockReturnValue(platform);
 
-  it("registers and caches the plugin on iOS", async () => {
-    const { getKeyboardDictationBridge: g } = await import(
-      "../keyboard-dictation-bridge.ts"
+      expect(getKeyboardDictationBridge()).toBeNull();
+      expect(mocks.registerPlugin).not.toHaveBeenCalled();
+    },
+  );
+
+  it("registers ElizaKeyboard once on iOS and returns that plugin instance", async () => {
+    const { getKeyboardDictationBridge } = await import(
+      "../keyboard-dictation-bridge.js"
     );
     mocks.getPlatform.mockReturnValue("ios");
-    const bridge = { setDictationState: async () => ({ saved: true }) };
-    mocks.registerPlugin.mockReturnValue(bridge);
-    expect(g()).toBe(bridge);
-    expect(mocks.registerPlugin).toHaveBeenCalledWith("ElizaKeyboard");
-    // 缓存：第二次不重复注册
-    expect(g()).toBe(bridge);
+    const plugin = makePlugin();
+    mocks.registerPlugin.mockReturnValue(plugin);
+
+    const first = getKeyboardDictationBridge();
+    const second = getKeyboardDictationBridge();
+
+    expect(first).toBe(plugin);
+    expect(second).toBe(plugin);
     expect(mocks.registerPlugin).toHaveBeenCalledTimes(1);
+    expect(mocks.registerPlugin).toHaveBeenCalledWith("ElizaKeyboard");
+  });
+
+  it("returns null on a later non-iOS call even after an iOS registration", async () => {
+    const { getKeyboardDictationBridge } = await import(
+      "../keyboard-dictation-bridge.js"
+    );
+    const plugin = makePlugin();
+    mocks.registerPlugin.mockReturnValue(plugin);
+
+    mocks.getPlatform.mockReturnValue("ios");
+    expect(getKeyboardDictationBridge()).toBe(plugin);
+
+    mocks.getPlatform.mockReturnValue("web");
+    expect(getKeyboardDictationBridge()).toBeNull();
+    expect(mocks.registerPlugin).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the cached plugin when iOS is selected again after a non-iOS probe", async () => {
+    const { getKeyboardDictationBridge } = await import(
+      "../keyboard-dictation-bridge.js"
+    );
+    const plugin = makePlugin();
+    mocks.registerPlugin.mockReturnValue(plugin);
+
+    mocks.getPlatform.mockReturnValue("ios");
+    expect(getKeyboardDictationBridge()).toBe(plugin);
+
+    mocks.getPlatform.mockReturnValue("android");
+    expect(getKeyboardDictationBridge()).toBeNull();
+
+    mocks.getPlatform.mockReturnValue("ios");
+    expect(getKeyboardDictationBridge()).toBe(plugin);
+    expect(mocks.registerPlugin).toHaveBeenCalledTimes(1);
+  });
+
+  it("registers on the first iOS call after earlier non-iOS probes", async () => {
+    const { getKeyboardDictationBridge } = await import(
+      "../keyboard-dictation-bridge.js"
+    );
+    const plugin = makePlugin();
+    mocks.registerPlugin.mockReturnValue(plugin);
+
+    mocks.getPlatform.mockReturnValue("android");
+    expect(getKeyboardDictationBridge()).toBeNull();
+    expect(mocks.registerPlugin).not.toHaveBeenCalled();
+
+    mocks.getPlatform.mockReturnValue("ios");
+    expect(getKeyboardDictationBridge()).toBe(plugin);
+    expect(mocks.registerPlugin).toHaveBeenCalledTimes(1);
+    expect(mocks.registerPlugin).toHaveBeenCalledWith("ElizaKeyboard");
   });
 });

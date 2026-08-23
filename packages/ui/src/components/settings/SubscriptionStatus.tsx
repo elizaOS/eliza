@@ -206,9 +206,9 @@ function StatusIcon({ connected }: { connected: boolean }) {
   return (
     <span className={connected ? "text-ok" : "text-warn"}>
       {connected ? (
-        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+        <CheckCircle2 className="size-3.5" aria-hidden />
       ) : (
-        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+        <AlertTriangle className="size-3.5" aria-hidden />
       )}
     </span>
   );
@@ -273,16 +273,16 @@ function SubscriptionProviderPanel({
             agentLabel={t("common.disconnect")}
             variant="outline"
             size="icon"
-            className="!mt-0 h-8 w-8 rounded-sm"
+            className="!mt-0 size-8 rounded-sm"
             onClick={onDisconnect}
             disabled={disconnecting}
             aria-label={t("common.disconnect")}
             title={t("common.disconnect")}
           >
             {disconnecting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
             ) : (
-              <LogOut className="h-3.5 w-3.5" aria-hidden />
+              <LogOut className="size-3.5" aria-hidden />
             )}
           </SettingsActionButton>
         )}

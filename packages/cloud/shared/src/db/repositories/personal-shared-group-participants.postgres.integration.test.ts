@@ -95,7 +95,7 @@ beforeAll(async () => {
     `);
     for (const file of [
       "0297_personal_shared_group_bindings.sql",
-      "0313_personal_shared_group_participants.sql",
+      "0311_personal_shared_group_participants.sql",
     ]) {
       await client.query(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
     }

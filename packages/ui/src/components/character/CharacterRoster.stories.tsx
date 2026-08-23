@@ -1,20 +1,8 @@
 /** Storybook stories for the character roster preset picker. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { CharacterRoster, type CharacterRosterEntry } from "./CharacterRoster";
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? "";
-    }
-    if (prop === "uiLanguage") return "en";
-    return () => {};
-  },
-});
 
 function makeEntry(
   id: string,
@@ -83,11 +71,11 @@ const meta = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider>
         <div className="bg-background flex min-h-[360px] w-full items-center justify-center p-8">
           <Story />
         </div>
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
   argTypes: {

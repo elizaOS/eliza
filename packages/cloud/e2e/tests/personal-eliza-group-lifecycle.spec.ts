@@ -92,7 +92,7 @@ const GROUP_SCHEMA_MIGRATIONS: ReadonlyArray<{
     },
   },
   {
-    file: "0313_personal_shared_group_participants.sql",
+    file: "0311_personal_shared_group_participants.sql",
     sentinel: {
       kind: "relation",
       name: "personal_shared_group_participants_ordinal_uidx",
