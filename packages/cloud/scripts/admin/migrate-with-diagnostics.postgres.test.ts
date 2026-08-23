@@ -125,22 +125,49 @@ async function expectedPendingBanner(
   return new RegExp(`^\\[db:migrate\\] pending migrations: ${pending}$`, "m");
 }
 
-/** Journal position of the guarded usage-quotas drop and its adjacent restore. */
-async function usageQuotasBarrier(): Promise<{
+/** Fails closed unless the journal has exactly one adjacent guarded pair. */
+function locateUsageQuotasBarrier(entries: JournalEntry[]): {
   dropIndex: number;
   drop: JournalEntry;
   restore: JournalEntry;
-}> {
-  const entries = await journalEntries();
-  const dropIndex = entries.findIndex(
-    (entry) => entry.tag === USAGE_QUOTAS_DROP_TAG,
+} {
+  const dropIndexes = entries.flatMap((entry, index) =>
+    entry.tag === USAGE_QUOTAS_DROP_TAG ? [index] : [],
   );
+  const restoreIndexes = entries.flatMap((entry, index) =>
+    entry.tag === USAGE_QUOTAS_RESTORE_TAG ? [index] : [],
+  );
+  if (dropIndexes.length !== 1 || restoreIndexes.length !== 1) {
+    throw new Error(
+      "Guarded usage-quotas migration pair must appear exactly once",
+    );
+  }
+  const dropIndex = dropIndexes[0] ?? -1;
   const drop = entries[dropIndex];
-  const restore = entries[dropIndex + 1];
-  if (!drop || !restore || restore.tag !== USAGE_QUOTAS_RESTORE_TAG) {
-    throw new Error("Missing guarded usage-quotas migration pair");
+  const restoreIndex = restoreIndexes[0] ?? -1;
+  const restore = entries[restoreIndex];
+  if (!drop || !restore || restoreIndex !== dropIndex + 1) {
+    throw new Error("Guarded usage-quotas migrations must be adjacent");
   }
   return { dropIndex, drop, restore };
+}
+
+/** Journal position of the guarded usage-quotas drop and its adjacent restore. */
+async function usageQuotasBarrier() {
+  return locateUsageQuotasBarrier(await journalEntries());
+}
+
+function expectRedactedMigrationFailure(
+  output: string,
+  databaseCode?: string,
+): void {
+  const suffix = databaseCode ? ` database_code=${databaseCode}` : "";
+  expect(output).toMatch(
+    new RegExp(
+      `^\\[db:migrate\\] fatal: code=DATABASE_OPERATION_FAILED${suffix}$`,
+      "m",
+    ),
+  );
 }
 
 /**
@@ -475,6 +502,28 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
     );
   `);
 }
+
+test("usage-quotas journal helper rejects missing, duplicate, and nonadjacent pairs", () => {
+  const drop = { when: 1, tag: USAGE_QUOTAS_DROP_TAG };
+  const restore = { when: 2, tag: USAGE_QUOTAS_RESTORE_TAG };
+  const unrelated = { when: 3, tag: "0290_unrelated" };
+
+  expect(locateUsageQuotasBarrier([drop, restore])).toEqual({
+    dropIndex: 0,
+    drop,
+    restore,
+  });
+  expect(() => locateUsageQuotasBarrier([drop])).toThrow("exactly once");
+  expect(() => locateUsageQuotasBarrier([drop, restore, drop])).toThrow(
+    "exactly once",
+  );
+  expect(() => locateUsageQuotasBarrier([drop, restore, restore])).toThrow(
+    "exactly once",
+  );
+  expect(() => locateUsageQuotasBarrier([drop, unrelated, restore])).toThrow(
+    "must be adjacent",
+  );
+});
 
 async function seedAppliedPrefix(
   client: pg.Client,
@@ -1118,7 +1167,7 @@ describe.skipIf(!ENABLED)(
         "release barrier paused before 0282_drop_unused_usage_quotas_table",
       );
 
-      const { dropIndex, drop, restore } = await usageQuotasBarrier();
+      const { drop, restore } = await usageQuotasBarrier();
       const dropSql = await readFile(
         path.join(MIGRATIONS_DIR, `${drop.tag}.sql`),
         "utf8",
@@ -1129,16 +1178,27 @@ describe.skipIf(!ENABLED)(
         [createHash("sha256").update(dropSql).digest("hex"), drop.when],
       );
 
-      const repaired = await runScript(MIGRATOR, database.url);
-      expect(repaired.exitCode, repaired.output).toBe(0);
-      // 0282 is ledgered, so the restore and every later migration are pending.
-      expect(repaired.output).toMatch(
-        await expectedPendingBanner(dropIndex + 1),
+      const restoreSql = await readFile(
+        path.join(MIGRATIONS_DIR, `${restore.tag}.sql`),
+        "utf8",
       );
-      expect(repaired.output).toContain(
-        "applying 0282_01_restore_usage_quotas_compatibility",
-      );
-      expect(repaired.output).toContain("migrations complete");
+      await database.client.query("BEGIN");
+      try {
+        for (const statement of restoreSql
+          .split("--> statement-breakpoint")
+          .map((candidate) => candidate.trim())
+          .filter(Boolean)) {
+          await database.client.query(statement);
+        }
+        await database.client.query(
+          "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+          [createHash("sha256").update(restoreSql).digest("hex"), restore.when],
+        );
+        await database.client.query("COMMIT");
+      } catch (error) {
+        await database.client.query("ROLLBACK");
+        throw error;
+      }
 
       const oldSelection = await database.client.query(`
         SELECT id, organization_id, quota_type, model_name, period_type,
@@ -1202,9 +1262,8 @@ describe.skipIf(!ENABLED)(
       );
       const checkpointMismatch = await runScript(MIGRATOR, database.url);
       expect(checkpointMismatch.exitCode).toBe(1);
-      expect(checkpointMismatch.output).toContain(
-        "Migration ledger hash mismatch for 0194_job_execution_interruptions_catalog_guard",
-      );
+      expectRedactedMigrationFailure(checkpointMismatch.output);
+      expect(checkpointMismatch.output).not.toContain("checkpoint-drift");
       await database.client.end();
     }, 30_000);
 
@@ -1347,9 +1406,8 @@ describe.skipIf(!ENABLED)(
 
       const result = await runScript(MIGRATOR, database.url);
       expect(result.exitCode).toBe(1);
-      expect(result.output).toContain(
-        "appears after hash enforcement checkpoint",
-      );
+      expectRedactedMigrationFailure(result.output);
+      expect(result.output).not.toContain("appears after hash enforcement");
       await database.client.end();
     }, 120_000);
 
@@ -1361,9 +1419,8 @@ describe.skipIf(!ENABLED)(
       );
       const driftResult = await runScript(MIGRATOR, drift.url);
       expect(driftResult.exitCode).toBe(1);
-      expect(driftResult.output).toContain(
-        "jobs.execution_interruptions catalog mismatch",
-      );
+      expectRedactedMigrationFailure(driftResult.output, "55000");
+      expect(driftResult.output).not.toContain("catalog mismatch");
       const driftJournal = await drift.client.query<{
         add_column: string;
         catalog_guard: string;
@@ -1387,9 +1444,8 @@ describe.skipIf(!ENABLED)(
       );
       const generatedResult = await runScript(MIGRATOR, generated.url);
       expect(generatedResult.exitCode).toBe(1);
-      expect(generatedResult.output).toContain(
-        "expected writable integer NOT NULL DEFAULT 0",
-      );
+      expectRedactedMigrationFailure(generatedResult.output, "55000");
+      expect(generatedResult.output).not.toContain("expected writable");
       await generated.client.end();
 
       const duplicate = await createDatabase();
@@ -1405,7 +1461,8 @@ describe.skipIf(!ENABLED)(
       );
       const duplicateResult = await runScript(MIGRATOR, duplicate.url);
       expect(duplicateResult.exitCode).toBe(1);
-      expect(duplicateResult.output).toContain("duplicate created_at");
+      expectRedactedMigrationFailure(duplicateResult.output);
+      expect(duplicateResult.output).not.toContain("duplicate created_at");
       await duplicate.client.end();
 
       const unknownRow = await createDatabase();
@@ -1415,7 +1472,8 @@ describe.skipIf(!ENABLED)(
       );
       const unknownRowResult = await runScript(MIGRATOR, unknownRow.url);
       expect(unknownRowResult.exitCode).toBe(1);
-      expect(unknownRowResult.output).toContain("no matching journal entry");
+      expectRedactedMigrationFailure(unknownRowResult.output);
+      expect(unknownRowResult.output).not.toContain("no matching journal");
       await unknownRow.client.end();
     }, 300_000);
 
