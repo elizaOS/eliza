@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
+import { runMigrations } from "./migrate-with-diagnostics";
 
 const { Client } = pg;
 const ROOT = path.resolve(import.meta.dir, "../../../..");
@@ -57,6 +58,17 @@ const BASE_URL =
 const ENABLED =
   process.env.RUN_REAL_POSTGRES_MIGRATION_TESTS === "1" &&
   BASE_URL.startsWith("postgres");
+const RELEASE_BARRIER_CHECKPOINT_TAG =
+  "0194_job_execution_interruptions_catalog_guard";
+const RELEASE_BARRIER_DROP_TAG = "0282_drop_unused_usage_quotas_table";
+const RELEASE_BARRIER_RESTORE_TAG =
+  "0282_01_restore_usage_quotas_compatibility";
+const RELEASE_BARRIER_OPTIONS = {
+  timeoutMs: 250,
+  maxAttempts: 2,
+  baseDelayMs: 1,
+  maxDelayMs: 1,
+};
 
 interface JournalEntry {
   when: number;
@@ -92,6 +104,62 @@ async function createDatabase(): Promise<{
   const client = new Client({ connectionString: databaseUrl(name) });
   await client.connect();
   return { name, url: databaseUrl(name), client };
+}
+
+function releaseBarrierMigration(idx: number, tag: string, statement: string) {
+  return {
+    entry: {
+      idx,
+      version: "7",
+      when: 1_900_000_000_000 + idx,
+      tag,
+      breakpoints: true,
+    },
+    hash: `hash-${tag}`,
+    statements: [statement],
+  };
+}
+
+function releaseBarrierMigrations() {
+  return [
+    releaseBarrierMigration(
+      194,
+      RELEASE_BARRIER_CHECKPOINT_TAG,
+      "CREATE TABLE usage_quotas (id uuid, legacy_marker text)",
+    ),
+    releaseBarrierMigration(
+      281,
+      "0281_before_usage_quotas_release",
+      "SELECT 1",
+    ),
+    releaseBarrierMigration(
+      282,
+      RELEASE_BARRIER_DROP_TAG,
+      "DROP TABLE usage_quotas",
+    ),
+    releaseBarrierMigration(
+      283,
+      RELEASE_BARRIER_RESTORE_TAG,
+      "CREATE TABLE usage_quotas (id uuid)",
+    ),
+  ];
+}
+
+function migrationClient(
+  client: pg.Client,
+  beforeQuery: (text: string) => Promise<void> = async () => {},
+) {
+  return {
+    backend: "postgres" as const,
+    query: async <T = unknown>(text: string, params?: unknown[]) => {
+      await beforeQuery(text);
+      const result = await client.query(text, params);
+      return { rows: result.rows as T[] };
+    },
+    end: async () => {
+      await client.end();
+    },
+  };
 }
 
 async function journalEntries(): Promise<JournalEntry[]> {
@@ -611,7 +679,9 @@ async function runScript(
 }
 
 async function waitForAdvisoryLock(client: pg.Client): Promise<void> {
-  const deadline = Date.now() + 5_000;
+  // The migrator is a fresh Bun subprocess and may need to load the workspace
+  // graph before opening its session on a busy CI host.
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const result = await client.query<{ count: string }>(`
       SELECT count(*)::text AS count
@@ -1175,7 +1245,7 @@ describe.skipIf(!ENABLED)(
       expect(preflight.exitCode, preflight.output).toBe(0);
       expect(preflight.output).toContain("catalog and journal verified");
       await database.client.end();
-    }, 30_000);
+    }, 120_000);
 
     test("rejects a wiped empty ledger without changing a nonempty live schema", async () => {
       const database = await createDatabase();
@@ -1197,6 +1267,131 @@ describe.skipIf(!ENABLED)(
       );
       expect(ledger.rows[0]?.count).toBe("0");
       await database.client.end();
+    }, 30_000);
+
+    test("migrates a fresh PostgreSQL database through the full journal exactly once", async () => {
+      const database = await createDatabase();
+      const entries = await journalEntries();
+
+      const first = await runScript(MIGRATOR, database.url);
+      expect(first.exitCode, first.output).toBe(0);
+      expect(first.output).toMatch(await expectedPendingBanner(0));
+      expect(first.output).toContain(
+        "applying 0282_drop_unused_usage_quotas_table",
+      );
+      expect(first.output).toContain(
+        "applying 0282_01_restore_usage_quotas_compatibility",
+      );
+      expect(first.output).toContain("migrations complete");
+
+      const state = await database.client.query<{
+        ledger_count: string;
+        usage_quotas_table: string | null;
+      }>(`
+        SELECT
+          (SELECT count(*)::text FROM drizzle.__drizzle_migrations)
+            AS ledger_count,
+          to_regclass('public.usage_quotas')::text AS usage_quotas_table
+      `);
+      expect(state.rows).toEqual([
+        {
+          ledger_count: String(entries.length),
+          usage_quotas_table: "usage_quotas",
+        },
+      ]);
+
+      const second = await runScript(MIGRATOR, database.url);
+      expect(second.exitCode, second.output).toBe(0);
+      expect(second.output).toMatch(/^\[db:migrate\] pending migrations: 0$/m);
+      expect(second.output).not.toContain("applying ");
+      await database.client.end();
+    }, 120_000);
+
+    test("keeps the guarded table continuously available to a concurrent PostgreSQL session", async () => {
+      const database = await createDatabase();
+      const observer = new Client({ connectionString: database.url });
+      await observer.connect();
+      let signalRestoreReached: (() => void) | undefined;
+      let releaseRestore: (() => void) | undefined;
+      const restoreReached = new Promise<void>((resolve) => {
+        signalRestoreReached = resolve;
+      });
+      const restoreMayRun = new Promise<void>((resolve) => {
+        releaseRestore = resolve;
+      });
+      const restoreStatement = "CREATE TABLE usage_quotas (id uuid)";
+      const migrations = releaseBarrierMigrations();
+      const migrationRun = runMigrations(
+        migrationClient(database.client, async (text) => {
+          if (text !== restoreStatement) return;
+          signalRestoreReached?.();
+          await restoreMayRun;
+        }),
+        migrations,
+        RELEASE_BARRIER_OPTIONS,
+        undefined,
+        undefined,
+        async () => {},
+      );
+
+      await restoreReached;
+      let observerSettled = false;
+      const concurrentRead = observer
+        .query<{ count: string }>(
+          "SELECT count(*)::text AS count FROM usage_quotas",
+        )
+        .finally(() => {
+          observerSettled = true;
+        });
+      await Bun.sleep(100);
+      expect(observerSettled).toBe(false);
+
+      releaseRestore?.();
+      await migrationRun;
+      expect((await concurrentRead).rows).toEqual([{ count: "0" }]);
+      const pairLedger = await observer.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
+        [migrations.slice(2).map((migration) => migration.entry.when)],
+      );
+      expect(pairLedger.rows).toEqual([{ count: "2" }]);
+      await observer.end();
+    }, 30_000);
+
+    test("rolls back the guarded drop and both ledger rows when PostgreSQL restore fails", async () => {
+      const database = await createDatabase();
+      const observer = new Client({ connectionString: database.url });
+      await observer.connect();
+      const migrations = releaseBarrierMigrations();
+      const restoreStatement = "CREATE TABLE usage_quotas (id uuid)";
+
+      await expect(
+        runMigrations(
+          migrationClient(database.client, async (text) => {
+            if (text === restoreStatement) {
+              throw new Error("injected restore failure");
+            }
+          }),
+          migrations,
+          RELEASE_BARRIER_OPTIONS,
+          undefined,
+          undefined,
+          async () => {},
+        ),
+      ).rejects.toThrow("injected restore failure");
+
+      const table = await observer.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM usage_quotas",
+      );
+      expect(table.rows).toEqual([{ count: "0" }]);
+      const ledger = await observer.query<{ created_at: string }>(
+        "SELECT created_at::text FROM drizzle.__drizzle_migrations ORDER BY id",
+      );
+      expect(ledger.rows).toEqual(
+        migrations.slice(0, 2).map((migration) => ({
+          created_at: String(migration.entry.when),
+        })),
+      );
+      await observer.end();
     }, 30_000);
 
     test("restores the legacy usage-quota shape when 0282 is already ledgered", async () => {
