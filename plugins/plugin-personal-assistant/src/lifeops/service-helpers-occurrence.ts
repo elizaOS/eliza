@@ -231,11 +231,9 @@ export function computePerfectDayStreaks(
     });
   }
 
-  const days = [...grouped.values()].sort((left, right) => {
-    const leftAnchor = Number.isFinite(left.anchorMs) ? left.anchorMs : 0;
-    const rightAnchor = Number.isFinite(right.anchorMs) ? right.anchorMs : 0;
-    return leftAnchor - rightAnchor;
-  });
+  const days = [...grouped.values()].sort(
+    (left, right) => left.anchorMs - right.anchorMs,
+  );
   let bestRun = 0;
   let activeRun = 0;
   for (const day of days) {
@@ -274,9 +272,12 @@ export function computeDefinitionPerformance(
     .sort((left, right) => {
       const leftAnchor = occurrenceAnchorMs(left);
       const rightAnchor = occurrenceAnchorMs(right);
-      const leftVal = Number.isFinite(leftAnchor) ? leftAnchor : 0;
-      const rightVal = Number.isFinite(rightAnchor) ? rightAnchor : 0;
-      if (leftVal !== rightVal) return leftVal - rightVal;
+      if (leftAnchor !== rightAnchor) {
+        return leftAnchor - rightAnchor;
+      }
+      // Occurrences that share an anchor must still order deterministically:
+      // streak and window math reads this list positionally, so a caller's
+      // incoming order must not change the reported performance.
       return left.id.localeCompare(right.id);
     });
   const lastCompletedAt =
@@ -284,21 +285,13 @@ export function computeDefinitionPerformance(
       .filter((occurrence) => occurrence.state === "completed")
       .map((occurrence) => Date.parse(occurrence.updatedAt))
       .filter((value) => Number.isFinite(value))
-      .sort((left, right) => {
-        const leftVal = Number.isFinite(left) ? left : 0;
-        const rightVal = Number.isFinite(right) ? right : 0;
-        return rightVal - leftVal;
-      })[0] ?? null;
+      .sort((left, right) => right - left)[0] ?? null;
   const lastSkippedAt =
     dueOccurrences
       .filter((occurrence) => occurrence.state === "skipped")
       .map((occurrence) => Date.parse(occurrence.updatedAt))
       .filter((value) => Number.isFinite(value))
-      .sort((left, right) => {
-        const leftVal = Number.isFinite(left) ? left : 0;
-        const rightVal = Number.isFinite(right) ? right : 0;
-        return rightVal - leftVal;
-      })[0] ?? null;
+      .sort((left, right) => right - left)[0] ?? null;
   const totalCompletedCount = dueOccurrences.filter(
     (occurrence) => occurrence.state === "completed",
   ).length;
@@ -327,11 +320,7 @@ export function computeDefinitionPerformance(
   const lastActivityAtMs =
     [lastCompletedAt, lastSkippedAt]
       .filter((value): value is number => typeof value === "number")
-      .sort((left, right) => {
-        const leftVal = Number.isFinite(left) ? left : 0;
-        const rightVal = Number.isFinite(right) ? right : 0;
-        return rightVal - leftVal;
-      })[0] ?? null;
+      .sort((left, right) => right - left)[0] ?? null;
 
   return {
     lastCompletedAt:
