@@ -1,5 +1,4 @@
 // Defines cloud shared auth behavior for backend service consumers.
-import crypto from "crypto";
 import type { Organization } from "../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "./api/errors";
 import {
@@ -7,6 +6,7 @@ import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   verifyPlaywrightTestSessionToken,
 } from "./auth/playwright-test-session";
+import { hashSessionToken } from "./auth/session-user-cache";
 import { loadVerifiedStagingSessionUser } from "./auth/staging-session-binding";
 import {
   invalidateStewardTokenCache,
@@ -30,13 +30,6 @@ import { logger } from "./utils/logger";
 
 // Re-export Organization type for convenience
 export type { Organization };
-
-/**
- * Hash a token for use as cache key (never store raw tokens)
- */
-function hashToken(token: string): string {
-  return crypto.createHash("sha256").update(token).digest("hex").substring(0, 32);
-}
 
 function getStewardVerifyEnv(): StewardVerifyEnv {
   const env = getCloudAwareEnv();
@@ -64,7 +57,7 @@ function getStewardVerifyEnv(): StewardVerifyEnv {
  */
 export async function invalidateUserSessionCache(sessionToken: string): Promise<void> {
   if (isStagingSessionTokenCandidate(sessionToken)) return;
-  const tokenHash = hashToken(sessionToken);
+  const tokenHash = hashSessionToken(sessionToken);
   const cacheKey = CacheKeys.session.user(tokenHash);
   await redisCache.del(cacheKey);
   logger.debug("[AUTH] Invalidated user session cache");
@@ -155,7 +148,7 @@ export async function getCurrentUserFromRequest(
       });
     }
 
-    const tokenHash = hashToken(stewardToken);
+    const tokenHash = hashSessionToken(stewardToken);
     const cacheKey = CacheKeys.session.user(tokenHash);
 
     // Check Redis cache first - avoids JWT AND DB calls
@@ -189,11 +182,7 @@ export async function getCurrentUserFromRequest(
 
     if (!user || !user.is_active) return null;
 
-    await redisCache.set(cacheKey, user, CacheTTL.session.user);
-    logger.debug("[AUTH] Cached user session data");
-
     if (user.organization_id) {
-      void trackSessionActivity(user.id, user.organization_id, stewardToken);
       // Opportunistic self-heal for accounts that predate mint-at-provision
       // (or whose mint failed). Awaited on Workers: an un-awaited promise may
       // be cancelled as soon as the response is returned.
@@ -213,6 +202,16 @@ export async function getCurrentUserFromRequest(
       logger.error("[AUTH] User missing organization_id:", user.id);
     }
 
+    // Plant the authorization-bearing user projection only after required API
+    // key readiness succeeds. Otherwise a failed heal could leave a cache hit
+    // that bypasses the only repair path for the entire session TTL.
+    await redisCache.set(cacheKey, user, CacheTTL.session.user);
+    logger.debug("[AUTH] Cached user session data");
+
+    if (user.organization_id) {
+      void trackSessionActivity(user.id, user.organization_id, stewardToken);
+    }
+
     return user;
   } catch (error) {
     logger.error("[AUTH] Error:", error instanceof Error ? error.message : error);
@@ -230,7 +229,7 @@ async function trackSessionActivity(
   sessionToken: string,
 ): Promise<void> {
   try {
-    const tokenHash = hashToken(sessionToken);
+    const tokenHash = hashSessionToken(sessionToken);
     const debounceKey = `session:debounce:${tokenHash}`;
 
     const recentlyTracked = await redisCache.get<boolean>(debounceKey);

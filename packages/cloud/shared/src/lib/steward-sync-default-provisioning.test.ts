@@ -1,40 +1,42 @@
 /**
- * Regression: brand-new-user default provisioning must COMPLETE before
- * syncUserFromSteward returns.
+ * Deterministic coverage for direct-signup post-commit provisioning.
  *
- * The new-user branch provisions a default API key + a default Eliza character.
- * These used to be fire-and-forget (`void ensureUserHasApiKey(...)` /
- * `void ensureDefaultCharacter(...)`). This code runs on Cloudflare Workers,
- * where a promise not registered via executionCtx.waitUntil may be cancelled
- * once the response returns — and syncUserFromSteward is a shared-lib function
- * with no request context to reach waitUntil. A cancelled promise left the new
- * user with no default character until the session-cache-miss self-heal in
- * auth.ts runs (every later login returns at the existing-user branch, never
- * re-entering this one-time signup path). Fix: await both.
- *
- * The api-key and character create() mocks below are deferred promises whose
- * settlement the test controls — modeling slow DB writes that would still be
- * in flight when a fire-and-forget caller returned. The test proves the
- * returned promise stays pending until BOTH creates have completed.
+ * Worker callers return only after the canonical user, organization, identity,
+ * and required default API key are ready. waitUntil owns only the independently
+ * self-healing default-character and Steward-tenant tail; non-Worker callers
+ * retain the strict inline ordering for every provisioning resource.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-// A deferred whose settlement we control, to model a slow DB write that would
-// still be in flight if the caller did NOT await it.
 function deferred<T>() {
-  let resolve!: (v: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
-const apiKeyCreate = deferred<{ id: string }>();
-const characterCreate = deferred<{ id: string }>();
-let apiKeyCreateStarted = false;
-let apiKeyCreateResolved = false;
-let characterCreateResolved = false;
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("condition was not reached");
+}
+
+let apiKeyProvision = deferred<void>();
+let characterProvision = deferred<{ id: string }>();
+let tenantProvision = deferred<{ tenantId: string }>();
+let apiKeyProvisionStarted = false;
+let characterProvisionStarted = false;
+let tenantProvisionStarted = false;
+let finalIdentityReadCompleted = false;
+const loggerErrors: Array<{ message: string; context?: unknown }> = [];
+const loggerInfos: Array<{ message: string; context?: unknown }> = [];
+const loggerWarnings: Array<{ message: string; context?: unknown }> = [];
 
 const createdOrg = {
   id: "org-new-1",
@@ -44,6 +46,7 @@ const createdOrg = {
 const createdUser = { id: "user-new-1", organization_id: "org-new-1" };
 const finalUserWithOrg = {
   id: "user-new-1",
+  organization_id: "org-new-1",
   steward_user_id: "steward-123",
   email: "alice@example.com",
   name: "alice",
@@ -78,7 +81,10 @@ mock.module("./services/users", () => ({
     getByWalletAddress: async () => undefined,
     getByWalletAddressWithOrganization: async () => undefined,
     getStewardIdentityForWrite: async () => undefined,
-    getByStewardIdForWrite: async () => finalUserWithOrg,
+    getByStewardIdForWrite: async () => {
+      finalIdentityReadCompleted = true;
+      return finalUserWithOrg;
+    },
     create: async () => createdUser,
     update: async () => undefined,
     linkStewardId: async () => undefined,
@@ -96,35 +102,36 @@ mock.module("../db/repositories/users", () => ({
 mock.module("./services/invites", () => ({
   invitesService: { findPendingInviteByEmail: async () => undefined },
 }));
-mock.module("./services/api-keys", () => {
-  const create = async () => {
-    apiKeyCreateStarted = true;
-    const v = await apiKeyCreate.promise;
-    apiKeyCreateResolved = true;
-    return v;
-  };
-  return {
-    apiKeysService: {
-      listByOrganization: async () => [],
-      create,
-      // Mirrors steward-sync's default-key provisioner: resolves only once the
-      // deferred key create has completed, so the await-not-fire-and-forget
-      // proof below still measures the provisioning write itself.
-      provisionDefaultApiKey: async () => {
-        await create();
-      },
+mock.module("./services/api-keys", () => ({
+  apiKeysService: {
+    listByOrganization: async () => [],
+    create: async () => ({ id: "key-1" }),
+    provisionDefaultApiKey: async () => {
+      expect(finalIdentityReadCompleted).toBe(true);
+      apiKeyProvisionStarted = true;
+      await apiKeyProvision.promise;
     },
-  };
-});
+  },
+}));
 mock.module("./services/characters/characters", () => ({
   charactersService: {
     hasHealthyCloudCharacterMirror: async () => false,
     create: async () => {
-      const v = await characterCreate.promise;
-      characterCreateResolved = true;
-      return v;
+      expect(finalIdentityReadCompleted).toBe(true);
+      characterProvisionStarted = true;
+      return characterProvision.promise;
     },
   },
+}));
+mock.module("./services/steward-tenant-config", () => ({
+  ensureStewardTenant: async () => {
+    expect(finalIdentityReadCompleted).toBe(true);
+    tenantProvisionStarted = true;
+    return tenantProvision.promise;
+  },
+  resolveDefaultStewardTenantId: () => "elizacloud",
+  resolveStewardTenantCredentials: async () => ({ tenantId: "elizacloud" }),
+  DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
 mock.module("./services/discord", () => ({
   discordService: { logUserSignup: async () => undefined },
@@ -132,38 +139,153 @@ mock.module("./services/discord", () => ({
 mock.module("./services/email", () => ({
   emailService: { sendWelcomeEmail: async () => undefined },
 }));
+mock.module("./utils/logger", () => ({
+  logger: {
+    debug: () => {},
+    info: (message: string, context?: unknown) => {
+      loggerInfos.push({ message, context });
+    },
+    error: (message: string, context?: unknown) => {
+      loggerErrors.push({ message, context });
+    },
+    warn: (message: string, context?: unknown) => {
+      loggerWarnings.push({ message, context });
+    },
+  },
+  redact: {
+    email: (value: string) => value,
+    id: (value: string) => value,
+    orgId: (value: string) => value,
+    phone: (value: string) => value,
+    userId: (value: string) => value,
+    wallet: (value: string) => value,
+  },
+}));
 
 const { syncUserFromSteward } = await import("./steward-sync");
 
-describe("syncUserFromSteward default provisioning (await, not fire-and-forget)", () => {
-  test("does NOT resolve until both the api-key and character creates have completed", async () => {
-    let syncResolved = false;
+const baseParams = {
+  stewardUserId: "steward-123",
+  email: "alice@example.com",
+};
+
+describe("syncUserFromSteward direct-signup provisioning", () => {
+  beforeEach(() => {
+    apiKeyProvision = deferred<void>();
+    characterProvision = deferred<{ id: string }>();
+    tenantProvision = deferred<{ tenantId: string }>();
+    apiKeyProvisionStarted = false;
+    characterProvisionStarted = false;
+    tenantProvisionStarted = false;
+    finalIdentityReadCompleted = false;
+    loggerErrors.length = 0;
+    loggerInfos.length = 0;
+    loggerWarnings.length = 0;
+  });
+
+  test("Worker waits for the required API key, then hands one concurrent safe tail to waitUntil", async () => {
+    const background: Promise<unknown>[] = [];
+
     const syncPromise = syncUserFromSteward({
-      stewardUserId: "steward-123",
-      email: "alice@example.com",
-    }).then((u) => {
-      syncResolved = true;
-      return u;
+      ...baseParams,
+      executionCtx: {
+        waitUntil: (promise) => background.push(promise),
+      },
     });
+    await waitFor(() => apiKeyProvisionStarted);
 
-    // Let microtasks drain: the api-key create has started but is still in
-    // flight, so the sync must still be pending (it awaits provisioning).
-    await new Promise((r) => setTimeout(r, 10));
-    expect(apiKeyCreateStarted).toBe(true);
-    expect(syncResolved).toBe(false);
+    expect(finalIdentityReadCompleted).toBe(true);
+    expect(background).toHaveLength(0);
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
 
-    // Settle the api key: the character create is still pending, so the sync
-    // must remain pending too.
-    apiKeyCreate.resolve({ id: "key-1" });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(apiKeyCreateResolved).toBe(true);
-    expect(syncResolved).toBe(false);
-
-    // Settle the character: NOW the sync may resolve.
-    characterCreate.resolve({ id: "char-1" });
+    apiKeyProvision.resolve();
     const user = await syncPromise;
-    expect(characterCreateResolved).toBe(true);
-    expect(syncResolved).toBe(true);
+
     expect(user.id).toBe("user-new-1");
+    expect(user.postCommitProvisioningDeferred).toBe(true);
+    expect(background).toHaveLength(1);
+    await waitFor(() => characterProvisionStarted && tenantProvisionStarted);
+
+    characterProvision.resolve({ id: "char-1" });
+    tenantProvision.resolve({ tenantId: "elizacloud-org-new-1" });
+    await expect(background[0]).resolves.toBeUndefined();
+    expect(loggerInfos).toContainEqual({
+      message: "[StewardSync] Direct-signup post-commit provisioning settled",
+      context: expect.objectContaining({
+        organizationId: "org-new-1",
+        userId: "user-new-1",
+        outcomes: [
+          { operation: "default character", status: "fulfilled" },
+          { operation: "Steward tenant", status: "fulfilled" },
+        ],
+      }),
+    });
+  });
+
+  test("Worker tail contains only safe resources and isolates both failures", async () => {
+    const background: Promise<unknown>[] = [];
+
+    const syncPromise = syncUserFromSteward({
+      ...baseParams,
+      executionCtx: {
+        waitUntil: (promise) => background.push(promise),
+      },
+    });
+    await waitFor(() => apiKeyProvisionStarted);
+    apiKeyProvision.resolve();
+    const user = await syncPromise;
+    expect(user.postCommitProvisioningDeferred).toBe(true);
+    await waitFor(() => characterProvisionStarted && tenantProvisionStarted);
+
+    characterProvision.reject(new Error("character unavailable"));
+    tenantProvision.reject(new Error("tenant unavailable"));
+
+    await expect(background[0]).resolves.toBeUndefined();
+    expect(loggerErrors.some(({ message }) => message.includes("default API key"))).toBe(false);
+    expect(
+      loggerErrors.some(
+        ({ message, context }) =>
+          message.includes("default character") ||
+          String(context).includes("character unavailable"),
+      ),
+    ).toBe(true);
+    expect(
+      loggerWarnings.some(
+        ({ message }) =>
+          message.includes("Steward tenant") && message.includes("tenant unavailable"),
+      ),
+    ).toBe(true);
+  });
+
+  test("Worker required API-key rejection fails signup without a deferred-ready result or tail", async () => {
+    const background: Promise<unknown>[] = [];
+    const syncPromise = syncUserFromSteward({
+      ...baseParams,
+      executionCtx: {
+        waitUntil: (promise) => background.push(promise),
+      },
+    });
+    await waitFor(() => apiKeyProvisionStarted);
+
+    apiKeyProvision.reject(new Error("strict Worker default-key failure"));
+
+    await expect(syncPromise).rejects.toThrow("strict Worker default-key failure");
+    expect(background).toHaveLength(0);
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
+  });
+
+  test("non-Worker fallback keeps default API-key failure strict and inline", async () => {
+    const syncPromise = syncUserFromSteward(baseParams);
+    await waitFor(() => apiKeyProvisionStarted);
+
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
+    apiKeyProvision.reject(new Error("strict default-key failure"));
+
+    await expect(syncPromise).rejects.toThrow("strict default-key failure");
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
   });
 });
