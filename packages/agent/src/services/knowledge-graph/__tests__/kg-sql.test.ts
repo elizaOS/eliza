@@ -11,7 +11,7 @@ import {
   toBoolean,
   toNumber,
   toText,
-} from "./sql.ts";
+} from "../sql.ts";
 
 describe("toText", () => {
   it("coerces values with fallback", () => {
