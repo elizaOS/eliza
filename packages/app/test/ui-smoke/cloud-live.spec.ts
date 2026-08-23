@@ -472,12 +472,26 @@ async function proveAnchoredTurnHistory(
   turnAnchorToken: string,
   phase: "post-reload" | "fresh-context",
 ): Promise<CloudLiveHistoryObservation> {
+  let successfulHistoryResponseObserved = false;
   try {
     await expect
       .poll(
         async () =>
           (await audit.snapshot()).successfulHistoryGetCount >
           before.successfulHistoryGetCount,
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    successfulHistoryResponseObserved = true;
+    await expect
+      .poll(
+        async () => {
+          const anchored = findAnchoredLiveTurn(
+            await readLivenessThreadLines(page),
+            { anchorToken: turnAnchorToken },
+          );
+          return Boolean(anchored && isLiveReply(anchored.reply));
+        },
         { timeout: 120_000 },
       )
       .toBe(true);
@@ -503,22 +517,10 @@ async function proveAnchoredTurnHistory(
       },
     );
     throw new Error(
-      `[cloud-live] ${phase} history proof timed out; privacy-safe counters were retained`,
+      `[cloud-live] ${phase} history proof timed out ${successfulHistoryResponseObserved ? "after a successful history response" : "before a successful history response"}; privacy-safe counters were retained`,
       { cause },
     );
   }
-  await expect
-    .poll(
-      async () => {
-        const anchored = findAnchoredLiveTurn(
-          await readLivenessThreadLines(page),
-          { anchorToken: turnAnchorToken },
-        );
-        return Boolean(anchored && isLiveReply(anchored.reply));
-      },
-      { timeout: 120_000 },
-    )
-    .toBe(true);
   return {
     historyGetSucceeded: true,
     challengeUserLinePresent: true,
@@ -676,6 +678,7 @@ test.describe("real cloud login + personal identity + chat", () => {
     // liveness requirement.
     await openAppPath(page, "/chat");
     const turnAnchorToken = randomBytes(8).toString("hex");
+    primaryAudit.setHistoryAnchorToken(turnAnchorToken);
     const turnPrompt = `In one short sentence, say hello. Unique turn marker: ${turnAnchorToken}`;
     const auditBeforeLiveness = await primaryAudit.snapshot();
     const domBeforeLiveness = await page.evaluate(() => ({
@@ -892,6 +895,7 @@ test.describe("real cloud login + personal identity + chat", () => {
 
         const freshPage = await freshContext.newPage();
         const freshAudit = installNetworkAudit(freshContext);
+        freshAudit.setHistoryAnchorToken(turnAnchorToken);
         const { deployedRenderer: freshDeployedRenderer } =
           await openProtectedCloudBlankStart(
             freshPage,
