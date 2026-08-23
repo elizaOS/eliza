@@ -28,8 +28,10 @@ export function responseContentLength(
 ): number | null {
   const raw = headers.get("content-length");
   if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  const trimmed = raw.trim();
+  if (!/^(0|[1-9]\d*)$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
   return parsed;
 }
 
