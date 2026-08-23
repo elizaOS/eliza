@@ -1431,6 +1431,11 @@ export function ChatOverlay({
   // makes the input disappear after a VOICE_DM turn.
   const continuousVoiceComposerVisible =
     realtimeVoiceComposerVisible || (desktopOverlayHost && handsFree);
+  // Voice activity already has dedicated mic, waveform, and status feedback.
+  // Keep the physical white drag handle stable for the whole voice lifecycle;
+  // its scale/opacity breath is reserved for an ordinary text response.
+  const handleBreathing =
+    responding && !handsFree && phase !== "listening" && !recording;
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
@@ -2755,7 +2760,6 @@ export function ChatOverlay({
   // local pill. The standard embedded/full-app composer keeps its honest
   // waking status; the detached host retains the stable branded placeholder.
   const showBootingComposerStatus = booting && !desktopOverlayHost;
-  const listening = phase === "listening";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
   const draftOwnsTrailingControl = (hasDraft || hasImages) && !recording;
@@ -6430,12 +6434,9 @@ export function ChatOverlay({
             // transitions made the renderer and native frame race each other.
             onClose={desktopOverlayHost ? closeSheet : collapse}
             binding={grabberBinding}
-            // The handle stays QUIET while the mic is recording — the composer
-            // mic/voice glyphs already carry the "capture is hot" pulse right
-            // next to the user's attention; a second pulsing bar above them
-            // read as noise. Only the collapsed PILL (where no composer glyph
-            // is visible) pulses for a live capture — see PillHandle below.
-            breathing={(listening || responding) && !recording}
+            // Voice owns its own status motion; the white drag affordance stays
+            // physically quiet throughout listening, recording, and hands-free.
+            breathing={handleBreathing}
             opacity={
               desktopOverlayHost ? desktopGrabberOpacity : grabberOpacity
             }
@@ -7603,10 +7604,7 @@ export function ChatOverlay({
                 binding={pullBinding}
                 counterScale={pillCounterScale}
                 onOpen={openFromPill}
-                // The pill IS the whole chat while collapsed, so it alone pulses
-                // for a live mic capture (`recording`) — the open-sheet grabber
-                // deliberately does not (the composer glyphs carry that cue).
-                breathing={listening || responding || recording}
+                breathing={handleBreathing}
                 pilled={pilled}
                 desktopOverlayHost={false}
               />
@@ -7633,7 +7631,7 @@ export function ChatOverlay({
               onOpen={
                 pilled ? openFromPill : sheetOpen ? closeSheet : openFromGrabber
               }
-              breathing={listening || responding || recording}
+              breathing={handleBreathing}
               pilled={pilled}
               interactive={desktopTravelerOwnsHandle}
               desktopOverlayHost

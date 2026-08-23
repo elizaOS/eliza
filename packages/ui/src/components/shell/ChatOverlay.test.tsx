@@ -1107,7 +1107,7 @@ describe("ChatOverlay", () => {
       );
     });
 
-    it("breathes the collapsed pill bar in white only while listening", () => {
+    it("keeps the collapsed white pill bar still while listening", () => {
       const { rerender } = render(
         <ChatOverlay controller={makeController()} />,
       );
@@ -1137,12 +1137,29 @@ describe("ChatOverlay", () => {
       expect(pill.className).not.toContain("border-white");
       expect(pill.parentElement?.className).toContain("h-1.5");
       expect(pill.parentElement?.className).toContain("w-12");
-      expect(barOf()).toContain("eliza-chat-handle-breathe");
+      expect(barOf()).not.toContain("eliza-chat-handle-breathe");
       expect(barOf()).not.toContain("shimmer");
       expect(barOf()).not.toContain("background-clip");
       expect(barOf()).not.toContain("bg-accent");
       expect(barOf()).not.toContain("animate-pulse");
       expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+    });
+
+    it("keeps the detached white handle still during a hands-free response", () => {
+      render(
+        <ChatOverlay
+          desktopOverlayHost
+          controller={makeController({
+            handsFree: true,
+            phase: "responding",
+            responding: true,
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId("chat-pill-mark").className).not.toContain(
+        "eliza-chat-handle-breathe",
+      );
     });
   });
 
