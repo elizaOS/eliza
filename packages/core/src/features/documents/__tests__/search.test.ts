@@ -241,7 +241,7 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
 			expect(results).toHaveLength(1);
 			expect(results[0].id).toBe("frag-1");
 		});
@@ -298,7 +298,7 @@ describe("DocumentService.searchDocuments", () => {
 				"keyword",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
 
 			// frag-a should score highest (both "quantum" and "computing" match)
 			expect(results[0].id).toBe("frag-a");
@@ -336,7 +336,25 @@ describe("DocumentService.searchDocuments", () => {
 
 			expect(results).toHaveLength(1_001);
 			expect(results.map((result) => result.id)).toContain("frag-1000");
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(6);
+		});
+
+		it("rejects a stable adapter-imposed page cap", async () => {
+			const fragments = Array.from({ length: 11 }, (_, index) =>
+				makeFragment(`frag-${index}`, `needle document ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			rt.adapter.queryDocumentFragments.mockImplementation(
+				async (params: { offset?: number }) => {
+					const offset = params.offset ?? 0;
+					return fragments.slice(offset, offset + 10);
+				},
+			);
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
+			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_SOURCE_INCOMPLETE" });
 		});
 
 		it("rejects pagination that repeats the same full page", async () => {
@@ -357,7 +375,8 @@ describe("DocumentService.searchDocuments", () => {
 		it("rejects a fragment source that changes between traversals", async () => {
 			const rt = buildRuntime({ hasEmbedding: false });
 			let read = 0;
-			rt.adapter.queryDocumentFragments.mockImplementation(async () => {
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				if ((params.offset ?? 0) > 0) return [];
 				read += 1;
 				return [makeFragment(`frag-${read}`, "needle")];
 			});
@@ -419,7 +438,7 @@ describe("DocumentService.searchDocuments", () => {
 				"hybrid",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(8);
 			expect(results).toHaveLength(2);
 
 			// frag-b should be ranked higher because BM25 breaks the vector tie
