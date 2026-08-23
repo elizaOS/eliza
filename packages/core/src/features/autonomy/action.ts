@@ -135,7 +135,7 @@ async function escalateToAdmin(
 
 	await runtime.createMemory(adminMessage, "memories");
 
-	const successMessage = `Message sent to admin in room ${targetRoomId.slice(0, 8)}...`;
+	const successMessage = `Message sent to admin in room ${targetRoomId}...`;
 
 	if (callback) {
 		await callback({
