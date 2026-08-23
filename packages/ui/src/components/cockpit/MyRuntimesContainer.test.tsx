@@ -1,23 +1,10 @@
-/** Verifies the legacy import delegates to the canonical Devices product. */
-// @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../settings/DevicesRuntimesContainer", () => ({
-  DevicesRuntimesContainer: ({ className }: { className?: string }) => (
-    <div data-testid="canonical-devices-runtimes" className={className} />
-  ),
-}));
-
+/** Verifies the legacy import is the canonical Devices product, not a wrapper. */
+import { describe, expect, it } from "vitest";
+import { DevicesRuntimesContainer } from "../settings/DevicesRuntimesContainer";
 import { MyRuntimesContainer } from "./MyRuntimesContainer";
 
-afterEach(cleanup);
-
 describe("MyRuntimesContainer compatibility adapter", () => {
-  it("renders the one canonical Devices & Runtimes container", () => {
-    render(<MyRuntimesContainer className="legacy-slot" />);
-    expect(screen.getByTestId("canonical-devices-runtimes").className).toBe(
-      "legacy-slot",
-    );
+  it("aliases the one canonical Devices & Runtimes container", () => {
+    expect(MyRuntimesContainer).toBe(DevicesRuntimesContainer);
   });
 });
