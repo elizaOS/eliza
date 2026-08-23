@@ -189,6 +189,10 @@ function makeEngagementRuntime(
   replyText: string | GenerateTextResult = "a thoughtful reply",
 ): EngagementRuntimeHandle {
   const memories = new Map<string, Memory>();
+  const modelResult =
+    typeof replyText === "string"
+      ? { text: replyText, finishReason: "stop" }
+      : replyText;
   const runtime = {
     agentId: AGENT_ID,
     character: { name: "Agent", topics: ["agents"] },
@@ -205,7 +209,7 @@ function makeEngagementRuntime(
     updateWorld: vi.fn(async () => {}),
     ensureRoomExists: vi.fn(async () => {}),
     ensureConnection: vi.fn(async () => {}),
-    useModel: vi.fn(async () => replyText as never),
+    useModel: vi.fn(async () => modelResult as never),
   } as unknown as IAgentRuntime;
   return { runtime, memories };
 }
@@ -435,6 +439,45 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
     expect(sendTweet).not.toHaveBeenCalled();
     expect(memories).toHaveProperty("size", 0);
   });
+
+  it.each([
+    ["bare text", "partial text without metadata"],
+    ["missing reason", { text: "text with no termination reason" }],
+    [
+      "non-success reason",
+      { text: "policy-filtered partial text", finishReason: "content_filter" },
+    ],
+    [
+      "unexpected reason",
+      { text: "unexpected terminal text", finishReason: "tool-calls" },
+    ],
+  ] as const)(
+    "does not call X or persist a receipt for %s",
+    async (_case, modelResult) => {
+      const { runtime, memories } = makeEngagementRuntime({
+        text: "placeholder",
+        finishReason: "stop",
+      });
+      (runtime.useModel as ReturnType<typeof vi.fn>).mockResolvedValue(
+        modelResult as never,
+      );
+      const { client, session, sendTweet } = makeEngagementClient();
+      const discovery = new TwitterDiscoveryClient(
+        client,
+        runtime,
+        {} as TwitterClientState,
+      ) as unknown as DiscoveryHarness;
+
+      await expect(
+        discovery.processTweets([scoredTweet("reply")], session),
+      ).rejects.toMatchObject({
+        code: "X_DISCOVERY_EFFECT_FAILED",
+        cause: { code: "X_DISCOVERY_DRAFT_COMPLETION_UNVERIFIED" },
+      });
+      expect(sendTweet).not.toHaveBeenCalled();
+      expect(memories).toHaveProperty("size", 0);
+    },
+  );
 
   it("rejects a complete overlength draft instead of clipping it", async () => {
     const completeDraft = "\u4f60".repeat(141);

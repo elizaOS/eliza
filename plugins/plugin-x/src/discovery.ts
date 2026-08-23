@@ -41,17 +41,33 @@ interface DiscoveryConfig {
 
 const COMPLETION_LIMIT_REASON =
   /\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/iu;
+const COMPLETE_FINISH_REASON = /^(?:stop|end[-_\s]?turn)$/iu;
 
 function extractDraftText(result: string | GenerateTextResult): string {
-  if (typeof result === "string") return result;
+  if (typeof result === "string") {
+    throw new ElizaError(
+      "X draft generation did not expose provider completion metadata",
+      { code: "X_DISCOVERY_DRAFT_COMPLETION_UNVERIFIED" },
+    );
+  }
 
-  const finishReason = result.finishReason?.trim() ?? "";
+  const finishReason =
+    typeof result.finishReason === "string" ? result.finishReason.trim() : "";
   if (COMPLETION_LIMIT_REASON.test(finishReason)) {
     throw new ElizaError(
       `X draft generation stopped at the provider completion limit (${finishReason})`,
       {
         code: "X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED",
         context: { finishReason },
+      },
+    );
+  }
+  if (!COMPLETE_FINISH_REASON.test(finishReason)) {
+    throw new ElizaError(
+      "X draft generation did not report a complete provider termination",
+      {
+        code: "X_DISCOVERY_DRAFT_COMPLETION_UNVERIFIED",
+        context: { finishReason: finishReason || null },
       },
     );
   }

@@ -583,5 +583,6 @@ describe("prompt integrity policy", () => {
 		);
 		expect(source.match(/omitMaxTokens:\s*true/g)).toHaveLength(2);
 		expect(source).toMatch(/X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED/);
+		expect(source).toMatch(/X_DISCOVERY_DRAFT_COMPLETION_UNVERIFIED/);
 	});
 });
