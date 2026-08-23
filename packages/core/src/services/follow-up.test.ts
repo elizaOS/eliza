@@ -19,6 +19,7 @@ function makeRuntime() {
 	const tasks = new Map<string, Task>();
 	const workers = new Map<string, TaskWorker>();
 	const memories: unknown[] = [];
+	const events: Array<{ event: string; payload: Record<string, unknown> }> = [];
 	const noop = () => undefined;
 	const contact = {
 		entityId: ENTITY_ID,
@@ -53,7 +54,9 @@ function makeRuntime() {
 		createMemory: async (memory: unknown) => {
 			memories.push(memory);
 		},
-		emitEvent: async () => undefined,
+		emitEvent: async (event: string, payload: Record<string, unknown>) => {
+			events.push({ event, payload });
+		},
 		// Honors the requested-tags contract of the real adapters: only tasks
 		// carrying EVERY requested tag are returned, so the tests below prove
 		// that a completed row actually leaves the scheduler's polling set.
@@ -90,7 +93,15 @@ function makeRuntime() {
 			tasks.delete(id);
 		},
 	} as unknown as IAgentRuntime;
-	return { runtime, tasks, workers, memories, relationshipsService, contact };
+	return {
+		runtime,
+		tasks,
+		workers,
+		memories,
+		events,
+		relationshipsService,
+		contact,
+	};
 }
 
 describe("FollowUpService completion lifecycle", () => {
@@ -304,6 +315,65 @@ describe("FollowUpService completion lifecycle", () => {
 
 		await vi.advanceTimersByTimeAsync(10_000);
 		expect(memories).toHaveLength(1);
+		await restarted.stop();
+	});
+
+	it("fences a captured worker before effects and delivers its row once after restart", async () => {
+		const { runtime, tasks, memories, events } = makeRuntime();
+		const first = (await FollowUpService.start(runtime)) as FollowUpService;
+		service = (await TaskService.start(runtime)) as TaskService;
+		const task = await first.scheduleFollowUp(
+			ENTITY_ID,
+			new Date(T0 + 5_000),
+			"survive an in-flight stop",
+		);
+		const originalRow = structuredClone(task);
+		const originalGetEntity = runtime.getEntityById.bind(runtime);
+		let entityReads = 0;
+		let releaseExecution: (() => void) | null = null;
+		const executionBlocked = new Promise<void>((resolve) => {
+			releaseExecution = resolve;
+		});
+		let executionPaused: (() => void) | null = null;
+		const paused = new Promise<void>((resolve) => {
+			executionPaused = resolve;
+		});
+		(
+			runtime as { getEntityById: IAgentRuntime["getEntityById"] }
+		).getEntityById = async (id) => {
+			entityReads += 1;
+			if (entityReads === 2) {
+				executionPaused?.();
+				await executionBlocked;
+			}
+			return originalGetEntity(id);
+		};
+
+		const ticking = vi.advanceTimersByTimeAsync(10_000);
+		await paused;
+		let stopSettled = false;
+		const stopping = first.stop().then(() => {
+			stopSettled = true;
+		});
+		await Promise.resolve();
+		expect(stopSettled).toBe(false);
+
+		releaseExecution?.();
+		await stopping;
+		await ticking;
+		expect(memories).toHaveLength(0);
+		expect(events).toHaveLength(0);
+		expect(tasks.get(task.id as string)).toEqual(originalRow);
+
+		const restarted = (await FollowUpService.start(runtime)) as FollowUpService;
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(memories).toHaveLength(1);
+		expect(events).toHaveLength(1);
+		expect(tasks.has(task.id as string)).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(memories).toHaveLength(1);
+		expect(events).toHaveLength(1);
 		await restarted.stop();
 	});
 
