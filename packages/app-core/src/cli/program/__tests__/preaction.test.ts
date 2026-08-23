@@ -34,7 +34,7 @@ vi.mock("../../services/update-notifier", () => ({
 }));
 vi.mock("@elizaos/agent", () => ({
   checkForUpdate: vi.fn(),
-  loadElizaConfig: vi.fn(),
+  loadElizaConfig: vi.fn(() => ({})),
   resolveChannel: vi.fn(),
 }));
 
