@@ -1430,6 +1430,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		unique?: boolean;
 		query?: string;
 		roomId?: UUID;
@@ -1474,7 +1475,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		scored.sort(
 			(left, right) => (right.similarity ?? -1) - (left.similarity ?? -1),
 		);
-		return scored.slice(0, limit);
+		const offset = params.offset ?? 0;
+		return scored.slice(offset, offset + limit);
 	}
 
 	// Batch memory methods
