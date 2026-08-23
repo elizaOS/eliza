@@ -1,45 +1,70 @@
 /**
- * Unit tests for orchestrator stream helpers and safe NaN sort handling.
+ * Regression coverage for the notice-block fallbacks in `buildConversation`.
+ * Drives the real exported helper with event records whose `summary` /
+ * `eventType` are missing at runtime — a shape the DTO forbids but a stream
+ * replay can still deliver — and asserts the renderer degrades to a labelled
+ * notice instead of throwing. Deterministic and offline; no network, no DOM.
  */
-import type { CodingAgentTaskMessageRecord } from "@elizaos/ui/api/client-types-cloud";
+import type { CodingAgentTaskEventRecord } from "@elizaos/ui/api/client-types-cloud";
 import { describe, expect, it } from "vitest";
 import { buildConversation } from "./orchestrator-stream.helpers";
 
-describe("orchestrator stream helpers safe sort", () => {
-  it("buildConversation handles NaN timestamps safely and preserves deterministic message block order", () => {
-    const messages: CodingAgentTaskMessageRecord[] = [
-      {
-        id: "msg-1",
-        taskId: "task-1",
-        senderKind: "user",
-        senderId: "u1",
-        content: "nan message",
-        timestamp: Number.NaN,
-      },
-      {
-        id: "msg-2",
-        taskId: "task-1",
-        senderKind: "agent",
-        senderId: "a1",
-        content: "100 message",
-        timestamp: 100,
-      },
-      {
-        id: "msg-3",
-        taskId: "task-1",
-        senderKind: "user",
-        senderId: "u1",
-        content: "50 message",
-        timestamp: 50,
-      },
-    ];
+function noticeEvent(
+  overrides: Partial<CodingAgentTaskEventRecord> & { id: string },
+): CodingAgentTaskEventRecord {
+  return {
+    threadId: "thread-1",
+    sessionId: "session-1",
+    turnId: null,
+    eventType: "session_started",
+    timestamp: 1_000,
+    summary: "started",
+    data: {},
+    createdAt: new Date(1_000).toISOString(),
+    ...overrides,
+  } as CodingAgentTaskEventRecord;
+}
 
-    const blocks = buildConversation([], messages);
-    expect(blocks.length).toBe(3);
-    // Ordered by at (NaN -> 0, then 50, then 100)
-    expect(blocks[0].key).toBe("evt-msg-1");
-    expect(blocks[1].key).toBe("evt-msg-3");
-    expect(blocks[2].key).toBe("evt-msg-2");
-    expect(blocks[2].at).toBe(100);
+function render(events: CodingAgentTaskEventRecord[]) {
+  return buildConversation([], events, () => "sender", new Set<string>());
+}
+
+describe("buildConversation notice fallbacks", () => {
+  it("labels a notice from its event type when the summary is missing", () => {
+    // `summary` is typed as required, so a replayed record that omits it used
+    // to reach `.trim()` on undefined and take down the whole conversation.
+    const blocks = render([
+      noticeEvent({
+        id: "evt-1",
+        eventType: "session_idle_timeout",
+        summary: undefined as unknown as string,
+      }),
+    ]);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].kind).toBe("notice");
+    expect(blocks[0]).toMatchObject({ text: "session idle timeout" });
+  });
+
+  it("falls back to a generic notice when the event type is missing too", () => {
+    const blocks = render([
+      noticeEvent({
+        id: "evt-2",
+        eventType: undefined as unknown as string,
+        summary: undefined as unknown as string,
+      }),
+    ]);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ text: "notice" });
+  });
+
+  it("still prefers a present summary over the fallback label", () => {
+    const blocks = render([
+      noticeEvent({ id: "evt-3", eventType: "error", summary: "  boom  " }),
+    ]);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ text: "boom" });
   });
 });

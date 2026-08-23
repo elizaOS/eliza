@@ -1290,16 +1290,20 @@ export class RelationshipsService extends Service {
 
 		// Sort by relevance
 		insights.strongestRelationships.sort((a, b) => {
-			const aSafe = Number.isFinite(a.analytics.strength) ? a.analytics.strength : 0;
-			const bSafe = Number.isFinite(b.analytics.strength) ? b.analytics.strength : 0;
+			const aSafe = Number.isFinite(a.analytics.strength)
+				? a.analytics.strength
+				: 0;
+			const bSafe = Number.isFinite(b.analytics.strength)
+				? b.analytics.strength
+				: 0;
 			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
 		});
 		insights.needsAttention.sort((a, b) => {
 			const aSafe = Number.isFinite(a.daysSinceContact) ? a.daysSinceContact : 0;
 			const bSafe = Number.isFinite(b.daysSinceContact) ? b.daysSinceContact : 0;
 			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
 		});
 		insights.recentInteractions.sort((a, b) => {
 			const aTime = new Date(a.lastInteraction).getTime();
@@ -1307,7 +1311,7 @@ export class RelationshipsService extends Service {
 			const aSafe = Number.isFinite(aTime) ? aTime : 0;
 			const bSafe = Number.isFinite(bTime) ? bTime : 0;
 			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
 		});
 
 		return insights;
@@ -1755,10 +1759,19 @@ export class RelationshipsService extends Service {
 		}
 
 		results.sort((a, b) => {
-			const aSafe = Number.isFinite(a.daysSinceInteraction) ? a.daysSinceInteraction : 0;
-			const bSafe = Number.isFinite(b.daysSinceInteraction) ? b.daysSinceInteraction : 0;
-			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			// +Infinity is the deliberate "never contacted" sentinel here, so only
+			// NaN is coerced; comparing before subtracting keeps Infinity ordered
+			// instead of collapsing Infinity - Infinity back into NaN.
+			const aSafe = Number.isNaN(a.daysSinceInteraction)
+				? 0
+				: a.daysSinceInteraction;
+			const bSafe = Number.isNaN(b.daysSinceInteraction)
+				? 0
+				: b.daysSinceInteraction;
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.contact.entityId ?? "").localeCompare(
+				String(b.contact.entityId ?? ""),
+			);
 		});
 		return results;
 	}
