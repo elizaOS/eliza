@@ -1,3 +1,5 @@
+/** Verifies the CLI version command formats package metadata through its real command export. */
+
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("picocolors", () => ({
@@ -8,11 +10,11 @@ vi.mock("picocolors", () => ({
     green: (t: string) => `G:${t}`,
   },
 }));
-vi.mock("../package-info.js", () => ({
+vi.mock("../../package-info.js", () => ({
   readPackageJson: () => ({ name: "elizaos", version: "1.2.3" }),
 }));
 
-import { version } from "./version.ts";
+import { version } from "../version.ts";
 
 describe("version", () => {
   it("prints the package name and version", () => {
