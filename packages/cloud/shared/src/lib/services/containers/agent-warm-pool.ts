@@ -142,7 +142,11 @@ export function decideDrain(
 
   const eligible = state.unclaimedRows
     .filter((r) => r.pool_ready_at && nowMs - r.pool_ready_at.getTime() > policy.idleScaleDownMs)
-    .sort((a, b) => (a.pool_ready_at?.getTime() ?? 0) - (b.pool_ready_at?.getTime() ?? 0))
+    .sort((a, b) => {
+      const aTime = Number.isFinite(a.pool_ready_at?.getTime()) ? (a.pool_ready_at?.getTime() ?? 0) : 0;
+      const bTime = Number.isFinite(b.pool_ready_at?.getTime()) ? (b.pool_ready_at?.getTime() ?? 0) : 0;
+      return aTime - bTime;
+    })
     .slice(0, surplus);
 
   if (eligible.length === 0) {
