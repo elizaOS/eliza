@@ -11,6 +11,7 @@ import type { AccessContext, IAgentRuntime, Route, UUID } from "@elizaos/core";
 import type { Hono } from "hono";
 
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
+import { registerMountCapability } from "./mount-guard.ts";
 import { matchPluginRoutePath } from "./runtime-plugin-routes.ts";
 
 interface RuntimeHonoCache {
@@ -79,6 +80,7 @@ function getHonoApp(runtime: IAgentRuntime): Hono {
   if (cached && cached.runtime.deref() === runtime) {
     return cached.app;
   }
+  registerMountCapability(runtime as unknown as object);
   const app = buildHonoAppForRuntime(runtime, {
     isAuthorized: (req) => req.headers.get(INTERNAL_AUTHORIZED_HEADER) === "1",
     isTrustedLocal: (req) =>

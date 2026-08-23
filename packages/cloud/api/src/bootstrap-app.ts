@@ -54,7 +54,10 @@ import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
 import { redactSensitiveRequestPath } from "./lib/observability/request-path-redaction";
 import { authMiddleware } from "./middleware/auth";
 import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
-import { mountGuardMiddleware, registerMountCapability } from "./middleware/mount-guard";
+import {
+  BOOTSTRAP_MOUNT_CAPABILITY,
+  mountGuardMiddleware,
+} from "./middleware/mount-guard";
 import { routeShardKey } from "./router-shards";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
@@ -558,12 +561,7 @@ export async function createApp(
   // non-simple request marker; programmatic credentials and safe methods pass
   // through (see middleware/cookie-mutation-guard.ts).
   app.use("*", cookieMutationGuardMiddleware);
-  // Mount guard W11-CLOUD-01: capability ref not URL — validates the
-  // bootstrap mount capability via object identity, not URL string matching.
-  // Registered once per isolate; every request must present the capability ref.
-  const BOOTSTRAP_MOUNT_REF = { id: "bootstrap" } as const;
-  registerMountCapability(BOOTSTRAP_MOUNT_REF as unknown as object);
-  app.use("*", mountGuardMiddleware(BOOTSTRAP_MOUNT_REF));
+  app.use("*", mountGuardMiddleware(BOOTSTRAP_MOUNT_CAPABILITY));
 
   app.all("/steward", embeddedStewardHandler);
   app.all("/steward/*", embeddedStewardHandler);

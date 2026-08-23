@@ -26,7 +26,7 @@ mock.module("@/db/schemas/eliza", () => ({}));
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import chatRoute from "../v1/chat/route";
-import { createInferenceApp } from "./inference-app";
+import { createInferenceApp, registerMountCapability } from "./inference-app";
 
 const executionCtx = {
   waitUntil: () => undefined,
@@ -54,6 +54,7 @@ const GUARD_REJECTION_CODES = new Set([
 ]);
 
 function postChat(headers: Record<string, string>) {
+  registerMountCapability(chatRoute);
   return createInferenceApp("/api/v1/chat", chatRoute).fetch(
     new Request(CHAT_URL, {
       method: "POST",

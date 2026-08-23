@@ -18,8 +18,14 @@ export function registerMountCapability(ref: object): void {
   KNOWN_MOUNT_REFS.add(ref);
 }
 
-export function checkMountGuard(capabilityRef: unknown): { ok: true } | { ok: false; code: typeof MOUNT_GUARD_REJECT_CODE } {
-  if (typeof capabilityRef === "object" && capabilityRef !== null && KNOWN_MOUNT_REFS.has(capabilityRef)) {
+export function checkMountGuard(
+  capabilityRef: unknown,
+): { ok: true } | { ok: false; code: typeof MOUNT_GUARD_REJECT_CODE } {
+  if (
+    typeof capabilityRef === "object" &&
+    capabilityRef !== null &&
+    KNOWN_MOUNT_REFS.has(capabilityRef)
+  ) {
     return { ok: true };
   }
   return { ok: false, code: MOUNT_GUARD_REJECT_CODE };

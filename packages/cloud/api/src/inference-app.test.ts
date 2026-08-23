@@ -5,7 +5,7 @@ import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { getRequestTaskDefer } from "@/lib/runtime/request-context";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import chatCompletionsRoute from "../v1/chat/completions/route";
-import { createInferenceApp } from "./inference-app";
+import { createInferenceApp, registerMountCapability } from "./inference-app";
 
 interface AuthErrorBody {
   error: {
@@ -37,6 +37,7 @@ const env = {
 } as AppEnv["Bindings"];
 
 function createChatInferenceApp() {
+  registerMountCapability(chatCompletionsRoute);
   return createInferenceApp("/api/v1/chat/completions", chatCompletionsRoute);
 }
 
@@ -57,6 +58,7 @@ describe("chat-only inference application", () => {
       props: undefined,
     } satisfies HonoExecutionContext;
 
+    registerMountCapability(probe);
     const response = await createInferenceApp("/probe", probe).fetch(
       new Request("https://api.elizacloud.ai/probe"),
       env,
@@ -74,6 +76,7 @@ describe("chat-only inference application", () => {
       c.json({ hasRequestTaskDefer: Boolean(getRequestTaskDefer()) }),
     );
 
+    registerMountCapability(probe);
     const response = await createInferenceApp("/probe", probe).fetch(
       new Request("https://api.elizacloud.ai/probe"),
       env,

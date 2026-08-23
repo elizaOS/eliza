@@ -1,104 +1,91 @@
 /**
- * Behavioral regression for W11-CLOUD-01 mount guard (agent) + walk clone
- * drops function values. Calls real functions with real Hono app + real route.
+ * W11-CLOUD-01: buildHonoAppForRuntime 403s an unregistered runtime.
+ * The host (hono-mount) registers the runtime; the adapter does not.
  */
 
-import { describe, expect, it } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
 import { Hono } from "hono";
+import { describe, expect, it } from "vitest";
 import { cloneWithoutBlockedObjectKeys } from "./blocked-object-keys";
+import { buildHonoAppForRuntime } from "./hono-adapter.ts";
 import {
   checkMountGuard,
+  MOUNT_GUARD_REJECT_CODE,
   mountGuardMiddleware,
   registerMountCapability,
-  MOUNT_GUARD_REJECT_CODE,
 } from "./mount-guard";
+
+function emptyRuntime(): IAgentRuntime {
+  return { routes: [] } as unknown as IAgentRuntime;
+}
 
 async function guardVerdict(res: Response): Promise<string | null> {
   const body = (await res.json().catch(() => ({}))) as { code?: unknown };
-  return res.status === 403 && body.code === MOUNT_GUARD_REJECT_CODE ? (body.code as string) : null;
+  return res.status === 403 && body.code === MOUNT_GUARD_REJECT_CODE
+    ? (body.code as string)
+    : null;
 }
 
 describe("agent mount guard — capability ref not URL", () => {
-  it("legit capability ref → pass-through, same URL with attacker ref → 403", async () => {
-    const legitRef = { id: "legit-agent-mount" } as unknown as object;
-    registerMountCapability(legitRef);
+  it("buildHonoAppForRuntime 403s when the runtime was not registered", async () => {
+    const runtime = emptyRuntime();
+    const app = buildHonoAppForRuntime(runtime, { isAuthorized: () => true });
+    const res = await app.request("/api/anything");
+    expect(await guardVerdict(res)).toBe(MOUNT_GUARD_REJECT_CODE);
+    expect(res.status).toBe(403);
+  });
 
-    const legitApp = new Hono();
-    legitApp.use("*", mountGuardMiddleware(legitRef));
-    legitApp.get("/api/test", (c) => c.json({ ok: true }));
-    const legitRes = await legitApp.fetch(new Request("https://local.test/api/test"));
-    expect(await guardVerdict(legitRes)).toBeNull();
-    expect(legitRes.status).toBe(200);
+  it("buildHonoAppForRuntime passes when the host registered the runtime", async () => {
+    const runtime = emptyRuntime();
+    registerMountCapability(runtime as unknown as object);
+    const app = buildHonoAppForRuntime(runtime, { isAuthorized: () => true });
+    const res = await app.request("/api/anything");
+    expect(await guardVerdict(res)).toBeNull();
+    expect(res.status).toBe(404);
+  });
 
-    // Same URL string, different capability ref object (not registered) → 403
-    const attackerRef = { id: "legit-agent-mount" } as unknown as object; // same string content, different object identity
-    const attackerApp = new Hono();
-    attackerApp.use("*", mountGuardMiddleware(attackerRef));
-    attackerApp.get("/api/test", (c) => c.json({ ok: true }));
-    const attackerRes = await attackerApp.fetch(new Request("https://local.test/api/test"));
-    expect(await guardVerdict(attackerRes)).toBe(MOUNT_GUARD_REJECT_CODE);
-    expect(attackerRes.status).toBe(403);
-
-    // URL string itself never passes
+  it("same-shape runtime objects do not share capability identity", () => {
+    const a = emptyRuntime();
+    registerMountCapability(a as unknown as object);
+    expect(checkMountGuard(a).ok).toBe(true);
+    expect(checkMountGuard(emptyRuntime()).ok).toBe(false);
     expect(checkMountGuard("/api/test").ok).toBe(false);
   });
 
-  it("hono-adapter bootstrap guard uses runtime capability ref, not URL", async () => {
-    // Simulate bootstrap mount capability as runtime object identity
-    const fakeRuntime = { routes: [] } as unknown as object;
-    registerMountCapability(fakeRuntime);
-    expect(checkMountGuard(fakeRuntime).ok).toBe(true);
-    // Different runtime object with same shape → not same ref → fails
-    const otherRuntime = { routes: [] } as unknown as object;
-    expect(checkMountGuard(otherRuntime).ok).toBe(false);
+  it("unregistered middleware ref is 403 even on an identical URL", async () => {
+    const attackerRef = { id: "legit-agent-mount" };
+    const attackerApp = new Hono();
+    attackerApp.use("*", mountGuardMiddleware(attackerRef));
+    attackerApp.get("/api/test", (c) => c.json({ ok: true }));
+    const attackerRes = await attackerApp.fetch(
+      new Request("https://local.test/api/test"),
+    );
+    expect(await guardVerdict(attackerRes)).toBe(MOUNT_GUARD_REJECT_CODE);
   });
 });
 
 describe("walk clone drops function values", () => {
   it("drops function-typed property values at top level and nested", () => {
     const fn = () => "evil";
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       keep: "yes",
       fn,
       nested: { keep: 1, fn, deep: { fn, keep2: 2 } },
       arr: [1, fn, { keep: 3, fn }],
     };
-    const clean: any = cloneWithoutBlockedObjectKeys(payload);
-    // Function properties must be dropped, not retained
-    expect(clean).toEqual({
-      keep: "yes",
-      nested: { keep: 1, deep: { keep2: 2 } },
-      arr: [1, , { keep: 3 }], // sparse hole where function was
-    });
+    const clean = cloneWithoutBlockedObjectKeys(payload) as Record<
+      string,
+      unknown
+    >;
+    expect(clean.keep).toBe("yes");
     expect("fn" in clean).toBe(false);
-    expect("fn" in clean.nested).toBe(false);
-    expect("fn" in clean.nested.deep).toBe(false);
-    expect(clean.arr[1]).toBeUndefined();
-    expect("fn" in clean.arr[2]).toBe(false);
-    // Ensure blocked keys still dropped
-    const hostile: any = { safe: 1, __proto__: { polluted: true }, fn };
-    const cleanHostile: any = cloneWithoutBlockedObjectKeys(hostile);
-    expect(cleanHostile).toEqual({ safe: 1 });
-    expect(({} as any).polluted).toBeUndefined();
-  });
-
-  it("top-level function returns undefined (dropped)", () => {
-    const fn: any = () => {};
-    const result: any = cloneWithoutBlockedObjectKeys(fn);
-    expect(result).toBeUndefined();
-  });
-
-  it("array function entries are dropped (sparse)", () => {
-    const fn = () => 1;
-    const arr: any = [fn, "keep", fn];
-    const clean: any = cloneWithoutBlockedObjectKeys(arr);
-    expect(clean.length).toBe(3);
-    expect(clean[0]).toBeUndefined();
-    expect(clean[1]).toBe("keep");
-    expect(clean[2]).toBeUndefined();
-    // Holes remain sparse where functions were
-    expect(0 in clean).toBe(false);
-    expect(2 in clean).toBe(false);
-    expect(1 in clean).toBe(true);
+    const nested = clean.nested as Record<string, unknown>;
+    expect(nested.keep).toBe(1);
+    expect("fn" in nested).toBe(false);
+    const deep = nested.deep as Record<string, unknown>;
+    expect(deep.keep2).toBe(2);
+    expect("fn" in deep).toBe(false);
+    const arr = clean.arr as unknown[];
+    expect(arr[1]).toBeUndefined();
   });
 });

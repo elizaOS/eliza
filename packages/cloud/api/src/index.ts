@@ -537,8 +537,10 @@ async function getInferenceApp(
   let promise = inferenceAppPromises.get(spec.key);
   if (!promise) {
     promise = Promise.all([import("./inference-app"), spec.load()]).then(
-      ([shell, route]) =>
-        shell.createInferenceApp(spec.mountPath, route.default),
+      ([shell, route]) => {
+        shell.registerMountCapability(route.default);
+        return shell.createInferenceApp(spec.mountPath, route.default);
+      },
     );
     inferenceAppPromises.set(spec.key, promise);
   }

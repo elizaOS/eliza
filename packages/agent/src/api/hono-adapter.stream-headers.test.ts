@@ -12,6 +12,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
+import { registerMountCapability } from "./mount-guard.ts";
 
 function makeRuntime(): IAgentRuntime {
   async function* sse(): AsyncGenerator<Uint8Array | string> {
@@ -54,7 +55,9 @@ function makeRuntime(): IAgentRuntime {
 
 describe("hono-adapter streaming RouteHandlerResult", () => {
   it("preserves the handler's status and headers on a streamed response", async () => {
-    const app = buildHonoAppForRuntime(makeRuntime(), {
+    const runtime = makeRuntime();
+    registerMountCapability(runtime as unknown as object);
+    const app = buildHonoAppForRuntime(runtime, {
       isAuthorized: () => true,
     });
 
@@ -68,7 +71,9 @@ describe("hono-adapter streaming RouteHandlerResult", () => {
   });
 
   it("keeps the non-stream branch behavior unchanged (control)", async () => {
-    const app = buildHonoAppForRuntime(makeRuntime(), {
+    const runtime = makeRuntime();
+    registerMountCapability(runtime as unknown as object);
+    const app = buildHonoAppForRuntime(runtime, {
       isAuthorized: () => true,
     });
 

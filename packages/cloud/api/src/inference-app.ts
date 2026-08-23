@@ -27,14 +27,9 @@ import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
-import { mountGuardMiddleware, registerMountCapability } from "./middleware/mount-guard";
+import { mountGuardMiddleware } from "./middleware/mount-guard";
 
-// Mount guard capability registration is done per-mount via
-// registerMountCapability(route) in createInferenceApp for legitimate
-// imported routes. Attacker-controlled Hono instances with the same URL
-// string are not registered and thus rejected by the guard (capability
-// ref check, not URL string check).
-
+export { registerMountCapability } from "./middleware/mount-guard";
 
 /**
  * Chat-only application loaded by the thin Worker entrypoint.
@@ -160,13 +155,9 @@ export function createInferenceApp(
   // CSRF: same mount point as bootstrap-app (immediately before the routes,
   // after the global limiter). See middleware/cookie-mutation-guard.ts.
   app.use("*", cookieMutationGuardMiddleware);
-  // Mount guard W11-CLOUD-01: capability ref not URL — validates the
-  // supplied route object identity, not the mountPath URL string. An
-  // attacker-controlled Hono instance with the same URL would still be
-  // rejected because its object reference is not the registered capability.
-  // Legitimate imported routes are registered; the guard checks object
-  // identity (WeakSet), never URL pathname equality.
-  registerMountCapability(route as unknown as object);
+  // Do not register `route` here. The trusted loader (getInferenceApp)
+  // registers official modules after dynamic import. An attacker Hono
+  // passed to this factory is unregistered → 403.
   app.use("*", mountGuardMiddleware(route as unknown as object));
 
   app.route(mountPath, route);
