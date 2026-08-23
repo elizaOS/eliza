@@ -5,6 +5,7 @@
 import {
   createHash,
   createHmac,
+  type Hash,
   randomBytes,
   randomUUID,
   timingSafeEqual,
@@ -65,6 +66,11 @@ export interface PersistShellOutputArtifactOptions {
   sourceStdout?: ShellStreamMetrics;
   sourceStderr?: ShellStreamMetrics;
 }
+
+export type BeginShellOutputArtifactOptions = Omit<
+  PersistShellOutputArtifactOptions,
+  "stdout" | "stderr" | "modelCharacters"
+>;
 
 export type ShellOutputArtifactStream = "stdout" | "stderr";
 
@@ -144,15 +150,6 @@ function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function streamMetrics(text: string): ShellStreamMetrics {
-  const newlineCount = text.match(/\n/g)?.length ?? 0;
-  return {
-    characters: text.length,
-    bytes: Buffer.byteLength(text, "utf8"),
-    lines: text.length === 0 ? 0 : newlineCount + (text.endsWith("\n") ? 0 : 1),
-  };
-}
-
 async function ensureArtifactRoot(): Promise<string> {
   const root = path.join(resolveStateDir(), ...ARTIFACT_ROOT_SEGMENTS);
   await fs.mkdir(root, { recursive: true, mode: 0o700 });
@@ -190,57 +187,109 @@ function manifestMac(
     .digest("hex");
 }
 
-function splitUtf8Segments(text: string): string[] {
-  if (text.length === 0) return [];
-  const segments: string[] = [];
-  let pieces: string[] = [];
-  let bytes = 0;
-  for (const codePoint of text) {
-    const width = Buffer.byteLength(codePoint, "utf8");
-    if (bytes > 0 && bytes + width > SEGMENT_MAX_BYTES) {
-      segments.push(pieces.join(""));
-      pieces = [];
-      bytes = 0;
-    }
-    pieces.push(codePoint);
-    bytes += width;
-  }
-  if (pieces.length > 0) segments.push(pieces.join(""));
-  return segments;
+function utf8SegmentEnd(bytes: Buffer): number {
+  let end = Math.min(bytes.byteLength, SEGMENT_MAX_BYTES);
+  while (end > 0 && (bytes[end] ?? 0) >> 6 === 0b10) end -= 1;
+  return end === 0 ? Math.min(bytes.byteLength, SEGMENT_MAX_BYTES) : end;
 }
 
-async function writeStreamSegments(
-  directory: string,
-  stream: ShellOutputArtifactStream,
-  text: string,
-): Promise<ShellOutputStreamDescriptor> {
-  const descriptors: ShellOutputSegmentDescriptor[] = [];
-  let characterOffset = 0;
-  const hasher = createHash("sha256");
-  const pieces = splitUtf8Segments(text);
-  for (let index = 0; index < pieces.length; index += 1) {
-    const piece = pieces[index] ?? "";
-    const bytes = Buffer.from(piece, "utf8");
-    const file = `${stream}-${String(index).padStart(6, "0")}.seg`;
-    await fs.writeFile(path.join(directory, file), bytes, {
+class ShellOutputStreamWriter {
+  private readonly descriptors: ShellOutputSegmentDescriptor[] = [];
+  private readonly hasher: Hash = createHash("sha256");
+  private pending = Buffer.alloc(0);
+  private metrics: ShellStreamMetrics = { characters: 0, bytes: 0, lines: 0 };
+  private endedWithNewline = false;
+  private closed = false;
+
+  constructor(
+    private readonly directory: string,
+    private readonly stream: ShellOutputArtifactStream,
+  ) {}
+
+  async write(text: string): Promise<void> {
+    if (this.closed) throw new Error("shell-output stream is already closed");
+    if (toWellFormedUnicode(text) !== text)
+      throw new Error("shell-output artifact contains malformed Unicode");
+    if (text.length === 0) return;
+    const bytes = Buffer.from(text, "utf8");
+    let offset = 0;
+    if (this.pending.byteLength > 0) {
+      const previousBytes = this.pending.byteLength;
+      const take = Math.min(
+        bytes.byteLength,
+        SEGMENT_MAX_BYTES - previousBytes + 3,
+      );
+      const combined = Buffer.concat(
+        [this.pending, bytes.subarray(0, take)],
+        previousBytes + take,
+      );
+      if (combined.byteLength >= SEGMENT_MAX_BYTES) {
+        const end = utf8SegmentEnd(combined);
+        await this.flush(combined.subarray(0, end));
+        offset = end - previousBytes;
+        this.pending = Buffer.alloc(0);
+      } else {
+        this.pending = combined;
+        return;
+      }
+    }
+    while (bytes.byteLength - offset >= SEGMENT_MAX_BYTES) {
+      const candidate = bytes.subarray(
+        offset,
+        Math.min(bytes.byteLength, offset + SEGMENT_MAX_BYTES + 3),
+      );
+      const end = utf8SegmentEnd(candidate);
+      await this.flush(candidate.subarray(0, end));
+      offset += end;
+    }
+    if (offset < bytes.byteLength) {
+      this.pending = Buffer.from(bytes.subarray(offset));
+    }
+  }
+
+  async finish(): Promise<ShellOutputStreamDescriptor> {
+    if (this.closed) throw new Error("shell-output stream is already closed");
+    this.closed = true;
+    if (this.pending.byteLength > 0) await this.flush(this.pending);
+    this.pending = Buffer.alloc(0);
+    return {
+      ...this.metrics,
+      sha256: this.hasher.digest("hex"),
+      segments: this.descriptors,
+    };
+  }
+
+  private async flush(bytes: Buffer): Promise<void> {
+    const text = bytes.toString("utf8");
+    if (toWellFormedUnicode(text) !== text)
+      throw new Error("shell-output segment contains malformed Unicode");
+    const index = this.descriptors.length;
+    const file = `${this.stream}-${String(index).padStart(6, "0")}.seg`;
+    await fs.writeFile(path.join(this.directory, file), bytes, {
       flag: "wx",
       mode: 0o600,
     });
-    hasher.update(bytes);
-    descriptors.push({
+    const startCharacter = this.metrics.characters;
+    const newlines = text.match(/\n/g)?.length ?? 0;
+    this.metrics.characters += text.length;
+    this.metrics.bytes += bytes.byteLength;
+    if (startCharacter === 0) {
+      this.metrics.lines = newlines + (text.endsWith("\n") ? 0 : 1);
+    } else {
+      this.metrics.lines += newlines;
+      if (this.endedWithNewline && !text.endsWith("\n"))
+        this.metrics.lines += 1;
+    }
+    this.endedWithNewline = text.endsWith("\n");
+    this.hasher.update(bytes);
+    this.descriptors.push({
       file,
-      startCharacter: characterOffset,
-      endCharacter: characterOffset + piece.length,
+      startCharacter,
+      endCharacter: this.metrics.characters,
       bytes: bytes.byteLength,
       sha256: sha256(bytes),
     });
-    characterOffset += piece.length;
   }
-  return {
-    ...streamMetrics(text),
-    sha256: hasher.digest("hex"),
-    segments: descriptors,
-  };
 }
 
 function parseManifestV2(value: unknown): PersistedShellOutputManifestV2 {
@@ -509,87 +558,142 @@ async function sweepExpiredArtifacts(
   }
 }
 
+/** Incrementally publishes already-redacted streams behind one atomic handle. */
+export class ShellOutputArtifactWriter {
+  private constructor(
+    private readonly options: BeginShellOutputArtifactOptions,
+    private readonly retentionMs: number,
+    private readonly createdAtMs: number,
+    private readonly key: Buffer,
+    private readonly handle: string,
+    private readonly pendingDirectory: string,
+    private readonly artifactDirectory: string,
+    private readonly streams: Record<
+      ShellOutputArtifactStream,
+      ShellOutputStreamWriter
+    >,
+  ) {}
+
+  static async create(
+    options: BeginShellOutputArtifactOptions,
+  ): Promise<ShellOutputArtifactWriter> {
+    const retentionMs = resolveShellJobTtlMs();
+    const createdAtMs = Date.now();
+    const root = await ensureArtifactRoot();
+    const key = await artifactMacKey(root);
+    await sweepExpiredArtifacts(root, createdAtMs, key);
+    const handle = `${ARTIFACT_PREFIX}${randomUUID()}`;
+    const pendingDirectory = path.join(root, `.pending-${randomUUID()}`);
+    const artifactDirectory = path.join(root, handle);
+    await fs.mkdir(pendingDirectory, { mode: 0o700 });
+    return new ShellOutputArtifactWriter(
+      options,
+      retentionMs,
+      createdAtMs,
+      key,
+      handle,
+      pendingDirectory,
+      artifactDirectory,
+      {
+        stdout: new ShellOutputStreamWriter(pendingDirectory, "stdout"),
+        stderr: new ShellOutputStreamWriter(pendingDirectory, "stderr"),
+      },
+    );
+  }
+
+  write(stream: ShellOutputArtifactStream, text: string): Promise<void> {
+    return this.streams[stream].write(text);
+  }
+
+  async finalize(modelCharacters: number): Promise<ShellOutputArtifact> {
+    try {
+      const [stdout, stderr] = await Promise.all([
+        this.streams.stdout.finish(),
+        this.streams.stderr.finish(),
+      ]);
+      const createdAt = new Date(this.createdAtMs).toISOString();
+      const expiresAt = new Date(
+        this.createdAtMs + this.retentionMs,
+      ).toISOString();
+      const contentRevision = `sha256:${sha256(`${stdout.sha256}:${stderr.sha256}`)}`;
+      const unsigned: UnsignedShellOutputManifestV2 = {
+        version: 2,
+        handle: this.handle,
+        createdAt,
+        expiresAt,
+        leaseRevision: 1,
+        owner: {
+          agentId: this.options.ownerAgentId,
+          conversationId: this.options.ownerConversationId,
+        },
+        contentRevision,
+        stdout,
+        stderr,
+        outcome: {
+          exitCode: this.options.exitCode,
+          timedOut: this.options.timedOut,
+          signal: this.options.signal,
+        },
+        projection: {
+          modelCharacterLimit: this.options.modelCharacterLimit,
+          modelCharacters,
+        },
+        source: {
+          stdout: this.options.sourceStdout ?? stdout,
+          stderr: this.options.sourceStderr ?? stderr,
+          loss: false,
+        },
+      };
+      const manifest: PersistedShellOutputManifestV2 = {
+        ...unsigned,
+        mac: manifestMac(unsigned, this.key),
+      };
+      await fs.writeFile(
+        path.join(this.pendingDirectory, "manifest.json"),
+        `${JSON.stringify(manifest)}\n`,
+        {
+          encoding: "utf8",
+          flag: "wx",
+          mode: 0o600,
+        },
+      );
+      await fs.rename(this.pendingDirectory, this.artifactDirectory);
+      return {
+        handle: this.handle,
+        createdAt,
+        expiresAt,
+        retentionMs: this.retentionMs,
+        contentRevision,
+        stdout,
+        stderr,
+        source: manifest.source,
+      };
+    } catch (error) {
+      // error-policy:J6 the unpublished opaque handle was never returned.
+      await this.abort();
+      throw error;
+    }
+  }
+
+  async abort(): Promise<void> {
+    await fs.rm(this.pendingDirectory, { recursive: true, force: true });
+  }
+}
+
 /** Persist one complete, already-redacted foreground shell result. */
 export async function persistShellOutputArtifact(
   options: PersistShellOutputArtifactOptions,
 ): Promise<ShellOutputArtifact> {
-  if (
-    toWellFormedUnicode(options.stdout) !== options.stdout ||
-    toWellFormedUnicode(options.stderr) !== options.stderr
-  )
-    throw new Error("shell-output artifact contains malformed Unicode");
-  const retentionMs = resolveShellJobTtlMs();
-  const createdAtMs = Date.now();
-  const root = await ensureArtifactRoot();
-  const key = await artifactMacKey(root);
-  await sweepExpiredArtifacts(root, createdAtMs, key);
-  const handle = `${ARTIFACT_PREFIX}${randomUUID()}`;
-  const pendingDirectory = path.join(root, `.pending-${randomUUID()}`);
-  const artifactDirectory = path.join(root, handle);
-  await fs.mkdir(pendingDirectory, { mode: 0o700 });
+  const writer = await ShellOutputArtifactWriter.create(options);
   try {
-    const [stdout, stderr] = await Promise.all([
-      writeStreamSegments(pendingDirectory, "stdout", options.stdout),
-      writeStreamSegments(pendingDirectory, "stderr", options.stderr),
+    await Promise.all([
+      writer.write("stdout", options.stdout),
+      writer.write("stderr", options.stderr),
     ]);
-    const createdAt = new Date(createdAtMs).toISOString();
-    const expiresAt = new Date(createdAtMs + retentionMs).toISOString();
-    const contentRevision = `sha256:${sha256(`${stdout.sha256}:${stderr.sha256}`)}`;
-    const unsigned: UnsignedShellOutputManifestV2 = {
-      version: 2,
-      handle,
-      createdAt,
-      expiresAt,
-      leaseRevision: 1,
-      owner: {
-        agentId: options.ownerAgentId,
-        conversationId: options.ownerConversationId,
-      },
-      contentRevision,
-      stdout,
-      stderr,
-      outcome: {
-        exitCode: options.exitCode,
-        timedOut: options.timedOut,
-        signal: options.signal,
-      },
-      projection: {
-        modelCharacterLimit: options.modelCharacterLimit,
-        modelCharacters: options.modelCharacters,
-      },
-      source: {
-        stdout: options.sourceStdout ?? stdout,
-        stderr: options.sourceStderr ?? stderr,
-        loss: false,
-      },
-    };
-    const manifest: PersistedShellOutputManifestV2 = {
-      ...unsigned,
-      mac: manifestMac(unsigned, key),
-    };
-    await fs.writeFile(
-      path.join(pendingDirectory, "manifest.json"),
-      `${JSON.stringify(manifest)}\n`,
-      {
-        encoding: "utf8",
-        flag: "wx",
-        mode: 0o600,
-      },
-    );
-    await fs.rename(pendingDirectory, artifactDirectory);
-    return {
-      handle,
-      createdAt,
-      expiresAt,
-      retentionMs,
-      contentRevision,
-      stdout,
-      stderr,
-      source: manifest.source,
-    };
+    return await writer.finalize(options.modelCharacters);
   } catch (error) {
     // error-policy:J6 the unpublished opaque handle was never returned.
-    await fs.rm(pendingDirectory, { recursive: true, force: true });
+    await writer.abort();
     throw error;
   }
 }
