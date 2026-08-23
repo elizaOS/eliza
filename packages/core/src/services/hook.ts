@@ -197,10 +197,21 @@ export class HookService extends Service implements IHookService {
 				return eligibility.eligible;
 			})
 			.sort((a, b) => {
-				if (b.metadata.priority !== a.metadata.priority) {
-					return b.metadata.priority - a.metadata.priority;
-				}
-				return a.registeredAt - b.registeredAt;
+				const bP =
+					typeof b.metadata.priority === "number" && Number.isFinite(b.metadata.priority)
+						? b.metadata.priority
+						: 0;
+				const aP =
+					typeof a.metadata.priority === "number" && Number.isFinite(a.metadata.priority)
+						? a.metadata.priority
+						: 0;
+				if (bP !== aP) return bP - aP;
+				const bT =
+					typeof b.registeredAt === "number" && Number.isFinite(b.registeredAt) ? b.registeredAt : 0;
+				const aT =
+					typeof a.registeredAt === "number" && Number.isFinite(a.registeredAt) ? a.registeredAt : 0;
+				if (bT !== aT) return aT - bT;
+				return String(a.id).localeCompare(String(b.id));
 			});
 
 		// Execute hooks sequentially (allows payload modification, maintains order)
