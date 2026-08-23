@@ -7,6 +7,7 @@
  */
 import {
   _resetBuildVariantForTests,
+  type ActionParameters,
   ElizaError,
   type HandlerOptions,
   type IAgentRuntime,
@@ -39,7 +40,7 @@ function message(): Memory {
 }
 
 function options(
-  parameters: Record<string, unknown> = { command: "echo hello" },
+  parameters: ActionParameters = { command: "echo hello" },
 ): HandlerOptions {
   return { parameters };
 }
@@ -189,7 +190,7 @@ describe("terminalAction command resolution", () => {
 
   it("fails closed when no command can be resolved", async () => {
     const fetchSpy = stubFetch();
-    for (const parameters of [
+    const invalidParameters: ActionParameters[] = [
       {},
       { command: "" },
       { command: "   " },
@@ -202,7 +203,8 @@ describe("terminalAction command resolution", () => {
       { arguments: "null" },
       { arguments: '{"command":"   "}' },
       { arguments: "<![CDATA[   ]]>" },
-    ]) {
+    ];
+    for (const parameters of invalidParameters) {
       const result = await terminalAction.handler(
         runtime(),
         message(),

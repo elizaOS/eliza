@@ -26,11 +26,13 @@ import {
 describe("server-security wrappers", () => {
   it("forwards MCP terminal authorization rejection through compat context", () => {
     const req = { headers: {} } as never;
+    const servers = {};
+    const body = {};
     upstreamFns.resolveMcpTerminalAuthorizationRejection.mockReturnValue("rej");
-    const out = resolveMcpTerminalAuthorizationRejection(req);
+    const out = resolveMcpTerminalAuthorizationRejection(req, servers, body);
     expect(
       upstreamFns.resolveMcpTerminalAuthorizationRejection,
-    ).toHaveBeenCalledWith(req);
+    ).toHaveBeenCalledWith(req, servers, body);
     expect(compat.runWithCompatAuthContext).toHaveBeenCalled();
     expect(compat.normalizeCompatRejection).toHaveBeenCalledWith("rej");
     expect(out).toBe("rej");
@@ -38,16 +40,21 @@ describe("server-security wrappers", () => {
 
   it("forwards terminal run rejection", () => {
     upstreamFns.resolveTerminalRunRejection.mockReturnValue("run-rej");
-    expect(resolveTerminalRunRejection({} as never)).toBe("run-rej");
+    expect(resolveTerminalRunRejection({} as never, {})).toBe("run-rej");
   });
 
   it("forwards websocket upgrade rejection", () => {
     upstreamFns.resolveWebSocketUpgradeRejection.mockReturnValue("ws-rej");
-    expect(resolveWebSocketUpgradeRejection({} as never)).toBe("ws-rej");
+    expect(
+      resolveWebSocketUpgradeRejection(
+        {} as never,
+        new URL("ws://127.0.0.1/ws"),
+      ),
+    ).toBe("ws-rej");
   });
 
   it("forwards terminal run client id", () => {
     upstreamFns.resolveTerminalRunClientId.mockReturnValue("client-1");
-    expect(resolveTerminalRunClientId({} as never)).toBe("client-1");
+    expect(resolveTerminalRunClientId({} as never, {})).toBe("client-1");
   });
 });

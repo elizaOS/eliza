@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   loadElizaConfig: vi.fn(),
-  resolveChannel: vi.fn(() => "stable"),
+  resolveChannel: vi.fn((_config?: unknown) => "stable"),
   theme: {
     accent: vi.fn((t: string) => `a(${t})`),
     muted: vi.fn((t: string) => `m(${t})`),
@@ -13,16 +13,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/agent", () => ({
-  checkForUpdate: (...a: unknown[]) => mocks.checkForUpdate(...a),
-  loadElizaConfig: (...a: unknown[]) => mocks.loadElizaConfig(...a),
-  resolveChannel: (...a: unknown[]) => mocks.resolveChannel(...a),
+  checkForUpdate: () => mocks.checkForUpdate(),
+  loadElizaConfig: () => mocks.loadElizaConfig(),
+  resolveChannel: (config?: unknown) => mocks.resolveChannel(config),
 }));
 vi.mock("@elizaos/shared", () => ({ theme: mocks.theme }));
 
 describe("scheduleUpdateNotification", () => {
   let originalIsTTY: boolean | undefined;
   let originalCI: string | undefined;
-  let mod: typeof import("./update-notifier.ts");
+  let mod: typeof import("../update-notifier.ts");
 
   beforeEach(async () => {
     vi.resetModules();
@@ -32,7 +32,7 @@ describe("scheduleUpdateNotification", () => {
     mocks.resolveChannel.mockReturnValue("stable");
     originalIsTTY = (process.stderr as { isTTY?: boolean }).isTTY;
     originalCI = process.env.CI;
-    mod = await import("./update-notifier.ts");
+    mod = await import("../update-notifier.ts");
   });
 
   afterEach(() => {

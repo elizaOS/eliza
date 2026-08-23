@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCacheKey, canonicalizeJson } from "./key.ts";
+import { buildCacheKey, canonicalizeJson } from "../key.ts";
 
 describe("canonicalizeJson", () => {
   it("sorts object keys recursively", () => {

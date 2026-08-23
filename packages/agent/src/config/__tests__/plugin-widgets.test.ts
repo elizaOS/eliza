@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPluginWidgets } from "./plugin-widgets.ts";
+import { getPluginWidgets } from "../plugin-widgets.ts";
 
 const mkPlugin = (name: string, widgets?: unknown[]) =>
   ({ name, widgets }) as never;

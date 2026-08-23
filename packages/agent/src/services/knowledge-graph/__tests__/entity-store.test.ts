@@ -13,7 +13,6 @@ describe("EntityStore.resolve confidence sorting", () => {
 
     const entity1: Entity = {
       entityId: "ent-1",
-      agentId: "test-agent",
       type: "person",
       preferredName: "Alice",
       identities: [],
@@ -26,7 +25,6 @@ describe("EntityStore.resolve confidence sorting", () => {
 
     const entity2: Entity = {
       entityId: "ent-2",
-      agentId: "test-agent",
       type: "person",
       preferredName: "Alice Smith",
       identities: [],
@@ -39,8 +37,8 @@ describe("EntityStore.resolve confidence sorting", () => {
 
     const entity3: Entity = {
       entityId: "ent-3",
-      agentId: "test-agent",
       type: "person",
+      preferredName: "",
       identities: [],
       tags: [],
       visibility: "owner_only",
