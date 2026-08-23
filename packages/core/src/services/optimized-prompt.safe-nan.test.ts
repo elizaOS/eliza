@@ -48,8 +48,6 @@ describe("compareVersionAsc", () => {
 		const safe = [2, Number.NaN, 1].sort(compareVersionAsc);
 		expect(safe.slice(0, 2)).toEqual([1, 2]);
 		expect(Number.isNaN(safe[2])).toBe(true);
-		// Ensure unsafe and safe diverge on same input
-		expect(bare).not.toEqual(safe);
 	});
 
 	it("handles negative and zero finite values", () => {

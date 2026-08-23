@@ -931,10 +931,7 @@ export class OptimizedPromptService extends Service {
 }
 
 /**
- * Return the sorted ascending list of version numbers (`v1`, `v2`, ...)
- * that are complete and MAC-valid. Files that don't match the `vN.json`
- * pattern, hidden claim files, temp files, missing MACs, and corrupt MACs are
- * ignored.
+ * Compare version numbers ascending with NaN and non-finite safety.
  */
 export function compareVersionAsc(a: number, b: number): number {
 	const aFinite = Number.isFinite(a);
@@ -945,6 +942,12 @@ export function compareVersionAsc(a: number, b: number): number {
 	return 0;
 }
 
+/**
+ * Return the sorted ascending list of version numbers (`v1`, `v2`, ...)
+ * that are complete and MAC-valid. Files that don't match the `vN.json`
+ * pattern, hidden claim files, temp files, missing MACs, and corrupt MACs are
+ * ignored.
+ */
 async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 	if (!existsSync(dir)) return [];
 	const versions: number[] = [];
