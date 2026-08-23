@@ -95,6 +95,179 @@ describe("side-effect-claims", () => {
 
 		it("returns false on empty string", () => {
 			expect(replyClaimsEmptyTrackedWorkState("")).toBe(false);
+			expect(replyClaimsEmptyTrackedWorkState("   ")).toBe(false);
+		});
+	});
+});
+
+describe("side-effect-claims — extended branch coverage", () => {
+	describe("replyClaimsCompletedSideEffect", () => {
+		it("detects perfective auxiliaries beyond the contraction form", () => {
+			expect(
+				replyClaimsCompletedSideEffect(
+					"I have scheduled your appointment for Tuesday.",
+				),
+			).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"I just added a reminder to your calendar.",
+				),
+			).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect("I've updated your calendar settings."),
+			).toBe(true);
+		});
+
+		it("keeps denials from reading as completed claims", () => {
+			expect(
+				replyClaimsCompletedSideEffect("I have not set any reminders yet."),
+			).toBe(false);
+		});
+
+		it("fires on tag questions but not leading subordinators", () => {
+			expect(
+				replyClaimsCompletedSideEffect(
+					"I've set your reminder — anything else?",
+				),
+			).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"Once I've set the reminder, I will let you know.",
+				),
+			).toBe(false);
+		});
+
+		it("separates bare-past reports from offers built on the same verb", () => {
+			expect(replyClaimsCompletedSideEffect("I set a reminder for 9am.")).toBe(
+				true,
+			);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"Before I set the alarm, let me check your calendar.",
+				),
+			).toBe(false);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"I set reminders every morning — should I keep that?",
+				),
+			).toBe(false);
+		});
+
+		it("reads state-of-the-world completions without a first-person subject", () => {
+			expect(replyClaimsCompletedSideEffect("Your reminders are set.")).toBe(
+				true,
+			);
+			expect(replyClaimsCompletedSideEffect("It's all set for tomorrow.")).toBe(
+				false,
+			);
+			expect(
+				replyClaimsCompletedSideEffect("It's all set on your calendar."),
+			).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"Saved! Your book report plan is now set up as reminders.",
+				),
+			).toBe(true);
+		});
+
+		it("does not misread congratulations or read-only navigation as writes", () => {
+			expect(
+				replyClaimsCompletedSideEffect(
+					"Well done — that's every task cleared.",
+				),
+			).toBe(false);
+			expect(
+				replyClaimsCompletedSideEffect("Done — your notes are loaded."),
+			).toBe(false);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"Done — your notes are loaded and I archived the old ones.",
+				),
+			).toBe(true);
+		});
+
+		it("anchors subjectless headline reports to sentence boundaries", () => {
+			expect(
+				replyClaimsCompletedSideEffect("Deleted the reminder as requested."),
+			).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect("Added todo: sand the shelf?"),
+			).toBe(false);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"Set a reminder on your phone to confirm.",
+				),
+			).toBe(false);
+		});
+
+		it("requires terminal punctuation on noun-first headlines", () => {
+			expect(replyClaimsCompletedSideEffect("Reminder set: 9am.")).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"The reminder set by the old app still works.",
+				),
+			).toBe(false);
+		});
+
+		it("extends completion detection across the shipped locale tiers", () => {
+			expect(
+				replyClaimsCompletedSideEffect(
+					"Mình đã đặt lời nhắc cho buổi họp rồi.",
+				),
+			).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect("Naitakda ko na ang paalala."),
+			).toBe(true);
+			expect(
+				replyClaimsCompletedSideEffect(
+					"He creado tus recordatorios — ¿algo más?",
+				),
+			).toBe(true);
+		});
+
+		it("rejects non-assertive locale shapes (negation, conditionals, second person, questions)", () => {
+			expect(
+				replyClaimsCompletedSideEffect(
+					"No he guardado todavía el recordatorio.",
+				),
+			).toBe(false);
+			expect(
+				replyClaimsCompletedSideEffect("알림을 설정했으면 바로 알려주세요."),
+			).toBe(false);
+			expect(replyClaimsCompletedSideEffect("你已经把提醒设置好了。")).toBe(
+				false,
+			);
+			expect(replyClaimsCompletedSideEffect("提醒已经保存了吗？")).toBe(false);
+		});
+	});
+
+	describe("replyClaimsEmptyTrackedWorkState", () => {
+		it("covers the remaining empty-state shapes", () => {
+			expect(
+				replyClaimsEmptyTrackedWorkState("Nothing logged today so far."),
+			).toBe(true);
+			expect(replyClaimsEmptyTrackedWorkState("Your day is wide open!")).toBe(
+				true,
+			);
+			expect(
+				replyClaimsEmptyTrackedWorkState("Zero reminders on file right now."),
+			).toBe(true);
+			expect(
+				replyClaimsEmptyTrackedWorkState("I don't have your task list handy."),
+			).toBe(true);
+		});
+
+		it("passes through conditionals and ordinary chat about absence", () => {
+			expect(
+				replyClaimsEmptyTrackedWorkState(
+					"Whenever your schedule looks clear, tell me.",
+				),
+			).toBe(false);
+			expect(
+				replyClaimsEmptyTrackedWorkState(
+					"No messages from Bob in this thread.",
+				),
+			).toBe(false);
 		});
 	});
 });
