@@ -412,6 +412,34 @@ const composeRandomUser = (
 	return replaceIndexedNameTokens(template, exampleNames);
 };
 
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtAsc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+function compareRoomByNewestDesc(
+	a: [string, Array<{ createdAt?: number }>],
+	b: [string, Array<{ createdAt?: number }>],
+): number {
+	const aLast = a[1][a[1].length - 1];
+	const bLast = b[1][b[1].length - 1];
+	const aSafe = aLast ? createdAtSortKey(aLast) : 0;
+	const bSafe = bLast ? createdAtSortKey(bLast) : 0;
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return String(a[0]).localeCompare(String(b[0]));
+}
+
+export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
+export const __testCompareRoomByNewestDesc = compareRoomByNewestDesc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 export const formatPosts = ({
 	messages,
 	entities,
@@ -436,17 +464,11 @@ export const formatPosts = ({
 
 	// Sort messages within each roomId by createdAt (oldest to newest)
 	Object.values(groupedMessages).forEach((roomMessages) => {
-		roomMessages.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+		roomMessages.sort(compareMemoryByCreatedAtAsc);
 	});
 
 	// Sort rooms by the newest message's createdAt
-	const sortedRooms = Object.entries(groupedMessages).sort(
-		([, messagesA], [, messagesB]) => {
-			const lastMessageB = messagesB[messagesB.length - 1];
-			const lastMessageA = messagesA[messagesA.length - 1];
-			return (lastMessageB?.createdAt || 0) - (lastMessageA?.createdAt || 0);
-		},
-	);
+	const sortedRooms = Object.entries(groupedMessages).sort(compareRoomByNewestDesc);
 
 	const formattedPosts = sortedRooms.map(([roomId, roomMessages]) => {
 		const messageStrings = roomMessages
