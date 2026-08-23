@@ -352,7 +352,23 @@ describe("adversarial Personal Shared group routing", () => {
       namespace,
       validBlooioGroup.messageId,
       "platform",
-      undefined,
+      // The replying actor is the binding owner, so the turn carries the
+      // group trusted-delivery destination (owner-scheduled group reminders,
+      // #25013) pinned to this binding generation.
+      {
+        platform: "blooio",
+        kind: "group",
+        project: "eliza-app",
+        connectorAccountId: "blooio:test-number",
+        chatId: "chat_group_123",
+        ownerLabel: "Ada",
+        authority: {
+          bindingId: blooioGroupBinding.id,
+          ownerUserId: blooioGroupBinding.owner_user_id,
+          personalAgentId: blooioGroupBinding.personal_agent_id,
+          version: blooioGroupBinding.authority_version,
+        },
+      },
       undefined,
       { type: "GROUP", source: "blooio" },
     );
