@@ -94,8 +94,11 @@ function expectUnavailable(fn: () => unknown, name: string): void {
 }
 
 describe("elizaos-core-test-contract fail-loud stub", () => {
-  test("exports the sixteen stand-ins in source order and nothing else", () => {
-    expect(Object.keys(contract)).toEqual([...EXPORT_NAMES]);
+  test("exports exactly the sixteen stand-ins and nothing else", () => {
+    // A module namespace object orders its own keys in code-unit order, not
+    // source order, so compare as sorted sets rather than coupling the
+    // assertion to how the export list happens to be written.
+    expect([...Object.keys(contract)].sort()).toEqual([...EXPORT_NAMES].sort());
     expect(Object.keys(contract)).toHaveLength(16);
   });
 
