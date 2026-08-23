@@ -4,7 +4,7 @@
  * The session exchange must pass the Worker lifetime into the shared identity
  * authority and may mint cookies once that authority has committed identity;
  * its waitUntil-owned onboarding tail must not delay the response or the
- * immediately following personal-Eliza read.
+ * deterministic Personal conversation surface.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -48,13 +48,20 @@ const syncUserFromSteward = mock(
     };
   },
 );
-const requireUserOrApiKeyWithOrg = mock(async (context: unknown) => {
-  const c = context as { req: { header(name: string): string | undefined } };
-  expect(c.req.header("cookie")).toContain(
-    "steward-token-staging=valid-steward-token",
-  );
-  return { id: "cloud-user-1", organization_id: "org-1" };
-});
+const committedUser = {
+  id: "cloud-user-1",
+  created_at: new Date("2026-08-22T00:00:00.000Z"),
+  email: "person@example.test",
+  email_verified: true,
+  organization_id: "org-1",
+  organization: { id: "org-1", name: "Person Org", is_active: true },
+  is_active: true,
+  role: "owner",
+  steward_user_id: "steward-user-1",
+  wallet_address: null,
+  is_anonymous: false,
+};
+const getByStewardId = mock(async () => committedUser);
 const findActivePersonalDedicatedTarget = mock(async () => null);
 
 class MockStewardPhoneOwnershipError extends Error {
@@ -76,6 +83,7 @@ mock.module("@/lib/auth/session-user-cache", () => ({
   primeVerifiedUserSessionCache,
 }));
 mock.module("@/lib/auth/steward-client", () => ({
+  isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached,
 }));
 mock.module("@/lib/services/steward-client", () => ({
@@ -98,8 +106,8 @@ mock.module("@/lib/steward-sync", () => ({
   StewardTelegramAccountClaimError: MockStewardTelegramAccountClaimError,
   syncUserFromSteward,
 }));
-mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserOrApiKeyWithOrg,
+mock.module("@/lib/services/users", () => ({
+  usersService: { getByStewardId },
 }));
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget,
@@ -116,6 +124,9 @@ mock.module("@/lib/utils/logger", () => ({
 const { default: stewardSessionRoute } = await import("./route");
 const { default: personalRoute } = await import(
   "../../v1/eliza/personal/route"
+);
+const { default: personalConversationsRoute } = await import(
+  "../../v1/eliza/agents/[agentId]/api/conversations/route"
 );
 
 const ENV = {
@@ -154,12 +165,12 @@ beforeEach(() => {
       postCommitProvisioningDeferred: true as const,
     };
   });
-  requireUserOrApiKeyWithOrg.mockClear();
+  getByStewardId.mockClear();
   findActivePersonalDedicatedTarget.mockClear();
 });
 
 describe("POST /api/auth/steward-session post-commit tail", () => {
-  test("returns cookies and supports the first personal read before waitUntil settles", async () => {
+  test("serves the committed user's Personal conversation before waitUntil settles", async () => {
     const background: Promise<unknown>[] = [];
     const executionCtx = {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
@@ -168,6 +179,10 @@ describe("POST /api/auth/steward-session post-commit tail", () => {
     const app = new Hono();
     app.route("/api/auth/steward-session", stewardSessionRoute);
     app.route("/api/v1/eliza/personal", personalRoute);
+    app.route(
+      "/api/v1/eliza/agents/:agentId/api/conversations",
+      personalConversationsRoute,
+    );
 
     const response = await app.fetch(
       sessionRequest(),
@@ -195,11 +210,34 @@ describe("POST /api/auth/steward-session post-commit tail", () => {
       executionCtx as never,
     );
     expect(personalResponse.status).toBe(200);
-    await expect(personalResponse.json()).resolves.toMatchObject({
+    const personalBody = (await personalResponse.json()) as {
+      data: { identity: { id: string; runtime: string } };
+    };
+    expect(personalBody).toMatchObject({
       success: true,
       data: { identity: { runtime: "shared" } },
     });
-    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    const personalId = personalBody.data.identity.id;
+
+    const conversationsResponse = await app.fetch(
+      new Request(
+        `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${encodeURIComponent(personalId)}/api/conversations`,
+        {
+          headers: {
+            cookie: "steward-token-staging=valid-steward-token",
+          },
+        },
+      ),
+      ENV,
+      executionCtx as never,
+    );
+    expect(conversationsResponse.status).toBe(200);
+    await expect(conversationsResponse.json()).resolves.toMatchObject({
+      conversations: [{ id: personalId }],
+    });
+    expect(getByStewardId).toHaveBeenCalledTimes(2);
+    expect(findActivePersonalDedicatedTarget).toHaveBeenCalledTimes(1);
+    expect(background).toEqual([postCommitTail.promise]);
 
     postCommitTail.resolve();
     await expect(background[0]).resolves.toBeUndefined();
