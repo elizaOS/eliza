@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
-} from "./native-runtime-features.ts";
+} from "../native-runtime-features.ts";
 
 describe("native-runtime-features", () => {
   it("returns true when the method exists and reports enabled", () => {
