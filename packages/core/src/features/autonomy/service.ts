@@ -18,6 +18,7 @@ import {
 import { registerRuntimeManagedInternalActor } from "../../security/trusted-delivery-audience";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver";
 import {
+	type AccessContext,
 	ChannelType,
 	type Content,
 	type ContentValue,
@@ -178,7 +179,12 @@ export class AutonomyService extends Service {
 		return normalized === "1" || normalized === "true" || normalized === "yes";
 	}
 
-	private async getTargetRoomContextText(): Promise<string> {
+	private async getTargetRoomContextText(
+		accessContext?: AccessContext,
+	): Promise<string> {
+		const effectiveAccessContext: AccessContext = accessContext ?? {
+			requesterEntityId: this.runtime.agentId,
+		};
 		const targetRoomId = this.getTargetRoomId();
 		const orderedRoomIds: UUID[] = [];
 		if (targetRoomId) {
@@ -197,6 +203,7 @@ export class AutonomyService extends Service {
 		const autonomyMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
 			tableName: "memories",
+			accessContext: effectiveAccessContext,
 		});
 		const autonomySection =
 			await this.buildCompactedAutonomyThoughtSection(autonomyMemories);
@@ -226,6 +233,7 @@ export class AutonomyService extends Service {
 				? await this.runtime.getMemoriesByRoomIds({
 						tableName: "messages",
 						roomIds: messageRoomIds,
+						accessContext: effectiveAccessContext,
 					})
 				: [];
 
@@ -662,7 +670,10 @@ export class AutonomyService extends Service {
 	 * - Action processing (executing decided actions)
 	 * - Evaluators (post-response analysis)
 	 */
-	async performAutonomousThink(): Promise<void> {
+	async performAutonomousThink(accessContext?: AccessContext): Promise<void> {
+		const effectiveAccessContext: AccessContext = accessContext ?? {
+			requesterEntityId: this.runtime.agentId,
+		};
 		this.runtime.logger.debug(
 			{ src: "autonomy", agentId: this.runtime.agentId },
 			`Performing autonomous thinking... (${new Date().toLocaleTimeString()})`,
@@ -689,6 +700,7 @@ export class AutonomyService extends Service {
 			roomId: this.autonomousRoomId,
 			limit: 3,
 			tableName: "memories",
+			accessContext: effectiveAccessContext,
 		});
 
 		let lastAgentThought: Memory | null = null;
@@ -719,7 +731,9 @@ export class AutonomyService extends Service {
 
 		// Create prompt with user context + next-step focus
 		const mode = this.getAutonomyMode();
-		const targetRoomContext = await this.getTargetRoomContextText();
+		const targetRoomContext = await this.getTargetRoomContextText(
+			effectiveAccessContext,
+		);
 		const autonomyPrompt =
 			mode === "task"
 				? this.createTaskPrompt({
@@ -941,8 +955,15 @@ export class AutonomyService extends Service {
 	 * from runtime (room context, last thought from memories) and the same templates
 	 * as the old performAutonomousThink path so model behavior stays consistent.
 	 */
-	async buildAutonomyContextForBatcher(): Promise<string> {
-		const targetRoomContext = await this.getTargetRoomContextText();
+	async buildAutonomyContextForBatcher(
+		accessContext?: AccessContext,
+	): Promise<string> {
+		const effectiveAccessContext: AccessContext = accessContext ?? {
+			requesterEntityId: this.runtime.agentId,
+		};
+		const targetRoomContext = await this.getTargetRoomContextText(
+			effectiveAccessContext,
+		);
 		let lastThought: string | undefined;
 		let isFirstThought = false;
 
@@ -957,6 +978,7 @@ export class AutonomyService extends Service {
 			roomId: this.autonomousRoomId,
 			limit: 3,
 			tableName: "memories",
+			accessContext: effectiveAccessContext,
 		});
 
 		let lastAgentThought: Memory | null = null;
