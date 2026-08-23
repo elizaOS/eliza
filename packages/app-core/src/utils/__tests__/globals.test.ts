@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   isVerbose,
   isYes,
@@ -6,7 +6,7 @@ import {
   setVerbose,
   setYes,
   shouldLogVerbose,
-} from "./globals.ts";
+} from "../globals.ts";
 
 describe("globals verbose/yes state", () => {
   beforeEach(() => {

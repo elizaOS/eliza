@@ -19,21 +19,21 @@ vi.mock("commander", () => {
   }
   return { Command };
 });
-vi.mock("../version", () => ({ CLI_VERSION: "9.9.9" }));
-vi.mock("./command-registry", () => ({
+vi.mock("../../version", () => ({ CLI_VERSION: "9.9.9" }));
+vi.mock("../command-registry", () => ({
   registerProgramCommands: (...a: unknown[]) =>
     mocks.registerProgramCommands(...a),
 }));
-vi.mock("./help", () => ({
+vi.mock("../help", () => ({
   configureProgramHelp: (...a: unknown[]) => mocks.configureProgramHelp(...a),
 }));
-vi.mock("./preaction", () => ({
+vi.mock("../preaction", () => ({
   registerPreActionHooks: (...a: unknown[]) =>
     mocks.registerPreActionHooks(...a),
 }));
 
 import { Command } from "commander";
-import { buildProgram } from "./build-program.ts";
+import { buildProgram } from "../build-program.ts";
 
 describe("buildProgram", () => {
   it("assembles the program with help, hooks, and commands", () => {
