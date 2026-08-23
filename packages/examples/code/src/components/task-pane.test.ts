@@ -1,7 +1,7 @@
 /** Exercises task-list rendering and keyboard state transitions through the real TUI host. */
-import { beforeEach, describe, expect, it } from "bun:test";
 import { type AgentRuntime, stringToUuid } from "@elizaos/core";
 import { TUI } from "@elizaos/tui";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useStore } from "../lib/store.js";
 import { VirtualTerminal } from "../testing/virtual-terminal.test.js";
 import type { CodeTask } from "../types.js";
