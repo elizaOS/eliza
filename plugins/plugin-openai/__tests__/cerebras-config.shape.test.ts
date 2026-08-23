@@ -12,6 +12,7 @@ import {
   getBaseURL,
   getImageDescriptionApiKey,
   getImageDescriptionBaseURL,
+  getImageDescriptionModel,
   getLargeModel,
   getResponseHandlerModel,
   getSmallModel,
@@ -46,6 +47,8 @@ const ENV_KEYS = [
   "OPENAI_EMBEDDING_DIMENSIONS",
   "OPENAI_IMAGE_DESCRIPTION_API_KEY",
   "OPENAI_IMAGE_DESCRIPTION_BASE_URL",
+  "OPENAI_IMAGE_DESCRIPTION_MODEL",
+  "CEREBRAS_IMAGE_DESCRIPTION_MODEL",
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>();
@@ -144,6 +147,17 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getLargeModel(runtime)).toBe("gemma-4-31b");
     expect(getResponseHandlerModel(runtime)).toBe("gemma-4-31b");
     expect(getActionPlannerModel(runtime)).toBe("gemma-4-31b");
+    expect(getImageDescriptionModel(runtime)).toBe("gemma-4-31b");
+  });
+
+  it("keeps the Cerebras vision model override independent from text roles", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_MODEL: "text-model",
+      CEREBRAS_IMAGE_DESCRIPTION_MODEL: "gemma-4-31b",
+    });
+    expect(getSmallModel(runtime)).toBe("text-model");
+    expect(getImageDescriptionModel(runtime)).toBe("gemma-4-31b");
   });
 
   it("treats ELIZA_PROVIDER=cerebras as a Cerebras hint independent of base URL", () => {

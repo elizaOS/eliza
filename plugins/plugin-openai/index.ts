@@ -6,10 +6,11 @@
  *
  * Text/embedding/tokenizer/research handlers register statically via `models`.
  * The media handlers (IMAGE, IMAGE_DESCRIPTION, TRANSCRIPTION, TEXT_TO_SPEECH)
- * register in `init()` through `registerMediaModels`, which skips them in
- * Cerebras mode unless a per-capability endpoint override points at a server
- * that serves them. `tests` carries the live connectivity/round-trip suite the
- * plugin loader runs against a real endpoint.
+ * register in `init()` through `registerMediaModels`. Cerebras registers only
+ * its verified chat-completions image-description capability; generation and
+ * audio stay unavailable unless a per-capability endpoint override points at a
+ * server that serves them. `tests` carries the live connectivity/round-trip
+ * suite the plugin loader runs against a real endpoint.
  */
 import type {
   TextToSpeechParams as CoreTextToSpeechParams,
@@ -49,10 +50,13 @@ import {
   getApiKey,
   getAuthHeader,
   getBaseURL,
+  getImageDescriptionModel,
   getSetting,
   isBrowser,
   isCerebrasMode,
 } from "./utils/config";
+
+const VERIFIED_CEREBRAS_VISION_MODEL = "gemma-4-31b";
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
@@ -118,21 +122,26 @@ const mediaModels: NonNullable<Plugin["models"]> = {
   },
 };
 
-// Cerebras serves text models only: vision chat completions, /audio/transcriptions,
-// /audio/speech, and /images/generations all fail against its endpoint. Mirror the
-// embedding shouldUseLocalEmbeddingFallback gate (models/embedding.ts): in Cerebras
-// mode these capabilities stay unregistered unless an explicit per-capability
-// override points them at an endpoint that serves them, so consumers (e.g.
-// plugin-discord's isImageDescriptionEnabled) skip gracefully instead of failing
-// on every attachment.
+function cerebrasServesMediaModel(runtime: IAgentRuntime, modelType: string): boolean {
+  if (modelType !== ModelType.IMAGE_DESCRIPTION) return false;
+  return getImageDescriptionModel(runtime) === VERIFIED_CEREBRAS_VISION_MODEL;
+}
+
+// Cerebras currently serves image input only through the verified Gemma
+// chat-completions model. Audio and image generation are distinct endpoints and
+// remain unavailable. Explicit per-capability base URLs keep their existing
+// escape hatch for a different OpenAI-compatible provider.
 function registerMediaModels(runtime: IAgentRuntime): void {
   const cerebras = isCerebrasMode(runtime);
   for (const [modelType, handler] of Object.entries(mediaModels)) {
     if (
       cerebras &&
-      !hasExplicitCapabilityOverride(runtime, mediaModelOverrideKeys[modelType] ?? [])
+      !hasExplicitCapabilityOverride(runtime, mediaModelOverrideKeys[modelType] ?? []) &&
+      !cerebrasServesMediaModel(runtime, modelType)
     ) {
-      logger.info(`[OpenAI] Not registering ${modelType}: the Cerebras endpoint does not serve it`);
+      logger.info(
+        `[OpenAI] Not registering ${modelType}: the selected Cerebras model or endpoint does not advertise this capability`
+      );
       continue;
     }
     runtime.registerModel(
@@ -189,6 +198,7 @@ export const openaiPlugin: Plugin = {
     OPENAI_IMAGE_DESCRIPTION_API_KEY: env.OPENAI_IMAGE_DESCRIPTION_API_KEY ?? null,
     OPENAI_IMAGE_DESCRIPTION_BASE_URL: env.OPENAI_IMAGE_DESCRIPTION_BASE_URL ?? null,
     OPENAI_IMAGE_DESCRIPTION_MODEL: env.OPENAI_IMAGE_DESCRIPTION_MODEL ?? null,
+    CEREBRAS_IMAGE_DESCRIPTION_MODEL: env.CEREBRAS_IMAGE_DESCRIPTION_MODEL ?? null,
     OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS: env.OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
     OPENAI_EXPERIMENTAL_TELEMETRY: env.OPENAI_EXPERIMENTAL_TELEMETRY ?? null,
     OPENAI_RESEARCH_MODEL: env.OPENAI_RESEARCH_MODEL ?? null,
