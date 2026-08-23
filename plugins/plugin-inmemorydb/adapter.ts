@@ -1126,7 +1126,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
       return true;
     });
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort((a, b) => {
+      const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
+      const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
+      if (bSafe !== aSafe) return bSafe - aSafe;
+      return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+    });
     const offset = typeof params.offset === "number" ? params.offset : 0;
     let sliced = offset > 0 ? memories.slice(offset) : memories;
     if (params.limit !== undefined) sliced = sliced.slice(0, params.limit);
@@ -1397,7 +1402,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
         (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
     );
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort((a, b) => {
+      const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
+      const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
+      if (bSafe !== aSafe) return bSafe - aSafe;
+      return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+    });
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;
     return sliced.map(toMemory);
   }
