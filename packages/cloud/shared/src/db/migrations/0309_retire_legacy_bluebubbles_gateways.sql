@@ -8,5 +8,14 @@ SET
   "can_receive_imessage" = FALSE,
   "updated_at" = NOW()
 WHERE
-  LOWER(BTRIM(COALESCE("send_method", ''))) = 'bluebubbles-local-bridge'
-  OR LOWER(BTRIM(COALESCE("metadata" ->> 'gatewayKind', ''))) = 'bluebubbles';
+  (
+    LOWER(BTRIM(COALESCE("send_method", ''))) = 'bluebubbles-local-bridge'
+    OR LOWER(BTRIM(COALESCE("metadata" ->> 'gatewayKind', ''))) = 'bluebubbles'
+  )
+  AND (
+    "is_active"
+    OR "can_send_sms"
+    OR "can_receive_sms"
+    OR "can_send_imessage"
+    OR "can_receive_imessage"
+  );
