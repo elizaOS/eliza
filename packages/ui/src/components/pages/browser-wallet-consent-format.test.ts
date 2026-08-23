@@ -66,13 +66,20 @@ describe("truncateMessageForDisplay well-formed", () => {
     expect(isWellFormed(truncateMessageForDisplay(text, 240))).toBe(true);
   });
 
-  it("handles max=1 astral boundary to empty well-formed prefix", () => {
+  it("handles max=1 astral boundary as a single well-formed ellipsis", () => {
     const emoji = String.fromCharCode(0xd83d, 0xde00);
     const text = `${emoji}${"a".repeat(10)}`;
     const out = truncateMessageForDisplay(text, 1);
     expect(isWellFormed(out)).toBe(true);
     expect(out.isWellFormed()).toBe(true);
-    expect(out.startsWith("… (")).toBe(true);
+    // max===1 cannot hold the "… (N more chars)" suffix; cap is a hard "…".
+    expect(out).toBe("…");
+    expect(out.length).toBe(1);
+  });
+
+  it("max<=0 returns empty rather than a suffix-only preview", () => {
+    expect(truncateMessageForDisplay("hello", 0)).toBe("");
+    expect(truncateMessageForDisplay("a".repeat(100), 0)).toBe("");
   });
 
   it("never emits lone surrogates at every boundary around 240", () => {

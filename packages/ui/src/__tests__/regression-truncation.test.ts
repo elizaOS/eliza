@@ -1,44 +1,12 @@
 /**
- * Behavioral regression for truncation helpers — truncateMessageForDisplay
- * Contract: never exceed maxLen for tiny caps, surrogate-safe, handles
- * max 0,1,2,tiny,large 6000, Unicode surrogate pairs, fixed-point.
- * Calls real truncateMessageForDisplay — not source-grep.
+ * Behavioral regression for truncation helpers — truncateMessageForDisplay.
+ * Calls the real helper and the real @elizaos/core well-formed utilities
+ * (no in-test reimplementation). max<=0 → ""; max===1 → "…"; max>=2 keeps
+ * the existing "… (N more chars)" preview suffix.
  */
-import { describe, expect, it, vi } from "vitest";
-vi.mock("@elizaos/core", () => {
-  const toWellFormedUnicode = (text: string) => {
-    const native = (String.prototype as any).toWellFormed;
-    if (native) return native.call(text);
-    let out = "";
-    for (let i = 0; i < text.length; i++) {
-      const code = text.charCodeAt(i);
-      if (code >= 0xd800 && code <= 0xdbff) {
-        if (i + 1 < text.length && text.charCodeAt(i + 1) >= 0xdc00 && text.charCodeAt(i + 1) <= 0xdfff) {
-          out += text[i] + text[i + 1];
-          i++;
-        } else {
-          out += "�";
-        }
-      } else if (code >= 0xdc00 && code <= 0xdfff) {
-        out += "�";
-      } else {
-        out += text[i];
-      }
-    }
-    return out;
-  };
-  const truncateWellFormed = (text: string, maxLength: number) => {
-    if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
-    if (text.length <= maxLength) return text;
-    const isHigh = (c: number) => c >= 0xd800 && c <= 0xdbff;
-    const isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
-    const end = isHigh(text.charCodeAt(maxLength - 1)) && isLow(text.charCodeAt(maxLength)) ? maxLength - 1 : maxLength;
-    return text.slice(0, end);
-  };
-  return { toWellFormedUnicode, truncateWellFormed };
-});
-import { truncateMessageForDisplay } from "../components/pages/browser-wallet-consent-format";
+import { describe, expect, it } from "vitest";
 import { toWellFormedUnicode } from "@elizaos/core";
+import { truncateMessageForDisplay } from "../components/pages/browser-wallet-consent-format";
 
 function isWellFormed(value: string): boolean {
   if (typeof (value as unknown as { isWellFormed?: () => boolean }).isWellFormed === "function") {
