@@ -6749,11 +6749,17 @@ export class OrchestratorTaskService extends Service {
       });
     }
     if (candidates.length === 0) return false;
-    candidates.sort(
-      (a, b) =>
-        (Number.isFinite(a.createdAt) ? a.createdAt : 0) -
-        (Number.isFinite(b.createdAt) ? b.createdAt : 0),
-    );
+    candidates.sort((a, b) => {
+      const aTime =
+        typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+          ? a.createdAt
+          : 0;
+      const bTime =
+        typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+          ? b.createdAt
+          : 0;
+      return aTime - bTime || a.id.localeCompare(b.id);
+    });
     const victim = candidates[0];
     if (!victim) return false;
     try {
@@ -6799,11 +6805,17 @@ function paginate<T extends { timestamp: number }>(
   opts: { limit?: number; cursor?: string },
 ): PageResult<T> {
   const limit = opts.limit && opts.limit > 0 ? Math.min(opts.limit, 500) : 100;
-  const sorted = [...items].sort(
-    (a, b) =>
-      (Number.isFinite(b.timestamp) ? b.timestamp : 0) -
-      (Number.isFinite(a.timestamp) ? a.timestamp : 0),
-  );
+  const sorted = [...items].sort((a, b) => {
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    return bTime - aTime;
+  });
   const start = opts.cursor
     ? Math.max(0, Number.parseInt(opts.cursor, 10) || 0)
     : 0;
