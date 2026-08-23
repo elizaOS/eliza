@@ -2262,6 +2262,13 @@
       "when": 1794254400030,
       "tag": "0339_container_stop_terminal_billing_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 323,
+      "version": "7",
+      "when": 1794254400031,
+      "tag": "0340_synthetic_world_commands",
+      "breakpoints": true
     }
   ]
 }

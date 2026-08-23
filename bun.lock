@@ -1108,9 +1108,12 @@
         "@elizaos/shared": "workspace:*",
       },
       "devDependencies": {
+        "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/cloud-test-mocks": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "*",
+        "drizzle-kit": "^0.31.10",
+        "drizzle-orm": "0.45.2",
       },
     },
     "packages/test": {

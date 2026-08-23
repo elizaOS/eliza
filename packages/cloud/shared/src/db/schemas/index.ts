@@ -132,6 +132,7 @@ export * from "./stripe-checkout-orders";
 export * from "./stripe-connect-accounts";
 export * from "./stripe-customer-attempts";
 export * from "./synthetic-environment-leases";
+export * from "./synthetic-world-commands";
 export * from "./telegram-chats";
 export * from "./tenant-db-clusters";
 export * from "./token-redemptions";
