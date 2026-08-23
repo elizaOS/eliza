@@ -1,6 +1,6 @@
 // Persists generations records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, sql, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, sql, sum } from "drizzle-orm";
 import { VIDEO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/video/types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
@@ -310,6 +310,7 @@ export class GenerationsRepository {
     options?: {
       userId?: string;
       type?: string;
+      requireStorageUrl?: boolean;
       limit?: number;
       offset?: number;
     },
@@ -325,6 +326,10 @@ export class GenerationsRepository {
 
     if (options?.type) {
       conditions.push(eq(generations.type, options.type));
+    }
+
+    if (options?.requireStorageUrl) {
+      conditions.push(isNotNull(generations.storage_url));
     }
 
     const rows = await dbRead.query.generations.findMany({

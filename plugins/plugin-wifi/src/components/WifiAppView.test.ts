@@ -599,4 +599,28 @@ describe("WifiAppView — controls", () => {
 
     expect(await screen.findByText("location denied")).toBeTruthy();
   });
+
+  it("sorts available networks safely when rssi contains NaN", () => {
+    const networks = [
+      { ssid: "Net-NaN", rssi: NaN },
+      { ssid: "Net-Strong", rssi: -40 },
+      { ssid: "Net-Weak", rssi: -80 },
+    ];
+
+    networks.sort((a, b) => {
+      const bRssi =
+        typeof b.rssi === "number" && Number.isFinite(b.rssi)
+          ? b.rssi
+          : -Infinity;
+      const aRssi =
+        typeof a.rssi === "number" && Number.isFinite(a.rssi)
+          ? a.rssi
+          : -Infinity;
+      return bRssi - aRssi || a.ssid.localeCompare(b.ssid);
+    });
+
+    expect(networks[0]?.ssid).toBe("Net-Strong");
+    expect(networks[1]?.ssid).toBe("Net-Weak");
+    expect(networks[2]?.ssid).toBe("Net-NaN");
+  });
 });
