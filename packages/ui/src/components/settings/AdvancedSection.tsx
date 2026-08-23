@@ -9,7 +9,6 @@ import { Bell, Download, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type LocalAgentBackupMetadata } from "../../api";
-import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import {
   setDeveloperMode,
   setPreviewMode,
@@ -17,6 +16,7 @@ import {
   useIsDeveloperMode,
   useIsPreviewMode,
 } from "../../state";
+import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";

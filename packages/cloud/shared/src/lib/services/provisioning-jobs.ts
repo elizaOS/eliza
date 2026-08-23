@@ -3535,12 +3535,7 @@ export class ProvisioningJobService {
           }
         : updates;
     await this.retryOwnedWrite(job, "settle", () =>
-      jobsRepository.settleExecution(
-        job,
-        status,
-        settledUpdates,
-        this.executionOwnerId,
-      ),
+      jobsRepository.settleExecution(job, status, settledUpdates, this.executionOwnerId),
     );
   }
 
