@@ -67,6 +67,7 @@ import {
 import { redactForScenarioReport } from "./redaction.ts";
 import {
   assertProviderQualifiedPluginPackages,
+  isResolvablePluginPackage,
   loadScenarioRequiredPlugin,
   pluginPackageIsRegistered,
   resolveRequiredPluginPackages,
@@ -2887,7 +2888,7 @@ export async function runScenario(
     // it as missing and skip a scenario whose required plugin is in fact loaded.
     const autoLoaded = new Set<string>();
     for (const pkg of requiredPlugins) {
-      if (!pkg.startsWith("@")) continue;
+      if (!isResolvablePluginPackage(pkg)) continue;
       if (pluginPackageIsRegistered(runtime, pkg)) continue;
       try {
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");

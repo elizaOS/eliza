@@ -30,6 +30,7 @@ vi.mock("./redaction.ts", () => ({
 }));
 vi.mock("./required-plugins.ts", () => ({
   assertProviderQualifiedPluginPackages: vi.fn(),
+  isResolvablePluginPackage: (name: string) => name.startsWith("@"),
   loadScenarioRequiredPlugin: vi.fn(),
   pluginPackageIsRegistered: () => false,
   resolveRequiredPluginPackages: () => [],
