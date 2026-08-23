@@ -667,7 +667,7 @@ export function ComputerUseSessionsView({
               <div className="min-w-0 text-xs text-muted-foreground">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <h2 className="truncate text-sm font-semibold text-foreground">
+                    <h2 className="text-sm font-semibold text-foreground">
                       {selected.label}
                     </h2>
                     <p className="truncate">
