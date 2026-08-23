@@ -253,7 +253,15 @@ export class GoogleGmailClient {
     return (response.data.messages ?? [])
       .map((message) => mapRichMessage(message, params.selfEmail ?? null))
       .filter((message): message is GoogleGmailMessageSummary => message !== null)
-      .sort((left, right) => Date.parse(left.receivedAt) - Date.parse(right.receivedAt));
+      .sort((left, right) => {
+        const leftTime = Number.isFinite(Date.parse(left.receivedAt))
+          ? Date.parse(left.receivedAt)
+          : 0;
+        const rightTime = Number.isFinite(Date.parse(right.receivedAt))
+          ? Date.parse(right.receivedAt)
+          : 0;
+        return leftTime - rightTime;
+      });
   }
 
   async listGmailUnrespondedThreads(
