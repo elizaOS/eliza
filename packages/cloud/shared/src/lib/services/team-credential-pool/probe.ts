@@ -12,8 +12,8 @@
  * reject the contribution before it ever enters rotation.
  */
 
-import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import type { PooledDirectProvider } from "./provider-map";
 

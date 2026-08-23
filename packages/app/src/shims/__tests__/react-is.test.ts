@@ -20,7 +20,7 @@ import {
   isMemo,
   isPortal,
   typeOf,
-} from "./react-is.ts";
+} from "../react-is.ts";
 
 describe("typeOf", () => {
   it("returns the type for elements", () => {

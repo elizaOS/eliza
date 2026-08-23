@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatDiagnosticError,
   readDiagnosticProperty,
-} from "./safe-diagnostic-error.ts";
+} from "../safe-diagnostic-error.ts";
 
 describe("readDiagnosticProperty", () => {
   it("reads properties from objects and functions", () => {

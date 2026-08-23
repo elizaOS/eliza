@@ -11,7 +11,7 @@ vi.mock("@elizaos/tui", () => ({
   darkTheme: { colors: { border: "border-color" } },
 }));
 
-import { createEditorTheme } from "./editor-theme.ts";
+import { createEditorTheme } from "../editor-theme.ts";
 
 describe("createEditorTheme", () => {
   it("builds a theme from the dark palette", () => {

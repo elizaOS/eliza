@@ -3,6 +3,12 @@
  * provider-qualified profile accepts only installable production packages and
  * registers them before runtime initialization; simulated runs retain the
  * small compatibility wrapper needed by existing app-control fixtures.
+ *
+ * A scenario's `requires.plugins` mixes two kinds of name: resolvable package
+ * names the runner imports and registers, and scenario-local fixture plugin
+ * names that only the scenario's own seed can register (isResolvablePluginPackage
+ * tells them apart). Fixture names are never imported here; the executor
+ * verifies them after seeding.
  */
 
 import type { Action, AgentRuntime, Plugin } from "@elizaos/core";
@@ -34,6 +40,17 @@ function isPlugin(value: unknown): value is Plugin {
     typeof obj.init === "function" ||
     (obj.models !== null && typeof obj.models === "object")
   );
+}
+
+/**
+ * Whether a declared plugin name is a resolvable package (scoped, importable,
+ * registered by the runner before runtime initialization) rather than a
+ * scenario-local fixture plugin (a bare name such as "echo-test" that only the
+ * scenario's seed can register, so importing it can only fail). Shared by the
+ * runtime factory and the executor so both skip the same names.
+ */
+export function isResolvablePluginPackage(packageName: string): boolean {
+  return packageName.startsWith("@");
 }
 
 export function resolveRequiredPluginPackages(
@@ -189,7 +206,11 @@ export async function loadScenarioRequiredPlugin(
   return candidate;
 }
 
-/** Registers every declared package once before scenario runtime startup. */
+/**
+ * Registers every declared resolvable package once before scenario runtime
+ * startup and returns the names that are registered afterwards. Scenario-local
+ * fixture names are skipped, not reported: their seed has not run yet.
+ */
 export async function registerScenarioRequiredPlugins(
   runtime: Pick<AgentRuntime, "plugins" | "registerPlugin">,
   packageNames: readonly string[],
@@ -197,6 +218,7 @@ export async function registerScenarioRequiredPlugins(
 ): Promise<string[]> {
   const registered: string[] = [];
   for (const packageName of packageNames) {
+    if (!isResolvablePluginPackage(packageName)) continue;
     if (!pluginPackageIsRegistered(runtime, packageName)) {
       const plugin = await loadScenarioRequiredPlugin(
         packageName,

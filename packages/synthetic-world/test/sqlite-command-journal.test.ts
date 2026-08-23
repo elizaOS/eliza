@@ -93,21 +93,22 @@ async function runWorker(
   return { exitCode, stdout, stderr };
 }
 
-async function expireAndRecover(
+async function rolloverAndRecover(
   databasePath: string,
-  namespace: string,
+  authority: SyntheticEnvironmentLeaseAuthority,
 ): Promise<{
   store: SqliteSyntheticEnvironmentLeaseStore;
   journal: SqliteSyntheticCommandJournal;
   authority: SyntheticEnvironmentLeaseAuthority;
 }> {
-  await Bun.sleep(2_150);
   const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
-  const authority = await acquire(store, namespace, "recovery", 5_000);
+  const nextAuthority = (
+    await store.rollover({ authority, leaseDurationMs: 5_000 })
+  ).authority;
   return {
     store,
     journal: new SqliteSyntheticCommandJournal(store),
-    authority,
+    authority: nextAuthority,
   };
 }
 
@@ -118,10 +119,12 @@ afterEach(() => {
 });
 
 describe("SqliteSyntheticCommandJournal", () => {
-  test("reports only the capabilities SW-1 actually implements", () => {
+  test("reports the implemented incremental capabilities", () => {
     expect(SYNTHETIC_WORLD_CAPABILITIES.available).toEqual([
       "lease-generation-fence",
       "durable-command-journal",
+      "production-runtime-boot",
+      "production-pglite-readback",
     ]);
     expect(SYNTHETIC_WORLD_CAPABILITIES.unavailable).toContain(
       "cloud-command-journal-adapter",
@@ -449,7 +452,7 @@ describe("SqliteSyntheticCommandJournal", () => {
   test("recovers an OWNED crash as retryable and executes it after restart", async () => {
     const databasePath = tempDatabase();
     const initial = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
-    const authority = await acquire(initial, "owned-crash", "old", 2_000);
+    const authority = await acquire(initial, "owned-crash", "old", 60_000);
     initial.close();
     const crashed = await runWorker(
       databasePath,
@@ -459,7 +462,7 @@ describe("SqliteSyntheticCommandJournal", () => {
     );
     expect(crashed.exitCode).not.toBe(0);
     expect(crashed.stderr).toBe("");
-    const recovered = await expireAndRecover(databasePath, "owned-crash");
+    const recovered = await rolloverAndRecover(databasePath, authority);
     const recovery = await recovered.journal.recover(recovered.authority);
     expect(recovery).toEqual({
       retryableCommandIds: ["owned-command"],
@@ -479,7 +482,7 @@ describe("SqliteSyntheticCommandJournal", () => {
   test("rolls back a mutation-process crash and recovers EXECUTING as known failure", async () => {
     const databasePath = tempDatabase();
     const initial = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
-    const authority = await acquire(initial, "mutation-crash", "old", 2_000);
+    const authority = await acquire(initial, "mutation-crash", "old", 60_000);
     initial.close();
     const crashed = await runWorker(
       databasePath,
@@ -489,7 +492,7 @@ describe("SqliteSyntheticCommandJournal", () => {
     );
     expect(crashed.exitCode).not.toBe(0);
     expect(crashed.stderr).toBe("");
-    const recovered = await expireAndRecover(databasePath, "mutation-crash");
+    const recovered = await rolloverAndRecover(databasePath, authority);
     expect(await recovered.journal.recover(recovered.authority)).toEqual({
       retryableCommandIds: [],
       failedCommandIds: ["mutation-command"],
@@ -523,7 +526,7 @@ describe("SqliteSyntheticCommandJournal", () => {
   test("classifies commit-before-response as DIRTY/UNKNOWN after restart", async () => {
     const databasePath = tempDatabase();
     const initial = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
-    const authority = await acquire(initial, "commit-crash", "old", 2_000);
+    const authority = await acquire(initial, "commit-crash", "old", 60_000);
     initial.close();
     const crashed = await runWorker(
       databasePath,
@@ -533,7 +536,7 @@ describe("SqliteSyntheticCommandJournal", () => {
     );
     expect(crashed.exitCode).not.toBe(0);
     expect(crashed.stderr).toBe("");
-    const recovered = await expireAndRecover(databasePath, "commit-crash");
+    const recovered = await rolloverAndRecover(databasePath, authority);
     expect(await recovered.journal.recover(recovered.authority)).toEqual({
       retryableCommandIds: [],
       failedCommandIds: [],

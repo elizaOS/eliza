@@ -1,4 +1,4 @@
-/** Defines the public command-journal records and truthful SW-1 capability surface. */
+/** Defines durable command records and the truthful incremental synthetic-world capability surface. */
 
 import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contracts/synthetic-environment-lease";
 
@@ -86,13 +86,20 @@ export interface SyntheticCommandHeartbeat {
 }
 
 export const SYNTHETIC_WORLD_CAPABILITIES = Object.freeze({
-  available: ["lease-generation-fence", "durable-command-journal"] as const,
+  available: [
+    "lease-generation-fence",
+    "durable-command-journal",
+    "production-runtime-boot",
+    "production-pglite-readback",
+  ] as const,
   unavailable: [
-    "production-boot",
     "full-manifest",
     "virtual-clock",
     "fault-injection",
     "observation-ledger",
     "cloud-command-journal-adapter",
+    "atomic-production-domain-command",
+    "subprocess-orchestration",
+    "deployment-qualification",
   ] as const,
 });
