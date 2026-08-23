@@ -18,9 +18,8 @@ const packageDir = resolve(repoRoot, "packages/scenario-runner");
 const scenarioDir = resolve(packageDir, "test/scenarios");
 const workflowPath = resolve(repoRoot, ".github/workflows/scenario-pr.yml");
 
-const ACTION_ASSERTION_KEYS = new Set([
-  "assertResponse",
-  "assertTurn",
+const CALLBACK_ASSERTION_KEYS = new Set(["assertResponse", "assertTurn"]);
+const MATCHER_ARRAY_ASSERTION_KEYS = new Set([
   "expectedActions",
   "forbiddenActions",
   "plannerExcludes",
@@ -29,7 +28,6 @@ const ACTION_ASSERTION_KEYS = new Set([
   "responseExcludes",
   "responseIncludesAll",
   "responseIncludesAny",
-  "responseJudge",
 ]);
 
 function scenarioFileId(file: string): string {
@@ -56,17 +54,98 @@ function propertyValue(
     if (!ts.isPropertyAssignment(property) || propertyName(property) !== name) {
       continue;
     }
-    let value = property.initializer;
-    while (
-      ts.isAsExpression(value) ||
-      ts.isParenthesizedExpression(value) ||
-      ts.isSatisfiesExpression(value)
-    ) {
-      value = value.expression;
-    }
-    return value;
+    return unwrapExpression(property.initializer);
   }
   return null;
+}
+
+function unwrapExpression(value: ts.Expression): ts.Expression {
+  while (
+    ts.isAsExpression(value) ||
+    ts.isParenthesizedExpression(value) ||
+    ts.isSatisfiesExpression(value)
+  ) {
+    value = value.expression;
+  }
+  return value;
+}
+
+function isStaticallyNullish(value: ts.Expression): boolean {
+  return (
+    (ts.isIdentifier(value) && value.text === "undefined") ||
+    value.kind === ts.SyntaxKind.NullKeyword ||
+    ts.isVoidExpression(value)
+  );
+}
+
+function couldBeCallable(value: ts.Expression): boolean {
+  if (isStaticallyNullish(value)) return false;
+  return !(
+    ts.isArrayLiteralExpression(value) ||
+    ts.isObjectLiteralExpression(value) ||
+    ts.isStringLiteralLike(value) ||
+    ts.isNumericLiteral(value) ||
+    ts.isRegularExpressionLiteral(value) ||
+    value.kind === ts.SyntaxKind.TrueKeyword ||
+    value.kind === ts.SyntaxKind.FalseKeyword
+  );
+}
+
+function couldBeMatcher(value: ts.Expression): boolean {
+  if (isStaticallyNullish(value)) return false;
+  if (ts.isStringLiteralLike(value)) return value.text.trim().length > 0;
+  return !(
+    ts.isArrayLiteralExpression(value) ||
+    ts.isObjectLiteralExpression(value) ||
+    ts.isNumericLiteral(value) ||
+    value.kind === ts.SyntaxKind.TrueKeyword ||
+    value.kind === ts.SyntaxKind.FalseKeyword
+  );
+}
+
+function hasEffectiveMatcher(array: ts.ArrayLiteralExpression): boolean {
+  return array.elements.some((element) => {
+    if (ts.isOmittedExpression(element)) return false;
+    if (ts.isSpreadElement(element)) {
+      const spread = unwrapExpression(element.expression);
+      return (
+        !ts.isArrayLiteralExpression(spread) || hasEffectiveMatcher(spread)
+      );
+    }
+    return couldBeMatcher(unwrapExpression(element));
+  });
+}
+
+function hasMeaningfulAssertionProperty(
+  property: ts.ObjectLiteralElementLike,
+): boolean {
+  const name = propertyName(property);
+  if (name === null) return false;
+  if (CALLBACK_ASSERTION_KEYS.has(name)) {
+    if (ts.isMethodDeclaration(property)) return true;
+    if (ts.isShorthandPropertyAssignment(property)) return true;
+    return (
+      ts.isPropertyAssignment(property) &&
+      couldBeCallable(unwrapExpression(property.initializer))
+    );
+  }
+  if (MATCHER_ARRAY_ASSERTION_KEYS.has(name)) {
+    if (ts.isShorthandPropertyAssignment(property)) return true;
+    if (!ts.isPropertyAssignment(property)) return false;
+    const value = unwrapExpression(property.initializer);
+    if (isStaticallyNullish(value)) return false;
+    return !ts.isArrayLiteralExpression(value) || hasEffectiveMatcher(value);
+  }
+  if (name !== "responseJudge") return false;
+  if (ts.isShorthandPropertyAssignment(property)) return true;
+  if (!ts.isPropertyAssignment(property)) return false;
+  const value = unwrapExpression(property.initializer);
+  if (isStaticallyNullish(value)) return false;
+  if (!ts.isObjectLiteralExpression(value)) return true;
+  const rubric = propertyValue(value, "rubric");
+  if (rubric === null || isStaticallyNullish(rubric)) return false;
+  const literalRubric = stringValue(rubric);
+  return literalRubric === null || literalRubric.trim().length > 0;
 }
 
 function stringValue(value: ts.Expression | null): string | null {
@@ -80,10 +159,26 @@ function hasDirectActionAssertion(object: ts.ObjectLiteralExpression): boolean {
   if (stringValue(propertyValue(object, "expectedValidation")) === "rejected") {
     return true;
   }
-  return object.properties.some((property) => {
-    const name = propertyName(property);
-    return name !== null && ACTION_ASSERTION_KEYS.has(name);
-  });
+  return object.properties.some(hasMeaningfulAssertionProperty);
+}
+
+function directActionHasAssertion(source: string): boolean {
+  const sourceFile = ts.createSourceFile(
+    "assertion-probe.ts",
+    `const turn = (${source});`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let action: ts.ObjectLiteralExpression | null = null;
+  function visit(node: ts.Node): void {
+    if (action === null && ts.isObjectLiteralExpression(node)) action = node;
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  if (action === null)
+    throw new Error("assertion probe did not contain an object");
+  return hasDirectActionAssertion(action);
 }
 
 describe("deterministic scenario action coverage", () => {
@@ -141,6 +236,29 @@ describe("deterministic scenario action coverage", () => {
     }
 
     expect(problems, problems.join("\n")).toEqual([]);
+  });
+
+  it("rejects assertion-shaped properties that are runtime no-ops", () => {
+    expect(
+      [
+        `{ kind: "action", actionName: "X", expectedActions: [] }`,
+        `{ kind: "action", actionName: "X", responseExcludes: [] }`,
+        `{ kind: "action", actionName: "X", assertTurn: undefined }`,
+        `{ kind: "action", actionName: "X", assertResponse: null }`,
+        `{ kind: "action", actionName: "X", plannerIncludesAny: [undefined] }`,
+        `{ kind: "action", actionName: "X", responseJudge: { rubric: "" } }`,
+      ].map(directActionHasAssertion),
+    ).toEqual([false, false, false, false, false, false]);
+
+    expect(
+      [
+        `{ kind: "action", actionName: "X", expectedActions: ["X"] }`,
+        `{ kind: "action", actionName: "X", responseExcludes: [/failure/i] }`,
+        `{ kind: "action", actionName: "X", assertTurn() {} }`,
+        `{ kind: "action", actionName: "X", assertTurn: makeAssertion() }`,
+        `{ kind: "action", actionName: "X", responseJudge: { rubric: "verify X" } }`,
+      ].map(directActionHasAssertion),
+    ).toEqual([true, true, true, true, true]);
   });
 
   it("requires every deterministic direct-action turn to carry assertion evidence", async () => {
