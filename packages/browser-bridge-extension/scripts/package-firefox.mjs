@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Builds and packages the Firefox WebExtension as deterministic ZIP and XPI artifacts.
+ * Builds deterministic Firefox ZIP/XPI submission archives. The XPI is not a
+ * permanent-install artifact until Mozilla signs it through AMO.
  */
 
 import fs from "node:fs/promises";

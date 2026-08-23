@@ -40,8 +40,8 @@ describe("candidateApiBaseUrlsFromTabs", () => {
 });
 
 describe("getOrCreateExtensionProfileId", () => {
-  function emptyStore() {
-    let value: string | null = null;
+  function profileStore(initial: string | null = null) {
+    let value: string | null = initial;
     return {
       get: async () => value,
       set: async (next: string) => {
@@ -51,11 +51,28 @@ describe("getOrCreateExtensionProfileId", () => {
   }
 
   it("is stable across reloads and unique for separate extension profiles", async () => {
-    const firstStore = emptyStore();
-    const secondStore = emptyStore();
+    const firstStore = profileStore();
+    const secondStore = profileStore();
     const first = await getOrCreateExtensionProfileId(firstStore);
     expect(await getOrCreateExtensionProfileId(firstStore)).toBe(first);
     expect(await getOrCreateExtensionProfileId(secondStore)).not.toBe(first);
+    expect(first).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it("migrates prefixed legacy IDs and replaces non-UUID values", async () => {
+    const uuid = "018f0000-0000-4000-8000-000000000001";
+    const legacy = profileStore(`extension-profile-${uuid}`);
+    expect(await getOrCreateExtensionProfileId(legacy)).toBe(uuid);
+    expect(await legacy.get()).toBe(uuid);
+
+    const invalid = profileStore("manual-profile-name");
+    const replacement = await getOrCreateExtensionProfileId(invalid);
+    expect(replacement).not.toBe("manual-profile-name");
+    expect(replacement).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
   });
 });
 

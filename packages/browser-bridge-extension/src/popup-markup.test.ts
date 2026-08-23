@@ -1,6 +1,6 @@
 /**
- * Static DOM contract for the minimal default surface and transient, collapsed
- * pairing recovery path; stored credentials have no field or value to render.
+ * Static DOM contract for the minimal default surface; credentials and manual
+ * pairing controls have no field or value to render.
  */
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
@@ -21,24 +21,23 @@ describe("popup markup", () => {
     expect(actions).toHaveLength(1);
     expect(actions[0]?.hasAttribute("hidden")).toBe(true);
     expect(document.querySelector("#details")?.tagName).toBe("DETAILS");
+    expect(document.querySelector("#details")?.hasAttribute("hidden")).toBe(
+      true,
+    );
     expect(document.querySelector("#details")?.hasAttribute("open")).toBe(
       false,
     );
-    expect(document.querySelector("#recovery")?.hasAttribute("open")).toBe(
-      false,
-    );
+    expect(document.querySelector("#recovery")).toBeNull();
   });
 
-  it("contains no stored-secret fields or prepopulated recovery value", async () => {
+  it("contains no stored-secret or manual-pairing fields", async () => {
     const document = await loadPopupDocument();
     expect(document.querySelector("input[type='password']")).toBeNull();
     expect(document.querySelector("#pairingToken")).toBeNull();
     expect(document.querySelector("#companionId")).toBeNull();
     expect(document.querySelector("#apiBaseUrl")).toBeNull();
-    const recovery =
-      document.querySelector<HTMLTextAreaElement>("#pairingJson");
-    expect(recovery?.value).toBe("");
-    expect(recovery?.closest("details")?.hasAttribute("open")).toBe(false);
+    expect(document.querySelector("#pairingJson")).toBeNull();
+    expect(document.querySelector("#importPairing")).toBeNull();
   });
 
   it("announces the atomic one-line status", async () => {
