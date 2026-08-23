@@ -397,13 +397,19 @@ export function sealModelWeightsShards(input: {
  * Verify shards form a contiguous 0-based sequence and return them sorted by
  * `index` so decryption proceeds strictly in plaintext order.
  */
-function assertOrderedShards(
+export function assertOrderedShards(
   shards: readonly SealedWeightsShard[],
 ): SealedWeightsShard[] {
   if (shards.length === 0) {
     throw new Error("sealed-weights manifest has no shards.");
   }
-  const ordered = [...shards].sort((a, b) => a.index - b.index);
+  const ordered = [...shards].sort((a, b) => {
+    const aIndex =
+      typeof a.index === "number" && Number.isFinite(a.index) ? a.index : -1;
+    const bIndex =
+      typeof b.index === "number" && Number.isFinite(b.index) ? b.index : -1;
+    return aIndex - bIndex;
+  });
   ordered.forEach((shard, position) => {
     if (shard.index !== position) {
       throw new Error(

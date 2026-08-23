@@ -9,6 +9,7 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  assertOrderedShards,
   type SealedWeightsBlob,
   sealModelWeightsShards,
   unsealModelWeights,
@@ -412,5 +413,60 @@ describe("TEE confidential-inference streaming per-shard unseal", () => {
       ),
     ).rejects.toThrow(/model-key release denied/);
     expect(calls).toEqual([]);
+  });
+
+  it("sorts out-of-order valid shards and deterministically isolates non-finite indices at position 0", () => {
+    const s0 = {
+      index: 0,
+      ciphertextBase64: "",
+      ivBase64: "",
+      authTagBase64: "",
+      byteLength: 0,
+      sha256: "",
+    };
+    const s1 = { ...s0, index: 1 };
+    const s2 = { ...s0, index: 2 };
+    const sNan = { ...s0, index: Number.NaN };
+
+    // Valid unordered shards sort contiguously
+    expect(assertOrderedShards([s2, s0, s1]).map((s) => s.index)).toEqual([
+      0, 1, 2,
+    ]);
+
+    // Non-finite index is deterministically ordered to position 0 and throws with exact position
+    expect(() => assertOrderedShards([s2, s0, sNan, s1])).toThrow(
+      "sealed-weights shard indices must be contiguous from 0; got index NaN at position 0.",
+    );
+  });
+
+  it("rejects streaming unseal when shard indices are non-finite or not contiguous from 0", async () => {
+    const key = randomBytes(32);
+    const manifest = sealModelWeightsShards({
+      weights: SHARDED_WEIGHTS,
+      key,
+      shardSizeBytes: SHARD_SIZE,
+    });
+    const firstShard = manifest.shards[0];
+    if (!firstShard) throw new Error("expected at least one shard");
+    const malformed = {
+      ...manifest,
+      shards: [
+        { ...firstShard, index: Number.NaN },
+        ...manifest.shards.slice(1),
+      ],
+    };
+    await expect(
+      unsealModelWeightsStreaming(
+        {
+          keyReleaseClient: fixtureKeyReleaseClient(key, shardEvidence()),
+          policy: shardPolicy(),
+          sealedWeights: malformed,
+          requiredMeasurements: REQUIRED_MEASUREMENTS,
+        },
+        () => {},
+      ),
+    ).rejects.toThrow(
+      "sealed-weights shard indices must be contiguous from 0; got index NaN at position 0.",
+    );
   });
 });
