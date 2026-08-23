@@ -624,6 +624,26 @@ async function waitForAdvisoryLock(client: pg.Client): Promise<void> {
   throw new Error("Timed out waiting for migration advisory lock");
 }
 
+async function waitForBlockedRelationLock(
+  client: pg.Client,
+  relationName: string,
+): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const result = await client.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM pg_locks
+       WHERE locktype = 'relation'
+         AND relation = to_regclass($1)
+         AND NOT granted`,
+      [relationName],
+    );
+    if (Number(result.rows[0]?.count ?? "0") > 0) return;
+    await Bun.sleep(25);
+  }
+  throw new Error(`Timed out waiting for a blocked lock on ${relationName}`);
+}
+
 async function expectPreCheckpointPaymentRequestAuthority(
   client: pg.Client,
 ): Promise<void> {
@@ -1487,12 +1507,19 @@ describe.skipIf(!ENABLED)(
 
       const firstPromise = runScript(MIGRATOR, database.url, {
         MIGRATION_LOCK_MAX_ATTEMPTS: "100",
+        MIGRATION_LOCK_RETRY_BASE_MS: "100",
+        MIGRATION_LOCK_RETRY_MAX_MS: "200",
       });
       const secondPromise = runScript(MIGRATOR, database.url, {
         MIGRATION_LOCK_MAX_ATTEMPTS: "100",
+        MIGRATION_LOCK_RETRY_BASE_MS: "100",
+        MIGRATION_LOCK_RETRY_MAX_MS: "200",
       });
       await waitForAdvisoryLock(database.client);
-      await Bun.sleep(250);
+      await waitForBlockedRelationLock(database.client, "jobs");
+      // Keep the blocker long enough for the observed waiter to cross its
+      // configured timeout and exercise rollback/retry before releasing it.
+      await Bun.sleep(150);
       await holder.query("COMMIT");
       await holder.end();
 
@@ -1517,7 +1544,7 @@ describe.skipIf(!ENABLED)(
       );
       expect(journal.rows[0]?.count).toBe("1");
       await database.client.end();
-    }, 30_000);
+    }, 120_000);
 
     test("fails observably after bounded table-lock retries without partial state", async () => {
       const database = await createDatabase();
