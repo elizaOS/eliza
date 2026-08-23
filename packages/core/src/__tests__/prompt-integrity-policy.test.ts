@@ -211,6 +211,26 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java":
 		[/RESPONSE_HANDLER_MAX_TOKENS/, /ELIZA_LLAMA_MAX_OUTPUT_TOKENS/],
+	"packages/scenario-runner/src/judge.ts": [
+		/MAX_JUDGE_TOKENS/,
+		/maxTokens\s*:/,
+	],
+	"packages/scenario-runner/src/cerebras-judge.ts": [
+		/max_tokens\s*:/,
+		/max_completion_tokens\s*:/,
+	],
+	"plugins/plugin-personal-assistant/test/helpers/lifeops-eval-model.ts": [
+		/maxTokens\??\s*:/,
+		/max_tokens:\s*req\.maxTokens/,
+	],
+	"plugins/plugin-personal-assistant/test/helpers/lifeops-live-judge.ts": [
+		/maxTokens\s*:/,
+	],
+	"plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts":
+		[/maxTokens\s*:/],
+	"plugins/plugin-personal-assistant/scripts/verify-cerebras-wiring.ts": [
+		/maxTokens\s*:/,
+	],
 	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
 		/maxTokens\s*:/,
 	],

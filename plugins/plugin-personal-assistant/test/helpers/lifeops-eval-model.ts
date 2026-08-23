@@ -1,10 +1,11 @@
-// Shared eval/training LLM client for lifeops.
-// All evaluation/judging and training callsites route through this helper
-// so the agent under test (Anthropic Opus 4.7) is never used to grade itself.
-//
-// Judge-shaped calls (`judgeWithCerebras`) route their transport through
-// the shared `CerebrasJudge` class in scenario-runner so all four Cerebras
-// judges in the repo share retry + parsing logic.
+/**
+ * Shared eval and training model client for LifeOps.
+ *
+ * Evaluation and judging stay independent of the agent under test. Cerebras
+ * judge calls share the scenario-runner transport and its retry, parsing, and
+ * complete-output checks; Anthropic calls use the documented model boundary
+ * and reject any response that ends there.
+ */
 
 import {
   CerebrasJudge,
@@ -23,7 +24,6 @@ export interface CerebrasChatRequest {
   prompt: string;
   systemPrompt?: string;
   temperature?: number;
-  maxTokens?: number;
   reasoningEffort?: "low" | "medium" | "high";
 }
 
@@ -163,16 +163,14 @@ async function callCerebras(
   }
   messages.push({ role: "user", content: req.prompt });
 
-  // gpt-oss models reason by default. Without an effort hint they spend
-  // tokens on hidden reasoning before producing the answer, which can blow
-  // through max_tokens — default those to "low" for fast eval/judge calls.
+  // gpt-oss models reason by default. Use a low effort hint for fast
+  // eval/judge calls without imposing a completion ceiling.
   // Other Cerebras models (gemma-4-31b) keep reasoning off unless the caller
   // asks for it explicitly.
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
     temperature: req.temperature ?? 0,
-    max_tokens: req.maxTokens ?? 1024,
   };
   const reasoningEffort =
     req.reasoningEffort ??
@@ -196,7 +194,10 @@ async function callCerebras(
     );
   }
   const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{
+      message?: { content?: string };
+      finish_reason?: string | null;
+    }>;
     usage?: {
       prompt_tokens?: number;
       completion_tokens?: number;
@@ -204,6 +205,11 @@ async function callCerebras(
       prompt_tokens_details?: { cached_tokens?: number };
     };
   };
+  if (data.choices?.[0]?.finish_reason === "length") {
+    throw new Error(
+      `[${config.role}-model] Cerebras reached the provider output boundary; refusing partial evaluation output`,
+    );
+  }
   return {
     text: data.choices?.[0]?.message?.content ?? "",
     usage: data.usage
@@ -218,13 +224,31 @@ async function callCerebras(
   };
 }
 
+function resolveAnthropicMaxOutputTokens(model: string): number {
+  if (/claude-(?:haiku|sonnet|opus)-4-5(?:-|$)/.test(model)) return 64_000;
+  if (
+    /claude-(?:(?:fable|mythos)-5|opus-(?:4-[678]|5)|sonnet-(?:4-6|5))(?:-|$)/.test(
+      model,
+    )
+  ) {
+    return 128_000;
+  }
+  throw new Error(
+    `[anthropic-model] output capability is unknown for ${model}; add its documented hard maximum before dispatch rather than guessing a cap`,
+  );
+}
+
 async function callAnthropic(
   config: ResolvedClientConfig,
   req: CerebrasChatRequest,
 ): Promise<CerebrasChatResponse> {
+  const maxOutputTokens = resolveAnthropicMaxOutputTokens(config.model);
   const body: Record<string, unknown> = {
     model: config.model,
-    max_tokens: req.maxTokens ?? 1024,
+    // The Messages API requires max_tokens. Use the model's documented hard
+    // maximum and reject a max_tokens stop below instead of choosing a smaller
+    // evaluator budget or accepting a partial record.
+    max_tokens: maxOutputTokens,
     temperature: req.temperature ?? 0,
     messages: [{ role: "user", content: req.prompt }],
   };
@@ -248,6 +272,7 @@ async function callAnthropic(
   }
   const data = (await response.json()) as {
     content?: Array<{ type?: string; text?: string }>;
+    stop_reason?: string | null;
     usage?: {
       input_tokens?: number;
       output_tokens?: number;
@@ -255,6 +280,11 @@ async function callAnthropic(
       cache_creation_input_tokens?: number;
     };
   };
+  if (data.stop_reason === "max_tokens") {
+    throw new Error(
+      `[${config.role}-model] Anthropic reached its ${maxOutputTokens}-token model boundary; refusing partial evaluation output`,
+    );
+  }
   const text = (data.content ?? [])
     .filter((c) => c.type === "text" || (!c.type && typeof c.text === "string"))
     .map((c) => c.text ?? "")
@@ -302,7 +332,7 @@ export function getTrainingModelClient(): EvalModelClient {
  */
 export async function judgeWithCerebras(
   prompt: string,
-  options?: { maxTokens?: number; temperature?: number; systemPrompt?: string },
+  options?: { temperature?: number; systemPrompt?: string },
 ): Promise<string> {
   const response = await judgeWithCerebrasShared(prompt, options);
   return response.raw;
@@ -314,7 +344,7 @@ export async function judgeWithCerebras(
  */
 export async function judgeWithCerebrasShared(
   prompt: string,
-  options?: { maxTokens?: number; temperature?: number; systemPrompt?: string },
+  options?: { temperature?: number; systemPrompt?: string },
 ): Promise<JudgeResponse> {
   const provider = resolveProvider("eval");
   if (provider !== "cerebras") {
@@ -326,7 +356,6 @@ export async function judgeWithCerebrasShared(
       prompt,
       systemPrompt: options?.systemPrompt,
       temperature: options?.temperature ?? 0,
-      maxTokens: options?.maxTokens ?? 700,
     });
     return { raw: result.text, json: null };
   }
@@ -338,7 +367,6 @@ export async function judgeWithCerebrasShared(
   return judge.judge(prompt, {
     systemPrompt: options?.systemPrompt,
     temperature: options?.temperature ?? 0,
-    maxTokens: options?.maxTokens ?? 700,
   });
 }
 
@@ -347,14 +375,12 @@ export async function judgeWithCerebrasShared(
 export function getTrainingUseModelAdapter(): (input: {
   prompt: string;
   temperature?: number;
-  maxTokens?: number;
 }) => Promise<string> {
   const client = getTrainingModelClient();
   return async (input) => {
     const result = await client({
       prompt: input.prompt,
       temperature: input.temperature,
-      maxTokens: input.maxTokens,
     });
     return result.text;
   };

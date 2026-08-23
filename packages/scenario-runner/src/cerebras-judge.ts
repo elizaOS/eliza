@@ -43,8 +43,6 @@ export interface CerebrasJudgeOptions {
 }
 
 export interface JudgeCallOptions {
-  /** Max output tokens. Default 1024. */
-  maxTokens?: number;
   /** Temperature. Default 0. */
   temperature?: number;
   /** Optional system prompt. */
@@ -59,7 +57,10 @@ export interface JudgeCallOptions {
 }
 
 interface ChatCompletionShape {
-  choices?: Array<{ message?: { content?: string | null } }>;
+  choices?: Array<{
+    message?: { content?: string | null };
+    finish_reason?: string | null;
+  }>;
 }
 
 /** Clamp a finite number to [0, 1]; returns 0 for non-finite inputs. */
@@ -311,7 +312,6 @@ export class CerebrasJudge {
       model: this.model,
       messages: this.buildMessages(prompt, options.systemPrompt),
       temperature: options.temperature ?? 0,
-      max_tokens: options.maxTokens ?? 1024,
     };
     const reasoningEffort =
       options.reasoningEffort ??
@@ -351,6 +351,12 @@ export class CerebrasJudge {
           );
         }
         const data = (await response.json()) as ChatCompletionShape;
+        if (data.choices?.[0]?.finish_reason === "length") {
+          throw new CerebrasJudgeError(
+            "cerebras judge reached the provider output boundary; refusing to grade from partial output",
+            response.status,
+          );
+        }
         return data.choices?.[0]?.message?.content ?? "";
       } catch (err) {
         if (err instanceof CerebrasJudgeError) {

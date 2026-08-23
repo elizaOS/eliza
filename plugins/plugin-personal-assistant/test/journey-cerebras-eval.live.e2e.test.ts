@@ -423,7 +423,6 @@ async function gradeJourney(
     prompt: buildPrompt(args),
     systemPrompt: SYSTEM_PROMPT,
     temperature: 0,
-    maxTokens: 4000,
     reasoningEffort: "low",
   });
   return { envelope: parseEnvelope(response.text), usage: response.usage };
