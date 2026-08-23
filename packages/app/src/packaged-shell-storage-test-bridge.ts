@@ -4,7 +4,12 @@
  * injects a marker global, and only then does this module expose narrow helpers
  * that write exact first-run keys through the shell storage privilege channel.
  */
-import { setStorageValue, shellLocalStorage } from "@elizaos/ui/bridge";
+import {
+  getStorageValue,
+  removeStorageValue,
+  setStorageValue,
+  shellLocalStorage,
+} from "@elizaos/ui/bridge";
 
 const DESKTOP_TEST_BRIDGE_MARKER = "__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__";
 const PACKAGED_SHELL_STORAGE_TEST_GLOBAL =
@@ -25,11 +30,28 @@ export interface ResettableStateSeedResult {
 }
 
 export interface PackagedShellStorageTestBridge {
+  clearProtectedTestState(): Promise<void>;
+  readReturningInstallState(): Promise<ReturningInstallSeedResult>;
   seedResettableState(): Promise<ResettableStateSeedResult>;
   seedReturningInstallState(
     apiBase: string,
     chatOverlayHotkey?: string,
   ): Promise<ReturningInstallSeedResult>;
+}
+
+export async function readReturningInstallStateForPackagedTests(
+  win = window,
+): Promise<ReturningInstallSeedResult> {
+  return {
+    ok: true,
+    firstRunComplete: win.localStorage.getItem("eliza:first-run-complete"),
+    setupStep: win.localStorage.getItem("eliza:setup:step"),
+    uiShellMode: win.localStorage.getItem("eliza:ui-shell-mode"),
+    // active-server is protected on desktop and intentionally removed from
+    // raw localStorage after migration. Exercise the authoritative OS-backed
+    // storage channel instead of mistaking plaintext absence for data loss.
+    activeServer: await getStorageValue("elizaos:active-server"),
+  };
 }
 
 declare global {
@@ -111,6 +133,9 @@ export function installPackagedShellStorageTestBridge(win = window): boolean {
   }
 
   const bridge: PackagedShellStorageTestBridge = {
+    clearProtectedTestState: () => removeStorageValue("elizaos:active-server"),
+    readReturningInstallState: () =>
+      readReturningInstallStateForPackagedTests(win),
     seedResettableState: () => seedResettableStateForPackagedTests(win),
     seedReturningInstallState: (apiBase, chatOverlayHotkey) =>
       seedReturningInstallStateForPackagedTests(

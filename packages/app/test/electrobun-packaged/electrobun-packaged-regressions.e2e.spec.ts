@@ -751,13 +751,20 @@ async function seedReturningInstallState(
 async function readReturningInstallStorageSnapshot(
   harness: PackagedDesktopHarness,
 ): Promise<ReturningInstallStorageSnapshot> {
-  return await harness.eval<ReturningInstallStorageSnapshot>(`({
-    origin: window.location.origin || null,
-    firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-    setupStep: localStorage.getItem("eliza:setup:step"),
-    uiShellMode: localStorage.getItem("eliza:ui-shell-mode"),
-    activeServer: localStorage.getItem("elizaos:active-server"),
-  })`);
+  return await harness.eval<ReturningInstallStorageSnapshot>(`(async () => {
+    const bridge = window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__;
+    if (!bridge || typeof bridge.readReturningInstallState !== "function") {
+      throw new Error("Packaged shell storage read bridge is unavailable.");
+    }
+    const state = await bridge.readReturningInstallState();
+    return {
+      origin: window.location.origin || null,
+      firstRunComplete: state.firstRunComplete,
+      setupStep: state.setupStep,
+      uiShellMode: state.uiShellMode,
+      activeServer: state.activeServer,
+    };
+  })()`);
 }
 
 async function readMainWindowEffects(harness: PackagedDesktopHarness): Promise<{
@@ -948,11 +955,22 @@ async function withPackagedHarness(
       );
     }
   } finally {
+    await harness
+      ?.eval(`(async () => {
+        const bridge = window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__;
+        if (bridge?.clearProtectedTestState) {
+          await bridge.clearProtectedTestState();
+        }
+        return true;
+      })()`)
+      .catch(() => undefined);
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);
-    await fs
-      .rm(tempRoot, { recursive: true, force: true })
-      .catch(() => undefined);
+    if (process.env.ELIZA_TEST_KEEP_PACKAGED_TEMP !== "1") {
+      await fs
+        .rm(tempRoot, { recursive: true, force: true })
+        .catch(() => undefined);
+    }
   }
 }
 

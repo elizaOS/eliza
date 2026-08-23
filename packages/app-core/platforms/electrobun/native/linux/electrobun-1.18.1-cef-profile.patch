@@ -1,0 +1,36 @@
+diff --git a/package/src/native/linux/nativeWrapper.cpp b/package/src/native/linux/nativeWrapper.cpp
+index c3765d71..d14e6105 100644
+--- a/package/src/native/linux/nativeWrapper.cpp
++++ b/package/src/native/linux/nativeWrapper.cpp
+@@ -2341,6 +2341,12 @@ bool initializeCEF() {
+         electrobun::migrateCacheFolderIfNeeded(cachePath);
+ 
+         CefString(&settings.root_cache_path) = cachePath;
++        // Chrome runtime requires a non-empty profile cache path for HTML5
++        // storage to survive process restarts. Keep the global profile one
++        // directory below root_cache_path, matching Chromium's profile model.
++        std::string defaultProfilePath = cachePath + "/Default";
++        g_mkdir_with_parents(defaultProfilePath.c_str(), 0755);
++        CefString(&settings.cache_path) = defaultProfilePath;
+     }
+ 
+     // Set language
+@@ -4009,8 +4015,16 @@ namespace electrobun {
+ std::string buildAndEnsurePartitionCachePath(const std::string& partitionName) {
+     char* home = getenv("HOME");
+     std::string basePath = home ? std::string(home) + "/.cache" : "/tmp";
+-    std::string cachePath = buildCEFPartitionPath(
+-        basePath, g_electrobunIdentifier, g_electrobunChannel, "CEF", partitionName);
++    std::string cacheRoot = buildAppDataPath(
++        basePath, g_electrobunIdentifier, g_electrobunChannel, "CEF");
++    // Chrome runtime only accepts profiles whose immediate parent is the
++    // root cache directory. Hash the caller-controlled partition name to keep
++    // the path a safe, collision-resistant direct child of that root.
++    gchar* digest = g_compute_checksum_for_string(
++        G_CHECKSUM_SHA256, partitionName.c_str(), partitionName.size());
++    if (!digest) return {};
++    std::string cachePath = cacheRoot + "/Partition-" + digest;
++    g_free(digest);
+     g_mkdir_with_parents(cachePath.c_str(), 0755);
+     return cachePath;
+ }

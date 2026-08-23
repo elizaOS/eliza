@@ -432,6 +432,7 @@ function createPackagedDesktopEnv(args: {
   bridgePort: number;
   bridgeToken: string;
   partition?: string;
+  homeDir?: string;
   appData?: string;
   localAppData?: string;
 }): NodeJS.ProcessEnv {
@@ -480,6 +481,10 @@ function createPackagedDesktopEnv(args: {
     return {
       ...buildMinimalMacEnv(args.baseEnv),
       ...commonEnv,
+      // Electrobun stores CEF profiles below $HOME/.cache rather than
+      // ELIZA_STATE_DIR. Isolate that native profile tree per harness so a
+      // relaunch exercises only the current test's durable state.
+      HOME: args.homeDir ?? args.stateDir,
       // Linux Electrobun uses WebKitGTK; it needs a display and software GL so
       // the webview renders under a headless / GPU-less display (the bare GPU
       // path raises GLXBadWindow).
@@ -632,6 +637,7 @@ async function getParentPid(pid: number): Promise<number | null> {
 export class PackagedDesktopHarness {
   readonly tempRoot: string;
   readonly stateDir: string;
+  readonly homeDir: string;
   readonly appDataDir: string;
   readonly localAppDataDir: string;
   bridgePort: number;
@@ -655,6 +661,7 @@ export class PackagedDesktopHarness {
   }) {
     this.tempRoot = args.tempRoot;
     this.stateDir = path.join(args.tempRoot, "state");
+    this.homeDir = path.join(args.tempRoot, "home");
     this.appDataDir = path.join(args.tempRoot, "appdata");
     this.localAppDataDir = path.join(args.tempRoot, "localappdata");
     this.bridgePort = pickTempPort(31_500 + Math.floor(Math.random() * 500));
@@ -671,6 +678,7 @@ export class PackagedDesktopHarness {
       bridgePort: this.bridgePort,
       bridgeToken: this.bridgeToken,
       partition: this.partition,
+      homeDir: this.homeDir,
       appData: this.appDataDir,
       localAppData: this.localAppDataDir,
     });
@@ -684,6 +692,7 @@ export class PackagedDesktopHarness {
     const shellReadyTimeoutMs = options.shellReadyTimeoutMs ?? 60_000;
 
     await fs.mkdir(this.stateDir, { recursive: true });
+    await fs.mkdir(this.homeDir, { recursive: true });
     await fs.mkdir(this.appDataDir, { recursive: true });
     await fs.mkdir(this.localAppDataDir, { recursive: true });
 
@@ -845,6 +854,7 @@ export class PackagedDesktopHarness {
       bridgePort: this.bridgePort,
       bridgeToken: this.bridgeToken,
       partition: this.partition,
+      homeDir: this.homeDir,
       appData: this.appDataDir,
       localAppData: this.localAppDataDir,
     });
