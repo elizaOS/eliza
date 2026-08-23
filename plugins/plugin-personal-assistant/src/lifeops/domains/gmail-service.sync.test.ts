@@ -53,6 +53,7 @@ function harness(args: {
   const deleteGmailMessages = vi.fn(async () => undefined);
   const deleteGmailMessagesByExternalId = vi.fn(async () => 1);
   const upsertGmailSyncState = vi.fn(async () => undefined);
+  const commitGmailSeed = vi.fn(async () => undefined);
   const google = {
     getGmailHistoryId: vi.fn(async () => args.historyId ?? "100"),
     listGmailHistoryPage:
@@ -112,6 +113,7 @@ function harness(args: {
     deleteGmailSpamReviewItemsForProvider: vi.fn(async () => undefined),
     deleteGmailSyncState: vi.fn(async () => undefined),
     upsertGmailSyncState,
+    commitGmailSeed,
   };
   const domain = new GmailDomain(
     {
@@ -309,15 +311,20 @@ describe("LifeOps Gmail range seed", () => {
       2,
       expect.objectContaining({ pageToken: "page-2" }),
     );
-    expect(repository.upsertGmailMessage).toHaveBeenCalledTimes(137);
-    expect(google.getGmailHistoryId).toHaveBeenCalledBefore(searchPages);
-    expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
+    expect(repository.commitGmailSeed).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ externalId: "p1-0" }),
+        expect.objectContaining({ externalId: "p2-36" }),
+      ]),
       expect.objectContaining({
         historyId: "300",
         cursorStatus: "seeded",
         maxResults: 137,
       }),
     );
+    expect(google.getGmailHistoryId).toHaveBeenCalledBefore(searchPages);
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
+    expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
   });
 
   it("aborts without a receipt or cursor when the provider repeats a page token", async () => {
@@ -334,6 +341,8 @@ describe("LifeOps Gmail range seed", () => {
       code: "LIFEOPS_GMAIL_SEED_PAGINATION_REPEATED",
     });
     expect(searchPages).toHaveBeenCalledTimes(2);
+    expect(repository.commitGmailSeed).not.toHaveBeenCalled();
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
     expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
   });
 
@@ -352,7 +361,38 @@ describe("LifeOps Gmail range seed", () => {
       code: "LIFEOPS_GMAIL_SEED_INCOMPLETE",
     });
     expect(searchPages).toHaveBeenCalledTimes(500);
+    expect(repository.commitGmailSeed).not.toHaveBeenCalled();
     expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates provider ids across pages before the atomic promotion", async () => {
+    const searchPages = vi
+      .fn()
+      .mockResolvedValueOnce({
+        messages: [providerMessage("same"), providerMessage("first")],
+        nextPageToken: "page-2",
+      })
+      .mockResolvedValueOnce({
+        messages: [providerMessage("same"), providerMessage("second")],
+        nextPageToken: null,
+      });
+    const { domain, repository } = harness({ searchPages });
+
+    const receipt = await domain.seedGmailMessages(url, {
+      grantId: grant.id,
+      rangeDays: 7,
+    });
+
+    expect(receipt.messageCount).toBe(3);
+    expect(repository.commitGmailSeed).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ externalId: "same" }),
+        expect.objectContaining({ externalId: "first" }),
+        expect.objectContaining({ externalId: "second" }),
+      ]),
+      expect.objectContaining({ maxResults: 3 }),
+    );
+    expect(repository.commitGmailSeed.mock.calls[0]?.[0]).toHaveLength(3);
   });
 
   it("rejects a range outside the owner-selectable 7/30/90-day windows", async () => {

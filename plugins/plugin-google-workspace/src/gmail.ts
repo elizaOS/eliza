@@ -96,6 +96,10 @@ function nextGmailPageToken(
   return token;
 }
 
+function opaqueGmailPageToken(value: string | null | undefined): string | null {
+  return value?.trim() ? value : null;
+}
+
 export class GoogleGmailClient {
   constructor(private readonly clientFactory: GoogleApiClientFactory) {}
 
@@ -137,7 +141,7 @@ export class GoogleGmailClient {
       const historyId = response.data.historyId?.trim() || startHistoryId;
       return {
         changes: (response.data.history ?? []).map(mapGmailHistoryChange),
-        nextPageToken: response.data.nextPageToken?.trim() || null,
+        nextPageToken: opaqueGmailPageToken(response.data.nextPageToken),
         historyId,
       };
     } catch (error) {
@@ -318,7 +322,7 @@ export class GoogleGmailClient {
     }
     return {
       messages: sortGmailMessages(messages),
-      nextPageToken: response.data.nextPageToken?.trim() || null,
+      nextPageToken: opaqueGmailPageToken(response.data.nextPageToken),
     };
   }
 

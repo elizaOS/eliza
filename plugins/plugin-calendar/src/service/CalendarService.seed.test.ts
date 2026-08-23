@@ -47,12 +47,30 @@ const googleSource = {
   connectorAccountId: "account-a",
   calendarId: "primary",
 };
+const googleSourceHealth = {
+  key: googleSource,
+  summary: "Primary",
+  accessRole: "owner",
+  visibility: "details" as const,
+  status: "fresh" as const,
+  syncedAt: "2026-08-22T10:00:00.000Z",
+  error: null,
+};
 const appleSource = {
   provider: "apple_calendar" as const,
   side: "owner" as const,
   grantId: "apple-calendar",
   connectorAccountId: "apple-calendar",
   calendarId: "apple-work",
+};
+const appleSourceHealth = {
+  key: appleSource,
+  summary: "Work",
+  accessRole: "owner",
+  visibility: "details" as const,
+  status: "fresh" as const,
+  syncedAt: "2026-08-22T10:00:00.000Z",
+  error: null,
 };
 
 describe("CalendarService.seedImportedCalendarData", () => {
@@ -61,7 +79,7 @@ describe("CalendarService.seedImportedCalendarData", () => {
       state: "complete",
       timeMin: "2026-08-15T00:00:00.000Z",
       timeMax: "2026-11-20T00:00:00.000Z",
-      sources: [],
+      sources: [googleSourceHealth, appleSourceHealth],
       events: [
         event({}),
         event({ externalId: "evt-1" }),
@@ -154,5 +172,53 @@ describe("CalendarService.seedImportedCalendarData", () => {
       }),
     ).rejects.toMatchObject({ status: 400 });
     expect(getCalendarFeed).not.toHaveBeenCalled();
+  });
+
+  it("rejects a caller-invented source absent from the authoritative feed", async () => {
+    const { seed } = seedWithFeed({
+      state: "complete",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [],
+      events: [],
+    });
+
+    await expect(
+      seed({
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [googleSource],
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "CALENDAR_SEED_SOURCE_NOT_AUTHORIZED",
+    });
+  });
+
+  it("rejects duplicate and wrong-side source selections", async () => {
+    const { seed } = seedWithFeed({
+      state: "complete",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [googleSourceHealth],
+      events: [],
+    });
+
+    await expect(
+      seed({
+        side: "owner",
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [googleSource, googleSource],
+      }),
+    ).rejects.toMatchObject({ code: "CALENDAR_SEED_SELECTION_DUPLICATE" });
+    await expect(
+      seed({
+        side: "agent",
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [googleSource],
+      }),
+    ).rejects.toMatchObject({ code: "CALENDAR_SEED_SIDE_MISMATCH" });
   });
 });

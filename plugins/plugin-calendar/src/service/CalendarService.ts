@@ -329,6 +329,16 @@ function calendarSourceKey(
   };
 }
 
+function calendarSourceIdentity(source: LifeOpsCalendarSourceKey): string {
+  return JSON.stringify([
+    source.provider,
+    source.side,
+    source.grantId,
+    source.connectorAccountId,
+    source.calendarId,
+  ]);
+}
+
 function normalizeCalendarProvider(value: unknown): LifeOpsCalendarProvider {
   const provider = requireNonEmptyString(value, "provider");
   switch (provider) {
@@ -4815,26 +4825,55 @@ export class CalendarService extends Service {
         "CALENDAR_SEED_INCOMPLETE",
       );
     }
-    const selected = new Set(
-      request.calendars.map((calendar) =>
-        JSON.stringify([
-          calendar.provider,
-          calendar.side,
-          calendar.grantId,
-          calendar.connectorAccountId,
-          calendar.calendarId,
-        ]),
-      ),
+    const authoritativeSources = new Map(
+      feed.sources.map((source) => [
+        calendarSourceIdentity(source.key),
+        source,
+      ]),
     );
+    const selected = new Set<string>();
+    for (const calendar of request.calendars) {
+      if (request.side && calendar.side !== request.side) {
+        throw new CalendarServiceError(
+          400,
+          "Every selected calendar must match the requested connector side.",
+          "CALENDAR_SEED_SIDE_MISMATCH",
+        );
+      }
+      const identity = calendarSourceIdentity(calendar);
+      if (selected.has(identity)) {
+        throw new CalendarServiceError(
+          400,
+          "Calendar seeding cannot select the same source more than once.",
+          "CALENDAR_SEED_SELECTION_DUPLICATE",
+        );
+      }
+      const source = authoritativeSources.get(identity);
+      if (!source) {
+        throw new CalendarServiceError(
+          403,
+          "A selected calendar is not visible through the authorized feed.",
+          "CALENDAR_SEED_SOURCE_NOT_AUTHORIZED",
+        );
+      }
+      if (source.status !== "fresh" || source.error !== null) {
+        throw new CalendarServiceError(
+          409,
+          `Calendar seed did not complete because ${source.summary} is not fresh. No receipt was issued.`,
+          "CALENDAR_SEED_SOURCE_NOT_FRESH",
+        );
+      }
+      selected.add(identity);
+    }
     const selectedEvents = feed.events.filter((event) =>
       selected.has(
-        JSON.stringify([
-          event.provider,
-          event.side,
-          event.grantId ?? "",
-          event.connectorAccountId ?? "",
-          event.calendarId,
-        ]),
+        calendarSourceIdentity({
+          provider: event.provider,
+          side: event.side,
+          grantId: event.grantId ?? "",
+          connectorAccountId: event.connectorAccountId ?? "",
+          calendarId: event.calendarId,
+        }),
       ),
     );
     const identities = new Set(

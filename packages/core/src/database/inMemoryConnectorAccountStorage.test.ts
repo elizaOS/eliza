@@ -68,6 +68,12 @@ describe("InMemoryDatabaseAdapter connector account storage", () => {
 		await expect(
 			adapter.listConnectorAccountCredentialRefs({ accountId: account.id }),
 		).resolves.toHaveLength(1);
+		await expect(
+			adapter.deleteConnectorAccountCredentialRefs({ accountId: account.id }),
+		).resolves.toBe(1);
+		await expect(
+			adapter.listConnectorAccountCredentialRefs({ accountId: account.id }),
+		).resolves.toEqual([]);
 
 		const audit = await adapter.appendConnectorAccountAuditEvent({
 			accountId: account.id,
@@ -143,12 +149,6 @@ describe("InMemoryDatabaseAdapter connector account storage", () => {
 				accountKey: "github-user-1",
 			}),
 		).resolves.toBe(true);
-		await expect(
-			adapter.getConnectorAccountCredentialRef({
-				accountId: account.id,
-				credentialType: "oauth.refresh_token",
-			}),
-		).resolves.toBeNull();
 	});
 });
 

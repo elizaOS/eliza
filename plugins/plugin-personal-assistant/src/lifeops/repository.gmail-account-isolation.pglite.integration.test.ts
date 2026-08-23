@@ -10,6 +10,7 @@ import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { lifeOpsGmailMessageFromGoogle } from "./google-plugin-delegates.js";
 import {
   createLifeOpsConnectorGrant,
+  createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "./repository.js";
 
@@ -175,6 +176,59 @@ describe("LifeOpsRepository Gmail account isolation", () => {
         "owner",
       ),
     ).resolves.toEqual([expect.objectContaining({ id: current.id })]);
+  });
+
+  it("rolls back every staged seed row when promotion fails", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const ownerGrant = grant("account-1");
+    const first = lifeOpsGmailMessageFromGoogle({
+      agentId: runtime.agentId,
+      grant: ownerGrant,
+      message: providerMessage(),
+      syncedAt: SYNCED_AT,
+    });
+    const invalid = {
+      ...first,
+      id: `${first.id}:invalid`,
+      externalId: "invalid-second-message",
+      grantId: "",
+    };
+    const state = createLifeOpsGmailSyncState({
+      agentId: runtime.agentId,
+      provider: "google",
+      side: "owner",
+      mailbox: "me",
+      grantId: ownerGrant.id,
+      maxResults: 2,
+      historyId: "100",
+      cursorStatus: "seeded",
+      fullResyncReason: null,
+      syncedAt: SYNCED_AT,
+    });
+
+    await expect(
+      repository.commitGmailSeed([first, invalid], state),
+    ).rejects.toThrow(/requires grantId/);
+    await expect(
+      repository.listGmailMessages(
+        runtime.agentId,
+        "google",
+        { grantId: ownerGrant.id },
+        "owner",
+      ),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.getGmailSyncState(
+        runtime.agentId,
+        "google",
+        "me",
+        "owner",
+        ownerGrant.id,
+      ),
+    ).resolves.toBeNull();
   });
 
   it("stores identical inbox provider ids independently for two Gmail grants", async () => {

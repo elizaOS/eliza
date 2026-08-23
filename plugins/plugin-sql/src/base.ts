@@ -26,6 +26,7 @@ import {
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
+  type DeleteConnectorAccountCredentialRefsParams,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -7340,6 +7341,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: ListConnectorAccountCredentialRefsParams
   ): Promise<ConnectorAccountCredentialRefRecord[]> {
     return this.getConnectorAccountStore().listCredentialRefs(params);
+  }
+
+  async deleteConnectorAccountCredentialRefs(
+    params: DeleteConnectorAccountCredentialRefsParams
+  ): Promise<number> {
+    return this.getConnectorAccountStore().deleteCredentialRefs(params);
   }
 
   async appendConnectorAccountAuditEvent(
