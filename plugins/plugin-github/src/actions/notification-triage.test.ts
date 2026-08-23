@@ -5,8 +5,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubOctokitClient } from "../types.js";
 import {
+  compareTriagedNotifications,
   fetchAllUnreadNotifications,
   formatTriageSummary,
+  type TriagedNotification,
 } from "./notification-triage.js";
 
 describe("fetchAllUnreadNotifications", () => {
@@ -128,30 +130,46 @@ describe("formatTriageSummary", () => {
       "Triaged 25 of at least 1000 unread notification(s)",
     );
   });
+});
 
-  it("handles NaN scores safely when sorting triaged notifications", () => {
-    const triaged = [
-      {
-        score: NaN,
-        notification: { id: "n-1" },
-      },
-      {
-        score: 100,
-        notification: { id: "n-2" },
-      },
-    ];
+describe("compareTriagedNotifications", () => {
+  const base: Omit<TriagedNotification, "id" | "score"> = {
+    reason: "mention",
+    repo: "elizaOS/eliza",
+    title: "(untitled)",
+    subjectType: "Issue",
+    url: null,
+    updatedAt: "2026-08-16T00:00:00Z",
+  };
+  const at = (id: string, score: number): TriagedNotification => ({
+    ...base,
+    id,
+    score,
+  });
 
-    triaged.sort((a, b) => {
-      const bScore =
-        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
-      const aScore =
-        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
-      return (
-        bScore - aScore || a.notification.id.localeCompare(b.notification.id)
-      );
-    });
+  it("orders the highest score first", () => {
+    const triaged = [at("n-low", 10), at("n-high", 100)];
+    triaged.sort(compareTriagedNotifications);
+    expect(triaged.map((t) => t.id)).toEqual(["n-high", "n-low"]);
+  });
 
-    expect(triaged[0]?.notification.id).toBe("n-2");
-    expect(triaged[1]?.notification.id).toBe("n-1");
+  it("keeps a total order when a score is not finite", () => {
+    const triaged = [at("n-nan", Number.NaN), at("n-scored", 100)];
+    triaged.sort(compareTriagedNotifications);
+    expect(triaged.map((t) => t.id)).toEqual(["n-scored", "n-nan"]);
+
+    expect(
+      compareTriagedNotifications(at("n-nan", Number.NaN), at("n-scored", 100)),
+    ).toBeGreaterThan(0);
+    expect(
+      compareTriagedNotifications(at("n-scored", 100), at("n-nan", Number.NaN)),
+    ).toBeLessThan(0);
+  });
+
+  it("tie-breaks equal scores on notification id", () => {
+    expect(compareTriagedNotifications(at("b", 5), at("a", 5))).toBeGreaterThan(
+      0,
+    );
+    expect(compareTriagedNotifications(at("a", 5), at("b", 5))).toBeLessThan(0);
   });
 });
