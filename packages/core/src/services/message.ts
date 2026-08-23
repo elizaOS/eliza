@@ -3723,8 +3723,15 @@ async function createV5MessageContextObject(args: {
 			type: "instruction",
 			source: "message-service",
 			stable: false,
-			content:
-				'ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn\'s work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process (for example "I handled the available step") as the reply: on an unaddressed message, an empty outcome means silence.',
+			content: args.includeTools
+				? 'ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn\'s work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process (for example "I handled the available step") as the reply: on an unaddressed message, an empty outcome means silence.'
+				: // Stage-1 wording: the decision here is the shouldRespond field, not
+					// a terminal tool. Live group-chat evaluation (five ambient-mode
+					// rooms, gemma-4-31b) replied to nearly every unaddressed message —
+					// "Hard to miss.", "Sounds like the move." — a running commentary
+					// nobody asked for. Unaddressed group chatter defaults to IGNORE;
+					// RESPOND is reserved for a concrete contribution.
+					"ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. Choose RESPOND only when you have something concrete the participants need right now: an open question nobody has answered that you can answer, a fact or constraint they are missing or about to get wrong (an allergy, a double-booking, a forgotten item, who has what), or work they asked for (a reminder, a list, a lookup). IGNORE banter, jokes, acknowledgements, reactions, and plans that are settling on their own; never reply just to agree, comment, restate, or keep the conversation going, and never post a running commentary after every message. Having replied a moment ago is a reason to IGNORE, not to RESPOND. When you do respond, name the specific person you mean when it matters (whose allergy, who has the keys).",
 		});
 	}
 
@@ -7917,10 +7924,31 @@ export async function runV5MessageRuntimeStage1(args: {
 		args.runtime.contexts,
 		senderRole,
 	);
+	// Ambient turn = a positively-identified unaddressed text-group turn
+	// (structural classifier only — channel type + addressing + source
+	// metadata, never message text; anything uncertain fails open to
+	// addressed). Classified before the Stage-1 context is built so the
+	// shouldRespond decision sees the ambient-turn policy too: without it an
+	// ambient-mode group (every message forwarded, nobody addressing the agent)
+	// got a reply to nearly every message — the Stage-1 field guidance alone
+	// ("active in the conversation") reads as RESPOND. Also drives the planner's
+	// ambient-turn policy instruction and the deliberate-silence terminal below.
+	const directMessageChannel =
+		args.message.content?.channelType === ChannelType.DM ||
+		args.message.content?.channelType === ChannelType.VOICE_DM ||
+		args.message.content?.channelType === ChannelType.API ||
+		args.message.content?.channelType === ChannelType.SELF;
+	const ambientTurn =
+		!directMessageChannel &&
+		isUnaddressedTextGroupTurn(
+			args.message,
+			messageExplicitlyAddressesAgent(args.runtime, args.message),
+		);
 	const context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
+		ambientTurn,
 		extraProviderExclusions: ambientTurnProviderExclusions(
 			args.runtime,
 			args.message,
@@ -7991,24 +8019,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	let messageHandlerStageTask: Promise<void> = Promise.resolve();
 	try {
 		const messageHandlerStartedAt = Date.now();
-		const directMessageChannel =
-			args.message.content?.channelType === ChannelType.DM ||
-			args.message.content?.channelType === ChannelType.VOICE_DM ||
-			args.message.content?.channelType === ChannelType.API ||
-			args.message.content?.channelType === ChannelType.SELF;
 		const voiceDirectMessageChannel =
 			args.message.content?.channelType === ChannelType.VOICE_DM;
-		// Ambient turn = a positively-identified unaddressed text-group turn
-		// (structural classifier only — channel type + addressing + source
-		// metadata, never message text; anything uncertain fails open to
-		// addressed). Drives the planner's ambient-turn policy instruction and
-		// the deliberate-silence terminal below, independent of the Stage-1
-		const ambientTurn =
-			!directMessageChannel &&
-			isUnaddressedTextGroupTurn(
-				args.message,
-				messageExplicitlyAddressesAgent(args.runtime, args.message),
-			);
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
