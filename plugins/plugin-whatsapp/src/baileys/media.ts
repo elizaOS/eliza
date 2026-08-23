@@ -4,13 +4,14 @@
  * only integrity-checked plaintext bytes leave this module.
  */
 import crypto from "node:crypto";
-import { detectMime, ElizaError, type FetchMediaOptions, fetchRemoteMedia } from "@elizaos/core";
 import {
-  extractMessageContent,
-  getMediaKeys,
-  getUrlFromDirectPath,
-  type proto,
-} from "@whiskeysockets/baileys";
+  detectMime,
+  ElizaError,
+  type ElizaErrorSeverity,
+  type FetchMediaOptions,
+  fetchRemoteMedia,
+} from "@elizaos/core";
+import { getMediaKeys, getUrlFromDirectPath, type proto } from "@whiskeysockets/baileys";
 import type { PersonalMediaMetadata } from "../types";
 
 export type PersonalMediaKind = "image" | "audio" | "video" | "document";
@@ -27,13 +28,19 @@ type MediaProto =
   | proto.Message.IVideoMessage
   | proto.Message.IDocumentMessage;
 
+const MAX_DECLARED_MIME_LENGTH = 127;
+const MAX_PROVIDER_FILENAME_LENGTH = 240;
+const MIME_TOKEN = /^[a-z0-9!#$%&'*+.^_`|~-]+\/[a-z0-9!#$%&'*+.^_`|~-]+$/;
+const UNSAFE_FILENAME_CODEPOINT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
 function mediaError(
   code: string,
   message: string,
   context: Record<string, unknown>,
-  cause?: unknown
+  cause?: unknown,
+  severity: ElizaErrorSeverity = "ephemeral"
 ): ElizaError {
-  return new ElizaError(message, { code, context, cause, severity: "fatal" });
+  return new ElizaError(message, { code, context, cause, severity });
 }
 
 function exactBytes(value: Uint8Array | null | undefined, length: number): Uint8Array | undefined {
@@ -45,9 +52,59 @@ function readFileLength(value: unknown): number | undefined {
   return Number.isSafeInteger(numberValue) && numberValue > 0 ? numberValue : undefined;
 }
 
+function isWellFormedUnicode(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function normalizeDeclaredMime(value: string | null | undefined): string | undefined {
-  const mime = value?.split(";")[0]?.trim().toLowerCase();
-  return mime || undefined;
+  if (typeof value !== "string" || !isWellFormedUnicode(value)) return undefined;
+  const mime = value.trim().toLowerCase();
+  if (mime.length === 0 || mime.length > MAX_DECLARED_MIME_LENGTH || !MIME_TOKEN.test(mime)) {
+    return undefined;
+  }
+  return mime;
+}
+
+function normalizeProviderFilename(
+  value: string | null | undefined,
+  kind: PersonalMediaKind
+): string | undefined {
+  if (value === null || value === undefined || value.length === 0) return undefined;
+  if (!isWellFormedUnicode(value)) {
+    throw mediaError(
+      "WHATSAPP_PERSONAL_MEDIA_FILENAME_INVALID",
+      "Personal WhatsApp media filename is malformed",
+      { messageType: kind }
+    );
+  }
+  const normalized = value.normalize("NFC").trim();
+  if (
+    normalized.length === 0 ||
+    Buffer.byteLength(normalized, "utf8") > MAX_PROVIDER_FILENAME_LENGTH ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.includes("/") ||
+    normalized.includes("\\") ||
+    /^[a-z]:/iu.test(normalized) ||
+    UNSAFE_FILENAME_CODEPOINT.test(normalized)
+  ) {
+    throw mediaError(
+      "WHATSAPP_PERSONAL_MEDIA_FILENAME_INVALID",
+      "Personal WhatsApp media filename is not a safe display name",
+      { messageType: kind }
+    );
+  }
+  return normalized;
 }
 
 function mimeMatchesKind(mimeType: string | undefined, kind: PersonalMediaKind): boolean {
@@ -68,10 +125,9 @@ function mediaProtoForMessage(message: proto.IMessage): {
 
 /** Extract and structurally authorize provider media metadata without network I/O. */
 export function extractPersonalMediaMetadata(
-  message: proto.IWebMessageInfo
+  content: proto.IMessage
 ): PersonalMediaMetadata | undefined {
-  const content = extractMessageContent(message.message);
-  const selected = content ? mediaProtoForMessage(content) : null;
+  const selected = mediaProtoForMessage(content);
   if (!selected) return undefined;
 
   const mediaKey = exactBytes(selected.media.mediaKey, 32);
@@ -79,6 +135,13 @@ export function extractPersonalMediaMetadata(
   const fileEncSha256 = exactBytes(selected.media.fileEncSha256, 32);
   const fileLength = readFileLength(selected.media.fileLength);
   const mimeType = normalizeDeclaredMime(selected.media.mimetype);
+  const fileName =
+    selected.kind === "document"
+      ? normalizeProviderFilename(
+          (selected.media as proto.Message.IDocumentMessage).fileName,
+          selected.kind
+        )
+      : undefined;
   const directPath = selected.media.directPath?.trim() || undefined;
   const url = selected.media.url?.trim() || undefined;
 
@@ -120,16 +183,26 @@ export function extractPersonalMediaMetadata(
     mimeType,
     ...(directPath ? { directPath } : {}),
     ...(url ? { url } : {}),
-    ...(selected.kind === "document" && (selected.media as proto.Message.IDocumentMessage).fileName
-      ? { fileName: (selected.media as proto.Message.IDocumentMessage).fileName ?? undefined }
-      : {}),
+    ...(fileName ? { fileName } : {}),
   };
+}
+
+function extractUrlHost(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).host;
+  } catch {
+    // error-policy:J3 A malformed optional URL cannot supply a direct-path fallback host.
+    return undefined;
+  }
 }
 
 function authorizedDownloadUrl(metadata: PersonalMediaMetadata): string {
   let parsed: URL;
   try {
-    const value = metadata.directPath ? getUrlFromDirectPath(metadata.directPath) : metadata.url;
+    const value = metadata.directPath
+      ? getUrlFromDirectPath(metadata.directPath, extractUrlHost(metadata.url))
+      : metadata.url;
     parsed = new URL(value ?? "");
   } catch (error) {
     // error-policy:J2 Provider locations are untrusted and retain their parse cause.
@@ -143,6 +216,8 @@ function authorizedDownloadUrl(metadata: PersonalMediaMetadata): string {
   const host = parsed.hostname.toLowerCase();
   if (
     parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
     !(host === "whatsapp.net" || host.endsWith(".whatsapp.net") || host.endsWith(".fbcdn.net"))
   ) {
     throw mediaError(

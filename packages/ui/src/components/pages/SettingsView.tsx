@@ -17,6 +17,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -240,13 +241,16 @@ export function SettingsView({
 } = {}) {
   // Gate: explicitly cloud-only desktop builds render the consolidated
   // CloudSettingsPanel instead of the legacy registry-driven view. Managed
-  // Cloud web runtimes still use the legacy view and its Cloud sections. This
-  // check lives in a thin wrapper so each branch has its own hook tree — an
-  // early return inside the legacy body would trigger React error #300
-  // (hooks-count mismatch) if the boot config settles after first render.
+  // Cloud web runtimes also resolve cloudOnly branding in production, so the
+  // branding flag alone cannot distinguish them; the Electrobun runtime check
+  // keeps web and mobile cloud builds on the legacy view and its Cloud
+  // sections. This check lives in a thin wrapper so each branch has its own
+  // hook tree — an early return inside the legacy body would trigger React
+  // error #300 (hooks-count mismatch) if the boot config settles after first
+  // render.
   const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
 
-  if (cloudOnlyBranding && !inModal) {
+  if (cloudOnlyBranding && !inModal && isElectrobunRuntime()) {
     return <CloudSettingsPanel />;
   }
   return (
