@@ -31,6 +31,19 @@ export interface ScoredView {
 	score: number;
 }
 
+function toScoreValue(value: number): number {
+	return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareScoredView(a: ScoredView, b: ScoredView): number {
+	const aScore = toScoreValue(a.score);
+	const bScore = toScoreValue(b.score);
+	if (bScore !== aScore) return bScore - aScore;
+	return a.view.id.localeCompare(b.view.id);
+}
+
+export const __testCompareScoredView = compareScoredView;
+
 export function scoreView(view: ViewSummary, query: string): number {
 	const q = query.trim().toLowerCase();
 	if (!q) return 0;
@@ -165,7 +178,7 @@ export async function runViewsSearch({
 	const scored: ScoredView[] = views
 		.map((view) => ({ view, score: scoreView(view, query) }))
 		.filter(({ score }) => score > 0)
-		.sort((a, b) => b.score - a.score);
+		.sort(compareScoredView);
 
 	const text = formatSearchResults(scored, query);
 	await callback?.({ text });
