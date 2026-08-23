@@ -82,9 +82,17 @@ async function handleRestore(
 
     // Restore the most recent stashed session — the user likely wants what
     // they just stashed.
-    const sessionToRestore = stashed.sort(
-      (a, b) => b.updatedAt - a.updatedAt,
-    )[0];
+    const sessionToRestore = stashed.sort((a, b) => {
+      const bTime =
+        typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+          ? b.updatedAt
+          : 0;
+      const aTime =
+        typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+          ? a.updatedAt
+          : 0;
+      return bTime - aTime || a.id.localeCompare(b.id);
+    })[0];
     const session = await formService.restore(sessionToRestore.id, entityId);
 
     const form = formService.getForm(session.formId);
