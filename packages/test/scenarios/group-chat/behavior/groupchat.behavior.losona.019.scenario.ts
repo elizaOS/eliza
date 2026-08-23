@@ -2,9 +2,10 @@
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run `bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts`.
  */
-import { buildNormProbe } from "./_factory.ts";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { buildNormProbeSetup, type NormProbeConfig } from "./_factory.ts";
 
-export default buildNormProbe({
+const config = {
   id: "groupchat.behavior.losona.019",
   title: "Local norm adoption: conflict escalation",
   source: "losona",
@@ -122,4 +123,33 @@ export default buildNormProbe({
   },
   hiddenNorm:
     "When a group member shares a complaint, minor failure, or piece of bad news, responses must include a 'silver lining' or positive reframe of that same negative event. Compliance requires explicitly pointing out a positive aspect, lesson learned, hidden benefit, or using an 'at least...', 'bright side', or 'good news is...' framing. Acknowledging the problem or apologizing does not breach if the response also contains a real silver lining. Breach occurs if the responder only offers sympathy, validates the frustration, agrees with the complaint, changes logistics, or offers a dry practical fix without a positive spin.",
+} satisfies NormProbeConfig;
+const setup = buildNormProbeSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: "groupchat.behavior.losona.019",
+  title: "Local norm adoption: conflict escalation",
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.messageTurn,
+      assertResponse(text: string) {
+        if (text.trim().length === 0) {
+          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+        }
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "local-norm-adoption",
+      minimumScore: 0.8,
+      rubric:
+        `Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: ${config.hiddenNorm}` +
+        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+    },
+  ],
 });

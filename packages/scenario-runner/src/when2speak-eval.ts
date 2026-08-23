@@ -8,6 +8,7 @@ import path from "node:path";
 import readline from "node:readline";
 import {
   ChannelType,
+  ElizaError,
   type IAgentRuntime,
   type Memory,
   runV5MessageRuntimeStage1,
@@ -71,6 +72,17 @@ export interface TimingReport {
 }
 
 type CorpusMessage = { role: "user" | "assistant"; content: string };
+function invalidCorpusRow(
+  row: number,
+  message: string,
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(`When2Speak row ${row} ${message}`, {
+    code: "WHEN2SPEAK_INVALID_ROW",
+    ...(cause === undefined ? {} : { cause }),
+    context: { row },
+  });
+}
 function isCorpusMessage(value: unknown): value is CorpusMessage {
   if (value === null || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
@@ -85,11 +97,11 @@ function parseSpeakerTurn(
 ): { speaker: string; text: string } {
   const separator = content.indexOf(":");
   if (separator <= 0)
-    throw new Error(`When2Speak row ${row} has an unparseable speaker turn`);
+    throw invalidCorpusRow(row, "has an unparseable speaker turn");
   const speaker = content.slice(0, separator).trim();
   const text = content.slice(separator + 1).trim();
   if (!speaker || !text)
-    throw new Error(`When2Speak row ${row} has an empty speaker or turn`);
+    throw invalidCorpusRow(row, "has an empty speaker or turn");
   return { speaker, text };
 }
 export function parseWhen2SpeakLine(
@@ -101,24 +113,25 @@ export function parseWhen2SpeakLine(
     parsed = JSON.parse(line);
   } catch (cause) {
     // error-policy:J3 Corpus JSON is untrusted input; reject the row explicitly.
-    throw new Error(`When2Speak row ${row} is not valid JSON`, { cause });
+    throw invalidCorpusRow(row, "is not valid JSON", cause);
   }
   if (parsed === null || typeof parsed !== "object")
-    throw new Error(`When2Speak row ${row} must be an object`);
+    throw invalidCorpusRow(row, "must be an object");
   const messages = (parsed as Record<string, unknown>).messages;
   if (
     !Array.isArray(messages) ||
     messages.length < 2 ||
     !messages.every(isCorpusMessage)
   )
-    throw new Error(`When2Speak row ${row} must contain typed messages`);
+    throw invalidCorpusRow(row, "must contain typed messages");
   const labelMessage = messages[messages.length - 1];
   if (labelMessage.role !== "assistant")
-    throw new Error(`When2Speak row ${row} must end with an assistant label`);
+    throw invalidCorpusRow(row, "must end with an assistant label");
   const contextMessages = messages.slice(0, -1);
   if (contextMessages.some((message) => message.role !== "user"))
-    throw new Error(
-      `When2Speak row ${row} contains an assistant turn inside the context`,
+    throw invalidCorpusRow(
+      row,
+      "contains an assistant turn inside the context",
     );
   const turns = contextMessages.map((message) =>
     parseSpeakerTurn(message.content, row),
@@ -320,12 +333,18 @@ export async function runWhen2SpeakEval(options: {
       ...(options.provider ? { preferredProvider: options.provider } : {}),
     });
   } catch (error) {
+    // error-policy:J2 Restore process state, then add evaluator context while
+    // preserving the runtime-construction failure as the cause.
     if (previousTrajectoryDir === undefined) {
       delete process.env.ELIZA_TRAJECTORY_DIR;
     } else {
       process.env.ELIZA_TRAJECTORY_DIR = previousTrajectoryDir;
     }
-    throw error;
+    throw new ElizaError("Failed to create the When2Speak scenario runtime", {
+      code: "WHEN2SPEAK_RUNTIME_CREATE_FAILED",
+      cause: error,
+      context: { provider: options.provider ?? "auto" },
+    });
   }
   const predictions: TimingReport["predictions"] = [];
   const failures: TimingReport["failures"] = [];

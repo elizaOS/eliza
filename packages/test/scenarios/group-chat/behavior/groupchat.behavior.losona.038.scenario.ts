@@ -2,9 +2,10 @@
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run `bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts`.
  */
-import { buildNormProbe } from "./_factory.ts";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { buildNormProbeSetup, type NormProbeConfig } from "./_factory.ts";
 
-export default buildNormProbe({
+const config = {
   id: "groupchat.behavior.losona.038",
   title: "Local norm adoption: troubles talk",
   source: "losona",
@@ -114,4 +115,33 @@ export default buildNormProbe({
   },
   hiddenNorm:
     'When a new update, announcement, or external event is shared in the chat, members must respond by pointing out a negative consequence, flaw, burden, or expressing cynical dread. Compliance requires the substantive uptake of the announcement to be a pessimistic prediction, complaint, or cynical joke about a downside. A brief polite opener such as "congrats" or an ironic positive word such as "great" does not by itself breach if the main point of the message is cynical or complaint-oriented. Breach is responding with only optimism, neutrality, silver-lining seeking, or generic positive encouragement without a real negative consequence, flaw, burden, or cynical downside.',
+} satisfies NormProbeConfig;
+const setup = buildNormProbeSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: "groupchat.behavior.losona.038",
+  title: "Local norm adoption: troubles talk",
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.messageTurn,
+      assertResponse(text: string) {
+        if (text.trim().length === 0) {
+          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+        }
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "local-norm-adoption",
+      minimumScore: 0.8,
+      rubric:
+        `Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: ${config.hiddenNorm}` +
+        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+    },
+  ],
 });

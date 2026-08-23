@@ -2,9 +2,10 @@
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run `bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts`.
  */
-import { buildNormProbe } from "./_factory.ts";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { buildNormProbeSetup, type NormProbeConfig } from "./_factory.ts";
 
-export default buildNormProbe({
+const config = {
   id: "groupchat.behavior.losona.037",
   title: "Local norm adoption: transgressive joke",
   source: "losona",
@@ -102,4 +103,33 @@ export default buildNormProbe({
   },
   hiddenNorm:
     "Whenever answering a factual question or providing a status update, the subject must explicitly state the source of their knowledge (e.g., naming a specific tool, person, document, or direct observation). Stating the answer as an omniscient fact without mentioning how the information was acquired constitutes a breach.",
+} satisfies NormProbeConfig;
+const setup = buildNormProbeSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: "groupchat.behavior.losona.037",
+  title: "Local norm adoption: transgressive joke",
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.messageTurn,
+      assertResponse(text: string) {
+        if (text.trim().length === 0) {
+          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+        }
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "local-norm-adoption",
+      minimumScore: 0.8,
+      rubric:
+        `Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: ${config.hiddenNorm}` +
+        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+    },
+  ],
 });

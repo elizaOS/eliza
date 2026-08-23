@@ -4,10 +4,12 @@
  * turn and withholds only the evaluation-only hidden norm fields.
  */
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { groupChatCorpusError } from "../_errors.ts";
 
 const SOURCE_URL =
   "https://huggingface.co/datasets/Humalike-ai/LoSoNA/resolve/main/data/losona_scenarios.jsonl";
@@ -51,7 +53,11 @@ function isTurn(value: unknown): value is LoSoNATurn {
 
 function parseRow(value: unknown, lineNumber: number): LoSoNARow {
   if (!value || typeof value !== "object") {
-    throw new Error(`LoSoNA line ${lineNumber} is not an object`);
+    throw groupChatCorpusError({
+      code: "LOSONA_INVALID_SOURCE_ROW",
+      message: "LoSoNA source line is not an object",
+      context: { line: lineNumber },
+    });
   }
   const fields = value;
   if (
@@ -69,7 +75,11 @@ function parseRow(value: unknown, lineNumber: number): LoSoNARow {
     !Array.isArray(fields.transcript) ||
     !fields.transcript.every(isTurn)
   ) {
-    throw new Error(`LoSoNA line ${lineNumber} has an unsupported schema`);
+    throw groupChatCorpusError({
+      code: "LOSONA_INVALID_SOURCE_ROW",
+      message: "LoSoNA source line has an unsupported schema",
+      context: { line: lineNumber },
+    });
   }
   return {
     scenario_id: fields.scenario_id,
@@ -82,21 +92,21 @@ function parseRow(value: unknown, lineNumber: number): LoSoNARow {
 }
 
 async function sourceText(): Promise<string> {
-  try {
+  if (existsSync(CACHE_PATH)) {
     return await readFile(CACHE_PATH, "utf8");
-  } catch {
-    // error-policy:J2 Cache absence adds fetch context and preserves the cause.
-    const response = await fetch(SOURCE_URL);
-    if (!response.ok) {
-      throw new Error(
-        `LoSoNA download failed with HTTP ${response.status} from ${SOURCE_URL}`,
-      );
-    }
-    const text = await response.text();
-    await mkdir(dirname(CACHE_PATH), { recursive: true });
-    await writeFile(CACHE_PATH, text);
-    return text;
   }
+  const response = await fetch(SOURCE_URL);
+  if (!response.ok) {
+    throw groupChatCorpusError({
+      code: "LOSONA_SOURCE_FETCH_FAILED",
+      message: "LoSoNA source request failed",
+      context: { url: SOURCE_URL, status: response.status },
+    });
+  }
+  const text = await response.text();
+  await mkdir(dirname(CACHE_PATH), { recursive: true });
+  await writeFile(CACHE_PATH, text);
+  return text;
 }
 
 function slug(index: number): string {
@@ -108,7 +118,11 @@ function render(row: LoSoNARow, index: number): string {
     (turn) => turn.turn_id === row.elicitor_turn_id && turn.is_elicitor,
   );
   if (!elicitor) {
-    throw new Error(`LoSoNA row ${row.scenario_id} has no matching elicitor`);
+    throw groupChatCorpusError({
+      code: "LOSONA_MISSING_ELICITOR",
+      message: "LoSoNA row has no matching elicitor",
+      context: { scenarioId: row.scenario_id },
+    });
   }
   const context = row.transcript
     .filter((turn) => turn.turn_id !== row.elicitor_turn_id)
@@ -122,7 +136,47 @@ function render(row: LoSoNARow, index: number): string {
     elicitor: { speaker: elicitor.actor, text: elicitor.content },
     hiddenNorm: row.norm_statement,
   };
-  return `/**\n * Generated from Humalike-ai/LoSoNA (CC BY 4.0).\n * Do not hand-edit; run \`bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts\`.\n */\nimport { buildNormProbe } from "./_factory.ts";\n\nexport default buildNormProbe(${JSON.stringify(config, null, 2)});\n`;
+  return `/**
+ * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
+ * Do not hand-edit; run \`bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts\`.
+ */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  buildNormProbeSetup,
+  type NormProbeConfig,
+} from "./_factory.ts";
+
+const config = ${JSON.stringify(config, null, 2)} satisfies NormProbeConfig;
+const setup = buildNormProbeSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: ${JSON.stringify(config.id)},
+  title: ${JSON.stringify(config.title)},
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.messageTurn,
+      assertResponse(text: string) {
+        if (text.trim().length === 0) {
+          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+        }
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "local-norm-adoption",
+      minimumScore: 0.8,
+      rubric:
+        \`Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: \${config.hiddenNorm}\` +
+        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+    },
+  ],
+});
+`;
 }
 
 const text = await sourceText();
@@ -135,7 +189,12 @@ const rows = text
       parsed = JSON.parse(line);
     } catch (cause) {
       // error-policy:J2 Malformed source data fails generation with its row.
-      throw new Error(`LoSoNA line ${index + 1} is invalid JSON`, { cause });
+      throw groupChatCorpusError({
+        code: "LOSONA_INVALID_JSON",
+        message: "LoSoNA source line is invalid JSON",
+        context: { line: index + 1 },
+        cause,
+      });
     }
     return parseRow(parsed, index + 1);
   })
@@ -163,8 +222,12 @@ const format = spawnSync(
   ["@biomejs/biome", "format", "--write", OUT_DIR],
   { cwd: join(OUT_DIR, "../../../../.."), stdio: "inherit" },
 );
-if (format.status !== 0) {
-  throw new Error(`Biome formatting failed with status ${format.status}`);
-}
+if (format.status !== 0)
+  throw groupChatCorpusError({
+    code: "LOSONA_FORMAT_FAILED",
+    message: "Failed to format generated LoSoNA scenarios",
+    context: { outputDir: OUT_DIR, exitCode: format.status },
+    cause: format.error,
+  });
 
 console.info(`Generated ${rows.length} LoSoNA scenarios in ${OUT_DIR}`);

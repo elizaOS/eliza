@@ -5,9 +5,13 @@
  * records the source decision id in each generated scenario.
  */
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
+import { groupChatCorpusError } from "../_errors.ts";
 
 export const ISHIKI_REVISION = "356c30b9dc74cbfa115ab7b9a89991d92ce0a315";
 const DATASET = "ishiki-labs/multi-party-dialogue";
@@ -41,18 +45,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function invalidIshiki(
+  message: string,
+  context?: Record<string, unknown>,
+  cause?: unknown,
+): ElizaError {
+  return groupChatCorpusError({
+    code: "ISHIKI_INVALID_SOURCE_ROW",
+    message,
+    context,
+    cause,
+  });
+}
+
 function parseTurn(value: unknown, field: string): Turn {
   if (
     !isRecord(value) ||
     typeof value.speaker !== "string" ||
     typeof value.text !== "string"
   ) {
-    throw new Error(
-      `[ishiki] ${field} must contain string speaker and text fields`,
-    );
+    throw invalidIshiki("ishiki turn must contain string speaker and text", {
+      field,
+    });
   }
   if (!value.speaker.trim() || !value.text.trim()) {
-    throw new Error(`[ishiki] ${field} contains an empty speaker or text`);
+    throw invalidIshiki("ishiki turn contains an empty speaker or text", {
+      field,
+    });
   }
   return { speaker: value.speaker, text: value.text };
 }
@@ -76,27 +95,29 @@ export function parseIshikiRow(
   value: unknown,
   sourceDomain: Domain,
 ): IshikiPoint {
-  if (!isRecord(value)) throw new Error("[ishiki] row must be an object");
+  if (!isRecord(value)) throw invalidIshiki("ishiki row must be an object");
   if (typeof value.decision_point_id !== "string") {
-    throw new Error("[ishiki] row has no decision_point_id");
+    throw invalidIshiki("ishiki row has no decision_point_id");
   }
   if (typeof value.target_speaker !== "string") {
-    throw new Error(
-      `[ishiki] ${value.decision_point_id} has no target_speaker`,
-    );
+    throw invalidIshiki("ishiki row has no target_speaker", {
+      decisionPointId: value.decision_point_id,
+    });
   }
   if (!Array.isArray(value.context_turns)) {
-    throw new Error(
-      `[ishiki] ${value.decision_point_id} has no context_turns array`,
-    );
+    throw invalidIshiki("ishiki row has no context_turns array", {
+      decisionPointId: value.decision_point_id,
+    });
   }
   if (value.decision !== "SPEAK" && value.decision !== "SILENT") {
-    throw new Error(`[ishiki] ${value.decision_point_id} has invalid decision`);
+    throw invalidIshiki("ishiki row has an invalid decision", {
+      decisionPointId: value.decision_point_id,
+    });
   }
   if (typeof value.target_is_addressed !== "boolean") {
-    throw new Error(
-      `[ishiki] ${value.decision_point_id} has invalid target_is_addressed`,
-    );
+    throw invalidIshiki("ishiki row has invalid target_is_addressed", {
+      decisionPointId: value.decision_point_id,
+    });
   }
   const targetSpeaker = value.target_speaker;
   return {
@@ -140,9 +161,16 @@ export function selectIshikiPoints(points: IshikiPoint[]): IshikiPoint[] {
         )
         .slice(0, PER_DOMAIN_LABEL);
       if (cell.length !== PER_DOMAIN_LABEL) {
-        throw new Error(
-          `[ishiki] ${domain}/${label} has ${cell.length} usable rows, expected ${PER_DOMAIN_LABEL}`,
-        );
+        throw groupChatCorpusError({
+          code: "ISHIKI_SAMPLE_CELL_UNDERSIZED",
+          message: "ishiki sample cell has too few usable rows",
+          context: {
+            domain,
+            label,
+            usableRows: cell.length,
+            requiredRows: PER_DOMAIN_LABEL,
+          },
+        });
       }
       selected.push(...cell);
     }
@@ -155,17 +183,18 @@ async function fetchDomain(domain: Domain): Promise<string> {
     CACHE_DIR,
     `${domain}-test-${ISHIKI_REVISION}.jsonl`,
   );
-  try {
+  if (existsSync(cacheFile)) {
     return await readFile(cacheFile, "utf8");
-  } catch (error) {
-    if (!isRecord(error) || error.code !== "ENOENT") throw error;
-    // error-policy:J2 the cache miss is the only recoverable read failure.
   }
   await mkdir(CACHE_DIR, { recursive: true });
   const url = `https://huggingface.co/datasets/${DATASET}/resolve/${ISHIKI_REVISION}/${domain}/test/test_samples.jsonl`;
   const response = await fetch(url);
   if (!response.ok)
-    throw new Error(`[ishiki] ${url} returned ${response.status}`);
+    throw groupChatCorpusError({
+      code: "ISHIKI_SOURCE_FETCH_FAILED",
+      message: "ishiki source request failed",
+      context: { domain, url, status: response.status },
+    });
   const body = await response.text();
   await writeFile(cacheFile, body, "utf8");
   return body;
@@ -174,9 +203,11 @@ async function fetchDomain(domain: Domain): Promise<string> {
 function verifySource(domain: Domain, raw: string): string {
   const actual = createHash("sha256").update(raw).digest("hex");
   if (actual !== SOURCE_SHA256[domain]) {
-    throw new Error(
-      `[ishiki] ${domain} source hash mismatch: expected ${SOURCE_SHA256[domain]}, got ${actual}`,
-    );
+    throw groupChatCorpusError({
+      code: "ISHIKI_SOURCE_HASH_MISMATCH",
+      message: "ishiki source hash does not match the pinned input",
+      context: { domain, expected: SOURCE_SHA256[domain], actual },
+    });
   }
   return actual;
 }
@@ -198,9 +229,58 @@ function renderScenario(
     sourceDecisionPointId: point.decisionPointId,
     sourceRevision: ISHIKI_REVISION,
   };
+  const assertion =
+    point.label === "silent"
+      ? `if (responseLength > 0) {
+          return \`held-out label is SILENT; expected no agent response, got \${responseLength} characters\`;
+        }`
+      : `if (responseLength === 0) {
+          return "held-out label is SPEAK, but the agent produced no reply";
+        }`;
+  const rubric =
+    point.label === "silent"
+      ? "The assistant occupies one participant's seat in a group conversation. The observed target participant did not take the next turn. Score 1.0 only for literal silence and 0.0 for any reaction or interjection."
+      : "The assistant occupies one participant's seat in a group conversation. The observed target participant took the next turn. Score whether the assistant makes a concise, relevant contribution that fits the conversation and responds to the delivered turn.";
   return {
     fileName: `${id}.scenario.ts`,
-    source: `/**\n * Generated from ishiki-labs/multi-party-dialogue at ${ISHIKI_REVISION}.\n * Apache-2.0. Do not hand-edit; run heldout/ishiki-generate.ts.\n */\nimport { buildHeldoutScenario } from "../_factory.ts";\n\nexport default buildHeldoutScenario(${JSON.stringify(config, null, 2)});\n`,
+    source: `/**
+ * Generated from ishiki-labs/multi-party-dialogue at ${ISHIKI_REVISION}.
+ * Apache-2.0. Do not hand-edit; run heldout/ishiki-generate.ts.
+ */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  buildHeldoutSetup,
+  type HeldoutScenarioConfig,
+} from "../_factory.ts";
+
+const config = ${JSON.stringify(config, null, 2)} satisfies HeldoutScenarioConfig;
+const setup = buildHeldoutSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: ${JSON.stringify(id)},
+  title: ${JSON.stringify(config.title)},
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.decisionTurn,
+      assertResponse(text: string) {
+        const responseLength = text.trim().length;
+        ${assertion}
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: ${JSON.stringify(`heldout-timing:${point.label}`)},
+      minimumScore: 0.7,
+      rubric: ${JSON.stringify(rubric)},
+    },
+  ],
+});
+`,
   };
 }
 
@@ -216,9 +296,11 @@ export async function generateIshikiScenarios(): Promise<void> {
       try {
         decoded = JSON.parse(line);
       } catch (error) {
-        throw new Error(
-          `[ishiki] ${domain} line ${index + 1} is invalid JSON`,
-          { cause: error },
+        // error-policy:J2 Add source location while preserving the JSON error.
+        throw invalidIshiki(
+          "ishiki source line is invalid JSON",
+          { domain, line: index + 1 },
+          error,
         );
       }
       points.push(parseIshikiRow(decoded, domain));
@@ -259,6 +341,18 @@ export async function generateIshikiScenarios(): Promise<void> {
     `${JSON.stringify({ dataset: DATASET, revision: ISHIKI_REVISION, license: "Apache-2.0", sourceFiles, scenarios: trace }, null, 2)}\n`,
     "utf8",
   );
+  const format = spawnSync(
+    "bunx",
+    ["@biomejs/biome", "format", "--write", OUTPUT_DIR],
+    { stdio: "inherit" },
+  );
+  if (format.status !== 0) {
+    throw new ElizaError("Failed to format generated ishiki scenarios", {
+      code: "ISHIKI_SCENARIO_FORMAT_FAILED",
+      cause: format.error,
+      context: { outputDir: OUTPUT_DIR, exitCode: format.status },
+    });
+  }
   process.stdout.write(
     `[ishiki] wrote ${selected.length} held-out scenarios\n`,
   );

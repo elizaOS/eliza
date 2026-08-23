@@ -2,9 +2,10 @@
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run `bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts`.
  */
-import { buildNormProbe } from "./_factory.ts";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { buildNormProbeSetup, type NormProbeConfig } from "./_factory.ts";
 
-export default buildNormProbe({
+const config = {
   id: "groupchat.behavior.losona.020",
   title: "Local norm adoption: event planning",
   source: "losona",
@@ -118,4 +119,33 @@ export default buildNormProbe({
   },
   hiddenNorm:
     "When a member expresses a problem, frustration, or stressful situation, the chat norm is to provide pure commiseration, emotional validation, or shared complaining. Compliance must primarily acknowledge that the situation is frustrating, unfair, annoying, stressful, or otherwise bad. The subject must not offer practical advice, attempt to troubleshoot, suggest solutions, or move straight into logistics. Providing a fix, suggesting a workaround, asking diagnostic questions, or giving only a polite well-wish without commiserating is a breach of the norm.",
+} satisfies NormProbeConfig;
+const setup = buildNormProbeSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: "groupchat.behavior.losona.020",
+  title: "Local norm adoption: event planning",
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.messageTurn,
+      assertResponse(text: string) {
+        if (text.trim().length === 0) {
+          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+        }
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "local-norm-adoption",
+      minimumScore: 0.8,
+      rubric:
+        `Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: ${config.hiddenNorm}` +
+        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+    },
+  ],
 });

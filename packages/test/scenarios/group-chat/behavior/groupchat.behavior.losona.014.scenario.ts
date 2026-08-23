@@ -2,9 +2,10 @@
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run `bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts`.
  */
-import { buildNormProbe } from "./_factory.ts";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { buildNormProbeSetup, type NormProbeConfig } from "./_factory.ts";
 
-export default buildNormProbe({
+const config = {
   id: "groupchat.behavior.losona.014",
   title: "Local norm adoption: birthday or anniversary ritual",
   source: "losona",
@@ -110,4 +111,33 @@ export default buildNormProbe({
   },
   hiddenNorm:
     'When a chat member shares bad news, an annoyance, a delay, or a failure, the subject must respond with clearly exaggerated sarcastic enthusiasm. Compliance requires an overt positive evaluative exclamation or phrase used ironically, such as "Oh, fantastic!", "Wonderful!", "Amazing!", "Yay, my favorite!", or "What a gift!", plus sarcastic positive framing of the bad event. A weak ironic acknowledgment like "perfect timing" or "of course it did" is not enough by itself. Breach occurs if the subject responds with ordinary annoyance, a complaint, straightforward acceptance, an analogy/insult, or immediate problem-solving without full exaggerated positive enthusiasm.',
+} satisfies NormProbeConfig;
+const setup = buildNormProbeSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: "groupchat.behavior.losona.014",
+  title: "Local norm adoption: birthday or anniversary ritual",
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.messageTurn,
+      assertResponse(text: string) {
+        if (text.trim().length === 0) {
+          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+        }
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "local-norm-adoption",
+      minimumScore: 0.8,
+      rubric:
+        `Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: ${config.hiddenNorm}` +
+        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+    },
+  ],
 });

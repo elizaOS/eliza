@@ -43,7 +43,10 @@ bun packages/test/scenarios/group-chat/_generate.ts
 The sampler uses a fixed PRNG seed, so the same corpus revision reproduces the
 committed files byte-for-byte. The generator deletes stale
 `groupchat.w2s.*.scenario.ts` files before writing, so removals are handled by
-regeneration. Do not hand-edit generated files.
+regeneration. Every excluded source row is recorded with its physical row and
+reason in the temporary `when2speak_sampling_rejections.json` beside the cached
+corpus. Generated scenario files own their assertions and judge rubrics;
+`_factory.ts` supplies transcript and room setup only. Do not hand-edit them.
 
 ## How these scenarios assert
 

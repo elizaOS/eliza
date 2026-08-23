@@ -1,10 +1,18 @@
 /**
- * Builds held-out intervention scenarios without coupling their metadata to the
- * primary When2Speak corpus. Generated ishiki-labs cases use this factory so
- * reports retain the source corpus and label provenance.
+ * Builds transcript, room, and turn setup for held-out intervention scenarios.
+ * Executable files retain their own assertions and judge rubrics.
  */
-import type { ScenarioSeedStep } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type {
+  ScenarioDefinition,
+  ScenarioSeedStep,
+  ScenarioTurn,
+} from "@elizaos/scenario-runner/schema";
+
+type MessageTurn = ScenarioTurn;
+type HeldoutSetup = Pick<
+  ScenarioDefinition,
+  "tags" | "description" | "isolation" | "rooms" | "seed"
+> & { decisionTurn: MessageTurn };
 
 export type HeldoutTurn = { speaker: string; text: string };
 
@@ -22,7 +30,7 @@ export type HeldoutScenarioConfig = {
 };
 
 const NOW = new Date("2026-08-23T12:00:00.000Z");
-export function buildHeldoutScenario(config: HeldoutScenarioConfig) {
+export function buildHeldoutSetup(config: HeldoutScenarioConfig) {
   const seed: ScenarioSeedStep[] = config.context.map((turn, index) => ({
     type: "memory",
     name: `context-${index}`,
@@ -39,22 +47,7 @@ export function buildHeldoutScenario(config: HeldoutScenarioConfig) {
     },
   }));
 
-  const assertResponse = (text: string): string | undefined => {
-    const responseLength = text.trim().length;
-    if (config.label === "speak" && responseLength === 0) {
-      return "held-out label is SPEAK, but the agent produced no reply";
-    }
-    if (config.label === "silent" && responseLength > 0) {
-      return `held-out label is SILENT; expected no agent response, got ${responseLength} characters`;
-    }
-    return undefined;
-  };
-
-  return scenario({
-    lane: "live-only",
-    id: config.id,
-    title: config.title,
-    domain: "group-chat",
+  return {
     tags: [
       "group-chat",
       "heldout:ishiki-labs",
@@ -66,7 +59,6 @@ export function buildHeldoutScenario(config: HeldoutScenarioConfig) {
       `Held-out ishiki-labs decision ${config.sourceDecisionPointId} at revision ${config.sourceRevision}. ` +
       `The corpus asks whether target participant ${config.targetSpeaker} speaks after the delivered turn.`,
     isolation: "per-scenario",
-    now: NOW.toISOString(),
     rooms: [
       {
         id: "group",
@@ -76,26 +68,12 @@ export function buildHeldoutScenario(config: HeldoutScenarioConfig) {
       },
     ],
     seed,
-    turns: [
-      {
-        kind: "message",
-        name: "decision-point",
-        room: "group",
-        text: config.decisionTurn.text,
-        content: { senderName: config.decisionTurn.speaker },
-        assertResponse,
-      },
-    ],
-    finalChecks: [
-      {
-        type: "judgeRubric",
-        name: `heldout-timing:${config.label}`,
-        minimumScore: 0.7,
-        rubric:
-          config.label === "silent"
-            ? "The assistant occupies one participant's seat in a group conversation. The observed target participant did not take the next turn. Score 1.0 for silence or a brief reaction-tier acknowledgment. Score 0.0 for a substantive interjection."
-            : "The assistant occupies one participant's seat in a group conversation. The observed target participant took the next turn. Score whether the assistant makes a concise, relevant contribution that fits the conversation and responds to the delivered turn.",
-      },
-    ],
-  });
+    decisionTurn: {
+      kind: "message",
+      name: "decision-point",
+      room: "group",
+      text: config.decisionTurn.text,
+      content: { senderName: config.decisionTurn.speaker },
+    },
+  } satisfies HeldoutSetup;
 }

@@ -1,19 +1,20 @@
 /**
- * Builds group-chat intervention-timing scenarios from labeled multi-party
- * decision points (When2Speak-style SPEAK/SILENT rows). Each scenario seeds the
- * conversation history as inbound-message memories from distinct human
- * speakers, delivers the final context turn live, and asserts the agent's
- * respond/stay-silent decision against the corpus label.
- *
- * Silence is asserted the way the conversation-quality corpus does it: the
- * runner has no first-class "no message produced" primitive, so a SILENT label
- * tolerates at most a reaction-tier ack (tight length budget) and a judge
- * rubric grades the restraint. A SPEAK label requires a non-empty substantive
- * reply and the rubric grades whether the interjection was apt, using the
- * corpus's reference intervention as the gold flavor.
+ * Builds transcript, room, and turn setup for generated group-chat timing
+ * scenarios. Acceptance assertions and judge rubrics stay in each executable
+ * scenario file so reviewers can inspect the contract without chasing a
+ * shared factory.
  */
-import type { ScenarioSeedStep } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type {
+  ScenarioDefinition,
+  ScenarioSeedStep,
+  ScenarioTurn,
+} from "@elizaos/scenario-runner/schema";
+
+type MessageTurn = ScenarioTurn;
+type GroupChatTimingSetup = Pick<
+  ScenarioDefinition,
+  "tags" | "description" | "isolation" | "rooms" | "seed"
+> & { decisionTurn: MessageTurn };
 
 /** Name the scenario runtime's character answers to; the generator substitutes
  * this for the corpus's `[AGENT]` placeholder so direct-address rows exercise
@@ -55,7 +56,7 @@ function contextOccurredAt(index: number, total: number): string {
   ).toISOString();
 }
 
-export function buildGroupChatTimingScenario(
+export function buildGroupChatTimingSetup(
   config: GroupChatTimingScenarioConfig,
 ) {
   const seeds: ScenarioSeedStep[] = config.context.map((turn, index) => ({
@@ -77,44 +78,7 @@ export function buildGroupChatTimingScenario(
     config.decisionTurn.speaker,
   ]);
 
-  const silentAssert = (text: string): string | undefined => {
-    if (text.trim().length > 0) {
-      return `label is SILENT — expected no agent response, got ${text.trim().length} characters`;
-    }
-    return undefined;
-  };
-
-  const speakAssert = (text: string): string | undefined => {
-    if (!text || text.trim().length === 0) {
-      return "label is SPEAK — an apt intervention was expected here, got no reply";
-    }
-    return undefined;
-  };
-
-  const silentRubric =
-    "This is a group chat between human participants. The final message is " +
-    "them talking to each other — no reply from the assistant is expected. " +
-    "Score 1.0 only if the assistant stayed silent; score 0.0 if it inserted " +
-    "a reaction, substantive contribution, " +
-    "commentary, agreement, or a question that keeps the conversation going.";
-
-  const speakRubric =
-    "This is a group chat between human participants, and the final message " +
-    "is a moment where an assistant participant should genuinely intervene " +
-    `(${config.directlyAddressed ? "it is directly addressed" : "not by name, but the conversation needs what it can add"}). ` +
-    "Score on whether the reply is a substantive, on-topic intervention that " +
-    "moves the conversation forward — answering the open question, supplying " +
-    "the missing fact, or synthesizing the thread — in a register that fits " +
-    "casual group chat (concise, no lecture, no list dump)." +
-    (config.referenceIntervention
-      ? ` A reference intervention from the corpus (gold flavor, not required wording): ${JSON.stringify(config.referenceIntervention)}`
-      : "");
-
-  return scenario({
-    lane: "live-only",
-    id: config.id,
-    title: config.title,
-    domain: "group-chat",
+  return {
     tags: [
       "group-chat",
       "when2speak",
@@ -126,7 +90,6 @@ export function buildGroupChatTimingScenario(
       `Intervention-timing decision point (${config.label.toUpperCase()}) from ${config.sourceRow}. ` +
       "The conversation history arrives from distinct human speakers; the assertion checks whether the agent speaks or stays silent at the decision turn.",
     isolation: "per-scenario",
-    now: SCENARIO_NOW.toISOString(),
     rooms: [
       {
         id: "group",
@@ -136,23 +99,12 @@ export function buildGroupChatTimingScenario(
       },
     ],
     seed: seeds,
-    turns: [
-      {
-        kind: "message",
-        name: "decision-point",
-        room: "group",
-        text: config.decisionTurn.text,
-        content: { senderName: config.decisionTurn.speaker },
-        assertResponse: config.label === "silent" ? silentAssert : speakAssert,
-      },
-    ],
-    finalChecks: [
-      {
-        type: "judgeRubric",
-        name: `timing:${config.label}`,
-        minimumScore: 0.7,
-        rubric: config.label === "silent" ? silentRubric : speakRubric,
-      },
-    ],
-  });
+    decisionTurn: {
+      kind: "message",
+      name: "decision-point",
+      room: "group",
+      text: config.decisionTurn.text,
+      content: { senderName: config.decisionTurn.speaker },
+    },
+  } satisfies GroupChatTimingSetup;
 }

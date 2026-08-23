@@ -9,7 +9,8 @@ import {
   deterministicDiscordOffsets,
   parseDiscordChatml,
 } from "./discord-replay.ts";
-import { buildHeldoutScenario } from "./_factory.ts";
+import { buildHeldoutSetup } from "./_factory.ts";
+import silentScenario from "./ishiki/groupchat.ishiki.ami.silent.001.scenario.ts";
 import { parseIshikiRow, selectIshikiPoints } from "./ishiki-generate.ts";
 
 const chatml =
@@ -54,7 +55,7 @@ describe("Discord replay conversion", () => {
 
 describe("held-out timing scenario factory", () => {
   test("models the decision speaker as metadata, not addressee text", () => {
-    const scenario = buildHeldoutScenario({
+    const setup = buildHeldoutSetup({
       id: "test.heldout.sender",
       title: "test",
       label: "speak",
@@ -67,24 +68,12 @@ describe("held-out timing scenario factory", () => {
       sourceRevision: "fixture",
     });
 
-    expect(scenario.turns[0]?.text).toBe("open question");
-    expect(scenario.turns[0]?.content).toEqual({ senderName: "B" });
+    expect(setup.decisionTurn.text).toBe("open question");
+    expect(setup.decisionTurn.content).toEqual({ senderName: "B" });
   });
 
   test("requires literal silence for a SILENT held-out label", () => {
-    const scenario = buildHeldoutScenario({
-      id: "test.heldout.silent",
-      title: "test",
-      label: "silent",
-      directlyAddressed: false,
-      targetSpeaker: "ScenarioAgent",
-      context: [{ speaker: "A", text: "context" }],
-      decisionTurn: { speaker: "B", text: "continue" },
-      sourceDomain: "ami",
-      sourceDecisionPointId: "fixture-2",
-      sourceRevision: "fixture",
-    });
-    const turn = scenario.turns[0];
+    const turn = silentScenario.turns[0];
     if (turn?.kind !== "message" || !turn.assertResponse) {
       throw new Error("fixture must expose the SILENT response assertion");
     }
@@ -162,6 +151,6 @@ describe("ishiki-labs scenario selection", () => {
         },
         "ami",
       ),
-    ).toThrow("current_turn");
+    ).toThrow("ishiki turn must contain string speaker and text");
   });
 });

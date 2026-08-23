@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { groupChatCorpusError } from "../_errors.ts";
 
 export const DISCORD_REVISION = "a8b2294bd5b4acfe4ce537b688e7eee111c50fe2";
 const DATASET = "mookiezi/Discord-Dialogues";
@@ -49,13 +50,19 @@ export function parseDiscordChatml(text: string): ReplayTurn[] {
   let cursor = 0;
   for (const match of endText.matchAll(pattern)) {
     if (match.index !== cursor) {
-      throw new Error(
-        `[discord-replay] malformed ChatML at character ${cursor}`,
-      );
+      throw groupChatCorpusError({
+        code: "DISCORD_REPLAY_INVALID_CHATML",
+        message: "Discord replay ChatML has an unconsumed segment",
+        context: { cursor },
+      });
     }
     const role = match[1];
     const message = match[2];
-    if (!message.trim()) throw new Error("[discord-replay] empty ChatML turn");
+    if (!message.trim())
+      throw groupChatCorpusError({
+        code: "DISCORD_REPLAY_EMPTY_TURN",
+        message: "Discord replay ChatML contains an empty turn",
+      });
     turns.push({
       speaker: role === "user" ? "participant_a" : "participant_b",
       text: message,
@@ -64,9 +71,11 @@ export function parseDiscordChatml(text: string): ReplayTurn[] {
     if (endText[cursor] === "\n") cursor += 1;
   }
   if (cursor !== endText.length || turns.length < 2) {
-    throw new Error(
-      "[discord-replay] ChatML did not decode to a complete multi-turn chain",
-    );
+    throw groupChatCorpusError({
+      code: "DISCORD_REPLAY_INCOMPLETE_CHATML",
+      message: "Discord replay ChatML is not a complete multi-turn chain",
+      context: { consumedCharacters: cursor, totalCharacters: endText.length },
+    });
   }
   return turns;
 }
@@ -151,14 +160,18 @@ async function fetchRow(
     `https://datasets-server.huggingface.co/rows?${query}`,
   );
   if (!response.ok)
-    throw new Error(
-      `[discord-replay] row ${rowIndex} returned ${response.status}`,
-    );
+    throw groupChatCorpusError({
+      code: "DISCORD_REPLAY_FETCH_FAILED",
+      message: "Discord replay source row request failed",
+      context: { rowIndex, status: response.status },
+    });
   const revision = response.headers.get("x-revision");
   if (revision !== DISCORD_REVISION) {
-    throw new Error(
-      `[discord-replay] source revision changed: expected ${DISCORD_REVISION}, got ${revision ?? "missing"}`,
-    );
+    throw groupChatCorpusError({
+      code: "DISCORD_REPLAY_REVISION_MISMATCH",
+      message: "Discord replay source revision does not match the pinned input",
+      context: { rowIndex, expected: DISCORD_REVISION, actual: revision },
+    });
   }
   const payload: unknown = await response.json();
   if (
@@ -166,9 +179,11 @@ async function fetchRow(
     !Array.isArray(payload.rows) ||
     payload.rows.length !== 1
   ) {
-    throw new Error(
-      `[discord-replay] row ${rowIndex} response has invalid rows`,
-    );
+    throw groupChatCorpusError({
+      code: "DISCORD_REPLAY_INVALID_RESPONSE",
+      message: "Discord replay source response has invalid rows",
+      context: { rowIndex },
+    });
   }
   const wrapper = payload.rows[0];
   if (
@@ -176,7 +191,11 @@ async function fetchRow(
     !isRecord(wrapper.row) ||
     typeof wrapper.row.text !== "string"
   ) {
-    throw new Error(`[discord-replay] row ${rowIndex} response has no text`);
+    throw groupChatCorpusError({
+      code: "DISCORD_REPLAY_MISSING_TEXT",
+      message: "Discord replay source response has no text",
+      context: { rowIndex },
+    });
   }
   return { rowIndex, text: wrapper.row.text };
 }

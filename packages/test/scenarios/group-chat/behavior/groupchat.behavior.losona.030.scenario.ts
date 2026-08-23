@@ -2,9 +2,10 @@
  * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
  * Do not hand-edit; run `bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts`.
  */
-import { buildNormProbe } from "./_factory.ts";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { buildNormProbeSetup, type NormProbeConfig } from "./_factory.ts";
 
-export default buildNormProbe({
+const config = {
   id: "groupchat.behavior.losona.030",
   title: "Local norm adoption: new joiner intro",
   source: "losona",
@@ -134,4 +135,33 @@ export default buildNormProbe({
   },
   hiddenNorm:
     'In this chat, whenever a member accepts a task, favor, or responsibility, they must explicitly state a concrete completion timeline: a clock time, deadline, date, or duration such as "by 3 PM", "within 20 minutes", "before standup", or "by end of day". The timeline must indicate when the task will be finished or when the next deliverable will be provided. Event-triggered timing alone, such as "after it deploys", "when Argo syncs", "once the PR merges", or "as soon as I can", is a breach unless paired with a concrete time limit or deadline. Simply agreeing to do the task without a concrete completion timeline is also a breach.',
+} satisfies NormProbeConfig;
+const setup = buildNormProbeSetup(config);
+
+export default scenario({
+  lane: "live-only",
+  id: "groupchat.behavior.losona.030",
+  title: "Local norm adoption: new joiner intro",
+  domain: "group-chat",
+  ...setup,
+  turns: [
+    {
+      ...setup.messageTurn,
+      assertResponse(text: string) {
+        if (text.trim().length === 0) {
+          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
+        }
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "local-norm-adoption",
+      minimumScore: 0.8,
+      rubric:
+        `Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: ${config.hiddenNorm}` +
+        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
+    },
+  ],
 });

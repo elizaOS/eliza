@@ -33,6 +33,7 @@ text; bracketed participant names are addressee syntax in the production gate.
 
 ```bash
 bun packages/test/scenarios/group-chat/behavior/_generate-losona.ts
+bun packages/test/scenarios/group-chat/behavior/_generate-static.ts
 bun test packages/test/scenarios/group-chat/behavior/_factory.test.ts
 bun run --cwd packages/test test
 bun run --cwd packages/test typecheck
