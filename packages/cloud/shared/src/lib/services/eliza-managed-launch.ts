@@ -2,6 +2,7 @@
  * Coordinates managed agent launch, credential refresh, provisioning, and
  * onboarding behind Cloud route handlers.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AgentSandbox,
   CONTAINER_BACKED_EXECUTION_TIERS,
@@ -212,7 +213,7 @@ async function ensureManagedOnboarding(
       return "";
     });
     throw new ManagedElizaLaunchError(
-      `Failed to bootstrap managed onboarding (HTTP ${onboardingResponse.status})${text ? `: ${text.slice(0, 200)}` : ""}`,
+      `Failed to bootstrap managed onboarding (HTTP ${onboardingResponse.status})${text ? `: ${truncateWellFormed(toWellFormedUnicode(text), 200)}` : ""}`,
       502,
     );
   }
