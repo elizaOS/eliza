@@ -83,6 +83,9 @@ function servedCallbackExample(options?: GoogleOAuthCallbackConfigOptions): stri
     }
     return `${served.origin}${GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH}`;
   } catch {
+    // error-policy:J3 An unparsable served origin is untrusted input; the
+    // documented fallback example is an explicit placeholder, not a claim
+    // about the real callback URL.
     return FALLBACK_CALLBACK_EXAMPLE;
   }
 }

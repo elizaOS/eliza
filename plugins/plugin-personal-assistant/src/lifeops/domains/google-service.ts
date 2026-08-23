@@ -24,6 +24,7 @@ import { INTERNAL_URL } from "../access.js";
 import {
   disconnectedGoogleStatus,
   googleAccountIdFromGrantId,
+  googleGrantFromAccount,
   googleGrantIdForAccount,
   googleScopesForAccount,
   googleSideForAccount,
@@ -32,7 +33,11 @@ import {
   resolveGoogleConnectorAccount,
 } from "../google-plugin-delegates.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-import { fail, normalizeOptionalString } from "../service-normalize.js";
+import {
+  fail,
+  normalizeOptionalBoolean,
+  normalizeOptionalString,
+} from "../service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
   normalizeOptionalConnectorMode,
@@ -644,7 +649,19 @@ export class GoogleDomain {
       }
       return this.getGoogleConnectorStatus(requestUrl, "local", side);
     }
+    const purgeImportedData =
+      normalizeOptionalBoolean(
+        request.purgeImportedData,
+        "purgeImportedData",
+      ) ?? false;
+    const grant = googleGrantFromAccount({
+      account,
+      agentId: this.ctx.agentId(),
+    });
     await manager.deleteAccount("google", account.id);
+    if (purgeImportedData) {
+      await this.clearGoogleGrantData(grant);
+    }
     await this.ctx.recordConnectorAudit(
       "google:connector-account",
       "google connector account disconnected",
@@ -652,7 +669,7 @@ export class GoogleDomain {
         connectorAccountId: account.id,
         side: googleSideForAccount(account),
       },
-      { disconnected: true },
+      { disconnected: true, purgedImportedData: purgeImportedData },
     );
     return this.getGoogleConnectorStatus(
       requestUrl,

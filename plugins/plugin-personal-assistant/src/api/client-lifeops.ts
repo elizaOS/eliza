@@ -45,6 +45,7 @@ import type {
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedReceipt,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
   LifeOpsGmailSyncHealth,
@@ -74,6 +75,7 @@ import type {
   LifeOpsSocialHabitSummary,
   ManageLifeOpsGmailMessagesRequest,
   PurgeLifeOpsGmailImportedDataRequest,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsDiscordMessageRequest,
   SendLifeOpsDiscordMessageResponse,
   SendLifeOpsGmailReplyRequest,
@@ -344,6 +346,9 @@ export interface LifeOpsElizaClientMethods {
   purgeLifeOpsGmailImportedData(
     data: PurgeLifeOpsGmailImportedDataRequest,
   ): Promise<LifeOpsGmailImportedDataPurgeReceipt>;
+  seedLifeOpsGmail(
+    data: SeedLifeOpsGmailRequest,
+  ): Promise<LifeOpsGmailSeedReceipt>;
   getLifeOpsGmailSearch(
     options: GetLifeOpsGmailSearchRequest,
   ): Promise<LifeOpsGmailSearchFeed>;
@@ -1032,6 +1037,16 @@ lifeOpsClientPrototype.getLifeOpsGmailSyncHealth = async function (
   return this.fetch<LifeOpsGmailSyncHealth>(
     `/api/lifeops/gmail/sync-health?${params.toString()}`,
   );
+};
+
+lifeOpsClientPrototype.seedLifeOpsGmail = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<LifeOpsGmailSeedReceipt>("/api/lifeops/gmail/seed", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 lifeOpsClientPrototype.purgeLifeOpsGmailImportedData = async function (

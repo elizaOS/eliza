@@ -20,6 +20,7 @@ import type {
   LifeOpsConnectorSide,
   ListLifeOpsCalendarsRequest,
   PurgeLifeOpsCalendarImportedDataRequest,
+  SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
@@ -88,6 +89,10 @@ export interface CalendarRouteService {
   syncIcsCalendarSource(sourceId: string): Promise<unknown>;
   purgeImportedCalendarData(
     request: PurgeLifeOpsCalendarImportedDataRequest,
+  ): Promise<unknown>;
+  seedImportedCalendarData(
+    requestUrl: URL,
+    request: SeedLifeOpsCalendarRequest,
   ): Promise<unknown>;
 }
 
@@ -167,6 +172,15 @@ export async function handleCalendarRoutes(
         grantId: q.get("grantId") ?? undefined,
       };
       deps.json(await service.getCalendarFeed(url, request));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/calendar/seed") {
+    if (deps.rateLimit("calendar_source_sync")) return true;
+    const body = await deps.readJsonBody<SeedLifeOpsCalendarRequest>();
+    if (!body) return true;
+    return deps.runRoute(async (service) => {
+      deps.json(await service.seedImportedCalendarData(url, body));
     });
   }
 

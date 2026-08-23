@@ -14,6 +14,65 @@ function clientFor(gmail: object): GoogleGmailClient {
   } as unknown as GoogleApiClientFactory);
 }
 
+describe("Gmail search pages", () => {
+  function messageGet() {
+    return vi.fn(async ({ id }: { id: string }) => ({
+      data: {
+        id,
+        threadId: `thread-${id}`,
+        labelIds: ["INBOX"],
+        snippet: `Snippet ${id}`,
+        internalDate: "1755849600000",
+        payload: { headers: [{ name: "Subject", value: `Subject ${id}` }] },
+      },
+    }));
+  }
+
+  it("returns one provider page with the provider continuation token", async () => {
+    const list = vi.fn(async () => ({
+      data: {
+        messages: [{ id: "m1" }, { id: "m2" }, { id: "" }],
+        nextPageToken: "page-2",
+      },
+    }));
+    const client = clientFor({ users: { messages: { list, get: messageGet() } } });
+
+    const page = await client.searchGmailMessagesPage({
+      accountId: "account",
+      query: "newer_than:30d",
+      pageToken: "page-1",
+      pageSize: 100,
+    });
+
+    expect(page.nextPageToken).toBe("page-2");
+    expect(page.messages.map((message) => message.externalId).sort()).toEqual(["m1", "m2"]);
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "me",
+        q: "newer_than:30d",
+        pageToken: "page-1",
+        maxResults: 100,
+      })
+    );
+  });
+
+  it("reports the final page with a null token and no caller-side ceiling", async () => {
+    const list = vi.fn(async () => ({
+      data: { messages: [{ id: "m3" }], nextPageToken: "   " },
+    }));
+    const client = clientFor({ users: { messages: { list, get: messageGet() } } });
+
+    const page = await client.searchGmailMessagesPage({
+      accountId: "account",
+      query: "newer_than:7d",
+    });
+
+    expect(page).toMatchObject({ nextPageToken: null });
+    expect(page.messages).toHaveLength(1);
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ maxResults: 500 }));
+  });
+});
+
 describe("Gmail history sync", () => {
   it("maps a page with durable cursor and deletion/label provenance", async () => {
     const list = vi.fn(async () => ({

@@ -2,10 +2,12 @@
 
 import type { CalendarClientMethods } from "@elizaos/plugin-calendar/api/client-calendar";
 import type {
-  LifeOpsCalendarEvent,
+  LifeOpsCalendarProvider,
   LifeOpsCalendarSummary,
+  LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
+  SeedLifeOpsCalendarRequest,
 } from "@elizaos/shared";
 import { client } from "@elizaos/ui/api";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
@@ -41,17 +43,32 @@ function calendarIdentity(calendar: LifeOpsCalendarSummary): string {
   ]);
 }
 
-function eventIdentity(event: LifeOpsCalendarEvent): string {
-  return JSON.stringify([
-    event.provider,
-    event.side,
-    event.grantId ?? "",
-    event.connectorAccountId ?? "",
-    event.calendarId,
-    event.externalId,
-    event.recurringEventId ?? "",
-    event.startAt,
-  ]);
+/** Inverse of {@link calendarIdentity}; rejects keys that do not name one exact source. */
+function parseCalendarKey(
+  key: string,
+): SeedLifeOpsCalendarRequest["calendars"][number] {
+  const parsed: unknown = JSON.parse(key);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length !== 5 ||
+    parsed.some((part) => typeof part !== "string")
+  ) {
+    throw new Error("Calendar selection key does not name one exact source.");
+  }
+  const [provider, side, grantId, connectorAccountId, calendarId] = parsed as [
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
+  return {
+    provider: provider as LifeOpsCalendarProvider,
+    side: side as LifeOpsConnectorSide,
+    grantId,
+    connectorAccountId,
+    calendarId,
+  };
 }
 
 async function loadSnapshot(
@@ -144,49 +161,43 @@ export const defaultLifeOpsConnectionsAdapter: LifeOpsConnectionsAdapter = {
         throw new Error("Gmail seeding requires a connected Google account.");
       }
       onProgress("gmail");
-      const gmail = await lifeOpsClient.getLifeOpsGmailSearch({
+      // The server walks every provider page for the selected range and only
+      // returns a receipt when the whole range was imported.
+      const gmail = await lifeOpsClient.seedLifeOpsGmail({
         side: "owner",
         mode: "local",
         grantId: request.grantId,
-        query: `newer_than:${request.rangeDays}d`,
-        maxResults: 100,
-        forceSync: true,
+        rangeDays: request.rangeDays,
       });
-      gmailMessageCount = gmail.messages.length;
+      gmailMessageCount = gmail.messageCount;
     }
-    onProgress("calendar");
-    const now = new Date();
-    const calendar = await lifeOpsClient.getLifeOpsCalendarFeed({
-      side: "owner",
-      timeMin: new Date(
-        now.getTime() - request.rangeDays * 86_400_000,
-      ).toISOString(),
-      timeMax: new Date(now.getTime() + 90 * 86_400_000).toISOString(),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      forceSync: true,
-    });
-    onProgress("deduplicating");
-    const selected = new Set(request.calendarKeys);
-    const selectedEvents = calendar.events.filter((event) =>
-      selected.has(
-        JSON.stringify([
-          event.provider,
-          event.side,
-          event.grantId ?? "",
-          event.connectorAccountId ?? "",
-          event.calendarId,
-        ]),
-      ),
-    );
-    const uniqueEvents = new Set(selectedEvents.map(eventIdentity));
+    const calendars = request.calendarKeys.map(parseCalendarKey);
+    let calendarEventCount = 0;
+    let duplicateEventCount = 0;
+    if (calendars.length > 0) {
+      onProgress("calendar");
+      const now = new Date();
+      const calendar = await lifeOpsClient.seedLifeOpsCalendar({
+        side: "owner",
+        timeMin: new Date(
+          now.getTime() - request.rangeDays * 86_400_000,
+        ).toISOString(),
+        timeMax: new Date(now.getTime() + 90 * 86_400_000).toISOString(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        calendars,
+      });
+      onProgress("deduplicating");
+      calendarEventCount = calendar.eventCount;
+      duplicateEventCount = calendar.duplicateEventCount;
+    }
     onProgress("complete");
     return {
       grantId: request.grantId,
       rangeDays: request.rangeDays,
       gmailMessageCount,
-      calendarEventCount: uniqueEvents.size,
-      calendarSourceCount: selected.size,
-      duplicateEventCount: selectedEvents.length - uniqueEvents.size,
+      calendarEventCount,
+      calendarSourceCount: calendars.length,
+      duplicateEventCount,
       completedAt: new Date().toISOString(),
     };
   },

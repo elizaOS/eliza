@@ -334,6 +334,7 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.calendar.read",
   "google.calendar.write",
   "google.gmail.triage",
+  "google.gmail.compose",
   "google.gmail.send",
   "google.gmail.manage",
 ] as const;

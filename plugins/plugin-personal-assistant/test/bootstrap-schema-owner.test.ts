@@ -13,6 +13,7 @@ const ENSURE_METHODS = [
   "ensureReminderReviewColumns",
   "ensureBrowserBridgeCompanionTokenColumns",
   "ensureConnectorAccountColumns",
+  "ensureGmailSyncColumns",
   "ensureInboxCacheIndexes",
   "ensureWorkflowRunIdempotencyKey",
 ] as const;

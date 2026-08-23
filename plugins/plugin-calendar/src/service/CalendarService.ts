@@ -47,6 +47,7 @@ import type {
   LifeOpsCalendarImportedDataPurgeReceipt,
   LifeOpsCalendarProvider,
   LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSeedReceipt,
   LifeOpsCalendarSourceError,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSourceKey,
@@ -59,6 +60,7 @@ import type {
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
   PurgeLifeOpsCalendarImportedDataRequest,
+  SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
@@ -4775,6 +4777,94 @@ export class CalendarService extends Service {
       "Apple Calendar create access has not been granted.",
       "APPLE_CALENDAR_PERMISSION_REQUIRED",
     );
+  }
+
+  /**
+   * Force-syncs the owner's calendars for the requested window and returns a
+   * receipt counted over the selected sources. The receipt is issued only when
+   * every source is fresh; a partial or unavailable feed fails the seed so the
+   * caller never shows a healthy count over a gap.
+   */
+  async seedImportedCalendarData(
+    requestUrl: URL,
+    request: SeedLifeOpsCalendarRequest,
+    now = new Date(),
+  ): Promise<LifeOpsCalendarSeedReceipt> {
+    if (!Array.isArray(request.calendars) || request.calendars.length === 0) {
+      throw new CalendarServiceError(
+        400,
+        "Calendar seeding requires at least one selected calendar.",
+        "CALENDAR_SEED_SELECTION_REQUIRED",
+      );
+    }
+    const feed = await this.getCalendarFeed(
+      requestUrl,
+      {
+        side: request.side,
+        timeMin: request.timeMin,
+        timeMax: request.timeMax,
+        timeZone: request.timeZone,
+        forceSync: true,
+      },
+      now,
+    );
+    if (feed.state !== "complete") {
+      const failed = feed.sources
+        .filter((source) => source.error !== null)
+        .map((source) => source.summary);
+      throw new CalendarServiceError(
+        409,
+        failed.length > 0
+          ? `Calendar seed did not complete: ${failed.join(", ")} could not be synchronized. No receipt was issued.`
+          : "Calendar seed did not complete because no authoritative calendar source could be read. No receipt was issued.",
+        "CALENDAR_SEED_INCOMPLETE",
+      );
+    }
+    const selected = new Set(
+      request.calendars.map((calendar) =>
+        JSON.stringify([
+          calendar.provider,
+          calendar.side,
+          calendar.grantId,
+          calendar.connectorAccountId,
+          calendar.calendarId,
+        ]),
+      ),
+    );
+    const selectedEvents = feed.events.filter((event) =>
+      selected.has(
+        JSON.stringify([
+          event.provider,
+          event.side,
+          event.grantId ?? "",
+          event.connectorAccountId ?? "",
+          event.calendarId,
+        ]),
+      ),
+    );
+    const identities = new Set(
+      selectedEvents.map((event) =>
+        JSON.stringify([
+          event.provider,
+          event.side,
+          event.grantId ?? "",
+          event.connectorAccountId ?? "",
+          event.calendarId,
+          event.externalId,
+          event.recurringEventId ?? "",
+          event.startAt,
+        ]),
+      ),
+    );
+    return {
+      timeMin: feed.timeMin,
+      timeMax: feed.timeMax,
+      feedState: "complete",
+      selectedSourceCount: selected.size,
+      eventCount: identities.size,
+      duplicateEventCount: selectedEvents.length - identities.size,
+      seededAt: now.toISOString(),
+    };
   }
 
   async purgeImportedCalendarData(

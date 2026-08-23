@@ -14,9 +14,20 @@ capabilities before redirect, exposes EventKit permission recovery, lets the
 owner choose calendars and a bounded 7/30/90-day seed window, and reports
 Gmail History cursor plus per-calendar source health.
 
+Seeding is a server-side use-case, not a client computation.
+`POST /api/lifeops/gmail/seed` walks every Gmail page for the selected
+7/30/90-day range and returns a `LifeOpsGmailSeedReceipt` whose
+`messageCount` is never page-capped; a range that cannot be fully imported
+fails with a typed error (`LIFEOPS_GMAIL_SEED_INCOMPLETE` or
+`LIFEOPS_GMAIL_SEED_PAGINATION_REPEATED`) and no receipt.
+`POST /api/lifeops/calendar/seed` force-syncs the selected calendars and
+returns a `LifeOpsCalendarSeedReceipt` only when every source is fresh. The
+view renders these receipts; it does not recount events or messages.
+
 Disconnect and local-data purge are deliberately separate operations.
-Disconnect stops credential use while preserving the imported projection;
-purge requires a fresh confirmation, is scoped by provider, side, grant, and
+Disconnect stops credential use while preserving the imported projection
+unless the request sets `purgeImportedData: true`; the standalone purge
+requires a fresh confirmation, is scoped by provider, side, grant, and
 connector-account identity, and returns a receipt with `providerMutation:
 false`. Provider email and events are never deleted by this purge.
 
