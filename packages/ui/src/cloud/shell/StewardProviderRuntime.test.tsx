@@ -24,6 +24,7 @@ import {
 } from "../join/lib/onboarding-continuation";
 import { consumeStewardServerCookieSynced } from "../lib/steward-session-cookie-sync-marker";
 import { syncStewardSessionCookie } from "../public-pages/lib/steward-session";
+import { clearStaleStewardSession } from "./StewardProviderShared";
 
 // AuthTokenSync's 401 handling is the load-bearing fix for the re-login loop:
 // a 401 from session-sync or refresh must NOT wipe a still-valid token (a
@@ -267,6 +268,52 @@ describe("AuthTokenSync", () => {
     });
 
     await waitFor(() => expect(postsTo("steward-session")).toHaveLength(2));
+  });
+
+  it("re-establishes the same token once after a failing logout cookie clear", async () => {
+    const token = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    let deleteAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+        });
+        if (init?.method === "DELETE") {
+          deleteAttempts += 1;
+          throw new Error("cookie clear unavailable");
+        }
+        return Response.json({ ok: true });
+      }),
+    );
+
+    mount();
+    await act(() => syncStewardSessionCookie(token));
+    expect(postsTo("steward-session")).toHaveLength(1);
+
+    // The clear is best-effort and its DELETE fails, but it must retire the
+    // unconsumed explicit-sync proof before any fallible teardown boundary.
+    await act(() => clearStaleStewardSession());
+    expect(deleteAttempts).toBeGreaterThan(0);
+    expect(storage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+
+    storage.setItem(STEWARD_TOKEN_KEY, token);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STEWARD_TOKEN_KEY,
+          newValue: token,
+        }),
+      );
+    });
+
+    await waitFor(() => expect(postsTo("steward-session")).toHaveLength(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(postsTo("steward-session")).toHaveLength(2);
   });
 
   it("ignores a forged same-tab token event and still mirrors on a real storage trigger", async () => {

@@ -38,6 +38,16 @@ export function markStewardServerCookieSynced(
   };
 }
 
+/**
+ * Retire any unconsumed proof before local code starts clearing server-cookie
+ * or sign-out authority. This must run before fallible storage/network work:
+ * even a partial or rejected clear can change which server session the next
+ * token publication must establish.
+ */
+export function invalidateStewardServerCookieSyncMarker(): void {
+  pendingServerCookieSync = null;
+}
+
 export function consumeStewardServerCookieSynced(
   token: string,
   endpoint: string,

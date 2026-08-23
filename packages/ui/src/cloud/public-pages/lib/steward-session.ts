@@ -25,7 +25,10 @@ import {
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../../join/lib/onboarding-continuation";
 import { decodeJwtPayload } from "../../lib/jwt";
-import { markStewardServerCookieSynced } from "../../lib/steward-session-cookie-sync-marker";
+import {
+  invalidateStewardServerCookieSyncMarker,
+  markStewardServerCookieSynced,
+} from "../../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
@@ -484,6 +487,9 @@ function isRejectedCookieSession(error: unknown): boolean {
 }
 
 async function clearRejectedCookieSession(): Promise<void> {
+  // The DELETE and subsequent token removal can each fail. Retire proof before
+  // either boundary so recovery can never reuse pre-clear cookie authority.
+  invalidateStewardServerCookieSyncMarker();
   const response = await postAuthJson(
     STEWARD_SESSION_ENDPOINT,
     undefined,

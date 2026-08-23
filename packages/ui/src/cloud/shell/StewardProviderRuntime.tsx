@@ -35,7 +35,10 @@ import { dispatchStewardSessionChange } from "../../events/steward-session-event
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
-import { consumeStewardServerCookieSynced } from "../lib/steward-session-cookie-sync-marker";
+import {
+  consumeStewardServerCookieSynced,
+  invalidateStewardServerCookieSyncMarker,
+} from "../lib/steward-session-cookie-sync-marker";
 import {
   clearServerStewardSessionCookies,
   clearStaleStewardSession,
@@ -363,6 +366,10 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         : null,
       session: auth.session,
       signOut: () => {
+        // Retire explicit-sync proof before the SDK begins its own fallible
+        // sign-out work. A same-token login after any partial teardown must
+        // establish the local server cookie again.
+        invalidateStewardServerCookieSyncMarker();
         // Drop the at-rest JWT from the persisted active server before the SDK
         // sign-out — leaving it in localStorage is an at-rest token leak. Keeps
         // the backend selection (kind/apiBase) so re-auth lands on the same one.
