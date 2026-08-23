@@ -17,6 +17,7 @@ import {
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { clearSharedCloudAccountBinding } from "../../state/shared-cloud-account-binding";
 import { decodeJwtPayload } from "../lib/jwt";
+import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
 
 export function isPlaceholderValue(value: string | undefined): boolean {
@@ -121,6 +122,9 @@ function stewardSessionClearUrls(): string[] {
 }
 
 export function clearServerStewardSessionCookies(): void {
+  // Invalidate before issuing any best-effort DELETE: a rejected request must
+  // never leave a proof that can suppress a later session-establishing POST.
+  invalidateStewardServerCookieSyncMarker();
   for (const url of stewardSessionClearUrls()) {
     // error-policy:J6 best-effort sign-out cookie clear across session hosts;
     // the local token is already cleared and an expired cookie self-heals.
@@ -161,6 +165,10 @@ export function tokenSecsRemaining(token: string): number | null {
 
 export async function clearStaleStewardSession(): Promise<void> {
   if (typeof window === "undefined") return;
+  // This is deliberately before protected-storage removal. That operation can
+  // reject and abort the rest of teardown, but an attempted session clear must
+  // still retire any unconsumed proof from the previous authority epoch.
+  invalidateStewardServerCookieSyncMarker();
   let storedTokenClearError: unknown;
   try {
     await clearStoredStewardToken();

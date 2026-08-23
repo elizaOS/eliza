@@ -9,6 +9,11 @@ import {
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../join/lib/onboarding-continuation";
 import {
+  consumeStewardServerCookieSynced,
+  invalidateStewardServerCookieSyncMarker,
+  markStewardServerCookieSynced,
+} from "../lib/steward-session-cookie-sync-marker";
+import {
   buildBridgeExchangeUrl,
   buildBridgeMintUrl,
   burnSsoBridgeCode,
@@ -76,6 +81,7 @@ function clearCookies(): void {
 }
 
 beforeEach(() => {
+  invalidateStewardServerCookieSyncMarker();
   localStorage.clear();
   sessionStorage.clear();
   clearCookies();
@@ -525,7 +531,12 @@ describe("burnSsoBridgeCode", () => {
 
 describe("signOutFromSsoBridgedHost", () => {
   it("marks logged-out synchronously, ends the server session, scrubs locally", async () => {
-    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    markStewardServerCookieSynced(
+      token,
+      "https://cloud.eliza.app/api/auth/steward-session",
+    );
     // clearStaleStewardSession fires best-effort cookie DELETEs via the
     // global fetch; capture them so jsdom does not attempt real requests.
     const globalCalls: string[] = [];
@@ -535,10 +546,18 @@ describe("signOutFromSsoBridgedHost", () => {
       return Promise.resolve(json(200, { ok: true }));
     }) as typeof fetch;
     try {
-      const { fn, calls } = fetchStub(() => json(200, { success: true }));
+      let proofAtServerLogoutIssue: boolean | undefined;
+      const { fn, calls } = fetchStub(() => {
+        proofAtServerLogoutIssue = consumeStewardServerCookieSynced(
+          token,
+          "https://cloud.eliza.app/api/auth/steward-session",
+        );
+        return json(200, { success: true });
+      });
       await signOutFromSsoBridgedHost("cloud.eliza.app", fn);
       expect(isSsoLoggedOut()).toBe(true);
       expect(calls[0].url).toBe("https://cloud.eliza.app/api/auth/logout");
+      expect(proofAtServerLogoutIssue).toBe(false);
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     } finally {
       globalThis.fetch = realFetch;
