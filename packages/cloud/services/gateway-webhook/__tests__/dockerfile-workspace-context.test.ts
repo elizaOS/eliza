@@ -163,10 +163,15 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
         '{OPUS_PREBUILD_NODE_TARGET}" bun install --production',
     );
     expect(gateway?.dockerfile).toContain(
-      'builds[0].replace(/napi-v\\d+/, "napi-v{napi_build_version}")',
+      "COPY $" +
+        "{SERVICE_DIR}/scripts/select-opus-prebuild.ts $" +
+        "{SERVICE_DIR}/scripts/",
     );
     expect(gateway?.dockerfile).toContain(
-      "manifest.binary.module_path = `./prebuild/$" + "{modulePath}/`",
+      'bun "$' +
+        '{SERVICE_DIR}/scripts/select-opus-prebuild.ts" "$' +
+        '{SERVICE_DIR}" "$' +
+        '{TARGETARCH}"',
     );
   });
 

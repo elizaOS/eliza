@@ -15,9 +15,9 @@
 # BUN_BASE selects the Bun base image. Default targets linux/amd64 + linux/arm64
 # via upstream oven/bun, pinned to the canonical version in
 # .github/ci-bun-version.json so the deployed runtime is the one CI validates.
-# For linux/riscv64 (no upstream image — oven-sh/bun#6266, #21923), build a local
-# Bun image via elizaOS/os packages/os/toolchains/bun-riscv64/build.sh and pass
-# --build-arg BUN_BASE=<local-tag>.
+# The verified @discordjs/opus release used below publishes Alpine binaries for
+# amd64 and arm64 only. A different architecture fails closed in the selector;
+# do not treat a custom Bun base as sufficient native-addon evidence.
 ARG BUN_BASE=oven/bun:1.3.14-alpine
 
 FROM ${BUN_BASE} AS base
@@ -43,8 +43,10 @@ ARG COMMON_DIR
 ARG SHARED_DIR
 ARG CORE_DIR
 ARG OPUS_PREBUILD_NODE_TARGET
+ARG TARGETARCH
 RUN apk add --no-cache python3 make g++ pkgconf opus-dev
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
+COPY ${SERVICE_DIR}/scripts/select-opus-prebuild.ts ${SERVICE_DIR}/scripts/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
 COPY ${SHARED_DIR}/package.json ${SHARED_DIR}/
 COPY ${CORE_DIR}/package.json ${CORE_DIR}/
@@ -52,7 +54,7 @@ RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).
     && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:{"./errors":"./src/errors.ts"}}));' "${CORE_DIR}/package.json" \
     && printf '{"name":"gateway-discord-build","private":true,"workspaces":["packages/shared","packages/cloud/services/*","packages/core"]}\n' > package.json \
     && npm_config_target="${OPUS_PREBUILD_NODE_TARGET}" bun install --production \
-    && bun -e 'import { existsSync, readdirSync } from "node:fs"; const root = `${Bun.argv.at(-1)}/node_modules/@discordjs/opus`; const builds = readdirSync(`${root}/prebuild`).filter((entry) => existsSync(`${root}/prebuild/${entry}/opus.node`)); if (builds.length !== 1) throw new Error(`expected one installed Opus N-API build, found ${builds.length}`); const path = `${root}/package.json`; const manifest = await Bun.file(path).json(); const modulePath = builds[0].replace(/napi-v\d+/, "napi-v{napi_build_version}"); if (modulePath === builds[0]) throw new Error("installed Opus build lacks an N-API version segment"); manifest.binary.module_path = `./prebuild/${modulePath}/`; await Bun.write(path, JSON.stringify(manifest));' "${SERVICE_DIR}"
+    && bun "${SERVICE_DIR}/scripts/select-opus-prebuild.ts" "${SERVICE_DIR}" "${TARGETARCH}"
 
 # Build stage
 FROM deps AS builder
