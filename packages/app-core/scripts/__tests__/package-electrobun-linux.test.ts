@@ -276,6 +276,10 @@ describe("direct Debian payload hardening", () => {
     mkdirSync(cefDir);
     writeFileSync(path.join(cefDir, "libcef.so"), "cef fixture\n");
     symlinkSync("cef/libcef.so", path.join(buildDir, "libcef.so"));
+    symlinkSync(
+      path.join(cefDir, "libcef.so"),
+      path.join(buildDir, "absolute-libcef.so"),
+    );
 
     expect(findElectrobunLauncher(buildDir)).toBe(executable);
 
@@ -302,6 +306,9 @@ describe("direct Debian payload hardening", () => {
     const stagedCefLink = path.join(packageRoot, "opt/eliza/libcef.so");
     expect(lstatSync(stagedCefLink).isSymbolicLink()).toBe(true);
     expect(readlinkSync(stagedCefLink)).toBe("cef/libcef.so");
+    expect(
+      readlinkSync(path.join(packageRoot, "opt/eliza/absolute-libcef.so")),
+    ).toBe("cef/libcef.so");
     expectHardenedTree(packageRoot);
 
     const localWrapper = path.join(tempDir(), "quoted-launcher");
@@ -330,6 +337,24 @@ describe("direct Debian payload hardening", () => {
     );
   });
 
+  it("rejects escaping and dangling payload symlinks", async () => {
+    for (const [name, target, message] of [
+      ["escaping", "/etc/passwd", /escaping symlink/],
+      ["dangling", "missing-target", /dangling symlink/],
+    ] as const) {
+      const buildDir = tempDir();
+      const launcher = path.join(buildDir, "bin/launcher");
+      mkdirSync(path.dirname(launcher), { recursive: true });
+      writeFileSync(launcher, "#!/usr/bin/env sh\nexit 0\n", { mode: 0o755 });
+      chmodSync(launcher, 0o755);
+      symlinkSync(target, path.join(buildDir, name));
+
+      await expect(
+        stagePackageRoot(buildDir, path.join(tempDir(), "package-root")),
+      ).rejects.toThrow(message);
+    }
+  });
+
   it("stages AppImage metadata and normalized export modes", () => {
     const appDir = tempDir();
     const desktopDir = path.join(appDir, "usr/share/applications");
@@ -350,6 +375,7 @@ describe("direct Debian payload hardening", () => {
       "usr/share/metainfo/ai.elizaos.eliza.appdata.xml",
     );
     expect(readFileSync(appRun, "utf8")).toBe(renderAppImageLauncher());
+    expect(readFileSync(appRun, "utf8")).toContain("bin/cef/libcef.so");
     expect(readFileSync(appRun, "utf8")).toContain(
       "Eliza cannot start because Linux runtime libraries are missing",
     );
