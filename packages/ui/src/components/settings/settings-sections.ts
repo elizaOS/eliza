@@ -558,9 +558,8 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     titleKey: "settings.sections.myRuntimes.title",
     defaultTitle: "Devices & Runtimes",
     order: 3.5,
-    // Hidden for MVP until the expanded pairing and remote-target surface has
-    // explicit product authority. Its deep link remains registered.
-    developerOnly: true,
+    // This is the canonical runtime-management product. The former cockpit
+    // MyRuntimesContainer remains only as a compatibility adapter.
     Component: DevicesRuntimesContainer,
   },
 ] as const;

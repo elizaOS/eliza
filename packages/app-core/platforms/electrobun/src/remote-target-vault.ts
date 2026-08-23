@@ -23,6 +23,7 @@ export interface PendingRemoteTargetVaultRecord {
   ownerId: string;
   deviceId: string;
   displayName: string;
+  platform: "macos" | "windows" | "linux";
   keyId: string;
   signingPrivateKeyJwk: JsonWebKey;
   encryptionPrivateKeyJwk: JsonWebKey;
@@ -46,6 +47,12 @@ type RemoteTargetVaultRecord =
 
 function isIdentifier(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{1,256}$/.test(value);
+}
+
+function isDesktopPlatform(
+  value: unknown,
+): value is "macos" | "windows" | "linux" {
+  return value === "macos" || value === "windows" || value === "linux";
 }
 
 function isPrivateP256Jwk(value: unknown): value is JsonWebKey {
@@ -134,11 +141,17 @@ function parseRecord(raw: string): RemoteTargetVaultRecord {
       value,
       "encryptionPrivateKeyJwk",
     ) as JsonWebKey;
+    const storedPlatform = Reflect.get(value, "platform");
+    // v1 records created by the original Linux-only implementation did not
+    // persist a platform. Keep them recoverable as Linux while new identities
+    // bind their desktop platform before Cloud authority exists.
+    const platform = storedPlatform === undefined ? "linux" : storedPlatform;
     if (
       !isIdentifier(Reflect.get(value, "ownerId")) ||
       !isIdentifier(Reflect.get(value, "deviceId")) ||
       !isIdentifier(Reflect.get(value, "keyId")) ||
       typeof Reflect.get(value, "displayName") !== "string" ||
+      !isDesktopPlatform(platform) ||
       (Reflect.get(value, "displayName") as string).trim().length === 0 ||
       (Reflect.get(value, "displayName") as string) !==
         (Reflect.get(value, "displayName") as string).trim() ||
@@ -150,7 +163,7 @@ function parseRecord(raw: string): RemoteTargetVaultRecord {
     ) {
       throw new Error("Stored remote target identity is corrupt.");
     }
-    return value as PendingRemoteTargetVaultRecord;
+    return { ...(value as PendingRemoteTargetVaultRecord), platform };
   }
   if (
     Reflect.get(value, "status") !== "enrolled" ||
@@ -218,6 +231,7 @@ export class RemoteTargetVault {
   async prepare(input: {
     ownerId: string;
     displayName: string;
+    platform: "macos" | "windows" | "linux";
     now: number;
   }): Promise<
     PendingRemoteTargetVaultRecord | EnrolledRemoteTargetVaultRecord
@@ -239,6 +253,15 @@ export class RemoteTargetVault {
         if (existingOwner !== input.ownerId) {
           throw new Error("Remote target is enrolled to a different owner.");
         }
+        const existingPlatform =
+          existing.status === "enrolled"
+            ? existing.identity.platform
+            : existing.platform;
+        if (existingPlatform !== input.platform) {
+          throw new Error(
+            "Remote target identity belongs to a different desktop platform.",
+          );
+        }
         return existing;
       }
       const signingPrivateKeyJwk = generatePrivateP256Jwk();
@@ -249,6 +272,7 @@ export class RemoteTargetVault {
         ownerId: input.ownerId,
         deviceId: randomUUID(),
         displayName: input.displayName.trim(),
+        platform: input.platform,
         keyId: keyId(signingPrivateKeyJwk, encryptionPrivateKeyJwk),
         signingPrivateKeyJwk,
         encryptionPrivateKeyJwk,
@@ -303,7 +327,7 @@ export class RemoteTargetVault {
         runtimeId: input.hostId,
         keyId: existing.keyId,
         displayName: existing.displayName,
-        platform: "linux",
+        platform: existing.platform,
         signingPublicKeyJwk: publicJwk(existing.signingPrivateKeyJwk),
         encryptionPublicKeyJwk: publicJwk(existing.encryptionPrivateKeyJwk),
         createdAt: input.createdAt,

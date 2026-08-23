@@ -28,9 +28,21 @@ const SURFACES = [
   { className: "theme-app", label: "theme-app — Eliza App" },
 ] as const;
 
-export function Story({ story }: { story: StoryDefinition }) {
+export function Story({
+  story,
+  focused = false,
+}: {
+  story: StoryDefinition;
+  focused?: boolean;
+}) {
+  const surfaces = focused
+    ? SURFACES.filter((surface) => surface.className === "theme-app")
+    : SURFACES;
   return (
-    <article className="gallery-section" id={story.id}>
+    <article
+      className={`gallery-section${focused ? " gallery-section--focused" : ""}`}
+      id={story.id}
+    >
       <div className="gallery-eyebrow">component</div>
       <div className="gallery-name">{story.name}</div>
       <code className="gallery-import">{story.importPath}</code>
@@ -38,7 +50,7 @@ export function Story({ story }: { story: StoryDefinition }) {
         <p className="gallery-description">{story.description}</p>
       ) : null}
       <div className="gallery-triptych">
-        {SURFACES.map((surface) => (
+        {surfaces.map((surface) => (
           <div
             key={surface.className}
             className={`gallery-tile ${surface.className}`}

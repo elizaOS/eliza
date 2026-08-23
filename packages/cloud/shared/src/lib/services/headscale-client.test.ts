@@ -4,6 +4,7 @@ import {
   DEFAULT_PREAUTH_TTL_MIN,
   ECMA_TIME_CLIP_MS,
   HeadscaleClient,
+  HeadscaleHttpError,
   MAX_PREAUTH_TTL_MIN,
   resolvePreAuthExpirationIso,
   resolvePreAuthTtlMs,
@@ -190,6 +191,100 @@ describe("HeadscaleClient upstream errors", () => {
     });
     await expect(client.createPreAuthKey()).rejects.toThrow(/TimeClip/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("HeadscaleClient v0.28 pre-auth cleanup contract", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("expires by JSON id and deletes by query id", async () => {
+    const requests: Array<{ url: string; method: string; body?: string }> = [];
+    globalThis.fetch = vi.fn(async (input, init) => {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        ...(typeof init?.body === "string" ? { body: init.body } : {}),
+      });
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+    await client.expirePreAuthKey("123");
+    await client.deletePreAuthKey("123");
+    expect(requests).toEqual([
+      {
+        url: "https://headscale.example/api/v1/preauthkey/expire",
+        method: "POST",
+        body: JSON.stringify({ id: "123" }),
+      },
+      {
+        url: "https://headscale.example/api/v1/preauthkey?id=123",
+        method: "DELETE",
+      },
+    ]);
+  });
+
+  it("rejects non-numeric ids before sending a bearer", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+    await expect(client.expirePreAuthKey("key-secret")).rejects.toThrow(/invalid pre-auth key id/);
+    await expect(client.deletePreAuthKey("0")).rejects.toThrow(/invalid pre-auth key id/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("suppresses only an actual HTTP 404 during idempotent cleanup", async () => {
+    const statuses = [404, 404, 404];
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("missing", {
+          status: statuses.shift() ?? 500,
+          statusText: "Not Found",
+        }),
+    ) as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+
+    await expect(client.deleteNode("9")).resolves.toBeUndefined();
+    await expect(client.expirePreAuthKey("123")).resolves.toBeUndefined();
+    await expect(client.deletePreAuthKey("123")).resolves.toBeUndefined();
+  });
+
+  it("does not suppress a non-404 failure merely because its text contains 404", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("failure", {
+          status: 500,
+          statusText: "upstream incident 404",
+        }),
+    ) as typeof fetch;
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+
+    await expect(client.deletePreAuthKey("123")).rejects.toMatchObject({
+      name: "HeadscaleHttpError",
+      status: 500,
+      method: "DELETE",
+      path: "/api/v1/preauthkey?id=123",
+    } satisfies Partial<HeadscaleHttpError>);
   });
 });
 

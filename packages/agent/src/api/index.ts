@@ -67,6 +67,7 @@ export * from "./provider-switch-config.ts";
 export * from "./rate-limiter.ts";
 export * from "./registry-routes.ts";
 export * from "./registry-service.ts";
+export * from "./runtime-management-routes.ts";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
 // authors and their tests) and the request-handling helper
 // `tryHandleRuntimePluginRoute` (used by

@@ -2,6 +2,8 @@
  * Coordinates managed agent launch, credential refresh, provisioning, and
  * onboarding behind Cloud route handlers.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AgentSandbox,
   CONTAINER_BACKED_EXECUTION_TIERS,
@@ -9,7 +11,6 @@ import {
 import { cache } from "../cache/client";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { logger } from "../utils/logger";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { decryptAgentEnvVars } from "./agent-env-crypto";
 import { elizaSandboxService } from "./eliza-sandbox";
 import {

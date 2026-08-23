@@ -1,0 +1,15 @@
+invariant	canonical_source	canonical_test	disposition
+pairing authority	packages/cloud/api/v1/remote/pair; merged remote session repository	remote pair route and PGlite suites	retained from merged secure stack
+encrypted command envelope	packages/cloud/shared/src/db/repositories/remote-command-envelopes.ts	remote command envelope PGlite suites	retained from merged secure stack
+replay and durable start fence	0306_secure_remote_command_relay.sql; remote command repository	remote start, completion, owner, and envelope suites	retained from merged secure stack
+device owner session key target capability binding	remote pairing and relay routes	remote route boundary suites	retained and failure-sensitive
+revocation and no resurrection	remote host revoke route; remote session and command repositories	revoke, restart, and repository suites	retained and extended to managed cleanup
+managed Headscale compensation	0311_remote_host_managed_network.sql; managed-network.ts; headscale-client.ts; headscale/acl.hujson	managed-network, typed Headscale HTTP, and ACL policy suites	server-side opt-in only; native product enrollment not claimed
+SSH fingerprint and private-key custody	remote-target-vault.ts; remote-target-transport.ts; ssh runtime RPC	remote-target boundaries and disposable sshd integration	retained and strengthened
+restart-safe SSH cleanup receipts	packages/ui/src/platform/ssh-runtime-lifecycle.ts	ssh-runtime-lifecycle.test.ts	new canonical lifecycle
+cross-platform remote target identity	remote-target-vault.ts; remote-target-rpc.ts; remote-target-transport.ts	remote-target boundary and runner suites	strengthened for macOS Windows Linux
+canonical Devices UI	DevicesRuntimesContainer.tsx; DevicesRuntimesSection.tsx	Devices settings and container suites	one stateful product surface with trusted direct URL and store/mobile local-execution guards
+legacy MyRuntimes imports	MyRuntimesContainer.tsx; MyRuntimesSection.tsx	MyRuntimesContainer.test.tsx	adapter and catalog-only compatibility
+canonical migration suffix	0305_secure_remote_hosts.sql; 0306_secure_remote_command_relay.sql; upstream 0307_twilio_outbound_call_audit.sql; upstream 0308_remove_conversation_token_default.sql; upstream 0309_retire_legacy_bluebubbles_gateways.sql; upstream 0310_personal_shared_inbound_media_admission.sql; 0311_remote_host_managed_network.sql	PGlite and disposable PostgreSQL composition	one contiguous series no duplicate c151 migrations
+responsive catalog proof	packages/ui/stories/src	production story build and 380x844 plus 1440x1000 interaction	focused canonical story no overlay leakage
+c151 accepted history	c15175dfbf45eb22655cb5a2c4daf6ee4b085201 and its annotated tag	git object and tag readback	immutable rollback evidence not publication base

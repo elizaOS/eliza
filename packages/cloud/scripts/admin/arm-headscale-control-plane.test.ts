@@ -214,6 +214,26 @@ describe("Headscale ACL policy", () => {
     }
   });
 
+  test("limits managed Devices hosts to proxy HTTPS with no peer or agent edge", () => {
+    const policy = committedPolicy();
+    const remoteToProxy = rulesFrom(
+      policy,
+      "tag:eliza-remote-host",
+      "tag:eliza-proxy",
+    );
+
+    expect(policy.tagOwners["tag:eliza-remote-host"]).toEqual(["tunnel@"]);
+    expect(remoteToProxy).toHaveLength(1);
+    expect(remoteToProxy[0]?.dst).toEqual(["tag:eliza-proxy:443"]);
+    expect(rulesFrom(policy, "tag:eliza-remote-host", "tag:agent")).toEqual([]);
+    expect(
+      rulesFrom(policy, "tag:eliza-remote-host", "tag:eliza-remote-host"),
+    ).toEqual([]);
+    expect(
+      rulesFrom(policy, "tag:eliza-proxy", "tag:eliza-remote-host"),
+    ).toEqual([]);
+  });
+
   test("ships the committed policy to the control plane", () => {
     const remote = renderRemoteScript();
     const encoded = remote.match(

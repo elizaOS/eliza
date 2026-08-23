@@ -19,6 +19,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 /** Timeout for health checks (ms) */
 const HEALTH_TIMEOUT_MS = 5_000;
 
+/** Typed non-2xx response. Callers may suppress only an exact HTTP status. */
+export class HeadscaleHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly method: string,
+    readonly path: string,
+    statusText: string,
+  ) {
+    super(`Headscale API ${method} ${path} failed: ${status} ${statusText}`);
+    this.name = "HeadscaleHttpError";
+  }
+}
+
 async function readHeadscaleErrorBody(
   resp: Response,
   method: string,
@@ -305,12 +318,12 @@ export class HeadscaleClient {
       await this.request<Record<string, unknown>>("DELETE", `/api/v1/node/${nodeId}`);
       logger.info(`[headscale] deleted node ${nodeId}`);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       // 404 is acceptable – node already gone
-      if (msg.includes("404")) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) {
         logger.warn(`[headscale] node ${nodeId} already deleted (404)`);
         return;
       }
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[headscale] error deleting node ${nodeId}:`, msg);
       throw error;
     }
@@ -398,6 +411,41 @@ export class HeadscaleClient {
     }
   }
 
+  /**
+   * Expire a v0.28 pre-auth key by numeric id. The v0.28 REST contract uses a
+   * JSON body at POST /api/v1/preauthkey/expire (not a key in the URL).
+   */
+  async expirePreAuthKey(id: string): Promise<void> {
+    if (!/^[1-9]\d*$/.test(id)) {
+      throw new Error("[headscale] invalid pre-auth key id");
+    }
+    try {
+      await this.request<Record<string, unknown>>("POST", "/api/v1/preauthkey/expire", { id });
+    } catch (error) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) return;
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a v0.28 pre-auth key by numeric id. grpc-gateway exposes the id as a
+   * query parameter on DELETE /api/v1/preauthkey.
+   */
+  async deletePreAuthKey(id: string): Promise<void> {
+    if (!/^[1-9]\d*$/.test(id)) {
+      throw new Error("[headscale] invalid pre-auth key id");
+    }
+    try {
+      await this.request<Record<string, unknown>>(
+        "DELETE",
+        `/api/v1/preauthkey?id=${encodeURIComponent(id)}`,
+      );
+    } catch (error) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) return;
+      throw error;
+    }
+  }
+
   async ensureUser(user = this.user): Promise<number> {
     const existing = await this.findUser(user);
     if (existing) return existing;
@@ -425,12 +473,12 @@ export class HeadscaleClient {
       const data = await this.request<{ routes?: HeadscaleRoute[] }>("GET", "/api/v1/routes");
       return data.routes ?? [];
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       // Some older Headscale versions may not support /routes
-      if (msg.includes("404")) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) {
         logger.warn("[headscale] routes endpoint not supported; returning empty list");
         return [];
       }
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error("[headscale] error listing routes:", msg);
       return [];
     }
@@ -482,7 +530,7 @@ export class HeadscaleClient {
       logger.debug(`[headscale] API error body for ${method} ${path}:`, {
         body: text,
       });
-      throw new Error(`Headscale API ${method} ${path} failed: ${resp.status} ${resp.statusText}`);
+      throw new HeadscaleHttpError(resp.status, method, path, resp.statusText);
     }
 
     // Some endpoints (DELETE) may not return a body

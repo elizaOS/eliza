@@ -68,6 +68,43 @@ describe("DevicesRuntimesSection", () => {
     expect(
       screen.getByRole("button", { name: "Pair device" }).className,
     ).toContain("min-h-11");
+    expect(screen.getByText("Connected").className).toContain(
+      "text-txt-strong",
+    );
+    expect(screen.getByText("Connected").className).not.toContain("text-ok");
+  });
+
+  it("keeps error state legible without relying on destructive theme color", () => {
+    render(
+      <DevicesRuntimesSection
+        {...props({
+          targets: [
+            {
+              id: "host:error",
+              label: "Studio Mac",
+              detail: "Mac · Cloud relay",
+              kind: "relay",
+              status: "error",
+              selected: false,
+              activity: "Connection failed",
+              error: "Relay unavailable. Retry when the host is online.",
+              canRemove: true,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Needs attention").className).toContain(
+      "text-txt-strong",
+    );
+    expect(screen.getByRole("alert").className).toContain("text-txt-strong");
+    expect(screen.getByRole("alert").className).not.toContain(
+      "text-destructive",
+    );
+    expect(screen.getByRole("button", { name: "Remove" }).className).toContain(
+      "text-txt-strong",
+    );
   });
 
   it("renders an independent six-digit code, real QR image, and expiry status", () => {
@@ -94,12 +131,12 @@ describe("DevicesRuntimesSection", () => {
     expect(screen.getByText(/Expires in 5:00|Expires in 4:59/)).toBeTruthy();
   });
 
-  it("offers one-click activation only when pairing authority matches this Linux host", async () => {
+  it("offers one-click activation only when pairing authority matches this desktop host", async () => {
     const user = userEvent.setup();
-    const onActivateLinuxTarget = vi.fn();
+    const onActivateDesktopTarget = vi.fn();
     const pairing = {
       hostId: "linux-host",
-      hostLabel: "This Linux computer",
+      hostLabel: "This Mac",
       sessionId: "session-1",
       code: "123456",
       expiresAt: new Date(Date.now() + 300_000).toISOString(),
@@ -109,23 +146,24 @@ describe("DevicesRuntimesSection", () => {
       <DevicesRuntimesSection
         {...props({
           pairing,
-          linuxTarget: {
+          desktopTarget: {
             hostId: "linux-host",
+            platform: "macos",
             enrolled: true,
             running: false,
             activeSessions: 0,
             lastErrorCode: null,
           },
-          onActivateLinuxTarget,
+          onActivateDesktopTarget,
         })}
       />,
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Approve this pairing on this Linux computer",
+        name: "Approve this pairing on this computer",
       }),
     );
-    expect(onActivateLinuxTarget).toHaveBeenCalledWith({
+    expect(onActivateDesktopTarget).toHaveBeenCalledWith({
       sessionId: "session-1",
       code: "123456",
     });
@@ -134,20 +172,21 @@ describe("DevicesRuntimesSection", () => {
       <DevicesRuntimesSection
         {...props({
           pairing: { ...pairing, hostId: "foreign-host" },
-          linuxTarget: {
+          desktopTarget: {
             hostId: "linux-host",
+            platform: "macos",
             enrolled: true,
             running: false,
             activeSessions: 0,
             lastErrorCode: null,
           },
-          onActivateLinuxTarget,
+          onActivateDesktopTarget,
         })}
       />,
     );
     expect(
       screen.queryByRole("button", {
-        name: "Approve this pairing on this Linux computer",
+        name: "Approve this pairing on this computer",
       }),
     ).toBeNull();
   });
@@ -193,5 +232,34 @@ describe("DevicesRuntimesSection", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it("restores the trust-gated direct private runtime flow", async () => {
+    const user = userEvent.setup();
+    const onAddDirectRuntime = vi.fn();
+    render(
+      <DevicesRuntimesSection
+        {...props({ onAddDirectRuntime, cloudState: "signed-out" })}
+      />,
+    );
+
+    await user.click(screen.getByText("Advanced direct runtime"));
+    await user.type(screen.getByLabelText("Runtime name"), "Home VPS");
+    await user.type(
+      screen.getByLabelText("Private runtime URL"),
+      "http://100.64.0.10:3000",
+    );
+    await user.type(
+      screen.getByLabelText("Direct runtime token (optional)"),
+      "private-token",
+    );
+    const add = screen.getByRole("button", { name: "Add private runtime" });
+    expect(add.className).toContain("min-h-11");
+    await user.click(add);
+    expect(onAddDirectRuntime).toHaveBeenCalledWith({
+      label: "Home VPS",
+      apiBase: "http://100.64.0.10:3000",
+      accessToken: "private-token",
+    });
   });
 });

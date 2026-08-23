@@ -14,6 +14,7 @@ import { remoteCommandEnvelopes } from "../schemas/remote-command-envelopes";
 import { type NewRemoteHost, type RemoteHost, remoteHosts } from "../schemas/remote-hosts";
 import { remoteSessions } from "../schemas/remote-sessions";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
+import { managedCleanupErrorPreview } from "./remote-host-cleanup-diagnostic";
 
 const HOST_REVOCATION_SESSION_BATCH = 100;
 const HOST_REVOCATION_COMMAND_BATCH = 500;
@@ -127,6 +128,96 @@ export class RemoteHostsRepository {
       )
       .limit(1);
     return host;
+  }
+
+  async recordManagedEnrollment(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    hostname: string;
+    preAuthKeyId: string;
+  }): Promise<RemoteHost> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_hostname: input.hostname,
+        headscale_preauth_key_id: input.preAuthKeyId,
+        headscale_cleanup_pending: true,
+        headscale_cleanup_error: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+          eq(remoteHosts.status, "active"),
+        ),
+      )
+      .returning();
+    if (!host) {
+      throw storageFailure("Managed remote-host enrollment could not be recorded", {
+        hostId: input.hostId,
+      });
+    }
+    return host;
+  }
+
+  async recordManagedCleanupFailure(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    message: string;
+  }): Promise<void> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_cleanup_pending: true,
+        headscale_cleanup_error: managedCleanupErrorPreview(input.message),
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+        ),
+      )
+      .returning({ id: remoteHosts.id });
+    if (!host) {
+      throw storageFailure("Managed remote-host cleanup failure could not be recorded", {
+        hostId: input.hostId,
+      });
+    }
+  }
+
+  async completeManagedCleanup(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<void> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_preauth_key_id: null,
+        headscale_hostname: null,
+        headscale_cleanup_pending: false,
+        headscale_cleanup_error: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+        ),
+      )
+      .returning({ id: remoteHosts.id });
+    if (!host) {
+      throw storageFailure("Managed remote-host cleanup could not be completed", {
+        hostId: input.hostId,
+      });
+    }
   }
 
   /**

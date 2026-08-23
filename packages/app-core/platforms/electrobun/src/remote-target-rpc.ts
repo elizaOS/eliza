@@ -1,5 +1,5 @@
 /**
- * Exposes the native-only Linux target lifecycle to the typed Electrobun RPC
+ * Exposes the native-only desktop target lifecycle to the typed Electrobun RPC
  * composition layer. Renderer callers receive public identity and health data;
  * the host bearer and private JWKs never cross this boundary.
  */
@@ -68,6 +68,13 @@ function requireString(
   return value.trim();
 }
 
+function requireDesktopPlatform(value: unknown): "macos" | "windows" | "linux" {
+  if (value === "macos" || value === "windows" || value === "linux") {
+    return value;
+  }
+  throw new Error("Remote target platform is invalid.");
+}
+
 export class RemoteTargetDesktopService {
   private runner: RemoteTargetRunner | null = null;
   private loopbackConfigurationKey: string | null = null;
@@ -129,9 +136,11 @@ export class RemoteTargetDesktopService {
       16_384,
     );
     const displayName = requireString(value.displayName, "display name", 128);
+    const platform = requireDesktopPlatform(value.platform);
     const prepared = await this.vault.prepare({
       ownerId,
       displayName,
+      platform,
       now: this.now(),
     });
     if (prepared.status === "enrolled") {
@@ -150,6 +159,7 @@ export class RemoteTargetDesktopService {
       ownerId,
       deviceId: prepared.deviceId,
       displayName: prepared.displayName,
+      platform: prepared.platform,
       runtimeKeyId: prepared.keyId,
       signingPublicKeyJwk: remoteTargetVaultInternals.publicJwk(
         prepared.signingPrivateKeyJwk,

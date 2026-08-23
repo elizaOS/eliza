@@ -38,6 +38,7 @@ export interface DeviceRuntimeTarget {
   canPair?: boolean;
   canRevoke?: boolean;
   canRemove?: boolean;
+  canSelect?: boolean;
 }
 
 export interface DevicePairingView {
@@ -59,8 +60,15 @@ export interface SshConnectInput {
   expectedFingerprint: string;
 }
 
-export interface LinuxRemoteTargetView {
+export interface DirectRuntimeInput {
+  label: string;
+  apiBase: string;
+  accessToken?: string;
+}
+
+export interface DesktopRemoteTargetView {
   hostId: string | null;
+  platform: "macos" | "windows" | "linux";
   enrolled: boolean;
   running: boolean;
   activeSessions: number;
@@ -71,7 +79,7 @@ export interface DevicesRuntimesSectionProps {
   targets: DeviceRuntimeTarget[];
   pairing?: DevicePairingView | null;
   sshInspection?: SshHostInspection | null;
-  linuxTarget?: LinuxRemoteTargetView | null;
+  desktopTarget?: DesktopRemoteTargetView | null;
   busy?: boolean;
   error?: string | null;
   cloudState?: "loading" | "available" | "signed-out" | "error";
@@ -86,17 +94,18 @@ export interface DevicesRuntimesSectionProps {
     sshPort: number;
   }) => void | Promise<void>;
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
-  onEnrollLinuxTarget?: () => void | Promise<void>;
-  onActivateLinuxTarget?: (input: {
+  onAddDirectRuntime?: (input: DirectRuntimeInput) => void | Promise<void>;
+  onEnrollDesktopTarget?: () => void | Promise<void>;
+  onActivateDesktopTarget?: (input: {
     sessionId: string;
     code: string;
   }) => void | Promise<void>;
-  onSetLinuxTargetRunning?: (running: boolean) => void | Promise<void>;
-  onRevokeLinuxTarget?: () => void | Promise<void>;
+  onSetDesktopTargetRunning?: (running: boolean) => void | Promise<void>;
+  onRevokeDesktopTarget?: () => void | Promise<void>;
   className?: string;
 }
 
-function LinuxTargetPanel({
+function DesktopTargetPanel({
   target,
   pairing,
   busy,
@@ -105,7 +114,7 @@ function LinuxTargetPanel({
   onSetRunning,
   onRevoke,
 }: {
-  target: LinuxRemoteTargetView;
+  target: DesktopRemoteTargetView;
   pairing?: DevicePairingView | null;
   busy: boolean;
   onEnroll?: () => void | Promise<void>;
@@ -122,7 +131,7 @@ function LinuxTargetPanel({
   const localPairing = pairing?.hostId === target.hostId ? pairing : null;
   return (
     <SettingsGroup
-      title="Share this Linux runtime"
+      title="Share this computer"
       description="Enroll this computer as an encrypted remote target, then approve a one-use pairing code shown on your controller device."
       footer="The host token and target private keys stay in the native OS credential store."
       bare
@@ -131,7 +140,11 @@ function LinuxTargetPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-txt-strong">
-              This Linux computer
+              {target.platform === "macos"
+                ? "This Mac"
+                : target.platform === "windows"
+                  ? "This Windows PC"
+                  : "This Linux computer"}
             </p>
             <p className="mt-1 text-xs text-muted">
               {target.enrolled
@@ -163,7 +176,7 @@ function LinuxTargetPanel({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="min-h-11 text-destructive"
+                  className="min-h-11 text-txt-strong"
                   disabled={busy || !onRevoke}
                   onClick={() => setConfirmingRevoke(true)}
                 >
@@ -176,7 +189,7 @@ function LinuxTargetPanel({
         {confirmingRevoke ? (
           <div
             role="alert"
-            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2"
+            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border-strong bg-surface p-2"
           >
             <span className="mr-auto text-xs text-txt-strong">
               Revoke this host in Cloud, stop its relay, and remove local host
@@ -192,7 +205,7 @@ function LinuxTargetPanel({
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="default"
               className="min-h-11"
               disabled={busy || !onRevoke}
               onClick={() => {
@@ -205,7 +218,11 @@ function LinuxTargetPanel({
           </div>
         ) : null}
         {target.lastErrorCode ? (
-          <p role="alert" className="mt-3 text-xs text-destructive">
+          <p
+            role="alert"
+            className="mt-3 flex items-start gap-1.5 text-xs text-txt-strong"
+          >
+            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
             Remote target needs attention ({target.lastErrorCode}). Retry or
             inspect desktop logs.
           </p>
@@ -233,7 +250,7 @@ function LinuxTargetPanel({
                     })
                   }
                 >
-                  Approve this pairing on this Linux computer
+                  Approve this pairing on this computer
                 </Button>
               </div>
             ) : null}
@@ -252,12 +269,12 @@ function LinuxTargetPanel({
               }}
             >
               <label
-                htmlFor="linux-target-session"
+                htmlFor="desktop-target-session"
                 className="grid gap-1.5 text-xs text-muted"
               >
                 Pairing session ID
                 <Input
-                  id="linux-target-session"
+                  id="desktop-target-session"
                   required
                   density="relaxed"
                   value={sessionId}
@@ -267,12 +284,12 @@ function LinuxTargetPanel({
                 />
               </label>
               <label
-                htmlFor="linux-target-code"
+                htmlFor="desktop-target-code"
                 className="grid gap-1.5 text-xs text-muted"
               >
                 6-digit code
                 <Input
-                  id="linux-target-code"
+                  id="desktop-target-code"
                   required
                   density="relaxed"
                   value={code}
@@ -311,10 +328,10 @@ const STATUS_META: Record<
   RuntimeTargetStatus,
   { label: string; className: string }
 > = {
-  connected: { label: "Connected", className: "text-ok" },
-  offline: { label: "Offline", className: "text-muted" },
-  error: { label: "Needs attention", className: "text-destructive" },
-  pairing: { label: "Pairing", className: "text-accent" },
+  connected: { label: "Connected", className: "text-txt-strong" },
+  offline: { label: "Offline", className: "text-muted-strong" },
+  error: { label: "Needs attention", className: "text-txt-strong" },
+  pairing: { label: "Pairing", className: "text-txt-strong" },
 };
 
 function PairingQr({ payload }: { payload: string }) {
@@ -397,7 +414,7 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
         <p
           className={cn(
             "mt-2 text-xs",
-            remaining ? "text-muted" : "text-destructive",
+            remaining ? "text-muted" : "text-txt-strong",
           )}
         >
           {remaining
@@ -470,7 +487,7 @@ function RuntimeCard({
           </div>
           {target.error ? (
             <p
-              className="mt-2 flex items-start gap-1.5 text-xs text-destructive"
+              className="mt-2 flex items-start gap-1.5 text-xs text-txt-strong"
               role="alert"
             >
               <CircleAlert
@@ -483,7 +500,9 @@ function RuntimeCard({
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {!target.selected && target.status === "connected" ? (
+        {!target.selected &&
+        target.status === "connected" &&
+        target.canSelect !== false ? (
           <Button
             type="button"
             size="sm"
@@ -535,7 +554,7 @@ function RuntimeCard({
             type="button"
             size="sm"
             variant="ghost"
-            className="min-h-11 text-destructive"
+            className="min-h-11 text-txt-strong"
             disabled={busy}
             onClick={() => setConfirming("remove")}
           >
@@ -544,7 +563,7 @@ function RuntimeCard({
         ) : null}
         {confirming ? (
           <div
-            className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2"
+            className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-border-strong bg-surface p-2"
             role="alert"
           >
             <span className="mr-auto text-xs text-txt-strong">
@@ -564,7 +583,7 @@ function RuntimeCard({
             <Button
               type="button"
               size="sm"
-              variant="destructive"
+              variant="default"
               className="min-h-11"
               disabled={busy}
               onClick={() => {
@@ -579,6 +598,101 @@ function RuntimeCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function AdvancedDirectRuntime({
+  busy,
+  onAdd,
+}: {
+  busy: boolean;
+  onAdd: NonNullable<DevicesRuntimesSectionProps["onAddDirectRuntime"]>;
+}) {
+  const [label, setLabel] = useState("");
+  const [apiBase, setApiBase] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const valid = Boolean(label.trim() && apiBase.trim());
+
+  return (
+    <details className="rounded-xl border border-border bg-card p-4">
+      <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold text-txt-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        Advanced direct runtime
+      </summary>
+      <p className="mb-4 text-xs leading-relaxed text-muted">
+        Add an existing Eliza runtime reachable over a private or Tailscale
+        address. Public internet URLs are rejected by the runtime trust gate.
+      </p>
+      <form
+        className="grid gap-4 sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!valid) return;
+          void onAdd({
+            label: label.trim(),
+            apiBase: apiBase.trim(),
+            accessToken: accessToken.trim() || undefined,
+          });
+          setAccessToken("");
+        }}
+      >
+        <label
+          htmlFor="direct-runtime-label"
+          className="grid gap-1.5 text-xs text-muted"
+        >
+          Runtime name
+          <Input
+            id="direct-runtime-label"
+            required
+            density="relaxed"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder="Home server"
+            autoComplete="off"
+          />
+        </label>
+        <label
+          htmlFor="direct-runtime-url"
+          className="grid gap-1.5 text-xs text-muted"
+        >
+          Private runtime URL
+          <Input
+            id="direct-runtime-url"
+            required
+            density="relaxed"
+            type="url"
+            inputMode="url"
+            value={apiBase}
+            onChange={(event) => setApiBase(event.target.value)}
+            placeholder="http://100.64.0.10:3000"
+            autoCapitalize="none"
+            autoComplete="url"
+            spellCheck={false}
+          />
+        </label>
+        <label
+          htmlFor="direct-runtime-token"
+          className="grid gap-1.5 text-xs text-muted sm:col-span-2"
+        >
+          Direct runtime token (optional)
+          <Input
+            id="direct-runtime-token"
+            density="relaxed"
+            type="password"
+            value={accessToken}
+            onChange={(event) => setAccessToken(event.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+          <Button type="submit" className="min-h-11" disabled={busy || !valid}>
+            <Link2 className="mr-1.5 h-4 w-4" aria-hidden /> Add private runtime
+          </Button>
+          <span className="text-xs text-muted">
+            The address is validated before it can become active.
+          </span>
+        </div>
+      </form>
+    </details>
   );
 }
 
@@ -740,14 +854,14 @@ function AdvancedSsh({
             className={cn(
               "sm:col-span-2 rounded-lg border p-3",
               inspection.changed
-                ? "border-destructive/50 bg-destructive/5"
+                ? "border-border-strong bg-surface"
                 : "border-accent/35 bg-accent/5",
             )}
             role="status"
           >
             <p className="flex items-center gap-2 text-xs font-semibold text-txt-strong">
               {inspection.changed ? (
-                <CircleAlert className="h-4 w-4 text-destructive" aria-hidden />
+                <CircleAlert className="h-4 w-4 text-txt-strong" aria-hidden />
               ) : (
                 <ShieldCheck className="h-4 w-4 text-accent" aria-hidden />
               )}
@@ -759,7 +873,7 @@ function AdvancedSsh({
               {inspection.preferredFingerprint}
             </code>
             {inspection.changed ? (
-              <p className="mt-2 text-xs text-destructive">
+              <p className="mt-2 text-xs text-txt-strong">
                 The saved key does not match this server. Confirm the change
                 outside Eliza before replacing trust.
               </p>
@@ -797,7 +911,7 @@ export function DevicesRuntimesSection({
   targets,
   pairing,
   sshInspection,
-  linuxTarget,
+  desktopTarget,
   busy = false,
   error,
   cloudState = "loading",
@@ -809,10 +923,11 @@ export function DevicesRuntimesSection({
   onRemove,
   onInspectSsh,
   onConnectSsh,
-  onEnrollLinuxTarget,
-  onActivateLinuxTarget,
-  onSetLinuxTargetRunning,
-  onRevokeLinuxTarget,
+  onAddDirectRuntime,
+  onEnrollDesktopTarget,
+  onActivateDesktopTarget,
+  onSetDesktopTargetRunning,
+  onRevokeDesktopTarget,
   className,
 }: DevicesRuntimesSectionProps) {
   const { t } = useTranslation();
@@ -821,7 +936,7 @@ export function DevicesRuntimesSection({
       {error ? (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          className="rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-txt-strong"
         >
           {error}
         </div>
@@ -885,16 +1000,19 @@ export function DevicesRuntimesSection({
           ))}
         </div>
       </SettingsGroup>
-      {linuxTarget ? (
-        <LinuxTargetPanel
-          target={linuxTarget}
+      {desktopTarget ? (
+        <DesktopTargetPanel
+          target={desktopTarget}
           pairing={pairing}
           busy={busy}
-          onEnroll={onEnrollLinuxTarget}
-          onActivate={onActivateLinuxTarget}
-          onSetRunning={onSetLinuxTargetRunning}
-          onRevoke={onRevokeLinuxTarget}
+          onEnroll={onEnrollDesktopTarget}
+          onActivate={onActivateDesktopTarget}
+          onSetRunning={onSetDesktopTargetRunning}
+          onRevoke={onRevokeDesktopTarget}
         />
+      ) : null}
+      {onAddDirectRuntime ? (
+        <AdvancedDirectRuntime busy={busy} onAdd={onAddDirectRuntime} />
       ) : null}
       <AdvancedSsh
         busy={busy}
