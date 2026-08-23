@@ -29,14 +29,39 @@ export function normalizeName(value: string): string {
  * tokens stay excluded — fragments like "al" or "bot" would match ordinary
  * prose.
  */
+/** Generic role/test words that never count as an identity signal on their
+ * own, however long ("agent", "assistant", "test" — adopted from the
+ * upstream-merged variant of this matcher). */
+const NON_DISTINCTIVE_NAME_TOKENS = new Set([
+	"agent",
+	"assistant",
+	"bot",
+	"chatbot",
+	"demo",
+	"helper",
+	"system",
+	"test",
+]);
+
 export function distinctiveNameTokens(name: string): string[] {
 	const candidate = name.trim();
 	if (!candidate) {
 		return [];
 	}
 	const tokens = new Set<string>([candidate]);
+	// Token distinctiveness is not deterministically verifiable without a
+	// lexicon, and it does not need to be: token expansion only ADDS addressed
+	// classifications, so its failure direction is over-addressing (the agent
+	// answers more), never silence. The floor therefore only drops initials
+	// and particles (1–2 chars); real short name tokens ("Sol", "Rex", "Ana")
+	// count. Generic role words stay excluded via the closed-class guard;
+	// operators whose names contain common English words ("Will …", "The …")
+	// are matched by their full name and can extend the guard.
 	for (const token of candidate.split(/\s+/u)) {
-		if (token.length >= 4) {
+		if (
+			token.length >= 3 &&
+			!NON_DISTINCTIVE_NAME_TOKENS.has(token.toLowerCase())
+		) {
 			tokens.add(token);
 		}
 	}
