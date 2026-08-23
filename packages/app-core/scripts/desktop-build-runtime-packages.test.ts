@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("desktop runtime package build set", () => {
-  it("rebuilds provider plugins before copying runtime node_modules", async () => {
+  it("rebuilds provider and host-control plugins before copying runtime node_modules", async () => {
     const source = await readFile(
       new URL("./desktop-build.mjs", import.meta.url),
       "utf8",
@@ -20,6 +20,12 @@ describe("desktop runtime package build set", () => {
     );
     expect(source).toContain(
       'ensureWorkspaceRuntimePackageBuilt(\n    "@elizaos/plugin-elizacloud",\n    PLUGIN_ELIZACLOUD_PACKAGE_DIR,\n  );',
+    );
+    expect(source).toContain(
+      'const PLUGIN_COMPUTERUSE_PACKAGE_DIR =\n  resolveWorkspacePluginDir("plugin-computeruse");',
+    );
+    expect(source).toContain(
+      'ensureWorkspaceRuntimePackageBuilt(\n    "@elizaos/plugin-computeruse",\n    PLUGIN_COMPUTERUSE_PACKAGE_DIR,\n  );',
     );
   });
 });
