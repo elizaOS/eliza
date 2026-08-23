@@ -1,4 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+
+beforeAll(() => {
+  (globalThis as Record<string, unknown>).window = {};
+});
 
 import {
   getBrowserTabsRendererImpl,
