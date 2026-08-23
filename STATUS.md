@@ -2,6 +2,22 @@
 
 Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar candidate. It contains no provider content, account identifiers, credential values, or private event/message data.
 
+## Post-interruption exact-source acceptance — 2026-08-22
+
+- Preserved published candidate and tags: `cf3091982536896dcb7bb3fa5b22e9e66eb0d66d`, `lifeops-current-base-hosted-green-20260822`, and `lifeops-current-base-hosted-retry-20260822`.
+- Fresh read-only base audit: `origin/develop` is `cbb400ddbcc21117505275557dd4f8505b2ccd1a`; exact path overlap with the LifeOps patch is 0, so no source-churning reconciliation was needed. The lane still has a zero-file diff for `packages/app-core/platforms/electrobun/native/macos/window-effects.mm`.
+- Draft PR `#24809` remains open, draft, and merge-clean at the preserved published head. No push, PR mutation, merge, signing, or deployment occurred in this continuation.
+- Restarted exact-source UI `http://127.0.0.1:43231/lifeops/connections` and API `127.0.0.1:43232` with the same mode-0600 isolated state and an explicitly selected existing EventKit dylib whose source hash matches this candidate. Protected ports `50001`, `5174`, `31337`, `31340`, and `31342` remained untouched.
+- Apple Calendar remains `full`; the exact-source UI and a read-only Calendar app inspection agree on four expected device calendars, no TCC prompt, and no leftover disposable `LifeOps QA 2026-08-22` calendar.
+- Safe public-source seed proof: 7-day history plus the product's fixed 90-day lookahead, 1 selected Apple source, 10 all-day events, 0 Gmail messages, 0 attendees, and 0 duplicate deliveries. Every event fell inside `2026-08-16T02:06:49.762Z` through `2026-11-21T02:06:49.762Z`.
+- Repeated sync and a full API/UI restart retained 10 unique projection ids and 10 unique provider-occurrence identities. Redacted digest before and after restart: `c0597a24a6b996154ee97becd43dd2d90d44e38dd2011a92d592ab3f85a092e5`; feed state remained `complete` and source `synced`.
+- Fixed a reproduced offline-recovery defect: the view no longer exposes the raw browser string `Failed to fetch`; it now names the unavailable local service, preserves state, and tells the user to restart Eliza if needed and retry.
+- Fixed reproduced dead `Review inbox drafts` and `Review calendar changes` handoffs. The plugin had retained a deactivated scope-bound navigation closure after remount; it now dispatches the shared typed navigation event. Live review opened `/inbox` with no send control and `/calendar` with no create control or new scope error.
+- Focused proof after the fixes: 2 Vitest files / 10 tests passed, focused Biome passed, production view bundle built at 36.39 kB, and the deterministic no-provider browser harness passed all 48 scenarios with zero uncaught page errors. `git diff --check` passed.
+- A package-wide `bun run typecheck` attempt remains blocked by the checkout's unbuilt optional-workspace exports (`@elizaos/agent`, Auth, Vault, Browser, Health, Scheduling, Cloud, and other unrelated package declarations). The focused view build and tests report no in-scope diagnostic; the previously published exact head retains hosted affected-typecheck acceptance.
+- Google remains fail-closed before provider contact. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` remain absent by name/presence-only process, project-env, scratch-state, and protected-store audit; the UI reports the exact required callback `http://127.0.0.1:43231/api/connectors/google/oauth/callback`. No chooser, consent, provider read, email send, or Google Calendar mutation occurred.
+- Real Google seed/History cursor, direct-Google versus Apple overlap dedupe, revoke/reconnect, and disposable self-mail/calendar acceptance remain gated only on protected OAuth configuration plus the user's chooser/consent/MFA and action-time confirmations. The known macOS recurrence/exception serialization gap remains owned by the preserved `plugins/plugin-calendar/docs/MACOS_EVENTKIT_PROVENANCE_CONTRACT.md` handoff.
+
 ## Live supervised continuation — 2026-08-22
 
 - Preserved candidate `421c15ddfba78e3d1b57b36b107614d252e1b380` and tag remain untouched.
