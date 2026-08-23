@@ -147,6 +147,10 @@ async function copyReference(text: string, label: string): Promise<void> {
     await navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
   } catch {
+    // error-policy:J4 user-facing degrade: a failed clipboard write (older
+    // browser, permission denied, insecure context) becomes a visible toast
+    // telling the user the reference could not be copied — never a silent
+    // no-op that looks like success.
     toast.error(`${label} could not be copied`);
   }
 }
@@ -341,6 +345,10 @@ export function PaymentActivityCard() {
                       <button
                         type="button"
                         data-testid="payment-receipt-link"
+                        aria-label={t("cloud.billingTab.copyReceiptReference", {
+                          defaultValue: "Copy receipt ID {{id}} to clipboard",
+                          id: row.receiptId,
+                        })}
                         title={row.receiptId}
                         className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer"
                         onClick={() => {
@@ -364,6 +372,19 @@ export function PaymentActivityCard() {
                     <button
                       type="button"
                       data-testid="payment-authority-link"
+                      aria-label={t("cloud.billingTab.copyAuthorityReference", {
+                        defaultValue: "Copy {{surface}} ID {{id}} to clipboard",
+                        surface:
+                          row.surface === "checkout_order"
+                            ? t("cloud.billingTab.paymentActivityOrder", {
+                                defaultValue: "checkout order",
+                              })
+                            : t("cloud.billingTab.paymentActivityRequest", {
+                                defaultValue: "payment request",
+                              }),
+                        id: row.authorityId,
+                      })}
+                      title={row.authorityId}
                       className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer"
                       onClick={() => {
                         void copyReference(
