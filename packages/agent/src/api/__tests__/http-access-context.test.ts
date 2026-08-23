@@ -6,7 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import type http from "node:http";
 
 vi.mock("@elizaos/core", () => {
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return {
     validateUuid: (v: string) => (UUID_RE.test(v) ? v : null),
     stringToUuid: (s: string) => {
@@ -66,9 +67,7 @@ describe("resolveHttpAccessContext", () => {
     // Deterministic: same input → same uuid, and it matches the uuid shape
     const again = resolveHttpAccessContext(req);
     expect(ctx?.requesterEntityId).toBe(again?.requesterEntityId);
-    expect(ctx?.requesterEntityId).toMatch(
-      /^[0-9a-f-]{36}$/i,
-    );
+    expect(ctx?.requesterEntityId).toMatch(/^[0-9a-f-]{36}$/i);
   });
 
   it("maps a UUID principal directly without namespace transform", () => {
