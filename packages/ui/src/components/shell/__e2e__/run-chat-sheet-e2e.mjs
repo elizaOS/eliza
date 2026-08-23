@@ -4195,7 +4195,7 @@ try {
 
   // ONBOARDING (firstRunOpen): the sheet is pinned at the shared HALF detent and
   // is undismissable. The greeting/choice widget stays in hand while the home
-  // remains visible above it; completion keeps the conversation at HALF.
+  // remains visible above it; completion opens the authenticated conversation.
   {
     const short = await ctrl();
     attachConsole(short, sink);
@@ -4239,14 +4239,10 @@ try {
       `ONBOARDING: sheet uses the shared half-height detent (${Math.round(await sheetHeight(p))}px ≈ ${onboardingHalfH}px; top ${Math.round(top)}px)`,
     );
     assert(
-      (
-        (await p
-          .getByTestId("chat-composer-textarea")
-          .getAttribute("placeholder")) ?? ""
-      )
-        .toLowerCase()
-        .includes("sign in"),
-      "ONBOARDING: composer placeholder points to sign-in (#15039; honest copy per #15206)",
+      (await p
+        .getByTestId("chat-composer-textarea")
+        .getAttribute("placeholder")) === "Tell me what’s on your plate",
+      "ONBOARDING: composer invites a conductor-only intent",
     );
     // The composer accepts text for the local conductor; it never sends that
     // pre-auth text to the agent. Attachments and voice remain gated.
