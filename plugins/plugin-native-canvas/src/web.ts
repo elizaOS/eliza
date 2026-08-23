@@ -821,7 +821,11 @@ export class CanvasWeb extends WebPlugin {
 
       const visibleLayers = Array.from(managed.layers.values())
         .filter((layer) => layer.visible)
-        .sort((a, b) => a.zIndex - b.zIndex);
+        .sort((a, b) => {
+          const aZ = Number.isFinite(a.zIndex) ? a.zIndex : 0;
+          const bZ = Number.isFinite(b.zIndex) ? b.zIndex : 0;
+          return aZ - bZ || a.id.localeCompare(b.id);
+        });
 
       for (const layer of visibleLayers) {
         tempCtx.globalAlpha = layer.opacity;
