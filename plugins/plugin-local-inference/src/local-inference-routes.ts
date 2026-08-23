@@ -1392,11 +1392,33 @@ export async function handleLocalInferenceChatCommand(
 					return !activeCatalog || catalog.sizeGb < activeCatalog.sizeGb;
 				},
 			)
-			.sort((a, b) => a.catalog.sizeGb - b.catalog.sizeGb)[0];
+			.sort((a, b) => {
+				const aSize =
+					typeof a.catalog.sizeGb === "number" &&
+					Number.isFinite(a.catalog.sizeGb)
+						? a.catalog.sizeGb
+						: 0;
+				const bSize =
+					typeof b.catalog.sizeGb === "number" &&
+					Number.isFinite(b.catalog.sizeGb)
+						? b.catalog.sizeGb
+						: 0;
+				return aSize - bSize || a.catalog.id.localeCompare(b.catalog.id);
+			})[0];
 		if (smallerInstalled) {
 			return activateInstalledModel(smallerInstalled.entry);
 		}
-		const smallest = chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0];
+		const smallest = chatModels().sort((a, b) => {
+			const aSize =
+				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
+					? a.sizeGb
+					: 0;
+			const bSize =
+				typeof b.sizeGb === "number" && Number.isFinite(b.sizeGb)
+					? b.sizeGb
+					: 0;
+			return aSize - bSize || a.id.localeCompare(b.id);
+		})[0];
 		if (smallest) {
 			const job = await startDownload(smallest.id);
 			return buildLocalInferenceChatResult(

@@ -92,7 +92,18 @@ function pickLargestInstalledModel(
 	return (
 		installed
 			.filter((model) => typeof model.id === "string" && model.id.length > 0)
-			.sort((left, right) => right.sizeBytes - left.sizeBytes)[0] ?? null
+			.sort((left, right) => {
+				const rightSize =
+					typeof right.sizeBytes === "number" &&
+					Number.isFinite(right.sizeBytes)
+						? right.sizeBytes
+						: 0;
+				const leftSize =
+					typeof left.sizeBytes === "number" && Number.isFinite(left.sizeBytes)
+						? left.sizeBytes
+						: 0;
+				return rightSize - leftSize || left.id.localeCompare(right.id);
+			})[0] ?? null
 	);
 }
 

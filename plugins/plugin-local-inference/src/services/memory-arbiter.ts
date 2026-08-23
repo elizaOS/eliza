@@ -822,11 +822,11 @@ export class MemoryArbiter {
 		// past the critical line.
 		const entries = Array.from(this.resident.values())
 			.filter((e) => e.residentRole !== "text-target")
-			.sort(
-				(a, b) =>
-					RESIDENT_ROLE_PRIORITY[a.residentRole] -
-					RESIDENT_ROLE_PRIORITY[b.residentRole],
-			);
+			.sort((a, b) => {
+				const aPri = RESIDENT_ROLE_PRIORITY[a.residentRole] ?? 0;
+				const bPri = RESIDENT_ROLE_PRIORITY[b.residentRole] ?? 0;
+				return aPri - bPri || a.modelKey.localeCompare(b.modelKey);
+			});
 		for (const entry of entries) {
 			if (entry.refCount > 0) continue;
 			await this.evictEntry(entry, "pressure");

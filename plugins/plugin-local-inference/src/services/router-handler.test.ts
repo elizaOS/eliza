@@ -3,6 +3,7 @@ import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	filterUnavailableLocalInference,
+	getRuntimeModelCandidates,
 	installRouterHandler,
 	ROUTER_PROVIDER,
 } from "./router-handler";
@@ -111,5 +112,34 @@ describe("filterUnavailableLocalInference — TEXT_EMBEDDING stays on-device", (
 		expect(result.map((candidate) => candidate.provider)).toContain(
 			"eliza-local-inference",
 		);
+	});
+
+	it("sorts candidate models deterministically when priorities contain non-finite numbers", () => {
+		const mockRuntime = {
+			models: new Map([
+				[
+					ModelType.TEXT_SMALL,
+					[
+						{
+							provider: "provider-nan",
+							priority: Number.NaN,
+							handler: noopHandler,
+						},
+						{ provider: "provider-high", priority: 100, handler: noopHandler },
+						{ provider: "provider-low", priority: 10, handler: noopHandler },
+					],
+				],
+			]),
+		} as unknown as IAgentRuntime;
+
+		const candidates = getRuntimeModelCandidates(
+			mockRuntime,
+			ModelType.TEXT_SMALL,
+		);
+		expect(candidates.map((c) => c.provider)).toEqual([
+			"provider-high",
+			"provider-low",
+			"provider-nan",
+		]);
 	});
 });

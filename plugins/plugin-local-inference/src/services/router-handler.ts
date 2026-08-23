@@ -194,7 +194,7 @@ function shouldForceLocalInference(
  * registry as handler-free metadata, but the router must invoke the picked
  * provider's handler directly, so it reads the one live handler it needs here.
  */
-function getRuntimeModelCandidates(
+export function getRuntimeModelCandidates(
 	runtime: IAgentRuntime,
 	modelType: string,
 ): RoutableCandidate[] {
@@ -221,11 +221,16 @@ function getRuntimeModelCandidates(
 		.map((entry) => ({
 			modelType,
 			provider: entry.provider,
-			priority: typeof entry.priority === "number" ? entry.priority : 0,
+			priority:
+				typeof entry.priority === "number" && Number.isFinite(entry.priority)
+					? entry.priority
+					: 0,
 			handler: entry.handler,
 			metadata: entry.metadata,
 		}))
-		.sort((a, b) => b.priority - a.priority);
+		.sort(
+			(a, b) => b.priority - a.priority || a.provider.localeCompare(b.provider),
+		);
 }
 
 export function filterUnavailableLocalInferenceCandidates(
