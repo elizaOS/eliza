@@ -50,18 +50,84 @@ export async function getRemoteTargetIdentity(): Promise<{
 export async function activateRemoteTarget(input: {
   sessionId?: string;
   code: string;
-}): Promise<{ controllerDisplayName: string; grantExpiresAt: number }> {
-  const result = await invokeDesktopBridgeRequest<{
-    sessionId: string;
-    status: "active";
-    controllerDisplayName: string;
-    grantExpiresAt: number;
-  }>({
+}): Promise<
+  | {
+      sessionId: string;
+      status: "active";
+      controllerDisplayName: string;
+      grantExpiresAt: number;
+    }
+  | {
+      sessionId: string;
+      status: "compensation_required";
+      errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+    }
+  | {
+      sessionId: string;
+      status: "commit_required";
+      errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+    }
+> {
+  const result = await invokeDesktopBridgeRequest<
+    | {
+        sessionId: string;
+        status: "active";
+        controllerDisplayName: string;
+        grantExpiresAt: number;
+      }
+    | {
+        sessionId: string;
+        status: "compensation_required";
+        errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+      }
+    | {
+        sessionId: string;
+        status: "commit_required";
+        errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+      }
+  >({
     rpcMethod: "remoteTargetActivate",
     ipcChannel: "remoteTarget:activate",
     params: input,
   });
   if (!result) throw new Error("Remote-target activation is unavailable.");
+  return result;
+}
+
+export async function compensateRemoteTargetActivation(
+  sessionId: string,
+): Promise<{
+  status: "denied" | "revoked";
+  alreadyCompensated: boolean;
+}> {
+  const result = await invokeDesktopBridgeRequest<{
+    sessionId: string;
+    status: "denied" | "revoked";
+    alreadyCompensated: boolean;
+  }>({
+    rpcMethod: "remoteTargetCompensateActivation",
+    ipcChannel: "remoteTarget:compensateActivation",
+    params: { sessionId },
+  });
+  if (!result)
+    throw new Error("Remote-target activation compensation is unavailable.");
+  return result;
+}
+
+export async function commitRemoteTargetActivation(
+  sessionId: string,
+): Promise<{ status: "active"; alreadyCommitted: boolean }> {
+  const result = await invokeDesktopBridgeRequest<{
+    sessionId: string;
+    status: "active";
+    alreadyCommitted: boolean;
+  }>({
+    rpcMethod: "remoteTargetCommitActivation",
+    ipcChannel: "remoteTarget:commitActivation",
+    params: { sessionId },
+  });
+  if (!result)
+    throw new Error("Remote-target activation commit is unavailable.");
   return result;
 }
 

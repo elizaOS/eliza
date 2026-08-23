@@ -2294,11 +2294,40 @@ export type ElizaDesktopRPCSchema = {
       };
       remoteTargetActivate: {
         params: { sessionId?: string; code: string };
+        response:
+          | {
+              sessionId: string;
+              status: "active";
+              controllerDisplayName: string;
+              grantExpiresAt: number;
+            }
+          | {
+              sessionId: string;
+              status: "compensation_required";
+              errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+              retryRpc: "remoteTargetCompensateActivation";
+            }
+          | {
+              sessionId: string;
+              status: "commit_required";
+              errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+              retryRpc: "remoteTargetCommitActivation";
+            };
+      };
+      remoteTargetCompensateActivation: {
+        params: { sessionId: string };
+        response: {
+          sessionId: string;
+          status: "denied" | "revoked";
+          alreadyCompensated: boolean;
+        };
+      };
+      remoteTargetCommitActivation: {
+        params: { sessionId: string };
         response: {
           sessionId: string;
           status: "active";
-          controllerDisplayName: string;
-          grantExpiresAt: number;
+          alreadyCommitted: boolean;
         };
       };
       remoteTargetStart: {
@@ -2970,6 +2999,8 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "remoteTarget:enroll": "remoteTargetEnroll",
   "remoteTarget:getIdentity": "remoteTargetGetIdentity",
   "remoteTarget:activate": "remoteTargetActivate",
+  "remoteTarget:compensateActivation": "remoteTargetCompensateActivation",
+  "remoteTarget:commitActivation": "remoteTargetCommitActivation",
   "remoteTarget:start": "remoteTargetStart",
   "remoteTarget:stop": "remoteTargetStop",
   "remoteTarget:status": "remoteTargetStatus",

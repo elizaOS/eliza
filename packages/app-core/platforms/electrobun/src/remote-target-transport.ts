@@ -69,7 +69,19 @@ export interface RemoteTargetActivationResponse {
   targetRuntimeId: string;
   targetKeyId: string;
   grantExpiresAt: number;
+  status: "activating";
+}
+
+export interface RemoteTargetActivationCompensationResponse {
+  sessionId: string;
+  status: "denied" | "revoked";
+  alreadyCompensated: boolean;
+}
+
+export interface RemoteTargetActivationCommitResponse {
+  sessionId: string;
   status: "active";
+  alreadyCommitted: boolean;
 }
 
 export interface RemoteTargetClaim {
@@ -97,6 +109,14 @@ export interface RemoteTargetRelayTransport {
     sessionId?: string;
     code: string;
   }): Promise<RemoteTargetActivationResponse>;
+  compensateActivation(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
+  }): Promise<RemoteTargetActivationCompensationResponse>;
+  commitActivation(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
+  }): Promise<RemoteTargetActivationCommitResponse>;
   claimNext(input: {
     enrollment: EnrolledRemoteTargetVaultRecord;
     sessionId: string;
@@ -428,7 +448,7 @@ export class HttpRemoteTargetRelayTransport
     const sessionId = requireUuid(data.sessionId);
     if (
       (expectedSessionId !== null && sessionId !== expectedSessionId) ||
-      data.status !== "active" ||
+      data.status !== "activating" ||
       !Number.isSafeInteger(data.grantRevision) ||
       (data.grantRevision as number) < 1 ||
       !isRemoteControllerPublicIdentity(controller)
@@ -450,7 +470,65 @@ export class HttpRemoteTargetRelayTransport
               throw new Error("Remote activation target key is invalid.");
             })(),
       grantExpiresAt: requireTimestamp(data.grantExpiresAt),
+      status: "activating",
+    };
+  }
+
+  async commitActivation(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
+  }): Promise<RemoteTargetActivationCommitResponse> {
+    const sessionId = requireUuid(input.sessionId);
+    const data = requireObject(
+      await this.request(
+        input.enrollment.apiBaseUrl,
+        `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/activate`,
+        {
+          method: "PUT",
+          headers: this.hostHeaders(input.enrollment),
+        },
+      ),
+    );
+    if (
+      requireUuid(data.sessionId) !== sessionId ||
+      data.status !== "active" ||
+      typeof data.alreadyCommitted !== "boolean"
+    ) {
+      throw new Error("Remote activation commit response is invalid.");
+    }
+    return {
+      sessionId,
       status: "active",
+      alreadyCommitted: data.alreadyCommitted,
+    };
+  }
+
+  async compensateActivation(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
+  }): Promise<RemoteTargetActivationCompensationResponse> {
+    const sessionId = requireUuid(input.sessionId);
+    const data = requireObject(
+      await this.request(
+        input.enrollment.apiBaseUrl,
+        `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/activate`,
+        {
+          method: "DELETE",
+          headers: this.hostHeaders(input.enrollment),
+        },
+      ),
+    );
+    if (
+      requireUuid(data.sessionId) !== sessionId ||
+      (data.status !== "denied" && data.status !== "revoked") ||
+      typeof data.alreadyCompensated !== "boolean"
+    ) {
+      throw new Error("Remote activation compensation response is invalid.");
+    }
+    return {
+      sessionId,
+      status: data.status,
+      alreadyCompensated: data.alreadyCompensated,
     };
   }
 

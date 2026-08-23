@@ -1,7 +1,8 @@
 /**
  * Exercises secure remote relay HTTP boundaries with deterministic persistence
  * collaborators, covering owner scope, one-use activation, replay mapping,
- * host authentication, start fencing, ambiguity, and idempotent revocation.
+ * host authentication, activation compensation, start fencing, ambiguity, and
+ * idempotent revocation.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -42,6 +43,8 @@ const createPendingForOwnedAgent = mock();
 const createPendingForOwnedHost = mock();
 const activatePendingHost = mock();
 const activatePendingHostByCode = mock();
+const compensateHostActivation = mock();
+const commitHostActivation = mock();
 const listActiveByOwnedAgent = mock();
 const listByOwnedHost = mock();
 const revokeSession = mock();
@@ -78,6 +81,8 @@ mock.module("@/db/repositories/remote-sessions", () => ({
     createPendingForOwnedHost,
     activatePendingHost,
     activatePendingHostByCode,
+    compensateHostActivation,
+    commitHostActivation,
     listActiveByOwnedAgent,
     listByOwnedHost,
     revoke: revokeSession,
@@ -184,14 +189,18 @@ function hostHeaders() {
 
 function request(
   path: string,
-  body: unknown,
+  body: unknown = undefined,
   headers: Record<string, string> = {},
+  method = "POST",
 ) {
   return app.fetch(
     new Request(`https://api.example.test${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...headers },
-      body: JSON.stringify(body),
+      method,
+      headers: {
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }),
     {
       REMOTE_PAIRING_HMAC_SECRET:
@@ -211,6 +220,8 @@ beforeEach(() => {
     createPendingForOwnedHost,
     activatePendingHost,
     activatePendingHostByCode,
+    compensateHostActivation,
+    commitHostActivation,
     listActiveByOwnedAgent,
     listByOwnedHost,
     revokeSession,
@@ -272,7 +283,7 @@ describe("secure remote relay routes", () => {
         signing_public_jwk: publicJwk,
         encryption_public_jwk: publicJwk,
         host_token_hash: "sha256:must-not-leak",
-        status: "active",
+        status: "activating",
         last_seen_at: new Date(),
         created_at: new Date(),
         revoked_at: null,
@@ -421,6 +432,55 @@ describe("secure remote relay routes", () => {
     expect(persisted.pairing_token_hash).not.toContain(body.data.code);
   });
 
+  test("commits only the exact host-authenticated staged activation and maps replay", async () => {
+    commitHostActivation.mockResolvedValueOnce({
+      kind: "committed",
+      session: { id: sessionId, status: "active" },
+      alreadyCommitted: false,
+    });
+    const first = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "PUT",
+    );
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toEqual({
+      success: true,
+      data: { sessionId, status: "active", alreadyCommitted: false },
+    });
+    expect(commitHostActivation).toHaveBeenCalledWith({
+      sessionId,
+      hostId,
+      hostToken,
+    });
+
+    commitHostActivation.mockResolvedValueOnce({
+      kind: "committed",
+      session: { id: sessionId, status: "active" },
+      alreadyCommitted: true,
+    });
+    const replay = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "PUT",
+    );
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({
+      data: { alreadyCommitted: true },
+    });
+
+    commitHostActivation.mockResolvedValueOnce({ kind: "conflict" });
+    const conflict = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "PUT",
+    );
+    expect(conflict.status).toBe(409);
+  });
+
   test("maps reused or expired host pairing to an oracle-safe not-found response", async () => {
     activatePendingHost.mockResolvedValue({ kind: "invalid_pairing" });
     const response = await request(
@@ -457,7 +517,7 @@ describe("secure remote relay routes", () => {
         target_key_id: targetKeyId,
         grant_expires_at: new Date("2026-08-22T14:30:00.000Z"),
         created_at: createdAt,
-        status: "active",
+        status: "activating",
       },
     });
     const response = await request(
@@ -468,6 +528,7 @@ describe("secure remote relay routes", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: {
+        status: "activating",
         controllerDeviceId: "controller-one",
         controllerKeyId,
         controllerDisplayName: "Controller One",
@@ -477,6 +538,67 @@ describe("secure remote relay routes", () => {
         controllerCreatedAt: createdAt.toISOString(),
       },
     });
+  });
+
+  test("compensates only the exact host-authenticated activation and maps replay", async () => {
+    compensateHostActivation.mockResolvedValueOnce({
+      kind: "compensated",
+      session: { id: sessionId, status: "revoked" },
+      alreadyCompensated: false,
+    });
+    const first = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "DELETE",
+    );
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toEqual({
+      success: true,
+      data: { sessionId, status: "revoked", alreadyCompensated: false },
+    });
+    expect(compensateHostActivation).toHaveBeenCalledWith({
+      sessionId,
+      hostId,
+      hostToken,
+    });
+
+    compensateHostActivation.mockResolvedValueOnce({
+      kind: "compensated",
+      session: { id: sessionId, status: "revoked" },
+      alreadyCompensated: true,
+    });
+    const replay = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "DELETE",
+    );
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({
+      data: { alreadyCompensated: true },
+    });
+
+    compensateHostActivation.mockResolvedValueOnce({ kind: "conflict" });
+    const conflict = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "DELETE",
+    );
+    expect(conflict.status).toBe(409);
+
+    compensateHostActivation.mockRejectedValueOnce(
+      new Error("compensation-storage-unavailable"),
+    );
+    const unavailable = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "DELETE",
+    );
+    expect(unavailable.status).toBe(500);
+    await expect(unavailable.json()).resolves.toMatchObject({ success: false });
   });
 
   test("discovers a pairing session by code only through the authenticated host", async () => {

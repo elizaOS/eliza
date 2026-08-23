@@ -230,7 +230,31 @@ class DeterministicRelay implements RemoteTargetRelayTransport {
       targetRuntimeId: HOST_ID,
       targetKeyId: input.enrollment.identity.keyId,
       grantExpiresAt: NOW + 3_600_000,
+      status: "activating",
+    };
+  }
+
+  async compensateActivation(
+    input: Parameters<RemoteTargetRelayTransport["compensateActivation"]>[0],
+  ): Promise<
+    Awaited<ReturnType<RemoteTargetRelayTransport["compensateActivation"]>>
+  > {
+    return {
+      sessionId: input.sessionId,
+      status: "revoked",
+      alreadyCompensated: false,
+    };
+  }
+
+  async commitActivation(
+    input: Parameters<RemoteTargetRelayTransport["commitActivation"]>[0],
+  ): Promise<
+    Awaited<ReturnType<RemoteTargetRelayTransport["commitActivation"]>>
+  > {
+    return {
+      sessionId: input.sessionId,
       status: "active",
+      alreadyCommitted: false,
     };
   }
 

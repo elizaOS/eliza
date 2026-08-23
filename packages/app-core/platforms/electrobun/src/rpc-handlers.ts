@@ -134,6 +134,8 @@ import {
 import {
   configureDesktopRemoteTarget,
   desktopRemoteTargetActivate,
+  desktopRemoteTargetCommitActivation,
+  desktopRemoteTargetCompensateActivation,
   desktopRemoteTargetEnroll,
   desktopRemoteTargetFinalizeHostRevoke,
   desktopRemoteTargetGetIdentity,
@@ -1446,6 +1448,10 @@ export function buildBunRpcHandlers({
       await configureRemoteTargetForCurrentLoopback();
       return desktopRemoteTargetActivate(params);
     },
+    remoteTargetCompensateActivation: async (params) =>
+      desktopRemoteTargetCompensateActivation(params),
+    remoteTargetCommitActivation: async (params) =>
+      desktopRemoteTargetCommitActivation(params),
     remoteTargetStart: async () => {
       await configureRemoteTargetForCurrentLoopback();
       return desktopRemoteTargetStart();

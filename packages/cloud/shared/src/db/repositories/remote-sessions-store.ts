@@ -24,7 +24,7 @@ import {
 } from "../schemas/remote-sessions";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
-const ACTIVE_STATUSES: RemoteSessionStatus[] = ["pending", "active"];
+const OPEN_STATUSES: RemoteSessionStatus[] = ["pending", "activating", "active"];
 
 export interface RevokeRemoteSessionResult {
   session: RemoteSession;
@@ -36,6 +36,16 @@ export type ActivateRemoteHostSessionResult =
   | { kind: "activated"; session: RemoteSession }
   | { kind: "not_found" }
   | { kind: "invalid_pairing" };
+
+export type CompensateRemoteHostActivationResult =
+  | { kind: "compensated"; session: RemoteSession; alreadyCompensated: boolean }
+  | { kind: "conflict" }
+  | { kind: "not_found" };
+
+export type CommitRemoteHostActivationResult =
+  | { kind: "committed"; session: RemoteSession; alreadyCommitted: boolean }
+  | { kind: "conflict" }
+  | { kind: "not_found" };
 
 const SESSION_COMMAND_CLEANUP_BATCH = 500;
 const CODE_ACTIVATION_CANDIDATE_LIMIT = 32;
@@ -274,7 +284,7 @@ export class RemoteSessionsRepository {
       const [activated] = await tx
         .update(remoteSessions)
         .set({
-          status: "active",
+          status: "activating",
           pairing_token_hash: null,
           pairing_consumed_at: now,
           updated_at: now,
@@ -375,7 +385,7 @@ export class RemoteSessionsRepository {
       const [activated] = await tx
         .update(remoteSessions)
         .set({
-          status: "active",
+          status: "activating",
           pairing_token_hash: null,
           pairing_consumed_at: now,
           updated_at: now,
@@ -388,6 +398,163 @@ export class RemoteSessionsRepository {
         });
       }
       return { kind: "activated", session: activated };
+    });
+  }
+
+  /**
+   * Commits one locally durable staged grant into Cloud authority. Replays are
+   * idempotent for the exact active session, while host revocation or expiry
+   * wins under the same host/session lock order.
+   */
+  async commitHostActivation(input: {
+    sessionId: string;
+    hostId: string;
+    hostToken: string;
+  }): Promise<CommitRemoteHostActivationResult> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(input.hostToken);
+    } catch {
+      // error-policy:J3 malformed bearer material is an explicit auth miss.
+      return { kind: "not_found" };
+    }
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select({
+          id: remoteHosts.id,
+          organizationId: remoteHosts.organization_id,
+          userId: remoteHosts.user_id,
+          status: remoteHosts.status,
+        })
+        .from(remoteHosts)
+        .where(and(eq(remoteHosts.id, input.hostId), eq(remoteHosts.host_token_hash, tokenHash)))
+        .for("update");
+      if (!host) return { kind: "not_found" };
+
+      const [session] = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.id, input.sessionId),
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, host.organizationId),
+            eq(remoteSessions.user_id, host.userId),
+          ),
+        )
+        .for("update");
+      if (!session) return { kind: "not_found" };
+      if (session.status === "active" && host.status === "active") {
+        return { kind: "committed", session, alreadyCommitted: true };
+      }
+      if (session.status !== "activating" || host.status !== "active") {
+        return { kind: "conflict" };
+      }
+      const now = await readPostLockDatabaseNow(tx);
+      if (
+        !session.expires_at ||
+        session.expires_at.getTime() <= now.getTime() ||
+        !session.grant_expires_at ||
+        session.grant_expires_at.getTime() <= now.getTime()
+      ) {
+        const [expired] = await tx
+          .update(remoteSessions)
+          .set({ status: "expired", ended_at: now, updated_at: now })
+          .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "activating")))
+          .returning();
+        if (!expired) {
+          throw storageFailure("Locked remote host activation could not expire", {
+            sessionId: session.id,
+          });
+        }
+        return { kind: "conflict" };
+      }
+      const [committed] = await tx
+        .update(remoteSessions)
+        .set({ status: "active", updated_at: now })
+        .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "activating")))
+        .returning();
+      if (!committed) {
+        throw storageFailure("Locked remote host activation could not be committed", {
+          sessionId: session.id,
+        });
+      }
+      return { kind: "committed", session: committed, alreadyCommitted: false };
+    });
+  }
+
+  /**
+   * Denies exactly one non-authoritative staged activation after the target
+   * failed local installation. Host/session locks serialize rollback with
+   * commit and host finalization; exact terminal replays are successful.
+   */
+  async compensateHostActivation(input: {
+    sessionId: string;
+    hostId: string;
+    hostToken: string;
+  }): Promise<CompensateRemoteHostActivationResult> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(input.hostToken);
+    } catch {
+      // error-policy:J3 malformed bearer material is an explicit auth miss.
+      return { kind: "not_found" };
+    }
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select({
+          id: remoteHosts.id,
+          organizationId: remoteHosts.organization_id,
+          userId: remoteHosts.user_id,
+        })
+        .from(remoteHosts)
+        .where(and(eq(remoteHosts.id, input.hostId), eq(remoteHosts.host_token_hash, tokenHash)))
+        .for("update");
+      if (!host) return { kind: "not_found" };
+
+      const [session] = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.id, input.sessionId),
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, host.organizationId),
+            eq(remoteSessions.user_id, host.userId),
+          ),
+        )
+        .for("update");
+      if (!session) return { kind: "not_found" };
+      if (session.status === "denied" || session.status === "revoked") {
+        return {
+          kind: "compensated",
+          session,
+          alreadyCompensated: true,
+        };
+      }
+      if (session.status !== "activating") return { kind: "conflict" };
+
+      const now = await readPostLockDatabaseNow(tx);
+      const [compensated] = await tx
+        .update(remoteSessions)
+        .set({
+          status: "denied",
+          pairing_token_hash: null,
+          ended_at: now,
+          updated_at: now,
+        })
+        .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "activating")))
+        .returning();
+      if (!compensated) {
+        throw storageFailure("Locked remote host activation could not be compensated", {
+          sessionId: session.id,
+        });
+      }
+      return {
+        kind: "compensated",
+        session: compensated,
+        alreadyCompensated: false,
+      };
     });
   }
 
@@ -417,7 +584,7 @@ export class RemoteSessionsRepository {
             eq(remoteSessions.host_id, host.id),
             eq(remoteSessions.organization_id, organizationId),
             eq(remoteSessions.user_id, userId),
-            inArray(remoteSessions.status, ["pending", "active"]),
+            inArray(remoteSessions.status, ["pending", "activating", "active"]),
           ),
         )
         .orderBy(desc(remoteSessions.created_at));
@@ -471,6 +638,7 @@ export class RemoteSessionsRepository {
       return rows.filter(
         (row) =>
           row.expires_at !== null ||
+          row.status !== "pending" ||
           isRemotePairingSessionCurrent(row.status, row.pairing_token_hash, nowMs),
       );
     });
@@ -503,7 +671,7 @@ export class RemoteSessionsRepository {
   }
 
   /**
-   * Terminalizes one already-locked pending row whose grant has run out.
+   * Terminalizes one already-locked pre-authority row whose grant has run out.
    * A run-out pairing challenge must never be reported as freshly revoked, so
    * this runs inside the caller's lock before any terminal decision. Rows
    * predating the first-class column carry NULL and are judged by the signed
@@ -514,23 +682,29 @@ export class RemoteSessionsRepository {
     row: RemoteSession,
     now: Date,
   ): Promise<RemoteSession | undefined> {
-    if (row.status !== "pending") return undefined;
+    if (row.status !== "pending" && row.status !== "activating") return undefined;
     const runOut =
       row.expires_at !== null
         ? row.expires_at.getTime() <= now.getTime()
-        : !isRemotePairingSessionCurrent(row.status, row.pairing_token_hash, now.getTime());
+        : row.status === "activating" ||
+          !isRemotePairingSessionCurrent(row.status, row.pairing_token_hash, now.getTime());
     if (!runOut) return undefined;
 
     const [expired] = await tx
       .update(remoteSessions)
       .set({ status: "expired", updated_at: now, ended_at: now })
-      .where(and(eq(remoteSessions.id, row.id), eq(remoteSessions.status, "pending")))
+      .where(
+        and(
+          eq(remoteSessions.id, row.id),
+          inArray(remoteSessions.status, ["pending", "activating"]),
+        ),
+      )
       .returning();
     return expired;
   }
 
   /**
-   * Terminalizes run-out pending grants without requiring current ownership.
+   * Terminalizes run-out pending and staged grants without requiring ownership.
    *
    * Every request-path predicate is scoped to the agent's present owner, so an
    * ownership transfer strands the previous owner's pending row as `pending`
@@ -547,7 +721,12 @@ export class RemoteSessionsRepository {
       const candidates = await tx
         .select({ id: remoteSessions.id })
         .from(remoteSessions)
-        .where(and(eq(remoteSessions.status, "pending"), lte(remoteSessions.expires_at, now)))
+        .where(
+          and(
+            inArray(remoteSessions.status, ["pending", "activating"]),
+            lte(remoteSessions.expires_at, now),
+          ),
+        )
         .orderBy(remoteSessions.expires_at)
         .limit(limit)
         .for("update", { skipLocked: true });
@@ -562,7 +741,7 @@ export class RemoteSessionsRepository {
               remoteSessions.id,
               candidates.map((candidate) => candidate.id),
             ),
-            eq(remoteSessions.status, "pending"),
+            inArray(remoteSessions.status, ["pending", "activating"]),
           ),
         )
         .returning({ id: remoteSessions.id });
@@ -649,7 +828,7 @@ export class RemoteSessionsRepository {
             eq(remoteSessions.organization_id, orgId),
             eq(remoteSessions.user_id, userId),
             eq(remoteSessions.agent_id, authorizedAgentId),
-            inArray(remoteSessions.status, ACTIVE_STATUSES),
+            inArray(remoteSessions.status, OPEN_STATUSES),
           ),
         )
         .returning();
@@ -692,9 +871,9 @@ export class RemoteSessionsRepository {
       if (!current) return undefined;
 
       const now = await readPostLockDatabaseNow(tx);
-      let alreadyEnded = !ACTIVE_STATUSES.includes(current.status);
+      let alreadyEnded = !OPEN_STATUSES.includes(current.status);
       let session = current;
-      if (ACTIVE_STATUSES.includes(current.status)) {
+      if (OPEN_STATUSES.includes(current.status)) {
         const terminalStatus =
           current.status === "pending" &&
           (!current.expires_at || current.expires_at.getTime() <= now.getTime())
@@ -710,7 +889,7 @@ export class RemoteSessionsRepository {
             updated_at: now,
           })
           .where(
-            and(eq(remoteSessions.id, current.id), inArray(remoteSessions.status, ACTIVE_STATUSES)),
+            and(eq(remoteSessions.id, current.id), inArray(remoteSessions.status, OPEN_STATUSES)),
           )
           .returning();
         if (!ended) {

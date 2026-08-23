@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import type { RemoteTargetPublicIdentity } from "@elizaos/shared/contracts/remote-control";
+import { logger } from "./logger";
 import {
   LoopbackRemoteTargetExecutor,
   normalizeRemoteTargetLoopbackBase,
@@ -39,16 +40,33 @@ export interface DesktopRemoteTargetIdentityResult {
   identity?: RemoteTargetPublicIdentity;
 }
 
-export interface DesktopRemoteTargetActivationResult {
-  sessionId: string;
-  status: "active";
-  controllerDisplayName: string;
-  grantExpiresAt: number;
-}
+export type DesktopRemoteTargetActivationResult =
+  | {
+      sessionId: string;
+      status: "active";
+      controllerDisplayName: string;
+      grantExpiresAt: number;
+    }
+  | {
+      sessionId: string;
+      status: "compensation_required";
+      errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+      retryRpc: "remoteTargetCompensateActivation";
+    }
+  | {
+      sessionId: string;
+      status: "commit_required";
+      errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+      retryRpc: "remoteTargetCommitActivation";
+    };
 
 export interface DesktopRemoteTargetResumeResult {
   resumed: boolean;
-  reason: "active_authority" | "not_enrolled" | "no_active_authority";
+  reason:
+    | "active_authority"
+    | "activation_recovery"
+    | "not_enrolled"
+    | "no_active_authority";
 }
 
 interface RemoteTargetLoopbackConfiguration {
@@ -169,16 +187,27 @@ export class RemoteTargetDesktopService {
     const prepared = this.prepareLoopbackConfiguration(input);
     return this.enqueueConfiguration(async () => {
       const runner = await this.installLoopbackConfiguration(prepared);
+      const enrollmentBeforeRecovery = await this.vault.load();
+      if (enrollmentBeforeRecovery?.status === "enrolled") {
+        await runner.recoverStagedActivations();
+      }
       const [enrollment, state] = await Promise.all([
         this.vault.load(),
         this.stateStore.read(),
       ]);
       const activeSessions = Object.values(state.sessions).filter(
         (session) =>
+          session.activationState !== "staged" &&
           session.stoppedAt === null &&
           session.grant.revokedAt === null &&
           (session.grant.expiresAt === null ||
             session.grant.expiresAt >= this.now()),
+      );
+      const stagedSessions = Object.values(state.sessions).filter(
+        (session) =>
+          session.activationState === "staged" &&
+          session.stoppedAt === null &&
+          session.grant.revokedAt === null,
       );
       if (enrollment?.status !== "enrolled") {
         if (activeSessions.length > 0) {
@@ -192,6 +221,10 @@ export class RemoteTargetDesktopService {
         };
       }
       if (activeSessions.length === 0) {
+        if (stagedSessions.length > 0) {
+          await runner.start();
+          return { resumed: true, reason: "activation_recovery" as const };
+        }
         return {
           resumed: false,
           reason: "no_active_authority" as const,
@@ -300,13 +333,119 @@ export class RemoteTargetDesktopService {
           },
           { now: this.now },
         );
-      await installer.installActivation(activation);
+      this.runner ??= installer;
+      try {
+        await installer.installActivation(activation);
+      } catch (installError) {
+        try {
+          await this.transport.compensateActivation({
+            enrollment,
+            sessionId: activation.sessionId,
+          });
+        } catch (compensationError) {
+          // error-policy:J2 preserve both failures and expose the exact,
+          // idempotently retryable session without claiming local authority.
+          const failure = new ElizaError(
+            "Remote activation failed locally and Cloud compensation is required",
+            {
+              code: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED",
+              context: { sessionId: activation.sessionId },
+              cause: new AggregateError([installError, compensationError]),
+            },
+          );
+          logger.error(
+            "[RemoteTargetDesktopService] Activation compensation requires retry",
+            failure,
+          );
+          // The typed non-authoritative response preserves the exact session
+          // required by the idempotent retry RPC. The local journal remains
+          // empty, so this is never presented as active authority.
+          return {
+            sessionId: activation.sessionId,
+            status: "compensation_required" as const,
+            errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED" as const,
+            retryRpc: "remoteTargetCompensateActivation" as const,
+          };
+        }
+        throw new ElizaError(
+          "Remote activation failed locally and was rolled back in Cloud",
+          {
+            code: "REMOTE_ACTIVATION_LOCAL_INSTALL_FAILED",
+            context: { sessionId: activation.sessionId },
+            cause: installError,
+          },
+        );
+      }
+      try {
+        await this.transport.commitActivation({
+          enrollment,
+          sessionId: activation.sessionId,
+        });
+        await installer.commitLocalActivation(activation.sessionId);
+      } catch (commitError) {
+        // error-policy:J4 the durable local staged grant remains
+        // non-executable while exact-session commit is retried idempotently.
+        logger.warn(
+          "[RemoteTargetDesktopService] Activation commit requires retry",
+          { sessionId: activation.sessionId, error: commitError },
+        );
+        return {
+          sessionId: activation.sessionId,
+          status: "commit_required" as const,
+          errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED" as const,
+          retryRpc: "remoteTargetCommitActivation" as const,
+        };
+      }
       return {
         sessionId: activation.sessionId,
         status: "active" as const,
         controllerDisplayName: activation.controller.displayName,
         grantExpiresAt: activation.grantExpiresAt,
       };
+    });
+  }
+
+  async compensateActivation(params: unknown): Promise<{
+    sessionId: string;
+    status: "denied" | "revoked";
+    alreadyCompensated: boolean;
+  }> {
+    const value = requireObject(params);
+    const sessionId = requireString(value.sessionId, "session id", 256);
+    return this.enqueueConfiguration(async () => {
+      const enrollment = await this.vault.load();
+      if (enrollment?.status !== "enrolled") {
+        throw new ElizaError("Remote host enrollment is unavailable", {
+          code: "REMOTE_HOST_ENROLLMENT_UNAVAILABLE",
+          context: { sessionId },
+        });
+      }
+      return this.transport.compensateActivation({ enrollment, sessionId });
+    });
+  }
+
+  async commitActivation(params: unknown): Promise<{
+    sessionId: string;
+    status: "active";
+    alreadyCommitted: boolean;
+  }> {
+    const value = requireObject(params);
+    const sessionId = requireString(value.sessionId, "session id", 256);
+    return this.enqueueConfiguration(async () => {
+      const enrollment = await this.vault.load();
+      if (enrollment?.status !== "enrolled") {
+        throw new ElizaError("Remote host enrollment is unavailable", {
+          code: "REMOTE_HOST_ENROLLMENT_UNAVAILABLE",
+          context: { sessionId },
+        });
+      }
+      const response = await this.transport.commitActivation({
+        enrollment,
+        sessionId,
+      });
+      const runner = this.requireRunner();
+      await runner.commitLocalActivation(sessionId);
+      return response;
     });
   }
 
@@ -331,7 +470,9 @@ export class RemoteTargetDesktopService {
       enrolled: identity.enrolled,
       activeSessions: Object.values(state.sessions).filter(
         (session) =>
-          session.stoppedAt === null && session.grant.revokedAt === null,
+          session.activationState !== "staged" &&
+          session.stoppedAt === null &&
+          session.grant.revokedAt === null,
       ).length,
       pendingResults: Object.values(state.commands).filter(
         (command) => command.resultEnvelope && !command.resultDelivered,
@@ -442,6 +583,24 @@ export function desktopRemoteTargetActivate(
   params: unknown,
 ): Promise<DesktopRemoteTargetActivationResult> {
   return desktopRemoteTargetService.activate(params);
+}
+
+export function desktopRemoteTargetCompensateActivation(
+  params: unknown,
+): Promise<{
+  sessionId: string;
+  status: "denied" | "revoked";
+  alreadyCompensated: boolean;
+}> {
+  return desktopRemoteTargetService.compensateActivation(params);
+}
+
+export function desktopRemoteTargetCommitActivation(params: unknown): Promise<{
+  sessionId: string;
+  status: "active";
+  alreadyCommitted: boolean;
+}> {
+  return desktopRemoteTargetService.commitActivation(params);
 }
 
 export function desktopRemoteTargetStart(): Promise<{ running: true }> {
