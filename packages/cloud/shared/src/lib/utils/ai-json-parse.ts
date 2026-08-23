@@ -1,4 +1,5 @@
 // Provides cloud utility ai json parse helpers shared by backend services.
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { z } from "zod";
 
 function extractJsonFromAiResponse(text: string): string {
@@ -29,7 +30,7 @@ export function parseAiJson<T>(text: string, schema: z.ZodType<T>, context?: str
     parsed = JSON.parse(extracted);
   } catch {
     throw new Error(
-      `Invalid JSON from AI${context ? ` (${context})` : ""}: ${extracted.slice(0, 200)}...`,
+      `Invalid JSON from AI${context ? ` (${context})` : ""}: ${truncateWellFormed(toWellFormedUnicode(extracted), 200)}...`,
     );
   }
 

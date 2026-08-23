@@ -212,7 +212,7 @@ export default scenario({
   tags: ["orchestrator", "routing", "question", "pr", "deterministic"],
   isolation: "shared-runtime",
   requires: {
-    plugins: [PLUGIN_NAME],
+    fixturePlugins: [PLUGIN_NAME],
   },
   seed: [
     {

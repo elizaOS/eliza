@@ -33,6 +33,14 @@ export const AGENT_CONTAINER_NAME_PREFIX = "agent-";
 export const MAX_AGENT_ID_LENGTH =
   DOCKER_CONTAINER_NAME_MAX_LENGTH - AGENT_CONTAINER_NAME_PREFIX.length;
 
+const CANONICAL_REPLACEMENT_PATH_ATTEMPT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const REPLACEMENT_ATTEMPT_CONTROL_ROOT = "/var/lib/eliza/replacement-attempts";
+const REPLACEMENT_ARTIFACT_PURGE_RECEIPT = "ELIZA_REPLACEMENT_SECRET_PURGED_V1";
+const REPLACEMENT_CANDIDATE_OBSERVED_RECEIPT = "ELIZA_REPLACEMENT_CANDIDATE_OBSERVED_V1";
+const REPLACEMENT_DOCKER_CREATE_QUIESCENT_RECEIPT = "ELIZA_REPLACEMENT_DOCKER_CREATE_QUIESCENT_V1";
+const REPLACEMENT_ATTEMPT_LOCK_TIMEOUT_SECONDS = 30;
+
 export type DockerNodeArchitecture = "amd64" | "arm64";
 
 // ---------------------------------------------------------------------------
@@ -717,6 +725,87 @@ export function getVolumePath(agentId: string): string {
   return volumePath;
 }
 
+function assertCanonicalReplacementPathAttemptId(replacementAttemptId: string): void {
+  if (!CANONICAL_REPLACEMENT_PATH_ATTEMPT_ID.test(replacementAttemptId)) {
+    throw new ElizaError("Invalid replacement attempt ID for remote attempt artifacts.", {
+      code: "SANDBOX_REPLACEMENT_REMOTE_ATTEMPT_ID_INVALID",
+      context: { replacementAttemptId },
+      severity: "fatal",
+    });
+  }
+}
+
+function getReplacementVolumePath(containerName: string): string {
+  validateContainerName(containerName);
+  if (!containerName.startsWith(AGENT_CONTAINER_NAME_PREFIX)) {
+    throw new ElizaError("Replacement container name does not identify an agent volume.", {
+      code: "SANDBOX_REPLACEMENT_CONTAINER_NAME_NOT_AGENT",
+      context: { containerName },
+      severity: "fatal",
+    });
+  }
+  const agentId = containerName.slice(AGENT_CONTAINER_NAME_PREFIX.length);
+  validateAgentId(agentId);
+  if (getContainerName(agentId) !== containerName) {
+    throw new ElizaError("Replacement container name is not canonical.", {
+      code: "SANDBOX_REPLACEMENT_CONTAINER_NAME_NONCANONICAL",
+      context: { containerName },
+      severity: "fatal",
+    });
+  }
+  return getVolumePath(agentId);
+}
+
+function replacementAttemptControlPrelude(replacementAttemptId: string): string[] {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  const attemptDirectory = `${REPLACEMENT_ATTEMPT_CONTROL_ROOT}/${replacementAttemptId}`;
+  return [
+    "command -v flock >/dev/null 2>&1",
+    `attempt_root=${shellQuote(REPLACEMENT_ATTEMPT_CONTROL_ROOT)}`,
+    `attempt_dir=${shellQuote(attemptDirectory)}`,
+    'attempt_lock="$attempt_dir/lock"',
+    'attempt_cancelled="$attempt_dir/cancelled"',
+    'attempt_active="$attempt_dir/active"',
+    'attempt_candidate_id="$attempt_dir/candidate-id"',
+    'mkdir -p -- "$attempt_root" "$attempt_dir"',
+    'chmod 700 -- "$attempt_root" "$attempt_dir"',
+    'exec 9>"$attempt_lock"',
+    `flock -w ${REPLACEMENT_ATTEMPT_LOCK_TIMEOUT_SECONDS} 9`,
+  ];
+}
+
+/** Exact non-secret receipt expected after fenced remote artifact cleanup. */
+export function getReplacementSecretArtifactsCleanupReceipt(replacementAttemptId: string): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  return `${REPLACEMENT_ARTIFACT_PURGE_RECEIPT} ${replacementAttemptId}`;
+}
+
+function assertCanonicalDockerContainerId(containerId: string): void {
+  if (!/^[a-f0-9]{12,64}$/.test(containerId)) {
+    throw new ElizaError("Invalid Docker container ID for replacement candidate proof.", {
+      code: "SANDBOX_REPLACEMENT_DOCKER_CONTAINER_ID_INVALID",
+      context: { containerId },
+      severity: "fatal",
+    });
+  }
+}
+
+/** Exact non-secret receipt for the durable candidate ID observed by cleanup. */
+export function getReplacementCandidateObservedReceipt(
+  replacementAttemptId: string,
+  containerId: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  assertCanonicalDockerContainerId(containerId);
+  return `${REPLACEMENT_CANDIDATE_OBSERVED_RECEIPT} ${replacementAttemptId} ${containerId}`;
+}
+
+/** Exact non-secret receipt proving no Docker-create shell remains ambiguous. */
+export function getReplacementDockerCreateQuiescentReceipt(replacementAttemptId: string): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  return `${REPLACEMENT_DOCKER_CREATE_QUIESCENT_RECEIPT} ${replacementAttemptId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Durable per-agent vault state (#18080 / #19225)
 // ---------------------------------------------------------------------------
@@ -749,16 +838,28 @@ export function getVolumeVaultPassphrasePath(volumePath: string): string {
 export function buildVolumeVaultPassphraseCommand(
   volumePath: string,
   overrideByteLength = 0,
+  replacementAttemptId?: string,
 ): string {
   if (!Number.isSafeInteger(overrideByteLength) || overrideByteLength < 0) {
     throw new Error("Vault passphrase override byte length must be a non-negative integer.");
   }
   const keyPath = getVolumeVaultPassphrasePath(volumePath);
+  if (replacementAttemptId !== undefined) {
+    assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  }
+  const fenced = replacementAttemptId !== undefined;
+  const attemptSuffix = replacementAttemptId ? `.${replacementAttemptId}` : "";
   const keyFile = shellQuote(keyPath);
-  const stdinFile = `${shellQuote(`${keyPath}.stdin`)}.$$`;
-  const overrideFile = `${shellQuote(`${keyPath}.override`)}.$$`;
-  const generatedFile = `${shellQuote(`${keyPath}.generated`)}.$$`;
-  const normalizedFile = `${shellQuote(`${keyPath}.normalized`)}.$$`;
+  const processSuffix = fenced ? "" : ".$$";
+  const stdinFile = `${shellQuote(`${keyPath}.stdin${attemptSuffix}`)}${processSuffix}`;
+  const overrideFile = `${shellQuote(`${keyPath}.override${attemptSuffix}`)}${processSuffix}`;
+  const generatedFile = `${shellQuote(`${keyPath}.generated${attemptSuffix}`)}${processSuffix}`;
+  const normalizedFile = `${shellQuote(`${keyPath}.normalized${attemptSuffix}`)}${processSuffix}`;
+  const cleanupTargets = '"$stdin_file" "$override_file" "$generated_file" "$normalized_file"';
+  const cleanupFunction =
+    `cleanup_vault_temp_files() { cleanup_status=$?; if ! rm -f -- ${cleanupTargets}; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ` +
+    'if test -e "$stdin_file" || test -L "$stdin_file" || test -e "$override_file" || test -L "$override_file" || test -e "$generated_file" || test -L "$generated_file" || test -e "$normalized_file" || test -L "$normalized_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ' +
+    'trap - EXIT; exit "$cleanup_status"; }';
   const expectedHeader = `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${overrideByteLength}`;
   const expectedFrameByteLength =
     Buffer.byteLength(expectedHeader) +
@@ -773,9 +874,17 @@ export function buildVolumeVaultPassphraseCommand(
     `override_file=${overrideFile}`,
     `generated_file=${generatedFile}`,
     `normalized_file=${normalizedFile}`,
-    'trap \'rm -f "$stdin_file" "$override_file" "$generated_file" "$normalized_file"\' EXIT',
-    "trap 'exit 1' HUP INT TERM",
     "umask 077",
+    ...(replacementAttemptId
+      ? [
+          ...replacementAttemptControlPrelude(replacementAttemptId),
+          'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
+          'chmod 600 -- "$attempt_lock"',
+        ]
+      : []),
+    cleanupFunction,
+    "trap cleanup_vault_temp_files EXIT",
+    "trap 'exit 1' HUP INT TERM",
     'cat > "$stdin_file"',
     `stdin_length=$(wc -c < "$stdin_file" | tr -d ' ')`,
     `if test "$stdin_length" != ${expectedFrameByteLength}; then exit 44; fi`,
@@ -828,6 +937,7 @@ export async function ensureVolumeVaultPassphrase(
   volumePath: string,
   timeoutMs: number,
   operatorOverride?: string,
+  replacementAttemptId?: string,
 ): Promise<void> {
   // Validate the raw value before trim or SSH. Shell variables cannot carry
   // NUL, and the remote create-if-absent step may durably link its stdin file
@@ -865,8 +975,10 @@ export async function ensureVolumeVaultPassphrase(
   const overrideBytes = Buffer.byteLength(override ?? "", "utf8");
   const framedOverride = `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${overrideBytes}\n${override ?? ""}\n${VOLUME_VAULT_STDIN_FRAME_END}\n`;
   try {
+    // Keep temporary artifacts attributable to the caller-owned attempt so
+    // exact cleanup can prove that plaintext did not outlive the fence.
     await execStdin(
-      buildVolumeVaultPassphraseCommand(volumePath, overrideBytes),
+      buildVolumeVaultPassphraseCommand(volumePath, overrideBytes, replacementAttemptId),
       framedOverride,
       timeoutMs,
     );
@@ -915,32 +1027,142 @@ export function getContainerSecretEnvPath(
   volumePath: string,
   replacementAttemptId: string,
 ): string {
-  if (!/^[a-f0-9-]{36}$/i.test(replacementAttemptId)) {
-    throw new Error("Invalid replacement attempt ID for container secret environment file.");
-  }
+  validateVolumePath(volumePath);
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
   return `${volumePath}/.container-env-${replacementAttemptId}`;
+}
+
+/**
+ * Tombstone one replacement attempt, then remove and prove absence of every
+ * attributable plaintext file. The Docker-active marker is deliberately not
+ * cleared here: after an interrupted `docker create`, only observing and
+ * removing the exact labeled candidate can settle the daemon-side ambiguity.
+ */
+export function buildReplacementSecretArtifactsCleanupCommand(
+  containerName: string,
+  replacementAttemptId: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  const volumePath = getReplacementVolumePath(containerName);
+  const secretEnvPath = getContainerSecretEnvPath(volumePath, replacementAttemptId);
+  const secretEnvBodyPath = `${secretEnvPath}.body`;
+  const vaultPassphrasePath = getVolumeVaultPassphrasePath(volumePath);
+  const artifactPaths = [
+    secretEnvPath,
+    secretEnvBodyPath,
+    ...["stdin", "override", "generated", "normalized"].map(
+      (kind) => `${vaultPassphrasePath}.${kind}.${replacementAttemptId}`,
+    ),
+  ];
+  const cleanupTargets = artifactPaths.map(shellQuote).join(" ");
+  const absenceProof = artifactPaths
+    .map(
+      (path) => `if test -e ${shellQuote(path)} || test -L ${shellQuote(path)}; then exit 70; fi`,
+    )
+    .join("; ");
+  const receipt = getReplacementSecretArtifactsCleanupReceipt(replacementAttemptId);
+  const quiescentReceipt = getReplacementDockerCreateQuiescentReceipt(replacementAttemptId);
+  const candidateReceiptPrefix = `${REPLACEMENT_CANDIDATE_OBSERVED_RECEIPT} ${replacementAttemptId}`;
+  return [
+    "set -eu",
+    "umask 077",
+    ...replacementAttemptControlPrelude(replacementAttemptId),
+    'printf "%s\\n" cancelled > "$attempt_cancelled"',
+    'chmod 600 -- "$attempt_lock" "$attempt_cancelled"',
+    `rm -f -- ${cleanupTargets}`,
+    absenceProof,
+    `printf '%s\\n' ${shellQuote(receipt)}`,
+    'if test -e "$attempt_active" || test -L "$attempt_active"; then test -f "$attempt_active" && test ! -L "$attempt_active" || exit 70; else ' +
+      `printf '%s\\n' ${shellQuote(quiescentReceipt)}; fi`,
+    'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then test -f "$attempt_candidate_id" && test ! -L "$attempt_candidate_id" || exit 70; candidate_id=$(cat -- "$attempt_candidate_id"); case "$candidate_id" in ""|*[!0-9a-f]*) exit 70 ;; esac; candidate_id_length=${#candidate_id}; if test "$candidate_id_length" -lt 12 || test "$candidate_id_length" -gt 64; then exit 70; fi; ' +
+      `printf '%s %s\\n' ${shellQuote(candidateReceiptPrefix)} "$candidate_id"; fi`,
+  ].join("; ");
+}
+
+/**
+ * Persist the exact Docker ID already observed with this attempt's label.
+ * Cleanup writes this before removal so a response-lost retry can distinguish
+ * "the known candidate is now absent" from an unsafe first observation of
+ * name absence while dockerd may still commit an interrupted create.
+ */
+export function buildReplacementCandidateObservedCommand(
+  replacementAttemptId: string,
+  containerId: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  assertCanonicalDockerContainerId(containerId);
+  const receipt = getReplacementCandidateObservedReceipt(replacementAttemptId, containerId);
+  return [
+    "set -eu",
+    "umask 077",
+    ...replacementAttemptControlPrelude(replacementAttemptId),
+    'test -f "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
+    'if test -e "$attempt_candidate_id" || test -L "$attempt_candidate_id"; then test -f "$attempt_candidate_id" && test ! -L "$attempt_candidate_id" || exit 70; test "$(cat -- "$attempt_candidate_id")" = ' +
+      `${shellQuote(containerId)} || exit 70; else candidate_tmp="$attempt_dir/candidate-id.tmp"; rm -f -- "$candidate_tmp"; printf '%s\\n' ${shellQuote(containerId)} > "$candidate_tmp"; chmod 600 -- "$candidate_tmp"; mv -- "$candidate_tmp" "$attempt_candidate_id"; fi`,
+    'test -f "$attempt_candidate_id" && test ! -L "$attempt_candidate_id"',
+    `test "$(cat -- "$attempt_candidate_id")" = ${shellQuote(containerId)}`,
+    `printf '%s\\n' ${shellQuote(receipt)}`,
+  ].join("; ");
 }
 
 /**
  * Wrap `docker create` so stdin becomes a 0600 env file, the persisted vault
  * value is appended without being read by the caller, and every shell exit
- * removes the file.
+ * removes the file. A cleanup failure after an otherwise-successful create is
+ * reported as non-zero so callers cannot mistake persisted plaintext for an
+ * exact completion.
  */
 export function buildDockerCreateWithSecretEnvCommand(options: {
   dockerCreateCommand: string;
   secretEnvPath: string;
   vaultPassphrasePath: string;
+  exactReplacement?: { containerName: string; replacementAttemptId: string };
 }): string {
+  const replacementAttemptId = options.exactReplacement?.replacementAttemptId;
+  if (options.exactReplacement) {
+    const expectedPath = getContainerSecretEnvPath(
+      getReplacementVolumePath(options.exactReplacement.containerName),
+      options.exactReplacement.replacementAttemptId,
+    );
+    if (options.secretEnvPath !== expectedPath) {
+      throw new ElizaError("Exact replacement secret environment path is not canonical.", {
+        code: "SANDBOX_REPLACEMENT_SECRET_ENV_PATH_NONCANONICAL",
+        context: {
+          containerName: options.exactReplacement.containerName,
+          replacementAttemptId: options.exactReplacement.replacementAttemptId,
+        },
+        severity: "fatal",
+      });
+    }
+  }
   const envFile = shellQuote(options.secretEnvPath);
   const envBodyFile = shellQuote(`${options.secretEnvPath}.body`);
   const vaultFile = shellQuote(options.vaultPassphrasePath);
+  const fenced = replacementAttemptId !== undefined;
+  const cleanupTargets = '"$env_file" "$env_body_file"';
+  const cleanupFunction =
+    `cleanup_secret_env_files() { cleanup_status=$?; if ! rm -f -- ${cleanupTargets}; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ` +
+    'if test -e "$env_file" || test -L "$env_file" || test -e "$env_body_file" || test -L "$env_body_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ' +
+    (fenced
+      ? 'if test "$cleanup_status" -eq 0; then if ! rm -f -- "$attempt_active"; then cleanup_status=70; elif test -e "$attempt_active" || test -L "$attempt_active"; then cleanup_status=70; fi; fi; '
+      : "") +
+    'trap - EXIT; exit "$cleanup_status"; }';
   return [
     "set -eu",
     `env_file=${envFile}`,
     `env_body_file=${envBodyFile}`,
-    'trap \'rm -f "$env_file" "$env_body_file"\' EXIT',
-    "trap 'exit 1' HUP INT TERM",
     "umask 077",
+    ...(replacementAttemptId
+      ? [
+          ...replacementAttemptControlPrelude(replacementAttemptId),
+          'test ! -e "$attempt_cancelled" && test ! -L "$attempt_cancelled" || exit 75',
+          ': > "$attempt_active"',
+          'chmod 600 -- "$attempt_lock" "$attempt_active"',
+        ]
+      : []),
+    cleanupFunction,
+    "trap cleanup_secret_env_files EXIT",
+    "trap 'exit 1' HUP INT TERM",
     'cat > "$env_file"',
     `test "$(tail -n 1 "$env_file")" = ${shellQuote(CONTAINER_SECRET_ENV_STDIN_SENTINEL)}`,
     'sed \'$d\' "$env_file" > "$env_body_file"',

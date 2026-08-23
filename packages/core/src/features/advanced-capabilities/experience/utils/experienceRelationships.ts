@@ -69,7 +69,11 @@ export class ExperienceRelationshipManager {
 		const chains: ExperienceChain[] = [];
 
 		// Sort experiences by timestamp
-		const sorted = [...experiences].sort((a, b) => a.createdAt - b.createdAt);
+		const sorted = [...experiences].sort((a, b) => {
+			const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+			const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+			return aTime - bTime;
+		});
 
 		// Look for sequences where validation follows hypothesis
 		for (let i = 0; i < sorted.length - 1; i++) {

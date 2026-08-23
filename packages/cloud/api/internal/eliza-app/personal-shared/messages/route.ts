@@ -16,12 +16,8 @@ import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { elizaAppUserService } from "@/lib/services/eliza-app";
 import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-allowlist";
-import {
-  describeInboundImageMedia,
-  InboundMediaDescriptionError,
-  InboundMediaVisionDisabledError,
-  MAX_INBOUND_MEDIA_IMAGES,
-} from "@/lib/services/eliza-app/describe-inbound-media";
+import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbound-media";
+import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
@@ -927,48 +923,25 @@ app.post("/", async (c) => {
       !dedicated
     ) {
       stage = "media_description";
-      // Unmetered pooled-key spend (same posture as the Whisper voice path
-      // above, but reachable by any inbound sender): production enablement of
-      // ELIZA_APP_INBOUND_MEDIA_VISION requires a per-sender/per-connector
-      // rate limit or billing-meter gate at this stage first.
-      try {
-        const description = await describeInboundImageMedia(
-          c.env,
-          parsed.data.mediaUrls,
-        );
-        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${description}`;
-        logger.info(
-          "[personal-shared-messaging] Blooio inbound media described",
-          {
-            mediaCount: parsed.data.mediaUrls.length,
-            userId: account.userId,
-          },
-        );
-      } catch (error) {
-        if (error instanceof InboundMediaVisionDisabledError) {
-          // Disabled is the fleet default, not a fault; the turn keeps the
-          // raw media-URL text the adapter synthesized.
-          logger.debug(
-            "[personal-shared-messaging] inbound media vision disabled",
-            { mediaCount: parsed.data.mediaUrls.length },
-          );
-        } else if (error instanceof InboundMediaDescriptionError) {
-          // error-policy:J4 enrichment is additive: an expected fetch/vision
-          // failure degrades to the current media-URL text instead of
-          // dropping the user's turn. Reported here because the turn still
-          // returns success to the connector.
-          logger.error(
-            "[personal-shared-messaging] inbound media description failed",
-            {
-              reason: error.reason,
-              mediaCount: parsed.data.mediaUrls.length,
-              userId: account.userId,
-              error: error.message,
-            },
-          );
-        } else {
-          throw error;
-        }
+      // Pooled-key spend is reachable by any inbound sender, so it sits behind
+      // the durable admission ledger: one idempotency claim per connector
+      // message id (a redelivery reuses the stored description instead of
+      // re-spending) and atomic per-sender/per-connector daily image
+      // ceilings. Every skip, including a missing admission decision, keeps
+      // the raw media-URL text the adapter synthesized; only an untyped bug
+      // fails the delivery.
+      const enrichment = await enrichInboundImageMedia({
+        env: c.env,
+        platform: "blooio",
+        project: parsed.data.project,
+        connectorAccountId: parsed.data.connectorAccountId,
+        sourceMessageId: parsed.data.messageId,
+        organizationId: account.organizationId,
+        userId: account.userId,
+        mediaUrls: parsed.data.mediaUrls,
+      });
+      if (enrichment.kind === "described") {
+        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}`;
       }
     }
     if (deliveryMessage && groupActorLabel) {

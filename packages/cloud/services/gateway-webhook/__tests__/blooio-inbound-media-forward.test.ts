@@ -3,12 +3,14 @@
  * set to "true", allowlisted media URLs ride the personal-Shared POST body only
  * for Blooio one-to-one turns and those turns take the voice-style long-turn
  * retry posture (no status/transport re-POST that could overlap a still-running
- * vision route); with the flag unset the same image turn is byte-identical to a
- * plain text turn (no mediaUrls, full retry budget); group media events keep
- * the plain text-turn posture either way; and the gateway's runtime-local media
- * allowlist stays byte-identical to the canonical cloud-shared copy the Worker
- * route validates against. Deterministic fixtures with a mocked cloud fetch —
- * no live services.
+ * vision route); a lost Worker response reopens the durable webhook claim and
+ * the redelivery re-POSTs the identical enrichment idempotency key (messageId
+ * plus mediaUrls) the Worker's description ledger is keyed by; with the flag
+ * unset the same image turn is byte-identical to a plain text turn (no
+ * mediaUrls, full retry budget); group media events keep the plain text-turn
+ * posture either way; and the gateway's runtime-local media allowlist stays
+ * byte-identical to the canonical cloud-shared copy the Worker route validates
+ * against. Deterministic fixtures with a mocked cloud fetch — no live services.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
@@ -358,6 +360,99 @@ describe("blooio media turn retry posture", () => {
     for (const body of bodies) {
       expect("mediaUrls" in body).toBe(false);
     }
+  });
+});
+
+describe("blooio media turn redelivery idempotency key", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of envKeys) {
+      const value = originalEnv.get(key);
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    mock.restore();
+  });
+
+  test("a lost Worker response reopens the claim and the redelivery forwards the same key", async () => {
+    configureEnv();
+    const event = createEvent("blooio", { mediaUrls: [MEDIA_URL] });
+    const redis = new MemoryRedis();
+    const adapter = createAdapter(event);
+    const bodies: Record<string, unknown>[] = [];
+    let lostResponses = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/api/internal/identity/resolve")) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        if (bodies.length === 1) {
+          // The Worker ran (and may have spent on vision) but its response
+          // never reached the gateway.
+          lostResponses += 1;
+          throw new TypeError("fetch failed: socket hang up");
+        }
+        return Response.json({ data: { reply: "seen" } });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+    const dedupKey = `webhook:blooio:${event.messageId}`;
+
+    const first = await handleWebhook(
+      requestFor(event),
+      adapter,
+      deps,
+      "eliza-app",
+    );
+    expect(first.status).toBe(200);
+    await waitFor(() => bodies.length === 1, "first personal Shared POST");
+    await waitFor(
+      () => !redis.store.has(dedupKey),
+      "reopened webhook claim after the lost response",
+    );
+    expect(lostResponses).toBe(1);
+    expect(adapter.replies).toEqual([]);
+
+    // The provider redelivers the same inbound message.
+    const second = await handleWebhook(
+      requestFor(event),
+      adapter,
+      deps,
+      "eliza-app",
+    );
+    expect(second.status).toBe(200);
+    await waitFor(
+      () => bodies.length === 2,
+      "redelivered personal Shared POST",
+    );
+    await waitFor(() => adapter.replies.length === 1, "redelivered reply");
+
+    // The Worker's description ledger is keyed by exactly this forwarded
+    // identity, so the redelivery resolves to the stored description.
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(bodies[1]).toMatchObject({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+15550001111",
+      messageId: `blooio:eliza-app:${event.messageId}`,
+      mediaUrls: [MEDIA_URL],
+    });
+    expect(redis.store.get(dedupKey)).toBe("delivered");
   });
 });
 
