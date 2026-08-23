@@ -152,42 +152,15 @@ export interface VerdictFinding {
   borderDividerCount?: number;
   /** Rendered viewport area in px² (innerWidth × innerHeight), the density basis. */
   viewportArea?: number;
-  /**
-   * Blocking "Her"-minimal ratchet violations for this view (#9950), computed by
-   * the caller via {@link evaluateMinimalismRatchet} against the committed
-   * baseline. Non-empty → `needs-work` (a BLOCKING verdict): the view is either a
-   * NEW breach of the divider-density ceiling that is not in the baseline, or a
-   * baselined breach that regressed beyond its recorded metrics + tolerance.
-   * Optional so callers without a baseline (and existing unit fixtures) keep the
-   * legacy soft-signal behavior.
-   */
-  minimalismRatchetViolations?: string[];
 }
 
 /**
  * "Her"-minimal ceiling: border/divider elements per 1,000,000 px² of viewport.
  * A density (area-normalized), not a raw per-view count, so one ceiling holds
- * across the portrait / landscape / desktop matrix. Seeded generously so it only
- * trips genuinely divider-dense screens; ratchet down as the aesthetic pass
- * lands (#9950). Enforcement is two-tier: a breach WITHOUT a committed baseline
- * entry (or one that regresses past its baseline + tolerance) is a BLOCKING
- * `needs-work` via {@link evaluateMinimalismRatchet}; a baselined breach within
- * tolerance stays a soft `needs-eyeball` (same posture as the off-token
- * border-radius signal).
+ * across the portrait / landscape / desktop matrix. A breach remains a visible
+ * `needs-eyeball` signal alongside the off-token border-radius signal.
  */
 export const MINIMALISM_DENSITY_CEILING = 45;
-
-/**
- * Relative tolerance for the per-view minimalism ratchet: a baselined breaching
- * view may drift up to 5% (relative) worse than its recorded baseline metric
- * before the gate blocks. 5% because the density metrics are measured off a
- * live DOM render — scrollbar presence, font metrics, and async widget timing
- * introduce small run-to-run jitter — while a real regression (one added divider
- * row, a new cramped section) moves the density well past 5% on every view
- * currently in the baseline. Improvements do NOT auto-tighten the baseline;
- * refresh it deliberately via `audit:app:minimalism:update`.
- */
-export const MINIMALISM_RATCHET_TOLERANCE = 0.05;
 
 /**
  * Border/divider density per 1,000,000 px², or null when the finding carries no
@@ -211,190 +184,6 @@ export function exceedsMinimalismBudget(
 ): boolean {
   const density = minimalismDensity(finding);
   return density !== null && density > ceiling;
-}
-
-// ── "Her"-minimal ratchet baseline (#9950) ──────────────────────────────────
-// Same idiom as `packages/scripts/ui-determinism-baseline.json`: a committed
-// per-view record of the existing debt so the gate BLOCKS new breaches and
-// regressions while the backlog is burned down. Regenerate deliberately with
-// `bun run --cwd packages/app audit:app:minimalism:update` after a run.
-
-/** The minimalism metrics recorded for one breaching slug+viewport. */
-export interface MinimalismBaselineEntry {
-  /** Border/divider edges per 1M viewport px² at baseline time. */
-  borderDividerDensity: number;
-  /** Visible text characters per 10K viewport px² at baseline time. */
-  textDensity: number;
-  /** Estimated unoccupied viewport ratio (0..1) at baseline time. */
-  whitespaceRatio: number;
-}
-
-export interface MinimalismBaseline {
-  /** ISO timestamp of the audit run the baseline was generated from. */
-  generatedAt: string;
-  /** Keyed by {@link minimalismBaselineKey} (`<slug>@<viewport>`). */
-  views: Record<string, MinimalismBaselineEntry>;
-}
-
-export function minimalismBaselineKey(slug: string, viewport: string): string {
-  return `${slug}@${viewport}`;
-}
-
-/** Parse + validate the committed baseline JSON. Throws on any malformed
- * shape — a corrupt baseline must fail the audit loudly, never soften it. */
-export function parseMinimalismBaseline(text: string): MinimalismBaseline {
-  const raw: unknown = JSON.parse(text);
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error(
-      "[aesthetic-audit-rules] minimalism baseline must be a JSON object",
-    );
-  }
-  const { generatedAt, views } = raw as Record<string, unknown>;
-  if (typeof generatedAt !== "string") {
-    throw new Error(
-      "[aesthetic-audit-rules] minimalism baseline is missing a string `generatedAt`",
-    );
-  }
-  if (typeof views !== "object" || views === null || Array.isArray(views)) {
-    throw new Error(
-      "[aesthetic-audit-rules] minimalism baseline is missing a `views` object",
-    );
-  }
-  const parsedViews: Record<string, MinimalismBaselineEntry> = {};
-  for (const [key, entry] of Object.entries(views)) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new Error(
-        `[aesthetic-audit-rules] minimalism baseline entry "${key}" must be an object`,
-      );
-    }
-    const { borderDividerDensity, textDensity, whitespaceRatio } =
-      entry as Record<string, unknown>;
-    for (const [name, value] of Object.entries({
-      borderDividerDensity,
-      textDensity,
-      whitespaceRatio,
-    })) {
-      if (typeof value !== "number" || !Number.isFinite(value)) {
-        throw new Error(
-          `[aesthetic-audit-rules] minimalism baseline entry "${key}" has a non-numeric \`${name}\``,
-        );
-      }
-    }
-    parsedViews[key] = {
-      borderDividerDensity: borderDividerDensity as number,
-      textDensity: textDensity as number,
-      whitespaceRatio: whitespaceRatio as number,
-    };
-  }
-  return { generatedAt, views: parsedViews };
-}
-
-/** The report.json fields the baseline builder reads (a `ViewFinding` from the
- * audit spec is structurally assignable to this). */
-export interface MinimalismReportFinding {
-  slug: string;
-  viewport: string;
-  viewType: "gui" | "tui";
-  borderDividerDensity: number;
-  textDensity: number;
-  whitespaceRatio: number;
-}
-
-/**
- * Regenerate the ratchet baseline from an audit run's findings: every
- * non-exempt view whose divider density breaches the ceiling is recorded with
- * its current metrics; non-breaching views are pruned (so an improved view that
- * later re-breaches counts as NEW). Keys are sorted for stable diffs.
- */
-export function buildMinimalismBaseline(
-  findings: MinimalismReportFinding[],
-  generatedAt: string,
-  ceiling: number = MINIMALISM_DENSITY_CEILING,
-): MinimalismBaseline {
-  const views: Record<string, MinimalismBaselineEntry> = {};
-  for (const finding of findings) {
-    if (
-      finding.viewType === "tui" ||
-      OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(finding.slug) ||
-      finding.borderDividerDensity <= ceiling
-    ) {
-      continue;
-    }
-    views[minimalismBaselineKey(finding.slug, finding.viewport)] = {
-      borderDividerDensity: finding.borderDividerDensity,
-      textDensity: finding.textDensity,
-      whitespaceRatio: finding.whitespaceRatio,
-    };
-  }
-  const sorted: Record<string, MinimalismBaselineEntry> = {};
-  for (const key of Object.keys(views).sort()) sorted[key] = views[key];
-  return { generatedAt, views: sorted };
-}
-
-/**
- * Blocking "Her"-minimal ratchet check for one finding (#9950).
- *
- * Returns the BLOCKING violations (empty = not blocking):
- * - exempt surfaces (TUI / overlay-native) and views at-or-under the divider
- *   density ceiling never block — they behave exactly as before the ratchet;
- * - a breaching view with NO baseline entry is a new breach → blocks;
- * - a breaching baselined view blocks only when a metric regresses beyond its
- *   baseline value + {@link MINIMALISM_RATCHET_TOLERANCE} (relative); within
- *   tolerance it stays the soft `needs-eyeball` signal.
- */
-export function evaluateMinimalismRatchet(
-  finding: VerdictFinding,
-  baselineEntry: MinimalismBaselineEntry | undefined,
-  options: { ceiling?: number; tolerance?: number } = {},
-): string[] {
-  const ceiling = options.ceiling ?? MINIMALISM_DENSITY_CEILING;
-  const tolerance = options.tolerance ?? MINIMALISM_RATCHET_TOLERANCE;
-  if (
-    finding.viewType === "tui" ||
-    OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(finding.slug) ||
-    finding.borderDividerDensity <= ceiling
-  ) {
-    return [];
-  }
-  if (baselineEntry === undefined) {
-    return [
-      `new minimalism breach: border/divider density ${formatMetric(
-        finding.borderDividerDensity,
-      )} > ceiling ${formatMetric(ceiling)} with no committed baseline entry`,
-    ];
-  }
-  const violations: string[] = [];
-  const maxDivider = baselineEntry.borderDividerDensity * (1 + tolerance);
-  if (finding.borderDividerDensity > maxDivider) {
-    violations.push(
-      `border/divider density regressed ${formatMetric(
-        finding.borderDividerDensity,
-      )} > baselined ${formatMetric(baselineEntry.borderDividerDensity)} + ${
-        tolerance * 100
-      }% tolerance (${formatMetric(maxDivider)})`,
-    );
-  }
-  const maxText = baselineEntry.textDensity * (1 + tolerance);
-  if (finding.textDensity > maxText) {
-    violations.push(
-      `text density regressed ${formatMetric(
-        finding.textDensity,
-      )} > baselined ${formatMetric(baselineEntry.textDensity)} + ${
-        tolerance * 100
-      }% tolerance (${formatMetric(maxText)})`,
-    );
-  }
-  const minWhitespace = baselineEntry.whitespaceRatio * (1 - tolerance);
-  if (finding.whitespaceRatio < minWhitespace) {
-    violations.push(
-      `whitespace ratio regressed ${formatMetric(
-        finding.whitespaceRatio,
-      )} < baselined ${formatMetric(baselineEntry.whitespaceRatio)} - ${
-        tolerance * 100
-      }% tolerance (${formatMetric(minWhitespace)})`,
-    );
-  }
-  return violations;
 }
 
 export interface AestheticMetricBudget {
@@ -575,22 +364,16 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   if (exempt) {
     return finding.blueColors.length > 0 ? "needs-work" : "good";
   }
-  // A minimalism ratchet violation (#9950) — a NEW divider-density breach not in
-  // the committed baseline, or a baselined breach that regressed past its
-  // recorded metrics + tolerance — is BLOCKING design debt, same rank as the
-  // no-blue / hover / overlay rules.
   if (
     finding.blueColors.length > 0 ||
     finding.hoverViolations.length > 0 ||
     !finding.overlayPresent ||
-    finding.overlayClearanceIssues.length > 0 ||
-    (finding.minimalismRatchetViolations?.length ?? 0) > 0
+    finding.overlayClearanceIssues.length > 0
   ) {
     return "needs-work";
   }
-  // Off-scale border-radius (#8796) and a BASELINED divider-density breach still
-  // within its ratchet tolerance (#9950) are SOFT signals: a non-blocking
-  // `needs-eyeball` records them without destabilizing the green baseline.
+  // Off-scale border-radius (#8796) and divider density (#9950) are soft signals:
+  // a non-blocking `needs-eyeball` records them for visual review.
   if (
     finding.borderRadiusViolations.length > 0 ||
     exceedsMinimalismBudget(finding)
@@ -599,14 +382,6 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   }
   return "good";
 }
-
-/**
- * The worst verdict tolerated for a given `${slug}-${viewport}` key. Empty map =
- * zero debt. A `broken` entry tolerates a `broken` render for that view; because
- * `needs-work` is a strictly-lesser verdict, a `broken` entry ALSO tolerates a
- * `needs-work` for the same view (see {@link evaluateStrictGate}).
- */
-export type AestheticVerdictDebt = Record<string, "broken" | "needs-work">;
 
 /** The subset of a view audit finding the strict gate reads. The spec's fuller
  * `ViewFinding` (which carries `viewport` + `verdict`) is structurally
@@ -623,26 +398,23 @@ export interface GateFinding {
 
 export interface StrictGateOptions {
   /**
-   * Gate undebted `broken` findings — the always-present strict fail. Defaults
+   * Gate `broken` findings — the always-present strict fail. Defaults
    * to `true`: this function IS the strict gate. The spec threads the
    * `ELIZA_AUDIT_APP_STRICT` env flag through so a non-strict run can still read
-   * the tally (`undebtedBroken`) without failing.
+   * the tally without failing.
    */
   strict?: boolean;
   /**
-   * ALSO gate undebted `needs-work` findings — the opt-in
+   * ALSO gate `needs-work` findings — the opt-in
    * `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` extension (#10710). Off by default.
-   * Governed by the SAME {@link AestheticVerdictDebt} allowlist: a `needs-work`
-   * OR a `broken` debt entry tolerates a `needs-work` for that slug-viewport.
    */
   needsWorkStrict?: boolean;
 }
 
 export interface StrictGateResult {
-  /** `broken` findings whose slug-viewport is not debted as `broken`. */
+  /** Current `broken` findings. */
   undebtedBroken: GateFinding[];
-  /** `needs-work` findings with no debt entry (a `broken`/`needs-work` entry
-   * tolerates them). Only gated when {@link StrictGateOptions.needsWorkStrict}. */
+  /** Current `needs-work` findings. Only gated when strict review is enabled. */
   undebtedNeedsWork: GateFinding[];
   /** True when the gate should fail the run under the supplied options. */
   failed: boolean;
@@ -655,29 +427,17 @@ export interface StrictGateResult {
  *
  * Extracted out of the Playwright spec so it is unit-testable without a live
  * `page`. `broken` (a real crash / blank render / console error / empty view)
- * fails the run when `strict` is on and the view is not covered by the
- * {@link AestheticVerdictDebt} allowlist; `needs-work` (design debt: blue /
- * orange-hover / off-token radius) only fails when the opt-in `needsWorkStrict`
- * is on and the view is likewise undebted. A `broken` debt entry is the stronger
- * grant and so also tolerates a `needs-work` for the same slug-viewport.
+ * fails the run when `strict` is on; `needs-work` (blue / orange-hover /
+ * off-token radius) only fails when the opt-in `needsWorkStrict` is on.
  */
 export function evaluateStrictGate(
   findings: readonly GateFinding[],
-  debt: AestheticVerdictDebt,
   opts: StrictGateOptions = {},
 ): StrictGateResult {
   const strict = opts.strict ?? true;
   const needsWorkStrict = opts.needsWorkStrict ?? false;
-  const keyOf = (f: GateFinding): string => `${f.slug}-${f.viewport}`;
-
-  const undebtedBroken = findings.filter(
-    (f) => f.verdict === "broken" && debt[keyOf(f)] !== "broken",
-  );
-  // Either a `needs-work` or a `broken` debt entry tolerates a `needs-work`;
-  // only a total absence of a debt entry leaves it undebted.
-  const undebtedNeedsWork = findings.filter(
-    (f) => f.verdict === "needs-work" && debt[keyOf(f)] === undefined,
-  );
+  const undebtedBroken = findings.filter((f) => f.verdict === "broken");
+  const undebtedNeedsWork = findings.filter((f) => f.verdict === "needs-work");
 
   const brokenFail = strict && undebtedBroken.length > 0;
   const needsWorkFail = needsWorkStrict && undebtedNeedsWork.length > 0;
@@ -694,24 +454,18 @@ export function evaluateStrictGate(
           }`,
       )
       .join("\n");
-    sections.push(
-      `${undebtedBroken.length} non-exempt 'broken' view(s) not in ` +
-        `AESTHETIC_VERDICT_DEBT:\n${detail}`,
-    );
+    sections.push(`${undebtedBroken.length} 'broken' view(s):\n${detail}`);
   }
   if (needsWorkFail) {
     const detail = undebtedNeedsWork
       .map((f) => `  ${f.slug} @ ${f.viewport}`)
       .join("\n");
     sections.push(
-      `${undebtedNeedsWork.length} non-exempt 'needs-work' view(s) not in ` +
-        `AESTHETIC_VERDICT_DEBT:\n${detail}`,
+      `${undebtedNeedsWork.length} 'needs-work' view(s):\n${detail}`,
     );
   }
   const message = failed
-    ? `[aesthetic-audit] STRICT gate failed:\n${sections.join("\n")}\n` +
-      `Fix the view or, if genuinely accepted debt, add the slug-viewport key ` +
-      `to AESTHETIC_VERDICT_DEBT (and shrink it over time).`
+    ? `[aesthetic-audit] STRICT gate failed:\n${sections.join("\n")}\nFix the affected view(s).`
     : "";
 
   return { undebtedBroken, undebtedNeedsWork, failed, message };
@@ -732,10 +486,8 @@ export interface AuditStrictEnv {
  * gates unless the corresponding var is explicitly set to `"0"`. This makes a
  * bare `bun run --cwd packages/app audit:app` enforce the same posture the
  * `app-aesthetic-audit.yml` CI lane already forces (both vars `"1"`), so a NEW
- * blue / orange→black-hover / missing-overlay regression fails by default
- * instead of only when someone remembers to opt in. Known-parked debt is
- * allowlisted per slug-viewport in the spec's `AESTHETIC_VERDICT_DEBT`, which
- * must shrink over time. Set the relevant var to `"0"` only to triage locally.
+ * blue / orange→black-hover / missing-overlay regression fails by default.
+ * Set the relevant var to `"0"` only to triage locally.
  */
 export function resolveAuditStrictFlags(env: AuditStrictEnv): {
   strict: boolean;

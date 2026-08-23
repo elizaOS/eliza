@@ -116,6 +116,7 @@ import {
   requiresContainerBackedTarget,
 } from "./provisioning-job-types";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
+import { usesLocalDockerSandboxProvider } from "./sandbox-provider";
 import {
   isWaifuWebhookTargetUrl,
   resolveWaifuWebhookTarget,
@@ -3384,6 +3385,11 @@ export class ProvisioningJobService {
     });
   }
 
+  /** Active agent lifecycle jobs used to restore truthful UI polling after reload. */
+  async getActiveAgentLifecycleJobsForOrg(organizationId: string): Promise<Job[]> {
+    return jobsRepository.findActiveAgentLifecycleJobsForOrg(organizationId);
+  }
+
   // ---------------------------------------------------------------------------
   // Processing (called by cron)
   // ---------------------------------------------------------------------------
@@ -3516,8 +3522,20 @@ export class ProvisioningJobService {
     status: "completed" | "cancelled",
     updates?: Partial<Job>,
   ): Promise<void> {
+    const settledUpdates =
+      status === "completed"
+        ? {
+            ...updates,
+            // A retry that succeeds must not retain the prior attempt's error
+            // beside a completed receipt. Keep the payload metadata canonical
+            // too, including when the failed attempt externalized its error.
+            error: null,
+            error_storage: "inline" as const,
+            error_key: null,
+          }
+        : updates;
     await this.retryOwnedWrite(job, "settle", () =>
-      jobsRepository.settleExecution(job, status, updates, this.executionOwnerId),
+      jobsRepository.settleExecution(job, status, settledUpdates, this.executionOwnerId),
     );
   }
 
@@ -3557,6 +3575,9 @@ export class ProvisioningJobService {
         {
           result: agentDeleteJobResultToRecord(jobResult),
           completed_at: new Date(),
+          error: null,
+          error_storage: "inline",
+          error_key: null,
         },
         this.executionOwnerId,
         agentDeleteAuthorityFence(currentData),
@@ -4379,7 +4400,13 @@ export class ProvisioningJobService {
     await this.assertExecutionMutationLease(job);
     await dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
-      await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
+      // PGlite's TCP bridge does not release transaction-scoped advisory locks
+      // reliably at commit. Local Docker still has the exact job-generation,
+      // lease, conflict, and sandbox-row fences below; remote providers retain
+      // the cross-process PostgreSQL advisory lock.
+      if (!usesLocalDockerSandboxProvider()) {
+        await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
+      }
       const [currentJob] = await tx
         .select({ id: jobs.id })
         .from(jobs)

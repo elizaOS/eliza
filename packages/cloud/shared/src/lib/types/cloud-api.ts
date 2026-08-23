@@ -466,6 +466,20 @@ export type AgentSandboxStatus =
 export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";
 export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
 
+/** The server-owned lifecycle job a management client can resume polling after reload. */
+export interface AgentActiveJobDto {
+  id: string;
+  type: string;
+  status: "pending" | "in_progress";
+  attempts: number;
+  maxAttempts: number;
+  estimatedCompletionAt: IsoDateString | null;
+  scheduledFor: IsoDateString;
+  startedAt: IsoDateString | null;
+  createdAt: IsoDateString;
+  updatedAt: IsoDateString;
+}
+
 export interface AgentListItemDto {
   id: string;
   agentName: string | null;
@@ -483,6 +497,7 @@ export interface AgentListItemDto {
   dockerImage: string | null;
   executionTier: AgentExecutionTier;
   webUiUrl: string | null;
+  activeJob: AgentActiveJobDto | null;
 }
 
 export interface AgentAdminDetailsDto {

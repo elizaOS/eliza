@@ -20,7 +20,7 @@
  * If neither env var is set, the service is a no-op.
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 const MAX_BATCH = 100;
 const FLUSH_DEBOUNCE_MS = 200;
@@ -193,7 +193,7 @@ export class WriteBackService {
         const text = await response.text().catch(() => "");
         logger.warn(
           { src: "plugin:sql", status: response.status },
-          `WriteBackService: cloud API returned ${response.status}: ${text.slice(0, 200)}`
+          `WriteBackService: cloud API returned ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`
         );
         this.requeueOrDrop(batch);
       }

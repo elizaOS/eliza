@@ -35,6 +35,7 @@ PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
 
 from src.training.continuous_rl import (
     ContinuousRLAgent,
@@ -280,9 +281,14 @@ def run_eval(model, tokenizer, device: str) -> dict[str, Any]:
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
             )
-        resp = tokenizer.decode(
-            out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True
-        ).strip()
+        generated_ids = out[0, enc["input_ids"].shape[1] :]
+        require_complete_generated_tokens(
+            generated_ids,
+            max_new_tokens=128,
+            source="demo_continuous_rl.evaluation",
+            terminal_token_ids=tokenizer.eos_token_id,
+        )
+        resp = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
         score_result = score_action_reason_response(ACTION_REASON_ASSISTANT_PREFIX + resp, spec)
         results.append(score_result)
 

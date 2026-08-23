@@ -13,7 +13,7 @@ real answer is wrapped in `<answer>...</answer>` (or `<FinalAnswer>` /
 `Exact Answer:` patterns inside the thought).
 
 Target shape (`reasoning_cot`):
-    thought: <1-2 sentence summary; the last 2 sentences of the original CoT>
+    thought: <complete original CoT with wrapper tags removed>
     text: <extracted final answer with wrapper tags stripped>
 
 Records where no terminal answer can be extracted are dropped.
@@ -34,9 +34,6 @@ _ANSWER_LABEL_RE = re.compile(
     re.DOTALL,
 )
 _THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(])")
-
-
 def _extract_answer(text: str | None, thought: str | None) -> str | None:
     """Try increasingly loose patterns to find the terminal answer."""
     candidates = (
@@ -71,38 +68,15 @@ def _extract_answer(text: str | None, thought: str | None) -> str | None:
         if last_match:
             return last_match.group(1).strip()
 
-    # Last resort: take the last sentence of thought as the terminal answer.
-    thought_clean = (thought or "").strip()
-    if thought_clean:
-        sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(thought_clean) if s.strip()]
-        if sentences:
-            tail = sentences[-1]
-            # Truncate over-long single-sentence thoughts at 400 chars rather
-            # than rejecting outright — these records are often "this chunk
-            # has nothing to add" empty conclusions where the sentence IS
-            # the answer.
-            if len(tail) > 400:
-                tail = tail[-400:].lstrip()
-            return tail
     return None
 
 
-def _short_thought(thought: str | None) -> str:
-    """Take the last 2 sentences of the original CoT as the new short thought."""
+def _complete_thought(thought: str | None) -> str | None:
+    """Preserve the complete recorded thought or reject an empty value."""
     if not thought:
-        return "Reasoning omitted; surfacing the final answer."
+        return None
     cleaned = _THINK_TAG_RE.sub("", thought).strip()
-    if not cleaned:
-        return "Reasoning omitted; surfacing the final answer."
-    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(cleaned) if s.strip()]
-    if not sentences:
-        # Single block, no terminal punctuation — collapse to a 220-char tail.
-        tail = cleaned[-220:].strip()
-        return tail or "Reasoning omitted; surfacing the final answer."
-    tail = " ".join(sentences[-2:]).strip()
-    if len(tail) > 600:
-        tail = tail[-600:].lstrip()
-    return tail
+    return cleaned or None
 
 
 def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | None:
@@ -130,8 +104,10 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     if not answer:
         return None
 
-    short = _short_thought(thought_full)
-    new_payload = {"thought": short, "text": answer}
+    complete_thought = _complete_thought(thought_full)
+    if complete_thought is None:
+        return None
+    new_payload = {"thought": complete_thought, "text": answer}
     try:
         new_payload = encoder.encode(new_payload)
     except Exception:

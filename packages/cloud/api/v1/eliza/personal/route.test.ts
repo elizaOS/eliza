@@ -10,6 +10,7 @@ let activeTarget: {
   id: string;
   agent_name: string;
   headscale_ip: string;
+  bridge_url: string | null;
 } | null = null;
 const findActivePersonalDedicatedTarget = mock(async () => activeTarget);
 
@@ -57,6 +58,7 @@ describe("personal Eliza identity", () => {
       id: "00000000-0000-4000-8000-000000000020",
       agent_name: "Eliza",
       headscale_ip: "100.64.0.20",
+      bridge_url: null,
     };
 
     const response = await app.request(
@@ -77,6 +79,37 @@ describe("personal Eliza identity", () => {
           activeAgentId: "00000000-0000-4000-8000-000000000020",
           apiBase:
             "https://00000000-0000-4000-8000-000000000020.cloud.eliza.app",
+        },
+      },
+    });
+  });
+
+  test("keeps the local Dedicated runtime behind the authenticated Cloud proxy", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      agent_name: "Eliza",
+      headscale_ip: "100.64.0.20",
+      bridge_url: "http://127.0.0.1:36870/api/compat/agents/local",
+    };
+
+    const response = await app.request(
+      new Request("http://127.0.0.1:18787/"),
+      undefined,
+      {
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "https://",
+      },
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()) as unknown).toEqual({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          displayName: "Eliza",
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+          apiBase:
+            "http://127.0.0.1:18787/api/v1/eliza/agents/00000000-0000-4000-8000-000000000020",
         },
       },
     });

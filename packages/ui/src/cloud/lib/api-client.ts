@@ -32,6 +32,8 @@ import {
   readStoredStewardToken,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
+import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
+import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
 import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
@@ -50,6 +52,7 @@ const ELIZA_CLOUD_API_HOSTS = new Set([
   new URL(DEFAULT_DIRECT_CLOUD_API_BASE_URL).hostname,
   new URL(STAGING_DIRECT_CLOUD_API_BASE_URL).hostname,
 ]);
+const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * True only inside a native (Capacitor iOS/Android) or Electrobun desktop
@@ -409,6 +412,18 @@ export async function apiFetch(
     if (token && !headers.has("Authorization")) {
       headers.set("Authorization", `Bearer ${token}`);
     }
+  }
+  // Browser cookie sessions require the readable CSRF cookie to be mirrored
+  // into the mutation header. Native/Electrobun calls are bearer-only and must
+  // not forward a synthetic WebView origin's cookie to Eliza Cloud.
+  const method = (rest.method ?? "GET").toUpperCase();
+  if (
+    !isNativeCloudRuntime() &&
+    STATE_CHANGING_METHODS.has(method) &&
+    !headers.has(CSRF_HEADER_NAME)
+  ) {
+    const csrfToken = readCsrfTokenFromCookie();
+    if (csrfToken) headers.set(CSRF_HEADER_NAME, csrfToken);
   }
 
   const url = resolveApiUrl(path);

@@ -16,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
 const appState = vi.hoisted(() => ({ tab: "chat" }));
-const viewport = vi.hoisted(() => ({ desktop: false }));
 vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
@@ -39,16 +38,6 @@ vi.mock("../../hooks/useActivityEvents", () => ({
     ],
     clearEvents: vi.fn(),
   }),
-}));
-
-vi.mock("../../hooks/useMediaQuery", () => ({
-  useMediaQuery: () => viewport.desktop,
-}));
-
-vi.mock("../chat/TasksEventsPanel", () => ({
-  TasksEventsPanel: ({ events }: { events: unknown[] }) => (
-    <aside data-testid="chat-widgets-bar" data-event-count={events.length} />
-  ),
 }));
 
 // HomeScreen now mounts the unified home-slot WidgetHost (#9143) — its ranking +
@@ -86,7 +75,6 @@ import {
 beforeEach(() => {
   vi.useFakeTimers();
   appState.tab = "chat";
-  viewport.desktop = false;
   resetShellSurfaceForTests();
 });
 
@@ -152,15 +140,14 @@ describe("HomeScreen", () => {
     ).toBe(true);
   });
 
-  it("mounts the live chat-sidebar widget host on desktop", () => {
-    viewport.desktop = true;
+  it("does not mount a permanent widget rail beside chat", () => {
     __setHydratedForTests(true);
 
     render(<HomeScreen onOpenTile={vi.fn()} />);
 
-    expect(
-      screen.getByTestId("chat-widgets-bar").getAttribute("data-event-count"),
-    ).toBe("1");
+    expect(screen.queryByTestId("chat-widgets-bar")).toBeNull();
+    expect(screen.queryByTestId("chat-widgets-resize-handle")).toBeNull();
+    expect(screen.queryByText("Widgets")).toBeNull();
   });
 
   it("does not place launcher or AOSP app grids beside home notifications", () => {

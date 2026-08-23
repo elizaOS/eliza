@@ -39,7 +39,11 @@ import {
   getAgentTier,
   tierProvisionsEagerly,
 } from "@/lib/services/shared-runtime/agent-tier";
-import type { AgentListItemDto, AgentsResponse } from "@/lib/types/cloud-api";
+import type {
+  AgentActiveJobDto,
+  AgentListItemDto,
+  AgentsResponse,
+} from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { projectProductAgentList } from "./product-agent-list";
@@ -191,6 +195,7 @@ function resolvePublicWebUiUrl(agent: Agent): string | null {
 function toAgentListItemDto(
   agent: Agent,
   character: UserCharacter | undefined,
+  activeJob: AgentActiveJobDto | null,
 ): AgentListItemDto {
   return {
     id: agent.id,
@@ -216,6 +221,26 @@ function toAgentListItemDto(
     dockerImage: agent.docker_image,
     executionTier: agent.execution_tier,
     webUiUrl: resolvePublicWebUiUrl(agent),
+    activeJob,
+  };
+}
+
+function toActiveJobDto(
+  job: Awaited<
+    ReturnType<typeof provisioningJobService.getActiveAgentLifecycleJobsForOrg>
+  >[number],
+): AgentActiveJobDto {
+  return {
+    id: job.id,
+    type: job.type,
+    status: job.status as AgentActiveJobDto["status"],
+    attempts: job.attempts,
+    maxAttempts: job.max_attempts,
+    estimatedCompletionAt: toIsoStringOrNull(job.estimated_completion_at),
+    scheduledFor: toIsoString(job.scheduled_for),
+    startedAt: toIsoStringOrNull(job.started_at),
+    createdAt: toIsoString(job.created_at),
+    updatedAt: toIsoString(job.updated_at),
   };
 }
 
@@ -262,7 +287,18 @@ async function withOrphanCleanup<T>(
 
 app.get("/", async (c) => {
   const user = await requireUserOrApiKeyWithOrg(c);
-  const agents = await elizaSandboxService.listAgents(user.organization_id);
+  const [agents, activeJobs] = await Promise.all([
+    elizaSandboxService.listAgents(user.organization_id),
+    provisioningJobService.getActiveAgentLifecycleJobsForOrg(
+      user.organization_id,
+    ),
+  ]);
+  const activeJobByAgentId = new Map<string, AgentActiveJobDto>();
+  for (const job of activeJobs) {
+    if (job.agent_id && !activeJobByAgentId.has(job.agent_id)) {
+      activeJobByAgentId.set(job.agent_id, toActiveJobDto(job));
+    }
+  }
 
   const characterIds = Array.from(
     new Set(
@@ -286,6 +322,7 @@ app.get("/", async (c) => {
       toAgentListItemDto(
         agent,
         agent.character_id ? charMap.get(agent.character_id) : undefined,
+        activeJobByAgentId.get(agent.id) ?? null,
       ),
     ),
   };

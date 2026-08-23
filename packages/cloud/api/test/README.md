@@ -56,6 +56,7 @@ Worker doesn't poison subsequent runs.
 | `TEST_DATABASE_URL` *or* `DATABASE_URL` | The local Postgres the preload seeds + the Worker reads. | local Docker fallback (`db:local:start`) |
 | `PLAYWRIGHT_TEST_AUTH` *(on the Worker)* | Enables `/api/test/auth/session`. | unset; foundation test will fail without it |
 | `PLAYWRIGHT_TEST_AUTH_SECRET` *(on both)* | HS256 secret for the test session JWT. | `playwright-local-auth-secret` |
+| `VITE_LOCAL_DEDICATED_TEST_API_KEY` *(on the Vite app, optional)* | Shows the login page's "Continue with local test account" button, which trades this key for a session via `/api/test/auth/session`. Export the `TEST_API_KEY` the preload minted (or any active key from your local seed); the button stays hidden when unset. | unset |
 | `CRON_SECRET` | For cron-route tests. | `test-cron-secret` |
 
 ## Launch QA fixtures

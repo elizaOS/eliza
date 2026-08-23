@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from manifest.eliza1_manifest import ELIZA_1_TIERS
+from lib.generation_integrity import require_complete_generation
 
 logging.basicConfig(
     level=logging.INFO,
@@ -253,7 +254,14 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
             t1 = time.perf_counter()
             out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<end_of_turn>"])
             elapsed = time.perf_counter() - t1
-            text = out["choices"][0]["text"] if out["choices"] else ""
+            choice = (
+                require_complete_generation(
+                    out["choices"][0], source="test_inagent.simple"
+                )
+                if out["choices"]
+                else None
+            )
+            text = choice["text"] if choice else ""
             ok = _check_tool_call_in_output(text, prompt_spec["expected_tool"])
             if ok:
                 tool_ok += 1
@@ -278,7 +286,14 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
             t1 = time.perf_counter()
             out = llm(prompt_text, max_tokens=128, temperature=0.0, stop=["<end_of_turn>"])
             elapsed = time.perf_counter() - t1
-            text = out["choices"][0]["text"] if out["choices"] else ""
+            choice = (
+                require_complete_generation(
+                    out["choices"][0], source="test_inagent.tool"
+                )
+                if out["choices"]
+                else None
+            )
+            text = choice["text"] if choice else ""
             ok = _check_text_response(text)
             if ok:
                 text_ok += 1
@@ -311,7 +326,14 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
                 system_msg = req.get("system", ELIZA_SYSTEM_PROMPT)
                 prompt_text = _format_prompt_for_llama(system_msg, user_msg)
                 out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<end_of_turn>"])
-                text = out["choices"][0]["text"] if out["choices"] else ""
+                choice = (
+                    require_complete_generation(
+                        out["choices"][0], source="test_inagent.multiturn"
+                    )
+                    if out["choices"]
+                    else None
+                )
+                text = choice["text"] if choice else ""
                 ok = _check_text_response(text)
                 if ok:
                     test_records_ok += 1

@@ -21,7 +21,40 @@ plugins
 !plugins/plugin-sql
 !plugins/plugin-web-search
 !plugins/plugin-workflow
+# Dockerfile.ci's canonical full-agent image links these additional workspace
+# plugins at build time. Keep the agent-server allowlist above narrow while
+# making the same repository context valid for the canonical image too.
+!plugins/plugin-documents
+!plugins/plugin-personal-assistant
+!plugins/plugin-task-coordinator
+!plugins/plugin-agent-orchestrator
+!plugins/plugin-app-control
+!plugins/plugin-commands
+!plugins/plugin-agent-skills
+!plugins/plugin-app-manager
+!plugins/plugin-browser
+!plugins/plugin-capacitor-bridge
+!plugins/plugin-coding-tools
+!plugins/plugin-computeruse
+!plugins/plugin-discord
+!plugins/plugin-imessage
+!plugins/plugin-local-inference
+!plugins/plugin-mcp
+!plugins/plugin-pdf
+!plugins/plugin-registry
+!plugins/plugin-notes
+!plugins/plugin-native-activity-tracker
+!plugins/plugin-telegram
+!plugins/plugin-x
+!plugins/plugin-video
+!plugins/plugin-wallet
+!plugins/plugin-whatsapp
+!plugins/plugin-native-filesystem
+!plugins/plugin-todos
+!plugins/plugin-inbox
+!plugins/plugin-calendar
 packages/app
+!packages/app
 packages/steward
 packages/benchmarks/*
 !packages/benchmarks/lib

@@ -7,6 +7,7 @@ import {
   sharedRestConversationsList,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
 /**
  * /api/v1/eliza/agents/[agentId]/api/conversations
@@ -20,6 +21,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const CORS_METHODS = "GET, POST, OPTIONS";
 
 const app = new Hono<AppEnv>();
+
+app.use("*", proxyLocalDedicatedOrNext);
 
 app.options("/", () => handleCorsOptions(CORS_METHODS));
 

@@ -412,6 +412,11 @@ describe("executeJob dispatch — success path per job type marks the job comple
           expect(completed).toBeDefined();
           expect(completed?.[2]?.result).toBeTruthy();
           expect(completed?.[2]?.completed_at).toBeInstanceOf(Date);
+          expect(completed?.[2]).toMatchObject({
+            error: null,
+            error_storage: "inline",
+            error_key: null,
+          });
         }
         expect(ctx.incrementSpy).not.toHaveBeenCalled();
       } finally {

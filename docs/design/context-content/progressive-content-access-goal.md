@@ -108,7 +108,7 @@ wave until A-D return and the coordinator completes shared-file integration.
 No parallel lane edits `packages/core/src/services/message.ts`; the coordinator
 integrates its summary-persistence, source-reader, and final-projection call sites
 sequentially after A, C, and D return. The coordinator also resolves shared type,
-export, fixture-ratchet, and registry-manifest changes.
+export, fixture-guard, and registry-manifest changes.
 
 A. Lossless continuity and restart
    - Exclusive ownership: `packages/core/src/features/advanced-memory/` summary

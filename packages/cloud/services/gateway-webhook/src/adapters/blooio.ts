@@ -5,49 +5,68 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
-import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
+import { boundedGatewayFetch } from "./bounded-fetch";
+import {
+  type ChatEvent,
+  type PlatformAdapter,
+  PlatformDeliveryError,
+  type WebhookConfig,
+} from "./types";
 
-const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+export const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+const BLOOIO_RESPONSE_MAX_BYTES = 64 * 1024;
+
+const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
+const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
+const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
 
 /**
- * Bound every Blooio API hop so a hung gateway cannot pin the adapter. A
- * caller-provided abort signal is composed with the timeout (either cancelling
- * aborts), not substituted for it.
+ * The single bounded transport for every Blooio API hop — sends, read
+ * receipts, and typing state alike — so a hung or unbounded gateway response
+ * cannot pin the adapter. A caller-provided abort signal is composed with the
+ * owned deadline (whichever fires first cancels), never substituted for it,
+ * and the response body is read under the same deadline and byte ceiling.
  */
 export function blooioFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = BLOOIO_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal
-      ? AbortSignal.any([init.signal, timeoutSignal])
-      : timeoutSignal,
-  });
+  return boundedGatewayFetch(
+    fetch,
+    input,
+    init,
+    timeoutMs,
+    BLOOIO_RESPONSE_MAX_BYTES,
+  );
 }
 
-const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
-const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
-const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
-
-export class BlooioApiResponseError extends Error {
+export class BlooioApiResponseError extends PlatformDeliveryError {
   constructor(
     readonly status: number,
     message: string,
   ) {
-    super(message);
+    super(
+      message,
+      status >= 500 ? "uncertain" : "failed",
+      "DELIVERY_PROVIDER_REJECTED",
+      status === 429,
+      status,
+    );
     this.name = "BlooioApiResponseError";
   }
 }
 
-export class BlooioConfigurationError extends Error {
-  readonly code = "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING";
+export class BlooioConfigurationError extends PlatformDeliveryError {
   readonly context: Readonly<{ setting: string; chatId: string }>;
 
   constructor(chatId: string) {
-    super("Missing fromNumber for Blooio legacy group reply");
+    super(
+      "Missing fromNumber for Blooio legacy group reply",
+      "failed",
+      "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING",
+      false,
+    );
     this.name = "BlooioConfigurationError";
     this.context = {
       setting: "fromNumber",
@@ -168,14 +187,18 @@ function providerSentAtMs(event: BlooioWebhookEvent): number | undefined {
   return Number.isSafeInteger(milliseconds) ? milliseconds : undefined;
 }
 
-const ALLOWED_MEDIA_DOMAINS = [
+// Runtime-local copy of the canonical allowlist in
+// `@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist` (this
+// service must not depend on cloud-shared at runtime); the adapter parity test
+// pins the two to each other.
+export const ALLOWED_MEDIA_DOMAINS = [
   "blooio.com",
   "backend.blooio.com",
   "api.blooio.com",
   "media.blooio.com",
 ];
 
-function isValidMediaUrl(url: string): boolean {
+export function isValidMediaUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;
@@ -201,7 +224,14 @@ async function sendBlooioMessage(
   event: ChatEvent,
   text: string,
 ): Promise<string[]> {
-  if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
+  if (!config.apiKey) {
+    throw new PlatformDeliveryError(
+      "Missing apiKey for Blooio reply",
+      "failed",
+      "DELIVERY_CREDENTIALS_MISSING",
+      false,
+    );
+  }
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${config.apiKey}`,
@@ -251,11 +281,16 @@ async function sendBlooioMessage(
   if (!response.ok) {
     throw new BlooioApiResponseError(
       response.status,
-      `Blooio send error (${response.status}): ${responseText}`,
+      `Blooio rejected delivery (${response.status})`,
     );
   }
   if (!responseText) {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   let result: unknown;
   try {
@@ -263,10 +298,20 @@ async function sendBlooioMessage(
   } catch {
     // error-policy:J3 accepted provider responses must still expose a durable
     // message receipt before the scheduler records the occurrence as fired.
-    throw new Error("Blooio accepted delivery without a valid JSON receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a valid JSON receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   if (!result || typeof result !== "object") {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   const record = result as Record<string, unknown>;
   const id =
@@ -276,7 +321,12 @@ async function sendBlooioMessage(
         ? record.message_id
         : undefined;
   if (!id?.trim()) {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   return [id.trim()];
 }

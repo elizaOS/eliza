@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import random
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,12 @@ from typing import Any
 import re
 
 import httpx
+
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from lib.generation_integrity import require_complete_generation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -155,7 +162,9 @@ async def call_model(
     resp = await client.post(url, json=body, headers=headers, timeout=180)
     resp.raise_for_status()
     data = resp.json()
-    choice = data.get("choices", [{}])[0]
+    choice = require_complete_generation(
+        data.get("choices", [{}])[0], source="adversarial_training.call_model"
+    )
     msg = choice.get("message", {})
     return {
         "content": msg.get("content", "") or "",

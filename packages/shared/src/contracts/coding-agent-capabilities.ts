@@ -97,7 +97,7 @@ export const CODING_AGENT_BACKEND_PREFLIGHTS = {
     discoveryPolicy: "configured-command-or-path",
     commandConfigKey: "ELIZA_GROK_ACP_COMMAND",
     commandResolution: "literal",
-    defaultCommand: "grok agent stdio",
+    defaultCommand: "grok --no-auto-update agent stdio",
   },
 } as const satisfies Readonly<
   Record<CodingAgentBackend, CodingAgentBackendPreflight>

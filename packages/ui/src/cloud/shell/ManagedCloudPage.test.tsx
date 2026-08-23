@@ -4,7 +4,7 @@
  */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +59,14 @@ vi.mock("./cloud-route-registry", async () => {
     getCloudRouteGate: () => undefined,
     listCloudRoutes: () => [
       {
+        path: "cloud",
+        group: "cloud",
+        element: () => {
+          useSetPageHeader({ title: "Overview" });
+          return <div data-testid="cloud-overview" />;
+        },
+      },
+      {
         path: "cloud/billing",
         group: "cloud",
         element: () => {
@@ -94,8 +102,9 @@ function LocationProbe(): React.JSX.Element {
 function renderPage(path: string): void {
   render(
     <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
       <Routes>
-        <Route path="/login" element={<LocationProbe />} />
+        <Route path="/login" element={<div data-testid="login-page" />} />
         <Route path="*" element={<ManagedCloudPage />} />
       </Routes>
     </MemoryRouter>,
@@ -112,6 +121,17 @@ afterEach(() => {
 });
 
 describe("ManagedCloudPage", () => {
+  it("returns nested Cloud routes to the Cloud overview", () => {
+    renderPage("/cloud/billing");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to Cloud overview" }),
+    );
+
+    expect(screen.getByTestId("location").textContent).toBe("/cloud");
+    expect(screen.getByTestId("cloud-overview")).toBeTruthy();
+  });
+
   it("renders a registered /cloud route inside the app for cloud-managed agents", () => {
     renderPage("/cloud/billing");
     expect(screen.getByTestId("billing-page")).toBeTruthy();

@@ -39,6 +39,11 @@ from atroposlib.envs.base import (
 from dotenv import load_dotenv
 from pydantic import Field
 
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generation,
+)
+
 from .evaluation import EvaluationSuite, RolloutDumper
 from .format_validator import FormatValidationResult, validate_response_format
 from .kl_controller import KLConfig, create_kl_controller
@@ -885,19 +890,6 @@ class FeedRLAIFEnv(BaseEnv):
                         add_generation_prompt=True,
                     )
                 )
-                while len(prompt_tokens) > prompt_budget and len(messages) > 2:
-                    if messages[0].get("role") == "system":
-                        messages = [messages[0], *messages[2:]]
-                    else:
-                        messages = messages[1:]
-                    prompt_tokens = _normalize_token_ids(
-                        self.tokenizer.apply_chat_template(
-                            messages,
-                            return_tensors=None,
-                            add_generation_prompt=True,
-                        )
-                    )
-
                 if len(prompt_tokens) > prompt_budget:
                     logger.warning(
                         "Skipping trajectory %s: prompt too long for RL sampling (%s > %s)",
@@ -969,7 +961,23 @@ class FeedRLAIFEnv(BaseEnv):
                     )
                     continue
 
+                complete_choices = []
                 for choice in choices:
+                    try:
+                        complete_choices.append(
+                            require_complete_generation(choice, source="feed_env.rollout")
+                        )
+                    except IncompleteGenerationError as exc:
+                        logger.warning(
+                            "Rejected rollout generation: %s", exc.rejection.as_dict()
+                        )
+                logger.info(
+                    "Rollout generation admission: attempted=%s accepted=%s",
+                    len(choices),
+                    len(complete_choices),
+                )
+
+                for choice in complete_choices:
                     response_content = choice.get("message", {}).get("content", "")
                     finish_reason = choice.get("finish_reason", "stop")
 

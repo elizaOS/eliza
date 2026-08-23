@@ -1,12 +1,15 @@
 /**
- * Provider that surfaces the user's most recent messages across every connected
- * platform: it scans the entity's rooms, pulls the latest messages, and renders
- * them newest-first with source tag, relative time, and speaker label.
+ * Provider that surfaces the user's recent messages and attachment descriptions
+ * across connected platforms. It expands verified linked identities,
+ * intersects their rooms with the agent's durable rooms, and renders the full
+ * eligible cross-room history newest-first with source, time, and speaker
+ * provenance; RECENT_MESSAGES owns the current-room transcript when present.
  * Suppressed inside automation and page-scoped rooms, which carry their own
  * context. Gated to ADMIN (enforced by applyPluginRoleGating).
  */
 import type {
   IAgentRuntime,
+  Media,
   Memory,
   Provider,
   ProviderResult,
@@ -14,7 +17,14 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import {
+  getVerifiedRelatedEntityIds,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  recordOwnerExclusiveSuppression,
+  revalidateOwnerExclusiveDisclosure,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -27,6 +37,21 @@ import {
   roomSourceTag,
 } from "../shared/conversation-format.ts";
 
+function attachmentPromptSummary(attachments: readonly Media[]): string {
+  return attachments
+    .map((attachment) => {
+      const label =
+        attachment.filename ??
+        attachment.title ??
+        attachment.id ??
+        "attachment";
+      const mediaType = attachment.mimeType ?? attachment.contentType;
+      const readableContent = attachment.text ?? attachment.description;
+      return `[attachment: ${toWellFormedUnicode(label)}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${toWellFormedUnicode(readableContent)}` : ""}]`;
+    })
+    .join(" ");
+}
+
 export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
   description:
@@ -34,6 +59,10 @@ export const recentConversationsProvider: Provider = {
   descriptionCompressed:
     "recent message user conversation across connect platform",
   dynamic: true,
+  // Cross-world continuity must be available to the response router itself;
+  // waiting for a memory/messaging context selection is too late for a direct
+  // recall answer. The owner-private audience gate below remains authoritative.
+  alwaysInResponseState: true,
   position: 5,
   relevanceKeywords: getValidationKeywordTerms(
     "provider.recentConversations.relevance",
@@ -69,7 +98,41 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const roomIds = await runtime.getRoomsForParticipant(entityId);
+      // Every result from this provider can disclose another destination's
+      // history. Revalidate the live audience before resolving identities or
+      // reading rooms so a group/thread destination cannot probe private
+      // cross-platform context through either output or query side effects.
+      const disclosure = await revalidateOwnerExclusiveDisclosure(
+        runtime,
+        message,
+      );
+      if (
+        !disclosure.allowed ||
+        disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+      ) {
+        if (!disclosure.allowed) {
+          recordOwnerExclusiveSuppression(message, disclosure.reason);
+        }
+        return { text: "", values: {}, data: {} };
+      }
+
+      const relatedEntityIds = await getVerifiedRelatedEntityIds(
+        runtime,
+        entityId,
+      );
+      const [requesterRoomIds, agentRoomIds] = await Promise.all([
+        runtime.getRoomsForParticipants(relatedEntityIds),
+        runtime.getRoomsForParticipant(runtime.agentId),
+      ]);
+      const agentRooms = new Set(agentRoomIds);
+      const recentMessagesOwnsCurrentRoom = runtime.providers?.some(
+        (provider) => provider.name?.trim().toUpperCase() === "RECENT_MESSAGES",
+      );
+      const roomIds = Array.from(new Set(requesterRoomIds)).filter(
+        (roomId) =>
+          agentRooms.has(roomId) &&
+          (!recentMessagesOwnsCurrentRoom || roomId !== message.roomId),
+      );
       if (!roomIds || roomIds.length === 0) {
         return { text: "", values: {}, data: {} };
       }
@@ -85,24 +148,36 @@ export const recentConversationsProvider: Provider = {
 
       // Sort newest first
       const sorted = memories
-        .filter((m) => m.content.text)
+        .filter(
+          (m) =>
+            Boolean(m.content.text) || (m.content.attachments?.length ?? 0) > 0,
+        )
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
       if (sorted.length === 0) {
         return { text: "", values: {}, data: {} };
       }
 
-      // Resolve room details for display
+      // Resolve source tags in one adapter read. A missing cosmetic tag must
+      // not remove otherwise eligible history from model context.
       const roomCache = new Map<string, Room | null>();
       for (const mem of sorted) {
         const rid = mem.roomId;
         if (rid && !roomCache.has(rid)) {
-          try {
-            roomCache.set(rid, await runtime.getRoom(rid));
-          } catch {
-            roomCache.set(rid, null);
-          }
+          roomCache.set(rid, null);
         }
+      }
+      const resultRoomIds = Array.from(roomCache.keys()) as UUID[];
+      try {
+        for (const room of await runtime.getRoomsByIds(resultRoomIds)) {
+          if (room.id) roomCache.set(room.id, room);
+        }
+      } catch (error) {
+        // error-policy:J4 source tags degrade to untagged while the complete
+        // eligible message set remains visible and diagnostics record failure.
+        runtime.reportError("RecentConversationsProvider.roomTags", error, {
+          roomIds: resultRoomIds,
+        });
       }
 
       const lines: string[] = ["Recent conversations:"];
@@ -112,8 +187,15 @@ export const recentConversationsProvider: Provider = {
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
         const text = toWellFormedUnicode(mem.content.text ?? "");
-        lines.push(`${tag} ${age}${speaker}: ${text}`);
+        const attachments = attachmentPromptSummary(
+          mem.content.attachments ?? [],
+        );
+        lines.push(
+          `${tag} ${age}${speaker}: ${[text, attachments].filter(Boolean).join(" ")}`,
+        );
       }
+
+      markOwnerExclusiveDisclosureUsed(message);
 
       return {
         text: lines.join("\n"),
@@ -124,6 +206,21 @@ export const recentConversationsProvider: Provider = {
             roomId: m.roomId,
             entityId: m.entityId,
             text: m.content.text,
+            attachments: (m.content.attachments ?? []).map((attachment) => ({
+              id: attachment.id,
+              title: attachment.title,
+              source: attachment.source,
+              description: attachment.description,
+              text: attachment.text,
+              contentType: attachment.contentType,
+              mimeType: attachment.mimeType,
+              filename: attachment.filename,
+              size: attachment.size,
+              checksum: attachment.checksum,
+              width: attachment.width,
+              height: attachment.height,
+              duration: attachment.duration,
+            })),
             createdAt: m.createdAt,
           })),
         },

@@ -29,11 +29,8 @@ export {
 // -- Bundled widget component imports ----------------------------------------
 
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
-import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
-import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
 import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-download";
-import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
@@ -44,8 +41,6 @@ import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
-registerBuiltinWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
-registerBuiltinWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
 // Register the todo widget's component so it can be declared on the curated
 // home slot. Idempotent with the plugin's own runtime registration.
 registerBuiltinWidgets(TODO_PLUGIN_WIDGETS);
@@ -125,39 +120,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // The standalone Recent-conversations tile was removed (#10697) - it
   // duplicated the always-present chat overlay. Follow-up-worthy messages now
   // surface as `category: "message"` notifications in the notification rail.
-  // Agent Orchestrator - app runs
-  {
-    id: "agent-orchestrator.apps",
-    pluginId: "agent-orchestrator",
-    slot: "chat-sidebar",
-    label: "App Runs",
-    icon: "Activity",
-    order: 150,
-    defaultEnabled: true,
-    visibility: "fallback",
-  },
-  // Agent Orchestrator - connected coding accounts
-  {
-    id: "agent-orchestrator.accounts",
-    pluginId: "agent-orchestrator",
-    slot: "chat-sidebar",
-    label: "Coding accounts",
-    icon: "Zap",
-    order: 250,
-    defaultEnabled: true,
-    visibility: "fallback",
-  },
-  // Agent Orchestrator - activity
-  {
-    id: "agent-orchestrator.activity",
-    pluginId: "agent-orchestrator",
-    slot: "chat-sidebar",
-    label: "Activity",
-    icon: "Activity",
-    order: 300,
-    defaultEnabled: true,
-    visibility: "fallback",
-  },
   // Todos - the todo plugin's curated LifeOps frontpage widget.
   {
     id: "todo.items",
@@ -253,30 +215,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   //  - goals: merged into the Today (todo.items) card. An at-risk goal renders
   //    as one flagged row inside Today and the card self-publishes the goals
   //    escalation weight. The goals component stays for routed use.
-  // Browser workspace status - surfaces /browser state in the right rail.
-  {
-    id: BROWSER_STATUS_WIDGET.id,
-    pluginId: BROWSER_STATUS_WIDGET.pluginId,
-    slot: "chat-sidebar",
-    label: "Browser",
-    icon: "Globe",
-    order: BROWSER_STATUS_WIDGET.order,
-    defaultEnabled: BROWSER_STATUS_WIDGET.defaultEnabled,
-    // Core app-core surface (browser-workspace), not a loadable plugin - shows
-    // even when the snapshot omits it.
-    visibility: "fallback",
-  },
-  {
-    id: MUSIC_PLAYER_WIDGET.id,
-    pluginId: MUSIC_PLAYER_WIDGET.pluginId,
-    slot: "chat-sidebar",
-    label: "Music",
-    icon: "Music",
-    order: MUSIC_PLAYER_WIDGET.order,
-    defaultEnabled: MUSIC_PLAYER_WIDGET.defaultEnabled,
-    // Core playback surface, not a loadable plugin - always-visible.
-    visibility: "always",
-  },
   {
     id: "music-library.playlists",
     pluginId: "music-library",

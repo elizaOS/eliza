@@ -25,6 +25,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.lib.generation_integrity import require_complete_generation
+
 try:  # noqa: SIM105
     from . import emit, validate as v  # type: ignore[import-not-found]  # noqa: E402
     from .personas import Persona, PERSONAS  # type: ignore[import-not-found]  # noqa: E402
@@ -242,10 +244,13 @@ async def call_openai_compatible(
             continue
         try:
             data = r.json()
-            choice = data["choices"][0]["message"]
-            content = (choice.get("content") or "").strip()
-            reasoning = (choice.get("reasoning") or "").strip()
-            tool_calls = _normalize_response_tool_calls(choice.get("tool_calls"))
+            choice = require_complete_generation(
+                data["choices"][0], source="harness.run"
+            )
+            message = choice["message"]
+            content = (message.get("content") or "").strip()
+            reasoning = (message.get("reasoning") or "").strip()
+            tool_calls = _normalize_response_tool_calls(message.get("tool_calls"))
         except (KeyError, ValueError, IndexError):
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.5, 30)

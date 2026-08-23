@@ -66,6 +66,7 @@ export interface CancelBillableResourceOptions {
   resourceType?: BillableResourceType;
   mode?: "stop" | "delete";
   triggerEnv?: AppEnv["Bindings"];
+  authorizeInfrastructureMutation: () => Promise<void>;
 }
 
 function iso(date: Date | null | undefined): string | null {
@@ -206,7 +207,7 @@ class ActiveBillingService {
       return {
         resourceType: "agent_sandbox",
         resourceId: agent.id,
-        name: agent.agent_name ?? agent.id.slice(0, 8),
+        name: agent.agent_name ?? agent.id,
         status: agent.status,
         billingStatus: agent.billing_status,
         unitPrice,
@@ -291,6 +292,7 @@ class ActiveBillingService {
           container.total_billed,
           "container.total_billed",
         );
+        await options.authorizeInfrastructureMutation();
         const infrastructureAction = await cancelContainerInfrastructure(
           container.id,
           organizationId,
@@ -403,6 +405,7 @@ class ActiveBillingService {
           agent.total_billed,
           "agent_sandbox.total_billed",
         );
+        await options.authorizeInfrastructureMutation();
         const infrastructureAction = await cancelAgentInfrastructure(
           agent.id,
           organizationId,
@@ -419,7 +422,7 @@ class ActiveBillingService {
             resource: {
               resourceType: "agent_sandbox",
               resourceId: agent.id,
-              name: agent.agent_name ?? agent.id.slice(0, 8),
+              name: agent.agent_name ?? agent.id,
               status: "deleted",
               billingStatus: "suspended",
               unitPrice,
@@ -492,7 +495,7 @@ class ActiveBillingService {
             resource: {
               resourceType: "agent_sandbox",
               resourceId: agent.id,
-              name: agent.agent_name ?? agent.id.slice(0, 8),
+              name: agent.agent_name ?? agent.id,
               status: "deleted",
               billingStatus: "suspended",
               unitPrice,
@@ -523,7 +526,7 @@ class ActiveBillingService {
           resource: {
             resourceType: "agent_sandbox",
             resourceId: updated.id,
-            name: updated.agent_name ?? updated.id.slice(0, 8),
+            name: updated.agent_name ?? updated.id,
             status: updated.status,
             billingStatus: updated.billing_status,
             unitPrice,

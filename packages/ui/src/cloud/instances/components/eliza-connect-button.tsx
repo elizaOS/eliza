@@ -19,6 +19,7 @@ export function ElizaConnectButton({ agentId }: Props) {
     <BrandButton
       variant="primary"
       size="sm"
+      className="min-h-touch"
       onClick={() => openWebUIWithPairing(agentId)}
     >
       <ExternalLink className="h-3.5 w-3.5" />

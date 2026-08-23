@@ -10,7 +10,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import {
-  personalDedicatedAgentApiBase,
+  personalDedicatedClientApiBase,
   personalSharedAgent,
 } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -29,9 +29,10 @@ app.get("/", async (c) => {
       agent.id,
     );
     const dedicatedApiBase = dedicated
-      ? personalDedicatedAgentApiBase(
+      ? personalDedicatedClientApiBase(
           dedicated,
           c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+          new URL(c.req.url).origin,
         )
       : null;
     return c.json({

@@ -23,7 +23,7 @@
  * OUTCOME (not echo): definitionCountDelta{delta:0} proves the assistant did NOT
  * push a task/schedule against the owner's explicit "not right now", and the
  * judge grades the warm, non-productivity, non-clinical stand-down. The
- * load-bearing negative (delta:0) keeps this off the all-actionCalled ratchet
+ * load-bearing negative (delta:0) keeps this off the all-actionCalled guard
  * and makes "stand down, don't productivity-push" fail for the real reason.
  */
 import { scenario } from "@elizaos/scenario-runner/schema";

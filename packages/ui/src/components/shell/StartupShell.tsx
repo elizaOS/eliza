@@ -37,8 +37,7 @@ export const STARTUP_SPLASH_DELAY_MS = STARTUP_TIMING_POLICY.splashDelayMs;
 /**
  * True only after `active` has stayed `true` continuously for `delayMs`.
  * Flips back to `false` the instant `active` goes `false`. The timer lives in
- * an effect (never at render time) so the render path stays deterministic and
- * the `audit:ui-determinism` gate stays green.
+ * an effect (never at render time) so the render path stays deterministic.
  */
 function useDelayElapsed(active: boolean, delayMs: number): boolean {
   const [elapsed, setElapsed] = useState(false);

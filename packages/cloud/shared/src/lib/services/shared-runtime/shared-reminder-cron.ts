@@ -1,14 +1,27 @@
-/** Finds due Shared reminders, atomically claims them, and dispatches through the connector gateway. */
+/**
+ * Finds due Shared reminders, atomically claims them, and dispatches through
+ * the connector gateway. The Dedicated cutover deliver route reuses the same
+ * dispatcher, so every group delivery passes through the binding delivery
+ * lease here (authorize, commit before egress, receipt after) regardless of
+ * which runtime requested the fire; the lease is the single outbound-send
+ * authority for a group binding and is shared with inbound group turns.
+ */
 
 import {
+  type DispatchResult,
+  isSharedGroupReminderDelivery,
   listDueScheduledTaskRefs,
   listRecoverableScheduledTaskRefs,
   parseSharedReminderDelivery,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
   SHARED_REMINDER_MAX_TEXT_LENGTH,
+  type SharedGroupReminderDelivery,
   type SharedReminderDelivery,
+  sharedGroupReminderMessageText,
 } from "@elizaos/plugin-scheduling/edge";
+import { v5 as uuidv5 } from "uuid";
+import { personalSharedGroupsRepository } from "../../../db/repositories/personal-shared-groups";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { logger } from "../../utils/logger";
 import { coordinateSharedPushDispatch } from "./conversation-coordinator";
@@ -76,6 +89,77 @@ interface SharedReminderDispatcherOptions {
   telegramDispatch?: SharedTelegramReminderDispatch;
 }
 
+/**
+ * Namespace for the deterministic delivery lease token of a group reminder
+ * fire. Deriving the token from the dispatch idempotency key lets a recovered
+ * fire (worker crash between commit and receipt) re-authorize the exact
+ * committed source/token pair instead of waiting out the lease recovery
+ * horizon, while two distinct fires can never share a token.
+ */
+const GROUP_REMINDER_LEASE_NAMESPACE = "4f0d4d6e-0c4a-5a8f-9c3e-2a8c1c5d7e11";
+
+function groupReminderLeaseToken(idempotencyKey: string): string {
+  return uuidv5(idempotencyKey, GROUP_REMINDER_LEASE_NAMESPACE);
+}
+
+type GroupDispatchFailure = Extract<DispatchResult, { ok: false }>;
+
+/**
+ * Classifies a refused group delivery lease without any connector egress.
+ * The binding is read once more: if it is gone, inactive, or no longer the
+ * authority generation / provider chat the reminder was scheduled under, the
+ * send is terminally not deliverable. Otherwise the binding is still live and
+ * the slot is only held by a concurrent group delivery (an inbound turn's
+ * lease lasts at most 90s), so the fire is retried on the same step shortly.
+ */
+async function refusedGroupDelivery(
+  delivery: SharedGroupReminderDelivery,
+  stage: "authorize" | "commit",
+): Promise<GroupDispatchFailure> {
+  const binding = await personalSharedGroupsRepository.findBindingById(
+    delivery.authority.bindingId,
+  );
+  const stillAuthoritative =
+    binding !== null &&
+    binding.state === "active" &&
+    binding.owner_user_id === delivery.authority.ownerUserId &&
+    binding.personal_agent_id === delivery.authority.personalAgentId &&
+    binding.authority_version === delivery.authority.version &&
+    binding.platform === delivery.platform &&
+    binding.project === delivery.project &&
+    binding.connector_account_id === delivery.connectorAccountId &&
+    binding.provider_chat_id === delivery.chatId;
+  if (!stillAuthoritative) {
+    return {
+      ok: false,
+      reason: "unknown_recipient",
+      userActionable: true,
+      acceptance: "not_accepted",
+      message:
+        "This group is no longer linked to Eliza under the authority that scheduled the reminder, so the group reminder was not delivered.",
+    };
+  }
+  return {
+    ok: false,
+    reason: "rate_limited",
+    retryAfterMinutes: 1,
+    userActionable: false,
+    acceptance: "not_accepted",
+    message: `Group delivery slot is held by a concurrent group send (${stage}); the reminder will be retried.`,
+  };
+}
+
+/** The connector gateway only accepts the provider-addressable delivery fields. */
+function gatewayWireDelivery(delivery: SharedReminderDelivery) {
+  return isSharedGroupReminderDelivery(delivery)
+    ? {
+        platform: delivery.platform,
+        project: delivery.project,
+        chatId: delivery.chatId,
+      }
+    : delivery;
+}
+
 async function readGatewayDeliveryResponse(
   response: Response,
 ): Promise<GatewayDeliveryResponse | undefined> {
@@ -100,7 +184,11 @@ export function sharedReminderDispatcher(
       if (typeof idempotencyKey !== "string" || !idempotencyKey) {
         throw new Error("Shared reminder dispatch idempotency key is missing");
       }
-      const text = record.output?.fallback?.body ?? record.promptInstructions;
+      const groupDelivery = isSharedGroupReminderDelivery(delivery) ? delivery : undefined;
+      const body = record.output?.fallback?.body ?? record.promptInstructions;
+      // Creation reserved this prefix inside the connector limit, so the
+      // guard below only trips for rows written before that budget existed.
+      const text = groupDelivery ? sharedGroupReminderMessageText(groupDelivery, body) : body;
       if (text.length > SHARED_REMINDER_MAX_TEXT_LENGTH) {
         return {
           ok: false,
@@ -109,6 +197,36 @@ export function sharedReminderDispatcher(
           acceptance: "not_accepted",
           message: `Reminder text exceeds the ${SHARED_REMINDER_MAX_TEXT_LENGTH}-character connector limit.`,
         };
+      }
+      // A group fire is one more outbound group delivery and takes the same
+      // per-binding lease as an inbound turn: authorize fences on the stored
+      // authority generation and the live binding; commit pins the slot
+      // immediately before egress; the receipt reconciles it afterwards.
+      const groupLease = groupDelivery
+        ? {
+            authority: groupDelivery.authority,
+            platform: groupDelivery.platform,
+            project: groupDelivery.project,
+            connectorAccountId: groupDelivery.connectorAccountId,
+            providerChatId: groupDelivery.chatId,
+            sourceMessageId: idempotencyKey,
+            leaseToken: groupReminderLeaseToken(idempotencyKey),
+          }
+        : undefined;
+      if (groupDelivery && groupLease) {
+        const lease = await personalSharedGroupsRepository.authorizeDelivery({
+          ...groupLease,
+          // An owner-scheduled reminder is an explicit request, never ambient
+          // chatter, so a mention_only policy does not suppress it.
+          invocation: "command",
+        });
+        if (!lease.authorized) {
+          return await refusedGroupDelivery(groupDelivery, "authorize");
+        }
+        const committed = await personalSharedGroupsRepository.commitDelivery(groupLease);
+        if (!committed) {
+          return await refusedGroupDelivery(groupDelivery, "commit");
+        }
       }
       let acceptedAt: string | undefined;
       let providerMessageIds: string[] = [];
@@ -147,7 +265,7 @@ export function sharedReminderDispatcher(
               "X-Internal-Secret": secret,
             },
             body: JSON.stringify({
-              ...delivery,
+              ...gatewayWireDelivery(delivery),
               text,
               idempotencyKey,
             }),
@@ -253,7 +371,35 @@ export function sharedReminderDispatcher(
           message: "Reminder delivery returned no verifiable provider receipt.",
         };
       }
-      if (agentId && isPersonalSharedAgentId(agentId)) {
+      if (groupLease) {
+        try {
+          const receipt = await personalSharedGroupsRepository.recordDeliveryReceipts({
+            ...groupLease,
+            providerMessageIds,
+          });
+          if (!receipt.recorded) {
+            // The committed slot stays pinned to this fire until the lease
+            // recovery horizon releases it; surface that rather than hide it.
+            logger.warn("[SharedReminders] group delivery receipt was not recorded", {
+              taskId: record.taskId,
+              bindingId: groupLease.authority.bindingId,
+              sourceMessageId: idempotencyKey,
+              providerMessageIds,
+            });
+          }
+        } catch (error) {
+          // error-policy:J7 the provider already accepted the send; a receipt
+          // store failure is diagnosed and reported, never turned into a refire.
+          logger.warn("[SharedReminders] group delivery receipt recording failed", {
+            taskId: record.taskId,
+            bindingId: groupLease.authority.bindingId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      // A group reminder already landed in the group thread; a DM-styled push
+      // notification to the owner's phone would misattribute the destination.
+      if (!groupDelivery && agentId && isPersonalSharedAgentId(agentId)) {
         const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
         if (!namespace) {
           logger.warn("[SharedReminders] mobile push coordinator is unavailable", {
@@ -292,8 +438,9 @@ export function sharedReminderDispatcher(
       return {
         ok: true,
         channelKey: "current_dm",
-        target:
-          delivery.platform === "telegram"
+        target: isSharedGroupReminderDelivery(delivery)
+          ? delivery.chatId
+          : delivery.platform === "telegram"
             ? delivery.chatId
             : delivery.platform === "blooio"
               ? delivery.phoneNumber

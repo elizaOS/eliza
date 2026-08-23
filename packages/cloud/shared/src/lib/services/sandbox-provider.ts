@@ -23,7 +23,7 @@ export async function createSandboxProvider(): Promise<SandboxProvider> {
     const { MemorySandboxProvider } = await import("./memory-sandbox-provider");
     return new MemorySandboxProvider();
   }
-  if (shouldUseLocalDockerProvider()) {
+  if (usesLocalDockerSandboxProvider()) {
     const { LocalDockerSandboxProvider } = await import("./local-docker-sandbox-provider");
     return new LocalDockerSandboxProvider();
   }
@@ -40,8 +40,7 @@ function shouldUseMemoryTestProvider(): boolean {
   );
 }
 
-function shouldUseLocalDockerProvider(): boolean {
-  const env = process.env;
+export function usesLocalDockerSandboxProvider(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.ELIZA_LOCAL_DOCKER_PROVIDER === "1") return true;
   if (env.ENVIRONMENT === "local") {
     const hasSshKey =

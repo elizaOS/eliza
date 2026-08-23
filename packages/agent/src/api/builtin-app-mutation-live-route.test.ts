@@ -23,8 +23,8 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { startApiServer } from "./server.ts";
 
-const TEST_APP = "ratchet-proof";
-const TEST_PLUGIN = "@test/ratchet-proof";
+const TEST_APP = "guard-proof";
+const TEST_PLUGIN = "@test/guard-proof";
 
 type ApiServer = Awaited<ReturnType<typeof startApiServer>>;
 
@@ -70,7 +70,7 @@ async function invokeAppStop(
     agentId: runtime.agentId,
     entityId: runtime.agentId,
     roomId,
-    content: { text: "stop the ratchet proof app" },
+    content: { text: "stop the guard proof app" },
   } as Memory;
   const result = await requireAction(runtime, "APP").handler(
     runtime,
@@ -137,11 +137,11 @@ async function seedInstalledApp(root: string): Promise<void> {
           TEST_APP,
           {
             name: TEST_APP,
-            gitRepo: "test/ratchet-proof",
-            gitUrl: "https://example.test/ratchet-proof.git",
+            gitRepo: "test/guard-proof",
+            gitUrl: "https://example.test/guard-proof.git",
             directory: null,
             description: "Real APP stop route fixture.",
-            homepage: "https://example.test/ratchet-proof",
+            homepage: "https://example.test/guard-proof",
             topics: ["app", "test"],
             stars: 0,
             language: "TypeScript",
@@ -159,10 +159,10 @@ async function seedInstalledApp(root: string): Promise<void> {
             supports: { v0: false, v1: false, v2: true },
             kind: "app",
             appMeta: {
-              displayName: "Ratchet Proof",
+              displayName: "Guard Proof",
               category: "tool",
               launchType: "connect",
-              launchUrl: "https://example.test/ratchet-proof",
+              launchUrl: "https://example.test/guard-proof",
               icon: null,
               heroImage: null,
               capabilities: [],
@@ -180,7 +180,7 @@ async function seedInstalledApp(root: string): Promise<void> {
   process.env.ELIZA_CONFIG_PATH = configPath;
   process.env.ELIZA_PERSIST_CONFIG_PATH = configPath;
   process.env.ELIZA_API_BIND_HOST = "127.0.0.1";
-  process.env.ELIZA_API_TOKEN = "ratchet-live-route-token";
+  process.env.ELIZA_API_TOKEN = "guard-live-route-token";
   process.env.ELIZA_WORKSPACE_ROOT = path.resolve(
     import.meta.dirname,
     "../../../..",
@@ -193,7 +193,7 @@ afterEach(restoreEnvironment);
 describe("My Apps semantic route parity (#16944)", () => {
   it("stops a real app run and resolves Cloud Apps through VIEWS.show", async () => {
     snapshotEnvironment();
-    const root = await mkdtemp(path.join(tmpdir(), "eliza-app-stop-ratchet-"));
+    const root = await mkdtemp(path.join(tmpdir(), "eliza-app-stop-guard-"));
     let runtime: AgentRuntime | null = null;
     let api: ApiServer | null = null;
     try {
@@ -240,7 +240,7 @@ describe("My Apps semantic route parity (#16944)", () => {
         `http://127.0.0.1:${api.port}/api/views/current`,
         {
           headers: {
-            Authorization: "Bearer ratchet-live-route-token",
+            Authorization: "Bearer guard-live-route-token",
           },
         },
       );

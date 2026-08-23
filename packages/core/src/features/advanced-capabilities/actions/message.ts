@@ -7,17 +7,24 @@
  * search, list_channels, list_servers, react, edit, delete, pin, join, leave,
  * get_user) call MessageConnector hooks directly. read_with_contact resolves a
  * person via the relationships graph and views their conversations across every
- * connected platform. Triage / inbox / draft ops delegate to the triage actions
- * in features/messaging/triage.
+ * connected platform. list_worlds/list_rooms use the durable runtime topology,
+ * verified identity clusters, and owner-private disclosure revalidation. Triage /
+ * inbox / draft ops delegate to the triage actions in features/messaging/triage.
  */
 
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
+import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
+import {
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+	revalidateOwnerExclusiveDisclosure,
+} from "../../../security/trusted-delivery-audience.ts";
 import {
 	resolveMutedTargetFlags,
 	resolveMutedWorldFlags,
@@ -41,6 +48,7 @@ import type {
 	State,
 	TargetInfo,
 	UUID,
+	World,
 } from "../../../types/index.ts";
 import {
 	buildContentReference,
@@ -92,6 +100,8 @@ export const MESSAGE_OPS = [
 	"list_channels",
 	"list_servers",
 	"list_connections",
+	"list_worlds",
+	"list_rooms",
 	"join",
 	"leave",
 	"react",
@@ -113,12 +123,18 @@ export const MESSAGE_OPS = [
 
 export type MessageOperation = (typeof MESSAGE_OPS)[number];
 
-const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
+const MESSAGE_CONTEXTS = [
+	"messaging",
+	"email",
+	"contacts",
+	"connectors",
+	"world",
+];
 
 const MESSAGE_DESCRIPTION =
-	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts. Use read_message to page an exact provider message or email body after a compact inbox result. Public feed publishing uses POST.";
+	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft connections platforms reachable";
+	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -215,6 +231,10 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	connected_platforms: "list_connections",
 	where_am_i_connected: "list_connections",
 	what_am_i_connected_to: "list_connections",
+	search_worlds: "list_worlds",
+	find_worlds: "list_worlds",
+	search_rooms: "list_rooms",
+	find_rooms: "list_rooms",
 	react_to_message: "react",
 	reaction: "react",
 	edit_message: "edit",
@@ -4077,6 +4097,289 @@ async function handleListConnections(
 }
 
 // ---------------------------------------------------------------------------
+// op=list_worlds / list_rooms — durable, identity-cluster-scoped topology.
+//
+// Connector list hooks describe what a provider can currently enumerate.
+// These operations answer a different question from the runtime's canonical
+// stores: which worlds and rooms this verified person has actually shared with
+// this agent. Cross-world topology is private continuity metadata, so even an
+// ADMIN caller must arrive through a freshly revalidated owner-private room.
+// ---------------------------------------------------------------------------
+
+type AuthorizedTopology = {
+	worlds: World[];
+	rooms: Room[];
+};
+
+type ExplicitPage<T> = {
+	items: T[];
+	offset: number;
+	total: number;
+	nextOffset: number | null;
+};
+
+function explicitPage<T>(items: T[], params: ParamRecord): ExplicitPage<T> {
+	const rawOffset = numberParam(params.offset);
+	const rawLimit = numberParam(params.limit);
+	const offset = Math.max(0, Math.floor(rawOffset ?? 0));
+	const start = Math.min(offset, items.length);
+	const end =
+		rawLimit === undefined
+			? items.length
+			: Math.min(items.length, start + Math.max(1, Math.floor(rawLimit)));
+	return {
+		items: items.slice(start, end),
+		offset: start,
+		total: items.length,
+		nextOffset: end < items.length ? end : null,
+	};
+}
+
+function topologySearchText(value: unknown): string {
+	return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function matchesTopologyQuery(
+	query: string,
+	values: Array<string | undefined>,
+): boolean {
+	if (!query) return true;
+	return values.some((value) => value?.toLowerCase().includes(query));
+}
+
+async function loadAuthorizedTopology(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<AuthorizedTopology | ActionResult> {
+	if (!message.entityId) {
+		return opFailure(
+			"list_worlds",
+			"REQUESTER_IDENTITY_REQUIRED",
+			"World and room discovery requires a verified requester identity.",
+		);
+	}
+
+	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
+	if (
+		!disclosure.allowed ||
+		disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+	) {
+		return opFailure(
+			"list_worlds",
+			"PRIVATE_DESTINATION_REQUIRED",
+			"Cross-world continuity is available only in a revalidated owner-private conversation.",
+			{
+				reason: disclosure.allowed
+					? "invalid_disclosure_basis"
+					: disclosure.reason,
+			},
+		);
+	}
+
+	const requesterEntityIds = await getVerifiedRelatedEntityIds(
+		runtime,
+		message.entityId,
+	);
+	const [requesterRoomLists, agentRoomIds] = await Promise.all([
+		Promise.all(
+			requesterEntityIds.map((entityId) =>
+				runtime.getRoomsForParticipant(entityId),
+			),
+		),
+		runtime.getRoomsForParticipant(runtime.agentId),
+	]);
+	const agentRooms = new Set(agentRoomIds);
+	const sharedRoomIds = Array.from(new Set(requesterRoomLists.flat())).filter(
+		(roomId) => agentRooms.has(roomId),
+	);
+	const rooms =
+		sharedRoomIds.length > 0 ? await runtime.getRoomsByIds(sharedRoomIds) : [];
+	const worldIds = Array.from(
+		new Set(
+			rooms
+				.map((room) => room.worldId)
+				.filter((worldId): worldId is UUID => worldId !== undefined),
+		),
+	);
+	const worlds =
+		worldIds.length > 0 ? await runtime.getWorldsByIds(worldIds) : [];
+	// The topology result can now influence model text. Latch the turn so
+	// streaming remains suppressed and the final delivery seam revalidates the
+	// destination after this read, including while the planner is still running.
+	markOwnerExclusiveDisclosureUsed(message);
+	return { worlds, rooms };
+}
+
+async function handleListWorlds(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const topology = await loadAuthorizedTopology(runtime, message);
+	if ("success" in topology) return topology;
+	const query = topologySearchText(params.query);
+	const source = topologySearchText(params.source);
+	const roomsByWorld = new Map<UUID, Room[]>();
+	for (const room of topology.rooms) {
+		if (!room.worldId) continue;
+		const existing = roomsByWorld.get(room.worldId) ?? [];
+		existing.push(room);
+		roomsByWorld.set(room.worldId, existing);
+	}
+
+	const matches = topology.worlds
+		.map((world) => {
+			const sharedRooms = roomsByWorld.get(world.id) ?? [];
+			const sources = Array.from(
+				new Set(sharedRooms.map((room) => room.source)),
+			).sort();
+			return {
+				worldId: world.id,
+				name: world.name ?? null,
+				messageServerId: world.messageServerId ?? null,
+				sources,
+				sharedRoomCount: sharedRooms.length,
+			};
+		})
+		.filter(
+			(world) =>
+				(!source ||
+					world.sources.some(
+						(candidate) => candidate.toLowerCase() === source,
+					)) &&
+				matchesTopologyQuery(query, [
+					world.worldId,
+					world.name ?? undefined,
+					world.messageServerId ?? undefined,
+					...world.sources,
+				]),
+		)
+		.sort(
+			(left, right) =>
+				(left.name ?? left.worldId).localeCompare(
+					right.name ?? right.worldId,
+				) || left.worldId.localeCompare(right.worldId),
+		);
+	const page = explicitPage(matches, params);
+	const lines = page.items.map(
+		(world) =>
+			`- ${world.name ?? "Unnamed world"} (worldId=${world.worldId}, sources=${world.sources.join(",") || "unknown"}, sharedRooms=${world.sharedRoomCount})`,
+	);
+	return opSuccess(
+		"list_worlds",
+		[
+			`Authorized worlds: ${page.items.length} returned of ${page.total}.`,
+			...lines,
+			...(page.nextOffset === null
+				? []
+				: [`Continue with offset=${page.nextOffset}.`]),
+		].join("\n"),
+		{
+			query: query || null,
+			source: source || null,
+			worlds: page.items,
+			offset: page.offset,
+			total: page.total,
+			nextOffset: page.nextOffset,
+		},
+	);
+}
+
+async function handleListRooms(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const topology = await loadAuthorizedTopology(runtime, message);
+	if ("success" in topology) {
+		return {
+			...topology,
+			data: { ...(topology.data ?? {}), operation: "list_rooms" },
+		};
+	}
+	const explicitWorldId = textParam(params.worldId);
+	if (explicitWorldId && !isUuidLike(explicitWorldId)) {
+		return opFailure(
+			"list_rooms",
+			"INVALID_WORLD_ID",
+			`worldId "${explicitWorldId}" is not a valid UUID.`,
+		);
+	}
+	const currentRoom = explicitWorldId
+		? null
+		: await runtime.getRoom(message.roomId);
+	const worldId = (explicitWorldId as UUID | undefined) ?? currentRoom?.worldId;
+	if (!worldId) {
+		return opFailure(
+			"list_rooms",
+			"WORLD_ID_REQUIRED",
+			"MESSAGE op=list_rooms requires worldId when the current room has no world.",
+		);
+	}
+	if (!topology.worlds.some((world) => world.id === worldId)) {
+		return opFailure(
+			"list_rooms",
+			"WORLD_NOT_AUTHORIZED",
+			`World ${worldId} is not associated with the verified requester and this agent.`,
+			{ worldId },
+		);
+	}
+	const query = topologySearchText(params.query);
+	const source = topologySearchText(params.source);
+	const matches = topology.rooms
+		.filter(
+			(room) =>
+				room.worldId === worldId &&
+				(!source || room.source.toLowerCase() === source) &&
+				matchesTopologyQuery(query, [
+					room.id,
+					room.name,
+					room.source,
+					room.channelId,
+					room.serverId,
+				]),
+		)
+		.map((room) => ({
+			roomId: room.id,
+			worldId,
+			name: room.name ?? null,
+			source: room.source,
+			type: room.type,
+			channelId: room.channelId ?? null,
+			serverId: room.serverId ?? null,
+		}))
+		.sort(
+			(left, right) =>
+				(left.name ?? left.roomId).localeCompare(right.name ?? right.roomId) ||
+				left.roomId.localeCompare(right.roomId),
+		);
+	const page = explicitPage(matches, params);
+	const lines = page.items.map(
+		(room) =>
+			`- ${room.name ?? "Unnamed room"} (roomId=${room.roomId}, source=${room.source}, type=${room.type})`,
+	);
+	return opSuccess(
+		"list_rooms",
+		[
+			`Authorized rooms in world ${worldId}: ${page.items.length} returned of ${page.total}.`,
+			...lines,
+			...(page.nextOffset === null
+				? []
+				: [`Continue with offset=${page.nextOffset}.`]),
+		].join("\n"),
+		{
+			worldId,
+			query: query || null,
+			source: source || null,
+			rooms: page.items,
+			offset: page.offset,
+			total: page.total,
+			nextOffset: page.nextOffset,
+		},
+	);
+}
+
+// ---------------------------------------------------------------------------
 // op=join / leave
 // ---------------------------------------------------------------------------
 
@@ -4493,7 +4796,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		name: "action",
 		description:
 			`Message action. One of: ${MESSAGE_OPS.join(", ")}. ` +
-			"list_connections — every messaging platform/server this agent is currently connected to. Use to answer where you are reachable / what platforms or accounts you're on; never assume you are limited to one platform.",
+			"list_connections — every connected messaging platform/account. list_worlds — durable worlds shared by this verified requester and the agent. list_rooms — durable shared rooms in the current world or an authorized worldId.",
 		required: false,
 		schema: { type: "string", enum: [...MESSAGE_OPS] },
 	},
@@ -4508,6 +4811,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"search",
 			"list_channels",
 			"list_servers",
+			"list_worlds",
+			"list_rooms",
 			"join",
 			"leave",
 			"react",
@@ -4525,6 +4830,14 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"manage",
 			"read_message",
 		],
+		schema: { type: "string" },
+	},
+	{
+		name: "worldId",
+		description:
+			"For op=list_rooms, an exact world UUID returned by list_worlds. Omit it to inspect the current room's world.",
+		required: false,
+		subactions: ["list_rooms"],
 		schema: { type: "string" },
 	},
 	{
@@ -4867,9 +5180,18 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "query",
-		description: "Search term for op=search or op=search_inbox.",
+		description:
+			"Search term for op=search, search_inbox, list_worlds, or list_rooms.",
 		required: false,
-		subactions: ["search", "search_inbox", "draft_reply", "respond", "manage"],
+		subactions: [
+			"search",
+			"search_inbox",
+			"draft_reply",
+			"respond",
+			"manage",
+			"list_worlds",
+			"list_rooms",
+		],
 		schema: { type: "string" },
 	},
 	{
@@ -5012,9 +5334,9 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "offset",
 		description:
-			"Zero-based range offset for read_message, or UTF-8 byte offset for read_channel with a stored messageId.",
+			"Zero-based range offset for read_message/list_worlds/list_rooms, or UTF-8 byte offset for read_channel with a stored messageId.",
 		required: false,
-		subactions: ["read_channel", "read_message"],
+		subactions: ["read_channel", "read_message", "list_worlds", "list_rooms"],
 		schema: { type: "number", minimum: 0 },
 	},
 	{
@@ -5115,6 +5437,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"list_inbox",
 			"search_inbox",
 			"read_message",
+			"list_worlds",
+			"list_rooms",
 		],
 		schema: { type: "number" },
 	},
@@ -5238,13 +5562,20 @@ export const messageAction: Action = {
 	description: MESSAGE_DESCRIPTION,
 	descriptionCompressed: MESSAGE_COMPRESSED,
 	routingHint:
-		"send/read/search/triage messages on a connector or channel, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
+		"send/read/search/triage messages on a connector or channel, discover authorized worlds/rooms, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
 	contexts: MESSAGE_CONTEXTS,
 	roleGate: { minRole: "ADMIN" },
 	parameters: MESSAGE_PARAMETERS,
 	examples: (spec?.examples ?? []) as ActionExample[][],
-	validate: async (runtime, message, state) => {
+	validate: async (runtime, message, state, options) => {
 		refreshDescriptions(messageAction, runtime);
+		const explicitOp = inferOp(paramsFromOptions(options));
+		if (explicitOp === "list_worlds" || explicitOp === "list_rooms") {
+			// Scenario and API callers may invoke an explicit topology read without
+			// a model-composed routing state. The handlers still revalidate the
+			// owner-private audience and authorized room intersection themselves.
+			return true;
+		}
 		return hasActionContext(message, state, {
 			contexts: MESSAGE_CONTEXTS,
 		});
@@ -5270,6 +5601,10 @@ export const messageAction: Action = {
 				return handleListServers(runtime, message, state, params);
 			case "list_connections":
 				return handleListConnections(runtime, message, state, params);
+			case "list_worlds":
+				return handleListWorlds(runtime, message, params);
+			case "list_rooms":
+				return handleListRooms(runtime, message, params);
 			case "join":
 			case "leave":
 				return handleJoinLeave(runtime, message, state, params, op);

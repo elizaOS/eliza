@@ -101,4 +101,8 @@ describe("registerTextInferenceModels — chat-brain arbitration (#10819)", () =
       expect(models).not.toHaveProperty(slot);
     }
   });
+
+  it("declares the host routing flag in plugin config so runtime settings retain it", () => {
+    expect(elizaOSCloudPlugin.config).toHaveProperty("ELIZAOS_CLOUD_USE_INFERENCE");
+  });
 });

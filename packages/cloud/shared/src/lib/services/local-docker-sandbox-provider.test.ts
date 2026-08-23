@@ -7,7 +7,12 @@
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
-import { sandboxBridgeFetch } from "./local-docker-sandbox-provider";
+import {
+  collectLocalDockerLlmPassthrough,
+  parseLocalDockerBridgeGatewayCidrs,
+  resolveLocalDockerCloudApiBaseUrl,
+  sandboxBridgeFetch,
+} from "./local-docker-sandbox-provider";
 
 const BRIDGE_URL = "http://127.0.0.1:30001/bridge";
 const originalFetch = globalThis.fetch;
@@ -211,5 +216,79 @@ describe("sandboxBridgeFetch", () => {
       code: "LOCAL_SANDBOX_BRIDGE_RESPONSE_TOO_LARGE",
     });
     expect(cancelled).toBe(true);
+  });
+});
+
+/** Verifies local containers receive explicit provider configuration without replacing sandbox values. */
+
+describe("collectLocalDockerLlmPassthrough", () => {
+  test("passes Cerebras key, base, and model roles to the real container", () => {
+    expect(
+      collectLocalDockerLlmPassthrough(
+        {
+          CEREBRAS_API_KEY: "test-cerebras-key",
+          CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+          CEREBRAS_MODEL: "gemma-4-31b",
+          CEREBRAS_SMALL_MODEL: "gemma-4-31b",
+          CEREBRAS_LARGE_MODEL: "gemma-4-31b",
+        },
+        {},
+      ),
+    ).toEqual({
+      CEREBRAS_API_KEY: "test-cerebras-key",
+      CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_MODEL: "gemma-4-31b",
+      CEREBRAS_SMALL_MODEL: "gemma-4-31b",
+      CEREBRAS_LARGE_MODEL: "gemma-4-31b",
+    });
+  });
+
+  test("keeps a sandbox-owned Cerebras model authoritative", () => {
+    expect(
+      collectLocalDockerLlmPassthrough(
+        { CEREBRAS_MODEL: "host-model" },
+        { CEREBRAS_MODEL: "sandbox-model" },
+      ),
+    ).toEqual({});
+  });
+});
+
+describe("parseLocalDockerBridgeGatewayCidrs", () => {
+  test("admits only the exact IPv4 and IPv6 bridge gateways", () => {
+    expect(parseLocalDockerBridgeGatewayCidrs("172.17.0.1\nfd00::1\n172.17.0.1\n")).toBe(
+      "172.17.0.1/32,fd00::1/128",
+    );
+  });
+
+  test("fails closed when Docker omits or corrupts the gateway", () => {
+    expect(() => parseLocalDockerBridgeGatewayCidrs("\n")).toThrow("did not report a gateway");
+    expect(() => parseLocalDockerBridgeGatewayCidrs("not-an-ip\n")).toThrow("invalid gateway");
+  });
+});
+
+describe("resolveLocalDockerCloudApiBaseUrl", () => {
+  test("pins local pairing to the isolated Worker v1 base", () => {
+    expect(
+      resolveLocalDockerCloudApiBaseUrl({
+        ELIZA_CLOUD_LOCAL_API_URL: "http://127.0.0.1:18787",
+        NEXT_PUBLIC_API_URL: "https://cloud.eliza.app/api/v1",
+      }),
+    ).toBe("http://127.0.0.1:18787/api/v1");
+    expect(
+      resolveLocalDockerCloudApiBaseUrl({
+        NEXT_PUBLIC_API_URL: "http://localhost:8787/api/v1",
+      }),
+    ).toBe("http://localhost:8787/api/v1");
+  });
+
+  test("fails closed instead of exchanging local tokens with a remote Cloud", () => {
+    expect(() => resolveLocalDockerCloudApiBaseUrl({})).toThrow(
+      "ELIZA_CLOUD_LOCAL_API_URL is required",
+    );
+    expect(() =>
+      resolveLocalDockerCloudApiBaseUrl({
+        ELIZA_CLOUD_LOCAL_API_URL: "https://cloud.eliza.app",
+      }),
+    ).toThrow("must use a loopback HTTP origin");
   });
 });

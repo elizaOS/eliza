@@ -354,6 +354,22 @@ describe("StewardLoginSection phone login", () => {
     expect(returnToSpies.resolve).not.toHaveBeenCalled();
   });
 
+  it("keeps login hidden when callback-error cleanup starts session recovery", async () => {
+    sessionSpies.storedToken = "older-session-token";
+    sessionSpies.sync.mockReturnValueOnce(new Promise<void>(() => undefined));
+
+    renderSection("/login?error=oauth_failed&reason=server_error");
+
+    await waitFor(() =>
+      expect(sessionSpies.sync).toHaveBeenCalledWith(
+        "older-session-token",
+        null,
+      ),
+    );
+    expect(screen.queryByLabelText("Phone number")).toBeNull();
+    expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();
+  });
+
   it("verifies six digits through the existing session completion authority", async () => {
     renderSection("/login?returnTo=%2Fdashboard%2Fagents");
     await sendPhoneCode();

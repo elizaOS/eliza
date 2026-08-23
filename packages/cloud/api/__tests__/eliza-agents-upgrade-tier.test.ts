@@ -992,6 +992,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       status: "running",
       database_status: "none",
       bridge_url: "https://dedicated-cutover.test/chat",
+      environment_vars: { ELIZA_API_TOKEN: "agent_cutover_transport" },
     });
 
     const originalFetch = globalThis.fetch;
@@ -1102,6 +1103,24 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       }
       const cutoverTodo = cutoverTodoMutation.result.todo;
       cutoverTodoId = cutoverTodo.id;
+
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ environment_vars: { ELIZAOS_API_KEY: "eliza_cloud_key_only" } })
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      const noTransport = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(noTransport.status).toBe(503);
+      expect(await noTransport.json()).toMatchObject({
+        code: "dedicated_transport_unavailable",
+      });
+      expect(cutoverCoordinatorOperations).toEqual([]);
+      expect(importFetch).not.toHaveBeenCalled();
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          environment_vars: { ELIZA_API_TOKEN: "agent_cutover_transport" },
+        })
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
 
       const refused = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(refused.status).toBe(503);
@@ -1300,7 +1319,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
-            Authorization: "Bearer steward-test",
+            Authorization: "Bearer agent_cutover_transport",
+            "X-API-Key": "agent_cutover_transport",
           }),
         }),
       );

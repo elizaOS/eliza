@@ -3,13 +3,12 @@
  * route and Steward SDK run against Chromium's virtual platform authenticator;
  * only Steward HTTP responses are fixed at the network boundary.
  *
- * Canonical Steward returns discoverable-credential options with an empty
- * allow-list instead of revealing whether an email has an account or passkey.
- * With no matching virtual credential, the browser-owned ceremony rejects. The
- * UI must offer explicit recovery without sending email until the user chooses
- * Magic Link or Set up passkey. The accent button retains its accessible text
- * token on hover, and a same-mounted retry ending in a hard 500 must clear the
- * recovery actions.
+ * A typed email with no device-local passkey hint goes directly to verified
+ * enrollment without querying Steward or invoking WebAuthn. Returning users on
+ * a new device can deliberately choose the separate existing-passkey action;
+ * canonical constant-shaped options then reach the browser ceremony without an
+ * account-existence signal. The accent button retains its accessible text token
+ * on hover, and a same-mounted retry ending in a hard 500 clears recovery.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
@@ -94,6 +93,22 @@ for (const viewport of VIEWPORTS) {
     page,
   }, testInfo) => {
     await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      const trackedWindow = window as Window & {
+        __passkeyCredentialGetCount?: number;
+      };
+      trackedWindow.__passkeyCredentialGetCount = 0;
+      const credentials = navigator.credentials;
+      const originalGet = credentials.get.bind(credentials);
+      Object.defineProperty(credentials, "get", {
+        configurable: true,
+        value: (...args: Parameters<CredentialContainer["get"]>) => {
+          trackedWindow.__passkeyCredentialGetCount =
+            (trackedWindow.__passkeyCredentialGetCount ?? 0) + 1;
+          return originalGet(...args);
+        },
+      });
+    });
     await enableEmptyVirtualAuthenticator(page);
 
     const frontendEvents: string[] = [];
@@ -143,7 +158,9 @@ for (const viewport of VIEWPORTS) {
     });
 
     let optionsMode: "discoverable" | "server-error" = "discoverable";
+    let optionsRequestCount = 0;
     await page.route("**/auth/passkey/login/options", (route) => {
+      optionsRequestCount += 1;
       if (optionsMode === "server-error") {
         return route.fulfill({
           status: 500,
@@ -214,6 +231,32 @@ for (const viewport of VIEWPORTS) {
 
     await passkeyButton.click();
 
+    await expect(page.getByText("Set up your passkey")).toBeVisible();
+    expect(
+      optionsRequestCount,
+      "an unhinted email must not query passkey options or invoke WebAuthn",
+    ).toBe(0);
+    expect(
+      await page.evaluate(
+        () =>
+          (
+            window as Window & {
+              __passkeyCredentialGetCount?: number;
+            }
+          ).__passkeyCredentialGetCount ?? 0,
+      ),
+      "an unhinted email must make zero navigator.credentials.get calls",
+    ).toBe(0);
+    expect(otpSendCount, "an unhinted Passkey action sends one setup OTP").toBe(
+      1,
+    );
+    expect(magicLinkSendCount).toBe(0);
+    await screenshot(page, testInfo, `${viewport.name}-1-unhinted-setup-otp`);
+
+    await page.reload();
+    await page.getByPlaceholder("you@example.com").fill(EMAIL);
+    await page.getByRole("button", { name: "Use an existing passkey" }).click();
+
     await expect(page.getByText("Passkey not completed")).toBeVisible();
     await expect(
       page.getByText(
@@ -222,16 +265,17 @@ for (const viewport of VIEWPORTS) {
     ).toBeVisible();
     expect(
       otpSendCount,
-      "ambiguous WebAuthn failure must not send setup OTP",
-    ).toBe(0);
+      "deliberate existing-passkey recovery must not send another setup OTP",
+    ).toBe(1);
     expect(
       magicLinkSendCount,
       "ambiguous WebAuthn failure must not send a magic link",
     ).toBe(0);
-    await screenshot(page, testInfo, `${viewport.name}-1-explicit-recovery`);
+    expect(optionsRequestCount).toBe(1);
+    await screenshot(page, testInfo, `${viewport.name}-2-explicit-recovery`);
 
     optionsMode = "server-error";
-    await passkeyButton.click();
+    await page.getByRole("button", { name: "Use an existing passkey" }).click();
     await expect(
       page.getByText("User verification service unavailable"),
     ).toBeVisible();
@@ -242,35 +286,37 @@ for (const viewport of VIEWPORTS) {
     await expect(
       page.getByRole("button", { name: "Use Magic Link" }),
     ).toHaveCount(0);
-    expect(otpSendCount, "same-mount 500 must not send setup OTP").toBe(0);
+    expect(otpSendCount, "same-mount 500 must not send setup OTP").toBe(1);
     expect(magicLinkSendCount, "same-mount 500 must not send magic link").toBe(
       0,
     );
     await screenshot(
       page,
       testInfo,
-      `${viewport.name}-2-same-mount-server-error`,
+      `${viewport.name}-3-same-mount-server-error`,
     );
 
     optionsMode = "discoverable";
     await page.reload();
     await page.getByPlaceholder("you@example.com").fill(EMAIL);
-    await page.getByRole("button", { name: /^Passkey$/ }).click();
+    await page.getByRole("button", { name: "Use an existing passkey" }).click();
     await page.getByRole("button", { name: "Set up passkey" }).click();
     await expect(page.getByText("Set up your passkey")).toBeVisible();
-    expect(otpSendCount, "explicit setup intent sends exactly one OTP").toBe(1);
+    expect(otpSendCount, "explicit setup intent sends one additional OTP").toBe(
+      2,
+    );
     expect(magicLinkSendCount).toBe(0);
-    await screenshot(page, testInfo, `${viewport.name}-3-setup-otp`);
+    await screenshot(page, testInfo, `${viewport.name}-4-recovery-setup-otp`);
 
     optionsMode = "discoverable";
     await page.reload();
     const emailForMagicLink = page.getByPlaceholder("you@example.com");
     await emailForMagicLink.fill(EMAIL);
-    await page.getByRole("button", { name: /^Passkey$/ }).click();
+    await page.getByRole("button", { name: "Use an existing passkey" }).click();
     await page.getByRole("button", { name: "Use Magic Link" }).click();
     await expect(page.getByText("Check your email")).toBeVisible();
     expect(magicLinkSendCount, "explicit Magic Link intent sends once").toBe(1);
-    expect(otpSendCount).toBe(1);
+    expect(otpSendCount).toBe(2);
 
     const logPath = testInfo.outputPath(`${viewport.name}-frontend.log`);
     await writeFile(logPath, `${frontendEvents.join("\n")}\n`, "utf8");

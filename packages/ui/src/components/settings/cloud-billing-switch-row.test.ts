@@ -1,5 +1,5 @@
 /**
- * Source ratchet: the Auto Top-Up enable control is a SettingsSwitchRow, not
+ * Source guard: the Auto Top-Up enable control is a SettingsSwitchRow, not
  * a raw Switch with a custom ON color. The BrandCard editor around it stays.
  * Reads the shipped file off disk.
  */

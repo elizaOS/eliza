@@ -676,7 +676,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           ...(data.failureKind
-            ? { mode: "fail", failureKind: data.failureKind }
+            ? {
+                mode: "fail",
+                failureKind: data.failureKind,
+                ...(data.terminalFailure
+                  ? { terminalFailure: data.terminalFailure }
+                  : {}),
+              }
             : { mode: "drop" }),
         });
       } else if (
@@ -689,6 +695,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           mode: "complete",
           fullText: data.text,
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+          ...(data.terminalFailure
+            ? { terminalFailure: data.terminalFailure }
+            : {}),
           ...(options.includeAccountConnect && data.accountConnect
             ? { accountConnect: data.accountConnect }
             : {}),
@@ -703,6 +712,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           messageId: assistantMessageId,
           mode: "fail",
           failureKind: data.failureKind,
+          ...(data.terminalFailure
+            ? { terminalFailure: data.terminalFailure }
+            : {}),
         });
       } else if (options.includeAccountConnect && data.accountConnect) {
         applyStreamingModificationForConversation(conversationId, {

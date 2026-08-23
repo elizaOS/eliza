@@ -102,7 +102,10 @@ export default function AgentDetailPage() {
   // burn" promise of deactivation is visible where the burn was shown.
   const isSleeping = agent.status === "sleeping";
   const isShared = agent.executionTier === "shared";
-  const showConnect = !!agent.webUiUrl && agent.status === "running";
+  // The authenticated pairing endpoint owns the final route. A local Docker
+  // agent can have a secure loopback handoff even when no public URL is
+  // published in the list/detail DTO.
+  const showConnect = !isShared && agent.status === "running";
   const agentType = getUserFacingAgentType(agent.executionTier);
   const agentName = isShared
     ? t("cloud.agents.detail.sharedAgentName", {
@@ -250,7 +253,7 @@ export default function AgentDetailPage() {
           agentId={agent.id}
           executionTier={agent.executionTier}
           status={agent.status}
-          webUiUrl={agent.webUiUrl}
+          showWebUiAction={false}
         />
       </div>
     </div>

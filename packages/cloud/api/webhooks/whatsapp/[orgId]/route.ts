@@ -327,14 +327,21 @@ async function handleIncomingMessage(
           agentOrganizationId: phoneRouteResult.organizationId,
         });
 
-        if (sent) {
+        if (sent.status === "delivered") {
           logger.info("[WhatsAppWebhook] Agent response sent", {
             orgId,
           });
         } else {
-          logger.error("[WhatsAppWebhook] Failed to send agent response", {
-            orgId,
-          });
+          logger.error(
+            "[WhatsAppWebhook] Agent response delivery did not complete",
+            {
+              orgId,
+              deliveryStatus: sent.status,
+              deliveryCode: sent.code,
+              retryable: sent.retryable,
+              providerStatus: sent.providerStatus,
+            },
+          );
         }
       }
       return;
@@ -365,14 +372,21 @@ async function handleIncomingMessage(
       agentUserId: routeResult.userId,
     });
 
-    if (sent) {
+    if (sent.status === "delivered") {
       logger.info("[WhatsAppWebhook] Agent response sent", {
         orgId,
       });
     } else {
-      logger.error("[WhatsAppWebhook] Failed to send agent response", {
-        orgId,
-      });
+      logger.error(
+        "[WhatsAppWebhook] Agent response delivery did not complete",
+        {
+          orgId,
+          deliveryStatus: sent.status,
+          deliveryCode: sent.code,
+          retryable: sent.retryable,
+          providerStatus: sent.providerStatus,
+        },
+      );
     }
   } finally {
     stopTyping();

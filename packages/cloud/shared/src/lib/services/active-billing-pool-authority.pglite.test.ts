@@ -156,6 +156,7 @@ async function expectSuspendAuthorityConflict(
       organizationId,
       resourceId: agentId,
       resourceType: "agent_sandbox",
+      authorizeInfrastructureMutation: async () => undefined,
     }),
   ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
 
@@ -192,6 +193,7 @@ describe("active billing warm-pool authority", () => {
         organizationId,
         resourceId: poolId,
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).rejects.toThrow("Billable resource not found");
     expect(enqueueSuspendCalls).toBe(0);
@@ -212,6 +214,7 @@ describe("active billing warm-pool authority", () => {
         organizationId,
         resourceId: claimedId,
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).resolves.toMatchObject({ stoppedBilling: true });
     expect(enqueueSuspendCalls).toBe(1);
@@ -242,6 +245,7 @@ describe("active billing warm-pool authority", () => {
           organizationId,
           resourceId: id,
           resourceType: "agent_sandbox",
+          authorizeInfrastructureMutation: async () => undefined,
         }),
       ).resolves.toMatchObject({ stoppedBilling: true });
     }
@@ -273,6 +277,7 @@ describe("active billing warm-pool authority", () => {
           organizationId,
           resourceId,
           resourceType: "agent_sandbox",
+          authorizeInfrastructureMutation: async () => undefined,
         }),
       ).rejects.toThrow("Billable resource not found");
     }
@@ -306,6 +311,7 @@ describe("active billing warm-pool authority", () => {
           organizationId,
           resourceId,
           resourceType: "agent_sandbox",
+          authorizeInfrastructureMutation: async () => undefined,
         }),
       ).rejects.toThrow("Billable resource not found");
     }
@@ -378,6 +384,7 @@ describe("active billing warm-pool authority", () => {
         organizationId,
         resourceId: agentId,
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).resolves.toMatchObject({
       stoppedBilling: true,
@@ -397,6 +404,7 @@ describe("active billing warm-pool authority", () => {
         organizationId,
         resourceId: agentId,
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).resolves.toMatchObject({
       stoppedBilling: true,

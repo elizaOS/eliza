@@ -59,7 +59,7 @@ export interface HomePillProps {
   onPreviewHoverChange?: (hovered: boolean) => void;
   /** True once the native host has acknowledged its wider shallow frame. Hover
    *  and listening lanes stay compact until then so WKWebView cannot clip them
-   *  into the resting 96px window. Web callers leave this unset. */
+   *  into the resting 64px window. Web callers leave this unset. */
   previewHostReady?: boolean;
   /** Whether hovering may render HomePill's lightweight visual preview. Hosts
    *  that mount the real ChatOverlay input detent must disable this duplicate. */
@@ -108,10 +108,10 @@ const PROCESS_DOTS = [
 /**
  * Persistent Flow-style handle at the bottom-center of the viewport.
  *
- * The visible affordance is deliberately only a short capsule; the larger
- * transparent button preserves a comfortable pointer target. Status is exposed
- * through ARIA instead of permanent text so the launcher stays out of the
- * user's way until it is invoked.
+ * The complete 64×44 resting target is visibly painted. This is required for
+ * detached native hosts: an invisible enlargement would intercept clicks in
+ * nearby applications even though no launcher pixel was visible there. Status
+ * is exposed through ARIA instead of permanent text.
  *
  * Each shell phase reads distinctly at a glance (the capsule is the only
  * always-visible surface, so it carries all ambient status):
@@ -340,11 +340,12 @@ export function HomePill({
       onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
-        "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",
-        composerSized ? "h-16 w-[36rem]" : "h-8 w-16",
-        "transition-[width,height,transform] duration-200 hover:bg-transparent motion-reduce:transition-none",
+        "group pointer-events-auto relative flex items-center justify-center rounded-full border border-white/20 bg-[#181a20]/95 p-0 shadow-none backdrop-blur-xl",
+        composerSized ? "h-16 w-[36rem]" : "h-11 w-16",
+        "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
+        "hover:bg-[#202228]/95",
         needsAuth ? "active:scale-[0.96]" : "active:scale-95",
-        "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+        "focus-visible:bg-[#181a20]/95 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
     >
       <span

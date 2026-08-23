@@ -6,7 +6,12 @@
  */
 
 import { type ComponentType, Suspense } from "react";
-import { matchPath, Navigate, useLocation } from "react-router-dom";
+import {
+  matchPath,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import {
   EnsurePageHeaderProvider,
   usePageHeader,
@@ -75,10 +80,17 @@ function ManagedCloudRouteFrame({
   email: string | null;
 }): React.JSX.Element {
   const { pageInfo } = usePageHeader();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isCloudOverview = location.pathname === "/cloud";
   return (
     <div className="theme-cloud flex min-h-0 min-w-0 flex-1 flex-col bg-bg text-txt">
       <ViewHeader
         title={pageInfo?.title ?? "Cloud"}
+        onBack={isCloudOverview ? undefined : () => navigate("/cloud")}
+        backLabel={
+          isCloudOverview ? "Back to launcher" : "Back to Cloud overview"
+        }
         right={
           <div className="flex items-center gap-2">
             {pageInfo?.actions}

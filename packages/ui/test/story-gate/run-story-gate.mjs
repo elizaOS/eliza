@@ -20,16 +20,14 @@
  *   HARD FAIL (exit 1):
  *     - story threw (Storybook error display) or raised an uncaught pageerror
  *     - blank / one-color render
- *     - a NEW console error (not in the committed console baseline)
- *     - a NEW serious/critical a11y violation (not in the committed a11y baseline)
- *   The baselines (eslint-style) make the pre-existing backlog visible and
- *   burn-downable without blocking. Regenerate with `--update-baseline`.
+ *     - any console error
+ *     - any serious/critical a11y violation
  *
  * Usage:
  *   node test/story-gate/run-story-gate.mjs [--static-dir storybook-static]
  *     [--out test/story-gate/output] [--concurrency 6] [--shard i/n]
  *     [--section Primitives] [--grep <substr>] [--limit N]
- *     [--update-baseline] [--no-screenshots] [--no-a11y]
+ *     [--no-screenshots] [--no-a11y]
  *
  * Build the static catalog first: `bun run build-storybook --output-dir storybook-static`.
  */
@@ -120,7 +118,6 @@ export function parseArgs(argv) {
     section: null,
     grep: null,
     limit: null,
-    updateBaseline: false,
     screenshots: true,
     a11y: true,
     viewport: { width: 1280, height: 800 },
@@ -144,8 +141,7 @@ export function parseArgs(argv) {
     else if (arg === "--grep") a.grep = next();
     else if (arg === "--limit") {
       a.limit = requirePositiveSafeInteger(next(), "--limit");
-    } else if (arg === "--update-baseline") a.updateBaseline = true;
-    else if (arg === "--no-screenshots") a.screenshots = false;
+    } else if (arg === "--no-screenshots") a.screenshots = false;
     else if (arg === "--no-a11y") a.a11y = false;
   }
   return a;
@@ -158,7 +154,6 @@ const args = parseArgs(process.argv.slice(2));
 // failed with "missing index.json" on every develop run.
 const staticDir = resolve(process.cwd(), args.staticDir);
 const outDir = resolve(pkgRoot, args.out);
-const baselineDir = resolve(here, "baseline");
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -275,14 +270,6 @@ async function loadStories() {
   return stories;
 }
 
-async function loadBaseline(name) {
-  try {
-    return JSON.parse(await readFile(join(baselineDir, name), "utf8"));
-  } catch {
-    return {};
-  }
-}
-
 function rmRecursive(targetPath) {
   const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
     stdio: "inherit",
@@ -340,7 +327,7 @@ function normalizeConsole(text) {
  * Classify per-story render results against the console / a11y / broken
  * allowlist baselines and produce the failure list + regenerated baselines.
  *
- * Doctrine (matches the `broken-baseline` ratchet): each baseline is a pure
+ * Doctrine (matches the `broken-baseline` guard): each baseline is a pure
  * ALLOWLIST of pre-existing violations, never an on/off switch. A violation
  * whose key is NOT in the allowlist reds the run. An empty or absent baseline
  * therefore means fail-on-ANY violation (zero tolerance). This is the corrected
@@ -434,63 +421,38 @@ export function deriveNetworkFailureIssues(cap, verdict, staticOrigin = null) {
   };
 }
 
-export function classifyStoryGateFailures({
-  results,
-  consoleBaseline,
-  a11yBaseline,
-  brokenBaseline,
-  updateBaseline = false,
-}) {
-  const newConsoleBaseline = {};
-  const newA11yBaseline = {};
-  const newBrokenBaseline = {};
+export function classifyStoryGateFailures({ results }) {
   const failures = [];
 
   for (const r of results) {
     if (r.verdict === "broken") {
-      newBrokenBaseline[r.id] = (r.issues ?? []).join(" | ").slice(0, 200);
-    }
-    // console errors -> baseline keys
-    const consoleKeys = (r.consoleErrors ?? [])
-      .map(normalizeConsole)
-      .filter(Boolean);
-    if (consoleKeys.length)
-      newConsoleBaseline[r.id] = [...new Set(consoleKeys)];
-    const allowedConsole = new Set(consoleBaseline[r.id] || []);
-    const newConsole = consoleKeys.filter((k) => !allowedConsole.has(k));
-
-    // a11y -> baseline keys (rule id)
-    const a11yKeys = [...new Set((r.a11y ?? []).map((v) => v.id))];
-    if (a11yKeys.length) newA11yBaseline[r.id] = a11yKeys;
-    const allowedA11y = new Set(a11yBaseline[r.id] || []);
-    const newA11y = a11yKeys.filter((k) => !allowedA11y.has(k));
-
-    if (r.verdict === "broken" && !(r.id in brokenBaseline)) {
       failures.push({
         id: r.id,
         kind: "broken",
         detail: (r.issues ?? []).join(" | "),
       });
     }
-    // Console + a11y gating is ALWAYS on (baseline is a pure allowlist); a key
-    // absent from the allowlist reds regardless of how many rows it holds.
-    if (!updateBaseline && newConsole.length) {
+    const consoleErrors = (r.consoleErrors ?? [])
+      .map(normalizeConsole)
+      .filter(Boolean);
+    if (consoleErrors.length) {
       failures.push({
         id: r.id,
-        kind: "new-console-error",
-        detail: newConsole.join(" | "),
+        kind: "console-error",
+        detail: consoleErrors.join(" | "),
       });
     }
-    if (!updateBaseline && newA11y.length) {
+    const a11yViolations = [...new Set((r.a11y ?? []).map((v) => v.id))];
+    if (a11yViolations.length) {
       failures.push({
         id: r.id,
-        kind: "new-a11y-violation",
-        detail: newA11y.join(", "),
+        kind: "a11y-violation",
+        detail: a11yViolations.join(", "),
       });
     }
   }
 
-  return { failures, newConsoleBaseline, newA11yBaseline, newBrokenBaseline };
+  return { failures };
 }
 
 // ---------------------------------------------------------------------------
@@ -506,7 +468,7 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
   // completely unsignalled and the doc-claimed helper was dead code. #13624
   const cap = attachLogCapture(page, { label: story.id });
   // Preserve the exact prior console-error signal (every console message of
-  // type "error") for the console-baseline ratchet — the helper's own
+  // type "error") for the console-baseline guard — the helper's own
   // consoleErrors() additionally allow-lists dev noise, which we apply only to
   // the durable snapshot, not to the baseline-gating list, to avoid silently
   // shifting the committed console baseline.
@@ -801,26 +763,6 @@ async function main() {
   if (!sharp)
     console.warn("story-gate: sharp not found - skipping blank detection");
 
-  const consoleBaseline = await loadBaseline("console-baseline.json");
-  const a11yBaseline = await loadBaseline("a11y-baseline.json");
-  // The broken-baseline is an allowlist of story IDs that are KNOWN broken
-  // (genuine render throws / blank renders) — burn-down debt, not green-washing.
-  // A broken story in this list is reported but does not fail the run; a broken
-  // story NOT in it fails immediately. This is the same eslint-style ratchet as
-  // console/a11y, but for the hard-fail `broken` verdict — so the gate enforces
-  // "no NEW broken stories" from day one while the existing set is fixed. Shape:
-  // { "<story-id>": "<reason>" }. Regenerate via `--update-baseline`.
-  const brokenBaseline = await loadBaseline("broken-baseline.json");
-  // Console + a11y gating is ALWAYS on, exactly like the broken-baseline ratchet
-  // above: each baseline is a pure ALLOWLIST of pre-existing violations, never a
-  // switch. An empty or absent baseline therefore means fail-on-ANY violation
-  // (zero tolerance) — the same shape as `broken-baseline.json = {}`.
-  //
-  // The old `Object.keys(baseline).length > 0` gate INVERTED this: emptying or
-  // resetting a baseline silently DISABLED the check (the opposite of a burn-down
-  // ratchet), so green-washing was one `echo '{}' > a11y-baseline.json` away.
-  // Enforcement now lives in classifyStoryGateFailures() and is unconditional.
-
   rmRecursive(outDir);
   await mkdir(outDir, { recursive: true });
 
@@ -863,14 +805,7 @@ async function main() {
   // -------------------------------------------------------------------------
   // classify against baselines
   // -------------------------------------------------------------------------
-  const { failures, newConsoleBaseline, newA11yBaseline, newBrokenBaseline } =
-    classifyStoryGateFailures({
-      results,
-      consoleBaseline,
-      a11yBaseline,
-      brokenBaseline,
-      updateBaseline: args.updateBaseline,
-    });
+  const { failures } = classifyStoryGateFailures({ results });
 
   // -------------------------------------------------------------------------
   // write artifacts
@@ -899,25 +834,6 @@ async function main() {
   await writeContactSheet(outDir, results);
   await writeFrontendLogs(outDir, results);
   await writeManualReview(outDir, results, failures);
-
-  if (args.updateBaseline) {
-    await mkdir(baselineDir, { recursive: true });
-    await writeFile(
-      join(baselineDir, "console-baseline.json"),
-      JSON.stringify(sortKeys(newConsoleBaseline), null, 2),
-    );
-    await writeFile(
-      join(baselineDir, "a11y-baseline.json"),
-      JSON.stringify(sortKeys(newA11yBaseline), null, 2),
-    );
-    await writeFile(
-      join(baselineDir, "broken-baseline.json"),
-      JSON.stringify(sortKeys(newBrokenBaseline), null, 2),
-    );
-    console.log(
-      `\nstory-gate: baselines updated (${Object.keys(newConsoleBaseline).length} console, ${Object.keys(newA11yBaseline).length} a11y, ${Object.keys(newBrokenBaseline).length} broken story-keys)`,
-    );
-  }
 
   // -------------------------------------------------------------------------
   // self-check: a healthy catalog always has SOME renderable (`good`) stories.
@@ -955,7 +871,7 @@ async function main() {
       `console-err=${report.totals.withConsoleErrors} | a11y=${report.totals.withA11yViolations} | ` +
       `play=${report.totals.playPrepared}/${report.totals.playExpected}`,
   );
-  if (failures.length && !args.updateBaseline) {
+  if (failures.length) {
     console.error(`\nX story-gate FAILED - ${failures.length} regression(s):`);
     for (const f of failures.slice(0, 40)) {
       console.error(`  [${f.kind}] ${f.id}\n      ${f.detail}`);
@@ -967,12 +883,6 @@ async function main() {
   }
   console.log(
     `\nOK story-gate PASSED - report: ${join(outDir, "report.json")}`,
-  );
-}
-
-function sortKeys(obj) {
-  return Object.fromEntries(
-    Object.entries(obj).sort((a, b) => a[0].localeCompare(b[0])),
   );
 }
 
@@ -1084,7 +994,7 @@ async function writeManualReview(dir, results, failures) {
     "",
     `Generated ${new Date().toISOString()} · ${results.length} stories.`,
     "",
-    `**Verdict:** ${failures.length ? `❌ ${failures.length} regression(s)` : "✅ no regressions vs baseline"}`,
+    `**Verdict:** ${failures.length ? `❌ ${failures.length} failure(s)` : "✅ no failures"}`,
     "",
     `## Broken (${broken.length})`,
     broken.length

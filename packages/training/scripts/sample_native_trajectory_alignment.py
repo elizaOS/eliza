@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from lib.generation_integrity import IncompleteGenerationError, require_complete_generation
+
 import yaml
 
 try:  # pyarrow is in packages/training/pyproject.toml.
@@ -1022,6 +1024,15 @@ def normalize_openai_response(response: dict[str, Any]) -> dict[str, Any]:
     if "error" in response:
         return {"text": "", "toolCalls": [], "finishReason": "error", "error": response["error"]}
     choice = (response.get("choices") or [{}])[0]
+    try:
+        require_complete_generation(choice, source="trajectory_alignment.cerebras")
+    except IncompleteGenerationError as exc:
+        return {
+            "text": "",
+            "toolCalls": [],
+            "finishReason": "rejected",
+            "error": exc.rejection.as_dict(),
+        }
     message = choice.get("message") or {}
     calls = []
     for raw in message.get("tool_calls") or []:

@@ -338,7 +338,11 @@ export async function queryPastExperience(
         logger.getTrajectoryDetail(summary.id),
         QUERY_TIMEOUT_MS,
       );
-      if (!detail || !Array.isArray(detail.steps)) {
+      if (
+        !detail ||
+        !Array.isArray(detail.steps) ||
+        (summary.llmCallCount > 0 && detail.steps.length === 0)
+      ) {
         throw new ElizaError(
           "Trajectory detail is unavailable for complete experience loading",
           {
@@ -346,6 +350,26 @@ export async function queryPastExperience(
             context: {
               trajectoryId: summary.id,
               reason: detail ? "steps_missing" : "detail_missing",
+            },
+          },
+        );
+      }
+
+      const detailLlmCallCount = detail.steps.reduce(
+        (count, step) =>
+          count + (Array.isArray(step.llmCalls) ? step.llmCalls.length : 0),
+        0,
+      );
+      if (detailLlmCallCount !== summary.llmCallCount) {
+        throw new ElizaError(
+          "Trajectory detail does not contain its complete model-call inventory",
+          {
+            code: "TRAJECTORY_EXPERIENCE_DETAIL_UNAVAILABLE",
+            context: {
+              trajectoryId: summary.id,
+              reason: "llm_calls_incomplete",
+              expectedLlmCallCount: summary.llmCallCount,
+              observedLlmCallCount: detailLlmCallCount,
             },
           },
         );

@@ -10,7 +10,7 @@ import {
   type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
 } from "@elizaos/shared/steward-session-client";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import {
@@ -18,6 +18,7 @@ import {
   hasElizaNonSimpleRequestMarker,
 } from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import { primeVerifiedUserSessionCache } from "@/lib/auth/session-user-cache";
 import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
 import {
   type StewardVerifyEnv,
@@ -38,6 +39,7 @@ import {
 import {
   describeSyncError,
   StewardPhoneAccountConflictError,
+  type StewardSyncExecutionContext,
   StewardTelegramAccountClaimError,
   syncUserFromSteward,
 } from "@/lib/steward-sync";
@@ -78,6 +80,19 @@ function checkNonSimpleMarker(c: {
   req: { header: (name: string) => string | undefined };
 }): boolean {
   return hasElizaNonSimpleRequestMarker(c.req);
+}
+
+function getWorkerExecutionContext(
+  c: Context<AppEnv>,
+): StewardSyncExecutionContext | undefined {
+  try {
+    const candidate = c.executionCtx;
+    return typeof candidate?.waitUntil === "function" ? candidate : undefined;
+  } catch {
+    // error-policy:J4 Hono throws when a route is invoked without a Worker
+    // execution context; non-Worker callers preserve inline provisioning.
+    return undefined;
+  }
 }
 
 let stewardAuthMetricCounter = 0;
@@ -370,6 +385,7 @@ app.post("/", async (c) => {
           telegramContinuation: telegramContinuation ?? undefined,
           sharedRuntimeConversationNamespace:
             c.env.SHARED_RUNTIME_CONVERSATIONS,
+          executionCtx: getWorkerExecutionContext(c),
         });
       } catch (error) {
         if (error instanceof StewardPhoneAccountConflictError) {
@@ -403,6 +419,20 @@ app.post("/", async (c) => {
           errorBody("Could not sync Steward user", "steward_user_sync_failed"),
           500,
         );
+      }
+    }
+
+    if (cloudUser.postCommitProvisioningDeferred) {
+      try {
+        await primeVerifiedUserSessionCache(token, cloudUser);
+      } catch (error) {
+        // error-policy:J4 Cache priming is a latency optimization. Identity is
+        // already durable and the ordinary authenticated cache-miss path can
+        // recover, so a Redis write failure must not strand the new account.
+        logger.warn("[steward-auth] New-user session cache prime failed", {
+          userId: cloudUser.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 

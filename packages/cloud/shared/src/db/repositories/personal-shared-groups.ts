@@ -312,6 +312,21 @@ export const personalSharedGroupsRepository = {
     });
   },
 
+  /**
+   * Diagnostic read of one binding by id. Outbound sends must not gate on this
+   * alone; the delivery lease methods below are the authority fence, and this
+   * read only explains why a lease was refused. Reads the primary like the
+   * rest of this repository so it never lags the lease it diagnoses.
+   */
+  async findBindingById(bindingId: string): Promise<PersonalSharedGroupBinding | null> {
+    const [binding] = await dbWrite
+      .select()
+      .from(personalSharedGroupBindings)
+      .where(eq(personalSharedGroupBindings.id, bindingId))
+      .limit(1);
+    return binding ?? null;
+  },
+
   async resolveBinding(input: {
     platform: PersonalSharedGroupPlatform;
     project: string;

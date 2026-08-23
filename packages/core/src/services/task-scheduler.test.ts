@@ -107,6 +107,122 @@ describe("task-scheduler", () => {
 		expect(getTasks).toHaveBeenCalledTimes(2);
 	});
 
+	it("rejects an old query result after the scheduler is restarted", async () => {
+		let releaseOldQuery: ((tasks: Task[]) => void) | undefined;
+		const oldQuery = new Promise<Task[]>((resolve) => {
+			releaseOldQuery = resolve;
+		});
+		const oldGetTasks = vi.fn(() => oldQuery);
+		const oldRunTick = vi.fn(async () => undefined);
+
+		startTaskScheduler({
+			getTasks: oldGetTasks,
+		} as unknown as IDatabaseAdapter);
+		registerTaskSchedulerRuntime(makeRuntime(), { runTick: oldRunTick });
+		await runOneTick();
+		expect(oldGetTasks).toHaveBeenCalledTimes(1);
+
+		stopTaskScheduler();
+
+		const newGetTasks = vi.fn(async () => [] as Task[]);
+		const newRunTick = vi.fn(async () => undefined);
+		startTaskScheduler({
+			getTasks: newGetTasks,
+		} as unknown as IDatabaseAdapter);
+		registerTaskSchedulerRuntime(makeRuntime(), { runTick: newRunTick });
+
+		// The unresolved old query must not block the restarted generation.
+		await runOneTick();
+		expect(newGetTasks).toHaveBeenCalledTimes(1);
+
+		releaseOldQuery?.([{ id: "old", agentId: AGENT_ID } as Task]);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(oldRunTick).not.toHaveBeenCalled();
+		expect(newRunTick).not.toHaveBeenCalled();
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				err: expect.objectContaining({
+					code: "TASK_SCHEDULER_STALE_GENERATION",
+				}),
+			}),
+			"[TaskScheduler] tick failed",
+		);
+	});
+
+	it("re-queries registered agents when a live adapter is replaced", async () => {
+		let releaseOldQuery: ((tasks: Task[]) => void) | undefined;
+		const oldQuery = new Promise<Task[]>((resolve) => {
+			releaseOldQuery = resolve;
+		});
+		const oldGetTasks = vi.fn(() => oldQuery);
+		const runTick = vi.fn(async () => undefined);
+
+		startTaskScheduler({
+			getTasks: oldGetTasks,
+		} as unknown as IDatabaseAdapter);
+		registerTaskSchedulerRuntime(makeRuntime(), { runTick });
+		await runOneTick();
+
+		const newGetTasks = vi.fn(async () => [] as Task[]);
+		startTaskScheduler({
+			getTasks: newGetTasks,
+		} as unknown as IDatabaseAdapter);
+		await runOneTick();
+		expect(newGetTasks).toHaveBeenCalledTimes(1);
+
+		releaseOldQuery?.([{ id: "old", agentId: AGENT_ID } as Task]);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(runTick).not.toHaveBeenCalled();
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				err: expect.objectContaining({
+					code: "TASK_SCHEDULER_STALE_GENERATION",
+				}),
+			}),
+			"[TaskScheduler] tick failed",
+		);
+	});
+
+	it("rejects query rows for a replaced registration with the same agent id", async () => {
+		let releaseQuery: ((tasks: Task[]) => void) | undefined;
+		const pendingQuery = new Promise<Task[]>((resolve) => {
+			releaseQuery = resolve;
+		});
+		const getTasks = vi
+			.fn<() => Promise<Task[]>>()
+			.mockReturnValueOnce(pendingQuery)
+			.mockResolvedValue([]);
+
+		startTaskScheduler({ getTasks } as unknown as IDatabaseAdapter);
+		const oldRunTick = vi.fn(async () => undefined);
+		registerTaskSchedulerRuntime(makeRuntime(), { runTick: oldRunTick });
+		await runOneTick();
+
+		unregisterTaskSchedulerRuntime(AGENT_ID);
+		const replacementRunTick = vi.fn(async () => undefined);
+		registerTaskSchedulerRuntime(makeRuntime(), {
+			runTick: replacementRunTick,
+		});
+		releaseQuery?.([{ id: "old", agentId: AGENT_ID } as Task]);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(oldRunTick).not.toHaveBeenCalled();
+		expect(replacementRunTick).not.toHaveBeenCalled();
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				err: expect.objectContaining({
+					code: "TASK_SCHEDULER_REGISTRATION_CHANGED",
+				}),
+			}),
+			"[TaskScheduler] rejected tasks for a stale registration",
+		);
+
+		// The replacement registration remains dirty and is queried normally.
+		await runOneTick();
+		expect(getTasks).toHaveBeenCalledTimes(2);
+	});
+
 	it("re-arms a still-registered agent after a transient getTasks rejection (no re-register)", async () => {
 		let getTasksCalls = 0;
 		const adapter = {

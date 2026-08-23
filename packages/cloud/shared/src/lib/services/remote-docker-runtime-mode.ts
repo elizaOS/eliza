@@ -77,6 +77,7 @@ export function applyRemoteDockerRuntimeMode(
     ...environmentVars,
     ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
   };
+  delete next.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS;
   for (const key of Object.keys(next)) {
     if (isCallerForbiddenEnvKey(key)) delete next[key];
   }

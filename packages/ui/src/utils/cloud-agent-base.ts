@@ -268,7 +268,19 @@ export function isDedicatedCloudAgentBase(
   const url = normalizeHttpUrl(value.trim());
   if (!url) return false;
   const host = url.hostname.toLowerCase();
-  return isElizaDedicatedAgentHostname(host);
+  if (isElizaDedicatedAgentHostname(host)) return true;
+  const path = stripTrailingSlash(url.pathname);
+  const match =
+    /^\/api\/v1\/eliza\/agents\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\/api)?$/i.exec(
+      path,
+    );
+  if (!match) return false;
+  return (
+    isElizaCloudControlPlaneHostname(host) ||
+    host === "127.0.0.1" ||
+    host === "localhost" ||
+    host === "::1"
+  );
 }
 
 /**
@@ -283,7 +295,12 @@ export function dedicatedCloudAgentIdFromBase(
   if (!isDedicatedCloudAgentBase(value)) return null;
   const url = normalizeHttpUrl((value as string).trim());
   if (!url) return null;
-  return classifyElizaHostname(url.hostname).agentId;
+  const classified = classifyElizaHostname(url.hostname).agentId;
+  if (classified) return classified;
+  const match = /^\/api\/v1\/eliza\/agents\/([0-9a-f-]+)(?:\/api)?\/?$/i.exec(
+    url.pathname,
+  );
+  return match?.[1]?.toLowerCase() ?? null;
 }
 
 /** Production managed Eliza origin, where the agent app and Cloud management

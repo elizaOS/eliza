@@ -2856,8 +2856,12 @@ export class UsersRepository {
     database: typeof dbRead,
     predicate: SQL<unknown>,
   ): Promise<UserWithOrganization | undefined> {
-    const user = await this.findUserByPredicate(database, predicate);
-    return user ? await this.attachOrganization(database, user) : undefined;
+    return (await database.query.users.findFirst({
+      where: predicate,
+      with: {
+        organization: true,
+      },
+    })) as UserWithOrganization | undefined;
   }
 
   private async findUserWithOrganizationById(
@@ -2875,38 +2879,6 @@ export class UsersRepository {
       database,
       eq(users.steward_user_id, stewardUserId),
     );
-  }
-
-  private async attachOrganization(
-    database: typeof dbRead,
-    user: User,
-  ): Promise<UserWithOrganization> {
-    const organizationId = user.organization_id;
-
-    if (!organizationId) {
-      return {
-        ...user,
-        organization: null,
-      };
-    }
-
-    // Keep organization hydration on the same relational query path used by the
-    // pre-regression auth lookup. Direct table selects changed numeric formatting
-    // for credit_balance in the failing regression case.
-    const relationalUser = (await database.query.users.findFirst({
-      columns: {
-        id: true,
-      },
-      where: eq(users.id, user.id),
-      with: {
-        organization: true,
-      },
-    })) as { organization: Organization | null } | undefined;
-
-    return {
-      ...user,
-      organization: relationalUser?.organization ?? null,
-    };
   }
 
   /**

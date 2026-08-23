@@ -31,6 +31,7 @@ PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
 
 from src.training.adversarial_game import (
     evaluate_adversarial,
@@ -82,9 +83,14 @@ def make_generator(model, tokenizer, device, role_prompt: str = ""):
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
             )
-        resp = tokenizer.decode(
-            out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True
-        ).strip()
+        generated_ids = out[0, enc["input_ids"].shape[1] :]
+        require_complete_generated_tokens(
+            generated_ids,
+            max_new_tokens=256,
+            source="run_adversarial_eval.local",
+            terminal_token_ids=tokenizer.eos_token_id,
+        )
+        resp = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
         # Strip think tags
         if "</think>" in resp:
             resp = resp.split("</think>")[-1].strip()

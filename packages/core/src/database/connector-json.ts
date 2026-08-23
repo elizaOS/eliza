@@ -82,11 +82,32 @@ function chargeText(
 	value: string,
 	state: WalkState,
 	options: WalkOptions,
-	kind: "keyBytes" | "stringBytes",
+	kind: "key" | "string",
 ): BoundedResult | undefined {
+	// UTF-8 never encodes a JS string to fewer bytes than its UTF-16 code-unit
+	// length (every unit costs at least one byte, and an unpaired surrogate
+	// becomes a 3-byte U+FFFD), so a string longer than the byte ceiling is
+	// already over budget. Rejecting on .length first avoids forcing a
+	// proportional UTF-8 allocation and full scan for a value whose rejection is
+	// certain (#24778). Strings that might still fit fall through to the precise
+	// byte check below, so multibyte values on the boundary stay accepted.
+	//
+	// That early rejection never measured bytes, so its context must not claim
+	// a byte count: `value.length` can understate multibyte input ("é" is 1
+	// unit / 2 bytes, "🦊" is 2 units / 4 bytes). It reports the code-unit
+	// count it measured plus the lower bound that count proves, and flags that
+	// no exact byte count exists (#24888). Only the encoded path reports
+	// `keyBytes` / `stringBytes`.
+	if (value.length > MAX_CONNECTOR_JSON_STRING_BYTES) {
+		return overflow(options, "leaf", {
+			[`${kind}CodeUnits`]: value.length,
+			minimumUtf8Bytes: value.length,
+			exactUtf8BytesAvailable: false,
+		});
+	}
 	const bytes = utf8Encoder.encode(value).byteLength;
 	if (bytes > MAX_CONNECTOR_JSON_STRING_BYTES) {
-		return overflow(options, "leaf", { [kind]: bytes });
+		return overflow(options, "leaf", { [`${kind}Bytes`]: bytes });
 	}
 	return charge(state, Math.max(1, Math.ceil(bytes / 1024)), options);
 }
@@ -160,7 +181,7 @@ function walkPrimitive(
 		case "string":
 			return {
 				handled: true,
-				value: chargeText(value, state, options, "stringBytes") ?? value,
+				value: chargeText(value, state, options, "string") ?? value,
 			};
 		case "number":
 			if (!Number.isFinite(value)) {
@@ -215,7 +236,7 @@ function walk(
 	const objectValue = value as object;
 	const dateIso = genuineDateIso(objectValue);
 	if (dateIso !== undefined) {
-		return chargeText(dateIso, state, options, "stringBytes") ?? dateIso;
+		return chargeText(dateIso, state, options, "string") ?? dateIso;
 	}
 	if (depth > MAX_CONNECTOR_JSON_DEPTH) {
 		return overflow(options, "depth", { depth });
@@ -313,7 +334,7 @@ function walk(
 				continue;
 			}
 			if (!descriptor.enumerable) continue;
-			const keyHit = chargeText(key, state, options, "keyBytes");
+			const keyHit = chargeText(key, state, options, "key");
 			if (keyHit !== undefined) {
 				defineOwn(output, key, CONNECTOR_JSON_BOUNDED);
 				if (keyHit === BOUNDED_EXHAUSTED) break;

@@ -21,4 +21,4 @@ distributable, in-process Signal client.
 ## Validation
 
 Run `bun run --cwd plugins/plugin-signal test`, `typecheck`, and `lint:check`,
-plus the repository retired-transport activation ratchet.
+plus the repository retired-transport activation guard.

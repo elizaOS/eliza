@@ -1,5 +1,5 @@
 /**
- * Source ratchet: leftover cloud BrandCard status/nav chrome must compose
+ * Source guard: leftover cloud BrandCard status/nav chrome must compose
  * SettingsStack / SettingsGroup / SettingsRow. Reads shipped files off disk.
  */
 import { readFileSync } from "node:fs";

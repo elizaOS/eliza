@@ -28,16 +28,6 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(ids).not.toContain("inbox.unread");
   });
 
-  it("keeps the chat-sidebar Activity declaration on its own slot (home doesn't steal it)", () => {
-    const sidebar = resolveWidgetsForSlot("chat-sidebar", [
-      { id: "agent-orchestrator", enabled: true, isActive: true },
-    ]);
-    const decl = sidebar.find(
-      (r) => r.declaration.id === "agent-orchestrator.activity",
-    )?.declaration;
-    expect(decl?.slot).toBe("chat-sidebar");
-  });
-
   it("declares NO notifications widget for the home slot (the center is pinned by HomeScreen)", () => {
     // The dashboard notification center (NotificationsHomeCenter) is mounted by
     // HomeScreen directly, not ranked through the registry - a `notifications.*`
@@ -63,17 +53,6 @@ describe("home frontpage widget slot (#9143)", () => {
     const resolved = resolveWidgetsForSlot("home", []);
     const ids = new Set(resolved.map((r) => r.declaration.id));
     expect(ids).not.toContain("tutorial.launch");
-  });
-
-  it("keeps the chat-sidebar Apps declaration on its own slot", () => {
-    const sidebar = resolveWidgetsForSlot("chat-sidebar", [
-      { id: "agent-orchestrator", enabled: true, isActive: true },
-    ]);
-    const apps = sidebar.find(
-      (r) => r.declaration.id === "agent-orchestrator.apps",
-    );
-    expect(apps?.declaration.slot).toBe("chat-sidebar");
-    expect(apps?.Component).toBeTruthy();
   });
 
   it("does not render default-sink participation rows as resident home cards", () => {

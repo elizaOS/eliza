@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.lib.generation_integrity import require_complete_generation
+
 CATALOG_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 POOL_DIR = ROOT / "scripts" / "harness" / "scenario_pool"
 LOG_DIR = ROOT / "data" / "synthesized" / "harness" / "logs"
@@ -220,7 +222,10 @@ async def generate_for_action(
             continue
         try:
             data = r.json()
-            content = (data["choices"][0]["message"].get("content") or "").strip()
+            choice = require_complete_generation(
+                data["choices"][0], source="harness.scenarios"
+            )
+            content = (choice["message"].get("content") or "").strip()
         except (KeyError, ValueError, IndexError):
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.5, 30)
@@ -228,7 +233,7 @@ async def generate_for_action(
         if not content:
             # try reasoning fallback
             try:
-                content = (data["choices"][0]["message"].get("reasoning") or "").strip()
+                content = (choice["message"].get("reasoning") or "").strip()
             except (KeyError, IndexError):
                 content = ""
         scenarios = parse_scenarios(content)

@@ -103,7 +103,6 @@ export async function runOrchestratorCapability(
         summary: paramString(params?.summary),
         evidence: paramString(params?.evidence),
         verifier: paramString(params?.verifier),
-        humanOverride: params?.humanOverride === true,
       });
     }
     case "orchestrator-add-agent":

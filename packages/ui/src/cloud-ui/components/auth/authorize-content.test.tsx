@@ -10,6 +10,11 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  consumeStewardServerCookieSynced,
+  invalidateStewardServerCookieSyncMarker,
+  markStewardServerCookieSynced,
+} from "../../../cloud/lib/steward-session-cookie-sync-marker";
 
 const enabledProviders = vi.hoisted(() => ({
   passkey: true,
@@ -27,7 +32,7 @@ const authRef = vi.hoisted(() => ({
   current: {
     isLoading: false,
     isAuthenticated: true,
-    getToken: vi.fn(() => "token-1"),
+    getToken: vi.fn<() => string | null>(() => "token-1"),
     signOut: vi.fn(),
     providers: enabledProviders,
     isProvidersLoading: false,
@@ -105,6 +110,7 @@ describe("AuthorizeContent", () => {
   let locationAssignMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    invalidateStewardServerCookieSyncMarker();
     locationAssignMock = vi.fn();
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -113,7 +119,7 @@ describe("AuthorizeContent", () => {
     authRef.current = {
       isLoading: false,
       isAuthenticated: true,
-      getToken: vi.fn(() => "token-1"),
+      getToken: vi.fn<() => string | null>(() => "token-1"),
       signOut: vi.fn(),
       providers: enabledProviders,
       isProvidersLoading: false,
@@ -129,6 +135,7 @@ describe("AuthorizeContent", () => {
   });
 
   afterEach(() => {
+    invalidateStewardServerCookieSyncMarker();
     cleanup();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -157,6 +164,34 @@ describe("AuthorizeContent", () => {
     });
     expect(authorizeButton.className).toContain("hover:bg-accent-hover");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+
+  it("retires explicit-sync proof before raw SDK sign-out when the token is unreadable", async () => {
+    const user = userEvent.setup();
+    const endpoint = "/api/auth/steward-session";
+    let proofAtSignOut: boolean | undefined;
+    const signOut = vi.fn(() => {
+      proofAtSignOut = consumeStewardServerCookieSynced("token-1", endpoint);
+    });
+    authRef.current = {
+      ...authRef.current,
+      getToken: vi.fn<() => string | null>(() => null),
+      signOut,
+    };
+    markStewardServerCookieSynced("token-1", endpoint);
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() => expect(screen.getByText("Demo App")).toBeTruthy());
+    await user.click(
+      screen.getByRole("button", { name: "Authorize Demo App" }),
+    );
+
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(proofAtSignOut).toBe(false);
+    expect(
+      screen.getByText("Your session expired. Please sign in again."),
+    ).toBeTruthy();
   });
 
   it("uses the local Playwright test-auth adapter without calling the Steward hook", async () => {

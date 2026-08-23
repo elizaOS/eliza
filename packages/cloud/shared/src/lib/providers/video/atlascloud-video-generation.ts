@@ -1,4 +1,4 @@
-// Defines cloud shared atlascloud video generation behavior for backend service consumers.
+/** Implements Atlas Cloud video submission, polling, and status reconciliation. */
 import { getAiProviderConfigurationError } from "../language-model";
 import type {
   GeneratedVideo,
@@ -7,6 +7,11 @@ import type {
   VideoJobStatus,
   VideoJobStatusRequest,
   VideoProvider,
+} from "./types";
+import {
+  VideoGenerationPendingError,
+  VideoGenerationSubmissionUnknownError,
+  VideoGenerationTerminalError,
 } from "./types";
 
 const ATLAS_POLL_INTERVAL_MS = 2_000;
@@ -34,6 +39,22 @@ function atlasBaseUrl(request: VideoGenerationRequest): string {
   return (request.apiKeys.ATLASCLOUD_BASE_URL || "https://api.atlascloud.ai").replace(/\/+$/, "");
 }
 
+function atlasPollUrl(baseUrl: string, predictionId: string, candidate?: string): string {
+  const canonical = `${baseUrl}/api/v1/model/prediction/${predictionId}`;
+  if (!candidate) return canonical;
+  try {
+    const base = new URL(baseUrl);
+    const resolved = new URL(candidate, `${baseUrl}/`);
+    return resolved.protocol === "https:" && resolved.origin === base.origin
+      ? resolved.toString()
+      : canonical;
+  } catch {
+    // error-policy:J3 Provider response URLs are untrusted; an invalid value
+    // falls back to the canonical same-provider prediction endpoint.
+    return canonical;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -44,6 +65,26 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+type AtlasJsonResult =
+  | { kind: "parsed"; payload: Record<string, unknown> }
+  | { kind: "invalid"; error: unknown };
+
+async function parseAtlasJson(response: Response): Promise<AtlasJsonResult> {
+  try {
+    const payload: unknown = await response.json();
+    return isRecord(payload)
+      ? { kind: "parsed", payload }
+      : {
+          kind: "invalid",
+          error: new Error("Atlas Cloud returned a non-object JSON payload"),
+        };
+  } catch (error) {
+    // error-policy:J3 provider JSON is untrusted input; callers receive an
+    // explicit invalid result and decide using the known HTTP/job state.
+    return { kind: "invalid", error };
+  }
 }
 
 interface AtlasPrediction {
@@ -125,22 +166,46 @@ export async function generateAtlasCloudVideo(
 
   const baseUrl = atlasBaseUrl(request);
   const authHeader = { authorization: `Bearer ${apiKey}` };
-  const submitResponse = await atlasFetch(`${baseUrl}/api/v1/model/generateVideo`, {
-    method: "POST",
-    headers: { ...authHeader, "content-type": "application/json" },
-    body: JSON.stringify(buildAtlasVideoInput(request)),
-  });
-
-  const submitPayload = (await submitResponse.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!submitResponse.ok) {
-    const message =
-      stringValue(submitPayload.msg) ??
-      stringValue(submitPayload.message) ??
-      `Atlas video generation failed: ${submitResponse.status}`;
-    throw new Error(message);
+  let submitResponse: Response;
+  try {
+    submitResponse = await atlasFetch(`${baseUrl}/api/v1/model/generateVideo`, {
+      method: "POST",
+      headers: { ...authHeader, "content-type": "application/json" },
+      body: JSON.stringify(buildAtlasVideoInput(request)),
+    });
+  } catch (error) {
+    // error-policy:J1 submission transport is the provider boundary; without
+    // a response or job id the paid-work state is explicitly unknown.
+    throw new VideoGenerationSubmissionUnknownError(
+      error instanceof Error ? error.message : String(error),
+      error,
+    );
   }
 
-  const submitted = parsePrediction(submitPayload);
+  const submitJson = await parseAtlasJson(submitResponse);
+  const submitPayload = submitJson.kind === "parsed" ? submitJson.payload : undefined;
+  if (!submitResponse.ok) {
+    const message =
+      stringValue(submitPayload?.msg) ??
+      stringValue(submitPayload?.message) ??
+      `Atlas video generation failed: ${submitResponse.status}`;
+    const providerCause = Object.assign(new Error(message), {
+      status: submitResponse.status,
+      ...(submitJson.kind === "invalid" ? { cause: submitJson.error } : {}),
+    });
+    // Atlas returns the prediction id only in a 2xx body; an error status
+    // (4xx or 5xx) means no paid prediction was created, so releasing the
+    // hold and trying the next provider is safe.
+    throw new VideoGenerationTerminalError(message, providerCause);
+  }
+  if (submitJson.kind === "invalid") {
+    throw new VideoGenerationSubmissionUnknownError(
+      "Atlas video provider returned an invalid submission response",
+      submitJson.error,
+    );
+  }
+
+  const submitted = parsePrediction(submitJson.payload);
   const inlineVideo = firstAtlasVideoOutput(submitted.outputs);
   if (inlineVideo) {
     return { requestId: submitted.id, video: inlineVideo, timings: null };
@@ -148,37 +213,63 @@ export async function generateAtlasCloudVideo(
 
   const predictionId = submitted.id;
   if (!predictionId) {
-    throw new Error("Atlas video provider returned no prediction id");
+    throw new VideoGenerationSubmissionUnknownError(
+      "Atlas video provider returned no prediction id",
+    );
   }
-  const pollUrl = submitted.urls?.get ?? `${baseUrl}/api/v1/model/prediction/${predictionId}`;
+  const pollUrl = atlasPollUrl(baseUrl, predictionId, submitted.urls?.get);
   const deadline = Date.now() + ATLAS_POLL_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
 
-    const pollResponse = await atlasFetch(pollUrl, { headers: authHeader });
-    const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
+    let pollResponse: Response;
+    try {
+      // Following a redirect would re-send the bearer credential wherever the
+      // provider response points, so a 3xx is returned as-is and settles as a
+      // pending provider state through the non-ok branch below.
+      pollResponse = await atlasFetch(pollUrl, { headers: authHeader, redirect: "manual" });
+    } catch (error) {
+      // error-policy:J1 a known prediction id makes poll transport failure a
+      // pending provider state that the durable reconciliation path can query.
+      throw new VideoGenerationPendingError(
+        predictionId,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
     if (!pollResponse.ok) {
-      throw new Error(`Atlas prediction poll failed: ${pollResponse.status}`);
+      throw new VideoGenerationPendingError(
+        predictionId,
+        `Atlas prediction poll failed: ${pollResponse.status}`,
+      );
+    }
+    const pollJson = await parseAtlasJson(pollResponse);
+    if (pollJson.kind === "invalid") {
+      throw new VideoGenerationPendingError(
+        predictionId,
+        "Atlas prediction poll returned an invalid response",
+      );
     }
 
-    const prediction = parsePrediction(pollPayload);
+    const prediction = parsePrediction(pollJson.payload);
     const status = (prediction.status ?? "").toLowerCase();
     if (TERMINAL_FAIL.has(status)) {
-      throw new Error(
+      throw new VideoGenerationTerminalError(
         `Atlas video generation failed${prediction.error ? `: ${prediction.error}` : ""}`,
       );
     }
     if (TERMINAL_OK.has(status)) {
       const video = firstAtlasVideoOutput(prediction.outputs);
       if (!video) {
-        throw new Error("Atlas video provider completed without an output video");
+        throw new VideoGenerationTerminalError(
+          "Atlas video provider completed without an output video",
+        );
       }
       return { requestId: prediction.id ?? predictionId, video, timings: null };
     }
   }
 
-  throw new Error("Atlas video generation timed out");
+  throw new VideoGenerationPendingError(predictionId, "Atlas video generation timed out");
 }
 
 export async function getAtlasCloudVideoJobStatus(
@@ -193,11 +284,13 @@ export async function getAtlasCloudVideoJobStatus(
     /\/+$/,
     "",
   );
+  // Same credential-containment rule as the generation poll: never follow a
+  // redirect with the bearer header; a 3xx throws below and the reconcile
+  // boundary retries the probe on its next tick.
   const response = await atlasFetch(`${baseUrl}/api/v1/model/prediction/${req.requestId}`, {
     headers: { authorization: `Bearer ${apiKey}` },
+    redirect: "manual",
   });
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-
   if (response.status === 404) {
     return {
       state: "failed",
@@ -208,7 +301,14 @@ export async function getAtlasCloudVideoJobStatus(
     throw new Error(`Atlas prediction status failed: ${response.status}`);
   }
 
-  const prediction = parsePrediction(payload);
+  const responseJson = await parseAtlasJson(response);
+  if (responseJson.kind === "invalid") {
+    throw new Error("Atlas prediction status returned an invalid response", {
+      cause: responseJson.error,
+    });
+  }
+
+  const prediction = parsePrediction(responseJson.payload);
   const status = (prediction.status ?? "").toLowerCase();
   if (TERMINAL_FAIL.has(status)) {
     return {

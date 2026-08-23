@@ -9,9 +9,7 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import { sql } from "drizzle-orm";
-import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
-  type: "json",
-};
+import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with { type: "json" };
 
 const CLOUD_AGENT_RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 
@@ -485,10 +483,20 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           ...(process.env.GROQ_API_KEY
             ? { GROQ_API_KEY: process.env.GROQ_API_KEY }
             : {}),
+          ...(process.env.CEREBRAS_API_KEY
+            ? { CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY }
+            : {}),
         },
       });
 
       const plugins = [];
+
+      if (process.env.CEREBRAS_API_KEY || process.env.OPENAI_API_KEY) {
+        const openaiPlugin = await import("@elizaos/plugin-openai")
+          .then((m) => m.default)
+          .catch(logPluginLoadFailure("@elizaos/plugin-openai"));
+        if (openaiPlugin) plugins.push(openaiPlugin);
+      }
 
       const cloudPlugin = await import("@elizaos/plugin-elizacloud")
         .then((m) => m.default)
@@ -885,6 +893,147 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         res.end(JSON.stringify({ error: "Unauthorized" }));
         return;
       }
+    }
+
+    // The provisioning worker probes the bridge/tailnet port, not the
+    // host-only REST mapping. Keep this response aligned with the REST health
+    // contract so lifecycle recovery never marks a healthy runtime dead.
+    if (req.method === "GET" && req.url === "/api/health") {
+      const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
+      res.writeHead(databaseLiveness.terminal ? 503 : 200);
+      res.end(
+        JSON.stringify({
+          status: agentRuntime ? "healthy" : "initializing",
+          runtimeReady: agentRuntime !== null,
+          database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
+          lastActivityAt: state.lastActivityAt,
+        }),
+      );
+      return;
+    }
+
+    // Server-owned Shared→Dedicated cutover imports the exact personal
+    // conversation before flipping the active runtime. The minimal Cloud image
+    // must expose this boundary too; otherwise provisioning reports `running`
+    // while every cutover retries forever with a 503. Keep unsupported
+    // reminder/Todo payloads fail-closed until their runtime plugins are
+    // installed instead of returning a fabricated receipt.
+    const requestUrl = new URL(req.url ?? "/", "http://cloud-agent.local");
+    const importMatch =
+      req.method === "POST"
+        ? /^\/api\/conversations\/([^/]+)\/import$/.exec(requestUrl.pathname)
+        : null;
+    if (importMatch) {
+      if (!agentRuntime) {
+        res.writeHead(503);
+        res.end(JSON.stringify({ error: "Agent runtime not ready" }));
+        return;
+      }
+      let body: Record<string, unknown>;
+      try {
+        body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "Invalid JSON" }));
+        return;
+      }
+      const messages = Array.isArray(body.messages) ? body.messages : null;
+      const tasks = Array.isArray(body.scheduledTasks)
+        ? body.scheduledTasks
+        : [];
+      const todo =
+        body.todoSnapshot && typeof body.todoSnapshot === "object"
+          ? (body.todoSnapshot as Record<string, unknown>)
+          : null;
+      const todos = todo && Array.isArray(todo.todos) ? todo.todos : [];
+      const mutations =
+        todo && Array.isArray(todo.mutations) ? todo.mutations : [];
+      const digest =
+        todo && typeof todo.digest === "string" ? todo.digest : null;
+      if (
+        !messages ||
+        tasks.length > 0 ||
+        todos.length > 0 ||
+        mutations.length > 0 ||
+        !digest
+      ) {
+        res.writeHead(messages ? 501 : 400);
+        res.end(
+          JSON.stringify({
+            error: messages
+              ? "This Cloud image cannot yet import reminders or Todos"
+              : "Body must include a messages array and exact Todo snapshot",
+          }),
+        );
+        return;
+      }
+      const existingSourceIds = new Set(
+        state.memories
+          .map((memory) => memory.sourceId)
+          .filter((value): value is string => typeof value === "string"),
+      );
+      let inserted = 0;
+      let skipped = 0;
+      for (const value of messages) {
+        if (!value || typeof value !== "object") continue;
+        const message = value as Record<string, unknown>;
+        const role =
+          message.role === "assistant"
+            ? "assistant"
+            : message.role === "user"
+              ? "user"
+              : null;
+        const text =
+          typeof message.text === "string" ? message.text.trim() : "";
+        const sourceId =
+          typeof message.sourceId === "string" ? message.sourceId.trim() : "";
+        if (!role || !text || !sourceId) continue;
+        if (existingSourceIds.has(sourceId)) {
+          skipped += 1;
+          continue;
+        }
+        state.memories.push({
+          role,
+          text,
+          sourceId,
+          roomId: decodeURIComponent(importMatch[1]),
+          timestamp:
+            typeof message.timestamp === "number"
+              ? message.timestamp
+              : Date.now(),
+        });
+        existingSourceIds.add(sourceId);
+        inserted += 1;
+      }
+      trimMemories();
+      state.lastActivityAt = new Date().toISOString();
+      res.writeHead(200);
+      res.end(
+        JSON.stringify({
+          conversationId: decodeURIComponent(importMatch[1]),
+          complete: true,
+          sourceMessageCount: messages.length,
+          inserted,
+          skipped: messages.length - inserted,
+          sourceScheduledTaskCount: 0,
+          importedScheduledTasks: 0,
+          skippedScheduledTasks: 0,
+          activatedScheduledTasks: 0,
+          skippedActivatedScheduledTasks: 0,
+          sourceTodoCount: 0,
+          sourceTodoMutationCount: 0,
+          importedTodos: 0,
+          repairedTodos: 0,
+          skippedTodos: 0,
+          removedStaleTodos: 0,
+          importedTodoMutations: 0,
+          skippedTodoMutations: 0,
+          sourceTodoDigest: digest,
+          targetTodoDigest: digest,
+        }),
+      );
+      return;
     }
 
     if (req.method === "POST" && req.url === "/api/snapshot") {

@@ -1,5 +1,11 @@
+/**
+ * Eliza Cloud image generation and description handlers. Requests preserve
+ * caller output-budget intent and reject malformed operator limits before any
+ * provider dispatch.
+ */
+
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { ElizaError, logger, ModelType } from "@elizaos/core";
 import {
   getImageDescriptionModel,
   getImageGenerationModel,
@@ -118,10 +124,24 @@ export async function handleImageDescription(
   let promptText: string | undefined;
   const modelName = getImageDescriptionModel(runtime);
   logger.log(`[ELIZAOS_CLOUD] Using IMAGE_DESCRIPTION model: ${modelName}`);
-  const maxTokens = Number.parseInt(
-    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS", "8192") || "8192",
-    10
-  );
+  const configuredMaxTokens = (
+    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS", "") ?? ""
+  ).trim();
+  const maxTokens = configuredMaxTokens === "" ? undefined : Number(configuredMaxTokens);
+  if (
+    maxTokens !== undefined &&
+    (!/^[1-9]\d*$/.test(configuredMaxTokens) ||
+      !Number.isSafeInteger(maxTokens) ||
+      maxTokens <= 0)
+  ) {
+    throw new ElizaError(
+      "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS must be a positive safe integer",
+      {
+        code: "ELIZAOS_CLOUD_IMAGE_OUTPUT_BUDGET_INVALID",
+        context: { received: configuredMaxTokens },
+      }
+    );
+  }
 
   if (typeof params === "string") {
     imageUrl = params;
@@ -148,8 +168,8 @@ export async function handleImageDescription(
     const requestBody: Record<string, unknown> = {
       model: modelName,
       messages: messages,
-      max_tokens: maxTokens,
     };
+    if (maxTokens !== undefined) requestBody.max_tokens = maxTokens;
 
     // On 429, honour the upstream's `retryAfter` instead of retrying on a
     // hardcoded backoff. Hardcoded retries inside the rate-limit window add

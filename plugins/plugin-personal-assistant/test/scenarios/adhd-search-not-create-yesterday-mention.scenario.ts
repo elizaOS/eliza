@@ -12,7 +12,7 @@
  * OUTCOME (not routing-only): the actionCalled(INBOX_SEARCH) proves a real
  * search ran, and definitionCountDelta{delta:0} proves NO new dentist reminder
  * was created — the paired negative that keeps this off the all-actionCalled
- * ratchet and makes "search, don't create" fail for the real reason.
+ * guard and makes "search, don't create" fail for the real reason.
  *
  * Live-verify note (#12781): live capture confirmed the model routes this to
  * the promoted INBOX_SEARCH subaction; the load-bearing negative outcome

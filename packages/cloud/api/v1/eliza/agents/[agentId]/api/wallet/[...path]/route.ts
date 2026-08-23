@@ -16,6 +16,7 @@ import { createStewardClient } from "@/lib/services/steward-client";
 import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";
 
 const CORS_METHODS = "GET, POST, PUT, OPTIONS";
 type WalletMethod = "GET" | "POST" | "PUT";
@@ -540,6 +541,7 @@ const ROUTE_PARAM_SPEC = [
   { name: "path", splat: true },
 ] as const;
 const honoRouter = new Hono<AppEnv>();
+honoRouter.use("*", proxyLocalDedicatedOrNext);
 honoRouter.options("/", () => __next_OPTIONS());
 honoRouter.get("/", async (c) => {
   try {

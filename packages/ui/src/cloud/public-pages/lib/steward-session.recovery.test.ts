@@ -276,6 +276,7 @@ describe("recoverStewardSessionViaCookie", () => {
     expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
       method: "DELETE",
       credentials: "include",
+      headers: expect.objectContaining({ "X-Eliza-CSRF": "1" }),
     });
   });
 

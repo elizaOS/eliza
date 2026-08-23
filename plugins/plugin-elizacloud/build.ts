@@ -26,7 +26,12 @@ const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."
   .filter((entry) => {
     if (entry.includes("__tests__/") || entry.endsWith(".test.ts") || entry.endsWith(".test.tsx"))
       return false;
-    if (entry === "src/index.node.ts" || entry === "src/index.browser.ts") return false;
+    if (
+      entry === "src/index.node.ts" ||
+      entry === "src/index.browser.ts" ||
+      entry === "src/host-routes.ts"
+    )
+      return false;
     // View components are vite-only (React/JSX against host-external
     // @elizaos/ui); the per-file bun bundle has no react external and would
     // choke on them. They ship exclusively via `build:views` → dist/views.
@@ -83,6 +88,17 @@ await buildPlugin({
         chunk: "chunks/[name]-[hash].[ext]",
         asset: "assets/[name]-[hash].[ext]",
       },
+    },
+    // `host-routes` is a re-export-only public entrypoint. Building it in the
+    // large multi-entry subpath batch lets Bun tree-shake the local bindings
+    // while retaining the export list, producing invalid ESM. A dedicated
+    // single-entry bundle keeps the published agent import executable.
+    {
+      label: "Host routes",
+      entry: "src/host-routes.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
     },
   ],
   flatten: [{ from: "src" }],

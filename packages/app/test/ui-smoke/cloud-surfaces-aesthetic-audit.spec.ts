@@ -354,9 +354,9 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   {
     slug: "account-deletion",
-    path: "/account-deletion",
+    path: "/account-deletion?requested=untrusted-audit-receipt",
     route: "account-deletion",
-    auth: PUBLIC,
+    auth: AUTH,
   },
   { slug: "bsc", path: "/bsc", route: "bsc", auth: PUBLIC },
   // api-explorer/

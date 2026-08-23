@@ -36,6 +36,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from training.tokenization import tokenize_with_explicit_limit
 
+from lib.generation_integrity import require_complete_generated_tokens
 from .simulation_bridge import ActionOutcome, Scenario, SimulationBridge
 from .turboquant import TurboQuantSettings, build_generation_cache
 
@@ -334,6 +335,12 @@ class ContinuousRLAgent:
         self.model.train()
         prompt_len = enc["input_ids"].shape[1]
         response_ids = output_ids[0, prompt_len:]
+        require_complete_generated_tokens(
+            response_ids,
+            max_new_tokens=self.config.max_new_tokens,
+            source="continuous_rl.generate_action",
+            terminal_token_ids=self.tokenizer.eos_token_id,
+        )
         response_text = self.tokenizer.decode(response_ids, skip_special_tokens=True)
 
         return response_text, enc["input_ids"], output_ids

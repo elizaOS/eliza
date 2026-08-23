@@ -460,6 +460,124 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
+	function stubOrchestratorViewsWire() {
+		const wireView = {
+			id: "orchestrator",
+			label: "Orchestrator",
+			pluginName: "@elizaos/plugin-task-coordinator",
+			available: true,
+			path: "/orchestrator",
+			viewType: "gui",
+			capabilities: [
+				{
+					id: "orchestrator-status",
+					description: "Read orchestrator status.",
+				},
+				{
+					id: "orchestrator-validate-task",
+					description: "Approve or reject task validation.",
+					authority: "human",
+					params: {
+						taskId: { type: "string", description: "Task id" },
+					},
+				},
+			],
+		};
+		const fetchMock = vi.mocked(globalThis.fetch);
+		fetchMock.mockImplementation(async (url) => {
+			const href = String(url);
+			if (href.startsWith("http://127.0.0.1:3456/api/views/current")) {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => ({ current: null }),
+				} as Response;
+			}
+			if (href.includes("/api/views/orchestrator/interact")) {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => ({
+						success: true,
+						result: { success: true, data: { status: "idle" } },
+					}),
+				} as Response;
+			}
+			if (href.startsWith("http://127.0.0.1:3456/api/views")) {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => ({ views: [wireView] }),
+				} as Response;
+			}
+			throw new Error(`unexpected loopback request: ${href}`);
+		});
+		return fetchMock;
+	}
+
+	function dispatchedInteractCapabilities(): string[] {
+		return vi
+			.mocked(globalThis.fetch)
+			.mock.calls.filter(([url]) => String(url).includes("/interact"))
+			.map(([, init]) => {
+				const body = JSON.parse(String(init?.body ?? "{}")) as {
+					capability?: unknown;
+				};
+				return typeof body.capability === "string" ? body.capability : "";
+			});
+	}
+
+	it("refuses an explicitly requested human-only capability parsed from the real view registry wire", async () => {
+		const { runtime } = createRuntime();
+		stubOrchestratorViewsWire();
+		const action = createViewsAction({
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("approve this task") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "orchestrator",
+				capability: "orchestrator-validate-task",
+				params: { taskId: "task-1" },
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toMatch(/requires direct human interaction/);
+		expect(result?.text).toContain("orchestrator-validate-task");
+		expect(dispatchedInteractCapabilities()).toEqual([]);
+	});
+
+	it("never selects a human-only capability from the real view registry wire when the request is implicit", async () => {
+		const { runtime } = createRuntime();
+		stubOrchestratorViewsWire();
+		const action = createViewsAction({
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("validate task task-1 in the orchestrator") as never,
+			undefined,
+			{ action: "interact", view: "orchestrator" },
+			vi.fn(),
+		);
+
+		// The only agent-callable descriptor on the view is the read-only status
+		// capability, so that is the most the planner may dispatch; the
+		// human-only mutation must never reach the interact route.
+		expect(result?.text).not.toContain("orchestrator-validate-task");
+		expect(dispatchedInteractCapabilities()).not.toContain(
+			"orchestrator-validate-task",
+		);
+		expect(dispatchedInteractCapabilities()).toEqual(["orchestrator-status"]);
+	});
+
 	it("normalizes legacy Notes title/body payloads into the declared one-field content contract", async () => {
 		const { runtime } = createRuntime();
 		const action = createViewsAction({

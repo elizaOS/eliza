@@ -30,6 +30,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from lib.generation_integrity import require_complete_generation
+
 from .adversarial_game import (
     ATTACK_TEMPLATES,
     SECRETS,
@@ -171,7 +173,10 @@ async def make_openai_generator(model: str = "gpt-4o-mini") -> Callable:
             max_tokens=512,
             temperature=0.7,
         )
-        return response.choices[0].message.content or ""
+        choice = require_complete_generation(
+            response.choices[0], source="red_team_gym.openai"
+        )
+        return choice.message.content or ""
 
     return generate
 
@@ -195,6 +200,7 @@ async def make_anthropic_generator(model: str = "claude-sonnet-4-20250514") -> C
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
+        require_complete_generation(response, source="red_team_gym.anthropic")
         return response.content[0].text if response.content else ""
 
     return generate
@@ -220,7 +226,10 @@ async def make_groq_generator(model: str = "llama-3.3-70b-versatile") -> Callabl
             max_tokens=512,
             temperature=0.7,
         )
-        return response.choices[0].message.content or ""
+        choice = require_complete_generation(
+            response.choices[0], source="red_team_gym.groq"
+        )
+        return choice.message.content or ""
 
     return generate
 

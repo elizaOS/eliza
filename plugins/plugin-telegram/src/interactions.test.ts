@@ -1,7 +1,7 @@
 /**
  * Unit tests for `renderTelegramInteractions`: plain replies pass through with no
  * keyboard, choice blocks render as callback buttons with the marker stripped,
- * and task cards link out or stay as text depending on the url resolver.
+ * and task cards link out when a url resolver exists or drop entirely when not.
  * Deterministic; no live API.
  */
 import type { Content } from "@elizaos/core";
@@ -71,12 +71,15 @@ describe("renderTelegramInteractions", () => {
     expect(button.url).toContain(id);
   });
 
-  it("keeps a task title as text when no url is available", () => {
+  it("drops a url-less task card entirely instead of a dangling title line", () => {
+    // Core contract since 2026-08-19: without a resolvable link the task
+    // widget contributes nothing to chat text — the bare title rendered as a
+    // duplicate line under the ack prose on chat transports.
     const id = "abc12345-def6-7890-abcd-ef1234567890";
     const out = renderTelegramInteractions({
-      text: `[TASK:${id}]Ship it[/TASK]`,
+      text: `Created the task.\n\n[TASK:${id}]Ship it[/TASK]`,
     } as Content);
-    expect(out.text).toContain("Ship it");
+    expect(out.text).toBe("Created the task.");
     expect(out.keyboardRows).toHaveLength(0);
   });
 
@@ -133,12 +136,26 @@ describe("dashboard-only marker stripping (Finding B)", () => {
     expect(rendered.keyboardRows).toHaveLength(0);
   });
 
-  it("strips [CONFIG:…] from fallback prose contributed by a parsed block", () => {
+  it("drops a url-less task card even when its title carries a marker", () => {
+    // Mirrors core's renderInteractionsAsPlainText contract: the url-less
+    // task widget contributes NOTHING, so neither title nor marker leaks.
     const id = "abc12345-def6-7890-abcd-ef1234567890";
     const rendered = renderTelegramInteractions({
       text: `[TASK:${id}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
     } as Content);
-    expect(rendered.text).toBe("Ship it");
+    expect(rendered.text).toBe("");
+    expect(rendered.keyboardRows).toHaveLength(0);
+  });
+
+  it("strips [CONFIG:…] from fallback prose contributed by a parsed block", () => {
+    const form = JSON.stringify({
+      title: "Configure account [CONFIG:@elizaos/plugin-gmail]",
+      fields: [{ name: "account", type: "text" }],
+    });
+    const rendered = renderTelegramInteractions({
+      text: `[FORM]\n${form}\n[/FORM]`,
+    } as Content);
+    expect(rendered.text).toContain("Configure account");
     expect(rendered.text).not.toContain("[CONFIG:");
     expect(rendered.keyboardRows).toHaveLength(0);
   });

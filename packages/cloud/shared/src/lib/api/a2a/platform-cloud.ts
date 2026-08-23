@@ -9,7 +9,11 @@
 import { organizationsRepository } from "../../../db/repositories";
 import { parseOrganizationCreditBalance } from "../../../db/repositories/organizations-credit-balance-numeric";
 import type { AppContext } from "../../../types/cloud-worker-env";
-import { requireAdmin, requireUserOrApiKeyWithOrg } from "../../auth/workers-hono-auth";
+import {
+  requireAdmin,
+  requireCurrentBillingManagerSession,
+  requireUserOrApiKeyWithOrg,
+} from "../../auth/workers-hono-auth";
 import { executeCloudCapabilityRest, getCloudCapabilities } from "../../cloud-capabilities";
 import { a2aTaskStoreService } from "../../services/a2a-task-store";
 import { activeBillingService } from "../../services/active-billing";
@@ -72,6 +76,7 @@ export function getPlatformAgentCard(c: AppContext) {
       outputModes: ["application/json"],
       rest: capability.surfaces.rest,
       authModes: capability.auth.modes,
+      organizationRoles: capability.auth.organizationRoles ?? [],
       billing: capability.billing,
     })),
   };
@@ -122,6 +127,7 @@ async function executePlatformSkill(c: AppContext, skill: string, args: Record<s
           tool: capability.surfaces.mcp.tool,
           rest: capability.surfaces.rest,
           authModes: capability.auth.modes,
+          organizationRoles: capability.auth.organizationRoles ?? [],
           billing: capability.billing,
         })),
       };
@@ -176,9 +182,9 @@ async function executePlatformSkill(c: AppContext, skill: string, args: Record<s
       return { ledger: await activeBillingService.listLedger(user.organization_id, limit) };
     }
     case "cloud.billing.cancel_resource": {
-      const user = await requireUserOrApiKeyWithOrg(c);
       const resourceId = typeof args.resourceId === "string" ? args.resourceId : "";
       if (!resourceId) throw new Error("resourceId is required");
+      const user = await requireCurrentBillingManagerSession(c);
       return activeBillingService.cancelResource({
         organizationId: user.organization_id,
         resourceId,
@@ -187,6 +193,9 @@ async function executePlatformSkill(c: AppContext, skill: string, args: Record<s
             ? args.resourceType
             : undefined,
         mode: args.mode === "delete" ? "delete" : "stop",
+        authorizeInfrastructureMutation: async () => {
+          await requireCurrentBillingManagerSession(c);
+        },
       });
     }
     case "cloud.containers.manage": {

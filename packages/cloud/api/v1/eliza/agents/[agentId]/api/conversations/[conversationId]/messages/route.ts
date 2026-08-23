@@ -18,6 +18,7 @@ import {
 import { sharedTurnClientMessageId } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { proxyLocalDedicatedOrNext } from "../../../_local-dedicated-proxy";
 
 /**
  * /api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages
@@ -30,6 +31,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const CORS_METHODS = "GET, POST, OPTIONS";
 
 const app = new Hono<AppEnv>();
+
+app.use("*", proxyLocalDedicatedOrNext);
 
 app.options("/", (c) =>
   handleCorsOptions(CORS_METHODS, c.req.header("origin")),

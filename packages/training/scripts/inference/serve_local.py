@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from training.model_registry import get as registry_get  # noqa: E402
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -192,8 +193,15 @@ def main() -> int:
     with torch.inference_mode():
         out = model.generate(**inputs, **gen_kwargs)
     elapsed = time.perf_counter() - t0
-    new_tokens = int(out.shape[1] - actual_in)
-    text = tokenizer.decode(out[0, actual_in:], skip_special_tokens=True)
+    generated_ids = out[0, actual_in:]
+    require_complete_generated_tokens(
+        generated_ids,
+        max_new_tokens=max_out,
+        source="serve_local.generate",
+        terminal_token_ids=tokenizer.eos_token_id,
+    )
+    new_tokens = int(generated_ids.shape[0])
+    text = tokenizer.decode(generated_ids, skip_special_tokens=True)
 
     peak_gb = torch.cuda.max_memory_allocated() / 1024**3
     print("\n" + "=" * 60)

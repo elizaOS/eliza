@@ -53,6 +53,7 @@ import {
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { decodeJwtPayload } from "../lib/jwt";
+import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
 import {
   clearStaleStewardSession,
   configuredSessionEndpoint,
@@ -616,6 +617,10 @@ export async function signOutFromSsoBridgedHost(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
+  // Invalidate before even issuing the server logout request: fetch adapters
+  // may have synchronous hooks, and no re-entrant token publication may reuse
+  // proof from the authority epoch being ended.
+  invalidateStewardServerCookieSyncMarker();
   markSsoLoggedOut();
   const base = apiBaseForHostname(hostname);
   const serverLogout = base

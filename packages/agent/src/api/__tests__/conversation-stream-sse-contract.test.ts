@@ -699,6 +699,35 @@ function createEphemeralReplyMessageService(
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
+function createCallbackTerminalFailureMessageService(
+  failureKind: "coding_mutation_unverified" | "coding_tool_failure",
+): NonNullable<AgentRuntime["messageService"]> {
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text: "Done." });
+      return {
+        didRespond: true,
+        responseContent: null,
+        responseMessages: [],
+        terminalFailure: {
+          kind: failureKind,
+          transient: true,
+          message: "Shell execution failed.",
+          code: "SHELL_UNAVAILABLE",
+        },
+        mode: "actions" as const,
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "typed-coding-failure-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
 function createState(
   messageServiceOverride?: NonNullable<AgentRuntime["messageService"]>,
 ): {
@@ -2530,6 +2559,52 @@ describe("conversation stream SSE contract (#10712)", () => {
         failureKind,
       });
       expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["coding_mutation_unverified", "coding_tool_failure"] as const)(
+    "makes typed %s authoritative when callback prose disagrees",
+    async (failureKind) => {
+      const { ctx, record, state } = createCtx(
+        createCallbackTerminalFailureMessageService(failureKind),
+      );
+      const emitEvent = vi.mocked(
+        state.runtime?.emitEvent as NonNullable<AgentRuntime["emitEvent"]>,
+      );
+
+      await handleConversationRoutes(ctx);
+
+      const done = parseSsePayloads(record.writes).find(
+        (payload) => payload.type === "done",
+      );
+      expect(done).toMatchObject({
+        type: "done",
+        fullText: "Shell execution failed.",
+        failureKind,
+        terminalFailure: {
+          kind: failureKind,
+          message: "Shell execution failed.",
+          transient: true,
+          code: "SHELL_UNAVAILABLE",
+        },
+      });
+      const messageSentCall = emitEvent.mock.calls.find(
+        ([eventType]) => eventType === "MESSAGE_SENT",
+      );
+      expect(messageSentCall?.[1]).toMatchObject({
+        message: {
+          content: {
+            text: "Shell execution failed.",
+            failureKind,
+            terminalFailure: {
+              kind: failureKind,
+              message: "Shell execution failed.",
+              transient: true,
+              code: "SHELL_UNAVAILABLE",
+            },
+          },
+        },
+      });
     },
   );
 

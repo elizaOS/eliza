@@ -11,20 +11,22 @@
 import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
-import { existsSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { isIP } from "node:net";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import { ElizaError } from "@elizaos/core";
 import { fetchWithSsrfGuard } from "@elizaos/core/network";
 
 import { containersEnv } from "../config/containers-env";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { isContainerAbsentMessage } from "./docker-error-classifier";
 import {
   allocatePort,
   buildAgentContainerLabelArgs,
   getContainerName,
-  getVolumePath,
   validateAgentId,
   validateAgentName,
   validateContainerName,
@@ -281,6 +283,68 @@ const HEALTH_WAIT_TOTAL_MS = 60_000;
 
 const LOG_PREFIX = "[LocalDockerSandboxProvider]";
 
+/**
+ * Convert Docker's default-bridge gateway list into exact host CIDRs. The
+ * pairing relay admits only these single addresses; it never trusts Host or
+ * forwarded headers and never opens the surrounding bridge/LAN range.
+ */
+export function parseLocalDockerBridgeGatewayCidrs(output: string): string {
+  const cidrs = new Set<string>();
+  for (const rawLine of output.split(/\r?\n/)) {
+    const address = rawLine.trim();
+    if (!address) continue;
+    const family = isIP(address);
+    if (family === 4) cidrs.add(`${address}/32`);
+    else if (family === 6) cidrs.add(`${address}/128`);
+    else {
+      throw new Error(`${LOG_PREFIX} Docker bridge returned an invalid gateway address.`);
+    }
+  }
+  if (cidrs.size === 0) {
+    throw new Error(`${LOG_PREFIX} Docker bridge did not report a gateway address.`);
+  }
+  return [...cidrs].join(",");
+}
+
+async function resolveLocalDockerBridgeGatewayCidrs(): Promise<string> {
+  const { stdout } = await execFileAsync(
+    DOCKER_BIN,
+    [
+      "network",
+      "inspect",
+      "bridge",
+      "--format",
+      "{{range .IPAM.Config}}{{println .Gateway}}{{end}}",
+    ],
+    { timeout: DOCKER_CMD_TIMEOUT_MS },
+  );
+  return parseLocalDockerBridgeGatewayCidrs(stdout);
+}
+
+/** Resolve the isolated Worker origin that a local container must pair with. */
+export function resolveLocalDockerCloudApiBaseUrl(environment: NodeJS.ProcessEnv): string {
+  const raw =
+    environment.ELIZA_CLOUD_LOCAL_API_URL?.trim() || environment.NEXT_PUBLIC_API_URL?.trim();
+  if (!raw) {
+    throw new Error(`${LOG_PREFIX} ELIZA_CLOUD_LOCAL_API_URL is required for local pairing.`);
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${LOG_PREFIX} Local Cloud API URL is invalid.`);
+  }
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const loopback =
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    (isIP(hostname) === 4 && hostname.split(".")[0] === "127");
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || !loopback) {
+    throw new Error(`${LOG_PREFIX} Local Cloud API URL must use a loopback HTTP origin.`);
+  }
+  return `${url.origin}/api/v1`;
+}
+
 function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
     typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
@@ -319,6 +383,37 @@ interface ContainerMeta {
   healthPort: number;
   volumePath: string;
   dockerImage: string;
+}
+
+const LOCAL_DOCKER_LLM_ENV_KEYS = [
+  "ELIZAOS_CLOUD_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GOOGLE_API_KEY",
+  "XAI_API_KEY",
+  "GROQ_API_KEY",
+  "CEREBRAS_API_KEY",
+  "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
+  "CEREBRAS_SMALL_MODEL",
+  "CEREBRAS_LARGE_MODEL",
+] as const;
+
+/** Copies configured model-provider values without overriding sandbox-owned values. */
+export function collectLocalDockerLlmPassthrough(
+  hostEnv: NodeJS.ProcessEnv,
+  sandboxEnv: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const passthrough: Record<string, string> = {};
+  for (const key of LOCAL_DOCKER_LLM_ENV_KEYS) {
+    const value = hostEnv[key];
+    if (typeof value === "string" && value.length > 0 && !sandboxEnv[key]) {
+      passthrough[key] = value;
+    }
+  }
+  return passthrough;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,13 +526,21 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    // Resolve this before removing an existing container. If Docker's local
+    // bridge cannot be classified exactly, fail closed while the healthy
+    // runtime and its persisted data remain untouched.
+    const pairingAllowedPeerCidrs = await resolveLocalDockerBridgeGatewayCidrs();
+    const localCloudApiBaseUrl = resolveLocalDockerCloudApiBaseUrl(getCloudAwareEnv());
+
     // If a container with this name already exists from a prior run, remove it
     // so we can re-create cleanly. Local dev is single-tenant per agentId.
     await this.removeExistingContainer(containerName);
 
     const bridgePort = this.ports.reserve(LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX);
     const healthPort = this.ports.reserve(LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX);
-    const volumePath = getVolumePath(agentId);
+    const volumePath = path.resolve(process.cwd(), ".eliza", "local-docker-agents", agentId);
+    mkdirSync(volumePath, { recursive: true, mode: 0o777 });
+    chmodSync(volumePath, 0o777);
 
     await this.ensureImagePulled(dockerImage);
 
@@ -475,48 +578,73 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     // runtime crashes the container's process on the first message.send
     // (NoModelProviderConfiguredError). Allow per-sandbox overrides via
     // environmentVars to win.
-    const hostEnv = process.env;
-    const llmPassthrough: Record<string, string> = {};
-    for (const key of [
-      "ELIZAOS_CLOUD_API_KEY",
-      "OPENROUTER_API_KEY",
-      "OPENROUTER_BASE_URL",
-      "OPENAI_API_KEY",
-      "ANTHROPIC_API_KEY",
-      "GOOGLE_API_KEY",
-      "XAI_API_KEY",
-      "GROQ_API_KEY",
-    ]) {
-      const value = hostEnv[key];
-      if (typeof value === "string" && value.length > 0 && !rewrittenEnv[key]) {
-        llmPassthrough[key] = value;
-      }
-    }
+    const llmPassthrough = collectLocalDockerLlmPassthrough(process.env, rewrittenEnv);
+    const cerebrasApiKey = rewrittenEnv.CEREBRAS_API_KEY || llmPassthrough.CEREBRAS_API_KEY;
+    const cerebrasBaseUrl = rewrittenEnv.CEREBRAS_BASE_URL || llmPassthrough.CEREBRAS_BASE_URL;
+    const cerebrasSmallModel =
+      rewrittenEnv.CEREBRAS_SMALL_MODEL ||
+      rewrittenEnv.CEREBRAS_MODEL ||
+      llmPassthrough.CEREBRAS_SMALL_MODEL ||
+      llmPassthrough.CEREBRAS_MODEL ||
+      "gemma-4-31b";
+    const cerebrasLargeModel =
+      rewrittenEnv.CEREBRAS_LARGE_MODEL ||
+      rewrittenEnv.CEREBRAS_MODEL ||
+      llmPassthrough.CEREBRAS_LARGE_MODEL ||
+      llmPassthrough.CEREBRAS_MODEL ||
+      "gemma-4-31b";
 
-    const allEnv = applyLocalDockerRuntimeMode({
-      ...llmPassthrough,
-      ...rewrittenEnv,
-      AGENT_NAME: agentName,
-      AGENT_ID: agentId,
-      ELIZA_PORT: agentPort,
-      PORT: agentPort,
-      BRIDGE_PORT: agentBridgePort,
-      AGENT_API_BIND: "0.0.0.0",
-      ELIZA_API_BIND: "0.0.0.0",
-      AGENT_DISABLE_AUTO_API_TOKEN: "1",
-      ELIZA_DISABLE_AUTO_API_TOKEN: "1",
-      JWT_SECRET: rewrittenEnv.JWT_SECRET || crypto.randomUUID(),
-      ELIZA_VAULT_PASSPHRASE:
-        rewrittenEnv.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID().replace(/-/g, ""),
-      ELIZA_API_TOKEN: apiToken,
-      BRIDGE_SECRET: apiToken,
-      // plugin-sql throws under NODE_ENV=production without a SECRET_SALT.
-      // Generate a per-sandbox value so two agents on the same host don't
-      // share encrypted-state keys. Stable per agentId so restarts decrypt.
-      SECRET_SALT:
-        rewrittenEnv.SECRET_SALT ||
-        nodeCrypto.createHash("sha256").update(`local-docker-secret-salt:${agentId}`).digest("hex"),
-    });
+    const allEnv = applyLocalDockerRuntimeMode(
+      {
+        ...llmPassthrough,
+        ...rewrittenEnv,
+        // plugin-openai is the OpenAI-compatible transport used for Cerebras.
+        // These are aliases of the same Cerebras credential/base, not a second
+        // provider; the Cerebras model roles remain authoritative below.
+        ...(cerebrasApiKey
+          ? {
+              OPENAI_API_KEY: cerebrasApiKey,
+              OPENAI_BASE_URL: cerebrasBaseUrl || "https://api.cerebras.ai/v1",
+              OPENAI_NANO_MODEL: cerebrasSmallModel,
+              OPENAI_SMALL_MODEL: cerebrasSmallModel,
+              OPENAI_MEDIUM_MODEL: cerebrasSmallModel,
+              OPENAI_ACTION_PLANNER_MODEL: cerebrasSmallModel,
+              OPENAI_RESPONSE_HANDLER_MODEL: cerebrasSmallModel,
+              OPENAI_SHOULD_RESPOND_MODEL: cerebrasSmallModel,
+              OPENAI_LARGE_MODEL: cerebrasLargeModel,
+              OPENAI_MEGA_MODEL: cerebrasLargeModel,
+            }
+          : {}),
+        AGENT_NAME: agentName,
+        AGENT_ID: agentId,
+        ELIZA_PORT: agentPort,
+        PORT: agentPort,
+        BRIDGE_PORT: agentBridgePort,
+        AGENT_API_BIND: "0.0.0.0",
+        ELIZA_API_BIND: "0.0.0.0",
+        AGENT_DISABLE_AUTO_API_TOKEN: "1",
+        ELIZA_DISABLE_AUTO_API_TOKEN: "1",
+        JWT_SECRET: rewrittenEnv.JWT_SECRET || crypto.randomUUID(),
+        ELIZA_VAULT_PASSPHRASE:
+          rewrittenEnv.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID().replace(/-/g, ""),
+        ELIZA_API_TOKEN: apiToken,
+        BRIDGE_SECRET: apiToken,
+        // plugin-sql throws under NODE_ENV=production without a SECRET_SALT.
+        // Generate a per-sandbox value so two agents on the same host don't
+        // share encrypted-state keys. Stable per agentId so restarts decrypt.
+        SECRET_SALT:
+          rewrittenEnv.SECRET_SALT ||
+          nodeCrypto
+            .createHash("sha256")
+            .update(`local-docker-secret-salt:${agentId}`)
+            .digest("hex"),
+        ELIZA_STATE_DIR: "/home/agent/.eliza",
+        ELIZA_AGENT_LOCAL_STATE: "/home/agent/.eliza",
+        PGLITE_DATA_DIR: "/home/agent/.eliza/.pgdata",
+      },
+      pairingAllowedPeerCidrs,
+      rewriteForContainer(localCloudApiBaseUrl),
+    );
 
     for (const [key, value] of Object.entries(allEnv)) {
       validateEnvKey(key);
@@ -541,6 +669,8 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       // Desktop (Mac/Windows) it's already mapped but this is harmless.
       "--add-host",
       "host.docker.internal:host-gateway",
+      "--volume",
+      `${volumePath}:/home/agent/.eliza`,
       // Host bridgePort → container's /bridge JSON-RPC port
       "-p",
       `127.0.0.1:${bridgePort}:${agentBridgePort}`,

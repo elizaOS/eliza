@@ -1,5 +1,5 @@
 /**
- * Coverage ratchet: every converted plugin view must register at least one
+ * Coverage guard: every converted plugin view must register at least one
  * element with the agent surface (useAgentElement) so the floating pill can
  * address it. Guards against a view regressing to an unaddressable surface.
  */
@@ -23,7 +23,7 @@ const CONVERTED_PLUGINS = [
   "plugin-trajectory-logger",
 ] as const;
 
-/** Remaining views to convert; must stay empty for the ratchet to pass. */
+/** Remaining views to convert; must stay empty for the guard to pass. */
 const PENDING_PLUGINS: readonly string[] = [];
 
 function walkTsx(dir: string): string[] {

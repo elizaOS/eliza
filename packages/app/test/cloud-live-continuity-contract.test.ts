@@ -12,6 +12,7 @@ import {
   classifyForbiddenAgentMutation,
   compareCloudLiveRuntimeBindings,
   createCloudLiveContinuityEvidence,
+  createCloudLiveHistoryNetworkDiagnostics,
   createCloudLiveNetworkAudit,
   installCloudLiveAnchoredRetryChipObserver,
   parseCloudLiveContinuityEvidence,
@@ -203,11 +204,100 @@ describe("forbidden Cloud agent mutations", () => {
       serverErrorChatSendResponseCount: 1,
       otherChatSendResponseCount: 1,
       successfulPersonalIdentityGetCount: 1,
+      historyGetRequestCount: 1,
       successfulHistoryGetCount: 1,
+      clientErrorHistoryGetResponseCount: 0,
+      serverErrorHistoryGetResponseCount: 0,
+      otherHistoryGetResponseCount: 0,
+      failedHistoryGetRequestCount: 0,
+      timedOutHistoryGetRequestCount: 0,
+      pendingHistoryGetRequestCount: 0,
     });
     expect(JSON.stringify(snapshot)).not.toMatch(
       /api\.test|private|idempotency|prompt/,
     );
+  });
+
+  it("reduces timed-out history proof traffic to privacy-safe counters", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const privateHistory =
+      "https://api.test/api/conversations/private-conversation/messages";
+    const before = await audit.snapshot();
+
+    for (const status of [200, 404, 503, 302]) {
+      audit.observeRequest("GET", privateHistory);
+      audit.observeResponse("GET", privateHistory, status);
+    }
+    audit.observeRequest("GET", privateHistory);
+    audit.observeRequestFailure(
+      "GET",
+      privateHistory,
+      "net::ERR_TIMED_OUT private-token",
+    );
+    audit.observeRequest("GET", privateHistory);
+    audit.observeRequestFailure("GET", privateHistory, "net::ERR_FAILED");
+    audit.observeRequest("GET", privateHistory);
+    audit.observeRequest("POST", privateHistory);
+    audit.observeRequestFailure(
+      "GET",
+      "https://api.test/api/not-history/private-conversation",
+      "net::ERR_TIMED_OUT",
+    );
+
+    const diagnostics = createCloudLiveHistoryNetworkDiagnostics(
+      "post-reload",
+      before,
+      await audit.snapshot(),
+    );
+    expect(diagnostics).toEqual({
+      schemaVersion: 1,
+      phase: "post-reload",
+      proofTimeoutCount: 1,
+      historyGetRequestCount: 7,
+      successfulHistoryGetResponseCount: 1,
+      clientErrorHistoryGetResponseCount: 1,
+      serverErrorHistoryGetResponseCount: 1,
+      otherHistoryGetResponseCount: 1,
+      failedHistoryGetRequestCount: 2,
+      timedOutHistoryGetRequestCount: 1,
+      pendingHistoryGetRequestCount: 1,
+    });
+    expect(JSON.stringify(diagnostics)).not.toMatch(
+      /api\.test|private|token|ERR_|conversation/,
+    );
+  });
+
+  it("rejects history diagnostics assembled from unrelated audit snapshots", async () => {
+    const beforeAudit = createCloudLiveNetworkAudit();
+    beforeAudit.observeRequest("GET", "/api/conversations/private/messages");
+    const afterAudit = createCloudLiveNetworkAudit();
+    const before = await beforeAudit.snapshot();
+    const after = await afterAudit.snapshot();
+    expect(() =>
+      createCloudLiveHistoryNetworkDiagnostics("fresh-context", before, after),
+    ).toThrow("must not precede its baseline");
+  });
+
+  it("reports pending history requests when an older request completes after the baseline", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const privateHistory =
+      "https://api.test/api/conversations/private-conversation/messages";
+    audit.observeRequest("GET", privateHistory);
+    const before = await audit.snapshot();
+
+    audit.observeResponse("GET", privateHistory, 200);
+    audit.observeRequest("GET", privateHistory);
+
+    const diagnostics = createCloudLiveHistoryNetworkDiagnostics(
+      "fresh-context",
+      before,
+      await audit.snapshot(),
+    );
+    expect(diagnostics).toMatchObject({
+      historyGetRequestCount: 1,
+      successfulHistoryGetResponseCount: 1,
+      pendingHistoryGetRequestCount: 1,
+    });
   });
 
   it("counts only the two named warming codes and drains body handlers", async () => {

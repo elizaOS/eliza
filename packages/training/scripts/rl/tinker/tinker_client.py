@@ -25,6 +25,8 @@ from typing import Literal
 
 import numpy as np
 
+from lib.generation_integrity import require_complete_finish_reasons
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TINKER_OPENAI_BASE_URL = os.getenv(
@@ -602,21 +604,12 @@ class FeedTinkerClient:
         completion_tokens = self.tokenizer.encode(completion, add_special_tokens=False)
         completion_weights = [1.0] * len(completion_tokens)
 
-        # Keep the latest prompt context and the full completion when possible.
-        if max_sequence_length and max_sequence_length > 1:
-            if len(completion_tokens) >= max_sequence_length:
-                completion_tokens = completion_tokens[:max_sequence_length]
-                completion_weights = completion_weights[:max_sequence_length]
-                prompt_tokens = []
-                prompt_weights = []
-            else:
-                keep_prompt_tokens = max_sequence_length - len(completion_tokens)
-                prompt_tokens = (
-                    prompt_tokens[-keep_prompt_tokens:] if keep_prompt_tokens > 0 else []
-                )
-                prompt_weights = (
-                    prompt_weights[-keep_prompt_tokens:] if keep_prompt_tokens > 0 else []
-                )
+        if max_sequence_length and len(prompt_tokens) + len(completion_tokens) > max_sequence_length:
+            raise ValueError(
+                "TRAINING_ROW_SEQUENCE_LIMIT_EXCEEDED: complete prompt and completion "
+                f"require {len(prompt_tokens) + len(completion_tokens)} tokens, "
+                f"trainer limit is {max_sequence_length}; row rejected without slicing"
+            )
 
         all_tokens = prompt_tokens + completion_tokens
         all_weights = prompt_weights + completion_weights
@@ -648,9 +641,12 @@ class FeedTinkerClient:
         Returns:
             TinkerDatum ready for training
         """
-        if max_sequence_length and max_sequence_length > 1 and len(tokens) > max_sequence_length:
-            tokens = tokens[-max_sequence_length:]
-            masks = masks[-max_sequence_length:]
+        if max_sequence_length and len(tokens) > max_sequence_length:
+            raise ValueError(
+                "TRAINING_ROW_SEQUENCE_LIMIT_EXCEEDED: complete pre-tokenized row "
+                f"requires {len(tokens)} tokens, trainer limit is {max_sequence_length}; "
+                "row rejected without slicing"
+            )
 
         # Convert masks to weights (0 for -100, 1 otherwise)
         weights = [0.0 if m == -100 else 1.0 for m in masks]
@@ -1030,6 +1026,7 @@ class FeedTinkerClient:
 
         # Extract finish reasons
         finish_reasons = [getattr(seq, "finish_reason", "stop") for seq in result.sequences]
+        require_complete_finish_reasons(finish_reasons, source="tinker.sample")
 
         return SampleResult(
             completions=completions,
@@ -1078,6 +1075,7 @@ class FeedTinkerClient:
         if include_logprobs and hasattr(result, "prompt_logprobs"):
             logprobs = [result.prompt_logprobs] * n
         finish_reasons = [getattr(seq, "finish_reason", "stop") for seq in result.sequences]
+        require_complete_finish_reasons(finish_reasons, source="tinker.sample_async")
 
         return SampleResult(
             completions=completions,

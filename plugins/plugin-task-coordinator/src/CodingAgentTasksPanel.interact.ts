@@ -9,12 +9,18 @@ import {
   ORCHESTRATOR_CAPABILITY_IDS,
   runOrchestratorCapability,
 } from "./orchestrator-capabilities";
+import { isHumanOnlyOrchestratorCapability } from "./orchestrator-capability-authority";
 
 export async function interact(
   capability: string,
   params?: Record<string, unknown>,
 ): Promise<unknown> {
   if (ORCHESTRATOR_CAPABILITY_IDS.has(capability)) {
+    if (isHumanOnlyOrchestratorCapability(capability)) {
+      throw new Error(
+        `Orchestrator capability "${capability}" requires direct human interaction.`,
+      );
+    }
     return runOrchestratorCapability(capability, params);
   }
 

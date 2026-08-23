@@ -157,6 +157,58 @@ describe("views client", () => {
 		]);
 	});
 
+	it("preserves declared capability authority and drops undeclared values", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				jsonResponse({
+					views: [
+						{
+							id: "orchestrator",
+							label: "Orchestrator",
+							pluginName: "@elizaos/plugin-task-coordinator",
+							available: true,
+							capabilities: [
+								{ id: "orchestrator-status", description: "Read status." },
+								{
+									id: "orchestrator-validate-task",
+									description: "Approve task validation.",
+									authority: "human",
+								},
+								{
+									id: "orchestrator-create-task",
+									description: "Create a task.",
+									authority: "agent",
+								},
+								{
+									id: "orchestrator-open-task",
+									description: "Open a task.",
+									authority: "root",
+								},
+							],
+						},
+					],
+				}),
+			),
+		);
+
+		const [view] = await createViewsClient().listViews();
+		expect(view?.capabilities).toEqual([
+			{ id: "orchestrator-status", description: "Read status." },
+			{
+				id: "orchestrator-validate-task",
+				description: "Approve task validation.",
+				authority: "human",
+			},
+			{
+				id: "orchestrator-create-task",
+				description: "Create a task.",
+				authority: "agent",
+			},
+			{ id: "orchestrator-open-task", description: "Open a task." },
+		]);
+	});
+
 	it("parses current-view state", async () => {
 		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 			expect(String(input)).toBe("http://127.0.0.1:3456/api/views/current");

@@ -458,9 +458,9 @@ function buildSubPlannerContext(
 				tool: {
 					name: action.name,
 					description:
+						action.description ??
 						action.descriptionCompressed ??
-						action.compressedDescription ??
-						action.description,
+						action.compressedDescription,
 					parameters: actionToJsonSchema(action) as JSONSchema,
 					action,
 					metadata: {

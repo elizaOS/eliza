@@ -7,8 +7,7 @@
  * detection) never looks at WHAT the UI shows. This sends each captured
  * screenshot + its per-view expectation to a vision model and records a
  * structured verdict (good / needs-work / broken + reasons / layout issues /
- * brand violations / detected text), then gates on `broken` via a shrinking
- * debt allowlist — the same ratchet as the story gate + aesthetic audit.
+ * brand violations / detected text), then gates directly on `broken`.
  *
  * It consumes the output of `ai-qa-capture.spec.ts`
  * (`reports/ai-qa/<runId>/{manifest.json, captures/<id>/<id>__<vp>__<theme>.{png,json}}`).
@@ -19,7 +18,7 @@
  *
  * Usage:
  *   node scripts/ai-qa/review-screenshots.mjs [--run-dir reports/ai-qa/<id>]
- *     [--concurrency 4] [--strict | --update-debt]
+ *     [--concurrency 4] [--strict]
  */
 
 import { existsSync } from "node:fs";
@@ -175,14 +174,6 @@ async function main() {
   );
   const totals = aggregateVerdicts(results);
 
-  const debtPath = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "vision-review-debt.json",
-  );
-  const debt = existsSync(debtPath)
-    ? JSON.parse(await readFile(debtPath, "utf8"))
-    : {};
-
   await writeFile(
     join(runDir, "vision-review.json"),
     JSON.stringify(
@@ -196,24 +187,9 @@ async function main() {
     ),
   );
 
-  if (args.updateDebt) {
-    const next = {};
-    for (const r of results)
-      if (r.error || r.verdict === "broken")
-        next[r.key] = (r.reasons ?? []).join("; ") || String(r.error);
-    await writeFile(
-      debtPath,
-      JSON.stringify(next, Object.keys(next).sort(), 2),
-    );
-    console.log(
-      `[vision-review] debt updated (${Object.keys(next).length} entries)`,
-    );
-    return;
-  }
-
-  const failures = gateFailures(results, { debt, strict: args.strict });
+  const failures = gateFailures(results, { strict: args.strict });
   console.log(
-    `[vision-review] ${JSON.stringify(totals)} | strict=${args.strict} | undebted failures=${failures.length}`,
+    `[vision-review] ${JSON.stringify(totals)} | strict=${args.strict} | failures=${failures.length}`,
   );
   if (failures.length) {
     for (const f of failures.slice(0, 40))

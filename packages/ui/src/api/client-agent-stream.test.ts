@@ -125,6 +125,45 @@ describe("ElizaClient agent streaming transport", () => {
     });
   });
 
+  it("preserves a validated typed terminal failure from the done event", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"done","fullText":"Shell execution failed.","agentName":"Eliza","failureKind":"coding_tool_failure","terminalFailure":{"kind":"coding_tool_failure","message":"Shell execution failed.","transient":true,"code":"SHELL_UNAVAILABLE"}}\n\n',
+      ),
+    });
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "fix the code",
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      text: "Shell execution failed.",
+      completed: true,
+      failureKind: "coding_tool_failure",
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        message: "Shell execution failed.",
+        transient: true,
+        code: "SHELL_UNAVAILABLE",
+      },
+    });
+  });
+
   it("surfaces internal transcript visibility from the terminal done event", async () => {
     const encoder = new TextEncoder();
     const read = vi.fn().mockResolvedValueOnce({

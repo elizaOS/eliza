@@ -4,6 +4,8 @@ import gc
 import inspect
 import re
 from dataclasses import dataclass
+
+from lib.generation_integrity import require_complete_generated_tokens
 from typing import TYPE_CHECKING, Any, Literal
 
 BackendName = Literal["mlx", "cuda", "cpu"]
@@ -204,6 +206,11 @@ class LocalTextGenerator:
             if self._sampler is not None:
                 kwargs["sampler"] = self._sampler
             raw_generated = str(self._generate(self.model, self.tokenizer, **kwargs)).strip()
+            require_complete_generated_tokens(
+                self.tokenizer.encode(raw_generated),
+                max_new_tokens=max_new_tokens,
+                source="local_inference.mlx",
+            )
             generated = clean_generated_text(raw_generated)
             restored = restore_assistant_prefix(generated, assistant_prefix)
             if return_details:
@@ -249,8 +256,15 @@ class LocalTextGenerator:
                     generation_kwargs["past_key_values"] = cache
             outputs = self.model.generate(**generation_kwargs)
         prompt_tokens = inputs["input_ids"].shape[1]
+        generated_token_ids = outputs[0][prompt_tokens:]
+        require_complete_generated_tokens(
+            generated_token_ids,
+            max_new_tokens=max_new_tokens,
+            source="local_inference.transformers",
+            terminal_token_ids=self.tokenizer.eos_token_id,
+        )
         raw_generated = self.tokenizer.decode(
-            outputs[0][prompt_tokens:],
+            generated_token_ids,
             skip_special_tokens=True,
         ).strip()
         generated = clean_generated_text(raw_generated)

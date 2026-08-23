@@ -54,8 +54,7 @@ launcher; the evidence-driven split keeps that failure armed.
 | `test/ui-smoke/ocr-content-rules.ts` | Pure, dependency-free verdict rules (proven blank / inconclusive OCR / dev-string / placeholder / expectation). Unit-tested; no OCR engine, no `page`, no fs. |
 | `test/ui-smoke/ocr-view-expectations.ts` | Closed per-view semantic policy table: required/forbidden labels from stable view contracts, plus narrowly typed exemptions with fallback assertions. |
 | `test/ui-smoke/aesthetic-audit-view-cases.ts` | Shared built-in and plugin route registry consumed by capture and policy-coverage tests. |
-| `test/ui-smoke/ocr-triage-baseline.json` | `slug::viewport` of pixel-broken renders already tracked by an issue. Ratchet posture: known debt is reported but non-gating; a NEW pixel-broken render fails the gate. |
-| `scripts/ocr-triage.ts` | CLI: OCRs a capture dir, applies the rules, cross-checks `report.json`, writes `ocr-triage.json`, exits non-zero on a new regression. |
+| `scripts/ocr-triage.ts` | CLI: OCRs a capture dir, applies the rules, cross-checks `report.json`, writes `ocr-triage.json`, exits non-zero on any regression. |
 | `test/audit/ocr-content-rules.test.ts` | Unit tests for the rules module. |
 
 ## Run
@@ -63,14 +62,13 @@ launcher; the evidence-driven split keeps that failure armed.
 ```bash
 # After an audit run has populated aesthetic-audit-output/ (screenshots + report.json):
 bun scripts/ocr-triage.ts \
-  --audit-dir aesthetic-audit-output \
-  --baseline test/ui-smoke/ocr-triage-baseline.json
+  --audit-dir aesthetic-audit-output
 
 # Reuse a precomputed OCR pass instead of re-running OCR:
-bun scripts/ocr-triage.ts --audit-dir <dir> --ocr <ocr.ndjson> --baseline <file>
+bun scripts/ocr-triage.ts --audit-dir <dir> --ocr <ocr.ndjson>
 ```
 
-Exit `0` when no new regression; `1` when a view regressed off the baseline. Wire
+Exit `0` when there is no regression; `1` when a view regressed. Wire
 the invocation into the audit lane after the Playwright capture so a new
 pixel-broken render fails CI the way a new DOM `broken` already does.
 
@@ -94,4 +92,4 @@ surface.
 A `slug::viewport` goes in the baseline only with an accompanying issue link in
 the file's `tracking` map. Removing an entry once the render is fixed re-arms the
 gate for that view. Never baseline a new regression to make CI green — that is the
-one move the ratchet exists to prevent.
+one move the guard exists to prevent.

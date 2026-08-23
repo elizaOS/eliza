@@ -19,7 +19,7 @@ import type {
   StewardSessionErrorCode,
 } from "@elizaos/shared/steward-session-client";
 import {
-  clearStewardSession,
+  clearStewardSession as clearCanonicalStewardSession,
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
@@ -35,10 +35,10 @@ import {
   tokenIsExpired,
 } from "../shell/StewardProviderShared";
 import { decodeJwtPayload } from "./jwt";
+import { invalidateStewardServerCookieSyncMarker } from "./steward-session-cookie-sync-marker";
 
 export type { ClearOpts, StewardSessionErrorCode };
 export {
-  clearStewardSession,
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
@@ -49,6 +49,12 @@ export {
   StewardSessionError,
   writeStoredStewardToken,
 };
+
+/** Clear configured server cookies after retiring any explicit-sync proof. */
+export function clearStewardSession(opts: ClearOpts = {}): void {
+  invalidateStewardServerCookieSyncMarker();
+  clearCanonicalStewardSession(opts);
+}
 
 /**
  * Read the current Steward access token (JWT) from localStorage, or `null`

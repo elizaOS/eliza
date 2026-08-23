@@ -75,7 +75,7 @@ const STREAMING_REPLY_TOKENS = [
 const STREAMING_REPLY_TEXT = STREAMING_REPLY_TOKENS.join("");
 
 // A frame KPI is "ok" when it captured frames and p95 stayed under a coarse jank
-// ceiling (6 × the 60fps budget ≈ 100ms). The ratcheted lane runs many browser
+// ceiling (6 × the 60fps budget ≈ 100ms). The guarded lane runs many browser
 // workers concurrently, where host scheduling alone can stretch rAF to 50–80ms;
 // retain those measurements while still failing a sustained 100ms+ p95 stall.
 const P95_JANK_CEILING_MS = FRAME_BUDGET_60_MS * 6;

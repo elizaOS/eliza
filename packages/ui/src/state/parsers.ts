@@ -427,6 +427,7 @@ export function asApiLikeError(err: unknown): ApiLikeError | null {
   const status = err.status;
   const path = err.path;
   const message = err.message;
+  const data = err.data;
   const hasApiShape =
     typeof kind === "string" ||
     typeof status === "number" ||
@@ -438,6 +439,7 @@ export function asApiLikeError(err: unknown): ApiLikeError | null {
     status: typeof status === "number" ? status : undefined,
     path: typeof path === "string" ? path : undefined,
     message: typeof message === "string" ? message : undefined,
+    data,
   };
 }
 

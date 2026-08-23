@@ -27,9 +27,11 @@ import {
   type CloudLiveBindingReuse,
   type CloudLiveContinuityEvidenceInput,
   type CloudLiveHistoryObservation,
+  type CloudLiveNetworkAuditSnapshot,
   type CloudLiveRuntimeBinding,
   compareCloudLiveRuntimeBindings,
   createCloudLiveContinuityEvidence,
+  createCloudLiveHistoryNetworkDiagnostics,
   createCloudLiveNetworkAudit,
   installCloudLiveAnchoredRetryChipObserver,
   writeCloudLiveContinuityEvidence,
@@ -433,6 +435,13 @@ function installNetworkAudit(context: BrowserContext) {
       },
     );
   });
+  context.on("requestfailed", (request) => {
+    audit.observeRequestFailure(
+      request.method(),
+      request.url(),
+      request.failure()?.errorText,
+    );
+  });
   return audit;
 }
 
@@ -459,16 +468,45 @@ async function armAnchoredRetryChipObserver(
 async function proveAnchoredTurnHistory(
   page: Page,
   audit: ReturnType<typeof createCloudLiveNetworkAudit>,
-  priorCount: number,
+  before: CloudLiveNetworkAuditSnapshot,
   turnAnchorToken: string,
+  phase: "post-reload" | "fresh-context",
 ): Promise<CloudLiveHistoryObservation> {
-  await expect
-    .poll(
-      async () =>
-        (await audit.snapshot()).successfulHistoryGetCount > priorCount,
-      { timeout: 120_000 },
-    )
-    .toBe(true);
+  try {
+    await expect
+      .poll(
+        async () =>
+          (await audit.snapshot()).successfulHistoryGetCount >
+          before.successfulHistoryGetCount,
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+  } catch (cause) {
+    // error-policy:J2 preserve the failed proof while adding only closed,
+    // aggregate diagnostics to Playwright's failure output directory.
+    const diagnostics = createCloudLiveHistoryNetworkDiagnostics(
+      phase,
+      before,
+      await audit.snapshot(),
+    );
+    const diagnosticPath = test
+      .info()
+      .outputPath(`privacy-safe-${phase}-history-network-diagnostics.json`);
+    await mkdir(dirname(diagnosticPath), { recursive: true, mode: 0o700 });
+    await writeFile(
+      diagnosticPath,
+      `${JSON.stringify(diagnostics, null, 2)}\n`,
+      {
+        encoding: "utf8",
+        flag: "wx",
+        mode: 0o600,
+      },
+    );
+    throw new Error(
+      `[cloud-live] ${phase} history proof timed out; privacy-safe counters were retained`,
+      { cause },
+    );
+  }
   await expect
     .poll(
       async () => {
@@ -818,14 +856,14 @@ test.describe("real cloud login + personal identity + chat", () => {
     // Reload the same document partition. A successful server history GET plus
     // both turn-anchored rows proves the turn did not survive merely in React
     // memory. Private binding values are reduced to booleans before evidence.
-    const reloadHistoryBefore = (await primaryAudit.snapshot())
-      .successfulHistoryGetCount;
+    const reloadHistoryBefore = await primaryAudit.snapshot();
     await page.reload({ waitUntil: "domcontentloaded" });
     const reload = await proveAnchoredTurnHistory(
       page,
       primaryAudit,
       reloadHistoryBefore,
       turnAnchorToken,
+      "post-reload",
     );
     const reloadBindingReuse = compareCloudLiveRuntimeBindings(
       referenceBinding,
@@ -864,14 +902,14 @@ test.describe("real cloud login + personal identity + chat", () => {
           expect(freshDeployedRenderer).toEqual(deployedRenderer);
         }
         const freshBinding = await resolvePersonalIdentity(freshPage);
-        const freshHistoryBefore = (await freshAudit.snapshot())
-          .successfulHistoryGetCount;
+        const freshHistoryBefore = await freshAudit.snapshot();
         await openAppPath(freshPage, "/chat");
         const history = await proveAnchoredTurnHistory(
           freshPage,
           freshAudit,
           freshHistoryBefore,
           turnAnchorToken,
+          "fresh-context",
         );
         return {
           history: {

@@ -29,6 +29,12 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS_DIR = ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from lib.generation_integrity import require_complete_generation
+
 OUT_DIR = ROOT / "data" / "synthesized" / "together-synth"
 DEFAULT_TOGETHER_MODEL = "google/gemma-4-31B-it"
 
@@ -58,9 +64,9 @@ def user_prompt_for(scenario: dict) -> str:
     memory = ctx.get("memory", [])
     if memory:
         parts.append("Recent messages:")
-        for m in memory[-6:]:
+        for m in memory:
             role = m.get("role", "?")
-            content = (m.get("content") or "")[:300]
+            content = m.get("content") or ""
             parts.append(f"  [{role}] {content}")
         parts.append("")
     parts.append(f"User: {scenario.get('user_text', '')}")
@@ -84,9 +90,12 @@ async def call_together(
                 max_tokens=512,
                 temperature=0.7,
             )
-            output = resp.choices[0].message.content or ""
+            choice = require_complete_generation(
+                resp.choices[0], source="together_synth.call_together"
+            )
+            output = choice.message.content or ""
         except Exception as e:
-            return {"error": str(e)[:200], "task_id": scenario.get("task_id")}
+            return {"error": str(e), "task_id": scenario.get("task_id")}
         return {
             "messages": [
                 {"role": "system", "content": sys_p},

@@ -209,6 +209,11 @@ app.get("/", async (c) => {
 
     const { isAdmin } = await adminService.getAdminStatusForUser(user);
     const webUiUrl = resolvePublicWebUiUrl(agent);
+    const activeLifecycleJob = (
+      await provisioningJobService.getActiveAgentLifecycleJobsForOrg(
+        user.organization_id,
+      )
+    ).find((job) => job.agent_id === agent.id);
 
     const adminDetails = isAdmin
       ? toAdminDetailsDto(agent, isDockerAgent, webUiUrl)
@@ -233,6 +238,22 @@ app.get("/", async (c) => {
       dockerImage: agent.docker_image,
       executionTier: agent.execution_tier,
       webUiUrl,
+      activeJob: activeLifecycleJob
+        ? {
+            id: activeLifecycleJob.id,
+            type: activeLifecycleJob.type,
+            status: activeLifecycleJob.status as "pending" | "in_progress",
+            attempts: activeLifecycleJob.attempts,
+            maxAttempts: activeLifecycleJob.max_attempts,
+            estimatedCompletionAt: toIsoStringOrNull(
+              activeLifecycleJob.estimated_completion_at,
+            ),
+            scheduledFor: toIsoString(activeLifecycleJob.scheduled_for),
+            startedAt: toIsoStringOrNull(activeLifecycleJob.started_at),
+            createdAt: toIsoString(activeLifecycleJob.created_at),
+            updatedAt: toIsoString(activeLifecycleJob.updated_at),
+          }
+        : null,
       walletAddress,
       walletProvider,
       walletStatus,

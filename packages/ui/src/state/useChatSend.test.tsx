@@ -2501,6 +2501,39 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
     expect(assistant[0]?.failureKind).toBe("no_provider");
   });
 
+  it("retains typed terminal failure details on the completed assistant turn", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "Shell execution failed.",
+      completed: true,
+      failureKind: "coding_tool_failure",
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        message: "Shell execution failed.",
+        transient: true,
+        code: "SHELL_UNAVAILABLE",
+      },
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("fix it", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.find(
+      (message) => message.role === "assistant",
+    );
+    expect(assistant?.terminalFailure).toMatchObject({
+      kind: "coding_tool_failure",
+      transient: true,
+      code: "SHELL_UNAVAILABLE",
+    });
+  });
+
   it("still drops an empty terminal reply that carries no failureKind", async () => {
     mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
       text: "",

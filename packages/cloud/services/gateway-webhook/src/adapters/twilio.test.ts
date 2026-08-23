@@ -69,11 +69,73 @@ describe("Twilio adapter channel addressing", () => {
       rawPayload: {},
     };
 
-    await twilioAdapter.sendReply(config, event, "hello from Eliza");
+    const receipt = await twilioAdapter.sendReplyWithReceipt?.(
+      config,
+      event,
+      "hello from Eliza",
+    );
 
+    expect(receipt).toEqual({ providerMessageIds: ["SM_whatsapp_reply"] });
     expect(requestBody?.get("To")).toBe("whatsapp:+15551234567");
     expect(requestBody?.get("From")).toBe("whatsapp:+14155238886");
     expect(requestBody?.get("Body")).toBe("hello from Eliza");
+  });
+
+  test("keeps an accepted response without a Twilio SID uncertain", async () => {
+    globalThis.fetch = mock(async () =>
+      Response.json({ status: "queued" }),
+    ) as unknown as typeof fetch;
+    const config: WebhookConfig = {
+      accountSid: "AC_test",
+      authToken: "twilio-secret",
+      phoneNumber: "+15550000000",
+    };
+    const event: ChatEvent = {
+      platform: "twilio",
+      messageId: "SM_inbound",
+      chatId: "+15551234567",
+      senderId: "+15551234567",
+      text: "hello",
+      rawPayload: {},
+    };
+
+    await expect(
+      twilioAdapter.sendReplyWithReceipt?.(config, event, "hello from Eliza"),
+    ).rejects.toMatchObject({
+      deliveryStatus: "uncertain",
+      code: "DELIVERY_RECEIPT_INVALID",
+      retryable: false,
+    });
+  });
+
+  test("does not retry a Twilio 500 that may follow provider acceptance", async () => {
+    const providerFetch = mock(
+      async () => new Response("provider error", { status: 500 }),
+    );
+    globalThis.fetch = providerFetch as unknown as typeof fetch;
+    const config: WebhookConfig = {
+      accountSid: "AC_test",
+      authToken: "twilio-secret",
+      phoneNumber: "+15550000000",
+    };
+    const event: ChatEvent = {
+      platform: "twilio",
+      messageId: "SM_inbound",
+      chatId: "+15551234567",
+      senderId: "+15551234567",
+      text: "hello",
+      rawPayload: {},
+    };
+
+    await expect(
+      twilioAdapter.sendReplyWithReceipt?.(config, event, "hello from Eliza"),
+    ).rejects.toMatchObject({
+      deliveryStatus: "uncertain",
+      code: "DELIVERY_PROVIDER_REJECTED",
+      retryable: false,
+      providerStatus: 500,
+    });
+    expect(providerFetch).toHaveBeenCalledTimes(1);
   });
 
   test("bills malformed SMS cost config at the fallback and warns", async () => {

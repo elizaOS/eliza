@@ -645,13 +645,18 @@ describe("blooio sendReply", () => {
     ).rejects.toThrow("Missing apiKey");
   });
 
-  test("throws with status and body on a non-ok response", async () => {
+  test("preserves rejection status without exposing provider body", async () => {
     globalThis.fetch = (async () =>
       new Response("rate limited", { status: 429 })) as typeof fetch;
 
-    await expect(
-      blooioAdapter.sendReply(makeConfig(), chatEvent, "hi"),
-    ).rejects.toThrow("Blooio send error (429): rate limited");
+    const failure = blooioAdapter.sendReply(makeConfig(), chatEvent, "hi");
+    await expect(failure).rejects.toMatchObject({
+      deliveryStatus: "failed",
+      code: "DELIVERY_PROVIDER_REJECTED",
+      retryable: true,
+      providerStatus: 429,
+    });
+    await expect(failure).rejects.not.toThrow("rate limited");
   });
 });
 describe("blooio sendTypingIndicator", () => {

@@ -79,6 +79,21 @@ export interface PlatformDeliveryReceipt {
   providerMessageIds: string[];
 }
 
+/** Carries whether a provider failure is safe to replay across the gateway boundary. */
+export class PlatformDeliveryError extends Error {
+  constructor(
+    message: string,
+    readonly deliveryStatus: "failed" | "uncertain",
+    readonly code: string,
+    readonly retryable: boolean,
+    readonly providerStatus?: number,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "PlatformDeliveryError";
+  }
+}
+
 export interface ResolvedVoiceNote {
   bytesBase64: string;
   mimeType: "audio/ogg";

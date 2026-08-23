@@ -9,7 +9,7 @@ Issue #10720.
 ## The experience in one paragraph
 
 On launch the desktop app opens **chat first** — a chromeless, transparent,
-always-on-top bottom bar rendering only a short white Flow-style handle,
+always-on-top bottom bar rendering a fully painted 64×44 launcher target,
 **not** the full dashboard window. Clicking the handle expands a centered
 translucent glass conversation above the screen edge. On macOS the app is
 **dockless by default** (#12184): the handle + menu-bar icon are the resting

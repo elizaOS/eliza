@@ -67,9 +67,18 @@ function localBridgeApiBase(value: string | null): string | null {
   }
 }
 
+function localRestApiBase(value: string | null | undefined): string | null {
+  const healthBase = localBridgeApiBase(value ?? null);
+  if (!healthBase) return null;
+  const url = new URL(healthBase);
+  return url.origin;
+}
+
 /** Resolve the same Dedicated agent base for cutover and future account login. */
 export function personalDedicatedAgentApiBase(
-  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url">,
+  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url"> & {
+    health_url?: string | null;
+  },
   baseDomain?: string,
 ): string | null {
   const publicBase = getElizaAgentPublicWebUiUrl(target, {
@@ -82,7 +91,42 @@ export function personalDedicatedAgentApiBase(
   // explicit mode may fall back to the server-owned loopback bridge; accepting
   // arbitrary stored hosts here would turn an account bearer into an SSRF
   // credential leak. Production's configured domain always wins above.
-  return baseDomain === undefined ? null : localBridgeApiBase(target.bridge_url);
+  return baseDomain === undefined
+    ? null
+    : (localRestApiBase(target.health_url) ?? localBridgeApiBase(target.bridge_url));
+}
+
+/**
+ * The credential a Cloud-side caller presents to a Dedicated runtime. Only the
+ * container's own `ELIZA_API_TOKEN` is accepted: Cloud API keys stored beside
+ * it authenticate the agent *to* Cloud and a runtime rejects them, so falling
+ * back to one would turn a missing token into an opaque upstream 401.
+ */
+export function dedicatedAgentTransportToken(target: { environment_vars: unknown }): string | null {
+  const env = target.environment_vars;
+  if (!env || typeof env !== "object" || Array.isArray(env)) return null;
+  const value = (env as Record<string, unknown>).ELIZA_API_TOKEN;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Resolve the browser-facing base; local Docker stays behind the Cloud proxy. */
+export function personalDedicatedClientApiBase(
+  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url"> & {
+    health_url?: string | null;
+  },
+  baseDomain: string | undefined,
+  cloudApiOrigin: string,
+): string | null {
+  const runtimeBase = personalDedicatedAgentApiBase(target, baseDomain);
+  if (!runtimeBase) return null;
+  if (baseDomain !== "https://") return runtimeBase;
+  const origin = new URL(cloudApiOrigin).origin;
+  // ElizaClient appends `/api/...` to its configured base. Point it at the
+  // agent-scoped proxy root, not the proxy's `/api` child, or requests become
+  // `/api/api/...` and never reach the runtime.
+  return `${origin}/api/v1/eliza/agents/${encodeURIComponent(target.id)}`;
 }
 
 /** Build the rowless runtime projection for the authenticated account. */

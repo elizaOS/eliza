@@ -35,6 +35,9 @@ export interface BenchmarkResult {
   duration_ms: number;
   success: boolean;
   error?: string;
+  failure_kind?: string;
+  failure_code?: string;
+  transient?: boolean;
 }
 
 const REQUIRED_CODING_ACTIONS = ["READ", "WRITE", "EDIT", "SHELL"] as const;
@@ -162,7 +165,10 @@ export async function runBenchmarkTask(
     // the final answer with duplicated chunks or verbose action output.
     const responseText =
       resultText || messagesText || streamText || callbackText || "";
-    const success = result.didRespond && responseText.trim().length > 0;
+    const success =
+      result.terminalFailure === undefined &&
+      result.didRespond &&
+      responseText.trim().length > 0;
 
     return {
       id: task.id,
@@ -172,7 +178,21 @@ export async function runBenchmarkTask(
       duration_ms: Math.round(performance.now() - start),
       success,
       ...(!success
-        ? { error: result.reason ?? "Agent completed without a response" }
+        ? {
+            error:
+              result.terminalFailure?.message ??
+              result.reason ??
+              "Agent completed without a response",
+            ...(result.terminalFailure
+              ? {
+                  failure_kind: result.terminalFailure.kind,
+                  ...(result.terminalFailure.code
+                    ? { failure_code: result.terminalFailure.code }
+                    : {}),
+                  transient: result.terminalFailure.transient,
+                }
+              : {}),
+          }
         : {}),
     };
   } catch (err) {

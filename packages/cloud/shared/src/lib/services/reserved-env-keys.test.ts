@@ -27,6 +27,7 @@ describe("reserved-env-keys", () => {
       findReservedEnvKeys(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "eliza_cloud_pair_direct_relay"]),
     ).toEqual(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "eliza_cloud_pair_direct_relay"]);
     expect(RESERVED_PLATFORM_ENV_KEYS).toContain("ELIZA_CLOUD_PAIR_DIRECT_RELAY");
+    expect(RESERVED_PLATFORM_ENV_KEYS).toContain("ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS");
   });
 
   test("findReservedEnvKeys returns [] when no reserved keys present", () => {

@@ -381,11 +381,11 @@ the budget by more than 10 %.
 
 **Trade-offs:**
 
-- Training context window drops from 4–8k to 2k. Records longer than ~2k
-  rendered chars are right-truncated by the tokenizer. The synthetic smoke
-  fixture fits inside 2k; for a real native
-  trajectory corpus pass `--max-chars 6000` (≈3× seq_len) so the
-  char-filter rejects oversized rows up front rather than wasting them.
+- Training context window drops from 4–8k to 2k. Records that exceed the
+  trainer sequence boundary are rejected whole; the tokenizer never slices a
+  prompt or target. The synthetic smoke fixture fits inside 2k; for a real
+  native trajectory corpus pass `--max-chars 6000` (≈3× seq_len) so the
+  char-filter rejects oversized rows up front rather than dispatching them.
 - Long-context behaviors (multi-turn agent traces, long tool outputs)
   are NOT exercised at seq_len=2048. The resulting checkpoint is for
   smoke / path-validation only, NOT for publishing.

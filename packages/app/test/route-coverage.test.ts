@@ -377,7 +377,7 @@ function appWindowRoutePaths(): string[] {
 function sideEffectPluginIds(): string[] {
   // Manifest-driven: the side-effect loader list is generated at build time
   // from each plugin's `elizaos.appRegister` marker (no hardcoded list in
-  // plugin-registrations.ts), so the ratchet reads the same scan the renderer
+  // plugin-registrations.ts), so the guard reads the same scan the renderer
   // build uses. View-manifest classification is per package, so this uses the
   // canonical package name, not the role-qualified loader cache key
   // (`<name>#<mode>`) the renderer's dynamic-import cache is keyed by.
@@ -513,7 +513,7 @@ describe("app route coverage gate", () => {
     }
   });
 
-  it("discovers every production plugin view manifest in the manifest ratchet", () => {
+  it("discovers every production plugin view manifest in the manifest guard", () => {
     const discovered = discoverPluginViewManifestPaths();
 
     const missing = discovered.filter(
@@ -701,7 +701,7 @@ describe("app route coverage gate", () => {
     ).toEqual([]);
   });
 
-  it("plugin view manifest ratchet tracks compiled app plugin loaders", () => {
+  it("plugin view manifest guard tracks compiled app plugin loaders", () => {
     const bootPluginIds = unique([
       ...appMainPluginIds(),
       ...sideEffectPluginIds(),

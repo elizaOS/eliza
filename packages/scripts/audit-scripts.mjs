@@ -118,6 +118,7 @@ const ALLOWED_EXACT = new Set([
   "audit:alias-read-guard:self-test",
   "audit:test-integrity:no-vi-mocks",
   "audit:mock-module-exports",
+  "linux:bootstrap",
   "mvp:closeout-audit",
   "check:pr-evidence",
   "evidence:pr",

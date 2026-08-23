@@ -46,6 +46,8 @@ describe("PstnCallButton", () => {
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "11111111-1111-4111-8111-111111111111",
+        callSid: "CA11111111111111111111111111111111",
         status: "queued",
         to: "***0100",
       });
@@ -61,6 +63,7 @@ describe("PstnCallButton", () => {
       (screen.getByLabelText("Phone number") as HTMLInputElement).readOnly,
     ).toBe(true);
     expect(document.body.textContent).not.toMatch(/808|788-1821/);
+    expect(screen.getByText(/AI-generated voice/i)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Call me" }));
 
     await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(2));
@@ -72,6 +75,82 @@ describe("PstnCallButton", () => {
       headers: { "Idempotency-Key": expect.any(String) },
     });
     expect(mocks.success).toHaveBeenCalledWith("Eliza is calling ***0100");
+    expect(await screen.findByRole("button", { name: "Hang up" })).toBeTruthy();
+  });
+
+  it("exposes consent and verified-number authority through accessible dialog semantics", async () => {
+    mocks.api.mockResolvedValueOnce({
+      phone_number: "+14155550100",
+      phone_verified: true,
+    });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Call me" });
+    const describedBy = dialog.getAttribute("aria-describedby");
+    const phoneInput = screen.getByLabelText(
+      "Phone number",
+    ) as HTMLInputElement;
+
+    expect(describedBy).toEqual(expect.any(String));
+    expect(document.getElementById(describedBy ?? "")?.textContent).toMatch(
+      /verified account phone[\s\S]*AI-generated voice/i,
+    );
+    expect(phoneInput.value).toBe("+14155550100");
+    expect(phoneInput.readOnly).toBe(true);
+    expect(phoneInput.getAttribute("inputmode")).toBe("tel");
+    expect(phoneInput.getAttribute("autocomplete")).toBe("tel");
+    expect(
+      (screen.getByRole("button", { name: "Call me" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("hangs up the active call with a separate idempotency key", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "22222222-2222-4222-8222-222222222222",
+        callSid: "CA22222222222222222222222222222222",
+        status: "queued",
+        to: "***0100",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "22222222-2222-4222-8222-222222222222",
+        callSid: "CA22222222222222222222222222222222",
+        status: "hangup-requested",
+        to: "***0100",
+        answeredAt: null,
+        terminalAt: null,
+        hangupRequestedAt: "2026-08-22T08:00:00.000Z",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+    await user.click(await screen.findByRole("button", { name: "Hang up" }));
+
+    await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(3));
+    expect(mocks.api.mock.calls[2]?.[0]).toBe(
+      "/api/v1/twilio/voice/calls/CA22222222222222222222222222222222",
+    );
+    expect(mocks.api.mock.calls[2]?.[1]).toMatchObject({
+      method: "DELETE",
+      headers: { "Idempotency-Key": expect.any(String) },
+    });
+    expect(mocks.success).toHaveBeenCalledWith("Hangup requested");
   });
 
   it("does not enable calling for an unverified account phone", async () => {
@@ -90,6 +169,36 @@ describe("PstnCallButton", () => {
       (screen.getByRole("button", { name: "Call me" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("blocks another call while provider acceptance is being reconciled", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "77777777-7777-4777-8777-777777777777",
+        callSid: null,
+        status: "submission-unknown",
+        to: "***0100",
+        auditPending: true,
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(
+      await screen.findByText(/call acceptance is being reconciled/i),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Call again" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hang up" })).toBeNull();
   });
 
   it("clears a previously loaded number when a profile refresh fails", async () => {
@@ -120,5 +229,144 @@ describe("PstnCallButton", () => {
       (screen.getByRole("button", { name: "Call me" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("renders a terminal provider status and starts a new call with a fresh idempotency key", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "33333333-3333-4333-8333-333333333333",
+        callSid: "CA33333333333333333333333333333333",
+        status: "queued",
+        to: "***0100",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "33333333-3333-4333-8333-333333333333",
+        callSid: "CA33333333333333333333333333333333",
+        status: "completed",
+        to: "***0100",
+        answeredAt: "2026-08-22T08:00:01.000Z",
+        terminalAt: "2026-08-22T08:00:05.000Z",
+        hangupRequestedAt: null,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "44444444-4444-4444-8444-444444444444",
+        callSid: "CA44444444444444444444444444444444",
+        status: "queued",
+        to: "***0100",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(
+      await screen.findByText("Status: completed", {}, { timeout: 3_500 }),
+    ).toBeTruthy();
+    const firstKey = mocks.api.mock.calls[1]?.[1]?.headers?.["Idempotency-Key"];
+    await user.click(screen.getByRole("button", { name: "Call again" }));
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(4));
+    const secondKey =
+      mocks.api.mock.calls[3]?.[1]?.headers?.["Idempotency-Key"];
+    expect(firstKey).toEqual(expect.any(String));
+    expect(secondKey).toEqual(expect.any(String));
+    expect(secondKey).not.toBe(firstKey);
+  });
+
+  it("keeps hangup available when status polling fails", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "55555555-5555-4555-8555-555555555555",
+        callSid: "CA55555555555555555555555555555555",
+        status: "queued",
+        to: "***0100",
+      })
+      .mockRejectedValueOnce(new Error("Status service unavailable"))
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "55555555-5555-4555-8555-555555555555",
+        callSid: "CA55555555555555555555555555555555",
+        status: "hangup-requested",
+        to: "***0100",
+        answeredAt: null,
+        terminalAt: null,
+        hangupRequestedAt: "2026-08-22T08:00:10.000Z",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(
+      await screen.findByText(
+        "Status unavailable: Status service unavailable",
+        {},
+        { timeout: 3_500 },
+      ),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Hang up" }));
+
+    await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(4));
+    expect(mocks.api.mock.calls[3]?.[1]).toMatchObject({
+      method: "DELETE",
+      headers: { "Idempotency-Key": expect.any(String) },
+    });
+  });
+
+  it("retries a failed call request with the same idempotency key", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockRejectedValueOnce(new Error("Provider temporarily unavailable"))
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "66666666-6666-4666-8666-666666666666",
+        callSid: "CA66666666666666666666666666666666",
+        status: "queued",
+        to: "***0100",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+    await waitFor(() =>
+      expect(mocks.error).toHaveBeenCalledWith(
+        "Provider temporarily unavailable",
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(await screen.findByRole("button", { name: "Hang up" })).toBeTruthy();
+    const firstKey = mocks.api.mock.calls[1]?.[1]?.headers?.["Idempotency-Key"];
+    const retryKey = mocks.api.mock.calls[2]?.[1]?.headers?.["Idempotency-Key"];
+    expect(firstKey).toEqual(expect.any(String));
+    expect(retryKey).toBe(firstKey);
   });
 });

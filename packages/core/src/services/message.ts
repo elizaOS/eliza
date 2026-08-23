@@ -224,6 +224,7 @@ import {
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	getTrustedDeliveryAudience,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -2364,6 +2365,23 @@ function priorDialogueContent(text: string, speaker?: string): string {
 	return `${speaker}: ${text}`;
 }
 
+function verifiedCrossRoomContent(memory: Memory): string {
+	const text = getUserMessageText(memory);
+	const attachmentText = (memory.content.attachments ?? [])
+		.map((attachment) => {
+			const label =
+				attachment.filename ??
+				attachment.title ??
+				attachment.id ??
+				"attachment";
+			const mediaType = attachment.mimeType ?? attachment.contentType;
+			const readable = attachment.text ?? attachment.description;
+			return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readable ? `; ${readable}` : ""}]`;
+		})
+		.join(" ");
+	return [text, attachmentText].filter(Boolean).join(" ");
+}
+
 /**
  * How many of the agent's own prior turns the tool-planner context renders.
  * Enough to cover the pending question/preview plus a short back-and-forth,
@@ -2494,6 +2512,57 @@ function appendPriorDialogueEvents(
 				metadata: {
 					roomId: memory.roomId,
 					entityId: memory.entityId,
+					...(speakerName ? { speakerName } : {}),
+				},
+			},
+		});
+	}
+
+	const recentInteractions =
+		data &&
+		typeof data === "object" &&
+		(data as { recentInteractionsDisclosure?: unknown })
+			.recentInteractionsDisclosure ===
+			OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS &&
+		Array.isArray((data as { recentInteractions?: unknown }).recentInteractions)
+			? (data as { recentInteractions: unknown[] }).recentInteractions
+			: [];
+	for (const candidate of recentInteractions) {
+		if (!candidate || typeof candidate !== "object") continue;
+		const memory = candidate as Memory;
+		if (memory.roomId === currentMessage.roomId) continue;
+		if (memory.content?.type === "action_result") continue;
+		if (isSubAgentCompletionArtifact(memory)) continue;
+		if (
+			memory.entityId === runtime.agentId &&
+			(!includeOwnReplies ||
+				(options?.excludeToolDerivedOwnReplies === true &&
+					isToolDerivedAssistantContent(memory.content)))
+		) {
+			continue;
+		}
+		const content = verifiedCrossRoomContent(memory);
+		if (!content || looksLikePriorDialogueArtifact(content)) continue;
+		const isOwnReply = memory.entityId === runtime.agentId;
+		const speakerName = isOwnReply
+			? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
+			: priorDialogueSpeakerName(memory);
+		events.push({
+			id: `verified-cross-room:${memory.id}`,
+			type: "segment",
+			source: "verified-cross-room-context",
+			createdAt: memory.createdAt,
+			segment: {
+				id: `verified-cross-room:${memory.id}`,
+				label: isOwnReply
+					? "verified_cross_room_message:agent"
+					: "verified_cross_room_message:user",
+				content: priorDialogueContent(content, speakerName),
+				stable: false,
+				metadata: {
+					roomId: memory.roomId,
+					entityId: memory.entityId,
+					disclosureBasis: OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 					...(speakerName ? { speakerName } : {}),
 				},
 			},
@@ -3382,8 +3451,28 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
+	const authorizedActionIdentities = new Set(
+		params.actions.map((action) => action.name.trim()),
+	);
+	const authorizedActionNames = new Set(
+		params.actions.map((action) => normalizeActionIdentifier(action.name)),
+	);
+	// A parent may retain inline metadata for every registered child even when
+	// this turn's action gate rejected one of those children. Build retrieval and
+	// tier metadata from the authorized view so a denied child's name,
+	// description, schema, or examples cannot influence or enter model context.
+	const authorizedCatalogActions = params.actions.map((action) => ({
+		...action,
+		subActions: action.subActions?.filter((child) => {
+			const childName = typeof child === "string" ? child : child.name;
+			// Authorization uses the exact native tool identity. The retrieval
+			// normalizer intentionally collapses separators, so using it here would
+			// let an allowed FOO_BAR disclose a denied FOOBAR child (or vice versa).
+			return authorizedActionIdentities.has(childName.trim());
+		}),
+	}));
 	const catalog = getCachedActionCatalog(
-		params.actions,
+		authorizedCatalogActions,
 		params.localizedExamples,
 	);
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
@@ -3419,8 +3508,14 @@ function buildV5PlannerActionSurface(params: {
 		queryTokens: retrieval.query.tokens,
 	});
 	const toolSearchEndedAt = Date.now();
-	const exposedActionNames = new Set(
-		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
+	const exposedActionNames = authorizedActionNames;
+	const tierAChildrenByParent = Object.fromEntries(
+		tieredSurface.tierAParents.map((parent) => [
+			parent.name,
+			parent.childNames.filter((childName) =>
+				authorizedActionIdentities.has(childName.trim()),
+			),
+		]),
 	);
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
@@ -3489,12 +3584,7 @@ function buildV5PlannerActionSurface(params: {
 			catalogParentCount: catalog.parents.length,
 			exposedActionCount,
 			tierAParents: tieredSurface.sortedTierAParentNames,
-			tierAChildrenByParent: Object.fromEntries(
-				tieredSurface.tierAParents.map((parent) => [
-					parent.name,
-					[...parent.childNames],
-				]),
-			),
+			tierAChildrenByParent,
 			tierBParents: tieredSurface.sortedTierBParentNames,
 			omittedParentCount: tieredSurface.omittedParentNames.length,
 			omittedParentNamesPreview: tieredSurface.omittedParentNames,
@@ -8868,11 +8958,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				elizaTrustedCodingMode: true,
 			};
 		}
-		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
-		// narrowing entirely and hand the planner EVERY action whose execution gates
-		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
-		// few); a coding agent's whole small tool set is relevant, and narrowing was
-		// returning zero candidates → planner got no native tools → model narrated.
+		// A focused coding turn receives every action whose ordinary execution gates
+		// pass for the coding contexts. Relevance or a fixed name list may order or
+		// describe the tools, but cannot hide a newly registered authorized action.
 		const useFullSurface = args.codingMode === true;
 		const plannerCandidateActions = useFullSurface
 			? (args.runtime.actions ?? []).filter((action) =>
@@ -8882,6 +8970,8 @@ export async function runV5MessageRuntimeStage1(args: {
 					canActionRun(action, {
 						activeContexts: CODING_SUB_AGENT_CONTEXTS,
 						userRoles: [senderRole],
+						// There is no concrete turn message in this static surface build;
+						// execution still enforces the private gate.
 						skipPrivateGate: true,
 					}),
 				)

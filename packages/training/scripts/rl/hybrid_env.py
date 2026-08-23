@@ -22,9 +22,14 @@ import os
 import random
 from typing import TYPE_CHECKING, Any
 
+import aiohttp
 from atroposlib.envs.base import APIServerConfig, BaseEnv, ScoredDataGroup
 from pydantic import Field
 
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generation,
+)
 from .online_env import FeedOnlineEnvConfig, Scenario
 from .simulation_bridge import SimulationBridge
 
@@ -440,8 +445,6 @@ class FeedHybridEnv(BaseEnv):
         model_name = self.config.tokenizer_name
 
         # Generate N completions for the same prompt
-        import aiohttp
-
         prompt_messages = messages[:-1]  # Exclude assistant response
 
         async with aiohttp.ClientSession() as session:
@@ -460,7 +463,20 @@ class FeedHybridEnv(BaseEnv):
                     return None, []
                 result = await resp.json()
 
-        choices = result.get("choices", [])
+        raw_choices = result.get("choices", [])
+        choices = []
+        for choice in raw_choices:
+            try:
+                choices.append(
+                    require_complete_generation(choice, source="hybrid_env.rollout")
+                )
+            except IncompleteGenerationError as exc:
+                logger.warning("Rejected rollout generation: %s", exc.rejection.as_dict())
+        logger.info(
+            "Rollout generation admission: attempted=%s accepted=%s",
+            len(raw_choices),
+            len(choices),
+        )
         if len(choices) < 2:
             return None, []
 

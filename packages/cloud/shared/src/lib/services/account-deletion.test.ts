@@ -24,6 +24,7 @@ const requestRepo = {
     ...data,
   })),
   findOpenByUserId: mock(async () => undefined),
+  findOpenByUserAndOrganizationId: mock(async () => undefined),
   claimDue: mock(async () => []),
   recoverStaleProcessing: mock(async () => 0),
   markActionRequired: mock(async () => true),
@@ -80,11 +81,17 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
-const { AccountDeletionConflictError, processDueAccountDeletions, requestAccountDeletion } =
-  await import("./account-deletion");
+const {
+  AccountDeletionConflictError,
+  getAccountDeletionStatus,
+  processDueAccountDeletions,
+  requestAccountDeletion,
+} = await import("./account-deletion");
 
 beforeEach(() => {
   requestRepo.update.mockClear();
+  requestRepo.findOpenByUserAndOrganizationId.mockClear();
+  requestRepo.findOpenByUserAndOrganizationId.mockResolvedValue(undefined);
   requestRepo.claimDue.mockClear();
   requestRepo.recoverStaleProcessing.mockClear();
   requestRepo.markActionRequired.mockClear();
@@ -137,6 +144,65 @@ describe("account deletion lifecycle", () => {
       }),
     ).rejects.toMatchObject({ code: "ACCOUNT_UNAVAILABLE" });
     expect(requestRepo.createIdempotent).not.toHaveBeenCalled();
+    expect(requestRepo.findOpenByUserAndOrganizationId).not.toHaveBeenCalled();
+  });
+
+  for (const unavailable of [
+    { label: "inactive", is_active: false, deleted_at: null, is_anonymous: false },
+    {
+      label: "deleted",
+      is_active: true,
+      deleted_at: new Date("2026-08-20T00:00:00Z"),
+      is_anonymous: false,
+    },
+    { label: "anonymous", is_active: true, deleted_at: null, is_anonymous: true },
+  ] as const) {
+    test(`does not surface an open receipt for current account state: ${unavailable.label}`, async () => {
+      listByOrganization.mockResolvedValueOnce([{ id: "user-1", role: "owner", ...unavailable }]);
+
+      await expect(
+        getAccountDeletionStatus({ userId: "user-1", organizationId: "org-1" }),
+      ).rejects.toMatchObject({
+        code: unavailable.label === "anonymous" ? "ANONYMOUS_ACCOUNT" : "ACCOUNT_UNAVAILABLE",
+      });
+      expect(requestRepo.findOpenByUserAndOrganizationId).not.toHaveBeenCalled();
+    });
+
+    test(`does not accept an open receipt for current account state: ${unavailable.label}`, async () => {
+      listByOrganization.mockResolvedValueOnce([{ id: "user-1", role: "owner", ...unavailable }]);
+
+      await expect(
+        requestAccountDeletion({
+          userId: "user-1",
+          organizationId: "org-1",
+          stewardUserId: "steward-1",
+        }),
+      ).rejects.toMatchObject({
+        code: unavailable.label === "anonymous" ? "ANONYMOUS_ACCOUNT" : "ACCOUNT_UNAVAILABLE",
+      });
+      expect(requestRepo.findOpenByUserAndOrganizationId).not.toHaveBeenCalled();
+    });
+  }
+
+  test("ignores an open receipt that is not bound to the authenticated organization", async () => {
+    await expect(
+      getAccountDeletionStatus({ userId: "user-1", organizationId: "org-1" }),
+    ).resolves.toMatchObject({ state: "lifecycle_unavailable" });
+    await expect(
+      requestAccountDeletion({
+        userId: "user-1",
+        organizationId: "org-1",
+        stewardUserId: "steward-1",
+      }),
+    ).rejects.toMatchObject({ code: "LIFECYCLE_RESERVATION_REQUIRED" });
+    expect(requestRepo.findOpenByUserAndOrganizationId).toHaveBeenCalledTimes(2);
+    expect(requestRepo.findOpenByUserAndOrganizationId).toHaveBeenNthCalledWith(
+      1,
+      "user-1",
+      "org-1",
+      true,
+    );
+    expect(requestRepo.findOpenByUserId).not.toHaveBeenCalled();
   });
 
   test("does not treat a revoked former member as active shared authority", async () => {

@@ -58,20 +58,8 @@ const MARKDOWN_OUT_PATH = path.join(
   "evidence",
   "10195-type-duplication.md",
 );
-// Reviewed baseline of per-class candidate counts (#10201). Drift against
-// it is advisory only — the script never fails the build on it (see --check).
-const BASELINE_PATH = path.join(
-  ROOT,
-  "packages",
-  "scripts",
-  "type-duplication-audit.baseline.json",
-);
-
 const args = new Set(process.argv.slice(2));
 const SELF_TEST = args.has("--self-test");
-const CHECK = args.has("--check");
-const UPDATE_BASELINE = args.has("--update-baseline");
-const STRICT = args.has("--strict");
 
 // A subset/superset or near-duplicate pair only counts when both sides carry at
 // least this many properties — tiny shapes (`{ id }`, `{ ok }`) collide by
@@ -107,13 +95,6 @@ function usage() {
 Options:
   --self-test        Prove the clustering fires on a synthetic duplicate pair
                      and ignores a synthetic distinct pair, then exit.
-  --check            Compare current per-class candidate counts to the saved
-                     baseline and print the drift. ADVISORY: exits 0 even when
-                     counts grow (unless --strict). Still writes the report.
-  --strict           With --check, exit 1 if any class count increased above
-                     the baseline. Off by default so local types are never
-                     blocked.
-  --update-baseline  Rewrite the checked-in baseline to the current counts.
   --help, -h         Show this help.
 
 Writes:
@@ -1159,87 +1140,6 @@ function renderMarkdown(report) {
   return `${lines.join("\n")}\n`;
 }
 
-// ── Advisory baseline (#10201) ────────────────────────────────────────────
-// The baseline records the per-class candidate counts after the first
-// human-reviewed consolidation so future drift is visible without blocking the
-// build. It is intentionally count-only (not a per-finding ratchet): the
-// finder is advisory, and many new local types are legitimate.
-
-const COUNT_LABELS = {
-  sameName: "same-name multi-package clusters",
-  subsets: "subset/superset candidates",
-  nearDuplicates: "structural near-duplicates",
-  literalSetClusters: "literal-set duplicates",
-  runtimeSchemaMatches: "runtime schema ↔ exported type matches",
-  weakAsUnknownAs: "weak: as unknown as",
-  weakAsAny: "weak: as any",
-  weakExplicitAny: "weak: explicit : any",
-};
-
-function countsFromReport(report) {
-  return {
-    sameName: report.sameName.length,
-    subsets: report.subsets.length,
-    nearDuplicates: report.nearDuplicates.length,
-    literalSetClusters: report.literalSetClusters.length,
-    runtimeSchemaMatches: report.runtimeSchemaMatches.length,
-    weakAsUnknownAs: report.weakTypeCounts.asUnknownAs,
-    weakAsAny: report.weakTypeCounts.asAny,
-    weakExplicitAny: report.weakTypeCounts.explicitAny,
-  };
-}
-
-function baselinePayload(report) {
-  return {
-    schema: "eliza_type_duplication_baseline_v1",
-    updatedAt: report.generatedAt,
-    thresholds: report.thresholds,
-    filesScanned: report.filesScanned,
-    counts: countsFromReport(report),
-  };
-}
-
-function loadBaselineFile() {
-  if (!existsSync(BASELINE_PATH)) return null;
-  return JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
-}
-
-// Compare current counts to the baseline. Returns per-metric drift; `increased`
-// flags any class that grew (the advisory signal).
-function compareBaseline(counts, baseline) {
-  const limits = baseline?.counts ?? {};
-  const rows = [];
-  let increased = 0;
-  for (const key of Object.keys(COUNT_LABELS)) {
-    const current = counts[key] ?? 0;
-    const base = Number.isInteger(limits[key]) ? limits[key] : null;
-    const delta = base === null ? null : current - base;
-    if (delta !== null && delta > 0) increased += 1;
-    rows.push({ key, current, base, delta });
-  }
-  return { rows, increased };
-}
-
-function printBaselineDrift({ rows, increased }) {
-  console.log("[type-duplication-audit] drift vs baseline (advisory):");
-  for (const row of rows) {
-    const label = COUNT_LABELS[row.key];
-    if (row.base === null) {
-      console.log(`  ? ${label}: ${row.current} (no baseline entry)`);
-      continue;
-    }
-    const arrow = row.delta > 0 ? "▲" : row.delta < 0 ? "▼" : "=";
-    const sign = row.delta > 0 ? `+${row.delta}` : String(row.delta);
-    console.log(`  ${arrow} ${label}: ${row.current} / ${row.base} (${sign})`);
-  }
-  if (increased > 0) {
-    console.log(
-      `[type-duplication-audit] ${increased} class(es) grew above baseline — ` +
-        "review new duplicates, then `--update-baseline` once triaged.",
-    );
-  }
-}
-
 function runSelfTest() {
   // Synthetic source with a KNOWN duplicate pair (Alpha/Beta share all keys)
   // and a KNOWN distinct pair (Gamma shares nothing with them).
@@ -1473,48 +1373,8 @@ function runSelfTest() {
     process.exit(1);
   }
 
-  // ── Advisory baseline drift compare ───────────────────────────────────
-  const fakeReport = {
-    generatedAt: "2026-01-01T00:00:00.000Z",
-    thresholds: {},
-    filesScanned: 1,
-    sameName: [1, 2],
-    subsets: [1],
-    nearDuplicates: [],
-    literalSetClusters: [1, 2, 3],
-    runtimeSchemaMatches: [1, 2],
-    weakTypeCounts: { asUnknownAs: 5, asAny: 0, explicitAny: 7 },
-  };
-  const baseCounts = countsFromReport(fakeReport);
-  if (
-    baseCounts.sameName !== 2 ||
-    baseCounts.literalSetClusters !== 3 ||
-    baseCounts.runtimeSchemaMatches !== 2 ||
-    baseCounts.weakExplicitAny !== 7
-  ) {
-    console.error(
-      `[type-duplication-audit] self-test FAILED: countsFromReport (got ${JSON.stringify(baseCounts)})`,
-    );
-    process.exit(1);
-  }
-  const baseline = baselinePayload(fakeReport);
-  if (compareBaseline(baseCounts, baseline).increased !== 0) {
-    console.error(
-      "[type-duplication-audit] self-test FAILED: identical counts must show 0 increase",
-    );
-    process.exit(1);
-  }
-  const grown = compareBaseline({ ...baseCounts, sameName: 5 }, baseline);
-  const sameNameRow = grown.rows.find((r) => r.key === "sameName");
-  if (grown.increased !== 1 || sameNameRow.delta !== 3) {
-    console.error(
-      `[type-duplication-audit] self-test FAILED: baseline drift not detected (got ${JSON.stringify(grown)})`,
-    );
-    process.exit(1);
-  }
-
   console.log(
-    "[type-duplication-audit] self-test passed (shape: duplicate + subset fire, distinct + tiny ignored; literal-set: cross-kind clusters, below-threshold + single-package ignored; runtime-schema/type matches fire; allowlist suppresses; weak-types counted; baseline drift compares)",
+    "[type-duplication-audit] self-test passed (shape: duplicate + subset fire, distinct + tiny ignored; literal-set: cross-kind clusters, below-threshold + single-package ignored; runtime-schema/type matches fire; allowlist suppresses; weak-types counted)",
   );
 }
 
@@ -1605,30 +1465,3 @@ console.log(
 console.log(
   `[type-duplication-audit] wrote ${path.relative(ROOT, MARKDOWN_OUT_PATH)}`,
 );
-
-if (UPDATE_BASELINE) {
-  writeFileSync(
-    BASELINE_PATH,
-    `${JSON.stringify(baselinePayload(report), null, 2)}\n`,
-  );
-  console.log(
-    `[type-duplication-audit] wrote ${path.relative(ROOT, BASELINE_PATH)}`,
-  );
-}
-
-if (CHECK) {
-  const baseline = loadBaselineFile();
-  if (!baseline) {
-    console.error(
-      `[type-duplication-audit] no baseline at ${path.relative(ROOT, BASELINE_PATH)} — run with --update-baseline first.`,
-    );
-    process.exit(STRICT ? 1 : 0);
-  }
-  const drift = compareBaseline(countsFromReport(report), baseline);
-  printBaselineDrift(drift);
-  // Advisory by default: only --strict turns drift into a non-zero exit, so
-  // local types are never blocked (#10201 acceptance: CI/advisory mode).
-  if (STRICT && drift.increased > 0) {
-    process.exit(1);
-  }
-}

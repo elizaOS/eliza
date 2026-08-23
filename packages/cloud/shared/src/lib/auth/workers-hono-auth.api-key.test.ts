@@ -34,6 +34,8 @@ const getWithOrganization = mock(() => userBehavior());
 const getByStewardId = mock(() => stewardUserBehavior());
 let stewardTokenBehavior: () => Promise<unknown> = async () => null;
 const verifyStewardTokenCached = mock(() => stewardTokenBehavior());
+let primaryUserBehavior: () => Promise<unknown> = async () => null;
+const findWithOrganizationForWrite = mock(() => primaryUserBehavior());
 let playwrightTokenBehavior: () => unknown = () => null;
 const verifyPlaywrightTestSessionToken = mock(() => playwrightTokenBehavior());
 // Mirrors the real gate's contract (production hard-fail + flag) so the
@@ -68,6 +70,12 @@ mock.module("../services/users", () => ({
   },
 }));
 
+mock.module("../../db/repositories/users", () => ({
+  usersRepository: {
+    findWithOrganizationForWrite,
+  },
+}));
+
 mock.module("../services/admin", () => ({
   adminService: {
     getAdminStatusForUser,
@@ -77,6 +85,10 @@ mock.module("../services/admin", () => ({
 mock.module("./steward-client", () => ({
   isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached,
+}));
+
+mock.module("./staging-session-binding", () => ({
+  loadVerifiedStagingSessionUser: mock(async () => null),
 }));
 
 mock.module("./playwright-test-session", () => ({
@@ -97,6 +109,7 @@ const {
   getCurrentUser,
   requireAdmin,
   requireApiKeyCredential,
+  requireCurrentBillingManagerSession,
   requireCronSecret,
   requireSessionUserWithOrg,
   requireUser,
@@ -137,6 +150,7 @@ function activeUser(overrides: Record<string, unknown> = {}) {
     organization_id: "org-1",
     organization: { id: "org-1", name: "Org", is_active: true },
     is_active: true,
+    deleted_at: null,
     role: "member",
     steward_user_id: "steward-1",
     wallet_address: null,
@@ -154,6 +168,7 @@ beforeEach(() => {
   userBehavior = async () => null;
   stewardUserBehavior = async () => null;
   stewardTokenBehavior = async () => null;
+  primaryUserBehavior = async () => null;
   playwrightTokenBehavior = () => null;
   playwrightEnabledBehavior = (env) =>
     env.NODE_ENV !== "production" &&
@@ -164,6 +179,7 @@ beforeEach(() => {
   getWithOrganization.mockClear();
   getByStewardId.mockClear();
   verifyStewardTokenCached.mockClear();
+  findWithOrganizationForWrite.mockClear();
   verifyPlaywrightTestSessionToken.mockClear();
   getAdminStatusForUser.mockClear();
 });
@@ -549,6 +565,155 @@ describe("Workers API-key auth", () => {
     await expect(requireSessionUserWithOrg(c as never)).resolves.toMatchObject({
       organization_id: "org-1",
     });
+  });
+
+  test("billing cancellation admits only current primary owner or admin sessions", async () => {
+    cookieBehavior = () => "steward-session";
+    stewardTokenBehavior = async () => ({ userId: "steward-1" });
+
+    for (const role of ["owner", "admin"] as const) {
+      const c = contextWithHeaders({ cookie: "steward-token=steward-session" });
+      c.set("user", activeUser({ role, steward_id: "steward-1" }));
+      c.set("authMethod", "session");
+      primaryUserBehavior = async () => activeUser({ role });
+
+      await expect(requireCurrentBillingManagerSession(c as never)).resolves.toMatchObject({
+        organization_id: "org-1",
+        role,
+      });
+    }
+
+    expect(findWithOrganizationForWrite).toHaveBeenCalledTimes(2);
+  });
+
+  test("billing cancellation rejects keys, stale roles, moved tenants, and invalid sessions", async () => {
+    await expect(
+      requireCurrentBillingManagerSession(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({ status: 401, code: "session_auth_required" });
+    expect(findWithOrganizationForWrite).not.toHaveBeenCalled();
+
+    cookieBehavior = () => "steward-session";
+    stewardTokenBehavior = async () => ({ userId: "steward-1" });
+    const staleOwner = contextWithHeaders({ cookie: "steward-token=steward-session" });
+    staleOwner.set("user", activeUser({ role: "owner", steward_id: "steward-1" }));
+    staleOwner.set("authMethod", "session");
+    primaryUserBehavior = async () => activeUser({ role: "member" });
+    await expect(requireCurrentBillingManagerSession(staleOwner as never)).rejects.toMatchObject({
+      status: 403,
+    });
+
+    const movedOwner = contextWithHeaders({ cookie: "steward-token=steward-session" });
+    movedOwner.set("user", activeUser({ role: "owner", steward_id: "steward-1" }));
+    movedOwner.set("authMethod", "session");
+    primaryUserBehavior = async () =>
+      activeUser({
+        role: "owner",
+        organization_id: "org-2",
+        organization: { id: "org-2", name: "Other", is_active: true },
+      });
+    await expect(requireCurrentBillingManagerSession(movedOwner as never)).rejects.toMatchObject({
+      status: 403,
+    });
+
+    const invalidSession = contextWithHeaders({ cookie: "steward-token=steward-session" });
+    invalidSession.set("user", activeUser({ role: "owner", steward_id: "steward-1" }));
+    invalidSession.set("authMethod", "session");
+    stewardTokenBehavior = async () => null;
+    await expect(
+      requireCurrentBillingManagerSession(invalidSession as never),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  test("billing cancellation rejects ineligible current users and organizations", async () => {
+    cookieBehavior = () => "steward-session";
+    stewardTokenBehavior = async () => ({ userId: "steward-1" });
+
+    const cases = [
+      { current: undefined, status: 401, message: "The signed-in session is no longer valid" },
+      {
+        current: activeUser({ role: "owner", steward_user_id: "steward-2" }),
+        status: 401,
+        message: "The signed-in session is no longer valid",
+      },
+      {
+        current: activeUser({ role: "owner", is_active: false }),
+        status: 403,
+        message: "User account is not eligible for billing management",
+      },
+      {
+        current: activeUser({ role: "owner", is_anonymous: true }),
+        status: 403,
+        message: "User account is not eligible for billing management",
+      },
+      {
+        current: activeUser({ role: "owner", deleted_at: new Date() }),
+        status: 403,
+        message: "User account is not eligible for billing management",
+      },
+      {
+        current: activeUser({ role: "owner", expires_at: new Date(Date.now() - 60_000) }),
+        status: 403,
+        message: "User account is not eligible for billing management",
+      },
+      {
+        current: activeUser({
+          role: "owner",
+          organization: { id: "org-1", name: "Inactive", is_active: false },
+        }),
+        status: 403,
+        message: "Organization billing authority changed",
+      },
+    ];
+
+    for (const { current, status, message } of cases) {
+      const c = contextWithHeaders({ cookie: "steward-token=steward-session" });
+      c.set("user", activeUser({ role: "owner", steward_id: "steward-1" }));
+      c.set("authMethod", "session");
+      primaryUserBehavior = async () => current;
+
+      await expect(requireCurrentBillingManagerSession(c as never)).rejects.toMatchObject({
+        status,
+        message,
+      });
+    }
+  });
+
+  test("billing cancellation fails closed when primary authority is unavailable", async () => {
+    cookieBehavior = () => "steward-session";
+    stewardTokenBehavior = async () => ({ userId: "steward-1" });
+    primaryUserBehavior = async () => {
+      throw new Error("primary unavailable");
+    };
+    const c = contextWithHeaders({ cookie: "steward-token=steward-session" });
+    c.set("user", activeUser({ role: "owner", steward_id: "steward-1" }));
+    c.set("authMethod", "session");
+
+    await expect(requireCurrentBillingManagerSession(c as never)).rejects.toMatchObject({
+      status: 503,
+      code: "service_unavailable",
+    });
+  });
+
+  test("billing cancellation revalidates enabled Playwright sessions before primary role", async () => {
+    cookieBehavior = () => "playwright-session";
+    playwrightEnabledBehavior = () => true;
+    playwrightTokenBehavior = () => ({
+      userId: "user-1",
+      organizationId: "org-1",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    primaryUserBehavior = async () => activeUser({ role: "admin" });
+    const c = contextWithHeaders(
+      { cookie: "pw-test-session=playwright-session" },
+      { PLAYWRIGHT_TEST_AUTH: "true" },
+    );
+    c.set("user", activeUser({ role: "admin", steward_id: "steward-1" }));
+    c.set("authMethod", "session");
+
+    await expect(requireCurrentBillingManagerSession(c as never)).resolves.toMatchObject({
+      role: "admin",
+    });
+    expect(verifyPlaywrightTestSessionToken).toHaveBeenCalled();
   });
 
   test("getCurrentUser caches null when no Steward token is present", async () => {

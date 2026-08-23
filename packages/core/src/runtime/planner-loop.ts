@@ -187,34 +187,6 @@ trajectory:
 {{trajectory}}`;
 
 /**
- * Chat-lane planner output budget. Reasoning models spend completion tokens on
- * deliberation BEFORE the tool call, and with `toolChoice: required` a budget
- * exhausted mid-reasoning means the required call is never emitted — Cerebras
- * then terminates the stream with an in-stream "server error", which reads as
- * a transient provider failure but reproduces 100% on any ask ambiguous
- * enough to burn the budget (live 2026-08-03: nine identical failures on one
- * build-and-host ask; wire capture showed the entire old 1024-token budget
- * consumed by reasoning deltas with no tool call). 4096 leaves deliberation
- * headroom while staying chat-sized; `ELIZA_PLANNER_MAX_TOKENS` overrides.
- * The coding lane's larger budget below exists for the same failure class
- * (#10132).
- */
-const DEFAULT_PLANNER_MAX_TOKENS = 4096;
-
-/**
- * Default per-call output-token ceiling for a coding planner turn. A single
- * FILE/WRITE tool call must carry the entire file as a JSON-escaped argument —
- * a real single-file app (the reference `tetris.html` is ~4.6k tokens once
- * escaped) blows straight past the chat default of {@link DEFAULT_PLANNER_MAX_TOKENS}
- * (1024), which truncates the tool-call argument mid-stream so the model either
- * narrates without ever completing the call or the provider 400s. Coding CLIs
- * on the same Cerebras `zai-glm-4.7` build the same app reliably precisely
- * because they do not clamp the file-emitting completion to a chat-sized budget.
- * Overridable via `ELIZA_CODING_PLANNER_MAX_TOKENS`. See issue #10132.
- */
-const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
-
-/**
  * Canonical form for an operator-facing positive-integer budget knob: a
  * positive decimal integer with no sign, whitespace, leading zero, decimal
  * point, or exponent. Matches the fail-fast precedent for numeric env config
@@ -256,25 +228,18 @@ export function resolvePositivePlannerInt(
 }
 
 /**
- * Resolve the planner's per-call `maxTokens`: the small chat default, or — in
- * coding/full-surface mode — a budget large enough to emit a full file in one
- * tool call ({@link DEFAULT_CODING_PLANNER_MAX_TOKENS}, overridable via
- * `ELIZA_CODING_PLANNER_MAX_TOKENS`). A set-but-malformed override throws via
- * {@link resolvePositivePlannerInt} rather than silently defaulting.
+ * Resolve an explicitly configured planner output ceiling. Unset settings do
+ * not impose a core-owned cap: the selected provider owns its real output
+ * boundary and must reject an unsupported explicit override before dispatch.
+ * A set-but-malformed override throws rather than silently defaulting.
  */
-function resolvePlannerMaxTokens(codingMode: boolean): number {
-	if (!codingMode) {
-		return resolvePositivePlannerInt(
-			"ELIZA_PLANNER_MAX_TOKENS",
-			process.env.ELIZA_PLANNER_MAX_TOKENS,
-			DEFAULT_PLANNER_MAX_TOKENS,
-		);
-	}
-	return resolvePositivePlannerInt(
-		"ELIZA_CODING_PLANNER_MAX_TOKENS",
-		process.env.ELIZA_CODING_PLANNER_MAX_TOKENS,
-		DEFAULT_CODING_PLANNER_MAX_TOKENS,
-	);
+function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
+	const envVarName = codingMode
+		? "ELIZA_CODING_PLANNER_MAX_TOKENS"
+		: "ELIZA_PLANNER_MAX_TOKENS";
+	const rawValue = process.env[envVarName];
+	if (rawValue === undefined || rawValue === "") return undefined;
+	return resolvePositivePlannerInt(envVarName, rawValue, 1);
 }
 
 /**
@@ -2611,11 +2576,13 @@ async function callPlanner(params: {
 			}),
 			modelInputBudget,
 		),
-		// Chat planner turns stay at the small DEFAULT_PLANNER_MAX_TOKENS; a coding
-		// turn must be able to emit a whole file in one tool call, so coding mode
-		// raises the cap (see resolvePlannerMaxTokens / issue #10132).
-		maxTokens: resolvePlannerMaxTokens(params.trajectory.codingMode === true),
 	};
+	const configuredMaxTokens = resolvePlannerMaxTokens(
+		params.trajectory.codingMode === true,
+	);
+	if (configuredMaxTokens !== undefined) {
+		modelParams.maxTokens = configuredMaxTokens;
+	}
 	modelParams.providerOptions = {
 		...modelParams.providerOptions,
 		eliza: {
@@ -5146,7 +5113,6 @@ async function rescueReplyFromSuccessfulResults(
 				{ role: "system", content: instructions.join("\n") },
 				{ role: "user", content: excerpts.join("\n\n") },
 			],
-			maxTokens: 1024,
 		});
 		const usage = extractUsage(raw);
 		if (

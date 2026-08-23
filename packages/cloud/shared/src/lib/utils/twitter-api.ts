@@ -6,6 +6,23 @@
 
 export const TWITTER_API_BASE = "https://api.twitter.com/2";
 export const TWITTER_UPLOAD_BASE = "https://upload.twitter.com/1.1";
+export const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
+
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
+
+/**
+ * Bound every Twitter REST hop while preserving caller cancellation.
+ *
+ * A caller signal is composed with the owned deadline rather than replacing
+ * it, so a never-aborted caller signal cannot disable the operation bound.
+ */
+export async function twitterFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TWITTER_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return ownedBoundedFetch(input, init, { timeoutMs });
+}
 
 /**
  * Make a Twitter API request
@@ -17,7 +34,7 @@ export async function twitterApiRequest<T>(
 ): Promise<T> {
   const url = endpoint.startsWith("http") ? endpoint : `${TWITTER_API_BASE}${endpoint}`;
 
-  const response = await fetch(url, {
+  const response = await twitterFetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -27,9 +44,26 @@ export async function twitterApiRequest<T>(
   });
 
   if (!response.ok) {
-    const error = (await response.json().catch(() => ({}))) as {
-      errors?: Array<{ detail?: string; message?: string }>;
-    };
+    let error: { errors?: Array<{ detail?: string; message?: string }> } = {};
+    try {
+      error = (await response.json()) as {
+        errors?: Array<{ detail?: string; message?: string }>;
+      };
+    } catch (cause) {
+      if (
+        cause instanceof DOMException &&
+        (cause.name === "AbortError" || cause.name === "TimeoutError")
+      ) {
+        throw cause;
+      }
+      if (
+        cause instanceof Error &&
+        (cause.name === "AbortError" || cause.name === "TimeoutError")
+      ) {
+        throw cause;
+      }
+      error = {};
+    }
     const errorMessage =
       error.errors?.[0]?.detail ||
       error.errors?.[0]?.message ||

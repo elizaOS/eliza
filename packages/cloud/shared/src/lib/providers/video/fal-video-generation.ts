@@ -1,4 +1,4 @@
-// Defines cloud shared fal video generation behavior for backend service consumers.
+/** Implements fal.ai video submission, queue polling, and status reconciliation. */
 import { ApiError, createFalClient } from "@fal-ai/client";
 import { getAiProviderConfigurationError } from "../language-model";
 import {
@@ -6,10 +6,17 @@ import {
   type GeneratedVideoObject,
   VideoGenerationPendingError,
   type VideoGenerationRequest,
+  VideoGenerationSubmissionUnknownError,
+  VideoGenerationTerminalError,
   type VideoJobStatus,
   type VideoJobStatusRequest,
   type VideoProvider,
 } from "./types";
+
+function isDefinitiveFalRejection(error: unknown): error is InstanceType<typeof ApiError> {
+  if (!(error instanceof ApiError)) return false;
+  return error.status >= 400 && error.status < 500 && ![408, 409, 425, 429].includes(error.status);
+}
 
 function falKey(apiKeys: Record<string, string | undefined>): string | null {
   const key = apiKeys.FAL_KEY ?? apiKeys.FAL_API_KEY;
@@ -137,6 +144,8 @@ export async function getFalVideoJobStatus(req: VideoJobStatusRequest): Promise<
   try {
     status = await fal.queue.status(req.model, { requestId: req.requestId });
   } catch (error) {
+    // error-policy:J1 the provider status boundary only translates a verified
+    // unknown job; transport failures propagate so callers retain the hold.
     if (error instanceof ApiError && error.status === 404) {
       return {
         state: "failed",
@@ -154,10 +163,12 @@ export async function getFalVideoJobStatus(req: VideoJobStatusRequest): Promise<
   try {
     result = await fal.queue.result(req.model, { requestId: req.requestId });
   } catch (error) {
+    // error-policy:J1 the completed-result boundary distinguishes a terminal
+    // provider rejection from an inconclusive transport failure.
     // A COMPLETED job whose result endpoint answers with a definitive client
     // error is a terminally failed render (fal serves render errors through
     // the result endpoint). Anything else is a transport fault — propagate.
-    if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    if (isDefinitiveFalRejection(error)) {
       return { state: "failed", error: error.message };
     }
     throw error;
@@ -178,8 +189,21 @@ export async function generateFalVideo(request: VideoGenerationRequest): Promise
     });
     return normalizeFalVideoResult(result, requestId);
   } catch (error) {
+    // error-policy:J1 the provider adapter translates submission/poll outcomes
+    // into the typed states required by route billing and reconciliation.
     if (!requestId) {
-      throw error;
+      // The client only raises ApiError from a real HTTP error response, and
+      // fal issues a request_id only inside a 2xx submit body, so ANY error
+      // status (4xx or 5xx, rate limit or outage) proves no paid job exists:
+      // refunding and falling back is safe. Only a failure with no response
+      // at all (socket reset, abort) leaves the submission genuinely unknown.
+      if (error instanceof ApiError) {
+        throw new VideoGenerationTerminalError(error.message, error);
+      }
+      throw new VideoGenerationSubmissionUnknownError(
+        error instanceof Error ? error.message : String(error),
+        error,
+      );
     }
     // The job is already enqueued upstream; a poll/transport failure here does
     // NOT mean the render died — fal may still complete it and bill the
@@ -193,6 +217,8 @@ export async function generateFalVideo(request: VideoGenerationRequest): Promise
         apiKeys: request.apiKeys,
       });
     } catch {
+      // error-policy:J1 a failed status probe cannot prove terminal failure;
+      // retain the known job id so reconciliation keeps the charge hold open.
       throw new VideoGenerationPendingError(
         requestId,
         error instanceof Error ? error.message : String(error),
@@ -202,8 +228,7 @@ export async function generateFalVideo(request: VideoGenerationRequest): Promise
       return probe.result;
     }
     if (probe.state === "failed") {
-      // Verified terminal failure — refunding is safe.
-      throw error;
+      throw new VideoGenerationTerminalError(probe.error, error);
     }
     throw new VideoGenerationPendingError(
       requestId,

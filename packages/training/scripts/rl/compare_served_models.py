@@ -24,6 +24,8 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "training"))
 
+from lib.generation_integrity import require_complete_generation
+
 from deterministic_eval import (
     ACTION_REASON_ASSISTANT_PREFIX,
     ACTION_REASON_PROMPTS,
@@ -324,7 +326,10 @@ def extract_completion_text(completion: dict[str, Any]) -> str:
     if not isinstance(choices, list) or not choices:
         return ""
 
-    message = choices[0].get("message", {})
+    choice = require_complete_generation(
+        choices[0], source="compare_served_models.extract_completion_text"
+    )
+    message = choice.get("message", {})
     content = message.get("content")
     if isinstance(content, str):
         return content.strip()

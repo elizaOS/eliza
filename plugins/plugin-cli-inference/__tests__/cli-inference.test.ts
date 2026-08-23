@@ -6,7 +6,7 @@
  * so no real model runs; the few real-binary cases are skipped unless
  * `claude`/`codex` resolve through the SOC2 allowlist on this box.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import type {
   ChatMessage,
   GenerateTextParams,
@@ -513,6 +513,79 @@ describe("defaultSpawn timeout escalation (fix 6: SIGKILL if SIGTERM ignored)", 
     // on a signal rather than code 0.
     expect(result.code).not.toBe(0);
   }, 10_000);
+});
+
+describe("defaultSpawn stdin fd lifecycle (#24979: no /dev/null fd leak)", () => {
+  // Node dup's the stdin fd into the child at spawn() time but does NOT
+  // auto-close the parent's integer fd passed via `stdio`. This is the shared
+  // production spawner for BOTH ClaudeCli.generate() and CodexCli.generate(),
+  // and the CLI inference route cold-spawns per model call (~4-8/turn), so a
+  // one-fd-per-spawn leak marches the process toward EMFILE and breaks every
+  // later open/spawn/socket, not just inference. Linux-only: relies on the
+  // /proc/<pid>/fd introspection interface to count and resolve live fds.
+  const canProbeFds = process.platform === "linux" && existsSync(`/proc/${process.pid}/fd`);
+  const fdDir = `/proc/${process.pid}/fd`;
+  const countFds = (): number => readdirSync(fdDir).length;
+  const countDevNullFds = (): number =>
+    readdirSync(fdDir).filter((fd) => {
+      try {
+        return readlinkSync(`${fdDir}/${fd}`) === "/dev/null";
+      } catch {
+        return false;
+      }
+    }).length;
+  const spawnOpts = {
+    cwd: process.cwd(),
+    env: { PATH: process.env.PATH ?? "" } as Record<string, string>,
+    timeoutMs: 5_000,
+    stdinPath: "/dev/null",
+  };
+
+  it.skipIf(!canProbeFds)(
+    "closes the parent's stdin fd on every spawn (no leak across 40 iterations)",
+    async () => {
+      // Warm-up so any first-call lazy fd allocation is already counted.
+      await defaultSpawn(["/bin/true"], spawnOpts);
+      const beforeTotal = countFds();
+      const beforeDevNull = countDevNullFds();
+      for (let i = 0; i < 40; i++) {
+        const result = await defaultSpawn(["/bin/true"], spawnOpts);
+        // Each spawn must run the real child to a clean exit, not the timeout
+        // or an fd-exhaustion (EMFILE) failure.
+        expect(result.timedOut).toBe(false);
+        expect(result.code).toBe(0);
+      }
+      const afterTotal = countFds();
+      const afterDevNull = countDevNullFds();
+      // Pre-fix: exactly one /dev/null fd leaks per spawn (delta ~= 40). The fix
+      // closes the parent's copy on every terminal outcome, so the count is
+      // stable regardless of how many times we spawn.
+      expect(afterTotal - beforeTotal).toBeLessThan(5);
+      expect(afterDevNull - beforeDevNull).toBeLessThan(5);
+    },
+    30_000
+  );
+
+  it.skipIf(!canProbeFds)(
+    "does not leak the stdin fd when the child times out and is killed",
+    async () => {
+      // A child that traps SIGTERM forces the SIGKILL escalation path, which
+      // resolves through the same clearTimers()->closeStdinFd() cleanup. The fd
+      // must be reclaimed on the timeout terminal outcome too, not only on a
+      // clean exit.
+      const script =
+        "process.on('SIGTERM',()=>{});setTimeout(()=>process.exit(0),30000);process.stderr.write('ready');";
+      const beforeDevNull = countDevNullFds();
+      const result = await defaultSpawn([process.execPath, "-e", script], {
+        ...spawnOpts,
+        timeoutMs: 300,
+      });
+      expect(result.timedOut).toBe(true);
+      const afterDevNull = countDevNullFds();
+      expect(afterDevNull - beforeDevNull).toBeLessThan(2);
+    },
+    10_000
+  );
 });
 
 describe("plugin routing priority (fix 4)", () => {

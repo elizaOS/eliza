@@ -36,6 +36,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from training.tokenization import tokenize_with_explicit_limit
 
+from lib.generation_integrity import require_complete_generated_tokens
 from .simulation_bridge import (
     ActionOutcome,
     Scenario,
@@ -352,7 +353,14 @@ class TeamModel:
         )
         self.model.train()
         prompt_len = enc["input_ids"].shape[1]
-        resp = self.tokenizer.decode(out[0, prompt_len:], skip_special_tokens=True)
+        generated_ids = out[0, prompt_len:]
+        require_complete_generated_tokens(
+            generated_ids,
+            max_new_tokens=self.config.max_new_tokens,
+            source="team_rl.generate_action",
+            terminal_token_ids=self.tokenizer.eos_token_id,
+        )
+        resp = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
         return resp, enc["input_ids"], out
 
     def update_reward_stats(self, reward: float) -> float:
@@ -843,8 +851,15 @@ async def run_team_training(
                             pad_token_id=red_team.tokenizer.pad_token_id,
                         )
                     red_team.model.train()
+                    atk_generated_ids = atk_out[0, atk_enc["input_ids"].shape[1] :]
+                    require_complete_generated_tokens(
+                        atk_generated_ids,
+                        max_new_tokens=256,
+                        source="team_rl.red_team",
+                        terminal_token_ids=red_team.tokenizer.eos_token_id,
+                    )
                     atk_resp = red_team.tokenizer.decode(
-                        atk_out[0, atk_enc["input_ids"].shape[1] :],
+                        atk_generated_ids,
                         skip_special_tokens=True,
                     ).strip()
                     if "</think>" in atk_resp:
@@ -884,8 +899,15 @@ async def run_team_training(
                             pad_token_id=blue_team.tokenizer.pad_token_id,
                         )
                     blue_team.model.train()
+                    def_generated_ids = def_out[0, def_enc["input_ids"].shape[1] :]
+                    require_complete_generated_tokens(
+                        def_generated_ids,
+                        max_new_tokens=256,
+                        source="team_rl.blue_team",
+                        terminal_token_ids=blue_team.tokenizer.eos_token_id,
+                    )
                     def_resp = blue_team.tokenizer.decode(
-                        def_out[0, def_enc["input_ids"].shape[1] :],
+                        def_generated_ids,
                         skip_special_tokens=True,
                     ).strip()
                     if "</think>" in def_resp:

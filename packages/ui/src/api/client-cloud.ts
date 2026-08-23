@@ -219,9 +219,31 @@ function isDedicatedCloudAgentClient(client: ElizaClient): boolean {
 }
 
 function resolveConfiguredDirectCloudApiBase(): string | null {
-  return resolveKnownDirectCloudApiBase(
-    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
-  );
+  const configured =
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+  const known = resolveKnownDirectCloudApiBase(configured);
+  if (known) return known;
+  // Local app development intentionally points at an isolated loopback Cloud
+  // worker, which is not (and must not be) present in the production hostname
+  // map. Accept that explicit target only from a loopback-rendered first-party
+  // shell and only when the target is loopback too.
+  if (isTrustedLocalCloudPage()) {
+    try {
+      const parsed = new URL(configured);
+      if (
+        parsed.protocol === "http:" &&
+        (parsed.hostname === "localhost" ||
+          parsed.hostname === "127.0.0.1" ||
+          parsed.hostname === "[::1]" ||
+          parsed.hostname === "::1")
+      ) {
+        return resolveDirectCloudAuthApiBase(configured);
+      }
+    } catch {
+      // error-policy:J3 malformed local development targets fail closed.
+    }
+  }
+  return null;
 }
 
 function isTrustedLocalCloudPage(): boolean {
@@ -557,6 +579,13 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const dedicatedControlPlaneApiBase =
     resolveDedicatedCloudAgentControlPlaneApiBase(client);
   if (dedicatedControlPlaneApiBase) return dedicatedControlPlaneApiBase;
+  if (
+    baseUrl &&
+    isDirectCloudSharedAgentBase(baseUrl) &&
+    isTrustedLocalCloudPage()
+  ) {
+    return resolveConfiguredDirectCloudApiBase();
+  }
   if (shouldUseNativeCloudHttp() && !baseUrl) {
     return resolveConfiguredDirectCloudApiBase();
   }

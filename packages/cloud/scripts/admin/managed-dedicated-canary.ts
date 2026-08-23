@@ -975,12 +975,17 @@ export async function runManagedDedicatedCanary(
       if (init.body && !headers.has("content-type")) {
         headers.set("content-type", "application/json");
       }
+      const deadline = AbortSignal.timeout(timeoutOverrideMs);
+      const signal = init.signal
+        ? AbortSignal.any([init.signal, deadline])
+        : deadline;
       response = await fetchImpl(`${baseUrl}${path}`, {
         ...init,
         headers,
-        signal: init.signal ?? AbortSignal.timeout(timeoutOverrideMs),
+        signal,
       });
     } catch {
+      // error-policy:J1 The live-client transport boundary emits a typed failure.
       throw new CanaryFailure(phase, "request_failed");
     }
     let parsed: unknown = {};

@@ -665,6 +665,28 @@ export class JobsRepository {
   }
 
   /**
+   * Active lifecycle jobs for an organization, newest first.
+   *
+   * The agents list uses this single indexed query to reconnect management
+   * clients to exact jobs after reload instead of relying on browser state.
+   */
+  async findActiveAgentLifecycleJobsForOrg(organizationId: string): Promise<Job[]> {
+    const rows = await dbRead
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.organization_id, organizationId),
+          inArray(jobs.type, [...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+          sql`${jobs.agent_id} IS NOT NULL`,
+          sql`${jobs.status} IN ('pending', 'in_progress')`,
+        ),
+      )
+      .orderBy(desc(jobs.created_at));
+    return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
    * Gets jobs by indexed payload routing fields.
    * Useful for filtering by data-derived fields like characterId.
    *

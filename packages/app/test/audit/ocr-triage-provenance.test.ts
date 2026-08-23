@@ -346,11 +346,6 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         ),
       ].join("\n"),
     );
-    writeFileSync(
-      join(dir, "baseline.json"),
-      JSON.stringify({ known: ["builtin-phone::ipad-portrait"] }),
-    );
-
     const result = await runOcrTriage([
       "--audit-dir",
       dir,
@@ -358,8 +353,6 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       "--out",
       join(dir, "ocr-triage.json"),
-      "--baseline",
-      join(dir, "baseline.json"),
     ]);
 
     expect(result.summary).toEqual({
@@ -368,8 +361,8 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       broken: 1,
       needsEyeball: 0,
       regressions: 1,
-      knownRegressions: 1,
-      newRegressions: 0,
+      knownRegressions: 0,
+      newRegressions: 1,
     });
     expect(result.entries.map((entry) => entry.slug)).toEqual([
       "builtin-phone",

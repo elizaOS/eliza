@@ -4,6 +4,7 @@
  */
 import type {
   ChatFailureKind,
+  ChatTerminalFailure,
   ConversationSecretRequest,
   MessageAttachment,
   NativeToolCallEvent,
@@ -61,6 +62,8 @@ export interface ShellMessage {
   source?: string;
   /** Set on assistant turns the server flagged as failed (e.g. no provider). */
   failureKind?: ChatFailureKind;
+  /** Complete typed terminal failure used for truthful transient retry state. */
+  terminalFailure?: ChatTerminalFailure;
   /** Agent reasoning/thought for this turn, rendered as a collapsed block. */
   reasoning?: string;
   /** Inline tool-call rows for this turn, streamed live from the chat SSE `tool`
@@ -70,10 +73,7 @@ export interface ShellMessage {
   attachments?: MessageAttachment[];
   /** Pending secret / OAuth request (rendered as an actionable block). */
   secretRequest?: ConversationSecretRequest;
-  /**
-   * Short topic labels for this turn (Stage-1 `topics`). Drives the transcript
-   * topic grouping + chips bar (#8928). Absent when the turn had no topic.
-   */
+  /** Short topic labels retained for search and memory semantics. */
   topics?: string[];
 }
 

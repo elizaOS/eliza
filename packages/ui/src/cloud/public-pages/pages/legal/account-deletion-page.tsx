@@ -1,8 +1,7 @@
 /** Explains deletion policy and routes authenticated users into the deletion flow. */
 
-import { CheckCircle2, ShieldCheck } from "lucide-react";
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 import { AccountDeletionDialog } from "../../../account-security/components/account-deletion-dialog";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { usePageTitle } from "../../lib/use-page-title";
@@ -10,8 +9,6 @@ import { usePageTitle } from "../../lib/use-page-title";
 export default function AccountDeletionPage() {
   usePageTitle("Delete your Eliza account | Eliza Cloud");
   const session = useSessionAuth();
-  const [params] = useSearchParams();
-  const [scheduledId, setScheduledId] = useState(params.get("requested"));
 
   return (
     <div className="theme-cloud min-h-[100dvh] bg-bg px-6 py-16 font-sans text-txt sm:px-8">
@@ -29,39 +26,28 @@ export default function AccountDeletionPage() {
           </p>
         </div>
 
-        {scheduledId ? (
-          <section className="space-y-3 rounded-lg border border-success/40 bg-bg-elevated p-6">
-            <CheckCircle2 className="h-7 w-7 text-success" />
-            <h2 className="text-xl font-semibold">Deletion scheduled</h2>
-            <p className="text-muted-strong">
-              Account access has been disabled. Associated account data is
-              scheduled for deletion within 30 days. Keep this request ID for
-              support: <code>{scheduledId}</code>.
-            </p>
-          </section>
-        ) : (
-          <section className="space-y-5 rounded-lg border border-border bg-bg-elevated p-6">
-            <ShieldCheck className="h-7 w-7 text-accent" />
-            <h2 className="text-xl font-semibold">Submit a verified request</h2>
-            <p className="text-muted-strong">
-              Sign in to verify ownership, then confirm deletion. Access is
-              disabled immediately; your Steward identity and associated Eliza
-              Cloud data are scheduled for deletion within 30 days.
-            </p>
-            {!session.ready ? (
-              <p className="text-sm text-muted">Checking your session…</p>
-            ) : session.authenticated ? (
-              <AccountDeletionDialog onScheduled={setScheduledId} />
-            ) : (
-              <Link
-                to="/login?returnTo=%2Faccount-deletion"
-                className="inline-flex rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
-              >
-                Sign in to request deletion
-              </Link>
-            )}
-          </section>
-        )}
+        <section className="space-y-5 rounded-lg border border-border bg-bg-elevated p-6">
+          <ShieldCheck className="h-7 w-7 text-accent" />
+          <h2 className="text-xl font-semibold">Submit a verified request</h2>
+          <p className="text-muted-strong">
+            Sign in to verify ownership and check whether the complete,
+            recoverable deletion lifecycle is available for your account. The
+            page shows an accepted request only after the server returns a
+            verified receipt.
+          </p>
+          {!session.ready ? (
+            <p className="text-sm text-muted">Checking your session…</p>
+          ) : session.authenticated ? (
+            <AccountDeletionDialog />
+          ) : (
+            <Link
+              to="/login?returnTo=%2Faccount-deletion"
+              className="inline-flex rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
+            >
+              Sign in to request deletion
+            </Link>
+          )}
+        </section>
 
         <section className="space-y-3">
           <h2 className="text-xl font-semibold">What is deleted</h2>

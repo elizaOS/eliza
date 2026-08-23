@@ -38,7 +38,12 @@ mock.module("@/lib/services/blooio-automation", () => ({
 
 mock.module("@/lib/services/message-router", () => ({
   messageRouterService: {
-    sendMessage: mock(async () => false),
+    sendMessage: mock(async () => ({
+      status: "failed" as const,
+      provider: "blooio" as const,
+      code: "DELIVERY_PROVIDER_REJECTED",
+      retryable: false,
+    })),
   },
 }));
 

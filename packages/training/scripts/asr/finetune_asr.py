@@ -92,6 +92,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parents[3]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parent))
+
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generated_tokens,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("asr.finetune")
@@ -821,9 +827,17 @@ def _evaluate_wer(
                 input_features = input_features.to(torch.bfloat16)
             with torch.no_grad():
                 generated_ids = model.generate(input_features, max_new_tokens=256)
+            require_complete_generated_tokens(
+                generated_ids,
+                max_new_tokens=256,
+                source="asr.finetune_eval",
+                terminal_token_ids=model.generation_config.eos_token_id,
+            )
             transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
             references.append(rec["transcript"].lower().strip())
             hypotheses.append(transcription.lower().strip())
+        except IncompleteGenerationError:
+            raise
         except Exception as exc:
             log.warning("eval failed for %s: %s", rec["id"], exc)
 

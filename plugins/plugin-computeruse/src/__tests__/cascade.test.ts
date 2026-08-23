@@ -320,7 +320,7 @@ describe("Cascade — click grounding paths", () => {
     expect(res.proposed.y).toBe(220);
   });
 
-  it("rois are truncated to the cascade cap in the result", async () => {
+  it("preserves all Brain ROIs in the cascade result", async () => {
     const cascade = new Cascade({
       brain: fakeBrain({
         scene_summary: "S",
@@ -338,7 +338,8 @@ describe("Cascade — click grounding paths", () => {
       goal: "g",
       captures: captures(),
     });
-    expect(res.rois.length).toBeLessThanOrEqual(2);
+    expect(res.rois).toHaveLength(3);
+    expect(res.rois.map((roi) => roi.reason)).toEqual(["r1", "r2", "r3"]);
   });
 
   it("no ref and no roi → can't resolve a click", async () => {

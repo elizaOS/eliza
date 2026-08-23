@@ -107,7 +107,7 @@ Set `ANTHROPIC_AUTH_MODE=claude-cli`. Requires the `claude` binary on `PATH` (in
 
 - **Opus 4.x models** only accept `temperature=1`. The plugin enforces this automatically.
 - **`temperature` and `topP` are mutually exclusive** in the Anthropic API. Supplying both logs a warning and drops `topP`.
-- **`maxTokens` is capped** at 32k (Opus 4) or 64k (all others) to avoid API 400 errors.
+- **`maxTokens` is a checked boundary** at 128k for current Fable 5, Opus 5 / 4.6–4.8, and Sonnet 5 / 4.6 models; Haiku 4.5 and generic models use 64k, while older Opus 4 models retain the 32k fallback. Explicit unsupported requests fail before dispatch; omitted budgets use the model limit because Anthropic requires `max_tokens`.
 - **Browser builds** (`exports.browser`) never access `process.env`. Set `ANTHROPIC_BROWSER_BASE_URL` to a server-side proxy; do not expose your API key in client-side code.
 
 ## Development

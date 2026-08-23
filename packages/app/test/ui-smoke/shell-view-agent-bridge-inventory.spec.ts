@@ -1,5 +1,5 @@
 // Runtime inventory for shell-rendered builtin views. The source-level coverage
-// ratchets prove hooks exist; this spec proves those hooks actually register
+// guards prove hooks exist; this spec proves those hooks actually register
 // under the mounted ShellViewAgentSurface and are drivable through the same
 // view-interact bridge chat/voice responses use.
 

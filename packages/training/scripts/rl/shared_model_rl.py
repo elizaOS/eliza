@@ -39,6 +39,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from training.tokenization import tokenize_with_explicit_limit
 
+from lib.generation_integrity import require_complete_generated_tokens
 from .simulation_bridge import ActionOutcome, Scenario, SimulationBridge
 from .turboquant import TurboQuantSettings, build_generation_cache
 
@@ -631,8 +632,15 @@ class SharedModelTrainer:
         self.model.train()
 
         prompt_len = enc["input_ids"].shape[1]
+        generated_ids = output_ids[0, prompt_len:]
+        require_complete_generated_tokens(
+            generated_ids,
+            max_new_tokens=self.config.max_new_tokens,
+            source="shared_model_rl.generate_action",
+            terminal_token_ids=self.tokenizer.eos_token_id,
+        )
         response_text = self.tokenizer.decode(
-            output_ids[0, prompt_len:],
+            generated_ids,
             skip_special_tokens=True,
         )
         return response_text, enc["input_ids"], output_ids
@@ -690,13 +698,18 @@ class SharedModelTrainer:
 
         # Split batch into individual results
         results: List[Tuple[str, torch.Tensor, torch.Tensor]] = []
+        padded_prompt_len = encodings["input_ids"].shape[1]
         for i in range(len(npc_ids)):
             # Find where actual content starts (skip left padding)
             prompt_len = int(encodings["attention_mask"][i].sum().item())
-            resp_text = self.tokenizer.decode(
-                output_ids[i, prompt_len:],
-                skip_special_tokens=True,
+            generated_ids = output_ids[i, padded_prompt_len:]
+            require_complete_generated_tokens(
+                generated_ids,
+                max_new_tokens=self.config.max_new_tokens,
+                source=f"shared_model_rl.generate_batch[{i}]",
+                terminal_token_ids=self.tokenizer.eos_token_id,
             )
+            resp_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
             # Return individual tensors (unpadded prompt + full output)
             input_ids_i = encodings["input_ids"][i : i + 1, -prompt_len:]
             output_ids_i = output_ids[i : i + 1]

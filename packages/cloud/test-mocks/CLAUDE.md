@@ -36,7 +36,7 @@ exits.
   accounts, tenant grants, and API credentials are provider-owned seeds;
   callers cannot select a tenant or mint a receipt after an effect.
 - `fixtures/provider-contract/` — synthetic, commit-safe fixture convention.
-- `provider-contract-inventory.json` — promoted managed-integration ratchet;
+- `provider-contract-inventory.json` — promoted managed-integration guard;
   audited by `bun run audit:provider-contracts` and the cloud CI workflow.
 - `provider-contract-protected-integrations.json` — append-only integration ID
   ledger; it must exactly match the inventory and may never remove an ID that

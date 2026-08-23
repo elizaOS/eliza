@@ -71,6 +71,13 @@ export async function runJoinFlow(
   });
   signal?.throwIfAborted();
 
+  onProgress?.(
+    "connecting",
+    selected.runtime === "dedicated"
+      ? "Connecting to your Dedicated agent…"
+      : "Connecting to Shared…",
+  );
+
   if (
     !selected.personalElizaId ||
     selected.agentId !== selected.personalElizaId ||
@@ -81,6 +88,8 @@ export async function runJoinFlow(
 
   client.setBaseUrl(selected.apiBase);
   client.setToken(authToken);
+
+  onProgress?.("connecting", "Finishing setup…");
 
   effects.savePersistedActiveServer({
     id: `cloud:${selected.agentId}`,

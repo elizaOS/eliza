@@ -382,19 +382,19 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
     page.getByText("Loaded task coordinator fixtures"),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("button", { name: "Delete task", exact: true }).click();
   await expect.poll(() => recorder.archiveRequests()).toEqual(["task-smoke-1"]);
 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await page.locator('[data-agent-id="open-task-smoke-1"]').click();
-  await expect(page.getByRole("button", { name: "Reopen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reopen task" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Reopen", exact: true }).click();
+  await page.getByRole("button", { name: "Reopen task", exact: true }).click();
   await expect.poll(() => recorder.reopenRequests()).toEqual(["task-smoke-1"]);
 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await page.locator('[data-agent-id="open-task-smoke-1"]').click();
-  await expect(page.getByRole("button", { name: "Delete" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete task" })).toBeVisible();
 });

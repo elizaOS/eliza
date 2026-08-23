@@ -68,6 +68,10 @@ import {
 import { listDisplays } from "../platform/displays.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
+import {
+  assertComputerUseTrajectoryText,
+  buildComputerUseAgentStepTrajectoryPayload,
+} from "../trajectory-text.js";
 import { resolveActionParams } from "./helpers.js";
 import {
   buildStepProgressContent,
@@ -192,6 +196,7 @@ export async function runComputerUseAgentLoop(
     Math.min(params.maxSteps ?? DEFAULT_MAX_STEPS, 20),
   );
   const goal = params.goal;
+  assertComputerUseTrajectoryText("goal", goal);
   // Agent-loop registry (#9170 M10): a model string selects the loop. Defaults
   // to the local OCR/AX grounder (Brain → Cascade); provider plugins can
   // register Anthropic / OpenAI computer-use loops keyed by model family.
@@ -312,12 +317,24 @@ export async function runComputerUseAgentLoop(
     // Operator-normalizer + any other transform middleware clean the planned
     // action before it is dispatched.
     proposed = await runTransformProposed(middlewares, proposed, stepCtx);
+    assertComputerUseTrajectoryText("rationale", proposed.proposed.rationale);
     // Persist the Brain's understanding onto the scene (#9105 M3) so the next
     // turn's `scene` provider carries `vlm_scene` instead of re-describing.
     service.setSceneVlmAnnotations(proposed.scene_summary, null);
     const dispatchResult = await dispatch(proposed.proposed, {
       interface: computer,
       listDisplays: () => service.getDisplays(),
+    });
+    const trajectoryPayload = buildComputerUseAgentStepTrajectoryPayload({
+      step,
+      goal,
+      actionKind: proposed.proposed.kind,
+      displayId: proposed.proposed.displayId,
+      rois: proposed.rois.length,
+      success: dispatchResult.success,
+      error: dispatchResult.error?.message,
+      errorCode: dispatchResult.error?.code,
+      rationale: proposed.proposed.rationale,
     });
     await runAfterStep(middlewares, {
       step,
@@ -329,14 +346,7 @@ export async function runComputerUseAgentLoop(
     logger.info(
       {
         evt: "computeruse.agent.step",
-        step,
-        goal,
-        actionKind: proposed.proposed.kind,
-        displayId: proposed.proposed.displayId,
-        rois: proposed.rois.length,
-        success: dispatchResult.success,
-        error: dispatchResult.error?.code,
-        rationale: proposed.proposed.rationale,
+        ...trajectoryPayload,
       },
       `[computeruse/agent] step ${step}: ${proposed.proposed.kind}`,
     );

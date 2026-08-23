@@ -272,7 +272,7 @@ async function handleIncomingMessage(
 
     const responseTime = Date.now() - startTime;
 
-    if (sent) {
+    if (sent.status === "delivered") {
       const billing = calculateTwilioSmsBilling(
         routed.replyText.trim(),
         resolveSmsCostPerSegment(c.env),
@@ -312,8 +312,12 @@ async function handleIncomingMessage(
         responseTime,
       });
     } else {
-      logger.error("[TwilioWebhook] Failed to send agent response", {
+      logger.error("[TwilioWebhook] Agent response delivery did not complete", {
         orgId,
+        deliveryStatus: sent.status,
+        deliveryCode: sent.code,
+        retryable: sent.retryable,
+        providerStatus: sent.providerStatus,
       });
     }
   }

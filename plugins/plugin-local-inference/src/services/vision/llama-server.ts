@@ -49,6 +49,7 @@
  *   `__tests__/vision-describe.test.ts` notes for the GPU smoke check.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { resolveImageBytes } from "./hash";
 import type {
 	VisionDescribeBackend,
@@ -124,7 +125,7 @@ export function createLlamaServerVisionBackend(
 			if (!res.ok) {
 				const text = await res.text().catch(() => "<unreadable>");
 				throw new Error(
-					`[vision/llama-server] /completion returned ${res.status}: ${text.slice(0, 200)}`,
+					`[vision/llama-server] /completion returned ${res.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
 				);
 			}
 			const payload = (await res.json()) as {

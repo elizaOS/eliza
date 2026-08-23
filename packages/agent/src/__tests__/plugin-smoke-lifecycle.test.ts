@@ -758,7 +758,7 @@ describe("service-class snapshot with a service-less plugin (#16808)", () => {
     const runtime = createTestRuntime() as InspectableRuntime;
     await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
     installRuntimePluginLifecycle(runtime);
-    const withService = makeLifecycleRaceFixture("ratchet-guard-plugin", "v1");
+    const withService = makeLifecycleRaceFixture("guard-guard-plugin", "v1");
     const serviceLess = makeSyntheticSkillsPlugin();
 
     await runtime.registerPlugin(withService.plugin);

@@ -80,13 +80,13 @@ await runBrowserFixtureE2E(
       };
     });
     assert(
-      resting.text === "" &&
+        resting.text === "" &&
         resting.pillWidth === 64 &&
-        resting.pillHeight === 32 &&
+        resting.pillHeight === 44 &&
         resting.markWidth === 48 &&
         resting.markHeight === 10 &&
         resting.markBackground.includes("0.95"),
-      `RESTING: only the 48x10 white Flow handle is painted (${JSON.stringify(resting)})`,
+      `RESTING: the complete 64x44 native target is painted around the 48x10 Flow mark (${JSON.stringify(resting)})`,
     );
     await snap(page, "resting-homepill");
 

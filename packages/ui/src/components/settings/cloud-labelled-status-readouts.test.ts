@@ -1,5 +1,5 @@
 /**
- * Source ratchet: cloud labelled status readouts must compose SettingsRow
+ * Source guard: cloud labelled status readouts must compose SettingsRow
  * rather than BrandCard key/value shells. Reads shipped files off disk.
  */
 import { readFileSync } from "node:fs";

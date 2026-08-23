@@ -1,5 +1,8 @@
-// Defines cloud shared registry behavior for backend service consumers.
-import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
+/** Registers video providers and resolves configured candidates for Cloud routes. */
+import type {
+  PricingBillingSource,
+  SupportedVideoModelDefinition,
+} from "../../services/ai-pricing-definitions";
 import { atlasCloudVideoProvider } from "./atlascloud-video-generation";
 import { falVideoProvider } from "./fal-video-generation";
 import type { VideoProvider } from "./types";
@@ -25,6 +28,27 @@ export function getVideoProvider(billingSource: PricingBillingSource): VideoProv
  */
 export function findVideoProvider(billingSource: string): VideoProvider | undefined {
   return PROVIDERS.get(billingSource as PricingBillingSource);
+}
+
+export interface ConfiguredVideoProviderCandidate {
+  definition: SupportedVideoModelDefinition;
+  provider: VideoProvider;
+}
+
+/**
+ * Resolves an ordered model list to providers that have usable credentials.
+ * Callers retain model order so the first entry is primary and later entries
+ * are fallbacks.
+ */
+export function getConfiguredVideoProviderCandidates(
+  definitions: readonly SupportedVideoModelDefinition[],
+  apiKeys: Record<string, string | undefined>,
+): ConfiguredVideoProviderCandidate[] {
+  return definitions.flatMap((definition) => {
+    const provider = getVideoProvider(definition.billingSource);
+    if (provider.isConfigured && !provider.isConfigured(apiKeys)) return [];
+    return [{ definition, provider }];
+  });
 }
 
 /**

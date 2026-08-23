@@ -199,7 +199,7 @@ df -h / /home
 		const evaluatorParams = runtime.useModel.mock.calls[0][1];
 		// Wire-shape contract: evaluator emits ONLY `messages`.
 		expect(evaluatorParams.prompt).toBeUndefined();
-		expect(evaluatorParams.maxTokens).toBe(2048);
+		expect(evaluatorParams.maxTokens).toBeUndefined();
 		expect(evaluatorParams.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
@@ -1356,12 +1356,10 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 	});
 });
 
-describe("completion-truncation guard: one bounded retry, never a loop", () => {
-	// Bidirectional contract for the 2026-08-17 truncation spiral: an envelope
-	// cut off at the completion cap must trigger EXACTLY ONE retry at a doubled
-	// cap. Without the guard (the old behavior) the truncated JSON parsed as a
-	// protocol failure and the planner burned extra full-prompt rounds; with it,
-	// the second (complete) envelope is used directly.
+describe("provider-owned evaluator output boundaries", () => {
+	// Core never chooses a completion ceiling. If a provider still reports that
+	// its own hard length boundary was reached, reject the partial envelope as a
+	// typed failure instead of parsing or silently retrying it.
 	const truncatedEnvelope = {
 		// A JSON envelope cut mid-string — unparseable by construction.
 		text: '{"success": true, "decision": "FINISH", "thought": "long reasoning that got cut o',
@@ -1441,75 +1439,60 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		expect(evaluatorHitCompletionLimit("plain text", 2048)).toBe(false);
 	});
 
-	it("retries ONCE with a doubled cap when the truncated envelope is unparseable, then uses the retry result", async () => {
+	it("rejects an incomplete envelope once without imposing or doubling a cap", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce(truncatedEnvelope)
 			.mockResolvedValueOnce(completeEnvelope);
 
-		const result = await runEvaluator(baseParams(useModel));
-
-		expect(useModel).toHaveBeenCalledTimes(2);
-		const firstCap = useModel.mock.calls[0][1].maxTokens;
-		const secondCap = useModel.mock.calls[1][1].maxTokens;
-		expect(firstCap).toBe(2048);
-		expect(secondCap).toBe(4096);
-		expect(result.decision).toBe("FINISH");
-		expect(result.success).toBe(true);
-		expect(result.protocolFailure).toBeUndefined();
+		await expect(runEvaluator(baseParams(useModel))).rejects.toMatchObject({
+			code: "EVALUATOR_OUTPUT_INCOMPLETE",
+		});
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel.mock.calls[0][1].maxTokens).toBeUndefined();
 	});
 
-	it("reports usage for both the truncated attempt and its successful retry", async () => {
+	it("reports usage for the rejected provider response", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce(truncatedEnvelope)
 			.mockResolvedValueOnce(completeEnvelope);
 		const onUsage = vi.fn();
 
-		await runEvaluator({ ...baseParams(useModel), onUsage });
+		await expect(
+			runEvaluator({ ...baseParams(useModel), onUsage }),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
 
-		expect(onUsage).toHaveBeenCalledTimes(2);
-		expect(onUsage).toHaveBeenNthCalledWith(1, {
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
 			promptTokens: 100,
 			completionTokens: 2048,
 		});
-		expect(onUsage).toHaveBeenNthCalledWith(2, {
-			promptTokens: 100,
-			completionTokens: 40,
-		});
 	});
 
-	it("records both billable model calls when the truncation retry succeeds", async () => {
+	it("records the typed incomplete-output failure", async () => {
 		const stages: RecordedStage[] = [];
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce(truncatedEnvelope)
 			.mockResolvedValueOnce(completeEnvelope);
 
-		await runEvaluator({
-			...baseParams(useModel),
-			recorder: captureRecorder(stages),
-			trajectoryId: "trajectory-evaluator-retry",
-		});
+		await expect(
+			runEvaluator({
+				...baseParams(useModel),
+				recorder: captureRecorder(stages),
+				trajectoryId: "trajectory-evaluator-incomplete",
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
 
-		expect(stages).toHaveLength(2);
-		expect(stages.map((stage) => stage.stageId)).toEqual([
-			expect.stringContaining("-attempt-1"),
-			expect.stringContaining("-attempt-2"),
-		]);
-		expect(stages[0]?.model?.response).toBe(truncatedEnvelope.text);
-		expect(stages[0]?.model?.usage).toMatchObject({
-			promptTokens: 100,
-			completionTokens: 2048,
-		});
-		expect(stages[1]?.model?.response).toBe(completeEnvelope.text);
-		expect(stages[1]?.model?.usage).toMatchObject({
-			promptTokens: 100,
-			completionTokens: 40,
-		});
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(stages).toHaveLength(1);
+		expect(stages[0]?.model?.response).toContain(
+			"Evaluator provider returned an incomplete output",
+		);
 	});
 
-	it("keeps first-attempt provenance when a differently routed retry fails", async () => {
+	it("keeps selected-provider provenance for an incomplete output", async () => {
 		const stages: RecordedStage[] = [];
 		const providerError = Object.assign(new Error("retry rate limited"), {
 			status: 429,
@@ -1544,26 +1527,26 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 			},
 		);
 
-		const result = await runEvaluator({
-			...baseParams(useModel),
-			runtime: {
-				useModel,
-				supportsModelAttemptPreparation: true,
-				reportError: vi.fn(),
-			},
-			recorder: captureRecorder(stages),
-			trajectoryId: "trajectory-evaluator-retry",
-		});
+		await expect(
+			runEvaluator({
+				...baseParams(useModel),
+				runtime: {
+					useModel,
+					supportsModelAttemptPreparation: true,
+					reportError: vi.fn(),
+				},
+				recorder: captureRecorder(stages),
+				trajectoryId: "trajectory-evaluator-incomplete",
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
 
-		expect(result.protocolFailure).toBe(true);
-		expect(stages).toHaveLength(2);
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(stages).toHaveLength(1);
 		expect(stages[0]?.model?.provider).toBe("initial-provider");
-		expect(stages[0]?.model?.response).toBe(truncatedEnvelope.text);
-		expect(stages[1]?.model?.provider).toBe("retry-provider");
-		expect(stages[1]?.model?.response).toContain("retry rate limited");
+		expect(stages[0]?.model?.response).toContain("incomplete output");
 	});
 
-	it("rejects the original partial response when the retry throws", async () => {
+	it("does not make a second model call after an incomplete output", async () => {
 		const providerError = Object.assign(new Error("retry rate limited"), {
 			status: 429,
 		});
@@ -1575,27 +1558,17 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		const reportError = vi.fn();
 		const onUsage = vi.fn();
 
-		const result = await runEvaluator({
-			...baseParams(useModel),
-			runtime: { useModel, logger: { warn }, reportError },
-			onUsage,
-		});
+		await expect(
+			runEvaluator({
+				...baseParams(useModel),
+				runtime: { useModel, logger: { warn }, reportError },
+				onUsage,
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
 
-		expect(useModel).toHaveBeenCalledTimes(2);
-		expect(result).toMatchObject({
-			decision: "CONTINUE",
-			success: false,
-			protocolFailure: true,
-		});
-		expect(warn).toHaveBeenCalledWith(
-			expect.objectContaining({ retryMaxTokens: 4096 }),
-			"[evaluator] output-limit retry failed; rejecting the original partial response",
-		);
-		expect(reportError).toHaveBeenCalledWith(
-			"Evaluator.truncationRetry",
-			providerError,
-			expect.objectContaining({ retryMaxTokens: 4096 }),
-		);
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(warn).not.toHaveBeenCalled();
+		expect(reportError).not.toHaveBeenCalled();
 		expect(onUsage).toHaveBeenCalledTimes(1);
 		expect(onUsage).toHaveBeenCalledWith({
 			promptTokens: 100,
@@ -1603,7 +1576,7 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		});
 	});
 
-	it("records a retry budget rejection and falls back to the initial response", async () => {
+	it("rejects a complete input that cannot fit the selected provider", async () => {
 		vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", '{"tiny-evaluator":8000}');
 		try {
 			const stages: RecordedStage[] = [];
@@ -1643,55 +1616,48 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 			);
 			const reportError = vi.fn();
 
-			const result = await runEvaluator({
-				...baseParams(useModel),
-				runtime: {
-					useModel,
-					supportsModelAttemptPreparation: true,
-					getModelRegistrations: () => [
-						{
-							modelType: ModelType.RESPONSE_HANDLER,
-							provider: "tiny",
-							metadata: { displayModel: "tiny-evaluator" },
-						},
-					],
-					reportError,
-				},
-				context: {
-					...baseParams(useModel).context,
-					staticPrefix: {
-						characterPrompt: {
-							content: `agent_name: Eliza\n${"x".repeat(10_000)}`,
-							stable: true,
+			await expect(
+				runEvaluator({
+					...baseParams(useModel),
+					runtime: {
+						useModel,
+						supportsModelAttemptPreparation: true,
+						getModelRegistrations: () => [
+							{
+								modelType: ModelType.RESPONSE_HANDLER,
+								provider: "tiny",
+								metadata: { displayModel: "tiny-evaluator" },
+							},
+						],
+						reportError,
+					},
+					context: {
+						...baseParams(useModel).context,
+						staticPrefix: {
+							characterPrompt: {
+								content: `agent_name: Eliza\n${"x".repeat(40_000)}`,
+								stable: true,
+							},
 						},
 					},
-				},
-				recorder: captureRecorder(stages),
-				trajectoryId: "trajectory-evaluator-retry-budget",
-			});
+					recorder: captureRecorder(stages),
+					trajectoryId: "trajectory-evaluator-input-budget",
+				}),
+			).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
 
-			expect(useModel).toHaveBeenCalledTimes(2);
-			expect(completedCalls).toBe(1);
-			expect(result).toMatchObject({
-				decision: "CONTINUE",
-				success: false,
-				protocolFailure: true,
-			});
-			expect(stages).toHaveLength(2);
-			expect(stages[1]?.model?.response).toContain(
+			expect(useModel).toHaveBeenCalledTimes(1);
+			expect(completedCalls).toBe(0);
+			expect(stages).toHaveLength(1);
+			expect(stages[0]?.model?.response).toContain(
 				"EVALUATOR_INPUT_OVER_BUDGET",
 			);
-			expect(reportError).toHaveBeenCalledWith(
-				"Evaluator.truncationRetry",
-				expect.objectContaining({ code: "EVALUATOR_INPUT_OVER_BUDGET" }),
-				expect.objectContaining({ retryMaxTokens: 4096 }),
-			);
+			expect(reportError).not.toHaveBeenCalled();
 		} finally {
 			vi.unstubAllEnvs();
 		}
 	});
 
-	it("propagates non-provider failures from the bounded retry", async () => {
+	it("does not invoke a second-call adapter after incomplete output", async () => {
 		const programmerError = new TypeError("retry result adapter is broken");
 		const useModel = vi
 			.fn()
@@ -1701,7 +1667,8 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 
 		await expect(
 			runEvaluator({ ...baseParams(useModel), onUsage }),
-		).rejects.toBe(programmerError);
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
+		expect(useModel).toHaveBeenCalledTimes(1);
 		expect(onUsage).toHaveBeenCalledTimes(1);
 		expect(onUsage).toHaveBeenCalledWith({
 			promptTokens: 100,
@@ -1709,7 +1676,7 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		});
 	});
 
-	it("does NOT retry when the completion hit the cap but still parsed", async () => {
+	it("does not infer a cap from usage when none was requested", async () => {
 		const parseableAtCap = {
 			text: '{"success": true, "decision": "FINISH", "thought": "Fits exactly."}',
 			finishReason: "stop",
@@ -1723,17 +1690,12 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		expect(result.decision).toBe("FINISH");
 	});
 
-	it("never loops: a still-truncated retry proceeds to parse-recovery with exactly two calls total", async () => {
+	it("never parses or retries an incomplete provider response", async () => {
 		const useModel = vi.fn().mockResolvedValue(truncatedEnvelope);
 
-		const result = await runEvaluator(baseParams(useModel));
-
-		// One initial call + one retry. NEVER a third.
-		expect(useModel).toHaveBeenCalledTimes(2);
-		// The unparseable envelope routes through the existing protocol-failure
-		// path (CONTINUE + replan), not an exception and not a user-visible leak.
-		expect(result.decision).toBe("CONTINUE");
-		expect(result.success).toBe(false);
-		expect(result.messageToUser).toBeUndefined();
+		await expect(runEvaluator(baseParams(useModel))).rejects.toMatchObject({
+			code: "EVALUATOR_OUTPUT_INCOMPLETE",
+		});
+		expect(useModel).toHaveBeenCalledTimes(1);
 	});
 });

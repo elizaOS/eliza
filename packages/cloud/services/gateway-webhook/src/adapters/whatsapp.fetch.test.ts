@@ -70,20 +70,50 @@ describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller
     let seen: AbortSignal | null | undefined;
     globalThis.fetch = vi
       .fn()
-      .mockImplementation(
-        async (_input: RequestInfo | URL, init?: RequestInit) => {
-          seen = init?.signal;
-          return new Response("{}", { status: 200 });
-        },
-      ) as unknown as typeof fetch;
+      .mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason);
+          });
+        });
+      }) as unknown as typeof fetch;
 
     const { whatsappFetch } = await import("./whatsapp");
     const controller = new AbortController();
-    await whatsappFetch("https://graph.facebook.com/v21.0/me/messages", {
-      signal: controller.signal,
-    });
+    const request = whatsappFetch(
+      "https://graph.facebook.com/v21.0/me/messages",
+      {
+        signal: controller.signal,
+      },
+    );
     expect(seen?.aborted).toBe(false);
-    controller.abort();
+    controller.abort(new DOMException("caller cancelled", "AbortError"));
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
     expect(seen?.aborted).toBe(true);
+  });
+
+  test("requires provider message IDs before reporting an accepted reply delivered", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ messages: [] }),
+    ) as unknown as typeof fetch;
+    const { whatsappAdapter } = await import("./whatsapp");
+    const config = { accessToken: "token", phoneNumberId: "phone-id" };
+    const event = {
+      platform: "whatsapp" as const,
+      messageId: "incoming-id",
+      chatId: "15551234567",
+      senderId: "15551234567",
+      text: "hello",
+      rawPayload: {},
+    };
+
+    await expect(
+      whatsappAdapter.sendReplyWithReceipt?.(config, event, "hello from Eliza"),
+    ).rejects.toMatchObject({
+      deliveryStatus: "uncertain",
+      code: "DELIVERY_RECEIPT_INVALID",
+      retryable: false,
+    });
   });
 });

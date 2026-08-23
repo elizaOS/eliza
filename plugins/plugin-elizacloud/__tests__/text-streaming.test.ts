@@ -1225,7 +1225,7 @@ describe("cloud streaming gate decision (wantsStream)", () => {
     expect(lastJson().stream).not.toBe(true);
   });
 
-  it("omits native max_tokens only when omitMaxTokens is set", async () => {
+  it("omits native max_tokens unless the caller explicitly sets it", async () => {
     nextResponse = bufferedChatResponse("buffered reply");
     await handleResponseHandler(fakeRuntime(), {
       prompt: "hi",
@@ -1239,10 +1239,18 @@ describe("cloud streaming gate decision (wantsStream)", () => {
       prompt: "hi",
       providerOptions: { eliza: {} },
     } as never);
-    expect(lastJson().max_tokens).toBe(8192);
+    expect(lastJson()).not.toHaveProperty("max_tokens");
+
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      maxTokens: 16384,
+    } as never);
+    expect(lastJson().max_tokens).toBe(16384);
   });
 
-  it("omits responses max_output_tokens only when omitMaxTokens is set", async () => {
+  it("omits responses max_output_tokens unless the caller explicitly sets it", async () => {
     nextResponse = bufferedChatResponse("buffered reply");
     await handleResponseHandler(fakeRuntime(), {
       prompt: "hi",
@@ -1254,7 +1262,14 @@ describe("cloud streaming gate decision (wantsStream)", () => {
     await handleResponseHandler(fakeRuntime(), {
       prompt: "hi",
     } as never);
-    expect(lastJson().max_output_tokens).toBe(8192);
+    expect(lastJson()).not.toHaveProperty("max_output_tokens");
+
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      maxTokens: 16384,
+    } as never);
+    expect(lastJson().max_output_tokens).toBe(16384);
   });
 
   it("never logs rendered prompt content while preserving the provider request", async () => {

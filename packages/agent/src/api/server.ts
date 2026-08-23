@@ -475,7 +475,6 @@ import {
   registerBuiltinViews,
   tryHandleHonoRuntimeRoute,
   tryHandleLifeOpsInboxFallbackLazy,
-  tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
 import {
@@ -3463,18 +3462,6 @@ async function handleRequest(
   }
 
   if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
-    return;
-  }
-
-  // ── Music player compatibility fallback ─────────────────────────────────
-  if (
-    await tryHandleMusicPlayerStatusFallbackLazy({
-      pathname,
-      method,
-      runtime: state.runtime,
-      res,
-    })
-  ) {
     return;
   }
 

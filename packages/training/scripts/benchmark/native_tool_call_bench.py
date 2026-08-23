@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import format_record  # noqa: E402
 from lib.attn import select_attn_impl  # noqa: E402
+from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -357,7 +358,7 @@ def load_records(path: Path, max_per_bucket: int) -> dict[str, list[dict[str, An
             if record is None:
                 continue
             bucket = classify(record)
-            if len(buckets[bucket]) < max_per_bucket:
+            if max_per_bucket <= 0 or len(buckets[bucket]) < max_per_bucket:
                 buckets[bucket].append(record)
     return buckets
 
@@ -642,6 +643,12 @@ def generate(
         )
         dt = time.perf_counter() - t0
     generated = output[0][prompt_len:]
+    require_complete_generated_tokens(
+        generated,
+        max_new_tokens=max_new_tokens,
+        source="native_tool_call_bench.generate",
+        terminal_token_ids=tokenizer.eos_token_id,
+    )
     return (tokenizer.decode(generated, skip_special_tokens=False),
             prompt_len, int(generated.shape[0]), dt)
 
@@ -651,7 +658,12 @@ def main() -> int:
     parser.add_argument("--model", required=True)
     parser.add_argument("--test-file", required=True)
     parser.add_argument("--out-dir", required=True)
-    parser.add_argument("--max-per-bucket", type=int, default=200)
+    parser.add_argument(
+        "--max-per-bucket",
+        type=int,
+        default=0,
+        help="Explicit per-bucket sample count; 0 evaluates the complete corpus",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument(
         "--device", default="auto", choices=("auto", "cuda", "mps", "cpu"),

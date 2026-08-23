@@ -1,8 +1,8 @@
 /**
- * Verifies the patched Steward SDK's opt-out from implicit passkey enrollment
+ * Verifies explicit Steward passkey authentication and enrollment boundaries
  * using the real client and SimpleWebAuthn implementation. HTTP and browser
- * credential boundaries are deterministic, but registration and MFA execute
- * all SDK/browser-library code through navigator.credentials.
+ * credential boundaries are deterministic, but each ceremony executes all
+ * SDK/browser-library code through navigator.credentials.
  */
 // @vitest-environment jsdom
 
@@ -87,31 +87,26 @@ function authSuccess(token = validSessionToken()) {
   };
 }
 
-describe("StewardAuth passkey registration fallback", () => {
+describe("StewardAuth passkey ceremony boundaries", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it("preserves the default smart registration fallback", async () => {
-    const recorder = recordFetch([
-      jsonResponse(404, "No passkey registered"),
-      jsonResponse(401, "Authentication required"),
-    ]);
-    vi.stubGlobal("fetch", recorder.fetch);
-    const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
-
-    await expect(
-      auth.signInWithPasskey("person@example.com"),
-    ).rejects.toMatchObject({
-      status: 401,
-      message: "Authentication required",
+  it("runs WebAuthn for constant-shaped options without starting registration", async () => {
+    const get = vi.fn(async () => {
+      throw new DOMException("No matching credential", "NotAllowedError");
     });
-    expect(recorder.callCount()).toBe(2);
-  });
-
-  it("exposes 404 without starting registration when fallback is disabled", async () => {
-    const recorder = recordFetch([jsonResponse(404, "No passkey registered")]);
+    installWebAuthnCredentialContainer({ get });
+    const recorder = recordFetch([
+      successResponse({
+        challenge: "AQIDBA",
+        challengeId: "login-challenge-id",
+        rpId: "example.test",
+        allowCredentials: [],
+        userVerification: "required",
+      }),
+    ]);
     vi.stubGlobal("fetch", recorder.fetch);
     const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
 
@@ -122,11 +117,15 @@ describe("StewardAuth passkey registration fallback", () => {
       .catch((cause: unknown) => cause);
 
     expect(recorder.callCount()).toBe(1);
+    expect(get).toHaveBeenCalledTimes(1);
     expect(error).toBeInstanceOf(StewardApiError);
     expect(error).toMatchObject({
-      status: 404,
-      message: "No passkey registered",
+      status: 0,
+      message: expect.stringContaining("No matching credential"),
     });
+    expect(String(recorder.requests()[0]?.input)).toBe(
+      "https://api.example.test/auth/passkey/login/options",
+    );
   });
 
   it("does not reinterpret non-404 login failures", async () => {
@@ -174,7 +173,6 @@ describe("StewardAuth passkey registration fallback", () => {
     installWebAuthnCredentialContainer({ create });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const recorder = recordFetch([
-      jsonResponse(404, "No passkey registered"),
       successResponse(registrationOptions),
       successResponse(authSuccess()),
     ]);
@@ -182,7 +180,7 @@ describe("StewardAuth passkey registration fallback", () => {
     const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
 
     await expect(
-      auth.signInWithPasskey("person@example.com"),
+      auth.addPasskey("person@example.com", { emailGrant: "email-grant" }),
     ).resolves.toMatchObject({ token: expect.any(String) });
 
     expect(create).toHaveBeenCalledTimes(1);
@@ -190,8 +188,16 @@ describe("StewardAuth passkey registration fallback", () => {
     expect(createRequest?.publicKey?.challenge).toBeInstanceOf(ArrayBuffer);
     expect(createRequest?.publicKey?.user.id).toBeInstanceOf(ArrayBuffer);
     expect(warn).not.toHaveBeenCalled();
-    expect(recorder.callCount()).toBe(3);
-    const verifyRequest = recorder.requests()[2];
+    expect(recorder.callCount()).toBe(2);
+    const optionsRequest = recorder.requests()[0];
+    expect(String(optionsRequest?.input)).toBe(
+      "https://api.example.test/auth/passkey/register/options",
+    );
+    expect(JSON.parse(String(optionsRequest?.init?.body))).toMatchObject({
+      email: "person@example.com",
+      emailGrant: "email-grant",
+    });
+    const verifyRequest = recorder.requests()[1];
     expect(String(verifyRequest?.input)).toBe(
       "https://api.example.test/auth/passkey/register/verify",
     );

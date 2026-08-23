@@ -200,7 +200,9 @@ function resolveManagedWebUiUrl(
  *     — agent is running; token issued.
  *   202 { success: true, data: { status: "starting", jobId?, retryAfterMs } }
  *     — agent is not running. We've kicked off (or detected) provisioning.
- *       Client should retry after `Retry-After` seconds.
+ *       `retryAfterMs` in the body is the client contract (the Cloud UI reads
+ *       only the parsed payload); the `Retry-After` header mirrors it in
+ *       seconds for generic HTTP clients.
  *   404 — agent not owned by caller.
  *   503 — running agent has no managed HTTPS Web UI URL configured.
  *
