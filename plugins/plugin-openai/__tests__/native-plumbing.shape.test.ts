@@ -745,7 +745,7 @@ describe("OpenAI native text plumbing", () => {
     expect(call.model).toEqual({ modelName: "gpt-oss-120b" });
   });
 
-  it("omits maxOutputTokens only when omitMaxTokens is set", async () => {
+  it("omits maxOutputTokens by default and honors only an explicit caller request", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",
       usage: { inputTokens: 1, outputTokens: 1 },
@@ -757,13 +757,77 @@ describe("OpenAI native text plumbing", () => {
       omitMaxTokens: true,
     } as never);
     await handleTextSmall(createRuntime(), {
-      prompt: "use default cap",
+      prompt: "use provider max by default",
+    } as never);
+    await handleTextSmall(createRuntime(), {
+      prompt: "use explicit cap",
+      maxTokens: 123,
     } as never);
 
     const omittedCall = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
     const defaultCall = aiMocks.generateText.mock.calls[1][0] as Record<string, unknown>;
+    const explicitCall = aiMocks.generateText.mock.calls[2][0] as Record<string, unknown>;
     expect(omittedCall).not.toHaveProperty("maxOutputTokens");
-    expect(defaultCall.maxOutputTokens).toBe(8192);
+    expect(defaultCall).not.toHaveProperty("maxOutputTokens");
+    expect(explicitCall.maxOutputTokens).toBe(123);
+  });
+
+  it("rejects a length-finished non-streaming response", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "partial",
+      finishReason: "length",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), { prompt: "complete this" } as never)
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
+  it("rejects a buffered stream that reaches its output boundary", async () => {
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
+    aiMocks.streamText.mockReturnValue({
+      textStream: (async function* textStream() {
+        yield "partial";
+      })(),
+      text: Promise.resolve("partial"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("length"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), {
+        prompt: "complete this",
+        stream: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
+  it("signals an incomplete live stream at its terminal boundary", async () => {
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "partial";
+      })(),
+      text: Promise.resolve("partial"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("length"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "complete this",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string>; text: Promise<string> };
+    const chunks: string[] = [];
+    await expect(async () => {
+      for await (const chunk of stream.textStream) chunks.push(chunk);
+    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    expect(chunks).toEqual(["partial"]);
+    await expect(stream.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
   });
 
   it("keeps streaming native tool-call plumbing in parity with non-streaming", async () => {

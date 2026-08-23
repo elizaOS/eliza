@@ -1766,6 +1766,27 @@ function usesNativeTextResult(params: GenerateTextParamsWithOpenAIOptions): bool
   return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
 }
 
+function assertCompleteOpenAIGeneration(finishReason: string | undefined): void {
+  if (!finishReason) return;
+  const normalized = finishReason.trim().toLowerCase().replaceAll("-", "_");
+  if (
+    normalized !== "length" &&
+    normalized !== "max_tokens" &&
+    normalized !== "max_output_tokens" &&
+    normalized !== "max_completion_tokens" &&
+    normalized !== "stop_length"
+  ) {
+    return;
+  }
+  throw new ElizaError(
+    "OpenAI-compatible provider reached its output boundary; refusing to return partial model output",
+    {
+      code: "MODEL_INCOMPLETE_OUTPUT",
+      context: { provider: "openai", finishReason },
+    }
+  );
+}
+
 function buildNativeTextResult(
   result: {
     text: string;
@@ -1859,6 +1880,12 @@ function createLlmCallDetails(
       : undefined;
   const nativeSystem =
     typeof nativeParams?.system === "string" ? nativeParams.system : systemPrompt;
+  const explicitMaxTokens =
+    typeof nativeParams?.maxOutputTokens === "number"
+      ? nativeParams.maxOutputTokens
+      : typeof params.maxTokens === "number"
+        ? params.maxTokens
+        : undefined;
   return {
     model: modelName,
     modelType,
@@ -1882,14 +1909,8 @@ function createLlmCallDetails(
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
     temperature: params.temperature ?? 0,
-    maxTokens:
-      typeof nativeParams?.maxOutputTokens === "number"
-        ? nativeParams.maxOutputTokens
-        : params.omitMaxTokens
-          ? 0
-          : (params.maxTokens ?? 8192),
-    maxTokensOmitted:
-      params.omitMaxTokens && typeof nativeParams?.maxOutputTokens !== "number" ? true : undefined,
+    maxTokens: explicitMaxTokens ?? 0,
+    maxTokensOmitted: explicitMaxTokens === undefined ? true : undefined,
     purpose: "external_llm",
     actionType,
   };
@@ -2319,6 +2340,7 @@ async function consumeStreamWithTransientRetry(
       const usage = await result.usage;
       const finishReason = (await result.finishReason) as string | undefined;
       if (capturedError) throw capturedError;
+      assertCompleteOpenAIGeneration(finishReason);
       return { text, toolCalls, usage, finishReason };
     } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
@@ -2488,10 +2510,10 @@ async function generateTextByModelType(
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
     ...(params.signal ? { abortSignal: params.signal } : {}),
-    // Omit the cap when the caller opted out (direct-channel Stage-1) so the
-    // model's own max applies — a hardcoded value 400s when it exceeds the
-    // model's limit. Other callers keep the 8192 default.
-    ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens ?? 8192 }),
+    // A caller may deliberately request a smaller output boundary. With no
+    // explicit request, omit the field so the model's full supported output
+    // capacity applies.
+    ...(typeof params.maxTokens === "number" ? { maxOutputTokens: params.maxTokens } : {}),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
@@ -2698,21 +2720,27 @@ async function generateTextByModelType(
       resolveStructuredText(restoreResponseText(responseChunks.join("")));
     };
     const sdkTextPromise = streamCompanions.text;
-    const textPromise =
-      params.streamStructured === true
-        ? handledStructuredTextPromise
-        : handledMappedPromise(sdkTextPromise, restoreResponseText);
     const rawUsagePromise = streamCompanions.usage;
     const rawFinishReasonPromise = streamCompanions.finishReason;
     const rawToolCallsPromise = streamCompanions.toolCalls;
+    const textPromise =
+      params.streamStructured === true
+        ? handledStructuredTextPromise
+        : handledPromise(
+            Promise.all([sdkTextPromise, rawFinishReasonPromise]).then(([text, finishReason]) => {
+              assertCompleteOpenAIGeneration(finishReason as string | undefined);
+              return restoreResponseText(text);
+            })
+          );
     const restoredToolCallsPromise = handledMappedPromise(rawToolCallsPromise, (toolCalls) =>
       restoreRecordArgToolCalls(toolCalls, normalizedToolResult.recordArgTransformsByTool)
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
-    const finishReasonPromise = handledMappedPromise(
-      rawFinishReasonPromise,
-      (r) => r as string | undefined
-    );
+    const finishReasonPromise = handledMappedPromise(rawFinishReasonPromise, (r) => {
+      const finishReason = r as string | undefined;
+      assertCompleteOpenAIGeneration(finishReason);
+      return finishReason;
+    });
     const finalizeStreamingTelemetry = async () => {
       if (telemetryFinalized) {
         return;
@@ -2740,6 +2768,11 @@ async function generateTextByModelType(
       }
       if (finishReasonResult.status === "fulfilled") {
         details.finishReason = finishReasonResult.value as string | undefined;
+        try {
+          assertCompleteOpenAIGeneration(details.finishReason);
+        } catch (error) {
+          companionStreamError ??= error;
+        }
       } else {
         companionStreamError ??= finishReasonResult.reason;
       }
@@ -2841,6 +2874,7 @@ async function generateTextByModelType(
       maxRetries: 3,
       beforeAttempt: () => attestLlmInputSubstring(details),
     });
+    assertCompleteOpenAIGeneration(result.finishReason as string | undefined);
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(
       result.toolCalls,

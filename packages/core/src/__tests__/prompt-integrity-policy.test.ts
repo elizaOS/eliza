@@ -242,6 +242,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/getImageDescriptionMaxTokens/,
 		/max_tokens:\s*maxTokens/,
 	],
+	"plugins/plugin-openai/models/text.ts": [
+		/params\.maxTokens\s*\?\?\s*8192/,
+		/maxOutputTokens:\s*params\.maxTokens\s*\?\?\s*8192/,
+	],
 	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
 		/maxTokens\s*:/,
 	],
