@@ -886,6 +886,10 @@ app.post("/", async (c) => {
           return timing;
         })();
     let deliveryMessage = parsed.data.message;
+    // Public-data capability checks may inspect only authenticated user content,
+    // never the actor labels, media descriptions, or other server context that
+    // this route appends to the model-facing delivery message below.
+    let capabilityText = parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
       !isGroupMessage(parsed.data) &&
@@ -903,6 +907,9 @@ app.post("/", async (c) => {
       );
       deliveryMessage = parsed.data.message
         ? `${parsed.data.message}\n\n[Voice note transcript]\n${transcript}`
+        : transcript;
+      capabilityText = parsed.data.message
+        ? `${parsed.data.message}\n${transcript}`
         : transcript;
       logger.info(
         "[personal-shared-messaging] Telegram voice note transcribed",
@@ -1225,7 +1232,7 @@ app.post("/", async (c) => {
           parsed.data.messageId,
           "platform",
           groupTrustedDelivery,
-          undefined,
+          capabilityText,
           { type: ChannelType.GROUP, source: parsed.data.platform },
         )
       : await sharedRestMessageSend(
@@ -1238,6 +1245,7 @@ app.post("/", async (c) => {
           parsed.data.messageId,
           "platform",
           trustedDelivery,
+          capabilityText,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
