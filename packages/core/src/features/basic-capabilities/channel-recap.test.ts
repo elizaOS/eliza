@@ -391,9 +391,7 @@ describe("CHANNEL_RECAP complete transcript and offset paging", () => {
 		expect(result.text).toContain("messages 5–8 back");
 	});
 
-	it("serves an oversized single message complete — never a text-fit slice", async () => {
-		// No smaller range exists to suggest, and slicing a message is the
-		// violation this action exists to avoid, so it is served whole.
+	it("rejects an oversized single message before dispatch without slicing it", async () => {
 		const giant = "G".repeat(65_000);
 		const rows = [makeMessage(ROOM, 2_000, giant)];
 		const { runtime } = makeRuntime({ [ROOM]: rows });
@@ -403,13 +401,16 @@ describe("CHANNEL_RECAP complete transcript and offset paging", () => {
 			undefined,
 			{ parameters: { count: 1 } },
 		)) as ActionResult;
-		expect(result.success).toBe(true);
-		expect(result.text).toContain(giant);
-		const scope = (result.data as { scope: Record<string, unknown> }).scope;
-		expect(scope.renderedCount).toBe(1);
+		expect(result.success).toBe(false);
+		const data = result.data as Record<string, unknown>;
+		expect(data.error).toBe("CHANNEL_RECAP_RANGE_NOT_DELIVERABLE");
+		expect(data.deliverableCount).toBeNull();
+		expect(data.nextOffset).toBe(1);
+		expect(result.text).not.toContain(giant);
+		expect(result.text).toContain("no complete newest message fits");
 	});
 
-	it("rejects a multi-message range that cannot be delivered, suggesting one that can", async () => {
+	it("skips a newest giant message instead of proposing an undeliverable count", async () => {
 		const giant = "G".repeat(65_000);
 		const rows = [
 			makeMessage(ROOM, 1_000, "older small"),
@@ -426,8 +427,22 @@ describe("CHANNEL_RECAP complete transcript and offset paging", () => {
 		expect((result.data as Record<string, unknown>).error).toBe(
 			"CHANNEL_RECAP_RANGE_NOT_DELIVERABLE",
 		);
+		expect(
+			(result.data as Record<string, unknown>).deliverableCount,
+		).toBeNull();
+		expect((result.data as Record<string, unknown>).nextOffset).toBe(1);
 		expect(result.text).not.toContain(giant);
 		expect(result.text).not.toContain("older small");
+
+		const retry = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 1, offset: 1 } },
+		)) as ActionResult;
+		expect(retry.success).toBe(true);
+		expect(retry.text).toContain("older small");
+		expect(retry.text).not.toContain(giant);
 	});
 });
 
@@ -456,6 +471,15 @@ describe("CHANNEL_RECAP deliverable-size rejection", () => {
 		expect(suggested).toBeGreaterThan(0);
 		expect(suggested).toBeLessThan(30);
 		expect(result.text).toContain(`at most ${suggested}`);
+
+		const retry = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: suggested } },
+		)) as ActionResult;
+		expect(retry.success).toBe(true);
+		expect(retry.text.length).toBeLessThan(CHANNEL_RECAP_DELIVERABLE_CHARS);
 	});
 
 	it("serves a range that fits, complete", async () => {
