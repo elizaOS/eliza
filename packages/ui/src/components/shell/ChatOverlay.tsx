@@ -5469,6 +5469,19 @@ export function ChatOverlay({
     }
     settleRestore();
   }, [pinnedOpen, settleRestore]);
+  // XCUITest and real WebKit can also classify the same release as a deliberate
+  // free-settle when event delivery stretches the elapsed time past the flick
+  // threshold. Preserve the direction that `usePullGesture` already resolved:
+  // only a downward release may promote the release-only restore path.
+  const settleCoalescedRestoreFree = React.useCallback(
+    (direction: "up" | "down") => {
+      if (direction === "down" && !pinnedOpen && !restoreDidEngageRef.current) {
+        restoreDidEngageRef.current = true;
+      }
+      settleRestore();
+    },
+    [pinnedOpen, settleRestore],
+  );
   // Cancel/tap on the strip: drop the drag flag and spring back to the current
   // detent (a tap keeps it maximized; a rotation-canceled drag re-settles).
   const resetRestore = React.useCallback(() => {
@@ -5498,7 +5511,7 @@ export function ChatOverlay({
     // Flick or slow-release both settle at the current finger height.
     onPullUp: settleRestore,
     onPullDown: settleCoalescedRestorePullDown,
-    onSettleFree: settleRestore,
+    onSettleFree: settleCoalescedRestoreFree,
     // A pointercancel / lost capture (rotation, OS takeover) must NOT strand
     // `restoreDragging` true — that would keep the panel max-height full-screen
     // and break the next open. Settle it like any other release.

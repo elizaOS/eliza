@@ -4346,6 +4346,30 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-detent")).toBe("full");
   });
 
+  it("restores from a coalesced downward free-settle with no intermediate pointermove", () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, {
+      clientY: 20,
+      pointerId: 89,
+      timeStamp: 1_000,
+    });
+    fireEvent.pointerUp(zone, {
+      clientY: 320,
+      pointerId: 89,
+      timeStamp: 3_000,
+    });
+
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+  });
+
   it("keeps a tap inert but follows a deliberate restore pull immediately", async () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
