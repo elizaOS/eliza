@@ -11,7 +11,15 @@ vi.mock("@elizaos/core", () => ({
     code?: string;
     severity?: string;
     context?: unknown;
-    constructor(message: string, opts?: { code?: string; severity?: string; context?: unknown; cause?: unknown }) {
+    constructor(
+      message: string,
+      opts?: {
+        code?: string;
+        severity?: string;
+        context?: unknown;
+        cause?: unknown;
+      },
+    ) {
       super(message);
       this.code = opts?.code;
       this.severity = opts?.severity;
@@ -58,14 +66,18 @@ describe("preregisterCorePluginsInDependencyWaves", () => {
       alreadyPreRegistered: new Set(),
     });
     expect(runtime.registerOrder).toContain("@elizaos/plugin-sql");
-    expect(runtime.registerOrder).toContain("@elizaos/plugin-native-filesystem");
+    expect(runtime.registerOrder).toContain(
+      "@elizaos/plugin-native-filesystem",
+    );
   });
 
   it("does not register plugins absent from the resolved set", async () => {
     const runtime = makeRuntime();
     await preregisterCorePluginsInDependencyWaves({
       runtime: runtime as never,
-      resolvedPlugins: [makeResolved("@elizaos/plugin-native-filesystem")] as never,
+      resolvedPlugins: [
+        makeResolved("@elizaos/plugin-native-filesystem"),
+      ] as never,
       alreadyPreRegistered: new Set(),
     });
     expect(runtime.registerOrder).not.toContain("@elizaos/plugin-sql");
@@ -146,7 +158,9 @@ describe("preregisterCorePluginsInDependencyWaves", () => {
     const runtime = makeRuntime();
     const resolved = [
       // dependent listed first in the resolved array; still must come second
-      makeResolved("@elizaos/plugin-agent-skills", ["@elizaos/plugin-coding-tools"]),
+      makeResolved("@elizaos/plugin-agent-skills", [
+        "@elizaos/plugin-coding-tools",
+      ]),
       makeResolved("@elizaos/plugin-coding-tools"),
     ];
     await preregisterCorePluginsInDependencyWaves({
@@ -154,8 +168,12 @@ describe("preregisterCorePluginsInDependencyWaves", () => {
       resolvedPlugins: resolved as never,
       alreadyPreRegistered: new Set(),
     });
-    const toolsIdx = runtime.registerOrder.indexOf("@elizaos/plugin-coding-tools");
-    const skillsIdx = runtime.registerOrder.indexOf("@elizaos/plugin-agent-skills");
+    const toolsIdx = runtime.registerOrder.indexOf(
+      "@elizaos/plugin-coding-tools",
+    );
+    const skillsIdx = runtime.registerOrder.indexOf(
+      "@elizaos/plugin-agent-skills",
+    );
     if (toolsIdx >= 0 && skillsIdx >= 0) {
       expect(toolsIdx).toBeLessThan(skillsIdx);
     }
