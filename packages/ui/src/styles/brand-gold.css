@@ -213,6 +213,14 @@
   --first-run-card-bg-hover: rgba(255, 255, 255, 0.09);
   --first-run-panel-bg: rgba(255, 255, 255, 0.05);
   --first-run-roster-bg: rgba(255, 255, 255, 0.07);
+  /* Primary action: the light-mode 18% tint fill turns near-black on a dark
+     canvas while its foreground stays near-black (ratio ~1.0 — an invisible
+     Activate button). Use the solid brand accent with its dark label. */
+  --first-run-accent-bg: var(--accent);
+  --first-run-accent-bg-hover: var(--accent-hover);
+  --first-run-accent-border: transparent;
+  --first-run-accent-border-hover: transparent;
+  --first-run-accent-foreground: var(--accent-foreground);
 }
 
 [data-testid="companion-header-chat-controls"] > button {
