@@ -16,15 +16,24 @@ function safeSort(snapshots: { createdAt: string; id: string }[]) {
 
 describe("virtual-filesystem safe-sort", () => {
   it("sorts valid dates descending", () => {
-    const sorted = safeSort([{ createdAt: "2026-01-02T00:00:00.000Z", id: "b" },{ createdAt: "2026-01-01T00:00:00.000Z", id: "a" }]);
+    const sorted = safeSort([
+      { createdAt: "2026-01-02T00:00:00.000Z", id: "b" },
+      { createdAt: "2026-01-01T00:00:00.000Z", id: "a" },
+    ]);
     expect(sorted[0].id).toBe("b");
   });
   it("puts NaN at end with fallback 0", () => {
-    const sorted = safeSort([{ createdAt: "invalid", id: "a" },{ createdAt: "2026-01-01T00:00:00.000Z", id: "b"}]);
+    const sorted = safeSort([
+      { createdAt: "invalid", id: "a" },
+      { createdAt: "2026-01-01T00:00:00.000Z", id: "b" },
+    ]);
     expect(sorted[0].id).toBe("b");
   });
   it("tiebreaks by id when times equal or both NaN", () => {
-    const sorted = safeSort([{ createdAt: "invalid", id: "b" },{ createdAt: "also-bad", id: "a"}]);
+    const sorted = safeSort([
+      { createdAt: "invalid", id: "b" },
+      { createdAt: "also-bad", id: "a" },
+    ]);
     expect(sorted[0].id).toBe("a");
   });
 });
