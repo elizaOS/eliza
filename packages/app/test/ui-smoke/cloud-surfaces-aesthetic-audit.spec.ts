@@ -98,6 +98,8 @@ interface CloudAuditCase {
   route: string;
   /** Seed the persisted Steward token before boot (authed cloud pages). */
   auth: boolean;
+  /** Capture the complete scroll surface when this route has reviewable content below the fold. */
+  fullPageEvidence?: boolean;
   /**
    * Routes that always redirect on localhost (role-gated, environment-bound)
    * cannot be visually inspected in this harness. Instead of recording a
@@ -357,6 +359,7 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     path: "/account-deletion?requested=untrusted-audit-receipt",
     route: "account-deletion",
     auth: AUTH,
+    fullPageEvidence: true,
   },
   { slug: "bsc", path: "/bsc", route: "bsc", auth: PUBLIC },
   // api-explorer/
@@ -829,6 +832,34 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         readableChars = await readPaintAfterNavigation(10);
 
         const restPath = path.join(shotDir, `${auditCase.slug}.png`);
+        const fullPage = auditCase.fullPageEvidence ?? false;
+        if (fullPage) {
+          const scrollRegion = page
+            .locator("[data-scroll-cert-scroller]")
+            .first();
+          await expect(scrollRegion).toHaveCount(1);
+          const scrollMetrics = await scrollRegion.evaluate((element) => ({
+            clientHeight: element.clientHeight,
+            scrollHeight: element.scrollHeight,
+          }));
+          if (scrollMetrics.scrollHeight > scrollMetrics.clientHeight) {
+            await scrollRegion.evaluate((element) => {
+              element.scrollTop = element.scrollHeight;
+            });
+            expect(
+              await scrollRegion.evaluate((element) => element.scrollTop),
+              `${auditCase.slug} owns a working vertical scroll region`,
+            ).toBeGreaterThan(0);
+            await scrollRegion.evaluate((element) => {
+              element.scrollTop = 0;
+            });
+          }
+          await page.setViewportSize({
+            width: vp.width,
+            height: Math.ceil(scrollMetrics.scrollHeight),
+          });
+          await page.waitForTimeout(100);
+        }
         // Billing's server-authoritative resource fields sit below the initial
         // viewport inside an app-owned scroll container. Capture the complete
         // Active Compute card in both states instead of green-lighting a frame
@@ -848,7 +879,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         const captureEvidence = (targetPath: string) =>
           billingEvidenceTarget
             ? billingEvidenceTarget.screenshot({ path: targetPath })
-            : page.screenshot({ path: targetPath, fullPage: false });
+            : page.screenshot({ path: targetPath, fullPage });
         let buffer = await captureEvidence(restPath);
         let quality = await analyzeScreenshot(buffer).catch(() => null);
         for (

@@ -108,7 +108,7 @@ describe("submitAccountDeletion", () => {
     );
   });
 
-  it("rejects unknown receipt statuses and invalid timestamps", async () => {
+  it("rejects unknown receipt statuses, blank ids, and invalid timestamps", async () => {
     const request = {
       requestId: "request-2",
       status: "scheduled",
@@ -117,6 +117,13 @@ describe("submitAccountDeletion", () => {
       identityDeactivated: true,
       completedAt: null,
     };
+
+    apiMock.mockResolvedValueOnce({
+      request: { ...request, requestId: "  " },
+    });
+    await expect(submitAccountDeletion()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
 
     apiMock.mockResolvedValueOnce({
       request: { ...request, status: "unexpected" },

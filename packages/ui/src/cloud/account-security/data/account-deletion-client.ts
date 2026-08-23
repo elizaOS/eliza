@@ -64,6 +64,7 @@ function parseRequest(value: unknown): AccountDeletionRequestDto {
   const completedAt = value.completedAt;
   if (
     typeof value.requestId !== "string" ||
+    value.requestId.trim().length === 0 ||
     !isAccountDeletionRequestStatus(value.status) ||
     !isServerTimestamp(value.requestedAt) ||
     !isServerTimestamp(value.scheduledDeletionAt) ||
