@@ -188,7 +188,25 @@ function evidence() {
         "tool-output",
       ],
     },
-    "scenario-native.jsonl": `${JSON.stringify({ type: "tool_call" })}\n${JSON.stringify({ type: "final" })}\n`,
+    "scenario-native.jsonl": `${JSON.stringify({
+      format: "eliza_native_v1",
+      scenarioStatus: "passed",
+      stepType: "planner",
+      privacyAttestation: { passed: true },
+      response: { text: "", toolCalls: [{ toolName: "FILE", input: {} }] },
+    })}\n${JSON.stringify({
+      format: "eliza_native_v1",
+      scenarioStatus: "passed",
+      stepType: "evaluator",
+      privacyAttestation: { passed: true },
+      response: {
+        text: JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          messageToUser: "Done.",
+        }),
+      },
+    })}\n`,
     "trajectories.jsonl": Array.from({ length: 5 }, (_, repetition) =>
       JSON.stringify({
         repetition,
@@ -311,6 +329,41 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/semantic/u);
+  });
+
+  it.each([
+    ["failed scenario", { scenarioStatus: "failed" }],
+    ["failed privacy attestation", { privacyAttestation: { passed: false } }],
+    ["legacy synthetic event", { format: undefined, type: "tool_call" }],
+  ])("rejects a %s in the native scenario export", (_label, override) => {
+    const row = {
+      format: "eliza_native_v1",
+      scenarioStatus: "passed",
+      stepType: "planner",
+      privacyAttestation: { passed: true },
+      response: { text: "", toolCalls: [{ toolName: "FILE", input: {} }] },
+      ...override,
+    };
+    const changed = replaceArtifact(
+      evidence(),
+      "scenario-native.jsonl",
+      `${JSON.stringify(row)}\n${JSON.stringify({
+        format: "eliza_native_v1",
+        scenarioStatus: "passed",
+        stepType: "evaluator",
+        privacyAttestation: { passed: true },
+        response: {
+          text: JSON.stringify({
+            success: true,
+            decision: "FINISH",
+            messageToUser: "Done.",
+          }),
+        },
+      })}\n`,
+    );
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/scenario native export lacks tool and final events/u);
   });
 
   it("rejects aggregate scale coverage that omits one family's 10 MiB case", () => {
