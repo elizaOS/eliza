@@ -2,9 +2,10 @@
  * Covers createNativeRelationshipsGraphService end to end against a fake
  * runtime: person summary assembly from entities and contacts, query
  * filtering/pagination, explicit and conversation-derived graph edges,
- * relevance scoping, identity-cluster unions, merge mutation errors plus
- * cache invalidation, person detail assembly, and the cluster-aware memory
- * fan-out helpers.
+ * relevance scoping, verified identity-link unions, inferred presentation
+ * grouping for matching non-contact handles, privacy-negative clustering,
+ * merge mutation errors plus cache invalidation, person detail assembly, and
+ * the cluster-aware memory fan-out helpers.
  */
 import { describe, expect, it } from "vitest";
 import type {
@@ -444,7 +445,7 @@ describe("createNativeRelationshipsGraphService", () => {
 		}
 	});
 
-	it("unions entities sharing an identity handle into one cluster and skips intra-cluster relationships", async () => {
+	it("groups matching non-contact handles only as inferred graph presentation, not verified disclosure authority", async () => {
 		const runtime = makeRuntime({
 			entityStubs: {
 				[CAROL]: {
@@ -495,6 +496,86 @@ describe("createNativeRelationshipsGraphService", () => {
 		expect(snapshot.relationships).toEqual([]);
 		expect(snapshot.stats.totalPeople).toBe(1);
 		expect(snapshot.stats.totalRelationships).toBe(0);
+	});
+
+	it.each([
+		{ platform: "email", handle: "shared@example.com" },
+		{ platform: "phone", handle: "+1 555 0100" },
+		{ platform: "website", handle: "https://shared.example.com/" },
+	])(
+		"does not infer a presentation cluster from a shared $platform contact handle",
+		async ({ platform, handle }) => {
+			const runtime = makeRuntime({
+				entityStubs: {
+					[CAROL]: {
+						id: CAROL,
+						names: ["Carol"],
+						metadata: {
+							platformIdentities: [{ platform, handle }],
+						},
+					},
+					[DAVE]: {
+						id: DAVE,
+						names: ["Dave"],
+						metadata: {
+							platformIdentities: [{ platform, handle }],
+						},
+					},
+				},
+			});
+			const service = createNativeRelationshipsGraphService(runtime, {
+				async searchContacts() {
+					return [{ entityId: CAROL }, { entityId: DAVE }];
+				},
+				async getCandidateMerges() {
+					return [];
+				},
+			});
+
+			const snapshot = await service.getGraphSnapshot();
+
+			expect(snapshot.people).toHaveLength(2);
+			expect(snapshot.people.map((person) => person.memberEntityIds)).toEqual([
+				[CAROL],
+				[DAVE],
+			]);
+			expect(snapshot.stats.totalPeople).toBe(2);
+		},
+	);
+
+	it("does not cluster a pending identity link", async () => {
+		const runtime = makeRuntime({
+			entityStubs: {
+				[CAROL]: { id: CAROL, names: ["Carol"] },
+				[DAVE]: { id: DAVE, names: ["Dave"] },
+			},
+			relationships: [
+				makeRelationship({
+					id: "pending-link" as UUID,
+					sourceEntityId: CAROL,
+					targetEntityId: DAVE,
+					tags: ["identity_link"],
+					metadata: { status: "pending" },
+				}),
+			],
+		});
+		const service = createNativeRelationshipsGraphService(runtime, {
+			async searchContacts() {
+				return [{ entityId: CAROL }, { entityId: DAVE }];
+			},
+			async getCandidateMerges() {
+				return [];
+			},
+		});
+
+		const snapshot = await service.getGraphSnapshot();
+
+		expect(snapshot.people).toHaveLength(2);
+		expect(snapshot.people.map((person) => person.memberEntityIds)).toEqual([
+			[CAROL],
+			[DAVE],
+		]);
+		expect(snapshot.relationships).toEqual([]);
 	});
 
 	it("merges conversation adjacency edges into explicit edges and drops non-connected posters under the relevant scope", async () => {
