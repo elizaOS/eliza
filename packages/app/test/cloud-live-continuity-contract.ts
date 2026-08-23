@@ -69,6 +69,10 @@ export interface CloudLiveNetworkAuditSnapshot {
   failedHistoryGetRequestCount: number;
   timedOutHistoryGetRequestCount: number;
   pendingHistoryGetRequestCount: number;
+  inspectedHistoryResponseCount: number;
+  uninspectableHistoryResponseCount: number;
+  historyResponseWithAnchorUserCount: number;
+  historyResponseWithAnchoredAssistantCount: number;
 }
 
 export interface CloudLiveHistoryNetworkDiagnostics {
@@ -83,6 +87,10 @@ export interface CloudLiveHistoryNetworkDiagnostics {
   failedHistoryGetRequestCount: number;
   timedOutHistoryGetRequestCount: number;
   pendingHistoryGetRequestCount: number;
+  inspectedHistoryResponseCount: number;
+  uninspectableHistoryResponseCount: number;
+  historyResponseWithAnchorUserCount: number;
+  historyResponseWithAnchoredAssistantCount: number;
 }
 
 export interface CloudLiveNamedWarmingModeInput {
@@ -266,6 +274,26 @@ export function createCloudLiveHistoryNetworkDiagnostics(
     "pendingHistoryGetRequestCount current value",
     after.pendingHistoryGetRequestCount,
   );
+  const inspectedHistoryResponseCount = monotonicDelta(
+    "inspectedHistoryResponseCount",
+    before.inspectedHistoryResponseCount,
+    after.inspectedHistoryResponseCount,
+  );
+  const uninspectableHistoryResponseCount = monotonicDelta(
+    "uninspectableHistoryResponseCount",
+    before.uninspectableHistoryResponseCount,
+    after.uninspectableHistoryResponseCount,
+  );
+  const historyResponseWithAnchorUserCount = monotonicDelta(
+    "historyResponseWithAnchorUserCount",
+    before.historyResponseWithAnchorUserCount,
+    after.historyResponseWithAnchorUserCount,
+  );
+  const historyResponseWithAnchoredAssistantCount = monotonicDelta(
+    "historyResponseWithAnchoredAssistantCount",
+    before.historyResponseWithAnchoredAssistantCount,
+    after.historyResponseWithAnchoredAssistantCount,
+  );
   return {
     schemaVersion: 1,
     phase,
@@ -278,6 +306,10 @@ export function createCloudLiveHistoryNetworkDiagnostics(
     failedHistoryGetRequestCount,
     timedOutHistoryGetRequestCount,
     pendingHistoryGetRequestCount,
+    inspectedHistoryResponseCount,
+    uninspectableHistoryResponseCount,
+    historyResponseWithAnchorUserCount,
+    historyResponseWithAnchoredAssistantCount,
   };
 }
 
@@ -321,6 +353,7 @@ const NAMED_WARMING_CODES = new Set([
   "shared_runtime_cache_warming",
 ]);
 const MAX_WARMING_RESPONSE_BYTES = 4 * 1024;
+const MAX_HISTORY_RESPONSE_BYTES = 1024 * 1024;
 
 function isJsonContentType(contentType: string | null | undefined): boolean {
   return (
@@ -352,6 +385,89 @@ async function isNamedWarmingResponse(
     // error-policy:J3 malformed or non-UTF-8 diagnostic bodies are simply not
     // named warming proof; the real browser response remains authoritative.
     return false;
+  }
+}
+
+interface HistoryAnchorInspection {
+  inspected: boolean;
+  anchorUserPresent: boolean;
+  anchoredAssistantPresent: boolean;
+}
+
+async function inspectHistoryAnchor(
+  responseBody: CloudLiveBoundedResponseBody,
+  anchorToken: string,
+): Promise<HistoryAnchorInspection> {
+  const unavailable = {
+    inspected: false,
+    anchorUserPresent: false,
+    anchoredAssistantPresent: false,
+  };
+  if (!isJsonContentType(responseBody.contentType)) return unavailable;
+  try {
+    const bytes = await responseBody.read(MAX_HISTORY_RESPONSE_BYTES);
+    if (
+      !bytes ||
+      bytes.byteLength === 0 ||
+      bytes.byteLength > MAX_HISTORY_RESPONSE_BYTES
+    ) {
+      return unavailable;
+    }
+    const parsed = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return unavailable;
+    }
+    const messages = (parsed as Record<string, unknown>).messages;
+    if (!Array.isArray(messages)) return unavailable;
+    const normalizedAnchor = anchorToken.trim().toLowerCase();
+    let anchorUserIndex = -1;
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      if (!message || typeof message !== "object" || Array.isArray(message)) {
+        continue;
+      }
+      const record = message as Record<string, unknown>;
+      if (
+        record.role === "user" &&
+        typeof record.text === "string" &&
+        record.text.toLowerCase().includes(normalizedAnchor)
+      ) {
+        anchorUserIndex = index;
+        break;
+      }
+    }
+    let anchoredAssistantPresent = false;
+    for (
+      let index = anchorUserIndex >= 0 ? anchorUserIndex + 1 : messages.length;
+      index < messages.length;
+      index += 1
+    ) {
+      const message = messages[index];
+      if (!message || typeof message !== "object" || Array.isArray(message)) {
+        continue;
+      }
+      const record = message as Record<string, unknown>;
+      if (record.role === "user") break;
+      if (
+        record.role === "assistant" &&
+        typeof record.text === "string" &&
+        record.text.trim().length > 0
+      ) {
+        anchoredAssistantPresent = true;
+        break;
+      }
+    }
+    return {
+      inspected: true,
+      anchorUserPresent: anchorUserIndex >= 0,
+      anchoredAssistantPresent,
+    };
+  } catch {
+    // error-policy:J3 malformed, non-UTF-8, oversized, or unreadable history
+    // bodies provide no anchor proof; the browser response remains authoritative.
+    return unavailable;
   }
 }
 
@@ -544,6 +660,7 @@ export function createCloudLiveNetworkAudit(): {
     rawUrl: string,
     errorText?: string,
   ): void;
+  setHistoryAnchorToken(anchorToken: string): void;
   snapshot(): Promise<CloudLiveNetworkAuditSnapshot>;
 } {
   let forbiddenAgentMutationCount = 0;
@@ -563,6 +680,11 @@ export function createCloudLiveNetworkAudit(): {
   let otherHistoryGetResponseCount = 0;
   let failedHistoryGetRequestCount = 0;
   let timedOutHistoryGetRequestCount = 0;
+  let inspectedHistoryResponseCount = 0;
+  let uninspectableHistoryResponseCount = 0;
+  let historyResponseWithAnchorUserCount = 0;
+  let historyResponseWithAnchoredAssistantCount = 0;
+  let historyAnchorToken = "";
   const pendingResponseHandlers = new Set<Promise<void>>();
 
   const trackResponseHandler = (handler: () => Promise<void>) => {
@@ -627,6 +749,25 @@ export function createCloudLiveNetworkAudit(): {
       if (isHistoryGet(method, rawUrl)) {
         if (status >= 200 && status < 300) {
           successfulHistoryGetCount += 1;
+          if (historyAnchorToken && responseBody) {
+            trackResponseHandler(async () => {
+              const inspection = await inspectHistoryAnchor(
+                responseBody,
+                historyAnchorToken,
+              );
+              if (!inspection.inspected) {
+                uninspectableHistoryResponseCount += 1;
+                return;
+              }
+              inspectedHistoryResponseCount += 1;
+              if (inspection.anchorUserPresent) {
+                historyResponseWithAnchorUserCount += 1;
+              }
+              if (inspection.anchoredAssistantPresent) {
+                historyResponseWithAnchoredAssistantCount += 1;
+              }
+            });
+          }
         } else if (status >= 400 && status < 500) {
           clientErrorHistoryGetResponseCount += 1;
         } else if (status >= 500 && status < 600) {
@@ -649,6 +790,9 @@ export function createCloudLiveNetworkAudit(): {
       if (/tim(?:e|ed)[ _-]?out/i.test(errorText)) {
         timedOutHistoryGetRequestCount += 1;
       }
+    },
+    setHistoryAnchorToken(anchorToken) {
+      historyAnchorToken = anchorToken.trim().toLowerCase();
     },
     snapshot: async () => {
       await drainResponseHandlers();
@@ -680,6 +824,10 @@ export function createCloudLiveNetworkAudit(): {
           0,
           historyGetRequestCount - terminalHistoryGetCount,
         ),
+        inspectedHistoryResponseCount,
+        uninspectableHistoryResponseCount,
+        historyResponseWithAnchorUserCount,
+        historyResponseWithAnchoredAssistantCount,
       };
     },
   };

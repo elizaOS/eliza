@@ -108,10 +108,15 @@ export async function routeAutonomyTextToUser(
   }
   if (!conv) {
     // Fall back to most recently updated conversation
-    const sorted = Array.from(state.conversations.values()).sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
+    const sorted = Array.from(state.conversations.values()).sort((a, b) => {
+      const aTime = Number.isFinite(new Date(a.updatedAt).getTime())
+        ? new Date(a.updatedAt).getTime()
+        : 0;
+      const bTime = Number.isFinite(new Date(b.updatedAt).getTime())
+        ? new Date(b.updatedAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
     conv = sorted[0];
   }
   if (!conv) return; // No conversations exist yet
@@ -895,11 +900,19 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             if (displayText && displayText.length > 2) {
               const conv = st.activeConversationId
                 ? st.conversations.get(st.activeConversationId)
-                : Array.from(st.conversations.values()).sort(
-                    (a, b) =>
-                      new Date(b.updatedAt).getTime() -
+                : Array.from(st.conversations.values()).sort((a, b) => {
+                    const aTime = Number.isFinite(
                       new Date(a.updatedAt).getTime(),
-                  )[0];
+                    )
+                      ? new Date(a.updatedAt).getTime()
+                      : 0;
+                    const bTime = Number.isFinite(
+                      new Date(b.updatedAt).getTime(),
+                    )
+                      ? new Date(b.updatedAt).getTime()
+                      : 0;
+                    return bTime - aTime;
+                  })[0];
               if (conv) {
                 st.broadcastWs?.({
                   type: "proactive-message",

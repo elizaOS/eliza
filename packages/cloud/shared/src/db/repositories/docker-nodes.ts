@@ -231,6 +231,11 @@ export class DockerNodesRepository {
     return r ?? null;
   }
 
+  /** Primary-authority lookup for decisions that must reject replica lag. */
+  async findByIdOnPrimary(id: string): Promise<DockerNode | null> {
+    return findDockerNodeByIdOnPrimary(id);
+  }
+
   /**
    * Find the least-loaded node that is enabled, healthy, and has available capacity.
    * Orders by (capacity - allocated_count) descending, picks the one with most room.

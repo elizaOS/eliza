@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core/edge";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
@@ -4604,6 +4604,7 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        capabilityText: text,
         execution: {
           agentKey: rec.id,
           roomKey: channelId,
@@ -4771,6 +4772,7 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        capabilityText: text,
         execution: {
           agentKey: rec.id,
           roomKey: channelId,
@@ -4825,7 +4827,12 @@ export class ElizaSandboxService {
               const nextHistory: SharedTurnMessage[] = [
                 ...history,
                 { role: "user", content: text.trim(), createdAt: sentAt },
-                { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
+                {
+                  role: "assistant",
+                  content: finalReply,
+                  createdAt: sentAt + 1,
+                  ...(turn.internalGrounding ? { grounding: turn.internalGrounding } : {}),
+                },
               ];
               await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
               if (billingContext) {
@@ -12153,7 +12160,9 @@ export class ElizaSandboxService {
         });
         return "";
       });
-      throw new Error(`State restore failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(
+        `State restore failed: HTTP ${res.status} ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
+      );
     }
   }
 }

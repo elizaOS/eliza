@@ -13,6 +13,7 @@ import type {
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
+  assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
   cloneSchemaForBoundedTransport,
@@ -25,12 +26,16 @@ import {
   JSON_SCHEMA_SINGLE_KEYWORDS,
   logActiveTrajectoryLlmCall,
   logger,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  MAX_WELL_FORMED_DEPTH,
   ModelType,
   normalizeSchemaForCerebras,
   recordLlmCall,
   resolveEffectiveSystemPrompt,
   sanitizeFunctionNameForCerebras,
   toWellFormedUnicode,
+  truncateWellFormed,
+  wellFormedUnicodeSchemaStructure,
 } from "@elizaos/core";
 import {
   generateText,
@@ -381,9 +386,12 @@ function resolveThinkingOffReasoningEffort(
 }
 
 /**
- * Per-model Cerebras reasoning default. Gemma does not reason unless this
- * field is sent, so its non-surprising default is explicit `"none"`; callers
- * that deliberately configure a different effort remain authoritative.
+ * Per-model Cerebras reasoning default, restricted to models whose provider
+ * documentation declares the field. `gemma-4-31b` has no documented reasoning
+ * contract, so no default is emitted at all — an undocumented
+ * `reasoning_effort` value reaches the wire and can be rejected by the
+ * endpoint; callers that deliberately configure a different effort remain
+ * authoritative.
  */
 function resolveCerebrasDefaultReasoningEffort(
   modelName: string | undefined
@@ -391,7 +399,6 @@ function resolveCerebrasDefaultReasoningEffort(
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
-  if (id === "gemma-4-31b") return "none";
   return undefined;
 }
 
@@ -711,9 +718,10 @@ function normalizeNativeToolsForCall(
   options: { cerebrasMode?: boolean; sanitizeUnicode?: boolean } = {}
 ): NormalizedNativeToolsResult {
   const recordArgTransformsByTool: Record<string, RecordArgTransform[]> = {};
+  const toolNameMap = new Map<string, string>();
 
   if (!tools) {
-    return { recordArgTransformsByTool };
+    return { recordArgTransformsByTool, toolNameMap };
   }
 
   // Existing AI SDK callers already pass a ToolSet keyed by tool name. Keep it
@@ -728,7 +736,7 @@ function normalizeNativeToolsForCall(
     for (const key of Reflect.ownKeys(descriptors)) {
       const descriptor = descriptors[key as keyof typeof descriptors];
       if (!descriptor) continue;
-      const sanitizedKey = typeof key === "string" ? toWellFormedUnicode(key) : key;
+      const sanitizedKey: string = typeof key === "string" ? toWellFormedUnicode(key) : String(key);
       if (Object.hasOwn(sanitized, sanitizedKey)) {
         throw new ElizaError("[OpenAI] Native tool names collide after Unicode normalization.", {
           code: "OPENAI_TOOL_NAME_COLLISION",
@@ -752,17 +760,21 @@ function normalizeNativeToolsForCall(
           }
         }
       }
-      if (sanitizedKey !== key) changed = true;
+      if (sanitizedKey !== key && typeof key === "string") {
+        const originalKey = key as string;
+        toolNameMap.set(originalKey, sanitizedKey);
+        changed = true;
+      }
       Object.defineProperty(sanitized, sanitizedKey, nextDescriptor);
     }
     return {
       tools: changed ? sanitized : toolSet,
       recordArgTransformsByTool,
+      toolNameMap,
     };
   }
 
   const toolSet: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-  const toolNameMap = new Map<string, string>();
   const originalNameByRegisteredName = new Map<string, string>();
 
   // Cerebras's grammar compiler treats strictness as request-wide, not
@@ -819,10 +831,20 @@ function normalizeNativeToolsForCall(
     // are applied by the normalizeSchemaForCerebras call after sanitization.
     let rawSchema: unknown = declaredSchema;
     if (options.cerebrasMode) {
+      // The bounded transport clone is the SCHEMA depth authority: after it
+      // passes, the Unicode pass must not re-fail the same graph on a smaller,
+      // container-counting budget. The structure walker uses one depth unit per
+      // schema node (same accounting as normalizeSchemaForCerebras) and carries
+      // annotation subtrees by reference so hostile annotation getters are
+      // never observed here — admissibility is enforced at the wire boundary.
       rawSchema = cloneSchemaForBoundedTransport(rawSchema);
     }
     if (options.sanitizeUnicode) {
-      rawSchema = deepToWellFormedUnicode(rawSchema);
+      rawSchema = options.cerebrasMode
+        ? wellFormedUnicodeSchemaStructure(rawSchema, {
+            maxDepth: MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+          })
+        : deepToWellFormedUnicode(rawSchema);
     }
     let inputSchema: JSONSchema7;
     if (strict === false) {
@@ -882,7 +904,13 @@ function normalizeNativeToolsForCall(
       // so the assembled ToolSet must never be deep-walked afterwards (every
       // child RESPONSE_HANDLER call died on it, live 2026-08-21).
       ...(description ? { description: deepToWellFormedUnicode(description) } : {}),
-      inputSchema: jsonSchema(deepToWellFormedUnicode(inputSchema) as JSONSchema7),
+      inputSchema: jsonSchema(
+        (options.cerebrasMode
+          ? wellFormedUnicodeSchemaStructure(inputSchema, {
+              maxDepth: MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+            })
+          : deepToWellFormedUnicode(inputSchema)) as JSONSchema7
+      ),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -1950,7 +1978,7 @@ function providerErrorBodyMessage(error: unknown): string | undefined {
         // error-policy:J3 untrusted-input sanitizing — a non-JSON error body is
         // still diagnostic; return a bounded excerpt instead of dropping it.
       }
-      return body.replace(/\s+/g, " ").trim().slice(0, 300);
+      return truncateWellFormed(toWellFormedUnicode(body.replace(/\s+/g, " ").trim()), 300);
     }
     node = record.cause;
   }
@@ -2365,6 +2393,16 @@ async function generateTextByModelType(
     // accessor. Existing ToolSets use the descriptor-only branch above.
     sanitizeUnicode: true,
   });
+  // Wire boundary for annotation data: the pre-passes carry annotations by
+  // reference (getters never observed), so admissibility is checked HERE,
+  // descriptor-only, before any provider dispatch. Accessors are detected via
+  // Object.getOwnPropertyDescriptor and rejected without invocation; cycles
+  // and over-depth fail closed with the typed WELL_FORMED_* contract.
+  if (normalizedToolResult.tools) {
+    assertSchemaAnnotationsSerializable(paramsWithAttachments.tools, {
+      maxDepth: MAX_WELL_FORMED_DEPTH,
+    });
+  }
   const normalizedTools = normalizedToolResult.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
     toolNameMap: normalizedToolResult.toolNameMap,

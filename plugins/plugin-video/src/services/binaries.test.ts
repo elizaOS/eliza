@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BinaryResolver,
   ffmpegStaticExecutableName,
+  formatInstallErrorReason,
   resolveFfmpegStaticCandidatePath,
   resolveNodeInstallRunner,
   ytDlpAssetName,
@@ -508,5 +509,16 @@ describe("resolveFfmpegStaticCandidatePath", () => {
 
   it("returns null when ffmpeg-static is not installed", () => {
     expect(resolveFfmpegStaticCandidatePath({ packageRoot: null })).toBeNull();
+  });
+
+  it("formats install error reasons with surrogate-safe truncation", () => {
+    const longMessage = `${"a".repeat(159)}😀${"b".repeat(20)}`;
+    const err = new Error(longMessage);
+    const formatted = formatInstallErrorReason(err);
+    expect(formatted.startsWith("ffmpeg-static install failed: ")).toBe(true);
+    expect(formatted.length).toBeLessThanOrEqual(
+      "ffmpeg-static install failed: ".length + 160,
+    );
+    expect(formatted.includes("😀")).toBe(false);
   });
 });

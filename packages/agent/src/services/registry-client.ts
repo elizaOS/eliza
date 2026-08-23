@@ -406,7 +406,11 @@ export async function refreshRegistry(): Promise<
   return refresh;
 }
 
-/** Look up a plugin by name (exact → @elizaos/ prefix → bare suffix). */
+/**
+ * Look up a plugin by name. Explicitly scoped requests are exact-only apart
+ * from the enumerated spelling aliases; unscoped input may use the @elizaos
+ * prefixes, bare suffixes, npm aliases, and app route slugs.
+ */
 export async function getPluginInfo(
   name: string,
 ): Promise<RegistryPluginInfo | null> {
@@ -443,7 +447,13 @@ export async function listApps(): Promise<RegistryAppInfo[]> {
     apps.push(toAppInfo(appEntry, sanitizeSandbox, LOCAL_APP_DEFAULT_SANDBOX));
   }
 
-  apps.sort((a, b) => b.stars - a.stars);
+  apps.sort((a, b) => {
+    const bStars =
+      typeof b.stars === "number" && Number.isFinite(b.stars) ? b.stars : 0;
+    const aStars =
+      typeof a.stars === "number" && Number.isFinite(a.stars) ? a.stars : 0;
+    return bStars - aStars;
+  });
   return apps;
 }
 
@@ -494,7 +504,13 @@ export async function listNonAppPlugins(): Promise<RegistryPluginListItem[]> {
     }
   }
 
-  plugins.sort((a, b) => b.stars - a.stars);
+  plugins.sort((a, b) => {
+    const bStars =
+      typeof b.stars === "number" && Number.isFinite(b.stars) ? b.stars : 0;
+    const aStars =
+      typeof a.stars === "number" && Number.isFinite(a.stars) ? a.stars : 0;
+    return bStars - aStars;
+  });
   return plugins;
 }
 

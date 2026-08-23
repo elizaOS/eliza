@@ -232,12 +232,19 @@ export function resolveArtifactDisclosure(
 	const grants = record.grants ?? record.share?.grants;
 	const grant = grants?.find((g) => g.entityId === ctx.requesterEntityId);
 	if (grant) return grant.mode === "full" ? "full" : "redacted";
-	// Tier 4: an UNRESOLVED authority degrades to the least-privileged USER
-	// tier for the ladder step (open scopes stay readable; entity-private
-	// scopes deny), which is exactly how the attested-audience resolver's
-	// bare participants and the attachment fallback context are documented to
-	// behave. A raw UNRESOLVED actor passed straight to `canReadScope` still
-	// denies everywhere — the remap is local to this tier.
+	// Tier 4: absent role authority may preserve open room/global disclosure,
+	// but it must never inherit USER's entity-self exception for private data.
+	// Mapping UNRESOLVED to USER without this private-scope fence lets a bare
+	// requester context read its own `user-private` artifact despite having no
+	// resolved authorization state.
+	if (
+		actor.role === "UNRESOLVED" &&
+		record.scope !== "global" &&
+		record.scope !== "shared" &&
+		record.scope !== "room"
+	) {
+		return "none";
+	}
 	const ladderActor =
 		actor.role === "UNRESOLVED" ? { ...actor, role: "USER" as const } : actor;
 	return canReadScope(record.scope, record.scopedEntityId, ladderActor)

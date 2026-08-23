@@ -383,7 +383,7 @@ export default scenario({
   ],
   isolation: "shared-runtime",
   requires: {
-    plugins: [PORTFOLIO_PLUGIN_NAME],
+    fixturePlugins: [PORTFOLIO_PLUGIN_NAME],
   },
   seed: [
     {

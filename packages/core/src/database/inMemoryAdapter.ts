@@ -2191,17 +2191,27 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (!isPaged && query.order === undefined) {
 				// Keep the legacy complete-array contract: chronological ordering with
 				// stable insertion order for records sharing a timestamp.
-				requests.sort(
-					(a, b) =>
-						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-				);
+				requests.sort((a, b) => {
+					const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+						? new Date(a.createdAt).getTime()
+						: 0;
+					const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+						? new Date(b.createdAt).getTime()
+						: 0;
+					return aTime - bTime;
+				});
 				result.push({ channel, agentId, requests });
 				continue;
 			}
 
 			requests.sort((a, b) => {
-				const timeDifference =
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+					? new Date(a.createdAt).getTime()
+					: 0;
+				const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+					? new Date(b.createdAt).getTime()
+					: 0;
+				const timeDifference = aTime - bTime;
 				if (timeDifference !== 0) return timeDifference * direction;
 				const aId = String(a.id);
 				const bId = String(b.id);
@@ -2277,17 +2287,27 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (!isPaged && query.order === undefined) {
 				// Keep the legacy complete-array contract: chronological ordering with
 				// stable insertion order for records sharing a timestamp.
-				entries.sort(
-					(a, b) =>
-						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-				);
+				entries.sort((a, b) => {
+					const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+						? new Date(a.createdAt).getTime()
+						: 0;
+					const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+						? new Date(b.createdAt).getTime()
+						: 0;
+					return aTime - bTime;
+				});
 				result.push({ channel, agentId, entries });
 				continue;
 			}
 
 			entries.sort((a, b) => {
-				const timeDifference =
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+					? new Date(a.createdAt).getTime()
+					: 0;
+				const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+					? new Date(b.createdAt).getTime()
+					: 0;
+				const timeDifference = aTime - bTime;
 				if (timeDifference !== 0) return timeDifference * direction;
 				const aId = String(a.id);
 				const bId = String(b.id);
@@ -2362,7 +2382,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				(account) => !params.provider || account.provider === params.provider,
 			)
 			.filter((account) => !params.status || account.status === params.status)
-			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+			.sort((a, b) => {
+				const bTime =
+					typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+						? b.updatedAt
+						: 0;
+				const aTime =
+					typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+						? a.updatedAt
+						: 0;
+				return bTime - aTime || a.id.localeCompare(b.id);
+			})
 			.slice(offset, offset + limit)
 			.map((account) => ({
 				...account,
@@ -2575,7 +2605,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (!account) return [];
 		return Array.from(this.connectorCredentialRefs.values())
 			.filter((credential) => credential.accountId === params.accountId)
-			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+			.sort((a, b) => {
+				const bTime =
+					typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+						? b.updatedAt
+						: 0;
+				const aTime =
+					typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+						? a.updatedAt
+						: 0;
+				return bTime - aTime || a.id.localeCompare(b.id);
+			})
 			.map((credential) => ({
 				...credential,
 				metadata: cloneConnectorJsonObject(credential.metadata),

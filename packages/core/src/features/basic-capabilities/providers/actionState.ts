@@ -143,7 +143,19 @@ export const actionStateProvider: Provider = {
 					[string, WorkingMemoryEntry]
 				>;
 				const memoryEntries = entries
-					.sort((a, b) => b[1].timestamp - a[1].timestamp)
+					.sort((a, b) => {
+						const aTime =
+							typeof a[1]?.timestamp === "number" &&
+							Number.isFinite(a[1].timestamp)
+								? a[1].timestamp
+								: 0;
+						const bTime =
+							typeof b[1]?.timestamp === "number" &&
+							Number.isFinite(b[1].timestamp)
+								? b[1].timestamp
+								: 0;
+						return bTime - aTime;
+					})
 					.map(([key, entry]) => {
 						const result: ActionResult = entry.result;
 						const resultText = projectionEnabled

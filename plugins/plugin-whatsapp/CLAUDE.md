@@ -89,8 +89,7 @@ Config is read from `runtime.getSetting(key)` first, then `process.env[key]`. Al
 ### Baileys (personal account / QR) transport
 | Env var | Required | Description |
 |---------|----------|-------------|
-| `WHATSAPP_AUTH_DIR` | Yes (Baileys) | Directory for multi-file Baileys auth state |
-| `WHATSAPP_SESSION_PATH` | No | Alternative name for `WHATSAPP_AUTH_DIR` |
+| `WHATSAPP_AUTH_DIR` | Yes (manual Baileys config) | Exact connector-owned account directory below the resolved elizaOS state directory; arbitrary paths are rejected |
 | `WHATSAPP_AUTH_METHOD` | No | Force transport (`cloudapi` / `baileys`); overrides auto-detection |
 
 ### Access control (both transports)
@@ -127,7 +126,7 @@ Configure multiple accounts under `character.settings.whatsapp.accounts.<id>` us
 
 ## Conventions / Gotchas
 
-- **Transport detection:** `WHATSAPP_AUTH_METHOD` (`cloudapi` / `baileys`) wins when set. Otherwise `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Baileys takes precedence when both are set (see `resolveRuntimeConfig` in `runtime-service.ts`, transport resolution in `accounts.ts`).
+- **Transport detection:** `WHATSAPP_AUTH_METHOD` (`cloudapi` / `baileys`) wins when set. Otherwise `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Baileys auth uses one atomic credentials-and-keys snapshot per account under `<state-dir>/connectors/whatsapp/accounts/<accountId>`; configured paths must equal that authority.
 - **Auto-reply is off by default.** Inbound messages are stored in memory. The agent only replies when `WHATSAPP_AUTO_REPLY=true` or when the connector is triggered through the message connector protocol (e.g., a workflow or orchestrator sends on `source: "whatsapp"`).
 - **Webhook security:** Cloud API webhook POSTs are rejected without a valid `X-Hub-Signature-256` (uses `WHATSAPP_APP_SECRET`). The GET verification route is public by design (Meta requires it).
 - **Managed webhook contract:** `whatsapp-cloud-webhook` promotes the real signed route and `phone_number_id` account parser. Its loopback suite proves invalid signatures and unknown tenant identifiers remain effect-free.

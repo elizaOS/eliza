@@ -689,7 +689,11 @@ function latestActiveSession(
 ): OrchestratorTaskSession | undefined {
   return doc.sessions
     .filter((session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status))
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+        (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+    )[0];
 }
 
 /** The session whose workspace the residuals gate inspects when the caller has
@@ -701,7 +705,11 @@ function latestWorkspaceSession(
 ): OrchestratorTaskSession | undefined {
   return doc.sessions
     .filter((session) => session.workdir.trim().length > 0)
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+        (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+    )[0];
 }
 
 /** Whether the residuals gate must treat the workspace as a REQUIRED git repo
@@ -2279,7 +2287,11 @@ export class OrchestratorTaskService extends Service {
         mtimeMs: (await stat(path)).mtimeMs,
       })),
     );
-    withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    withMtime.sort(
+      (a, b) =>
+        (Number.isFinite(b.mtimeMs) ? b.mtimeMs : 0) -
+        (Number.isFinite(a.mtimeMs) ? a.mtimeMs : 0),
+    );
 
     const session = (await this.store.findSession(sessionId, taskId))?.session;
     const ingested: string[] = [];
@@ -6120,7 +6132,11 @@ export class OrchestratorTaskService extends Service {
       });
     }
 
-    rooms.sort((a, b) => b.activeAgentCount - a.activeAgentCount);
+    rooms.sort(
+      (a, b) =>
+        (Number.isFinite(b.activeAgentCount) ? b.activeAgentCount : 0) -
+        (Number.isFinite(a.activeAgentCount) ? a.activeAgentCount : 0),
+    );
     return { rooms };
   }
 
@@ -6733,7 +6749,17 @@ export class OrchestratorTaskService extends Service {
       });
     }
     if (candidates.length === 0) return false;
-    candidates.sort((a, b) => a.createdAt - b.createdAt);
+    candidates.sort((a, b) => {
+      const aTime =
+        typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+          ? a.createdAt
+          : 0;
+      const bTime =
+        typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+          ? b.createdAt
+          : 0;
+      return aTime - bTime || a.id.localeCompare(b.id);
+    });
     const victim = candidates[0];
     if (!victim) return false;
     try {
@@ -6779,7 +6805,17 @@ function paginate<T extends { timestamp: number }>(
   opts: { limit?: number; cursor?: string },
 ): PageResult<T> {
   const limit = opts.limit && opts.limit > 0 ? Math.min(opts.limit, 500) : 100;
-  const sorted = [...items].sort((a, b) => b.timestamp - a.timestamp);
+  const sorted = [...items].sort((a, b) => {
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    return bTime - aTime;
+  });
   const start = opts.cursor
     ? Math.max(0, Number.parseInt(opts.cursor, 10) || 0)
     : 0;

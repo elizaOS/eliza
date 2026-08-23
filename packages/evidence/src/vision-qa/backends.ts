@@ -14,6 +14,7 @@
  * usage block fails, because a Q&A record without real usage is not evidence.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { z } from "zod";
 import { EvidenceError } from "../errors.ts";
 import type { PreparedImage } from "./image.ts";
@@ -89,7 +90,9 @@ export function parseAnswers(
     throw new EvidenceError("vision-qa response was not valid JSON", {
       code: "VISION_RESPONSE_INVALID",
       cause: error,
-      context: { rawPreview: raw.slice(0, 200) },
+      context: {
+        rawPreview: truncateWellFormed(toWellFormedUnicode(raw), 200),
+      },
     });
   }
   const result = responseSchema.safeParse(parsed);

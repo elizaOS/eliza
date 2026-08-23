@@ -799,7 +799,9 @@ export function ConversationsSidebar({
             />
           ),
           rows: [...group.rows].sort(
-            (left, right) => right.sortKey - left.sortKey,
+            (left, right) =>
+              (Number.isFinite(right.sortKey) ? right.sortKey : 0) -
+              (Number.isFinite(left.sortKey) ? left.sortKey : 0),
           ),
           serverMuted: group.rows.some(
             (row) => row.muted && row.mutedScope === "server",

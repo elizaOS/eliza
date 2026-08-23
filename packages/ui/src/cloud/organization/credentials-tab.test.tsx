@@ -13,6 +13,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.hoisted(() => vi.fn());
+const sessionState = vi.hoisted(() => ({
+  current: {
+    ready: true,
+    authenticated: true,
+    user: null as { id: string; email: string } | null,
+  },
+}));
 vi.mock("../lib/api-client", async () => {
   const actual =
     await vi.importActual<typeof import("../lib/api-client")>(
@@ -20,6 +27,9 @@ vi.mock("../lib/api-client", async () => {
     );
   return { ...actual, api: (...args: unknown[]) => apiMock(...args) };
 });
+vi.mock("../lib/use-session-auth", () => ({
+  useSessionAuth: () => sessionState.current,
+}));
 vi.mock("../shell/CloudI18nProvider", () => ({
   // t() returns defaultValue with {{param}} interpolation so assertions read
   // the real rendered copy.
@@ -117,6 +127,11 @@ function mockListOnly() {
 }
 
 function renderTab(user: UserWithOrganizationDto, autoContribute = false) {
+  sessionState.current = {
+    ready: true,
+    authenticated: true,
+    user: { id: user.id, email: user.email ?? `${user.id}@example.test` },
+  };
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },

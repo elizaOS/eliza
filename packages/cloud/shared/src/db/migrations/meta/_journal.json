@@ -2045,6 +2045,27 @@
       "when": 1794168000004,
       "tag": "0308_remove_conversation_token_default",
       "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1794254400000,
+      "tag": "0309_retire_legacy_bluebubbles_gateways",
+      "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1794254400001,
+      "tag": "0310_personal_shared_inbound_media_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1794254400002,
+      "tag": "0311_personal_shared_group_participants",
+      "breakpoints": true
     }
   ]
 }

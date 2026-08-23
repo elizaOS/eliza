@@ -1,27 +1,8 @@
-/** Storybook stories for the Release Center shared primitives (StatusPill tones, DefinitionRow), under a stub AppContext supplying `t`. */
+/** Storybook stories for the Release Center shared primitives (StatusPill tones, DefinitionRow), under the shared MockAppProvider. */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { DefinitionRow, StatusPill } from "./shared";
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? "Unavailable";
-    }
-    if (prop === "uiLanguage") return "en";
-    if (prop === "navigation") {
-      return {
-        scheduleAfterTabCommit: (fn: () => void) => {
-          queueMicrotask(fn);
-        },
-      };
-    }
-    return () => {};
-  },
-});
 
 const meta = {
   title: "ReleaseCenter/Shared",
@@ -65,11 +46,11 @@ type DefinitionRowStory = StoryObj<typeof DefinitionRow>;
 
 export const DefinitionRowDefault: DefinitionRowStory = {
   render: (args) => (
-    <AppContext.Provider value={mockAppContext}>
+    <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
         <DefinitionRow {...args} />
       </div>
-    </AppContext.Provider>
+    </MockAppProvider>
   ),
   args: {
     label: "Version",
@@ -79,11 +60,11 @@ export const DefinitionRowDefault: DefinitionRowStory = {
 
 export const DefinitionRowNumeric: DefinitionRowStory = {
   render: (args) => (
-    <AppContext.Provider value={mockAppContext}>
+    <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
         <DefinitionRow {...args} />
       </div>
-    </AppContext.Provider>
+    </MockAppProvider>
   ),
   args: {
     label: "Downloads",
@@ -93,11 +74,11 @@ export const DefinitionRowNumeric: DefinitionRowStory = {
 
 export const DefinitionRowEmptyFallback: DefinitionRowStory = {
   render: (args) => (
-    <AppContext.Provider value={mockAppContext}>
+    <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
         <DefinitionRow {...args} />
       </div>
-    </AppContext.Provider>
+    </MockAppProvider>
   ),
   args: {
     label: "Release notes",
@@ -108,11 +89,11 @@ export const DefinitionRowEmptyFallback: DefinitionRowStory = {
 
 export const DefinitionRowUnavailable: DefinitionRowStory = {
   render: (args) => (
-    <AppContext.Provider value={mockAppContext}>
+    <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
         <DefinitionRow {...args} />
       </div>
-    </AppContext.Provider>
+    </MockAppProvider>
   ),
   args: {
     label: "Build hash",

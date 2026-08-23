@@ -465,8 +465,14 @@ describe("WhatsApp inbound delivery idempotency — durable staged claims", () =
 	it("reclaims a stale processing claim after the staleness threshold", async () => {
 		const store = new SharedMemoryStore();
 		const runtime = makeRuntimeWithStore(store);
-		const claimId = createInboundClaimId(runtime, "default", "wamid.stale");
-		const initial = await tryClaim(runtime, claimId, "default", "wamid.stale");
+		const claimId = createInboundClaimId(runtime, "default", "+14155552671", "wamid.stale");
+		const initial = await tryClaim(
+			runtime,
+			claimId,
+			"default",
+			"+14155552671",
+			"wamid.stale",
+		);
 		if (!initial.state) throw new Error("Initial deterministic claim has no state");
 
 		// Simulate a crashed host by aging the actual claim document while

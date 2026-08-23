@@ -250,7 +250,10 @@ function parseLocalDate(
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const candidate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const d = new Date(0);
+  d.setUTCFullYear(year, month - 1, day);
+  d.setUTCHours(12, 0, 0, 0);
+  const candidate = d;
   if (
     candidate.getUTCFullYear() !== year ||
     candidate.getUTCMonth() + 1 !== month ||

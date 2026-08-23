@@ -62,7 +62,19 @@ export function computeAwakeProbability(args: {
       ): candidate is { signal: LifeOpsActivitySignal; observedAtMs: number } =>
         candidate.observedAtMs !== null,
     )
-    .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
+    .sort((left, right) => {
+      const rightTime =
+        typeof right.observedAtMs === "number" &&
+        Number.isFinite(right.observedAtMs)
+          ? right.observedAtMs
+          : 0;
+      const leftTime =
+        typeof left.observedAtMs === "number" &&
+        Number.isFinite(left.observedAtMs)
+          ? left.observedAtMs
+          : 0;
+      return rightTime - leftTime;
+    })[0];
 
   const hasConcurrentOwnerInteraction = args.signals.some((signal) => {
     const observedAt = parseIsoMs(signal.observedAt);
@@ -139,9 +151,19 @@ export function computeAwakeProbability(args: {
     args.nowMs >= currentSleepStartMs
   ) {
     const strongestEvidence =
-      [...args.sleepCycle.evidence].sort(
-        (left, right) => right.confidence - left.confidence,
-      )[0]?.source ?? "activity_gap";
+      [...args.sleepCycle.evidence].sort((left, right) => {
+        const rightConf =
+          typeof right.confidence === "number" &&
+          Number.isFinite(right.confidence)
+            ? right.confidence
+            : 0;
+        const leftConf =
+          typeof left.confidence === "number" &&
+          Number.isFinite(left.confidence)
+            ? left.confidence
+            : 0;
+        return rightConf - leftConf || left.source.localeCompare(right.source);
+      })[0]?.source ?? "activity_gap";
     const sleepWeight = -2.8 * clamp(args.sleepCycle.sleepConfidence, 0.3, 1);
     contributors.push({
       source: strongestEvidence,

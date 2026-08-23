@@ -111,14 +111,14 @@ const accentGradientStyle = {
   background:
     "linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%) 0%, var(--accent) 100%)",
   color: "var(--accent-foreground)",
-  borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.5)",
+  borderColor: "rgba(var(--accent-rgb), 0.5)",
 } as const;
 
 const idleSaveBtnStyle = {
   background:
-    "linear-gradient(180deg, rgba(var(--accent-rgb,240,185,11),0.16) 0%, rgba(var(--accent-rgb,240,185,11),0.1) 100%)",
-  color: "rgba(var(--accent-rgb, 240, 185, 11), 0.78)",
-  borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.22)",
+    "linear-gradient(180deg, rgba(var(--accent-rgb),0.16) 0%, rgba(var(--accent-rgb),0.1) 100%)",
+  color: "rgba(var(--accent-rgb), 0.78)",
+  borderColor: "rgba(var(--accent-rgb), 0.22)",
 } as const;
 
 /* ── Constants ─────────────────────────────────────────────────────── */

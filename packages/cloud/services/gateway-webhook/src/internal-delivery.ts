@@ -254,13 +254,12 @@ export async function deliverInternalMessage(
     if (!adapter.sendReplyWithReceipt) {
       throw new Error(`${delivery.platform} receipt delivery is unavailable`);
     }
-    if (delivery.platform === "telegram") {
-      // Telegram has no provider idempotency key. Persist an indeterminate
-      // tombstone before dispatch so a process death can never duplicate it.
-      await dependencies.redis.set(dedupeKey, "indeterminate", {
-        ex: DELIVERY_RECEIPT_TTL_SECONDS,
-      });
-    }
+    // Provider dispatch may succeed before any transport error becomes visible.
+    // Persist the tombstone first for every connector; only a proven rejection
+    // or a validated receipt may replace it with retryable/complete state.
+    await dependencies.redis.set(dedupeKey, "indeterminate", {
+      ex: DELIVERY_RECEIPT_TTL_SECONDS,
+    });
     connectorAttempted = true;
     const receipt = await adapter.sendReplyWithReceipt(
       config,
@@ -295,7 +294,8 @@ export async function deliverInternalMessage(
   } catch (error) {
     if (
       error instanceof TelegramApiResponseError ||
-      error instanceof BlooioApiResponseError
+      (error instanceof BlooioApiResponseError &&
+        error.deliveryStatus === "failed")
     ) {
       let claimReleased = true;
       try {
@@ -348,9 +348,7 @@ export async function deliverInternalMessage(
     }
     // error-policy:J1 once connector dispatch starts, the provider may have
     // accepted the message even if its response or our receipt write failed.
-    if (!connectorAttempted || delivery.platform === "blooio") {
-      // Blooio enforces the stable provider idempotency key, so clearing this
-      // process-local claim permits a safe operator retry after an unknown response.
+    if (!connectorAttempted) {
       try {
         await dependencies.redis.del(dedupeKey);
       } catch {

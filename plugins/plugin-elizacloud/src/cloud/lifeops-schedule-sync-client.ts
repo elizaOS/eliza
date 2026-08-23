@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
@@ -124,7 +125,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
         };
         detail = parsed.message ?? parsed.error ?? trimmed;
       } catch {
-        detail = trimmed.slice(0, 200);
+        detail = truncateWellFormed(toWellFormedUnicode(trimmed), 200);
       }
     }
     throw new LifeOpsScheduleSyncClientError(response.status, detail);

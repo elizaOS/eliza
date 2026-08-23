@@ -75,7 +75,7 @@ type VisibleGraph = {
 
 const EDGE_COLORS = {
   positive: "rgba(34, 197, 94, 0.64)",
-  neutral: "rgba(240, 185, 11, 0.48)",
+  neutral: "rgba(var(--accent-rgb), 0.48)",
   negative: "rgba(239, 68, 68, 0.62)",
 } as const;
 
@@ -1122,7 +1122,7 @@ export function RelationshipsGraphPanel({
                 r="70%"
               >
                 <stop offset="0%" stopColor="rgba(255,240,199,0.96)" />
-                <stop offset="100%" stopColor="rgba(240,185,11,0.9)" />
+                <stop offset="100%" stopColor="rgba(var(--accent-rgb), 0.9)" />
               </radialGradient>
               <radialGradient
                 id="relationships-owner-fill"
@@ -1203,7 +1203,7 @@ export function RelationshipsGraphPanel({
                       fill="transparent"
                       stroke={
                         selected
-                          ? "rgba(240,185,11,0.52)"
+                          ? "rgba(var(--accent-rgb), 0.52)"
                           : directlyConnected
                             ? "rgba(34,197,94,0.38)"
                             : "transparent"

@@ -320,6 +320,22 @@ export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
   grok: {},
 };
 
+export function compareScoredFrameworkCandidates(
+  left: { score: number; framework: { id: string } },
+  right: { score: number; framework: { id: string } },
+): number {
+  const rightScore =
+    typeof right.score === "number" && Number.isFinite(right.score)
+      ? right.score
+      : 0;
+  const leftScore =
+    typeof left.score === "number" && Number.isFinite(left.score)
+      ? left.score
+      : 0;
+  if (rightScore !== leftScore) return rightScore - leftScore;
+  return left.framework.id.localeCompare(right.framework.id);
+}
+
 type FrameworkInventory = {
   configuredSubscriptionProvider?: string;
   frameworks: TaskAgentFrameworkAvailability[];
@@ -908,12 +924,8 @@ async function computeTaskAgentFrameworkState(
     frameworks.find((framework) => framework.id !== "kimi") ??
     frameworks[0];
   const preferredCandidate =
-    scoredCandidates.sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-      return left.framework.id.localeCompare(right.framework.id);
-    })[0]?.framework ?? fallback;
+    scoredCandidates.sort(compareScoredFrameworkCandidates)[0]?.framework ??
+    fallback;
   const preferredSignals =
     scoredCandidates.find(
       (entry) => entry.framework.id === preferredCandidate.id,
@@ -1124,12 +1136,8 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     frameworks.find((framework) => framework.id !== "kimi") ??
     frameworks[0];
   const preferredCandidate =
-    scoredCandidates.sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-      return left.framework.id.localeCompare(right.framework.id);
-    })[0]?.framework ?? fallback;
+    scoredCandidates.sort(compareScoredFrameworkCandidates)[0]?.framework ??
+    fallback;
   const preferredSignals =
     scoredCandidates.find(
       (entry) => entry.framework.id === preferredCandidate.id,

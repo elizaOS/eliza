@@ -2,19 +2,27 @@
  * Cloud settings panel — the main shell for the cloud-only desktop settings.
  *
  * Replaces the legacy registry-driven SettingsView for cloud-only builds.
- * Uses an invisible top drag strip (no HTML window controls) and a NuPhy UI
- * sidebar + content layout. Responsive: below 700px collapses to a hub list
- * with a back button.
+ * Uses an invisible top drag strip (no HTML window controls) and a
+ * sidebar + content layout on Eliza design tokens. Responsive: below 700px
+ * collapses to a hub list with a back button.
  */
 import { ArrowLeft } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
 import { cn } from "../../../lib/utils";
+import { useAppSelector } from "../../../state";
 import { ErrorBoundary } from "../../ui/error-boundary";
-import { CloudSettingsSidebar } from "./CloudSettingsSidebar";
+import {
+  CloudAccountMenu,
+  type CloudAccountNavigationState,
+  type CloudPanelNavigationOptions,
+  CloudSettingsSidebar,
+} from "./CloudSettingsSidebar";
+import { useHasCloudManagementCredential } from "./cloud-management-auth";
 import {
   navigateCloudPanel,
   readCloudPanelHash,
+  replaceCloudPanel,
   subscribeCloudPanelHash,
 } from "./cloud-panel-routing";
 import {
@@ -29,7 +37,7 @@ export function CloudSettingsDragStrip() {
   return (
     <div
       aria-hidden="true"
-      className="nuphy-window-drag-strip"
+      className="settings-window-drag-strip"
       data-window-titlebar="true"
     />
   );
@@ -44,9 +52,9 @@ function SectionLoading({ label }: { label: string }) {
       role="status"
     >
       <span className="sr-only">Loading {label}</span>
-      <div className="h-4 w-2/5 animate-pulse rounded-sm bg-[var(--fill)] motion-reduce:animate-none" />
-      <div className="h-11 w-full animate-pulse rounded-sm bg-[var(--fill)] motion-reduce:animate-none" />
-      <div className="h-11 w-full animate-pulse rounded-sm bg-[var(--fill)] motion-reduce:animate-none" />
+      <div className="h-4 w-2/5 animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
     </div>
   );
 }
@@ -63,18 +71,18 @@ function SectionError({
   return (
     <div
       role="alert"
-      className="flex flex-col items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-left"
+      className="flex flex-col items-start gap-2 rounded-lg border border-border bg-card p-4 text-left"
     >
-      <p className="text-sm font-semibold text-[var(--destructive)]">
+      <p className="text-sm font-semibold text-destructive">
         {label} failed to load
       </p>
-      <p className="max-w-prose break-words text-xs text-[var(--muted-foreground)]">
+      <p className="max-w-prose break-words text-xs text-muted-foreground">
         {error.message}
       </p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)]"
+        className="mt-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-ring"
       >
         Retry
       </button>
@@ -85,25 +93,34 @@ function SectionError({
 function SectionContent({ section }: { section: CloudPanelSection }) {
   const Component = section.Component;
   return (
-    <ErrorBoundary
-      key={section.id}
-      fallback={(error: Error, reset: () => void) => (
-        <SectionError label={section.label} error={error} onRetry={reset} />
-      )}
-    >
-      <Suspense fallback={<SectionLoading label={section.label} />}>
-        <Component />
-      </Suspense>
-    </ErrorBoundary>
+    <>
+      <h1 className="sr-only">{section.label}</h1>
+      <ErrorBoundary
+        key={section.id}
+        fallback={(error: Error, reset: () => void) => (
+          <SectionError label={section.label} error={error} onRetry={reset} />
+        )}
+      >
+        <Suspense fallback={<SectionLoading label={section.label} />}>
+          <Component />
+        </Suspense>
+      </ErrorBoundary>
+    </>
   );
 }
 
 function HubList({
+  accountState,
   activeSection,
+  onSignOutAttemptFinish,
+  onSignOutAttemptStart,
   onSelect,
 }: {
+  accountState: CloudAccountNavigationState;
   activeSection: string;
-  onSelect: (id: string) => void;
+  onSignOutAttemptFinish: () => void;
+  onSignOutAttemptStart: () => void;
+  onSelect: (id: string, options?: CloudPanelNavigationOptions) => void;
 }) {
   const grouped = groupedCloudPanelSections();
   return (
@@ -111,7 +128,7 @@ function HubList({
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {Object.entries(grouped).map(([groupId, sections]) => (
           <div key={groupId} className="mb-5 last:mb-0">
-            <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+            <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {groupId.charAt(0).toUpperCase() + groupId.slice(1)}
             </h2>
             <div className="space-y-0.5">
@@ -125,29 +142,25 @@ function HubList({
                     onClick={() => onSelect(section.id)}
                     className={cn(
                       "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                      active ? "bg-[var(--accent)]" : "hover:bg-[var(--fill)]",
+                      active ? "bg-accent-subtle" : "hover:bg-bg-hover",
                     )}
                   >
                     <Icon
                       className={cn(
                         "mt-0.5 h-5 w-5 shrink-0",
-                        active
-                          ? "text-[var(--foreground)]"
-                          : "text-[var(--muted-foreground)]",
+                        active ? "text-foreground" : "text-muted-foreground",
                       )}
                     />
                     <div className="min-w-0">
                       <div
                         className={cn(
-                          "text-sm",
-                          active
-                            ? "font-medium text-[var(--foreground)]"
-                            : "text-[var(--foreground)]",
+                          "text-sm text-foreground",
+                          active && "font-medium",
                         )}
                       >
                         {section.label}
                       </div>
-                      <div className="truncate text-xs text-[var(--muted-foreground)]">
+                      <div className="truncate text-xs text-muted-foreground">
                         {section.subtitle}
                       </div>
                     </div>
@@ -158,6 +171,13 @@ function HubList({
           </div>
         ))}
       </div>
+      <CloudAccountMenu
+        accountState={accountState}
+        activeSection={activeSection}
+        onSignOutAttemptFinish={onSignOutAttemptFinish}
+        onSignOutAttemptStart={onSignOutAttemptStart}
+        onSelect={onSelect}
+      />
     </div>
   );
 }
@@ -170,63 +190,96 @@ export function CloudSettingsPanel() {
   const [narrowView, setNarrowView] = useState<"hub" | "section">(() =>
     typeof window !== "undefined" && window.location.hash ? "section" : "hub",
   );
-  const [isDark, setIsDark] = useState(false);
+  const [accountSignOutAttempt, setAccountSignOutAttempt] = useState<
+    "idle" | "pending" | "finished"
+  >("idle");
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const hasManagementCredential = useHasCloudManagementCredential();
+  const observedAccountSessionAvailable =
+    elizaCloudConnected || hasManagementCredential;
+  const accountDestinationsAvailable =
+    observedAccountSessionAvailable && accountSignOutAttempt === "idle";
+  const accountNavigationState: CloudAccountNavigationState =
+    !observedAccountSessionAvailable
+      ? "disconnected"
+      : accountSignOutAttempt === "idle"
+        ? "connected"
+        : accountSignOutAttempt === "pending"
+          ? "signing-out"
+          : "sign-out-failed";
+
+  // Keep account routes fail-closed throughout an attempt. A settled attempt
+  // with a still-observed session becomes an explicit retry state; only an
+  // observably absent credential may clear the suppression automatically.
+  useEffect(() => {
+    if (!observedAccountSessionAvailable && accountSignOutAttempt !== "idle") {
+      setAccountSignOutAttempt("idle");
+    }
+  }, [accountSignOutAttempt, observedAccountSessionAvailable]);
 
   // Sync with URL hash.
   useEffect(() => {
     return subscribeCloudPanelHash((id) => setSectionId(id));
   }, []);
 
-  // Track the app's theme (data-theme attribute on <html>) to toggle the
-  // .nuphy-dark class. LightningCSS transforms .dark and [data-theme="dark"]
-  // selectors, so we use a custom class name it won't recognize.
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const root = document.documentElement;
-    const update = () => {
-      setIsDark(
-        root.getAttribute("data-theme") === "dark" ||
-          root.classList.contains("dark"),
-      );
-    };
-    update();
-    const observer = new MutationObserver(update);
-    observer.observe(root, {
-      attributes: true,
-      attributeFilter: ["data-theme", "class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  const handleSelect = (id: string) => {
-    const resolved = resolveCloudPanelSection(id);
+  const handleSelect = (id: string, options?: CloudPanelNavigationOptions) => {
+    const requested = resolveCloudPanelSection(id);
+    const requestedSection = CLOUD_PANEL_SECTIONS.find(
+      (candidate) => candidate.id === requested,
+    );
+    const resolved =
+      requestedSection?.placement === "account-footer" &&
+      !accountDestinationsAvailable
+        ? "general"
+        : requested;
     setSectionId(resolved);
-    setNarrowView("section");
-    navigateCloudPanel(resolved);
+    if (options?.showSection !== false) setNarrowView("section");
+    if (options?.replace) {
+      replaceCloudPanel(resolved);
+    } else {
+      navigateCloudPanel(resolved);
+    }
   };
 
-  const section = CLOUD_PANEL_SECTIONS.find((s) => s.id === sectionId);
-  const scopeClass = isDark ? "nuphy-scope nuphy-dark" : "nuphy-scope";
+  const requestedSection = CLOUD_PANEL_SECTIONS.find(
+    (candidate) => candidate.id === sectionId,
+  );
+  const accountDestinationBlocked =
+    requestedSection?.placement === "account-footer" &&
+    !accountDestinationsAvailable;
+  const section = accountDestinationBlocked
+    ? CLOUD_PANEL_SECTIONS.find((candidate) => candidate.id === "general")
+    : requestedSection;
+  const activeSectionId = section?.id ?? "general";
+
+  // Account-only bodies must never survive credential loss or a disconnected
+  // deep link. Replace (rather than push) so Back cannot revive the route.
+  useEffect(() => {
+    if (!accountDestinationBlocked) return;
+    setSectionId("general");
+    replaceCloudPanel("general");
+  }, [accountDestinationBlocked]);
 
   // Narrow layout: hub list → back-button subview.
   if (!isWide) {
     const showHub = narrowView === "hub";
     return (
-      <div
-        className={cn(
-          scopeClass,
-          "flex h-full flex-col bg-[var(--canvas)] pt-8",
-        )}
-      >
+      <div className="flex h-full flex-col bg-bg pt-8">
         <CloudSettingsDragStrip />
         {showHub ? (
-          <HubList activeSection={sectionId} onSelect={handleSelect} />
+          <HubList
+            accountState={accountNavigationState}
+            activeSection={activeSectionId}
+            onSignOutAttemptFinish={() => setAccountSignOutAttempt("finished")}
+            onSignOutAttemptStart={() => setAccountSignOutAttempt("pending")}
+            onSelect={handleSelect}
+          />
         ) : (
           <div className="flex flex-1 flex-col overflow-hidden">
             <button
               type="button"
               onClick={() => setNarrowView("hub")}
-              className="flex items-center gap-1.5 border-b border-[var(--hairline)] px-4 py-2.5 text-sm text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              className="flex items-center gap-1.5 border-b border-border px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
               Settings
@@ -242,10 +295,16 @@ export function CloudSettingsPanel() {
 
   // Wide layout: sidebar + content side-by-side.
   return (
-    <div className={cn(scopeClass, "flex h-full bg-[var(--canvas)]")}>
+    <div className="flex h-full bg-bg">
       <CloudSettingsDragStrip />
-      <CloudSettingsSidebar activeSection={sectionId} onSelect={handleSelect} />
-      <main className="flex-1 overflow-y-auto bg-[var(--canvas)] bg-dotted pt-8">
+      <CloudSettingsSidebar
+        accountState={accountNavigationState}
+        activeSection={activeSectionId}
+        onSignOutAttemptFinish={() => setAccountSignOutAttempt("finished")}
+        onSignOutAttemptStart={() => setAccountSignOutAttempt("pending")}
+        onSelect={handleSelect}
+      />
+      <main className="flex-1 overflow-y-auto bg-bg pt-8">
         <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
           {section ? (
             <SectionContent section={section} />

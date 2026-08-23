@@ -39,10 +39,13 @@ import {
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import {
   assertOnboardingLivenessWithTiming,
+  chatComposer,
+  describeAnchoredLiveTurnState,
   findAnchoredLiveTurn,
   isLiveReply,
   readLivenessThreadLines,
 } from "../liveness-contract";
+import { writePrivacySafeLivenessDiagnostic } from "../privacy-safe-liveness-diagnostic-artifact.mjs";
 import { writeStagingCloudChatLatencyEvidence } from "../staging-cloud-chat-latency-evidence";
 import { openAppPath } from "./helpers";
 
@@ -410,9 +413,6 @@ function installNetworkAudit(context: BrowserContext) {
   context.on("response", (response) => {
     const responseHeaders = response.headers();
     const contentType = responseHeaders["content-type"];
-    const contentEncoding = responseHeaders["content-encoding"]
-      ?.trim()
-      .toLowerCase();
     audit.observeResponse(
       response.request().method(),
       response.url(),
@@ -420,12 +420,11 @@ function installNetworkAudit(context: BrowserContext) {
       {
         contentType,
         async read(maxBytes) {
-          if (contentEncoding && contentEncoding !== "identity") return null;
           if (await response.finished()) return null;
           const { responseBodySize } = await response.request().sizes();
           if (
-            !Number.isSafeInteger(responseBodySize) ||
-            responseBodySize <= 0 ||
+            Number.isSafeInteger(responseBodySize) &&
+            responseBodySize > 0 &&
             responseBodySize > maxBytes
           )
             return null;
@@ -472,12 +471,33 @@ async function proveAnchoredTurnHistory(
   turnAnchorToken: string,
   phase: "post-reload" | "fresh-context",
 ): Promise<CloudLiveHistoryObservation> {
+  let successfulHistoryResponseObserved = false;
   try {
     await expect
       .poll(
         async () =>
           (await audit.snapshot()).successfulHistoryGetCount >
           before.successfulHistoryGetCount,
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+    successfulHistoryResponseObserved = true;
+    // Completed-user chat deliberately cold-boots at the compact composer; the
+    // transcript is unmounted until the composer receives an explicit open
+    // gesture. Reproduce that real customer action after the server history
+    // response instead of treating the intentionally hidden DOM as lost data.
+    // Activating it also exercises the pending-expand-on-reveal path when
+    // hydration is still committing the restored messages.
+    await chatComposer(page).click();
+    await expect
+      .poll(
+        async () => {
+          const anchored = findAnchoredLiveTurn(
+            await readLivenessThreadLines(page),
+            { anchorToken: turnAnchorToken },
+          );
+          return Boolean(anchored && isLiveReply(anchored.reply));
+        },
         { timeout: 120_000 },
       )
       .toBe(true);
@@ -503,22 +523,10 @@ async function proveAnchoredTurnHistory(
       },
     );
     throw new Error(
-      `[cloud-live] ${phase} history proof timed out; privacy-safe counters were retained`,
+      `[cloud-live] ${phase} history proof timed out ${successfulHistoryResponseObserved ? "after a successful history response" : "before a successful history response"}; privacy-safe counters were retained`,
       { cause },
     );
   }
-  await expect
-    .poll(
-      async () => {
-        const anchored = findAnchoredLiveTurn(
-          await readLivenessThreadLines(page),
-          { anchorToken: turnAnchorToken },
-        );
-        return Boolean(anchored && isLiveReply(anchored.reply));
-      },
-      { timeout: 120_000 },
-    )
-    .toBe(true);
   return {
     historyGetSucceeded: true,
     challengeUserLinePresent: true,
@@ -676,6 +684,7 @@ test.describe("real cloud login + personal identity + chat", () => {
     // liveness requirement.
     await openAppPath(page, "/chat");
     const turnAnchorToken = randomBytes(8).toString("hex");
+    primaryAudit.setHistoryAnchorToken(turnAnchorToken);
     const turnPrompt = `In one short sentence, say hello. Unique turn marker: ${turnAnchorToken}`;
     const auditBeforeLiveness = await primaryAudit.snapshot();
     const domBeforeLiveness = await page.evaluate(() => ({
@@ -736,7 +745,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       // to an allowlisted name plus counts/booleans only. Never emit the draft,
       // challenge, response text, request URL, or any account/runtime ID.
       const auditAfterLiveness = await primaryAudit.snapshot();
-      const [domSnapshotResult] = await Promise.allSettled([
+      const [domSnapshotResult, threadLinesResult] = await Promise.allSettled([
         page.evaluate((before) => {
           const userRows = Array.from(
             document.querySelectorAll(
@@ -781,6 +790,7 @@ test.describe("real cloud login + personal identity + chat", () => {
             }),
           };
         }, domBeforeLiveness),
+        readLivenessThreadLines(page),
       ]);
       const domSnapshot =
         domSnapshotResult?.status === "fulfilled"
@@ -793,26 +803,84 @@ test.describe("real cloud login + personal identity + chat", () => {
         )
           ? error.name
           : "UnknownError";
+      const anchoredState = describeAnchoredLiveTurnState(
+        threadLinesResult.status === "fulfilled" ? threadLinesResult.value : [],
+        { anchorToken: turnAnchorToken },
+      );
+      const diagnosticRecord = {
+        originalErrorName,
+        chatSendAttemptDelta: Math.max(
+          0,
+          auditAfterLiveness.chatSendAttemptCount -
+            auditBeforeLiveness.chatSendAttemptCount,
+        ),
+        logicalChatSendDelta: Math.max(
+          0,
+          auditAfterLiveness.logicalChatSendCount -
+            auditBeforeLiveness.logicalChatSendCount,
+        ),
+        unidentifiedChatSendDelta: Math.max(
+          0,
+          auditAfterLiveness.unidentifiedChatSendAttemptCount -
+            auditBeforeLiveness.unidentifiedChatSendAttemptCount,
+        ),
+        namedWarmingResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.namedWarmingResponseCount -
+            auditBeforeLiveness.namedWarmingResponseCount,
+        ),
+        successfulChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.successfulChatSendResponseCount -
+            auditBeforeLiveness.successfulChatSendResponseCount,
+        ),
+        clientErrorChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.clientErrorChatSendResponseCount -
+            auditBeforeLiveness.clientErrorChatSendResponseCount,
+        ),
+        serverErrorChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.serverErrorChatSendResponseCount -
+            auditBeforeLiveness.serverErrorChatSendResponseCount,
+        ),
+        otherChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.otherChatSendResponseCount -
+            auditBeforeLiveness.otherChatSendResponseCount,
+        ),
+        retryObservationAvailable: retryObservation.ok,
+        retryChipEverObserved: retryObservation.ok
+          ? retryObservation.retryChipEverObserved
+          : "unavailable",
+        domSnapshotAvailable: domSnapshot !== null,
+        draftCleared: domSnapshot?.draftCleared ?? "unavailable",
+        newUserRowCount: domSnapshot?.newUserRowCount ?? "unavailable",
+        newAssistantRowCount:
+          domSnapshot?.newAssistantRowCount ?? "unavailable",
+        failureRowPresent: domSnapshot?.failureRowPresent ?? "unavailable",
+        retryRowPresent: domSnapshot?.retryRowPresent ?? "unavailable",
+        interruptedRowPresent:
+          domSnapshot?.interruptedRowPresent ?? "unavailable",
+        widgetOnlyReplyRowPresent:
+          domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable",
+        threadLinesAvailable: threadLinesResult.status === "fulfilled",
+        ...anchoredState,
+      };
+      const diagnosticPath = test
+        .info()
+        .outputPath("privacy-safe-liveness-history-network-diagnostics.json");
+      const diagnosticArtifactWritten =
+        await writePrivacySafeLivenessDiagnostic({
+          diagnosticPath,
+          diagnosticRecord,
+          annotations: test.info().annotations,
+        });
       const diagnostic = [
-        `originalErrorName=${originalErrorName}`,
-        `chatSendAttemptDelta=${Math.max(0, auditAfterLiveness.chatSendAttemptCount - auditBeforeLiveness.chatSendAttemptCount)}`,
-        `logicalChatSendDelta=${Math.max(0, auditAfterLiveness.logicalChatSendCount - auditBeforeLiveness.logicalChatSendCount)}`,
-        `unidentifiedChatSendDelta=${Math.max(0, auditAfterLiveness.unidentifiedChatSendAttemptCount - auditBeforeLiveness.unidentifiedChatSendAttemptCount)}`,
-        `namedWarmingResponseDelta=${Math.max(0, auditAfterLiveness.namedWarmingResponseCount - auditBeforeLiveness.namedWarmingResponseCount)}`,
-        `successfulChatResponseDelta=${Math.max(0, auditAfterLiveness.successfulChatSendResponseCount - auditBeforeLiveness.successfulChatSendResponseCount)}`,
-        `clientErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.clientErrorChatSendResponseCount - auditBeforeLiveness.clientErrorChatSendResponseCount)}`,
-        `serverErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.serverErrorChatSendResponseCount - auditBeforeLiveness.serverErrorChatSendResponseCount)}`,
-        `otherChatResponseDelta=${Math.max(0, auditAfterLiveness.otherChatSendResponseCount - auditBeforeLiveness.otherChatSendResponseCount)}`,
-        `retryObservationAvailable=${retryObservation.ok}`,
-        `retryChipEverObserved=${retryObservation.ok ? retryObservation.retryChipEverObserved : "unavailable"}`,
-        `domSnapshotAvailable=${domSnapshot !== null}`,
-        `draftCleared=${domSnapshot?.draftCleared ?? "unavailable"}`,
-        `newUserRowCount=${domSnapshot?.newUserRowCount ?? "unavailable"}`,
-        `newAssistantRowCount=${domSnapshot?.newAssistantRowCount ?? "unavailable"}`,
-        `failureRowPresent=${domSnapshot?.failureRowPresent ?? "unavailable"}`,
-        `retryRowPresent=${domSnapshot?.retryRowPresent ?? "unavailable"}`,
-        `interruptedRowPresent=${domSnapshot?.interruptedRowPresent ?? "unavailable"}`,
-        `widgetOnlyReplyRowPresent=${domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable"}`,
+        ...Object.entries(diagnosticRecord).map(
+          ([name, value]) => `${name}=${value}`,
+        ),
+        `diagnosticArtifactWritten=${diagnosticArtifactWritten}`,
       ].join("; ");
       throw new Error(
         `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,
@@ -892,6 +960,7 @@ test.describe("real cloud login + personal identity + chat", () => {
 
         const freshPage = await freshContext.newPage();
         const freshAudit = installNetworkAudit(freshContext);
+        freshAudit.setHistoryAnchorToken(turnAnchorToken);
         const { deployedRenderer: freshDeployedRenderer } =
           await openProtectedCloudBlankStart(
             freshPage,

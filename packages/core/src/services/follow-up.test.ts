@@ -420,12 +420,50 @@ describe("FollowUpService suggestion completeness", () => {
 				relationshipsService: typeof relationshipsService;
 			}
 		).relationshipsService = relationshipsService;
-
 		const suggestions = await followUps.getFollowUpSuggestions();
 
 		expect(suggestions).toHaveLength(12);
 		expect(suggestions.map((item) => item.daysSinceLastContact)).toEqual(
 			Array.from({ length: 12 }, (_, index) => 31 - index),
 		);
+	});
+
+	it("maintains strict total ordering when scheduledAt metadata contains invalid dates", async () => {
+		const { runtime } = makeRuntime();
+		const followUps = (await FollowUpService.start(runtime)) as FollowUpService;
+
+		await runtime.createTask({
+			name: "Follow up 1",
+			tags: ["follow-up"],
+			metadata: {
+				status: "pending",
+				targetEntityId: ENTITY_ID,
+				scheduledAt: "2026-01-02T10:00:00.000Z",
+			},
+		});
+		await runtime.createTask({
+			name: "Follow up NaN",
+			tags: ["follow-up"],
+			metadata: {
+				status: "pending",
+				targetEntityId: ENTITY_ID,
+				scheduledAt: "invalid-date-string",
+			},
+		});
+		await runtime.createTask({
+			name: "Follow up 2",
+			tags: ["follow-up"],
+			metadata: {
+				status: "pending",
+				targetEntityId: ENTITY_ID,
+				scheduledAt: "2026-01-03T10:00:00.000Z",
+			},
+		});
+
+		const upcoming = await followUps.getUpcomingFollowUps();
+		expect(upcoming.length).toBe(3);
+		expect(upcoming[0]?.task.name).toBe("Follow up NaN"); // fallback 0 scheduled time
+		expect(upcoming[1]?.task.name).toBe("Follow up 1");
+		expect(upcoming[2]?.task.name).toBe("Follow up 2");
 	});
 });

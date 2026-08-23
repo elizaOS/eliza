@@ -5,7 +5,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { activityEventToPlaintext } from "./activity-plaintext";
 import { toWellFormedUnicode, truncateWellFormed } from "./utils/well-formed";
 
 function isWellFormed(value: string): boolean {

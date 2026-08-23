@@ -13,6 +13,7 @@ import {
   releaseTelegramPollerToken,
 } from "./poller-lock";
 import { TelegramService } from "./service";
+import { compareMessageConnectorTargets } from "./service.js";
 
 function createRuntime() {
   const runtime = {
@@ -609,5 +610,45 @@ describe("Telegram message connector adapter", () => {
     await service.stop();
 
     expect(getTelegramPollerClaim("teardown-token")).toBeUndefined();
+  });
+
+  it("sorts deduplicated connector targets safely when score contains NaN", () => {
+    const targets = [
+      {
+        label: "t-nan",
+        score: NaN,
+        target: { source: "telegram", channelId: "123" },
+      },
+      {
+        label: "t-valid",
+        score: 0.9,
+        target: { source: "telegram", channelId: "456" },
+      },
+    ] as unknown as import("@elizaos/core").MessageConnectorTarget[];
+
+    targets.sort(compareMessageConnectorTargets);
+
+    expect((targets[0] as unknown as { label: string }).label).toBe("t-valid");
+    expect((targets[1] as unknown as { label: string }).label).toBe("t-nan");
+  });
+
+  it("tie-breaks equal-score connector targets by label deterministically", () => {
+    const targets = [
+      {
+        label: "z-label",
+        score: 0.5,
+        target: { source: "telegram", channelId: "123" },
+      },
+      {
+        label: "a-label",
+        score: 0.5,
+        target: { source: "telegram", channelId: "456" },
+      },
+    ] as unknown as import("@elizaos/core").MessageConnectorTarget[];
+
+    targets.sort(compareMessageConnectorTargets);
+
+    expect((targets[0] as unknown as { label: string }).label).toBe("a-label");
+    expect((targets[1] as unknown as { label: string }).label).toBe("z-label");
   });
 });

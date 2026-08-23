@@ -135,6 +135,10 @@ import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
+import {
+  compareConversationsByRecency,
+  compareMemoriesByCreatedAt,
+} from "./conversation-sort.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
@@ -479,14 +483,21 @@ function canonicalChatFingerprintValue(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
+        // Code-unit order, not localeCompare: ICU collation is locale-dependent
+        // and ranks canonically equivalent distinct keys as equal, so two
+        // replicas would fingerprint one turn differently and admit a duplicate.
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, entry]) => [key, canonicalChatFingerprintValue(entry)]),
     );
   }
   return value;
 }
 
-function buildConversationChatFingerprint(input: {
+/**
+ * Idempotency identity for one chat turn. Exported so the canonical key
+ * ordering it depends on can be pinned by test.
+ */
+export function buildConversationChatFingerprint(input: {
   prompt: string;
   images: unknown;
   source: unknown;
@@ -2212,7 +2223,7 @@ export async function persistRecentAssistantActionCallbackHistory(
             : createdAt >= sinceMs - 2000)
         );
       })
-      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .sort(compareMemoriesByCreatedAt)
       .at(-1);
 
     if (!target || typeof target.id !== "string") {
@@ -2569,7 +2580,7 @@ async function ensureConversationGreetingStoredUnlocked(
     });
   }
 
-  memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  memories.sort(compareMemoriesByCreatedAt);
   const existingGreeting = memories.find((memory) => {
     const content = memory.content as Record<string, unknown> | undefined;
     return (
@@ -2753,10 +2764,7 @@ export async function handleConversationRoutes(
     const convos = Array.from(state.conversations.values())
       .filter((c) => !state.deletedConversationIds.has(c.id))
       .filter((c) => canWaifuAccessConversation(waifuAccess, c))
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
+      .sort(compareConversationsByRecency);
     json(res, { conversations: convos });
     return true;
   }
@@ -3126,7 +3134,7 @@ export async function handleConversationRoutes(
             });
       }
       // Sort by createdAt ascending
-      memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      memories.sort(compareMemoriesByCreatedAt);
       const agentId = runtime.agentId;
       // Per-viewer attachment disclosure (#14781): a boundary-role viewer
       // token (WaifuChat, artifact share-viewer) carries a principal; trunk

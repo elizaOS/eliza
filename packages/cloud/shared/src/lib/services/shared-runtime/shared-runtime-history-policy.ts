@@ -4,7 +4,7 @@
  * mirror, retry, or direct writer converges instead of replacing newer turns.
  */
 
-import { stringToUuid } from "@elizaos/core/edge";
+import { isBlockedHostname, isPrivateIpAddress, stringToUuid } from "@elizaos/core/edge";
 import type { ModelMessage } from "ai";
 import type {
   SharedRuntimeHistoryMessage,
@@ -13,7 +13,7 @@ import type {
 import { logger } from "../../utils/logger";
 
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
-export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 5 * 60 * 1_000;
+export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 60_000;
 
 const GROUNDING_STOP_WORDS = new Set([
   "and",
@@ -43,6 +43,58 @@ const DEICTIC_GROUNDING_FOLLOW_UP =
   /\b(?:it|that|this|those|these|they|them|result|results|source|sources|find|found|finding|findings|corrected|correction)\b/i;
 export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
 
+const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
+
+function containsUnsafePublicHttpUrl(value: string): boolean {
+  HTTP_URL.lastIndex = 0;
+  for (const match of value.matchAll(HTTP_URL)) {
+    const urls = publicSourceUrls([match[0].replace(/[),.;]+$/u, "")]);
+    if (!urls?.[0]) return true;
+  }
+  return false;
+}
+
+function publicSourceUrls(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const urls: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return undefined;
+    try {
+      const parsed = new URL(item);
+      if (
+        (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+        parsed.username ||
+        parsed.password ||
+        isBlockedHostname(parsed.hostname) ||
+        isPrivateIpAddress(parsed.hostname)
+      ) {
+        return undefined;
+      }
+      urls.push(parsed.toString());
+    } catch {
+      return undefined;
+    }
+  }
+  return urls;
+}
+
+function publicSources(value: unknown): Array<{ url: string; text: string }> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const sources: Array<{ url: string; text: string }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return undefined;
+    const record = item as Record<string, unknown>;
+    if (typeof record.url !== "string" || typeof record.text !== "string") return undefined;
+    const urls = publicSourceUrls([record.url]);
+    const text = record.text.trim();
+    if (!urls?.[0] || !text || containsUnsafePublicHttpUrl(text)) return undefined;
+    sources.push({ url: urls[0], text });
+  }
+  return sources;
+}
+
 /** Rejects malformed provenance while preserving every validated field. */
 export function parseSharedPublicWebGrounding(
   value: unknown,
@@ -54,7 +106,8 @@ export function parseSharedPublicWebGrounding(
     typeof candidate.query === "string" &&
     typeof candidate.observedAt === "number" &&
     Number.isSafeInteger(candidate.observedAt) &&
-    candidate.observedAt >= 0
+    candidate.observedAt >= 0 &&
+    candidate.observedAt <= Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
   ) {
     const query = candidate.query.trim();
     return query
@@ -69,20 +122,26 @@ export function parseSharedPublicWebGrounding(
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
     candidate.observedAt < 0 ||
-    typeof candidate.truncated !== "boolean"
+    candidate.observedAt > Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS ||
+    candidate.truncated !== false
   ) {
     return undefined;
   }
   const query = candidate.query.trim();
   const text = candidate.text.trim();
-  if (!query || !text) return undefined;
+  const sources = publicSources(candidate.sources);
+  if (!query || !text || !sources || sources.length === 0) {
+    return undefined;
+  }
   return {
     kind: "web_search",
     query,
     provider: candidate.provider,
     text,
     observedAt: candidate.observedAt,
-    truncated: candidate.truncated,
+    sourceUrls: sources.map((source) => source.url),
+    sources,
+    truncated: false,
   };
 }
 
@@ -99,6 +158,27 @@ export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGroundi
   });
 }
 
+/** Projects a server-observed current-turn read as policy plus untrusted data. */
+export function sharedRuntimeFreshGroundingProjectionMessages(
+  value: SharedRuntimePublicGrounding | undefined,
+): ModelMessage[] {
+  const grounding = parseSharedPublicWebGrounding(value);
+  if (!grounding) return [];
+  const authority: ModelMessage = {
+    role: "system",
+    content: JSON.stringify({
+      type: "public_web_search_authority",
+      status: grounding.kind === "web_search" ? "available" : "unavailable",
+      policy: "current_turn_evidence_only",
+      observedAt: grounding.observedAt,
+      ...(grounding.kind === "web_search" ? { provider: grounding.provider } : {}),
+    }),
+  };
+  return grounding.kind === "web_search"
+    ? [authority, { role: "user", content: encodeSharedPublicWebGrounding(grounding) }]
+    : [authority];
+}
+
 /** Extracts only a successful Worker-safe public read for durable follow-up grounding. */
 export function sharedPublicWebGrounding(
   actionResults: readonly unknown[] | undefined,
@@ -111,22 +191,35 @@ export function sharedPublicWebGrounding(
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
     const observedAt = Date.now();
-    const parsed =
-      record.success === true
-        ? parseSharedPublicWebGrounding({
-            kind: "web_search",
-            query: data.query,
-            provider: data.provider,
-            text: record.text,
-            observedAt,
-            truncated: data.truncated === true,
-          })
-        : parseSharedPublicWebGrounding({
-            kind: "web_search_unavailable",
-            query: data.query,
-            observedAt,
-          });
-    if (!parsed) {
+    const attemptedAvailable = record.success === true && data.truncated === false;
+    let parsed = attemptedAvailable
+      ? parseSharedPublicWebGrounding({
+          kind: "web_search",
+          query: data.query,
+          provider: data.provider,
+          text: record.text,
+          observedAt:
+            typeof data.observedAt === "number" && Number.isSafeInteger(data.observedAt)
+              ? data.observedAt
+              : observedAt,
+          sourceUrls: data.sourceUrls,
+          sources: data.sources,
+          truncated: false,
+        })
+      : parseSharedPublicWebGrounding({
+          kind: "web_search_unavailable",
+          query: data.query,
+          observedAt,
+        });
+    const invalidAvailableReceipt = attemptedAvailable && !parsed;
+    if (!parsed && record.success === true) {
+      parsed = parseSharedPublicWebGrounding({
+        kind: "web_search_unavailable",
+        query: data.query,
+        observedAt,
+      });
+    }
+    if (invalidAvailableReceipt || !parsed) {
       // error-policy:J7 A WEB_SEARCH result this turn just produced is our own
       // contract, not untrusted input: an unparseable envelope means the action
       // shape drifted. Report it instead of silently dropping the grounding,
@@ -168,8 +261,14 @@ type SelectedGrounding = {
   status: "available" | "unavailable" | "fresh_search_required";
 };
 
+export interface SharedSelectedGroundingMetadata {
+  kind: SharedRuntimePublicGrounding["kind"];
+  query: string;
+  status: SelectedGrounding["status"];
+}
+
 function selectedGrounding(
-  history: SharedRuntimeHistoryMessageLike[],
+  history: readonly SharedRuntimeHistoryMessageLike[],
   queryText: string,
   now: number,
 ): SelectedGrounding | undefined {
@@ -240,6 +339,22 @@ function selectedGrounding(
     return { ...latest, status: "fresh_search_required" };
   }
   return { ...latest, status: "available" };
+}
+
+/** Exposes only validated provenance metadata when history policy selects mutable evidence. */
+export function sharedSelectedGroundingMetadata(
+  history: readonly SharedRuntimeHistoryMessageLike[],
+  queryText: string,
+  now = Date.now(),
+): SharedSelectedGroundingMetadata | undefined {
+  const selected = selectedGrounding(history, queryText, now);
+  return selected
+    ? {
+        kind: selected.grounding.kind,
+        query: selected.grounding.query,
+        status: selected.status,
+      }
+    : undefined;
 }
 
 function groundingAuthorityMarker(selection: SelectedGrounding): ModelMessage {
@@ -431,6 +546,23 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   return { ...chosen, grounding };
 }
 
+export function compareSharedRuntimeHistoryMessages(
+  a: { createdAt?: unknown; id?: unknown },
+  b: { createdAt?: unknown; id?: unknown },
+): number {
+  const aCreated =
+    typeof (a as any).createdAt === "number" && Number.isFinite((a as any).createdAt)
+      ? (a as any).createdAt
+      : 0;
+  const bCreated =
+    typeof (b as any).createdAt === "number" && Number.isFinite((b as any).createdAt)
+      ? (b as any).createdAt
+      : 0;
+  return (
+    aCreated - bCreated || String((a as any).id ?? "").localeCompare(String((b as any).id ?? ""))
+  );
+}
+
 export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistoryMessageLike>(
   current: T[],
   incoming: T[],
@@ -442,5 +574,5 @@ export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistory
     const key = messageIdentity(message);
     merged.set(key, chooseMergedMessage(merged.get(key), message));
   }
-  return [...merged.values()].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  return [...merged.values()].sort(compareSharedRuntimeHistoryMessages);
 }

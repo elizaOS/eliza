@@ -1,0 +1,37 @@
+{
+  "name": "@elizaos/synthetic-world",
+  "version": "0.0.0",
+  "description": "Lease-fenced durable command authority for synthetic environments.",
+  "type": "module",
+  "private": true,
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun --conditions=eliza-source test",
+    "lint:check": "bunx @biomejs/biome check package.json src test",
+    "format": "bunx @biomejs/biome format --write package.json src test",
+    "format:check": "bunx @biomejs/biome format package.json src test"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/cloud-test-mocks": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "bun-types": "*"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

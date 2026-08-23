@@ -108,4 +108,35 @@ describe("ACTION_STATE progressive projection", () => {
 		expect(result.text).not.toContain("BEGIN_PRIVATE_PAGE");
 		expect(JSON.stringify(result.data)).toContain("BEGIN_PRIVATE_PAGE");
 	});
+
+	it("sorts working memory safely when timestamps contain NaN", async () => {
+		const result = await actionStateProvider.get(
+			{
+				getSetting: () => false,
+				getMemories: async () => [],
+			} as never,
+			{ roomId: "00000000-0000-0000-0000-000000000001" } as never,
+			{
+				data: {
+					workingMemory: {
+						first: {
+							actionName: "FIRST",
+							result: { text: "first text" },
+							timestamp: NaN,
+						},
+						second: {
+							actionName: "SECOND",
+							result: { text: "second text" },
+							timestamp: 2000,
+						},
+					},
+				},
+				values: {},
+				text: "",
+			} as never,
+		);
+
+		expect(result.text).toContain("**SECOND**");
+		expect(result.text).toContain("**FIRST**");
+	});
 });

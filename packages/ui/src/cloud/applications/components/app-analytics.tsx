@@ -4,7 +4,7 @@
  * client.
  */
 
-import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
+import { toRatePercent } from "@elizaos/cloud-sdk/browser-contracts";
 import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
@@ -437,7 +437,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <DashboardStatCard
                 label="Total Requests"
                 value={totalStats.totalRequests?.toLocaleString("en-US") || "0"}
-                icon={<Activity className="h-5 w-5 text-purple-400" />}
+                icon={<Activity className="h-5 w-5 text-accent" />}
               />
               <DashboardStatCard
                 label="Total Users"
@@ -716,7 +716,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                           ).toFixed(1)
                         : "0"
                     }
-                    icon={<Activity className="h-5 w-5 text-purple-400" />}
+                    icon={<Activity className="h-5 w-5 text-accent" />}
                   />
                 </div>
               )}

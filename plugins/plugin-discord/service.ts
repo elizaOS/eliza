@@ -42,6 +42,8 @@ import {
 	stringToUuid,
 	type TargetInfo,
 	type ThreadHandle,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	type UUID,
 	type World,
 } from "@elizaos/core";
@@ -1156,7 +1158,10 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		const voiceChannel = channel as BaseGuildVoiceChannel;
-		const normalizedStatus = status.trim().slice(0, 500);
+		const normalizedStatus = truncateWellFormed(
+			toWellFormedUnicode(status.trim()),
+			500,
+		);
 		await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
 			body: {
 				status: normalizedStatus || null,
@@ -2066,10 +2071,12 @@ export class DiscordService extends Service implements IDiscordService {
 									agentId: runtime.agentId,
 									channelId: targetChannel.id,
 									accountId,
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: truncateWellFormed(
+										toWellFormedUnicode(
+											textContent.replace(/\s+/g, " ").trim(),
+										),
+										200,
+									),
 								},
 								"Suppressing duplicate Discord connector delivery",
 							);

@@ -189,7 +189,11 @@ describe("MESSAGE list ops — counts stay complete past the render cap", () => 
 		),
 	});
 
-	it("list_channels reports the full channel + muted counts and annotates the capped listing", async () => {
+	// The action result is model-facing context, so the listing is complete:
+	// CLAUDE.md forbids capping, slicing, or item-limiting what the model reads.
+	// The former `MAX_LISTED_CHANNELS = 50` render cap (and its `truncated`
+	// annotation) was deliberately deleted; every channel must now be rendered.
+	it("list_channels renders every channel with complete channel + muted counts", async () => {
 		const runtime = mockRuntime([bigConnector()], seed());
 		const result = await runOp(runtime, { action: "list_channels" });
 		const data = result.data as {
@@ -199,11 +203,12 @@ describe("MESSAGE list ops — counts stay complete past the render cap", () => 
 		};
 		expect(result.success).toBe(true);
 		expect(data.channelCount).toBe(60);
-		expect(data.truncated).toBe(true);
-		expect(data.channels).toHaveLength(50);
+		expect(data.truncated).toBeUndefined();
+		expect(data.channels).toHaveLength(60);
+		expect(data.channels.map((c) => c.label)).toContain("#chan-59");
 		expect(result.text).toContain("Listed 60 channels");
 		expect(result.text).toContain("(3 muted)");
-		expect(result.text).toContain("showing the first 50");
+		expect(result.text).not.toContain("showing the first");
 	});
 
 	it("list_connections counts every room and every muted room, not just the first 50", async () => {

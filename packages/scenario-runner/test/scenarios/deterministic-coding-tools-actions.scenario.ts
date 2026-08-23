@@ -7,7 +7,6 @@ import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { stringToUuid } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -19,7 +18,6 @@ import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index
 
 const execFileAsync = promisify(execFile);
 
-const scenarioId = "deterministic-coding-tools-actions";
 const tmpRoot = path.join(
   realpathSync(os.tmpdir()),
   "eliza-scenario-coding-tools",
@@ -33,11 +31,7 @@ const worktreePath = path.join(
   "scenario-coding-worktree",
 );
 const worktreeBranch = "scenario-coding-tools-branch";
-const roomId = stringToUuid(`scenario-room:${scenarioId}:main`);
-const worldId = stringToUuid(`scenario-runner-world:${scenarioId}`);
-const userId = stringToUuid(
-  `scenario-account:scenario-user:${scenarioId}:main`,
-);
+const ROOM = "main";
 
 const writeParameters = {
   action: "write",
@@ -70,6 +64,33 @@ const exitWorktreeParameters = {
   cleanup: true,
 };
 
+/**
+ * The exact tool set the action planner is offered on every turn of this
+ * scenario: core's always-available REPLY/IGNORE/STOP plus the actions
+ * `@elizaos/plugin-coding-tools` contributes. It is one constant, not a
+ * per-route list, because the runtime offers the same validated action surface
+ * on every turn — a per-route copy only invited the two to drift apart.
+ *
+ * The fixtures below match this set exactly, so it doubles as an assertion that
+ * no other plugin's action reaches this scenario's planner. That is the
+ * property `enterScenarioActionScope` restores: before it, a batch peer's
+ * plugin (app-control's APP/VIEWS/SETTINGS/BACKGROUND) joined this list and
+ * every route fixture stopped matching.
+ */
+const codingToolsPlannerToolNames = [
+  "FILE",
+  "READ",
+  "WRITE",
+  "EDIT",
+  "SHELL",
+  "WORKTREE",
+  "WEB_FETCH",
+  "WEB_SEARCH",
+  "REPLY",
+  "IGNORE",
+  "STOP",
+];
+
 const strictCodingToolRoutes = [
   {
     actionName: "FILE",
@@ -77,14 +98,7 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Write the deterministic coding tools note file",
     messageToUser: `Wrote ${notePath}`,
-    plannerToolNames: [
-      "FILE",
-      "WEB_FETCH",
-      "START_CODING_TASK",
-      "REPLY",
-      "IGNORE",
-      "STOP",
-    ],
+    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "FILE",
@@ -92,7 +106,7 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Read the deterministic coding tools note file",
     messageToUser: "alpha coding-tools scenario",
-    plannerToolNames: ["FILE", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
+    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "SHELL",
@@ -101,7 +115,7 @@ const strictCodingToolRoutes = [
     input:
       "Run a shell command to count the deterministic coding tools note lines",
     messageToUser: "shell-ok:2",
-    plannerToolNames: ["SHELL", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
+    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "WORKTREE",
@@ -109,7 +123,7 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Enter an isolated repo worktree",
     messageToUser: `Entered worktree ${worktreeBranch}`,
-    plannerToolNames: ["SHELL", "WORKTREE", "REPLY", "IGNORE", "STOP"],
+    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "WORKTREE",
@@ -117,7 +131,7 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Exit and clean up the isolated repo worktree",
     messageToUser: "Exited and removed worktree",
-    plannerToolNames: ["SHELL", "WORKTREE", "REPLY", "IGNORE", "STOP"],
+    plannerToolNames: codingToolsPlannerToolNames,
   },
 ];
 
@@ -601,6 +615,18 @@ export default scenario({
         if (typeof sandbox?.addRoot !== "function") {
           return "coding-tools sandbox service unavailable";
         }
+        // The runner owns room/world/principal id derivation and publishes the
+        // resolved ids on the context before seeds run. Re-deriving them here
+        // would fork that contract: when the executor renamed the connector
+        // account namespace, this scenario's local copy silently addressed a
+        // *different* principal and joined a third participant to a two-party
+        // DM, which fails the executor's own audience attestation at turn 1.
+        const roomId = ctx.roomIds?.[ROOM];
+        const worldId = ctx.roomWorldIds?.[ROOM];
+        const userId = ctx.roomEntityIds?.[ROOM];
+        if (!roomId || !worldId || !userId) {
+          return `scenario context is missing runner-resolved ids for room "${ROOM}"`;
+        }
         sandbox.addRoot(roomId, tmpRoot);
         session.setCwd(roomId, repoRoot);
         await runtime.ensureConnection?.({
@@ -647,7 +673,7 @@ export default scenario({
   ],
   rooms: [
     {
-      id: "main",
+      id: ROOM,
       source: "telegram",
       title: "Deterministic Coding Tools",
     },

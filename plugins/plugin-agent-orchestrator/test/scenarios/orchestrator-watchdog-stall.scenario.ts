@@ -275,7 +275,7 @@ export default scenario({
   tags: ["orchestrator", "watchdog", "stall", "caps", "pr", "deterministic"],
   isolation: "shared-runtime",
   requires: {
-    plugins: [WATCHDOG_SCENARIO_PLUGIN_NAME],
+    fixturePlugins: [WATCHDOG_SCENARIO_PLUGIN_NAME],
   },
   seed: [
     {

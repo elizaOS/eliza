@@ -11,10 +11,15 @@
  *
  * Assertion strategy:
  *   - Mechanical (load-bearing): `responseExcludes` RegExps forbid a broad set
- *     of memory-machinery verbs/nouns on both turns; turn 1 must accept the new
- *     fact ("atlanta").
+ *     of memory-machinery verbs/nouns on both turns; both turns also forbid
+ *     re-asserting the stale "houston" fact the user just corrected. (Turn 1
+ *     does NOT mechanically require "atlanta" in the reply: the user states
+ *     that word in the very turn being graded, so the check could never fail
+ *     for the real reason — see echo-assertion-integrity.test.ts. Whether the
+ *     correction itself was registered is left to the judge, below.)
  *   - Qualitative: judgeRubric confirms the correction is accepted gracefully,
- *     like a person, with no machinery talk.
+ *     like a person, with the new fact (Atlanta) actually registered and no
+ *     machinery talk.
  *
  * Synthetic persona (Marcus Oyelaran, invented). No real data.
  */
@@ -76,8 +81,13 @@ export default scenario({
       name: "user-corrects-fact",
       room: "main",
       text: "btw funke moved to atlanta back in july, you keep saying houston",
-      responseIncludesAny: ["atlanta"],
-      responseExcludes: [MACHINERY],
+      // "atlanta" is not asserted here: the user's own turn text contains it,
+      // so a parroting reply would pass trivially — judgeRubric grades
+      // whether the correction actually landed. "houston" (the stale value
+      // being corrected) IS a real check: it's not enough to avoid saying it
+      // by accident, an echoing reply that repeats the user's own message
+      // back would still contain it and correctly fail here.
+      responseExcludes: [MACHINERY, /houston/i],
       assertResponse: (text: string) => {
         if (text.length > 300) {
           return `a human correction-ack should be brief (<=300 chars), got ${text.length}`;

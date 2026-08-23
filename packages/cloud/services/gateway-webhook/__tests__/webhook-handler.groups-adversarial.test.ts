@@ -9,11 +9,7 @@
  * edge-forward.
  */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import type {
-  ChatEvent,
-  PlatformAdapter,
-  WebhookConfig,
-} from "../src/adapters/types";
+import type { ChatEvent, PlatformAdapter } from "../src/adapters/types";
 import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";

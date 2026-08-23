@@ -37,7 +37,11 @@ export default defineConfig({
 	},
 	test: {
 		environment: "node",
-		include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+		include: [
+			"__tests__/**/*.test.ts",
+			"models/**/*.test.ts",
+			"src/**/*.test.ts",
+		],
 		// `*.real.test.ts` are kept in: they self-skip keyless (describe.skipIf)
 		// and run live only in the nightly external-api-live-drift lane.
 		// `*.real.test.ts` boot a real PGLite runtime and need the workspace

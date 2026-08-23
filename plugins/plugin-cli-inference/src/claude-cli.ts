@@ -3,7 +3,7 @@ import { closeSync, openSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import { flattenPrompt } from "./prompt-flatten";
 import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 import { filterEnv, redactStderr, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
@@ -289,7 +289,7 @@ export class ClaudeCli {
       const text = stripSystemReminderBlocks(result.stdout).trim();
       const apiError = parseProviderApiErrorText(text);
       if (apiError) {
-        throw new ProviderApiError(`[cli-inference] claude upstream ${text.slice(0, 160)}`, {
+        throw new ProviderApiError(`[cli-inference] claude upstream ${toWellFormedUnicode(text)}`, {
           statusCode: apiError.statusCode,
         });
       }

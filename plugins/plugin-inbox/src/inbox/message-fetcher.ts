@@ -774,7 +774,17 @@ export async function fetchAllMessages(
     (result): result is InboxSourceFetchResult => result !== null,
   );
   const combined = results.flatMap((result) => result.messages);
-  combined.sort((a, b) => b.timestamp - a.timestamp);
+  combined.sort((a, b) => {
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    return bTime - aTime;
+  });
   return {
     messages: opts.limit ? combined.slice(0, opts.limit) : combined,
     sources: results.map((result) => result.status),

@@ -57,7 +57,7 @@ export const Grid: Story = {
         value="842"
         color="text-emerald-500"
       />
-      <MiniStatCard label="Avg latency" value="184ms" color="text-sky-500" />
+      <MiniStatCard label="Avg latency" value="184ms" color="text-accent" />
       <MiniStatCard label="Errors" value="3" color="text-rose-500" />
     </div>
   ),

@@ -303,7 +303,11 @@ function latestTerminalEvent(
 ): OrchestratorTaskEvent | undefined {
   const terminal = [...events]
     .filter((event) => TERMINAL_EVENTS.has(event.eventType))
-    .sort((a, b) => b.timestamp - a.timestamp);
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.timestamp) ? b.timestamp : 0) -
+        (Number.isFinite(a.timestamp) ? a.timestamp : 0),
+    );
   const preferred =
     taskStatus === "done" || taskStatus === "validating"
       ? ["task_complete"]

@@ -121,13 +121,44 @@ export async function scoreMessages(
  * total order, and a missing score carries no relationship information.
  */
 export function rankScored(messages: MessageRef[]): MessageRef[] {
-	return [...messages].sort((a, b) => {
-		if (a.receivedAtMs !== b.receivedAtMs) {
-			return b.receivedAtMs - a.receivedAtMs;
-		}
-		return (
-			(b.triageScore?.contactWeight ?? DEFAULT_CONTACT_WEIGHT) -
-			(a.triageScore?.contactWeight ?? DEFAULT_CONTACT_WEIGHT)
-		);
-	});
+	return [...messages].sort(compareMessageRefsByRecency);
+}
+
+/**
+ * `receivedAtMs` is supplied by whichever message adapter produced the ref, so
+ * a malformed upstream date can arrive non-finite — first-party adapters
+ * already coerce it (see the `Number.isFinite` guard in the X adapter). A
+ * non-finite stamp reaching the raw subtraction returns NaN, and
+ * `Array.prototype.sort` treats NaN as "leave as is", which corrupts the order
+ * of every pair the bad ref is compared against rather than just that ref.
+ * Note `NaN !== NaN` is true, so an equality guard does not catch it.
+ */
+function receivedAtSortKey(ref: MessageRef): number {
+	return Number.isFinite(ref.receivedAtMs) ? ref.receivedAtMs : 0;
+}
+
+/** Contact weight is model/relationship derived and may be absent or NaN. */
+function contactWeightSortKey(ref: MessageRef): number {
+	const weight = ref.triageScore?.contactWeight;
+	return typeof weight === "number" && Number.isFinite(weight)
+		? weight
+		: DEFAULT_CONTACT_WEIGHT;
+}
+
+/**
+ * Total order for the triage feed: newest first, contact weight breaking
+ * ties, then id so the result is deterministic for otherwise-equal refs.
+ * Shared with `triage-service` so both feed paths order identically.
+ */
+export function compareMessageRefsByRecency(
+	a: MessageRef,
+	b: MessageRef,
+): number {
+	const aAt = receivedAtSortKey(a);
+	const bAt = receivedAtSortKey(b);
+	if (aAt !== bAt) return bAt - aAt;
+	const weightDelta = contactWeightSortKey(b) - contactWeightSortKey(a);
+	if (weightDelta !== 0) return weightDelta;
+	// Code-unit comparison keeps the tie-break locale-independent.
+	return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

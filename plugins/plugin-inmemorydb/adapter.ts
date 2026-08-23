@@ -365,6 +365,24 @@ function levenshtein(a: string, b: string): number {
 // Adapter
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Newest-first `(createdAt DESC, id DESC)` ordering, matching what the SQL
+ * adapters return for the unpaginated memory reads. A non-finite `createdAt`
+ * is normalised to `0` so the comparator never returns `NaN` — a `NaN` result
+ * makes `Array#sort` treat the pair as equal and leave surrounding runs in an
+ * engine-defined order, so one corrupted row silently reorders its neighbours.
+ * Ids break timestamp ties through the same case-insensitive comparison
+ * PostgreSQL applies.
+ */
+function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): number {
+  const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
+  const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
+  if (ta !== tb) return tb - ta;
+  const aId = typeof a.id === "string" ? a.id : "";
+  const bId = typeof b.id === "string" ? b.id : "";
+  return compareMemoryIds(bId, aId);
+}
+
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
@@ -1070,8 +1088,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     const direction = params.orderDirection ?? "desc";
     memories.sort((a, b) => {
-      const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
-      const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
+      const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
+      const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";
@@ -1126,7 +1144,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
       return true;
     });
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort(compareStoredMemoriesNewestFirst);
     const offset = typeof params.offset === "number" ? params.offset : 0;
     let sliced = offset > 0 ? memories.slice(offset) : memories;
     if (params.limit !== undefined) sliced = sliced.slice(0, params.limit);
@@ -1397,7 +1415,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
         (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
     );
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort(compareStoredMemoriesNewestFirst);
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;
     return sliced.map(toMemory);
   }

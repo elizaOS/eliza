@@ -3,8 +3,7 @@ import {
 	decodeCallback,
 	encodeReplyCallback,
 	isInteractionCallback,
-	MAX_CALLBACK_BYTES,
-} from "./callback.ts";
+} from "../callback.ts";
 
 describe("encodeReplyCallback", () => {
 	it("encodes within the default 64-byte limit", () => {

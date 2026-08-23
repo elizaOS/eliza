@@ -499,7 +499,16 @@ export async function handleViewsRoutes(
 
     const results = combined
       .filter((r) => r.score > 5)
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        const bScore =
+          typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+        const aScore =
+          typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+        return (
+          bScore - aScore ||
+          String(a.view.id ?? "").localeCompare(String(b.view.id ?? ""))
+        );
+      })
       .slice(0, topK)
       .map(({ view, score }) => ({ ...view, _score: Math.round(score) }));
 

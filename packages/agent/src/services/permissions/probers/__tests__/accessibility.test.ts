@@ -5,44 +5,47 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./services/permissions/probers/_bridge.js", () => ({
-  IS_DARWIN: true,
+const mockPlatform = vi.hoisted(() => ({ isDarwin: true }));
+
+vi.mock("../_bridge.js", () => ({
+  get IS_DARWIN() {
+    return mockPlatform.isDarwin;
+  },
   buildState: (
     id: string,
-    state: string,
+    status: string,
     extra: Record<string, unknown> = {},
   ) => ({
     id,
-    state,
+    status,
     ...extra,
   }),
   getNativeDylib: vi.fn(),
-  platformUnsupportedState: (id: string) => ({ id, state: "unsupported" }),
+  platformUnsupportedState: (id: string) => ({
+    id,
+    status: "not-applicable",
+  }),
   queryTccStatus: vi.fn(),
   resolveBundleId: vi.fn(() => "com.example.app"),
 }));
 
-import {
-  getNativeDylib,
-  IS_DARWIN,
-  queryTccStatus,
-} from "./services/permissions/probers/_bridge.js";
-import { accessibilityProber } from "./services/permissions/probers/accessibility.ts";
+import { getNativeDylib, queryTccStatus } from "../_bridge.js";
+import { accessibilityProber } from "../accessibility.ts";
 
 const mockGetDylib = vi.mocked(getNativeDylib);
 const mockQueryTcc = vi.mocked(queryTccStatus);
 
 describe("accessibilityProber.check", () => {
   beforeEach(() => {
+    mockPlatform.isDarwin = true;
     mockGetDylib.mockReset();
     mockQueryTcc.mockReset();
   });
 
   it("returns unsupported on non-Darwin platforms", async () => {
-    (IS_DARWIN as boolean) = false;
+    mockPlatform.isDarwin = false;
     const state = await accessibilityProber.check();
-    expect(state.state).toBe("unsupported");
-    (IS_DARWIN as boolean) = true;
+    expect(state.status).toBe("not-applicable");
   });
 
   it("returns granted when the native check is true", async () => {
@@ -50,7 +53,7 @@ describe("accessibilityProber.check", () => {
       checkAccessibilityPermission: () => true,
     } as never);
     const state = await accessibilityProber.check();
-    expect(state.state).toBe("granted");
+    expect(state.status).toBe("granted");
     expect(state.canRequest).toBe(false);
     expect(mockQueryTcc).not.toHaveBeenCalled();
   });
@@ -59,7 +62,7 @@ describe("accessibilityProber.check", () => {
     mockGetDylib.mockResolvedValue(null);
     mockQueryTcc.mockResolvedValue("not-determined" as never);
     const state = await accessibilityProber.check();
-    expect(state.state).toBe("not-determined");
+    expect(state.status).toBe("not-determined");
     expect(state.canRequest).toBe(true);
   });
 
@@ -69,7 +72,7 @@ describe("accessibilityProber.check", () => {
     } as never);
     mockQueryTcc.mockResolvedValue("denied" as never);
     const state = await accessibilityProber.check();
-    expect(state.state).toBe("denied");
+    expect(state.status).toBe("denied");
     expect(state.canRequest).toBe(false);
   });
 
@@ -79,21 +82,21 @@ describe("accessibilityProber.check", () => {
     } as never);
     mockQueryTcc.mockResolvedValue("granted" as never);
     const state = await accessibilityProber.check();
-    expect(state.state).toBe("granted");
+    expect(state.status).toBe("granted");
   });
 });
 
 describe("accessibilityProber.request", () => {
   beforeEach(() => {
+    mockPlatform.isDarwin = true;
     mockGetDylib.mockReset();
     mockQueryTcc.mockReset();
   });
 
   it("returns unsupported on non-Darwin", async () => {
-    (IS_DARWIN as boolean) = false;
+    mockPlatform.isDarwin = false;
     const state = await accessibilityProber.request({ reason: "test" });
-    expect(state.state).toBe("unsupported");
-    (IS_DARWIN as boolean) = true;
+    expect(state.status).toBe("not-applicable");
   });
 
   it("invokes the native request and returns the re-checked state with lastRequested", async () => {
@@ -105,7 +108,7 @@ describe("accessibilityProber.request", () => {
     mockQueryTcc.mockResolvedValue("not-determined" as never);
     const state = await accessibilityProber.request({ reason: "test" });
     expect(requestAccessibilityPermission).toHaveBeenCalledTimes(1);
-    expect(state.state).toBe("not-determined");
+    expect(state.status).toBe("not-determined");
     expect(state.lastRequested).toBeTypeOf("number");
   });
 });

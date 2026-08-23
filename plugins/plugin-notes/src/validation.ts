@@ -5,7 +5,11 @@
  * by an apparently healthy empty state.
  */
 
-import { ElizaError } from "@elizaos/core";
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   type CreateNoteInput,
   NOTES_SCHEMA_VERSION,
@@ -111,9 +115,9 @@ export function parseNoteContent(
     maxLength: MAX_NOTE_CONTENT_LENGTH,
   });
   const [firstLine = "", ...remainingLines] = content.split(/\r?\n/);
-  const trimmedFirstLine = firstLine.trim();
-  const title = trimmedFirstLine.slice(0, MAX_TITLE_LENGTH).trim();
-  const overflow = trimmedFirstLine.slice(MAX_TITLE_LENGTH).trim();
+  const safeFirstLine = toWellFormedUnicode(firstLine.trim());
+  const title = truncateWellFormed(safeFirstLine, MAX_TITLE_LENGTH).trim();
+  const overflow = safeFirstLine.slice(title.length).trim();
   const body = [overflow, ...remainingLines].join("\n").trim();
   return {
     title: parseRequiredTitle(title, `${field}.firstLine`),

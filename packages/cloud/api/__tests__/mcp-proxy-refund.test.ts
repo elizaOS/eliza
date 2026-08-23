@@ -539,7 +539,7 @@ test("malformed UTF-8 request body returns 400, refunds exact receipt, and skips
     body: malformed as unknown as string,
   });
   expect(res.status).toBe(400);
-  expect(await res.json()).toEqual({
+  expect((await res.json()) as { error: string }).toEqual({
     error: "MCP request body is not valid UTF-8",
   });
   expect(refundCredits).toHaveBeenCalledWith(
@@ -572,7 +572,7 @@ test("malformed UTF-8 upstream response returns 502, refunds exact receipt, and 
   );
   const res = await post();
   expect(res.status).toBe(502);
-  expect(await res.json()).toEqual({
+  expect((await res.json()) as { error: string }).toEqual({
     error: "MCP response is not valid UTF-8",
   });
   expect(refundCredits).toHaveBeenCalledWith(

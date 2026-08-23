@@ -192,6 +192,14 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
         pluginId,
         {},
       );
+      if (result.ok !== true) {
+        throw new Error(
+          result.error?.trim() ||
+            t("connectorcard.AuthorizeRejected", {
+              defaultValue: "The connector could not start authorization.",
+            }),
+        );
+      }
       if (!isHttpsUrl(result.authUrl)) {
         throw new Error(
           result.error ??
@@ -234,9 +242,41 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
           const value = tokenValues[field.key];
           if (value != null && value !== "") secrets[field.key] = value;
         }
-        await client.updateSecrets(secrets);
-        await client.updatePlugin(pluginId, { enabled: true });
-        await loadPlugins();
+        const secretResult = await client.updateSecrets(secrets);
+        if (secretResult.ok !== true) {
+          throw new Error(
+            t("connectorcard.SecretSaveRejected", {
+              defaultValue: "The token could not be saved. Try again.",
+            }),
+          );
+        }
+        const missingSecretKeys = Object.keys(secrets).filter(
+          (key) => !secretResult.updated.includes(key),
+        );
+        if (missingSecretKeys.length > 0) {
+          throw new Error(
+            t("connectorcard.SecretSaveUnconfirmed", {
+              defaultValue:
+                "The agent did not confirm saving every required token. Try again.",
+            }),
+          );
+        }
+
+        const enableResult = await client.updatePlugin(pluginId, {
+          enabled: true,
+        });
+        if (enableResult.ok !== true) {
+          const detail =
+            enableResult.error?.trim() || enableResult.message?.trim();
+          throw new Error(
+            t("connectorcard.EnableRejectedAfterSave", {
+              defaultValue:
+                "The token was saved, but the connector could not be enabled{{detail}}",
+              detail: detail ? `: ${detail}` : ". Try again.",
+            }),
+          );
+        }
+
         if (mountedRef.current) {
           setTokenValues({});
           setTokenFormOpen(false);
@@ -244,6 +284,20 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
           setPlugin((prev) =>
             prev ? { ...prev, enabled: true, configured: true } : prev,
           );
+        }
+        try {
+          await loadPlugins();
+        } catch {
+          // error-policy:J4 both mutations succeeded, but global status refresh
+          // failed; keep the successful local state and make reconciliation visible.
+          if (mountedRef.current) {
+            setError(
+              t("connectorcard.RefreshFailedAfterSave", {
+                defaultValue:
+                  "Connected, but the connector list could not be refreshed.",
+              }),
+            );
+          }
         }
         pollTimerRef.current = setTimeout(
           () => void fetchPlugin(),
@@ -403,7 +457,7 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
             <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
             {t("connectorcard.StorageNote", {
               defaultValue:
-                "Stored encrypted in the agent's secret store — never posted to chat.",
+                "Sent directly to the agent — never posted to chat.",
             })}
           </div>
         </form>

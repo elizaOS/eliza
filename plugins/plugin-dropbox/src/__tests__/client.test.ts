@@ -414,5 +414,8 @@ describe("helpers", () => {
     );
     expect(dropboxDeepLink("/A B", "folder")).toBe("https://www.dropbox.com/home/A%20B");
     expect(dropboxDeepLink("", "folder")).toBe("https://www.dropbox.com/home");
+    expect(dropboxDeepLink("/A \uD83D/c.txt", "file")).toBe(
+      "https://www.dropbox.com/home/A%20%EF%BF%BD?preview=c.txt"
+    );
   });
 });

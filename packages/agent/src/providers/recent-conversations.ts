@@ -152,7 +152,17 @@ export const recentConversationsProvider: Provider = {
           (m) =>
             Boolean(m.content.text) || (m.content.attachments?.length ?? 0) > 0,
         )
-        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+        .sort((a, b) => {
+          const aTime =
+            typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+              ? a.createdAt
+              : 0;
+          const bTime =
+            typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+              ? b.createdAt
+              : 0;
+          return bTime - aTime;
+        });
 
       if (sorted.length === 0) {
         return { text: "", values: {}, data: {} };

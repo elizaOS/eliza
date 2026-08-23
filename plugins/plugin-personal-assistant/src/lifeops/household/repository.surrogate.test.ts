@@ -18,7 +18,7 @@ function isWellFormed(s: string): boolean {
 
 describe("household repository surrogate handling", () => {
   it("512 backs off at surrogate", () => {
-    const input = "a".repeat(511) + "🦊" + "b".repeat(20);
+    const input = `${"a".repeat(511)}🦊${"b".repeat(20)}`;
     const out = truncate512(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(512);
@@ -26,14 +26,14 @@ describe("household repository surrogate handling", () => {
   });
 
   it("512 preserves fitting emoji", () => {
-    const input = "a".repeat(510) + "🦊";
+    const input = `${"a".repeat(510)}🦊`;
     const out = truncate512(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(510) + "🦊");
+    expect(out).toBe(`${"a".repeat(510)}🦊`);
   });
 
   it("sanitizes lone surrogate", () => {
-    const lone = "error \ud800 details " + "a".repeat(1000);
+    const lone = `error \ud800 details ${"a".repeat(1000)}`;
     const out = truncate512(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

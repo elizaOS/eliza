@@ -51,4 +51,21 @@ describe("inferSpeakerName borrowed-device precedence", () => {
     expect(result.reasonCodes).toContain("user_correction_applied");
     expect(result.bindingPlan.action).toBe("create_entity");
   });
+
+  it("sorts equal-score candidates deterministically by normalized name", () => {
+    const result = inferSpeakerName({
+      speakerId: "speaker-1",
+      evidence: [
+        { source: "platform_roster", confidence: 0.8, name: "B Speaker" },
+        { source: "platform_roster", confidence: 0.8, name: "A Speaker" },
+        { source: "platform_roster", confidence: 0.9, name: "C Speaker" },
+      ],
+    });
+
+    expect(result.candidateNames.map((candidate) => candidate.name)).toEqual([
+      "C Speaker",
+      "A Speaker",
+      "B Speaker",
+    ]);
+  });
 });

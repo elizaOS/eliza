@@ -15,14 +15,24 @@ describe("recentConversationTextsFromState", () => {
 	it("preserves identical wording across mixed sources (#24858)", () => {
 		// Identical text arriving via state.values.recentMessages and via a
 		// memory row must both be preserved, not collapsed.
+		// The memory row must sit on the canonical provider path that
+		// `getRecentMessagesData` reads; no other location is populated.
 		const state = {
 			values: { recentMessages: "repeat this" },
-			recentMessages: [
-				{
-					id: "m1",
-					content: { text: "repeat this" },
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									id: "m1",
+									content: { text: "repeat this" },
+								},
+							],
+						},
+					},
 				},
-			],
+			},
 		} as never;
 
 		const result = recentConversationTextsFromState(state);
@@ -37,9 +47,6 @@ describe("recentConversationTextsFromState", () => {
 		const state = {
 			values: { recentMessages: "Alice: Hello\n\nBob: World" },
 		} as never;
-		expect(recentConversationTextsFromState(state)).toEqual([
-			"Hello",
-			"World",
-		]);
+		expect(recentConversationTextsFromState(state)).toEqual(["Hello", "World"]);
 	});
 });

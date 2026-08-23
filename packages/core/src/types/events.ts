@@ -6,6 +6,7 @@
  */
 import type { HandlerCallback } from "./components";
 import type { Entity, Room, World } from "./environment";
+import type { MembershipMutationReceipt, MembershipScope } from "./membership";
 import type { Memory } from "./memory";
 import type { ControlMessage } from "./messaging";
 import type {
@@ -31,6 +32,7 @@ export enum EventType {
 	ENTITY_JOINED = "ENTITY_JOINED",
 	ENTITY_LEFT = "ENTITY_LEFT",
 	ENTITY_UPDATED = "ENTITY_UPDATED",
+	MEMBERSHIP_AUTHORITY_CHANGED = "MEMBERSHIP_AUTHORITY_CHANGED",
 
 	// Room events
 	ROOM_JOINED = "ROOM_JOINED",
@@ -192,6 +194,12 @@ export interface EntityPayload extends EventPayload {
 	};
 }
 
+/** Emitted only after authority commit and local authorization-cache invalidation. */
+export interface MembershipAuthorityChangedPayload extends EventPayload {
+	scope: MembershipScope;
+	receipt: MembershipMutationReceipt;
+}
+
 /**
  * Payload for reaction-related events
  */
@@ -250,6 +258,7 @@ export type RunEventStatus =
 	| "muted"
 	| "personality_gate"
 	| "bot_noise_triage"
+	| "bot_loop_gate"
 	| "replaced"
 	| "noMessageId";
 
@@ -797,6 +806,7 @@ export interface EventPayloadMap {
 	[EventType.ENTITY_JOINED]: EntityPayload;
 	[EventType.ENTITY_LEFT]: EntityPayload;
 	[EventType.ENTITY_UPDATED]: EntityPayload;
+	[EventType.MEMBERSHIP_AUTHORITY_CHANGED]: MembershipAuthorityChangedPayload;
 	[EventType.MESSAGE_RECEIVED]: MessagePayload;
 	[EventType.MESSAGE_SENT]: MessagePayload;
 	[EventType.MESSAGE_DELETED]: MessagePayload;

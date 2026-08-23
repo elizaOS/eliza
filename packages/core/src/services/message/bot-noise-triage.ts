@@ -109,6 +109,24 @@ function senderNameOf(message: Memory): string {
 	return "bot";
 }
 
+/**
+ * Chronological (oldest-first) ordering for the triage history block.
+ *
+ * The result is rendered straight into a model prompt, so the order is
+ * load-bearing: newest-first would present the conversation backwards. A
+ * missing or non-finite `createdAt` (a corrupted row, or a `Number(...)`
+ * conversion that produced `NaN`) is normalised to `0` so the comparator never
+ * returns `NaN` — a `NaN` comparator result makes `Array#sort` leave the pair
+ * in an engine-defined order. Equal timestamps fall back to the id so a batch
+ * written in the same millisecond still renders deterministically.
+ */
+export function compareMemoryByCreatedAt(a: Memory, b: Memory): number {
+	const aSafe = Number.isFinite(a.createdAt) ? (a.createdAt as number) : 0;
+	const bSafe = Number.isFinite(b.createdAt) ? (b.createdAt as number) : 0;
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
 function historyLine(runtime: IAgentRuntime, memory: Memory): string | null {
 	const text =
 		typeof memory.content?.text === "string" ? memory.content.text : "";
@@ -174,7 +192,7 @@ export async function runBotNoiseTriage(
 		});
 		historyLines = recent
 			.filter((memory) => memory.id !== message.id)
-			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+			.sort(compareMemoryByCreatedAt)
 			.map((memory) => historyLine(runtime, memory))
 			.filter((line): line is string => line !== null);
 	} catch (error) {

@@ -981,9 +981,31 @@ function recommendedChatModel(): CatalogModel | null {
 	const totalRamGb = os.totalmem() / 1024 ** 3;
 	const candidates = chatModels()
 		.filter((model) => totalRamGb >= model.minRamGb)
-		.sort((left, right) => right.sizeGb - left.sizeGb);
+		.sort((left, right) => {
+			const rightSize =
+				typeof right.sizeGb === "number" && Number.isFinite(right.sizeGb)
+					? right.sizeGb
+					: 0;
+			const leftSize =
+				typeof left.sizeGb === "number" && Number.isFinite(left.sizeGb)
+					? left.sizeGb
+					: 0;
+			return rightSize - leftSize || left.id.localeCompare(right.id);
+		});
 	return (
-		candidates[0] ?? chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0] ?? null
+		candidates[0] ??
+		chatModels().sort((a, b) => {
+			const aSize =
+				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
+					? a.sizeGb
+					: 0;
+			const bSize =
+				typeof b.sizeGb === "number" && Number.isFinite(b.sizeGb)
+					? b.sizeGb
+					: 0;
+			return aSize - bSize || a.id.localeCompare(b.id);
+		})[0] ??
+		null
 	);
 }
 
@@ -1145,7 +1167,17 @@ async function resolveDefaultChatModel(
 			CATALOG.find((model) => model.id === entry.id && model.role === "chat"),
 		)
 		.filter((model): model is CatalogModel => Boolean(model))
-		.sort((a, b) => a.sizeGb - b.sizeGb)[0];
+		.sort((a, b) => {
+			const aSize =
+				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
+					? a.sizeGb
+					: 0;
+			const bSize =
+				typeof b.sizeGb === "number" && Number.isFinite(b.sizeGb)
+					? b.sizeGb
+					: 0;
+			return aSize - bSize || a.id.localeCompare(b.id);
+		})[0];
 	return installedCatalog ?? recommendedChatModel();
 }
 
@@ -1779,22 +1811,30 @@ export async function handleLocalInferenceRoutes(
 			sendJsonError(res, "slot is required");
 			return true;
 		}
-		const assignments = await readAssignments();
-		if (typeof body.modelId === "string" && body.modelId.trim()) {
-			const modelId = body.modelId.trim();
-			if (!isCuratedCatalogModelId(modelId)) {
-				sendJsonError(
-					res,
-					"Local inference assignments are limited to curated Eliza-1 tiers.",
-					400,
-				);
-				return true;
-			}
-			assignments[slot as keyof Assignments] = modelId;
-		} else {
-			delete assignments[slot as keyof Assignments];
+		const modelId =
+			typeof body.modelId === "string" && body.modelId.trim()
+				? body.modelId.trim()
+				: null;
+		if (modelId && !isCuratedCatalogModelId(modelId)) {
+			sendJsonError(
+				res,
+				"Local inference assignments are limited to curated Eliza-1 tiers.",
+				400,
+			);
+			return true;
 		}
-		sendJson(res, { assignments: await writeAssignments(assignments) });
+		// Read-modify-write must run inside the per-file lock: a bare
+		// readAssignments/writeAssignments pair here loses one of two
+		// concurrent POSTs to the stale pre-write snapshot (issue #25123's
+		// race, on the route that motivated it).
+		const assignments = await updateAssignments((current) => {
+			if (modelId) {
+				current[slot as keyof Assignments] = modelId;
+			} else {
+				delete current[slot as keyof Assignments];
+			}
+		});
+		sendJson(res, { assignments });
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/routing") {

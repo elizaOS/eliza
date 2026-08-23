@@ -6,6 +6,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  groupParticipantLabel,
+  resolveGroupParticipantDisplayName,
+} from "@/lib/services/shared-runtime/group-participant-labels";
 
 const resolvePersonalDelivery = mock(async () => ({
   userId: "00000000-0000-4000-8000-000000000002",
@@ -104,6 +108,51 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
 mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
   coordinateSharedHistory,
 }));
+// In-memory stand-in for the participant identity registry: ordinals are
+// assigned per binding in first-seen order and names go through the real
+// resolution rules, exactly as the repository does, so the label a turn
+// produces is deterministic in tests.
+type StubParticipant = {
+  platformUserId: string;
+  ordinal: number;
+  displayName: string | null;
+};
+const groupParticipantOrdinals = new Map<
+  string,
+  Map<string, StubParticipant>
+>();
+const recordGroupParticipantTurn = mock(
+  async ({
+    bindingId,
+    platformUserId,
+    displayName,
+  }: {
+    bindingId: string;
+    platformUserId: string;
+    displayName?: string | null;
+  }) => {
+    let binding = groupParticipantOrdinals.get(bindingId);
+    if (!binding) {
+      binding = new Map<string, StubParticipant>();
+      groupParticipantOrdinals.set(bindingId, binding);
+    }
+    const resolved = resolveGroupParticipantDisplayName({
+      candidate: displayName,
+      platformUserId,
+      roster: [...binding.values()],
+    });
+    const existing = binding.get(platformUserId);
+    binding.set(platformUserId, {
+      platformUserId,
+      ordinal: existing?.ordinal ?? binding.size + 1,
+      displayName: resolved,
+    });
+    const roster = [...binding.values()];
+    const actor = roster.find((p) => p.platformUserId === platformUserId);
+    if (!actor) throw new Error("participant registry stub lost its actor");
+    return { actor, roster };
+  },
+);
 mock.module("@/db/repositories/personal-shared-groups", () => ({
   personalSharedGroupsRepository: {
     issueClaim: issueGroupClaim,
@@ -116,6 +165,11 @@ mock.module("@/db/repositories/personal-shared-groups", () => ({
     commitDelivery: commitGroupDelivery,
     recordDeliveryReceipts: recordGroupDeliveryReceipts,
     hasDeliveryReceipt: hasGroupDeliveryReceipt,
+  },
+}));
+mock.module("@/db/repositories/personal-shared-group-participants", () => ({
+  personalSharedGroupParticipantsRepository: {
+    recordTurn: recordGroupParticipantTurn,
   },
 }));
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
@@ -188,6 +242,8 @@ const ownerBlooioGroupTurn = {
 
 describe("personal Shared group reminder destinations", () => {
   beforeEach(() => {
+    groupParticipantOrdinals.clear();
+    recordGroupParticipantTurn.mockClear();
     sharedRestMessageSend.mockClear();
     resolveGroupBinding.mockClear();
     resolveGroupBinding.mockImplementation(async () => blooioGroupBinding);
@@ -202,7 +258,10 @@ describe("personal Shared group reminder destinations", () => {
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: blooioGroupBinding.personal_agent_id }),
       blooioGroupBinding.conversation_id,
-      expect.stringMatching(/^Nubs \[participant [0-9a-f]{8}\]: /),
+      `${groupParticipantLabel({
+        ordinal: 1,
+        displayName: ownerBlooioGroupTurn.actor.displayName,
+      })}: ${ownerBlooioGroupTurn.message}`,
       "Eliza",
       runtimeExecutionCtx,
       namespace,
@@ -217,7 +276,7 @@ describe("personal Shared group reminder destinations", () => {
         ownerLabel: "Nubs",
         authority: blooioGroupAuthority,
       },
-      undefined,
+      ownerBlooioGroupTurn.message,
       { type: "GROUP", source: "blooio" },
     );
     // The response's delivery authority and the stored reminder destination

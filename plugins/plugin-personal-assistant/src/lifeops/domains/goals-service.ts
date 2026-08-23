@@ -234,11 +234,15 @@ export class GoalsDomain {
         }
       }
     }
-    views.sort(
-      (left, right) =>
-        new Date(left.updatedAt).getTime() -
-        new Date(right.updatedAt).getTime(),
-    );
+    views.sort((left, right) => {
+      const leftTime = Number.isFinite(new Date(left.updatedAt).getTime())
+        ? new Date(left.updatedAt).getTime()
+        : 0;
+      const rightTime = Number.isFinite(new Date(right.updatedAt).getTime())
+        ? new Date(right.updatedAt).getTime()
+        : 0;
+      return leftTime - rightTime;
+    });
     return views;
   }
 
@@ -1163,11 +1167,15 @@ export class GoalsDomain {
           eventUrgencies.get(reminder.ownerId) ?? "medium",
         ),
       ),
-    ].sort(
-      (left, right) =>
-        new Date(left.scheduledFor).getTime() -
-        new Date(right.scheduledFor).getTime(),
-    );
+    ].sort((left, right) => {
+      const leftTime = Number.isFinite(new Date(left.scheduledFor).getTime())
+        ? new Date(left.scheduledFor).getTime()
+        : 0;
+      const rightTime = Number.isFinite(new Date(right.scheduledFor).getTime())
+        ? new Date(right.scheduledFor).getTime()
+        : 0;
+      return leftTime - rightTime;
+    });
     const ownerSectionBase = {
       occurrences: selectOverviewOccurrences(
         overviewOccurrences.filter(

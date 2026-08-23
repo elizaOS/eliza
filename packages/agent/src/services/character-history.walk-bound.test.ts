@@ -473,8 +473,12 @@ describe("character-history fail-closed walk", () => {
       expect(Object.getPrototypeOf(walkedNested)).toBeNull();
       expect(Object.hasOwn(walkedTop, "__proto__")).toBe(true);
       expect(Object.hasOwn(walkedNested, "__proto__")).toBe(true);
-      expect(walkedTop.__proto__).toEqual({ [pollutedKey]: "top" });
-      expect(walkedNested.__proto__).toEqual({ [pollutedKey]: "nested" });
+      expect(Reflect.get(walkedTop, "__proto__")).toEqual({
+        [pollutedKey]: "top",
+      });
+      expect(Reflect.get(walkedNested, "__proto__")).toEqual({
+        [pollutedKey]: "nested",
+      });
       expect(Object.hasOwn(Object.prototype, pollutedKey)).toBe(false);
     } finally {
       if (protoDesc) {

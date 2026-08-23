@@ -16,6 +16,7 @@ import {
   FORM_COMPONENT_DATA_UNBOUNDED,
   getExpiringSessions,
   getStaleSessions,
+  getSubmissions,
   MAX_FORM_COMPONENT_DATA_BYTES,
   MAX_FORM_COMPONENT_DATA_DEPTH,
   MAX_FORM_COMPONENT_DATA_NODES,
@@ -441,5 +442,41 @@ describe("form persistence staging", () => {
       context: expect.objectContaining({ reason: "nodes" }),
     });
     expectNoPersistence(runtime);
+  });
+
+  it("sorts submissions safely when submittedAt contains NaN or non-finite numbers", async () => {
+    const runtime = {
+      getComponents: vi.fn(async () => [
+        {
+          id: "c1",
+          entityId,
+          type: "form_submission:signup:sub-1",
+          data: {
+            id: "sub-1",
+            formId: "signup",
+            sessionId: "sess-1",
+            entityId,
+            submittedAt: NaN,
+          },
+        },
+        {
+          id: "c2",
+          entityId,
+          type: "form_submission:signup:sub-2",
+          data: {
+            id: "sub-2",
+            formId: "signup",
+            sessionId: "sess-2",
+            entityId,
+            submittedAt: NOW,
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const submissions = await getSubmissions(runtime, entityId, "signup");
+    expect(submissions).toHaveLength(2);
+    expect(submissions[0]?.id).toBe("sub-2");
+    expect(submissions[1]?.id).toBe("sub-1");
   });
 });

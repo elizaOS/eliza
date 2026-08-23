@@ -78,7 +78,7 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
             state === "failed"
               ? "bg-destructive"
               : state === "finished"
-                ? "bg-emerald-500"
+                ? "bg-status-success"
                 : state === "waiting"
                   ? "bg-amber-500"
                   : "animate-pulse bg-primary"

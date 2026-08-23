@@ -14,7 +14,7 @@
  * with `DROPBOX_FILE_NOT_TEXT` / `DROPBOX_FILE_TOO_LARGE` instead of returning
  * garbage, so callers can point the user at the temporary link instead.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
 import { readBoundedResponse } from "./bounded-response.js";
 import type {
   DropboxAccountRef,
@@ -503,16 +503,17 @@ function mapEntry(item: JsonRecord): DropboxEntry {
 /** Deterministic dropbox.com deep link: folders browse in /home, files preview. */
 export function dropboxDeepLink(pathDisplay: string, kind: DropboxEntry["kind"]): string {
   if (!pathDisplay) return "https://www.dropbox.com/home";
-  const encoded = pathDisplay
+  const normalized = toWellFormedUnicode(pathDisplay);
+  const encoded = normalized
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   if (kind === "folder") {
     return `https://www.dropbox.com/home${encoded}`;
   }
-  const lastSlash = pathDisplay.lastIndexOf("/");
-  const parent = pathDisplay.slice(0, Math.max(lastSlash, 0));
-  const file = pathDisplay.slice(lastSlash + 1);
+  const lastSlash = normalized.lastIndexOf("/");
+  const parent = normalized.slice(0, Math.max(lastSlash, 0));
+  const file = normalized.slice(lastSlash + 1);
   const encodedParent = parent
     .split("/")
     .map((segment) => encodeURIComponent(segment))

@@ -28,8 +28,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { EvidenceError } from "../../errors.ts";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { EvidenceError } from "../../errors.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -693,5 +693,8 @@ function isEnoent(error: unknown): boolean {
 }
 
 function errMessage(error: unknown): string {
-  return truncateWellFormed(toWellFormedUnicode(String(error instanceof Error ? error.message : error)), 160);
+  return truncateWellFormed(
+    toWellFormedUnicode(String(error instanceof Error ? error.message : error)),
+    160,
+  );
 }

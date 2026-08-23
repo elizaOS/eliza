@@ -46,4 +46,28 @@ describe("workThreads provider rendering", () => {
     for (const item of threads) expect(text).toContain(item.id);
     expect(text).not.toContain("(+");
   });
+
+  it("sorts threads safely when lastActivityAt contains invalid date strings", () => {
+    const threadInvalid = thread(1);
+    threadInvalid.lastActivityAt = "invalid-date-string";
+    const threadValid = thread(2);
+    threadValid.lastActivityAt = "2026-08-20T12:00:00.000Z";
+
+    const threads = [threadInvalid, threadValid].sort((a, b) => {
+      const bTime =
+        typeof b.lastActivityAt === "string" &&
+        Number.isFinite(Date.parse(b.lastActivityAt))
+          ? Date.parse(b.lastActivityAt)
+          : 0;
+      const aTime =
+        typeof a.lastActivityAt === "string" &&
+        Number.isFinite(Date.parse(a.lastActivityAt))
+          ? Date.parse(a.lastActivityAt)
+          : 0;
+      return bTime - aTime || a.id.localeCompare(b.id);
+    });
+
+    expect(threads[0]?.id).toBe(threadValid.id);
+    expect(threads[1]?.id).toBe(threadInvalid.id);
+  });
 });

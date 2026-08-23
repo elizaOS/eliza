@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/gateway-webhook",
+  "private": true,
   "version": "1.0.0",
   "description": "Multi-platform webhook gateway for Eliza Cloud (Telegram, Blooio, Twilio, WhatsApp)",
   "type": "module",
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@elizaos/cloud-services-common": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "@upstash/redis": "^1.37.0",
     "hashring": "^3.2.0",
     "hono": "4.13.1",

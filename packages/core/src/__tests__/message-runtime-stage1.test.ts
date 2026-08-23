@@ -4048,9 +4048,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).toContain(
 			"Never send a status update, a progress note, or a description of your own process",
 		);
-		// The policy is planner-scoped: Stage 1 already has the group-triage
-		// tier for ambient turns and its prompt stays byte-identical.
-		expect(stage1Content).not.toContain("ambient_turn_policy");
+		// Stage 1 carries the same policy in shouldRespond terms (the planner
+		// wording names the IGNORE tool, which Stage 1 cannot call): an
+		// ambient-mode group forwards every message, and without this the
+		// shouldRespond field guidance alone read as RESPOND on nearly all of
+		// them (live five-room evaluation: 7-10 unsolicited replies per room).
+		expect(stage1Content).toContain("ambient_turn_policy:");
+		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).not.toContain(
+			"end the turn by calling the IGNORE tool",
+		);
 		// Deliberate planner silence records as a terminal IGNORE — the same
 		// observable outcome a Stage-1 IGNORE gets — not a silent drop.
 		expect(result.kind).toBe("terminal");
@@ -7305,6 +7312,24 @@ function withReplyGateMode(
 	return runtime;
 }
 
+function withReplyGateSlots(
+	runtime: IAgentRuntime,
+	userMode: string,
+	globalMode: string,
+): IAgentRuntime {
+	(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+		(type: string) =>
+			type === "PERSONALITY_STORE"
+				? {
+						getSlot: (id: UUID | "global") => ({
+							reply_gate: id === "global" ? globalMode : userMode,
+						}),
+					}
+				: null,
+	);
+	return runtime;
+}
+
 describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	// Live incident: in a busy multi-user group channel the agent replied to
 	// turns its own Stage-1 output tagged as addressed to another participant
@@ -7565,7 +7590,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	});
 
 	it("bypasses the gate when the effective personality reply_gate is an explicit 'always'", async () => {
-		const runtime = withReplyGateMode(
+		const runtime = withReplyGateSlots(
 			withRoomEntities(
 				makeRuntime([
 					stage1Response({
@@ -7577,6 +7602,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				]),
 			),
 			"always",
+			"addressed_or_ambient",
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -7591,6 +7617,118 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Jumping in anyway!");
 		}
+		const stage1Params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).not.toContain("ambient_turn_policy:");
+	});
+
+	it("does not inject ambient policy for canonical or configured response bypasses", async () => {
+		const cases = [
+			{
+				label: "scheduled trigger",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trigger-prompt",
+				},
+				settings: undefined,
+			},
+			{
+				label: "configured source",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trusted_dispatch",
+				},
+				settings: { ALWAYS_RESPOND_SOURCES: "trusted_dispatch" },
+			},
+			{
+				label: "configured channel",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "test",
+				},
+				settings: { ALWAYS_RESPOND_CHANNELS: "group" },
+			},
+		] satisfies Array<{
+			label: string;
+			content: Partial<Memory["content"]>;
+			settings: Record<string, string> | undefined;
+		}>;
+
+		for (const testCase of cases) {
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						thought: "Bypass response.",
+						contexts: ["simple"],
+						replyText: "Delivered.",
+					}),
+				],
+				testCase.settings,
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(testCase.content),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000bd" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages?: Array<{ content?: string | null }>;
+			};
+			const prompt = (params.messages ?? [])
+				.map((entry) => entry.content ?? "")
+				.join("\n");
+
+			expect(result.kind, testCase.label).toBe("direct_reply");
+			expect(prompt, testCase.label).not.toContain("ambient_turn_policy:");
+		}
+	});
+
+	it("fails open without ambient silence when personality lookup throws", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Personality state is unavailable.",
+				contexts: ["simple"],
+				replyText: "Still delivered.",
+			}),
+		]);
+		(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+			(type: string) =>
+				type === "PERSONALITY_STORE"
+					? {
+							getSlot: () => {
+								throw new Error("personality store unavailable");
+							},
+						}
+					: null,
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ambient group message",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000be" as UUID,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const prompt = (params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+
+		expect(result.kind).toBe("direct_reply");
+		expect(prompt).not.toContain("ambient_turn_policy:");
+		expect(reportErrorCalls(runtime)).toContainEqual([
+			"MessageService.resolveAmbientReplyGate",
+			expect.any(Error),
+			expect.objectContaining({ roomId: expect.any(String) }),
+		]);
 	});
 
 	it("keeps the gate armed under reply_gate 'addressed_or_ambient' (only 'always' bypasses)", async () => {

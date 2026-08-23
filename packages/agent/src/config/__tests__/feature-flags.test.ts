@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   isCloudWalletEnabled,
   isLegacyAppsWorkspaceDiscoveryEnabled,
-} from "./feature-flags.ts";
+} from "../feature-flags.ts";
 
 const KEYS = [
   "ENABLE_CLOUD_WALLET",

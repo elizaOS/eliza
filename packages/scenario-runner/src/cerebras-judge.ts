@@ -10,6 +10,8 @@
  * owns transport, retry, tolerant JSON parsing, and a canonical verdict
  * shape. Callers map the canonical shape back to their own return types.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 /** Canonical verdict alias re-exported for callers that don't pull types.ts. */
 export type CerebrasJudgeVerdict = "PASS" | "FAIL" | "REVIEW";
 
@@ -343,7 +345,7 @@ export class CerebrasJudge {
             continue;
           }
           throw new CerebrasJudgeError(
-            `cerebras error ${response.status}: ${errBody.slice(0, 300)}`,
+            `cerebras error ${response.status}: ${truncateWellFormed(toWellFormedUnicode(errBody), 300)}`,
             response.status,
             errBody,
           );

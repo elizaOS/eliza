@@ -100,7 +100,7 @@ export function ProvidersList() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {providers.map((p) => {
           const dot = p.enableState.enabled
-            ? "bg-emerald-500"
+            ? "bg-status-success"
             : "bg-muted-foreground/40";
           const { Icon, labelKey, label } = KIND_ICON[p.kind];
           return (

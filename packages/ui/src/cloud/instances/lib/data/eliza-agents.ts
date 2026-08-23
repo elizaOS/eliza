@@ -5,10 +5,10 @@
 import type {
   AgentDatabaseStatus,
   AgentExecutionTier,
-  AgentListItemDto,
-  AgentResponse,
   AgentSandboxStatus,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
+  NormalizedAgentListItemDto,
+  NormalizedAgentResponse,
+} from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../lib/api-client";
 import {
@@ -16,7 +16,7 @@ import {
   useAuthenticatedQueryGate,
 } from "../../../lib/auth-query";
 
-export type AgentListItem = AgentListItemDto;
+export type AgentListItem = NormalizedAgentListItemDto;
 
 export type PersonalElizaIdentity = {
   id: string;
@@ -77,7 +77,9 @@ function isNullableIsoDate(value: unknown): value is string | null {
   return value === null || isIsoDate(value);
 }
 
-function parseActiveJob(value: unknown): AgentListItemDto["activeJob"] {
+function parseActiveJob(
+  value: unknown,
+): NormalizedAgentListItemDto["activeJob"] {
   if (value === null) return null;
   if (
     !isRecord(value) ||
@@ -94,10 +96,12 @@ function parseActiveJob(value: unknown): AgentListItemDto["activeJob"] {
   ) {
     throw new Error("Agents response contained an invalid active job");
   }
-  return value as unknown as NonNullable<AgentListItemDto["activeJob"]>;
+  return value as unknown as NonNullable<
+    NormalizedAgentListItemDto["activeJob"]
+  >;
 }
 
-function parseAgentListItem(value: unknown): AgentListItemDto {
+function parseAgentListItem(value: unknown): NormalizedAgentListItemDto {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
@@ -144,7 +148,9 @@ function parseAgentListItem(value: unknown): AgentListItemDto {
 }
 
 /** Validate the untrusted list envelope once for every agents-list consumer. */
-export function parseAgentsResponse(payload: unknown): AgentListItemDto[] {
+export function parseAgentsResponse(
+  payload: unknown,
+): NormalizedAgentListItemDto[] {
   if (
     !isRecord(payload) ||
     payload.success !== true ||
@@ -207,7 +213,9 @@ export function useAgent(agentId: string | undefined) {
   return useQuery({
     queryKey: authenticatedQueryKey(["agent", "agent", agentId], gate),
     queryFn: async () => {
-      const res = await api<AgentResponse>(`/api/v1/eliza/agents/${agentId}`);
+      const res = await api<NormalizedAgentResponse>(
+        `/api/v1/eliza/agents/${agentId}`,
+      );
       return res.data;
     },
     enabled: gate.enabled,

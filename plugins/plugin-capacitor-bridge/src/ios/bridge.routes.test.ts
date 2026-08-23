@@ -804,4 +804,36 @@ describe("iOS bridge — unmatched routes still fall through", () => {
 		);
 		expect(res).toBeNull();
 	});
+
+	it("sorts conversations safely when updatedAt contains invalid date strings", async () => {
+		const backend = makeBackend(createFakeRuntime());
+		backend.conversations.set("conv-invalid", {
+			id: "conv-invalid",
+			name: "Invalid Date Conv",
+			createdAt: "2026-08-01T00:00:00Z",
+			updatedAt: "not-a-real-date",
+			messageCount: 1,
+			isUnread: false,
+		});
+		backend.conversations.set("conv-valid", {
+			id: "conv-valid",
+			name: "Valid Date Conv",
+			createdAt: "2026-08-01T00:00:00Z",
+			updatedAt: "2026-08-20T00:00:00Z",
+			messageCount: 1,
+			isUnread: false,
+		});
+
+		const res = await handleDirectCoreRoute(
+			backend,
+			"GET",
+			"/api/conversations",
+			{},
+		);
+		expect(res?.status).toBe(200);
+		const json = JSON.parse(res?.body ?? "{}");
+		expect(json.conversations).toHaveLength(2);
+		expect(json.conversations[0]?.id).toBe("conv-valid");
+		expect(json.conversations[1]?.id).toBe("conv-invalid");
+	});
 });

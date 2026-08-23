@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "graphVersion": "2026-08-22.1",
+  "graphVersion": "2026-08-22.2",
   "evidenceTtlHours": 168,
   "reusePolicy": "current-run-only",
   "environment": {
@@ -37,6 +37,7 @@
         "packages/prompts",
         "packages/registry",
         "packages/shared",
+        "packages/synthetic-world",
         "packages/skills",
         "packages/vault",
         "plugins/**"

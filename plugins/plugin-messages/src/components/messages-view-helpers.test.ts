@@ -156,4 +156,15 @@ describe("normalizeMessagesLimit", () => {
     expect(normalizeMessagesLimit(50, 10)).toBe(50);
     expect(normalizeMessagesLimit(undefined, 10)).toBe(10);
   });
+
+  it("sorts threads and messages safely when date contains NaN", () => {
+    const messages = [
+      msg({ id: "m-nan", threadId: "t-nan", date: NaN }),
+      msg({ id: "m-valid", threadId: "t-valid", date: 5000 }),
+    ];
+    const threads = buildThreads(messages);
+    expect(threads).toHaveLength(2);
+    expect(threads[0]?.id).toBe("t-valid");
+    expect(threads[1]?.id).toBe("t-nan");
+  });
 });

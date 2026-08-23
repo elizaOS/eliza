@@ -23,6 +23,16 @@ export function navigateCloudPanel(sectionId: string): void {
   }
 }
 
+/** Replace the current history entry with a section hash. */
+export function replaceCloudPanel(sectionId: string): void {
+  if (typeof window === "undefined") return;
+  const resolved = resolveCloudPanelSection(sectionId);
+  const target = `#${resolved}`;
+  if (window.location.hash !== target) {
+    window.history.replaceState(window.history.state, "", target);
+  }
+}
+
 /** Subscribe to hash changes. Returns an unsubscribe function. */
 export function subscribeCloudPanelHash(
   listener: (sectionId: string) => void,

@@ -322,14 +322,17 @@ describe("MessageContent sensitive requests", () => {
       "will not be sent",
     );
     // The card states its security contract in fixed copy: a masked-input
-    // explainer in the header and a storage note under the submit button. Both
+    // explainer in the header and a delivery note under the submit button. Both
     // must be visible before the user types a value.
     expect(screen.getByTestId("sensitive-request").textContent).toContain(
       "Masked input. It never lands in the transcript.",
     );
     expect(
       screen.getByTestId("sensitive-request-security-note").textContent,
-    ).toContain("never posted to chat");
+    ).toContain("Sent directly to the agent — never posted to chat");
+    expect(
+      screen.getByTestId("sensitive-request-security-note").textContent,
+    ).not.toContain("encrypted");
   });
 
   it("labels the submit button 'Save securely' when the form omits submitLabel", () => {
