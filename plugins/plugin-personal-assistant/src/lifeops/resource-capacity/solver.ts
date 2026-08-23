@@ -6,6 +6,21 @@
  * travel transitions, handoffs, authorization, and stale evidence can block a
  * plan even when every adult's visible events are non-overlapping.
  */
+function observedAtSortKey(value: string): number {
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareTransitionByObservedAtDesc(a: { observedAt: string; sourceRef: string }, b: { observedAt: string; sourceRef: string }): number {
+	const aSafe = observedAtSortKey(a.observedAt);
+	const bSafe = observedAtSortKey(b.observedAt);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return a.sourceRef.localeCompare(b.sourceRef);
+}
+
+export const __testObservedAtSortKey = observedAtSortKey;
+export const __testCompareTransitionByObservedAtDesc = compareTransitionByObservedAtDesc;
+
 import type {
   CapacityCarSeatRequirement,
   CapacityNeed,
@@ -760,11 +775,7 @@ function exactTransitions(
         transition.fromNeedId === fromNeedId &&
         transition.toNeedId === toNeedId,
     )
-    .sort(
-      (left, right) =>
-        Date.parse(right.observedAt) - Date.parse(left.observedAt) ||
-        left.sourceRef.localeCompare(right.sourceRef),
-    );
+    .sort(compareTransitionByObservedAtDesc);
 }
 
 function checkSequentialUse(
