@@ -1,4 +1,4 @@
-// Coordinates cloud service content safety behavior behind route handlers.
+/** Coordinates cloud service content safety behavior behind route handlers. */
 
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { ApiError } from "../api/cloud-worker-errors";
