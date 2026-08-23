@@ -174,7 +174,11 @@ import {
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
-import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
+import {
+  APP_CORE_CORS_ALLOWED_HEADERS,
+  getCorsAllowedPorts,
+  isAllowedOrigin,
+} from "./server-cors";
 
 const _require = createRequire(import.meta.url);
 
@@ -1004,7 +1008,7 @@ async function runCompatRequestPipeline(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-Platform, X-Eliza-CSRF",
+      APP_CORE_CORS_ALLOWED_HEADERS,
     );
     res.setHeader("Access-Control-Allow-Credentials", "true");
   }

@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     ...input,
   })),
   getBootConfig: vi.fn(() => ({ cloudApiBase: "https://api.elizacloud.ai" })),
+  loadPersistedActiveServer: vi.fn(),
   savePersistedActiveServer: vi.fn(),
   upsertAndActivateAgentProfile: vi.fn(),
   setBaseUrl: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock("../config/boot-config-store", () => ({
 
 vi.mock("../state/persistence", () => ({
   createPersistedActiveServer: mocks.createPersistedActiveServer,
+  loadPersistedActiveServer: mocks.loadPersistedActiveServer,
   savePersistedActiveServer: mocks.savePersistedActiveServer,
 }));
 
@@ -61,6 +63,7 @@ describe("browser launch connection handling", () => {
     mocks.getBootConfig.mockReturnValue({
       cloudApiBase: "https://api.elizacloud.ai",
     });
+    mocks.loadPersistedActiveServer.mockReturnValue(null);
     window.history.replaceState(null, "", "http://localhost/");
   });
 
@@ -118,6 +121,64 @@ describe("browser launch connection handling", () => {
     expect(window.location.href).toBe("http://localhost/");
     expect(mocks.setBaseUrl).not.toHaveBeenCalled();
     expect(mocks.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
+
+  it("preserves a paired credential when native launch replay targets the same remote", async () => {
+    mocks.loadPersistedActiveServer.mockReturnValue({
+      id: "remote:http://100.96.0.1:31337/v1",
+      kind: "remote",
+      label: "100.96.0.1:31337",
+      apiBase: "http://100.96.0.1:31337/v1/",
+      accessToken: " paired-token ",
+    });
+    window.history.replaceState(
+      null,
+      "",
+      "http://localhost/?apiBase=http%3A%2F%2F100.96.0.1%3A31337%2Fv1",
+    );
+
+    await expect(applyLaunchConnectionFromUrl()).resolves.toBe(true);
+
+    expect(mocks.setToken).toHaveBeenNthCalledWith(1, null);
+    expect(mocks.setToken).toHaveBeenNthCalledWith(2, "paired-token");
+    expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiBase: "http://100.96.0.1:31337/v1",
+        accessToken: "paired-token",
+      }),
+    );
+    expect(mocks.upsertAndActivateAgentProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiBase: "http://100.96.0.1:31337/v1",
+        accessToken: "paired-token",
+      }),
+    );
+  });
+
+  it("clears a credential when a tokenless launch targets a different remote", async () => {
+    mocks.loadPersistedActiveServer.mockReturnValue({
+      id: "remote:http://100.96.0.1:31337",
+      kind: "remote",
+      label: "100.96.0.1:31337",
+      apiBase: "http://100.96.0.1:31337",
+      accessToken: "server-a-token",
+    });
+    window.history.replaceState(
+      null,
+      "",
+      "http://localhost/?apiBase=http%3A%2F%2F100.96.0.2%3A31337",
+    );
+
+    await expect(applyLaunchConnectionFromUrl()).resolves.toBe(true);
+
+    expect(mocks.setToken).toHaveBeenCalledTimes(1);
+    expect(mocks.setToken).toHaveBeenCalledWith(null);
+    expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
+      expect.not.objectContaining({ accessToken: expect.anything() }),
+    );
+    expect(mocks.upsertAndActivateAgentProfile).toHaveBeenCalledWith(
+      expect.not.objectContaining({ accessToken: expect.anything() }),
+    );
   });
 
   it("rejects public cloud apiBase parameters outside the managed launch-session flow", async () => {

@@ -68,7 +68,7 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         let deepLink = call.getString("deepLink")
         let deepLinkOnTap = call.getString("deepLinkOnTap")
 
-        scheduleNotification(
+        Self.scheduleNotification(
             timeIso: timeIso,
             title: title,
             body: body,
@@ -89,7 +89,7 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
     /// `cap_extra`, while AppDelegate consumes `deepLinkOnTap` if it remains the
     /// active delegate. Store both representations so either legitimate iOS
     /// delivery path reaches the same validated app destination.
-    private func scheduleNotification(
+    static func scheduleNotification(
         timeIso: String,
         title: String,
         body: String,
@@ -179,7 +179,7 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             let deepLink = payload["deepLink"] as? String
             let deepLinkOnTap = payload["deepLinkOnTap"] as? String
-            scheduleNotification(
+            Self.scheduleNotification(
                 timeIso: timeIso,
                 title: title,
                 body: body,

@@ -1,13 +1,14 @@
 /**
- * AgentRequestTransport for native (Capacitor) builds talking to Eliza Cloud:
- * uses CapacitorHttp for direct cloud hosts (bypassing the WKWebView CORS/cookie
- * limits), falling back to fetch for everything else.
+ * Native HTTP transport for Eliza Cloud and explicitly selected remote agents.
+ * Bounded JSON/binary calls use CapacitorHttp while agent SSE keeps the browser
+ * streaming body; arbitrary public origins remain outside this transport.
  */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/shared/elizacloud";
+import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -71,6 +72,31 @@ function isNativeCloudHttpsUrl(url: string): boolean {
   );
 }
 
+/**
+ * A user-selected remote-Mac endpoint is allowed to bypass WKWebView CORS only
+ * after the canonical runtime-mode and private-network trust gates agree. The
+ * full request URL may carry an API path, so validate its origin rather than
+ * rejecting a legitimate path/query as if it were a persisted base URL.
+ */
+function isNativeTrustedRemoteAgentUrl(url: string): boolean {
+  const parsed = parseUrl(url);
+  if (!parsed || !Capacitor.isNativePlatform()) return false;
+  try {
+    if (
+      globalThis.localStorage?.getItem("eliza:mobile-runtime-mode") !==
+      "remote-mac"
+    ) {
+      return false;
+    }
+  } catch {
+    // error-policy:J3 unreadable runtime selection cannot authorize a native
+    // CORS bypass; the request stays on the ordinary browser transport.
+    return false;
+  }
+  if (parsed.username || parsed.password) return false;
+  return isTrustedRestoreApiBaseUrl(parsed.origin);
+}
+
 type NativeWebFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -94,6 +120,32 @@ function responseBody(data: unknown): string {
   return JSON.stringify(data);
 }
 
+/** CapacitorHttp expects JSON as a structured bridge value, not serialized text. */
+function nativeRequestData(
+  body: BodyInit | null | undefined,
+  headers: HeadersInit | undefined,
+): unknown {
+  const serialized = bodyToString(body) ?? undefined;
+  if (serialized === undefined) return undefined;
+
+  const contentType = new Headers(headers ?? {})
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (contentType !== "application/json" && !contentType?.endsWith("+json")) {
+    return serialized;
+  }
+
+  try {
+    return JSON.parse(serialized);
+  } catch {
+    // error-policy:J3 Preserve malformed JSON as malformed wire input so the
+    // server remains the authority for its normal explicit validation error.
+    return serialized;
+  }
+}
+
 /** CapacitorHttp returns arraybuffer responses as base64 across the native bridge. */
 function responseBytes(data: unknown): ArrayBuffer {
   if (typeof data !== "string" || data.length === 0) return new ArrayBuffer(0);
@@ -113,8 +165,9 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     // full reply landing as one blob after generation finishes. Scoped to agent
     // subdomains only: they serve CORS for the app origin. The central
     // `api.eliza.app` does not, so its SSE stays on CapacitorHttp below.
+    const isRemoteAgent = isNativeTrustedRemoteAgentUrl(url);
     if (
-      isNativeCloudAgentSubdomain(url) &&
+      (isNativeCloudAgentSubdomain(url) || isRemoteAgent) &&
       isStreamingRequest(url, init.headers)
     ) {
       const webFetch = nativeWebFetch();
@@ -129,13 +182,14 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     const wantsBinary = context?.responseType === "arraybuffer";
     const isDirectApi = isNativeDirectCloudApiUrl(url);
     const isCloudHost = isNativeCloudHttpsUrl(url);
-    if (!isDirectApi && !(wantsBinary && isCloudHost)) {
+    if (!isDirectApi && !isRemoteAgent && !(wantsBinary && isCloudHost)) {
       return fetchAgentTransport.request(url, init, context);
     }
 
     const method = init.method ?? "GET";
-    // CapacitorHttp has no concept of a null body — treat null and undefined alike.
-    const data = bodyToString(init.body) ?? undefined;
+    // CapacitorHttp crosses a JSON bridge: send JSON as a structured value so
+    // iOS serializes the request object once instead of quoting the JSON text.
+    const data = nativeRequestData(init.body, init.headers);
     if (init.body != null && data === undefined) {
       return fetchAgentTransport.request(url, init, context);
     }
@@ -193,5 +247,6 @@ export function nativeCloudHttpTransportForUrl(
   // all other requests fall through to the patched global fetch.
   if (isNativeDirectCloudApiUrl(url)) return nativeCloudHttpTransport;
   if (isNativeCloudHttpsUrl(url)) return nativeCloudHttpTransport;
+  if (isNativeTrustedRemoteAgentUrl(url)) return nativeCloudHttpTransport;
   return null;
 }

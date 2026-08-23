@@ -45,6 +45,16 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         let latestStageValue: Int
     }
 
+    /// UIKit state is main-thread isolated even when Capacitor invokes the
+    /// plugin on its bridge queue. Capture every UIKit value together so a
+    /// snapshot cannot mix lifecycle or battery state from different moments.
+    private struct UIKitStateCapture {
+        let applicationState: UIApplication.State
+        let protectedDataAvailable: Bool
+        let batteryState: UIDevice.BatteryState
+        let batteryLevel: Float
+    }
+
     private var monitoring = false
     private var observers: [NSObjectProtocol] = []
     private let healthStore = HKHealthStore()
@@ -69,7 +79,9 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     public override func load() {
-        UIDevice.current.isBatteryMonitoringEnabled = true
+        Self.runOnMain {
+            UIDevice.current.isBatteryMonitoringEnabled = true
+        }
         // Re-arm HealthKit background delivery on every cold boot. Apple's
         // background-delivery registration does NOT persist across uninstalls
         // and re-installations of the app, but it does persist across simple
@@ -94,7 +106,9 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     deinit {
         stopInternal()
-        UIDevice.current.isBatteryMonitoringEnabled = false
+        Self.runOnMain {
+            UIDevice.current.isBatteryMonitoringEnabled = false
+        }
     }
 
     @objc func startMonitoring(_ call: CAPPluginCall) {
@@ -212,18 +226,20 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             ])
             return
         }
-        guard let presentingViewController = bridge?.viewController else {
-            call.resolve([
-                "presented": false,
-                "reason": "The native report presenter is not attached to the app window.",
-            ])
-            return
-        }
+        DispatchQueue.main.async { [weak self] in
+            guard let presentingViewController = self?.bridge?.viewController else {
+                call.resolve([
+                    "presented": false,
+                    "reason": "The native report presenter is not attached to the app window.",
+                ])
+                return
+            }
 
-        let reportViewController = UIHostingController(rootView: ElizaScreenTimeReportView())
-        reportViewController.modalPresentationStyle = .pageSheet
-        presentingViewController.present(reportViewController, animated: true) {
-            call.resolve(["presented": true, "reason": NSNull()])
+            let reportViewController = UIHostingController(rootView: ElizaScreenTimeReportView())
+            reportViewController.modalPresentationStyle = .pageSheet
+            presentingViewController.present(reportViewController, animated: true) {
+                call.resolve(["presented": true, "reason": NSNull()])
+            }
         }
     }
 
@@ -704,11 +720,11 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func buildSnapshot(reason: String) -> [String: Any] {
-        let app = UIApplication.shared
-        let protectedAvailable = app.isProtectedDataAvailable
+        let uiState = captureUIKitState()
+        let protectedAvailable = uiState.protectedDataAvailable
         let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
-        let batteryState = UIDevice.current.batteryState
-        let batteryLevel = UIDevice.current.batteryLevel
+        let batteryState = uiState.batteryState
+        let batteryLevel = uiState.batteryLevel
         let onBattery: Bool? = {
             switch batteryState {
             case .charging, .full:
@@ -725,7 +741,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             if !protectedAvailable {
                 return "locked"
             }
-            switch app.applicationState {
+            switch uiState.applicationState {
             case .active:
                 return lowPower ? "idle" : "active"
             case .inactive:
@@ -759,7 +775,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "onBattery": onBatteryValue,
             "metadata": [
                 "reason": reason,
-                "applicationState": app.applicationState.rawValue,
+                "applicationState": uiState.applicationState.rawValue,
                 "isProtectedDataAvailable": protectedAvailable,
                 "isLowPowerModeEnabled": lowPower,
                 "batteryState": batteryState.rawValue,
@@ -878,7 +894,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         reason: String,
         capture: HealthCapture
     ) -> [String: Any] {
-        let deviceBatteryState = UIDevice.current.batteryState
+        let uiState = captureUIKitState()
+        let deviceBatteryState = uiState.batteryState
         let onBattery: Bool? = {
             switch deviceBatteryState {
             case .charging, .full:
@@ -909,9 +926,27 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "metadata": [
                 "reason": reason,
                 "healthSource": capture.source,
-                "deviceState": UIApplication.shared.applicationState.rawValue,
+                "deviceState": uiState.applicationState.rawValue,
             ],
         ]
+    }
+
+    private func captureUIKitState() -> UIKitStateCapture {
+        Self.runOnMain {
+            UIKitStateCapture(
+                applicationState: UIApplication.shared.applicationState,
+                protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable,
+                batteryState: UIDevice.current.batteryState,
+                batteryLevel: UIDevice.current.batteryLevel
+            )
+        }
+    }
+
+    private static func runOnMain<T>(_ work: () -> T) -> T {
+        if Thread.isMainThread {
+            return work()
+        }
+        return DispatchQueue.main.sync(execute: work)
     }
 
     private func fetchSleepSummary(

@@ -3469,7 +3469,7 @@
   "permissionpriming.settingsOpenFailed": "Couldn’t open Settings. Open System Settings manually, then re-check.",
   "permissionpriming.skipAll": "Skip for now",
   "permissionpriming.stepOf": "Step {{current}} of {{total}}",
-  "permissionpriming.subtitle": "A couple of quick permissions so I'm ready to help.",
+  "permissionpriming.subtitle": "Choose what Eliza can use. You can change this later in Settings.",
   "permissionpriming.title": "Set up {{appName}}",
   "permissionpriming.tryAgain": "Try again",
   "providerswitcher.accountsGroupDescription": "Connect provider accounts without scattering provider pickers across the page.",
