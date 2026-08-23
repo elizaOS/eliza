@@ -1,8 +1,7 @@
 /**
  * Behavioral coverage for the managed-provider cursor pagination walker.
- * Exercises the bounded-collection contract: opaque cursor replay protection,
- * page/item ceilings, and the input validation that rejects non-positive or
- * non-integer limits before any provider call is made.
+ * Exercises exhaustive traversal by default plus opaque cursor replay
+ * protection, caller-selected page/item ceilings, and limit validation.
  */
 
 import { describe, expect, it } from "vitest";
@@ -92,20 +91,19 @@ describe("collectProviderPages", () => {
 		expect(calls).toBe(2);
 	});
 
-	it("defaults the item ceiling to 1000 when no option is given", async () => {
+	it("collects more than 1000 items when no explicit ceiling is requested", async () => {
 		let calls = 0;
-		const fetchPage = async () => {
+		const fetchPage = async (cursor: string | undefined) => {
 			calls += 1;
-			if (calls > 501) throw new Error("should have stopped at 1000 items");
+			const start = cursor === undefined ? 0 : Number(cursor);
+			const count = start === 1_000 ? 101 : 500;
 			return page(
-				Array.from({ length: 2 }, (_, i) => calls * 2 + i),
-				null,
+				Array.from({ length: count }, (_, index) => start + index),
+				start + count < 1_101 ? String(start + count) : null,
 			);
 		};
-		// Two items per page, terminal immediately: bounded collection never
-		// trips the default ceiling; this guards the constant against regressions.
-		await expect(collectProviderPages(fetchPage)).resolves.toHaveLength(2);
-		expect(calls).toBe(1);
+		await expect(collectProviderPages(fetchPage)).resolves.toHaveLength(1_101);
+		expect(calls).toBe(3);
 	});
 
 	it("rejects a non-positive page limit before fetching", async () => {

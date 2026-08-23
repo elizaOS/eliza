@@ -141,6 +141,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/runtime/model-input-budget.ts": [
 		/shouldReject:\s*estimatedInputTokens\s*[><=]/,
 	],
+	"packages/core/src/integrations/managed-provider/pagination.ts": [
+		/DEFAULT_MAX_ITEMS/,
+		/options\.maxItems\s*\?\?/,
+	],
 	"packages/core/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
 		/candidateActionNames[\s\S]{0,100}\b12\b/,
