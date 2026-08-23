@@ -499,11 +499,6 @@ describe("secure remote relay routes", () => {
         revoked_at: null,
       },
       {
-        id: "40000000-0000-4000-8000-000000000003",
-        status: "pending",
-        created_at: new Date(),
-      },
-      {
         id: staleHostId,
         device_id: "linux-stale",
         display_name: "Linux Stale",
@@ -550,7 +545,7 @@ describe("secure remote relay routes", () => {
       encryptionPublicKeyJwk: publicJwk,
       status: "active",
     });
-    expect(body.data.hosts).toHaveLength(2);
+    expect(body.data.hosts).toHaveLength(3);
     expect(body.data.hosts[1]).toMatchObject({
       id: staleHostId,
       status: "offline",
@@ -562,6 +557,7 @@ describe("secure remote relay routes", () => {
     expect(body.data.hosts[0]).not.toHaveProperty("hostTokenHash");
     expect(JSON.stringify(body)).not.toContain("must-not-leak");
     expect(JSON.stringify(body)).not.toContain("also-must-not-leak");
+    expect(JSON.stringify(body)).not.toContain("pending-must-not-leak");
   });
 
   test("recovers a lost one-time host token only through the owner-bound identity", async () => {

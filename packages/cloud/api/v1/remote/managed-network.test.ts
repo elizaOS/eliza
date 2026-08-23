@@ -189,11 +189,13 @@ describe("remote host managed-network lifecycle", () => {
   test("retains compensation state after a failed collision lookup and retries safely", async () => {
     const repo = repository();
     const lookup = mock(
-      async (): Promise<{ id: string; name: string } | null> => {
+      async (): Promise<
+        Array<{ id: string; name: string; createdAt: string }>
+      > => {
         throw new Error("Headscale unavailable");
       },
     );
-    const headscale = client({ getNodeByNameOrSuffixedStrict: lookup });
+    const headscale = client({ listNodesStrict: lookup });
     const host = {
       id: "host-1",
       created_at: new Date("2026-08-22T12:00:00.000Z"),
@@ -215,10 +217,13 @@ describe("remote host managed-network lifecycle", () => {
     expect(repo.recordManagedCleanupFailure).toHaveBeenCalledTimes(1);
     expect(repo.completeManagedCleanup).not.toHaveBeenCalled();
 
-    lookup.mockImplementation(async () => ({
-      id: "10",
-      name: "eliza-host-one-a1b2c3d4",
-    }));
+    lookup.mockImplementation(async () => [
+      {
+        id: "10",
+        name: "eliza-host-one-a1b2c3d4",
+        createdAt: "2026-08-22T12:00:01.000Z",
+      },
+    ]);
     await cleanupManagedNetwork({
       host,
       organizationId: "org-1",
