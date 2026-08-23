@@ -26,6 +26,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
+import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import {
   assertFinalizedFlatpakMetadata,
   assertFlatpakPackagingSpace,
@@ -284,6 +285,15 @@ export function requireLauncher(buildDir) {
   return path.relative(buildDir, launcher);
 }
 
+function posixShellQuote(value) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+/** Close umask-dependent write permissions across the completed Flatpak stage. */
+export function hardenFlatpakStagingPermissions(appDir) {
+  return hardenLinuxArtifactPermissions(appDir);
+}
+
 export async function writeMetadata(filesDir, relativeLauncher) {
   mkdirSync(path.join(filesDir, "bin"), { recursive: true });
   mkdirSync(path.join(filesDir, "share/applications"), { recursive: true });
@@ -293,9 +303,13 @@ export async function writeMetadata(filesDir, relativeLauncher) {
   });
 
   const wrapper = path.join(filesDir, "bin/eliza");
+  const launcherPath = path.posix.join(
+    "/app/opt/eliza",
+    relativeLauncher.split(path.sep).join("/"),
+  );
   writeFileSync(
     wrapper,
-    `#!/usr/bin/env sh\nexec /app/opt/eliza/${relativeLauncher} "$@"\n`,
+    `#!/usr/bin/env sh\nexec ${posixShellQuote(launcherPath)} "$@"\n`,
   );
   chmodSync(wrapper, 0o755);
   writeFileSync(
@@ -428,6 +442,7 @@ async function main() {
     copyBundledLibraries(path.join(appDir, "files"));
     await writeMetadata(path.join(appDir, "files"), relativeLauncher);
     run("flatpak", ["build-finish", ...FLATPAK_FINISH_ARGS, appDir]);
+    hardenFlatpakStagingPermissions(appDir);
     assertFinalizedFlatpakMetadata(path.join(appDir, "metadata"), flatpakRefs);
     run("flatpak", [
       "build-export",

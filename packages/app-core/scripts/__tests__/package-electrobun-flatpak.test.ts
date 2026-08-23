@@ -4,11 +4,14 @@
  * shell escape permissions.
  */
 
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -23,6 +26,7 @@ import {
   FLATPAK_BUNDLED_LIBRARIES,
   FLATPAK_FINISH_ARGS,
   FLATPAK_RUNTIME,
+  hardenFlatpakStagingPermissions,
   requireLauncher,
   resolveFlatpakArtifactDirectory,
   resolveFlatpakRefs,
@@ -36,6 +40,22 @@ function tempDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "flatpak-package-test-"));
   tempDirs.push(dir);
   return dir;
+}
+
+function expectHardenedTree(root: string): void {
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) continue;
+    const stats = lstatSync(current);
+    if (stats.isSymbolicLink()) continue;
+    expect(stats.mode & 0o022, current).toBe(0);
+    if (stats.isDirectory()) {
+      for (const entry of readdirSync(current)) {
+        pending.push(path.join(current, entry));
+      }
+    }
+  }
 }
 
 afterEach(() => {
@@ -195,6 +215,37 @@ describe("Electrobun Flatpak packaging", () => {
     expect(metadata).toContain("https://github.com/elizaOS/eliza/issues");
     expect(icon.width).toBe(512);
     expect(icon.height).toBe(512);
+  });
+
+  it("quotes hostile launcher paths and closes permissive-umask stage modes", async () => {
+    const appDir = path.join(tempDir(), "app");
+    const filesDir = path.join(appDir, "files");
+    const injectionMarker = path.join(tempDir(), "launcher-injection");
+    const relativeLauncher = `nested dir/launcher's $(touch ${injectionMarker})`;
+    const previousUmask = process.umask(0o002);
+    try {
+      mkdirSync(path.join(filesDir, "opt/eliza/bin"), { recursive: true });
+      writeFileSync(path.join(appDir, "metadata"), "[Application]\n", {
+        mode: 0o666,
+      });
+      writeFileSync(path.join(filesDir, "opt/eliza/bin/payload"), "payload", {
+        mode: 0o666,
+      });
+      await writeMetadata(filesDir, relativeLauncher);
+
+      const wrapper = path.join(filesDir, "bin/eliza");
+      expect(readFileSync(wrapper, "utf8")).toBe(
+        `#!/usr/bin/env sh\nexec '/app/opt/eliza/nested dir/launcher'"'"'s $(touch ${injectionMarker})' "$@"\n`,
+      );
+      const execution = spawnSync(wrapper, [], { encoding: "utf8" });
+      expect(execution.status).not.toBe(0);
+      expect(existsSync(injectionMarker)).toBe(false);
+
+      expect(hardenFlatpakStagingPermissions(appDir)).toBeGreaterThan(0);
+      expectHardenedTree(appDir);
+    } finally {
+      process.umask(previousUmask);
+    }
   });
 
   it("keeps the side-load bundle off host escape surfaces", () => {
