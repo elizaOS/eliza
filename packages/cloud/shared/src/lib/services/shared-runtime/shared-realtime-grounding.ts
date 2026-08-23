@@ -3,7 +3,7 @@
  * Shared without sending private-state requests to a public search provider.
  */
 
-import type { ActionResult } from "@elizaos/core/edge";
+import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/edge";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
@@ -93,12 +93,11 @@ export function resolveSharedRealtimeRequirement(
   if (PRIVATE_STATE.test(normalized) || (!correction && !WEB_VERIFICATION.test(normalized))) {
     return undefined;
   }
-  const prior = [...history]
-    .reverse()
-    .find((turn) => turn.role === "user" && classifyPublicStandalone(turn.content));
-  if (!prior) return undefined;
+  const prior = [...history].reverse().find((turn) => turn.role === "user");
+  const priorDomain = prior ? classifyPublicStandalone(prior.content) : undefined;
+  if (!prior || !priorDomain) return undefined;
   return {
-    domain: classifyPublicStandalone(prior.content) ?? "mutable_fact",
+    domain: priorDomain,
     query: `${prior.content}\n${normalized}\nVerify against current public sources.`,
     correction: true,
   };
@@ -111,7 +110,9 @@ function canonicalPublicUrl(value: unknown): string | undefined {
     if (
       (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
       parsed.username ||
-      parsed.password
+      parsed.password ||
+      isBlockedHostname(parsed.hostname) ||
+      isPrivateIpAddress(parsed.hostname)
     ) {
       return undefined;
     }
@@ -209,6 +210,34 @@ function claimWords(value: string): string[] {
   );
 }
 
+function evidenceClauses(value: string): string[] {
+  const strings: string[] = [];
+  try {
+    const pending: unknown[] = [JSON.parse(value)];
+    let visited = 0;
+    while (pending.length > 0 && visited < 128) {
+      const item = pending.pop();
+      visited += 1;
+      if (typeof item === "string") {
+        strings.push(item);
+      } else if (Array.isArray(item)) {
+        pending.push(...item);
+      } else if (item && typeof item === "object") {
+        pending.push(...Object.values(item as Record<string, unknown>));
+      }
+    }
+  } catch {
+    // error-policy:J3 non-JSON evidence remains an untrusted text fragment.
+    strings.push(value);
+  }
+  return strings.flatMap((item) =>
+    item
+      .split(/(?:[.!?]\s+|[;\n]+|\s+(?:but|whereas|while)\s+)/giu)
+      .map((clause) => clause.trim())
+      .filter(Boolean),
+  );
+}
+
 function sourceForUrl(
   grounding: AvailableGrounding,
   selectedUrl: string,
@@ -237,10 +266,46 @@ function claimSupported(claim: string, source: SourceEvidence): boolean {
   for (const match of normalized.matchAll(ATTRIBUTION)) {
     if (!source.text.toLowerCase().includes(match[1].trim().toLowerCase())) return false;
   }
-  if (NEGATION.test(normalized) !== NEGATION.test(source.text)) return false;
   const words = claimWords(normalized);
-  const evidence = new Set(claimWords(source.text));
-  return words.length === 0 || words.every((word) => evidence.has(word));
+  return evidenceClauses(source.text).some((clause) => {
+    if (NEGATION.test(normalized) !== NEGATION.test(clause)) return false;
+    const evidence = new Set(claimWords(clause));
+    return words.length === 0 || words.every((word) => evidence.has(word));
+  });
+}
+
+function normalizedRealtimeQuery(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
+  return normalized || undefined;
+}
+
+/** Reuses a server receipt only for its exact normalized query. */
+export function createMatchingRealtimeSearchRunner(
+  result: ActionResult,
+): (query: string) => Promise<ActionResult> {
+  const expectedQuery = normalizedRealtimeQuery(result.data?.query);
+  return async (query) => {
+    if (expectedQuery && normalizedRealtimeQuery(query) === expectedQuery) return result;
+    return {
+      success: false,
+      text: "A different public search is not authorized during this grounded turn.",
+      error: "A different public search is not authorized during this grounded turn.",
+      data: { actionName: "WEB_SEARCH", query, observedAt: Date.now() },
+    };
+  };
+}
+
+/** Matches action receipts without trusting caller-controlled query formatting. */
+export function isMatchingRealtimeSearchResult(result: ActionResult, query: string): boolean {
+  const resultQuery = normalizedRealtimeQuery(result.data?.query);
+  const expectedQuery = normalizedRealtimeQuery(query);
+  return (
+    result.data?.actionName === "WEB_SEARCH" &&
+    resultQuery !== undefined &&
+    expectedQuery !== undefined &&
+    resultQuery === expectedQuery
+  );
 }
 
 /** Every delivered claim segment must bind to and match one structured result. */

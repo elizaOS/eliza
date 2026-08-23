@@ -68,6 +68,7 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
+import { createMatchingRealtimeSearchRunner } from "./shared-realtime-grounding";
 import {
   createSharedRuntimeCapabilitiesPlugin,
   REQUEST_DEDICATED_UPGRADE_ACTION,
@@ -761,7 +762,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     modelPlugin,
     ...(preflightWebSearchResult
       ? {
-          webSearchPlugin: createWebSearchEdgePlugin(async () => preflightWebSearchResult),
+          webSearchPlugin: createWebSearchEdgePlugin(
+            createMatchingRealtimeSearchRunner(preflightWebSearchResult),
+          ),
         }
       : {}),
     transport: sharedCapabilityTransportForSource(input.execution.channel.source),
