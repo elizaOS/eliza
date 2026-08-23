@@ -31,7 +31,7 @@
       "@elizaos/plugin-whatsapp/*": ["../plugin-whatsapp/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "include": ["auto-enable.ts", "src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": [
     "dist",
     "node_modules",
