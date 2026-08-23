@@ -112,7 +112,9 @@ export function findAppMenuEntryBySlug(slug: string): AppMenuEntry | undefined {
 // Curated desktop-eligible view windows for the menu-bar "Views" submenu
 // (#10716). Mirror of the `desktopTabEnabled: true` entries in
 // `packages/agent/src/api/builtin-views.ts` that also run on desktop (`camera`
-// is android-only and excluded). Duplicated here for the same reason as
+// is android-only and excluded), plus packaged first-party app-shell pages that
+// must be discoverable before their optional runtime plugin is enabled.
+// Duplicated here for the same reason as
 // APP_MENU_ENTRIES above — this bun-side module must not pull `@elizaos/agent`
 // (the catalog owner) into the main-process bundle. `application-menu.test.ts`
 // asserts this list stays in sync with the renderer-side DESKTOP_VIEW_WINDOWS.
@@ -130,6 +132,11 @@ const VIEW_MENU_ENTRIES: readonly ViewMenuEntry[] = [
   { id: "vault", label: "Vault", path: "/vault" },
   { id: "settings", label: "Settings", path: "/settings" },
   { id: "background", label: "Background", path: "/background" },
+  {
+    id: "computer-use-sessions",
+    label: "Computer Sessions",
+    path: "/computer-use-sessions",
+  },
 ] as const;
 
 export function getViewMenuEntries(): readonly ViewMenuEntry[] {

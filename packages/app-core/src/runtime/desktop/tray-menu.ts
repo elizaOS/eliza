@@ -29,7 +29,9 @@ interface DesktopTrayMenuItem {
  *
  * Mirror of the `desktopTabEnabled: true` entries in
  * `packages/agent/src/api/builtin-views.ts` (`BUILTIN_VIEWS`) that also run on
- * desktop (i.e. `camera` is android-only and excluded). Duplicated here — the
+ * desktop (i.e. `camera` is android-only and excluded), plus packaged
+ * first-party app-shell pages that must be discoverable before their optional
+ * runtime plugin is enabled. Duplicated here — the
  * same reason `application-menu.ts` duplicates `APP_MENU_ENTRIES`: this module
  * is consumed by the renderer/browser bundle and the tray is built
  * synchronously at desktop boot, so it must not pull `@elizaos/agent` (the view
@@ -89,6 +91,12 @@ export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
     label: "Background",
     labelKey: "desktop.views.background",
     path: "/background",
+  },
+  {
+    id: "computer-use-sessions",
+    label: "Computer Sessions",
+    labelKey: "desktop.views.computerUseSessions",
+    path: "/computer-use-sessions",
   },
 ] as const;
 
