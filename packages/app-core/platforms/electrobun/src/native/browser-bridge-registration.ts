@@ -32,16 +32,25 @@ export function createBrowserBridgeRegistrationPlan(options: {
   chromeExtensionIds: readonly string[];
   firefoxExtensionIds: readonly string[];
   windowsConfigDir?: string;
+  pathApi?: Pick<typeof path, "join">;
 }): BrowserBridgeRegistrationPlan {
   const manifests: BrowserBridgeRegistrationPlan["manifests"] = [];
   const manifestName = `${BROWSER_BRIDGE_NATIVE_HOST_NAME}.json`;
+  const pathApi =
+    options.pathApi ?? (options.platform === "win32" ? path.win32 : path.posix);
   const windowsConfigDir =
     options.windowsConfigDir ??
-    path.join(options.homeDir, "AppData", "Local", "elizaOS", "BrowserBridge");
+    pathApi.join(
+      options.homeDir,
+      "AppData",
+      "Local",
+      "elizaOS",
+      "BrowserBridge",
+    );
   if (options.chromeExtensionIds.length > 0) {
     const manifestPath =
       options.platform === "darwin"
-        ? path.join(
+        ? pathApi.join(
             options.homeDir,
             "Library",
             "Application Support",
@@ -51,8 +60,8 @@ export function createBrowserBridgeRegistrationPlan(options: {
             manifestName,
           )
         : options.platform === "win32"
-          ? path.join(windowsConfigDir, "chrome", manifestName)
-          : path.join(
+          ? pathApi.join(windowsConfigDir, "chrome", manifestName)
+          : pathApi.join(
               options.homeDir,
               ".config",
               "google-chrome",
@@ -78,7 +87,7 @@ export function createBrowserBridgeRegistrationPlan(options: {
   if (options.firefoxExtensionIds.length > 0) {
     const manifestPath =
       options.platform === "darwin"
-        ? path.join(
+        ? pathApi.join(
             options.homeDir,
             "Library",
             "Application Support",
@@ -87,8 +96,8 @@ export function createBrowserBridgeRegistrationPlan(options: {
             manifestName,
           )
         : options.platform === "win32"
-          ? path.join(windowsConfigDir, "firefox", manifestName)
-          : path.join(
+          ? pathApi.join(windowsConfigDir, "firefox", manifestName)
+          : pathApi.join(
               options.homeDir,
               ".mozilla",
               "native-messaging-hosts",
@@ -339,11 +348,14 @@ export function resolveBrowserBridgeNativeHostExecutable(
   moduleDir: string,
   platform: NodeJS.Platform = process.platform,
   exists: (candidate: string) => boolean = fs.existsSync,
+  pathApi: Pick<typeof path, "resolve"> = platform === "win32"
+    ? path.win32
+    : path.posix,
 ): string {
   const executableName = `browser-bridge-native-host${platform === "win32" ? ".exe" : ""}`;
   const candidates = [
-    path.resolve(moduleDir, "..", executableName),
-    path.resolve(moduleDir, "..", "..", "build", executableName),
+    pathApi.resolve(moduleDir, "..", executableName),
+    pathApi.resolve(moduleDir, "..", "..", "build", executableName),
   ];
   const resolved = candidates.find(exists);
   if (!resolved)
