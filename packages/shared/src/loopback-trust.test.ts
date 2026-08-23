@@ -348,7 +348,7 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
         ).toBe(true);
       });
 
-      it("binds a browser Referer to Host but preserves native app origins", () => {
+      it("binds browser Referers to Host but preserves native app metadata", () => {
         expect(
           isTrustedLocalRequest(
             makeReq({
@@ -366,6 +366,17 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
               headers: {
                 host: "localhost:2138",
                 origin: "capacitor://app",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                referer: "capacitor://localhost/",
               },
             }),
             options,
