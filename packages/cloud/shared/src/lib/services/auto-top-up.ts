@@ -3,6 +3,8 @@
  * attempt is claimed and fully snapshotted before Stripe is called; provider
  * retries reuse that attempt's stable idempotency key and fenced lease.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import Decimal from "decimal.js";
 import type Stripe from "stripe";
 import type {
@@ -26,7 +28,6 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
 import {
