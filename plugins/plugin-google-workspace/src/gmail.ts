@@ -240,6 +240,21 @@ export class GoogleGmailClient {
     };
   }
 
+  async getGmailMessageRevision(
+    params: GoogleAccountRef & { messageId: string }
+  ): Promise<string | null> {
+    const message = await this.getGmailMessage(params);
+    if (!message) return null;
+    const historyId = message.metadata.historyId;
+    if (typeof historyId !== "string" || historyId.trim().length === 0) {
+      throw new ElizaError("Gmail did not return a stable message revision", {
+        code: "GMAIL_READ_REINDEX_REQUIRED",
+        context: { messageId: params.messageId },
+      });
+    }
+    return historyId;
+  }
+
   async getGmailThread(
     params: GoogleAccountRef & { threadId: string; selfEmail?: string | null }
   ): Promise<GoogleGmailMessageSummary[]> {

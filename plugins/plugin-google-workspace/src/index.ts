@@ -38,6 +38,7 @@ export * from "./connector-account-provider.js";
 export * from "./credential-resolver.js";
 export * from "./drive.js";
 export * from "./gmail.js";
+export * from "./gmail-content-cache.js";
 export * from "./gmail-message-connector.js";
 export * from "./google-oauth-callback.js";
 export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";

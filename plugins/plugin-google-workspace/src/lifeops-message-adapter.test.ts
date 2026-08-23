@@ -11,6 +11,7 @@ import {
   EventType,
   getDefaultTriageService,
   type IAgentRuntime,
+  InMemoryDatabaseAdapter,
   type Memory,
   messageAction,
   validateReadView,
@@ -33,10 +34,12 @@ afterEach(() => {
 });
 
 function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRuntime {
+  const adapter = new InMemoryDatabaseAdapter();
   const googleService = {
     listGmailTriageMessages: vi.fn(async () => []),
     searchGmailMessages: vi.fn(async () => []),
     getGmailMessageDetail: vi.fn(async () => null),
+    getGmailMessageRevision: vi.fn(async () => "history-1"),
     sendGmailReply: vi.fn(async () => ({})),
     sendGmailMessage: vi.fn(async () => ({})),
     modifyGmailMessages: vi.fn(async () => undefined),
@@ -47,7 +50,11 @@ function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRunti
     ...service,
   };
   return {
-    agentId: "agent-1",
+    agentId: "00000000-0000-0000-0000-000000000001",
+    adapter,
+    getMemoryById: vi.fn(
+      async (id: string) => (await adapter.getMemoriesByIds([id as never]))[0] ?? null
+    ),
     getService: vi.fn((serviceType: string) => (serviceType === "google" ? googleService : null)),
     emitEvent: vi.fn(async () => undefined),
     reportError: vi.fn(),
@@ -74,6 +81,7 @@ function gmailMessage(overrides: Record<string, unknown> = {}) {
     labels: ["INBOX"],
     htmlLink: "https://mail.google.com/mail/u/0/#inbox/msg_1",
     metadata: {
+      historyId: "history-1",
       hasAttachments: false,
       messageIdHeader: "<msg_1@example.com>",
       references: "<root@example.com>",
@@ -439,41 +447,57 @@ describe("MESSAGE Gmail progressive body reads", () => {
     });
     expect(second.success).toBe(true);
     expect(second.text).toBe("LATE-EVIDENCE\n");
-    expect(getGmailMessageDetail).toHaveBeenNthCalledWith(2, {
+    expect(getGmailMessageDetail).toHaveBeenCalledTimes(1);
+    expect(
+      (runtime.getService("google") as { getGmailMessageRevision: ReturnType<typeof vi.fn> })
+        .getGmailMessageRevision
+    ).toHaveBeenCalledWith({
       accountId: "acct_google_1",
       messageId: "msg_1",
+    });
+    expect((second.data as { sourceWork: Record<string, number> }).sourceWork).toEqual({
+      headReads: 1,
+      segmentRows: 1,
+      providerRevisionReads: 1,
+      providerBodyFetches: 0,
     });
   });
 
   it("fails a continuation after the provider body changes", async () => {
     let bodyText = "alpha\nbeta\n";
+    let providerRevision = "history-1";
     const getGmailMessageDetail = vi.fn(async () => ({ message: gmailMessage(), bodyText }));
-    const runtime = runtimeWithGoogleService({ getGmailMessageDetail });
+    const runtime = runtimeWithGoogleService({
+      getGmailMessageDetail,
+      getGmailMessageRevision: vi.fn(async () => providerRevision),
+    });
     getDefaultTriageService().register(new GoogleGmailAdapter());
     const first = await runReadAction(runtime, { messageId: "msg_1", limit: 6 });
     const control = (first.data as { control: Record<string, unknown> }).control;
 
     bodyText = "alpha\nMUTATED\n";
+    providerRevision = "history-2";
     const stale = await runReadAction(runtime, control);
     expect(stale.success).toBe(false);
     expect(stale.text).toContain("changed before the continuation");
   });
 
   it("rechecks service availability and account authorization on every page", async () => {
-    const getGmailMessageDetail = vi
-      .fn()
-      .mockResolvedValueOnce({ message: gmailMessage(), bodyText: "alpha\nbeta\n" })
-      .mockRejectedValueOnce(new Error("OAuth grant revoked"));
-    const runtime = runtimeWithGoogleService({ getGmailMessageDetail });
+    const getGmailMessageDetail = vi.fn(async () => ({
+      message: gmailMessage(),
+      bodyText: "alpha\nbeta\n",
+    }));
+    const getGmailMessageRevision = vi.fn().mockRejectedValue(new Error("OAuth grant revoked"));
+    const runtime = runtimeWithGoogleService({ getGmailMessageDetail, getGmailMessageRevision });
     getDefaultTriageService().register(new GoogleGmailAdapter());
     const first = await runReadAction(runtime, { messageId: "msg_1", limit: 6 });
     const control = (first.data as { control: Record<string, unknown> }).control;
 
     const revokedAuth = await runReadAction(runtime, control);
     expect(revokedAuth.success).toBe(false);
-    expect(revokedAuth.text).toContain("OAuth grant revoked");
+    expect(revokedAuth.text).toContain("authorization was revoked");
 
-    vi.mocked(runtime.getService).mockReturnValue(null);
+    (runtime.getService as ReturnType<typeof vi.fn>).mockReturnValue(null);
     const revokedService = await runReadAction(runtime, control);
     expect(revokedService.success).toBe(false);
     expect(revokedService.text).toContain("unavailable");
@@ -486,6 +510,8 @@ describe("MESSAGE Gmail progressive body reads", () => {
     const unicodeAdapter = new GoogleGmailAdapter();
     const unicode = await unicodeAdapter.readMessage(unicodeRuntime, {
       messageId: "msg_1",
+      requesterEntityId: actionMessage.entityId,
+      requesterRoomId: actionMessage.roomId,
       unit: "byte",
       limit: 4,
     });
@@ -494,6 +520,8 @@ describe("MESSAGE Gmail progressive body reads", () => {
     await expect(
       unicodeAdapter.readMessage(unicodeRuntime, {
         messageId: "msg_1",
+        requesterEntityId: actionMessage.entityId,
+        requesterRoomId: actionMessage.roomId,
         unit: "byte",
         limit: 1,
       })
@@ -508,6 +536,8 @@ describe("MESSAGE Gmail progressive body reads", () => {
     const hugeAdapter = new GoogleGmailAdapter();
     const huge = await hugeAdapter.readMessage(hugeRuntime, {
       messageId: "msg_1",
+      requesterEntityId: actionMessage.entityId,
+      requesterRoomId: actionMessage.roomId,
     });
     expect(Buffer.byteLength(huge.text)).toBe(16_384);
     expect(huge.readView.slice).toMatchObject({
@@ -518,6 +548,8 @@ describe("MESSAGE Gmail progressive body reads", () => {
     await expect(
       hugeAdapter.readMessage(hugeRuntime, {
         messageId: "msg_1",
+        requesterEntityId: actionMessage.entityId,
+        requesterRoomId: actionMessage.roomId,
         unit: "line",
         limit: 1,
       })
@@ -525,12 +557,16 @@ describe("MESSAGE Gmail progressive body reads", () => {
     await expect(
       hugeAdapter.readMessage(hugeRuntime, {
         messageId: "msg_1",
+        requesterEntityId: actionMessage.entityId,
+        requesterRoomId: actionMessage.roomId,
         offset: 1,
       })
     ).rejects.toMatchObject({ code: "GMAIL_READ_EXPECTED_REVISION_REQUIRED" });
     await expect(
       hugeAdapter.readMessage(hugeRuntime, {
         messageId: "msg_1",
+        requesterEntityId: actionMessage.entityId,
+        requesterRoomId: actionMessage.roomId,
         offset: 70_001,
         expectedRevision: huge.readView.slice.revision,
       })
@@ -538,6 +574,8 @@ describe("MESSAGE Gmail progressive body reads", () => {
     await expect(
       hugeAdapter.readMessage(hugeRuntime, {
         messageId: "msg_1",
+        requesterEntityId: actionMessage.entityId,
+        requesterRoomId: actionMessage.roomId,
         unit: "line",
         offset: 2,
         expectedRevision: huge.readView.slice.revision,
@@ -545,11 +583,16 @@ describe("MESSAGE Gmail progressive body reads", () => {
     ).rejects.toMatchObject({ code: "GMAIL_READ_OFFSET_OUT_OF_RANGE" });
 
     const reference = huge.readView.reference.ref;
-    await expect(
-      new GoogleGmailAdapter().readMessage(hugeRuntime, {
-        reference,
-        expectedRevision: huge.readView.slice.revision,
-      })
-    ).rejects.toMatchObject({ code: "GMAIL_READ_REFERENCE_UNRESOLVED" });
+    const restarted = await new GoogleGmailAdapter().readMessage(hugeRuntime, {
+      reference,
+      requesterEntityId: actionMessage.entityId,
+      requesterRoomId: actionMessage.roomId,
+      expectedRevision: huge.readView.slice.revision,
+    });
+    expect(restarted.text).toBe(huge.text);
+    expect(
+      (hugeRuntime.getService("google") as { getGmailMessageDetail: ReturnType<typeof vi.fn> })
+        .getGmailMessageDetail
+    ).toHaveBeenCalledTimes(1);
   });
 });
