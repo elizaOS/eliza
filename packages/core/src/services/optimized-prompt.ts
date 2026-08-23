@@ -953,7 +953,7 @@ async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 			// error-policy:J3 an absent or unverifiable artifact version is simply not available to the scan
 		}
 	}
-	versions.sort((a, b) => a - b);
+	versions.sort(compareVersionNumbers);
 	return versions;
 }
 
@@ -974,7 +974,7 @@ function listClaimedVersionNumbers(dir: string): number[] {
 		const n = Number.parseInt(match[1] ?? "", 10);
 		if (Number.isFinite(n)) versions.add(n);
 	}
-	return [...versions].sort((a, b) => a - b);
+	return [...versions].sort(compareVersionNumbers);
 }
 
 /**
@@ -985,6 +985,16 @@ function listClaimedVersionNumbers(dir: string): number[] {
  * it means the directory is genuinely wedged — surface that as an error rather
  * than spinning forever.
  */
+/** Deterministic numeric sort that pushes non-finite values to the end. */
+export function compareVersionNumbers(a: number, b: number): number {
+  const aFinite = Number.isFinite(a);
+  const bFinite = Number.isFinite(b);
+  if (!aFinite && !bFinite) return 0;
+  if (!aFinite) return 1;
+  if (!bFinite) return -1;
+  return a - b;
+}
+
 const VERSION_CLAIM_MAX_ATTEMPTS = 64;
 
 /**
@@ -1029,7 +1039,7 @@ async function repointVersionLinks(
 	dir: string,
 	versions: number[],
 ): Promise<void> {
-	const sorted = [...versions].sort((a, b) => a - b);
+	const sorted = [...versions].sort(compareVersionNumbers);
 	const current = sorted.at(-1);
 	const previous = sorted.at(-2);
 	const previous2 = sorted.at(-3);
@@ -1061,7 +1071,7 @@ async function pruneOldVersions(
 	dir: string,
 	versions: number[],
 ): Promise<void> {
-	const sorted = [...versions].sort((a, b) => a - b);
+	const sorted = [...versions].sort(compareVersionNumbers);
 	if (sorted.length <= OPTIMIZED_PROMPT_RETAIN_VERSIONS) return;
 	const obsolete = sorted.slice(
 		0,
