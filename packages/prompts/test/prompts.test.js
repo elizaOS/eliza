@@ -91,6 +91,19 @@ describe("prompt template exports", () => {
     }
   });
 
+  it("shares register guidance across simple and synthesized reply lanes", () => {
+    assert.match(
+      prompts.registerResponsePolicy,
+      /never answer with a literal status such as "I'm here"/,
+    );
+    for (const template of [
+      prompts.messageHandlerTemplate,
+      prompts.replyTemplate,
+    ]) {
+      assert.ok(template.includes(prompts.registerResponsePolicy));
+    }
+  });
+
   it("keeps every user-facing response lane conversational by default", () => {
     for (const template of [
       prompts.messageHandlerTemplate,

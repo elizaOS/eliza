@@ -3,10 +3,12 @@
  * toolCalls for actions, messageToUser for terminal replies.
  */
 
-import { groupResponsePrecedencePolicy } from "@elizaos/core";
+import { groupResponsePrecedencePolicy, registerResponsePolicy } from "@elizaos/core";
 
 export const nativePlannerTemplate = `# Role
 Select and execute actions to fulfill the user's request.
+
+${registerResponsePolicy}
 
 **Current date/time: {{currentDateTime}}**
 
