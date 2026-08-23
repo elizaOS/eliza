@@ -155,11 +155,23 @@ describe("auth dev-login (SIWE wallet)", () => {
       fetchImpl: mock,
     });
     expect(result.ok).toBe(false);
-    expect(result.message).toContain("SIWE verify failed (400): ");
-    expect(result.message?.includes("😀")).toBe(false);
-    expect(result.message?.length).toBeLessThanOrEqual(
-      "SIWE verify failed (400): ".length + 160,
-    );
+    const message = result.message ?? "";
+    // The raw body cuts mid-surrogate-pair at unit 160: units 0-158 are "a",
+    // unit 159 is the high surrogate of 😀 and unit 160 its low surrogate, so a
+    // plain slice(0, 160) ends in an unpaired high surrogate.
+    expect(message).toBe(message.toWellFormed());
+    for (let i = 0; i < message.length; i += 1) {
+      const unit = message.charCodeAt(i);
+      if (unit >= 0xd800 && unit <= 0xdbff) {
+        const next = i + 1 < message.length ? message.charCodeAt(i + 1) : -1;
+        expect(next).toBeGreaterThanOrEqual(0xdc00);
+        expect(next).toBeLessThanOrEqual(0xdfff);
+        i += 1;
+        continue;
+      }
+      expect(unit >= 0xdc00 && unit <= 0xdfff).toBe(false);
+    }
+    expect(message).toBe(`SIWE verify failed (400): ${"a".repeat(159)}`);
   });
 
   it("a failed key persist is LOUD: warns, returns saveError, and prints manual-save instructions", async () => {
