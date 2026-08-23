@@ -68,7 +68,11 @@ describe("trajectory-logger surrogate-safe error preview (#24933)", () => {
       expect(message).toContain("�");
       expect(preview.length).toBeLessThanOrEqual(200);
       // Direct constructor path also well-formed
-      const direct = new TrajectoryHttpError(500, "err", lone + "a".repeat(199));
+      const direct = new TrajectoryHttpError(
+        500,
+        "err",
+        lone + "a".repeat(199),
+      );
       expect(direct.message.isWellFormed()).toBe(true);
       expect(direct.message).not.toContain("\uD800");
       expect(direct.message).toContain("�");
