@@ -1235,7 +1235,28 @@ function correctCapabilityOperationFamily(
 			candidate,
 			score: countIntersection(requestTokens, capabilityTokens(candidate)),
 		}))
-		.sort((left, right) => right.score - left.score);
+		.sort((left, right) => {
+			const rS =
+				typeof right.score === "number" && Number.isFinite(right.score)
+					? right.score
+					: 0;
+			const lS =
+				typeof left.score === "number" && Number.isFinite(left.score)
+					? left.score
+					: 0;
+			if (rS !== lS) return rS - lS;
+			return String(
+				(left as { view?: { id?: string } }).view?.id ??
+					(left as { id?: string }).id ??
+					"",
+			).localeCompare(
+				String(
+					(right as { view?: { id?: string } }).view?.id ??
+						(right as { id?: string }).id ??
+						"",
+				),
+			);
+		});
 	// Multiple semantic siblings are corrected only when the user's nouns make
 	// one a unique best match; a tie preserves the planner decision rather than
 	// guessing between collection and single-record reads.
@@ -1833,7 +1854,20 @@ function resolveCloseTargetView(
 	const scored = views
 		.map((view) => ({ view, score: scoreView(view, target) }))
 		.filter(({ score }) => score > 0)
-		.sort((a, b) => b.score - a.score);
+		.sort((a, b) => {
+			const bS =
+				typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+			const aS =
+				typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+			if (bS !== aS) return bS - aS;
+			return String(
+				(a.view as { id?: string })?.id ?? (a as { id?: string }).id ?? "",
+			).localeCompare(
+				String(
+					(b.view as { id?: string })?.id ?? (b as { id?: string }).id ?? "",
+				),
+			);
+		});
 	if (scored.length === 0) return { kind: "none" };
 	if (scored.length === 1) return { kind: "match", view: scored[0].view };
 

@@ -140,7 +140,20 @@ function rankViewMatches(
 		}
 		if (score > 0) ranked.push({ view, score });
 	}
-	ranked.sort((a, b) => b.score - a.score);
+	ranked.sort((a, b) => {
+		const bS =
+			typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+		const aS =
+			typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+		if (bS !== aS) return bS - aS;
+		return String(
+			(a.view as { id?: string })?.id ?? (a as { id?: string }).id ?? "",
+		).localeCompare(
+			String(
+				(b.view as { id?: string })?.id ?? (b as { id?: string }).id ?? "",
+			),
+		);
+	});
 	return ranked;
 }
 

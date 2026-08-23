@@ -312,7 +312,20 @@ function resolveView(
 	const scored = views
 		.map((v) => ({ view: v, score: scoreView(v, target) }))
 		.filter(({ score }) => score > 0)
-		.sort((a, b) => b.score - a.score);
+		.sort((a, b) => {
+			const bS =
+				typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+			const aS =
+				typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+			if (bS !== aS) return bS - aS;
+			return String(
+				(a.view as { id?: string })?.id ?? (a as { id?: string }).id ?? "",
+			).localeCompare(
+				String(
+					(b.view as { id?: string })?.id ?? (b as { id?: string }).id ?? "",
+				),
+			);
+		});
 
 	if (scored.length === 0) return { kind: "none" };
 	if (scored.length === 1) return { kind: "match", view: scored[0].view };
