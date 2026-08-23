@@ -243,6 +243,29 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     ).toBe(false);
   });
 
+  test("retains short semantic predicates when binding a claim to evidence", () => {
+    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    const marker = "[[SOURCE_URL:https://coin.example/direction]]";
+    const directionGrounding = (text: string): SharedRuntimePublicGrounding => ({
+      ...grounding,
+      sourceUrls: ["https://coin.example/direction"],
+      sources: [{ url: "https://coin.example/direction", text }],
+    });
+
+    expect(
+      validateSharedRealtimeReply(`BTC is up. ${marker}`, directionGrounding("BTC is up.")),
+    ).toBe(true);
+    for (const [claim, evidence] of [
+      ["BTC is up", "BTC is down"],
+      ["BTC is not up", "BTC is not down"],
+      ["Bitcoin price is up at 120 USD", "Bitcoin price is down at 120 USD"],
+    ] as const) {
+      const result = directionGrounding(evidence);
+      if (result.kind !== "web_search") throw new Error("fixture grounding must be available");
+      expect(validateSharedRealtimeReply(`${claim}. ${marker}`, result)).toBe(false);
+    }
+  });
+
   test("does not borrow unrelated negation from another evidence clause", () => {
     if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
     const mixedGrounding: SharedRuntimePublicGrounding = {
