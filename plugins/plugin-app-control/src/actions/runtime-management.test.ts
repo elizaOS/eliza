@@ -27,7 +27,7 @@ describe("RUNTIMES action", () => {
 		);
 	});
 
-	it("parses only the public SSH trust material", () => {
+	it("rejects secret-bearing action options instead of silently discarding them", () => {
 		expect(
 			parseRuntimeManagementRequest({
 				op: "connect_ssh",
@@ -39,20 +39,10 @@ describe("RUNTIMES action", () => {
 				identityFile: "/Users/me/.ssh/id_ed25519",
 				accessToken: "must-not-cross-the-action",
 			}),
-		).toEqual({
-			op: "connect_ssh",
-			runtimeId: "vps-1",
-			target: "user@host",
-			sshPort: 22,
-			remoteApiPort: 2138,
-			expectedFingerprint: "SHA256:verified",
-			identityFile: "/Users/me/.ssh/id_ed25519",
-			targetId: undefined,
-			label: undefined,
-			apiBase: undefined,
-			sessionId: undefined,
-			code: undefined,
-		});
+		).toBeNull();
+		expect(
+			parseRuntimeManagementRequest({ op: "list", access_token: "secret" }),
+		).toBeNull();
 	});
 
 	it("does not dispatch a mutation without explicit confirmation", async () => {
@@ -75,6 +65,94 @@ describe("RUNTIMES action", () => {
 		expect(manageRuntime).not.toHaveBeenCalled();
 	});
 
+	it("does not trust a model-authored confirm flag absent user confirmation", async () => {
+		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+			ok: true,
+			op: request.op,
+		}));
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			message,
+			undefined,
+			{ op: "revoke", targetId: "host:mac", confirm: "true" },
+			callback(),
+		);
+		expect(result?.values).toEqual(
+			expect.objectContaining({ awaitingConfirmation: true }),
+		);
+		expect(manageRuntime).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"No, don't do it",
+		"Yes, but do not proceed",
+		"I did not confirm",
+		"Never revoke it",
+		"Confirm after I check",
+		"Wait, yes",
+	])("rejects negated or ambiguous confirmation text: %s", async (text) => {
+		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+			ok: true,
+			op: request.op,
+		}));
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text } } as Memory,
+			undefined,
+			{ op: "revoke", targetId: "host:mac", confirm: "true" },
+			callback(),
+		);
+		expect(result?.values).toEqual(
+			expect.objectContaining({ awaitingConfirmation: true }),
+		);
+		expect(manageRuntime).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"confirm the revocation",
+		"yes, confirm revoke",
+		"proceed with the revocation",
+	])("accepts an unambiguous complete confirmation: %s", async (text) => {
+		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+			ok: true,
+			op: request.op,
+		}));
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text } } as Memory,
+			undefined,
+			{ op: "revoke", targetId: "host:mac", confirm: "true" },
+			callback(),
+		);
+		expect(result?.success).toBe(true);
+		expect(manageRuntime).toHaveBeenCalledTimes(1);
+	});
+
+	it.each(["yes", "Yes, please", "confirm", "proceed", "go ahead", "do it"])(
+		"rejects generic approval that is not bound to the requested operation: %s",
+		async (text) => {
+			const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+				ok: true,
+				op: request.op,
+			}));
+			const action = createRuntimeManagementAction({ manageRuntime });
+			const result = await action.handler(
+				runtime,
+				{ content: { text } } as Memory,
+				undefined,
+				{ op: "revoke", targetId: "host:mac", confirm: "true" },
+				callback(),
+			);
+			expect(result?.values).toEqual(
+				expect.objectContaining({ awaitingConfirmation: true }),
+			);
+			expect(manageRuntime).not.toHaveBeenCalled();
+		},
+	);
+
 	it("dispatches a confirmed pairing and narrates the one-use receipt", async () => {
 		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
 			ok: true,
@@ -90,7 +168,7 @@ describe("RUNTIMES action", () => {
 		const action = createRuntimeManagementAction({ manageRuntime });
 		const result = await action.handler(
 			runtime,
-			message,
+			{ content: { text: "Yes, confirm pairing" } } as Memory,
 			undefined,
 			{ op: "pair", targetId: "host:mac", confirm: "true" },
 			callback(),
@@ -113,11 +191,44 @@ describe("RUNTIMES action", () => {
 		expect(result?.text).toContain("123456");
 	});
 
+	it("returns every saved runtime in model-visible text and structured data", async () => {
+		const runtimes = [
+			{ id: "local", label: "This Mac", kind: "local", active: true },
+			{ id: "vps", label: "Home VPS", connectionMode: "ssh", active: false },
+		];
+		const action = createRuntimeManagementAction({
+			manageRuntime: vi.fn(async () => ({
+				ok: true,
+				op: "list",
+				data: { runtimes },
+			})),
+		});
+		const result = await action.handler(
+			runtime,
+			message,
+			undefined,
+			{ op: "list" },
+			callback(),
+		);
+		expect(result?.text).toContain("This Mac (local)");
+		expect(result?.text).toContain("Home VPS (vps)");
+		expect(JSON.parse(String(result?.values?.resultJson))).toEqual({
+			runtimes,
+		});
+	});
+
 	it("allows read-only SSH inspection without a mutation confirmation", async () => {
 		const manageRuntime: RuntimeManagementFn = vi.fn(async () => ({
 			ok: true,
 			op: "inspect_ssh",
-			data: { inspection: { fingerprints: ["SHA256:observed"] } },
+			data: {
+				inspection: {
+					fingerprints: [
+						{ algorithm: "ssh-ed25519", fingerprint: "SHA256:observed" },
+					],
+					preferredFingerprint: "SHA256:observed",
+				},
+			},
 		}));
 		const action = createRuntimeManagementAction({ manageRuntime });
 		const result = await action.handler(
@@ -128,6 +239,62 @@ describe("RUNTIMES action", () => {
 			callback(),
 		);
 		expect(result?.success).toBe(true);
+		expect(result?.text).toContain("ssh-ed25519: SHA256:observed");
+		expect(result?.text).toContain("Preferred fingerprint: SHA256:observed");
 		expect(manageRuntime).toHaveBeenCalledTimes(1);
+	});
+
+	it("binds the default HTTP handoff to the originating renderer", async () => {
+		const fetchMock = vi.fn(
+			async (_url: string | URL | Request, _init?: RequestInit) =>
+				new Response(
+					JSON.stringify({ ok: true, op: "list", data: { runtimes: [] } }),
+					{
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					},
+				),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+		try {
+			const action = createRuntimeManagementAction();
+			const result = await action.handler(
+				runtime,
+				{
+					content: {
+						text: "list my runtimes",
+						metadata: { viewClientId: "origin-renderer" },
+					},
+				} as Memory,
+				undefined,
+				{ op: "list" },
+				callback(),
+			);
+			expect(result?.success).toBe(true);
+			const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+			expect(body).toEqual({ op: "list", clientId: "origin-renderer" });
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("refuses an unbound mutation instead of racing arbitrary connected shells", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		try {
+			const action = createRuntimeManagementAction();
+			const result = await action.handler(
+				runtime,
+				{ content: { text: "Yes, confirm removing it" } } as Memory,
+				undefined,
+				{ op: "remove", runtimeId: "vps-1", confirm: "true" },
+				callback(),
+			);
+			expect(result?.success).toBe(false);
+			expect(result?.text).toContain("bound to that device");
+			expect(fetchMock).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

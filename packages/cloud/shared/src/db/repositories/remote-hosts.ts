@@ -197,6 +197,39 @@ export class RemoteHostsRepository {
     return host;
   }
 
+  async recordManagedCleanupPending(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    hostname: string;
+    preAuthKeyId: string;
+    message: string;
+  }): Promise<void> {
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        headscale_hostname: input.hostname,
+        headscale_preauth_key_id: input.preAuthKeyId,
+        headscale_cleanup_pending: true,
+        headscale_cleanup_error: managedCleanupErrorPreview(input.message),
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+          eq(remoteHosts.status, "pending"),
+        ),
+      )
+      .returning({ id: remoteHosts.id });
+    if (!host) {
+      throw storageFailure("Pending managed-network cleanup could not be recorded", {
+        hostId: input.hostId,
+      });
+    }
+  }
+
   async recordManagedCleanupFailure(input: {
     hostId: string;
     organizationId: string;

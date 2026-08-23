@@ -13,7 +13,7 @@ export interface ManagedNetworkConfig {
 
 export interface ManagedNetworkHost {
   id: string;
-  created_at?: Date;
+  created_at: Date;
   headscale_hostname?: string | null;
   headscale_preauth_key_id?: string | null;
   headscale_cleanup_pending?: boolean;
@@ -31,6 +31,14 @@ export interface ManagedNetworkRepository {
     hostId: string;
     organizationId: string;
     userId: string;
+    message: string;
+  }): Promise<unknown>;
+  recordManagedCleanupPending(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    hostname: string;
+    preAuthKeyId: string;
     message: string;
   }): Promise<unknown>;
   completeManagedCleanup(input: {
@@ -148,17 +156,12 @@ export async function enrollManagedNetwork(input: {
     }
     if (cleanupFailures.length > 0) {
       try {
-        await input.repository.recordManagedEnrollment({
+        await input.repository.recordManagedCleanupPending({
           hostId: input.hostId,
           organizationId: input.organizationId,
           userId: input.userId,
           hostname,
           preAuthKeyId: preAuthKey.id,
-        });
-        await input.repository.recordManagedCleanupFailure({
-          hostId: input.hostId,
-          organizationId: input.organizationId,
-          userId: input.userId,
           message: "Managed-network enrollment compensation is pending retry.",
         });
       } catch (trackingCause) {
@@ -202,10 +205,17 @@ export async function cleanupManagedNetwork(input: {
   const hostname = input.host.headscale_hostname;
   if (hostname) {
     try {
-      const node = await client.getNodeByNameOrSuffixedStrict(hostname, {
-        createdAfter: input.host.created_at,
-      });
-      if (node) await client.deleteNode(node.id);
+      const escapedHostname = hostname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const collisionName = new RegExp(`^${escapedHostname}-[a-z0-9]{8}$`);
+      const createdAtMs = input.host.created_at.getTime();
+      const nodes = await client.listNodesStrict();
+      const cleanupNodes = nodes.filter(
+        (node) =>
+          node.name === hostname ||
+          (collisionName.test(node.name) &&
+            Date.parse(node.createdAt) >= createdAtMs),
+      );
+      for (const node of cleanupNodes) await client.deleteNode(node.id);
     } catch (cause) {
       failures.push(cause);
     }

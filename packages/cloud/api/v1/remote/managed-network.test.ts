@@ -11,6 +11,7 @@ import {
 function repository(): ManagedNetworkRepository {
   return {
     recordManagedEnrollment: mock(async () => undefined),
+    recordManagedCleanupPending: mock(async () => undefined),
     recordManagedCleanupFailure: mock(async () => undefined),
     completeManagedCleanup: mock(async () => undefined),
   };
@@ -28,7 +29,7 @@ function client(overrides: Record<string, unknown> = {}): HeadscaleClient {
     })),
     expirePreAuthKey: mock(async () => undefined),
     deletePreAuthKey: mock(async () => undefined),
-    getNodeByNameOrSuffixedStrict: mock(async () => null),
+    listNodesStrict: mock(async () => []),
     deleteNode: mock(async () => undefined),
     ...overrides,
   } as unknown as HeadscaleClient;
@@ -111,19 +112,62 @@ describe("remote host managed-network lifecycle", () => {
     expect(headscale.deletePreAuthKey).toHaveBeenCalledWith("123");
   });
 
+  test("records cleanup state without activating when key compensation also fails", async () => {
+    const repo = repository();
+    repo.recordManagedEnrollment = mock(async () => {
+      throw new Error("database activation unavailable");
+    });
+    const headscale = client({
+      expirePreAuthKey: mock(async () => {
+        throw new Error("Headscale unavailable");
+      }),
+    });
+    await expect(
+      enrollManagedNetwork({
+        hostId: "host-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        config,
+        repository: repo,
+        client: headscale,
+      }),
+    ).rejects.toThrow(/compensation is pending/);
+    expect(repo.recordManagedCleanupPending).toHaveBeenCalledWith({
+      hostId: "host-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      hostname: managedNetworkInternals.hostnameForHost("host-1"),
+      preAuthKeyId: "123",
+      message: "Managed-network enrollment compensation is pending retry.",
+    });
+    expect(repo.recordManagedEnrollment).toHaveBeenCalledTimes(1);
+  });
+
   test("cleans key and node idempotently before clearing durable retry state", async () => {
     const repo = repository();
     const headscale = client({
-      getNodeByNameOrSuffixedStrict: mock(async () => ({
-        id: "9",
-        name: "eliza-host-one-cnpx9uop",
-      })),
+      listNodesStrict: mock(async () => [
+        {
+          id: "8",
+          name: "eliza-host-one-deadbeef",
+          createdAt: "2026-08-22T11:59:59.000Z",
+        },
+        {
+          id: "9",
+          name: "eliza-host-one",
+          createdAt: "2026-08-22T12:00:01.000Z",
+        },
+        {
+          id: "10",
+          name: "eliza-host-one-cafebabe",
+          createdAt: "2026-08-22T12:00:01.000Z",
+        },
+      ]),
     });
-    const createdAt = new Date("2026-08-22T12:00:00.000Z");
     await cleanupManagedNetwork({
       host: {
         id: "host-1",
-        created_at: createdAt,
+        created_at: new Date("2026-08-22T12:00:00.000Z"),
         headscale_hostname: "eliza-host-one",
         headscale_preauth_key_id: "123",
         headscale_cleanup_pending: true,
@@ -135,11 +179,9 @@ describe("remote host managed-network lifecycle", () => {
       client: headscale,
     });
     expect(headscale.expirePreAuthKey).toHaveBeenCalledWith("123");
-    expect(headscale.getNodeByNameOrSuffixedStrict).toHaveBeenCalledWith(
-      "eliza-host-one",
-      { createdAfter: createdAt },
-    );
     expect(headscale.deleteNode).toHaveBeenCalledWith("9");
+    expect(headscale.deleteNode).toHaveBeenCalledWith("10");
+    expect(headscale.deleteNode).not.toHaveBeenCalledWith("8");
     expect(headscale.deletePreAuthKey).toHaveBeenCalledWith("123");
     expect(repo.completeManagedCleanup).toHaveBeenCalledTimes(1);
   });

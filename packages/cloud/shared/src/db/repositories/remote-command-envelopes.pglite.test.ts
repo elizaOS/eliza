@@ -232,7 +232,7 @@ afterAll(async () => {
 });
 
 describe("secure remote relay repositories", () => {
-  it("keeps managed enrollment non-authoritative until durable activation", async () => {
+  it("keeps managed enrollment non-authoritative until durable activation and cleanup", async () => {
     hostToken = generateRemoteHostToken();
     expect(
       await hosts.createOwned({
@@ -251,7 +251,34 @@ describe("secure remote relay repositories", () => {
       }),
     ).toMatchObject({ kind: "created", host: { status: "pending" } });
     expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
-
+    const pairingExpiry = new Date(Date.now() + 5 * 60_000);
+    expect(
+      await sessions.createPendingForOwnedHost({
+        id: sessionId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        host_id: hostId,
+        grant_id: grantId,
+        grant_revision: 1,
+        status: "pending",
+        requester_identity: ownerId,
+        pairing_token_hash: await deriveRemotePairingCodeVerifier(
+          pairingSecret,
+          { organizationId, userId: ownerId, hostId, sessionId },
+          "123456",
+          pairingExpiry,
+        ),
+        controller_device_id: controllerDeviceId,
+        controller_key_id: controllerKeyId,
+        controller_display_name: "Controller",
+        controller_platform: "linux",
+        controller_signing_public_jwk: ecPublicJwk,
+        controller_encryption_public_jwk: ecPublicJwk,
+        target_key_id: targetKeyId,
+        expires_at: pairingExpiry,
+        grant_expires_at: new Date(Date.now() + 60 * 60_000),
+      }),
+    ).toBeUndefined();
     await hosts.recordManagedEnrollment({
       hostId,
       organizationId,

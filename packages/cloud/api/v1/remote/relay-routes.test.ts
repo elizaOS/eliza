@@ -40,12 +40,13 @@ const revokeHost = mock();
 const revokeAuthenticatedHost = mock();
 const recordManagedEnrollment = mock();
 const activateManagedEnrollment = mock();
+const recordManagedCleanupPending = mock();
 const recordManagedCleanupFailure = mock();
 const completeManagedCleanup = mock();
 const createPreAuthKey = mock();
 const expirePreAuthKey = mock();
 const deletePreAuthKey = mock();
-const getNodeByNameOrSuffixedStrict = mock();
+const listNodesStrict = mock();
 const deleteNode = mock();
 const createPendingForOwnedAgent = mock();
 const createPendingForOwnedHost = mock();
@@ -71,6 +72,7 @@ mock.module("@/db/repositories/remote-hosts", () => ({
     revokeAuthenticated: revokeAuthenticatedHost,
     recordManagedEnrollment,
     activateManagedEnrollment,
+    recordManagedCleanupPending,
     recordManagedCleanupFailure,
     completeManagedCleanup,
   },
@@ -80,7 +82,7 @@ mock.module("@/lib/services/headscale-client", () => ({
     createPreAuthKey = createPreAuthKey;
     expirePreAuthKey = expirePreAuthKey;
     deletePreAuthKey = deletePreAuthKey;
-    getNodeByNameOrSuffixedStrict = getNodeByNameOrSuffixedStrict;
+    listNodesStrict = listNodesStrict;
     deleteNode = deleteNode;
   },
 }));
@@ -211,12 +213,13 @@ beforeEach(() => {
     revokeAuthenticatedHost,
     recordManagedEnrollment,
     activateManagedEnrollment,
+    recordManagedCleanupPending,
     recordManagedCleanupFailure,
     completeManagedCleanup,
     createPreAuthKey,
     expirePreAuthKey,
     deletePreAuthKey,
-    getNodeByNameOrSuffixedStrict,
+    listNodesStrict,
     deleteNode,
     createPendingForOwnedAgent,
     createPendingForOwnedHost,
@@ -252,7 +255,7 @@ beforeEach(() => {
   });
   expirePreAuthKey.mockResolvedValue(undefined);
   deletePreAuthKey.mockResolvedValue(undefined);
-  getNodeByNameOrSuffixedStrict.mockResolvedValue(null);
+  listNodesStrict.mockResolvedValue([]);
   deleteNode.mockResolvedValue(undefined);
 });
 
@@ -324,6 +327,8 @@ describe("secure remote relay routes", () => {
         status: string;
       };
     };
+    expect(createOwned.mock.calls[0]?.[0]).toMatchObject({ status: "pending" });
+    expect(body.data.status).toBe("active");
     expect(body.data.managedNetworkEnrollment.authKey).toBe(
       "hskey-auth-one-use-secret",
     );
@@ -494,6 +499,11 @@ describe("secure remote relay routes", () => {
         revoked_at: null,
       },
       {
+        id: "40000000-0000-4000-8000-000000000003",
+        status: "pending",
+        created_at: new Date(),
+      },
+      {
         id: staleHostId,
         device_id: "linux-stale",
         display_name: "Linux Stale",
@@ -540,6 +550,7 @@ describe("secure remote relay routes", () => {
       encryptionPublicKeyJwk: publicJwk,
       status: "active",
     });
+    expect(body.data.hosts).toHaveLength(2);
     expect(body.data.hosts[1]).toMatchObject({
       id: staleHostId,
       status: "offline",
@@ -910,10 +921,13 @@ describe("secure remote relay routes", () => {
       alreadyRevoked: true,
       cleanup: { sessions: 0, commands: 0, more: false },
     });
-    getNodeByNameOrSuffixedStrict.mockResolvedValue({
-      id: "9",
-      name: "eliza-host-one-cnpx9uop",
-    });
+    listNodesStrict.mockResolvedValue([
+      {
+        id: "9",
+        name: "eliza-host-one-cnpx9uop",
+        createdAt: new Date("2026-08-22T06:15:01.000Z").toISOString(),
+      },
+    ]);
     const response = await request(
       `/api/v1/remote/hosts/${hostId}/revoke`,
       {},
@@ -926,10 +940,7 @@ describe("secure remote relay routes", () => {
     );
     expect(response.status).toBe(200);
     expect(expirePreAuthKey).toHaveBeenCalledWith("123");
-    expect(getNodeByNameOrSuffixedStrict).toHaveBeenCalledWith(
-      "eliza-host-one",
-      expect.objectContaining({ createdAfter: expect.any(Date) }),
-    );
+    expect(listNodesStrict).toHaveBeenCalledTimes(1);
     expect(deleteNode).toHaveBeenCalledWith("9");
     expect(deletePreAuthKey).toHaveBeenCalledWith("123");
     expect(completeManagedCleanup).toHaveBeenCalledWith(

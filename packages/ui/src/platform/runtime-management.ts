@@ -339,6 +339,8 @@ export async function executeRuntimeManagementCommand(
   try {
     return { ok: true, op: request.op, data: await execute(request) };
   } catch (cause) {
+    // error-policy:J1 the renderer command boundary returns an explicit failure
+    // to the waiting agent route; it never reports a failed mutation as success.
     return {
       ok: false,
       op: request.op,
