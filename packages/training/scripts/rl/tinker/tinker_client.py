@@ -25,7 +25,10 @@ from typing import Literal
 
 import numpy as np
 
-from lib.generation_integrity import require_complete_finish_reasons
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_finish_reasons,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1024,8 +1027,22 @@ class FeedTinkerClient:
         if include_logprobs and hasattr(result, "prompt_logprobs"):
             logprobs = [result.prompt_logprobs] * n
 
-        # Extract finish reasons
-        finish_reasons = [getattr(seq, "finish_reason", "stop") for seq in result.sequences]
+        # Read the authoritative Tinker stop_reason. SampledSequence exposes
+        # `stop_reason` ("stop" | "length"); it has no `finish_reason` field, so
+        # a missing value means completion state is unproven — reject instead of
+        # synthesizing "stop" (#25157).
+        finish_reasons: list[str] = []
+        for seq in result.sequences:
+            reason = getattr(seq, "stop_reason", None)
+            if reason is None:
+                raise IncompleteGenerationError(
+                    "tinker.sample",
+                    "missing_stop_reason",
+                )
+            normalized = str(reason).strip().lower()
+            if normalized not in ("stop", "length"):
+                raise IncompleteGenerationError("tinker.sample", normalized or "unknown")
+            finish_reasons.append(normalized)
         require_complete_finish_reasons(finish_reasons, source="tinker.sample")
 
         return SampleResult(
@@ -1074,7 +1091,21 @@ class FeedTinkerClient:
         logprobs = []
         if include_logprobs and hasattr(result, "prompt_logprobs"):
             logprobs = [result.prompt_logprobs] * n
-        finish_reasons = [getattr(seq, "finish_reason", "stop") for seq in result.sequences]
+
+        # Same authoritative stop_reason read as sample(): missing or unknown
+        # completion state is unproven and rejected, never synthesized (#25157).
+        finish_reasons: list[str] = []
+        for seq in result.sequences:
+            reason = getattr(seq, "stop_reason", None)
+            if reason is None:
+                raise IncompleteGenerationError(
+                    "tinker.sample_async",
+                    "missing_stop_reason",
+                )
+            normalized = str(reason).strip().lower()
+            if normalized not in ("stop", "length"):
+                raise IncompleteGenerationError("tinker.sample_async", normalized or "unknown")
+            finish_reasons.append(normalized)
         require_complete_finish_reasons(finish_reasons, source="tinker.sample_async")
 
         return SampleResult(
