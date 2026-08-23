@@ -2,8 +2,12 @@
  * Verifies safe sorting in Discord triage, DM channel registry, and outbound deduplication when timestamps contain NaN.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DmChannelRegistry } from "../dm-channel-registry.js";
+import {
+  beginDiscordOutboundDelivery,
+  type DiscordOutboundDeliveryState,
+} from "../messages.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +22,7 @@ describe("discord safe sort", () => {
       let i = 0;
       const registry = new DmChannelRegistry({
         filePath,
+        logger: { warn: vi.fn() },
         maxEntries: 10,
         now: () => timestamps[i++],
       });
@@ -36,21 +41,28 @@ describe("discord safe sort", () => {
     }
   });
 
-  it("safely sorts outbound deliveries when settledAt contains NaN", () => {
-    const entries: [string, { status: "settled"; settledAt: number }][] = [
-      ["k2", { status: "settled", settledAt: 2000 }],
-      ["knan", { status: "settled", settledAt: NaN }],
-      ["k1", { status: "settled", settledAt: 1000 }],
-    ];
+  it("safely prunes settled outbound deliveries when settledAt contains NaN", () => {
+    const state = new Map<string, DiscordOutboundDeliveryState>();
 
-    entries.sort(
-      (left, right) =>
-        (Number.isFinite(left[1].settledAt) ? left[1].settledAt : 0) -
-        (Number.isFinite(right[1].settledAt) ? right[1].settledAt : 0),
-    );
+    // Fill state past 512 (cap) with settled entries, including NaN settledAt
+    for (let i = 0; i < 520; i++) {
+      const settledAt = i === 0 ? NaN : 100000 + i;
+      state.set(`key-${i}`, {
+        status: "settled",
+        settledAt,
+        receipt: { messageId: `msg-${i}`, channelId: "ch-1" },
+      });
+    }
 
-    expect(entries[0][0]).toBe("knan");
-    expect(entries[1][0]).toBe("k1");
-    expect(entries[2][0]).toBe("k2");
+    const res = beginDiscordOutboundDelivery({
+      channelId: "ch-test",
+      text: "hello world",
+      state,
+      now: 100000,
+      windowMs: 1000000,
+    });
+
+    expect(res.kind).toBe("deliver");
+    expect(state.size).toBeLessThanOrEqual(513);
   });
 });

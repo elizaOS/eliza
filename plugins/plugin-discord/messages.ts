@@ -491,6 +491,7 @@ function pruneOutboundDedupeState(
 					}
 				>,
 			] => entry[1].status === "settled",
+		)
 		.sort(
 			(left, right) =>
 				(Number.isFinite(left[1].settledAt) ? left[1].settledAt : 0) -
