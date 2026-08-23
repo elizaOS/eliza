@@ -13,6 +13,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +43,12 @@ export const MATRIX_STEPS = [
     label: "App visual audit",
     command: ["bun", "run", "--cwd", "packages/app", "audit:app"],
     tags: ["ui", "screenshots"],
+  },
+  {
+    id: "content-context",
+    label: "Progressive content completeness evidence",
+    command: ["node", "packages/scripts/run-content-context.mjs"],
+    tags: ["tests", "content-context"],
   },
   {
     id: "ios-sim-capture",
@@ -112,6 +119,8 @@ Options:
   --only=<ids>             Comma-separated step ids to run.
   --skip-devices           Skip iOS/Android device capture lanes.
   --out=<dir>              Dashboard output directory. Default: evidence/review/<run-id>.
+  --content-context-source=<dir>
+                           Complete native progressive-content sub-artifacts.
   --tier=<cpu|gpu|full>    Bundle evidence tier. Default: cpu.
   --review / --no-review   Generate the evidence reviewer after the matrix.
   --open / --no-open       Open the reviewer after generation. Default: no-open.
@@ -132,6 +141,7 @@ export function parseMatrixArgs(argv) {
     reviewOcr: "on",
     stopOnFailure: false,
     dryRun: false,
+    contentContextSource: null,
   };
 
   for (const arg of argv) {
@@ -150,6 +160,11 @@ export function parseMatrixArgs(argv) {
         .filter(Boolean);
     } else if (arg.startsWith("--out=")) {
       options.outputDir = path.resolve(REPO_ROOT, arg.slice("--out=".length));
+    } else if (arg.startsWith("--content-context-source=")) {
+      options.contentContextSource = path.resolve(
+        REPO_ROOT,
+        arg.slice("--content-context-source=".length),
+      );
     } else if (arg.startsWith("--tier=")) {
       options.tier = arg.slice("--tier=".length);
     } else if (arg.startsWith("--review-ocr=")) {
@@ -170,6 +185,40 @@ export function parseMatrixArgs(argv) {
     throw new Error("--tier must be cpu, gpu, or full");
   }
   return options;
+}
+
+/**
+ * Give the completeness producer its unique canonical output root. The source
+ * is required whenever the lane is selected so an absent native evidence set
+ * cannot turn into a skipped or empty green lane.
+ */
+export function assignContentContextRun(
+  steps,
+  options,
+  { runId = `matrix-${Date.now()}-${randomUUID()}` } = {},
+) {
+  if (!steps.some((step) => step.id === "content-context")) return steps;
+  if (!options.contentContextSource) {
+    throw new Error(
+      "content-context lane requires --content-context-source=<complete-artifact-dir>",
+    );
+  }
+  if (!/^matrix-[0-9A-Za-z-]+$/u.test(runId)) {
+    throw new Error("content-context run id is invalid");
+  }
+  const runRoot = path.join(REPO_ROOT, "reports", "content-context", runId);
+  return steps.map((step) =>
+    step.id === "content-context"
+      ? {
+          ...step,
+          command: [
+            ...step.command,
+            `--source=${options.contentContextSource}`,
+            `--run-root=${runRoot}`,
+          ],
+        }
+      : step,
+  );
 }
 
 export function selectMatrixSteps(steps, options) {
@@ -463,7 +512,10 @@ async function main() {
     return;
   }
 
-  const steps = selectMatrixSteps(MATRIX_STEPS, options);
+  const steps = assignContentContextRun(
+    selectMatrixSteps(MATRIX_STEPS, options),
+    options,
+  );
 
   let reporter = null;
   if (!options.dryRun) {
