@@ -10,6 +10,7 @@ import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { lifeOpsGmailMessageFromGoogle } from "./google-plugin-delegates.js";
 import {
   createLifeOpsConnectorGrant,
+  createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "./repository.js";
 
@@ -221,5 +222,61 @@ describe("LifeOpsRepository Gmail account isolation", () => {
       "same-provider-message-id",
       "same-provider-message-id",
     ]);
+  });
+
+  it("rolls back the prior projection and cursor when seed publication fails", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const ownerGrant = grant("account-1");
+    const prior = lifeOpsGmailMessageFromGoogle({
+      agentId: runtime.agentId,
+      grant: ownerGrant,
+      message: providerMessage(),
+      syncedAt: SYNCED_AT,
+    });
+    const replacement = {
+      ...prior,
+      externalId: "replacement",
+      id: `${prior.id}:replacement`,
+    };
+    await repository.upsertGmailMessage(prior);
+
+    await expect(
+      repository.publishGmailSeed(
+        [replacement, { ...replacement, grantId: null } as never],
+        createLifeOpsGmailSyncState({
+          agentId: runtime.agentId,
+          provider: "google",
+          side: "owner",
+          mailbox: "me",
+          grantId: ownerGrant.id,
+          maxResults: 2,
+          historyId: "history-2",
+          cursorStatus: "seeded",
+          fullResyncReason: null,
+          syncedAt: SYNCED_AT,
+        }),
+      ),
+    ).rejects.toThrow(/grantId/i);
+
+    await expect(
+      repository.listGmailMessages(
+        runtime.agentId,
+        "google",
+        { grantId: ownerGrant.id },
+        "owner",
+      ),
+    ).resolves.toEqual([expect.objectContaining({ id: prior.id })]);
+    await expect(
+      repository.getGmailSyncState(
+        runtime.agentId,
+        "google",
+        "me",
+        "owner",
+        ownerGrant.id,
+      ),
+    ).resolves.toBeNull();
   });
 });
