@@ -5,6 +5,7 @@ import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import {
   type AccountDeletionBackupAuthority,
   type AccountDeletionBackupDatabase,
+  type AccountDeletionComputeDatabase,
   type AccountDeletionSpoolAuthority,
   createAccountDeletionProviderAdapters,
 } from "./account-deletion-provider-adapters";
@@ -52,6 +53,42 @@ function backupDatabase(
     deleteGraph: input.deleteGraph ?? mock(async () => undefined),
   };
 }
+
+function computeDatabase(
+  result: Awaited<ReturnType<AccountDeletionComputeDatabase["inspectOrganization"]>>,
+): AccountDeletionComputeDatabase {
+  return { inspectOrganization: mock(async () => result) };
+}
+
+describe("account deletion compute replacement authority", () => {
+  test("fails closed when an upstream replacement provider effect is ambiguous", async () => {
+    const adapter = createAccountDeletionProviderAdapters({
+      computeDatabase: computeDatabase({
+        sandboxesRemain: false,
+        ambiguousReplacementAttemptsRemain: true,
+      }),
+    }).compute_containers;
+
+    await expect(adapter.inspect(context)).resolves.toEqual({
+      state: "action_required",
+      errorCode: "COMPUTE_REPLACEMENT_RECONCILIATION_REQUIRED",
+    });
+  });
+
+  test("completes only when sandboxes are absent and replacement effects are settled", async () => {
+    const adapter = createAccountDeletionProviderAdapters({
+      computeDatabase: computeDatabase({
+        sandboxesRemain: false,
+        ambiguousReplacementAttemptsRemain: false,
+      }),
+    }).compute_containers;
+
+    await expect(adapter.inspect(context)).resolves.toEqual({
+      state: "complete",
+      receiptDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+  });
+});
 
 describe("account deletion remote backup adapter", () => {
   test("fails closed without canonical authority even when no catalogue row is known", async () => {

@@ -1,6 +1,6 @@
 /** Coordinates fail-closed account-deletion requests and fenced worker claims. */
 
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
 import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
 import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
@@ -39,6 +39,7 @@ const IMMEDIATE_PHASE_LEASE_MILLISECONDS = 60 * 1_000;
 // Outlive the export worker lease so a stale in-flight put cannot recreate an object after revoke.
 const EXPORT_REVOCATION_SAFETY_MILLISECONDS = 15 * 60 * 1_000;
 const CANCELLATION_RETRY_MILLISECONDS = 60 * 1_000;
+const OPAQUE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 export const ACCOUNT_DELETION_PHASES = [
   "account_authority",
@@ -80,6 +81,7 @@ const ACCOUNT_DELETION_PHASE_ORDER = new Map<string, number>([
 
 export type AccountDeletionConflictCode =
   | "ACCOUNT_UNAVAILABLE"
+  | "ADMISSION_CREDENTIAL_REQUIRED"
   | "ANONYMOUS_ACCOUNT"
   | "REQUEST_REPLAYED"
   | "TRANSFER_REQUIRED"
@@ -176,6 +178,51 @@ export async function getAccountDeletionStatusByCredential(
   return record ? toAccountDeletionRequestDto(record.request, record.exportReceipt) : null;
 }
 
+function hashOpaqueCredential(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function deriveAdmissionCapabilities(admissionCredential: string): {
+  statusCredential: string;
+  recoveryCredential: string;
+} {
+  return {
+    statusCredential: createHash("sha256")
+      .update(`account-deletion-status:v1:${admissionCredential}`)
+      .digest("base64url"),
+    recoveryCredential: createHash("sha256")
+      .update(`account-deletion-recovery:v1:${admissionCredential}`)
+      .digest("base64url"),
+  };
+}
+
+/**
+ * Re-delivers only the first receipt's deterministic capabilities after a
+ * committed response is lost. The client secret is never persisted in plaintext.
+ */
+export async function recoverAccountDeletionAdmission(
+  admissionCredential: string,
+  now = new Date(),
+): Promise<AccountDeletionAcceptedDto | null> {
+  if (!OPAQUE_CREDENTIAL_PATTERN.test(admissionCredential)) return null;
+  const record = await accountDeletionRequestsRepository.findByAdmissionTokenHash(
+    hashOpaqueCredential(admissionCredential),
+    now,
+  );
+  if (!record) return null;
+  const capabilities = deriveAdmissionCapabilities(admissionCredential);
+  if (
+    hashOpaqueCredential(capabilities.statusCredential) !== record.request.status_token_hash ||
+    hashOpaqueCredential(capabilities.recoveryCredential) !== record.request.recovery_token_hash
+  ) {
+    return null;
+  }
+  return {
+    request: toAccountDeletionRequestDto(record.request, record.exportReceipt),
+    ...capabilities,
+  };
+}
+
 export async function cancelAccountDeletion(
   recoveryCredential: string,
 ): Promise<AccountDeletionStatusDto> {
@@ -226,14 +273,23 @@ export async function requestAccountDeletion(input: {
   userId: string;
   organizationId: string;
   stewardUserId: string;
+  admissionCredential: string;
   now?: Date;
 }): Promise<AccountDeletionAcceptedDto> {
+  if (!OPAQUE_CREDENTIAL_PATTERN.test(input.admissionCredential)) {
+    throw new AccountDeletionConflictError(
+      "A valid deletion admission credential is required",
+      "ADMISSION_CREDENTIAL_REQUIRED",
+    );
+  }
   const now = input.now ?? new Date();
   const requestId = randomUUID();
-  const statusCredential = randomBytes(32).toString("base64url");
-  const recoveryCredential = randomBytes(32).toString("base64url");
-  const statusTokenHash = createHash("sha256").update(statusCredential).digest("hex");
-  const recoveryTokenHash = createHash("sha256").update(recoveryCredential).digest("hex");
+  const { statusCredential, recoveryCredential } = deriveAdmissionCapabilities(
+    input.admissionCredential,
+  );
+  const statusTokenHash = hashOpaqueCredential(statusCredential);
+  const recoveryTokenHash = hashOpaqueCredential(recoveryCredential);
+  const admissionTokenHash = hashOpaqueCredential(input.admissionCredential);
   const recoveryExpiresAt = new Date(now.getTime() + RECOVERY_WINDOW_MILLISECONDS);
   const statusTokenExpiresAt = new Date(now.getTime() + STATUS_CREDENTIAL_RETENTION_MILLISECONDS);
   const requestDigest = createHash("sha256")
@@ -259,6 +315,8 @@ export async function requestAccountDeletion(input: {
     statusTokenExpiresAt,
     recoveryTokenHash,
     recoveryTokenExpiresAt: recoveryExpiresAt,
+    admissionTokenHash,
+    admissionTokenExpiresAt: recoveryExpiresAt,
     requestDigest,
     phases,
   });
@@ -287,6 +345,23 @@ export async function requestAccountDeletion(input: {
       "An account deletion request is already active; use its status credential",
       "REQUEST_REPLAYED",
     );
+  }
+
+  if (reservation.outcome === "replayed") {
+    if (
+      reservation.request.status_token_hash !== statusTokenHash ||
+      reservation.request.recovery_token_hash !== recoveryTokenHash
+    ) {
+      throw new AccountDeletionConflictError(
+        "The deletion admission receipt failed capability verification",
+        "ACCOUNT_UNAVAILABLE",
+      );
+    }
+    return {
+      request: toAccountDeletionRequestDto(reservation.request),
+      statusCredential,
+      recoveryCredential,
+    };
   }
 
   await attemptImmediateStewardDeactivation({

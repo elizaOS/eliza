@@ -103,15 +103,22 @@ export interface AccountDeletionStatusDto {
   } | null;
 }
 
-/** Returned only on initial acceptance; the server never persists either capability in plaintext. */
+/** Returned on first acceptance or a response-loss-safe replay of that same admission. */
 export interface AccountDeletionAcceptedDto {
   request: AccountDeletionStatusDto;
   statusCredential: string;
   recoveryCredential: string;
 }
 
+/** Client-retained first-admission authority used to recover a lost accepted response. */
+export interface AccountDeletionRequestBodyDto {
+  confirmation: "DELETE";
+  admissionCredential: string;
+}
+
 export type AccountDeletionApiErrorCode =
   | "ACCOUNT_UNAVAILABLE"
+  | "ADMISSION_CREDENTIAL_REQUIRED"
   | "ANONYMOUS_ACCOUNT"
   | "CONFIRMATION_REQUIRED"
   | "RECENT_AUTH_REQUIRED"

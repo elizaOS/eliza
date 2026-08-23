@@ -11,6 +11,7 @@ import {
 import {
   AccountDeletionConflictError,
   getOpenAccountDeletionRequest,
+  recoverAccountDeletionAdmission,
   requestAccountDeletion,
   toAccountDeletionRequestDto,
 } from "@/lib/services/account-deletion";
@@ -51,6 +52,42 @@ app.post("/", async (c) => {
   }
 
   try {
+    let body: { confirmation?: unknown; admissionCredential?: unknown } = {};
+    try {
+      body = await c.req.json<{
+        confirmation?: unknown;
+        admissionCredential?: unknown;
+      }>();
+    } catch {
+      // error-policy:J3 Malformed JSON is treated as an invalid confirmation, never valid input.
+    }
+    if (body.confirmation !== "DELETE") {
+      return c.json(
+        {
+          error: "Type DELETE to confirm permanent account deletion",
+          code: "CONFIRMATION_REQUIRED" as const,
+        },
+        400,
+      );
+    }
+    if (
+      typeof body.admissionCredential !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.admissionCredential)
+    ) {
+      return c.json(
+        {
+          error: "A valid deletion admission credential is required",
+          code: "ADMISSION_CREDENTIAL_REQUIRED" as const,
+        },
+        400,
+      );
+    }
+
+    const replay = await recoverAccountDeletionAdmission(
+      body.admissionCredential,
+    );
+    if (replay) return c.json(replay, 202);
+
     const user = await requireRecentSessionUserWithOrg(c);
     if (!user.steward_id) {
       return c.json(
@@ -61,26 +98,12 @@ app.post("/", async (c) => {
         409,
       );
     }
-    let body: { confirmation?: unknown } = {};
-    try {
-      body = await c.req.json<{ confirmation?: unknown }>();
-    } catch {
-      // error-policy:J3 Malformed JSON is treated as an invalid confirmation, never valid input.
-    }
-    if (body.confirmation !== "DELETE") {
-      return c.json(
-        {
-          error: "Type DELETE to confirm permanent account deletion",
-          code: "confirmation_required" as const,
-        },
-        400,
-      );
-    }
 
     const accepted = await requestAccountDeletion({
       userId: user.id,
       organizationId: user.organization_id,
       stewardUserId: user.steward_id,
+      admissionCredential: body.admissionCredential,
     });
     return c.json(accepted, 202);
   } catch (error) {

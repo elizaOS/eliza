@@ -34,6 +34,8 @@ function reservationInput(requestId: string, tokenSuffix: string) {
     statusTokenExpiresAt: new Date("2026-12-20T12:00:00Z"),
     recoveryTokenHash: `recovery-${tokenSuffix}`,
     recoveryTokenExpiresAt: recoveryExpiresAt,
+    admissionTokenHash: `admission-${tokenSuffix}`,
+    admissionTokenExpiresAt: recoveryExpiresAt,
     requestDigest: `request-${tokenSuffix}`,
     phases: [
       {
@@ -77,6 +79,12 @@ beforeAll(async () => {
       organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT
     )
   `);
+  await dbWrite.execute(`
+    CREATE TABLE agent_sandbox_replacement_attempts (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT
+    )
+  `);
 });
 
 afterAll(async () => {
@@ -115,6 +123,7 @@ async function seedPersonalAccount(): Promise<void> {
 
 beforeEach(async () => {
   await dbWrite.execute("DELETE FROM account_deletion_restrictive_fixture");
+  await dbWrite.execute("DELETE FROM agent_sandbox_replacement_attempts");
   await dbWrite.delete(accountDeletionRequests);
   await dbWrite.delete(organizations);
   await seedPersonalAccount();
@@ -184,6 +193,7 @@ describe("personal account deletion reservation", () => {
 
     expect(result.request).toMatchObject({
       status: "reserved",
+      admission_token_hash: "admission-one",
       restore_auto_top_up_enabled: true,
       restore_pay_as_you_go_from_earnings: true,
     });
@@ -208,6 +218,33 @@ describe("personal account deletion reservation", () => {
     const status = await accountDeletionRequestsRepository.findByStatusTokenHash("status-one", now);
     expect(status?.request.id).toBe(result.request.id);
     expect(status?.exportReceipt?.status).toBe("pending");
+    const admission = await accountDeletionRequestsRepository.findByAdmissionTokenHash(
+      "admission-one",
+      now,
+    );
+    expect(admission?.request.id).toBe(result.request.id);
+  });
+
+  test("replays only the matching admission hash after a committed response is lost", async () => {
+    const first = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000010", "lost-response"),
+    );
+    const retry = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000011", "lost-response"),
+    );
+    const wrongSecret = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000012", "wrong-secret"),
+    );
+
+    expect(first.outcome).toBe("reserved");
+    expect(retry.outcome).toBe("replayed");
+    expect(wrongSecret.outcome).toBe("existing");
+    if (!("request" in first) || !("request" in retry) || !("request" in wrongSecret)) {
+      throw new Error("reservation receipts were not returned");
+    }
+    expect(retry.request.id).toBe(first.request.id);
+    expect(wrongSecret.request.id).toBe(first.request.id);
+    expect(await dbWrite.select().from(accountDeletionRequests)).toHaveLength(1);
   });
 
   test("serializes concurrent retries without rotating the winner capabilities", async () => {
@@ -262,6 +299,21 @@ describe("personal account deletion reservation", () => {
       now: new Date("2026-08-23T12:00:00Z"),
     });
     expect(canceled.outcome).toBe("canceling");
+    const retriedCancellation = await accountDeletionRequestsRepository.cancelDuringRecovery({
+      recoveryTokenHash: "recovery-undo",
+      reactivationIdempotencyKeyDigest: "reactivation-undo",
+      exportRevocationIdempotencyKeyDigest: "export-revoke-undo",
+      exportRevocationNotBefore: new Date("2026-08-23T12:15:00Z"),
+      now: new Date("2026-08-23T12:00:01Z"),
+    });
+    expect(retriedCancellation.outcome).toBe("already_canceling");
+    if (retriedCancellation.outcome !== "already_canceling") {
+      throw new Error("cancel replay did not return the fenced receipt");
+    }
+    expect(retriedCancellation.request).toMatchObject({
+      status: "canceling",
+      recovery_token_hash: "recovery-undo",
+    });
 
     const [organization] = await dbWrite
       .select()
@@ -712,6 +764,10 @@ describe("personal account deletion reservation", () => {
     });
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(input);
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await dbWrite.execute(`
+      INSERT INTO agent_sandbox_replacement_attempts (id, organization_id)
+      VALUES ('71000000-0000-4000-8000-000000000001', '${organizationId}')
+    `);
 
     const exportLease = await accountDeletionRequestsRepository.leasePhase({
       requestId: reserved.request.id,
@@ -806,6 +862,10 @@ describe("personal account deletion reservation", () => {
     expect(await dbWrite.select().from(users)).toHaveLength(0);
     expect(await dbWrite.select().from(accountDeletionPhaseReceipts)).toHaveLength(0);
     expect(await dbWrite.select().from(accountDeletionExports)).toHaveLength(0);
+    const replacementAttempts = await dbWrite.execute(
+      "SELECT id FROM agent_sandbox_replacement_attempts",
+    );
+    expect(replacementAttempts.rows).toHaveLength(0);
     const [receipt] = await dbWrite.select().from(accountDeletionRequests);
     expect(receipt).toMatchObject({
       status: "completed",

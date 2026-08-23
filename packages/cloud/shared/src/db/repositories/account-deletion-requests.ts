@@ -1,6 +1,19 @@
 /** Persists durable deletion receipts and generation-fenced worker state transitions. */
 
-import { and, asc, eq, gt, inArray, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AccountDeletionExport,
@@ -15,6 +28,7 @@ import {
   accountDeletionRequests,
   type NewAccountDeletionRequest,
 } from "../schemas/account-deletion-requests";
+import { agentSandboxReplacementAttempts } from "../schemas/agent-sandbox-replacement-attempts";
 import { apiKeys } from "../schemas/api-keys";
 import { organizations } from "../schemas/organizations";
 import { userSessions } from "../schemas/user-sessions";
@@ -33,6 +47,8 @@ export interface ReservePersonalAccountDeletionInput {
   statusTokenExpiresAt: Date;
   recoveryTokenHash: string;
   recoveryTokenExpiresAt: Date;
+  admissionTokenHash: string;
+  admissionTokenExpiresAt: Date;
   requestDigest: string;
   phases: ReadonlyArray<{
     phase: string;
@@ -44,6 +60,7 @@ export interface ReservePersonalAccountDeletionInput {
 
 export type ReservePersonalAccountDeletionResult =
   | { outcome: "reserved"; request: AccountDeletionRequest }
+  | { outcome: "replayed"; request: AccountDeletionRequest }
   | { outcome: "existing"; request: AccountDeletionRequest }
   | { outcome: "account_unavailable" }
   | { outcome: "anonymous_account" }
@@ -166,7 +183,11 @@ export class AccountDeletionRequestsRepository {
         // them on a concurrent replay can invalidate credentials already
         // returned to the winner and can orphan an export encrypted to the
         // original recovery credential.
-        return { outcome: "existing", request: existing };
+        return {
+          outcome:
+            existing.admission_token_hash === input.admissionTokenHash ? "replayed" : "existing",
+          request: existing,
+        };
       }
 
       if (!current || !current.is_active || current.deleted_at) {
@@ -199,6 +220,8 @@ export class AccountDeletionRequestsRepository {
           status_token_expires_at: input.statusTokenExpiresAt,
           recovery_token_hash: input.recoveryTokenHash,
           recovery_token_expires_at: input.recoveryTokenExpiresAt,
+          admission_token_hash: input.admissionTokenHash,
+          admission_token_expires_at: input.admissionTokenExpiresAt,
           request_digest: input.requestDigest,
           restore_auto_top_up_enabled: organization.auto_top_up_enabled ?? false,
           restore_pay_as_you_go_from_earnings: organization.pay_as_you_go_from_earnings,
@@ -500,6 +523,8 @@ export class AccountDeletionRequestsRepository {
           lifecycle_revision: lifecycleRevision,
           recovery_token_hash: null,
           recovery_token_expires_at: null,
+          admission_token_hash: null,
+          admission_token_expires_at: null,
           irreversible_at: input.now,
           last_error_code: null,
           failure_class: null,
@@ -612,6 +637,8 @@ export class AccountDeletionRequestsRepository {
         status: "action_required",
         recovery_token_hash: null,
         recovery_token_expires_at: null,
+        admission_token_hash: null,
+        admission_token_expires_at: null,
         last_error_code: input.errorCode,
         failure_class: "operator_action_required",
         next_reconcile_at: null,
@@ -845,6 +872,14 @@ export class AccountDeletionRequestsRepository {
         .sort();
       if (incomplete.length > 0) return { outcome: "phases_incomplete", phases: incomplete };
 
+      // Replacement attempts may contain provider locators, so they remain
+      // restrictive until the compute phase proves every ambiguous effect is
+      // reconciled. At terminal database erasure the bounded request receipt,
+      // not the tenant-linked attempt row, becomes the retained evidence.
+      await tx
+        .delete(agentSandboxReplacementAttempts)
+        .where(eq(agentSandboxReplacementAttempts.organization_id, organization.id));
+
       const deleted = await tx
         .delete(organizations)
         .where(eq(organizations.id, organization.id))
@@ -866,6 +901,8 @@ export class AccountDeletionRequestsRepository {
           steward_user_id: null,
           recovery_token_hash: null,
           recovery_token_expires_at: null,
+          admission_token_hash: null,
+          admission_token_expires_at: null,
           restore_auto_top_up_enabled: null,
           restore_pay_as_you_go_from_earnings: null,
           lease_expires_at: null,
@@ -1268,8 +1305,8 @@ export class AccountDeletionRequestsRepository {
         .set({
           status: "canceling",
           canceled_at: input.now,
-          recovery_token_hash: null,
-          recovery_token_expires_at: null,
+          admission_token_hash: null,
+          admission_token_expires_at: null,
           last_error_code: "STEWARD_REACTIVATION_PENDING",
           updated_at: input.now,
         })
@@ -1364,6 +1401,10 @@ export class AccountDeletionRequestsRepository {
         .set({
           status: "canceled",
           lifecycle_revision: restoredRevision,
+          recovery_token_hash: null,
+          recovery_token_expires_at: null,
+          admission_token_hash: null,
+          admission_token_expires_at: null,
           identity_deactivated_at: null,
           last_error_code: null,
           failure_class: null,
@@ -1388,6 +1429,33 @@ export class AccountDeletionRequestsRepository {
       .where(eq(accountDeletionRequests.id, id))
       .limit(1);
     return request;
+  }
+
+  /** Primary-only lookup for response-loss recovery of the first receipt capabilities. */
+  async findByAdmissionTokenHash(
+    admissionTokenHash: string,
+    now = new Date(),
+  ): Promise<AccountDeletionStatusRecord | undefined> {
+    const [request] = await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(
+        and(
+          eq(accountDeletionRequests.admission_token_hash, admissionTokenHash),
+          gt(accountDeletionRequests.admission_token_expires_at, now),
+          isNotNull(accountDeletionRequests.status_token_hash),
+          isNotNull(accountDeletionRequests.recovery_token_hash),
+          inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
+        ),
+      )
+      .limit(1);
+    if (!request) return undefined;
+    const [exportReceipt] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, request.id))
+      .limit(1);
+    return { request, exportReceipt: exportReceipt ?? null };
   }
 
   /** Primary-only recovery capability lookup for export and undo authority. */

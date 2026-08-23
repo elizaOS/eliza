@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { and, eq, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import {
   agentBackupGcOutbox,
@@ -17,6 +17,7 @@ import {
   agentBackupRestoreReceipts,
   agentVaultKeySeedReceipts,
 } from "../../db/schemas/agent-backup-restore-history";
+import { agentSandboxReplacementAttempts } from "../../db/schemas/agent-sandbox-replacement-attempts";
 import {
   agentBackupCatalogAuthorities,
   agentSandboxBackups,
@@ -119,6 +120,7 @@ function isMissingStripeResource(error: unknown): boolean {
 export interface AccountDeletionProviderAdapterDependencies {
   backupAuthority?: AccountDeletionBackupAuthority;
   backupDatabase?: AccountDeletionBackupDatabase;
+  computeDatabase?: AccountDeletionComputeDatabase;
   spoolAuthority?: AccountDeletionSpoolAuthority;
 }
 
@@ -133,6 +135,13 @@ export interface AccountDeletionBackupAuthority {
 export interface AccountDeletionBackupDatabase {
   rowsRemain(organizationId: string): Promise<boolean>;
   deleteGraph(organizationId: string): Promise<void>;
+}
+
+export interface AccountDeletionComputeDatabase {
+  inspectOrganization(organizationId: string): Promise<{
+    sandboxesRemain: boolean;
+    ambiguousReplacementAttemptsRemain: boolean;
+  }>;
 }
 
 export interface AccountDeletionSpoolAuthority {
@@ -209,6 +218,33 @@ async function backupRowsRemain(organizationId: string): Promise<boolean> {
 const defaultBackupDatabase: AccountDeletionBackupDatabase = {
   rowsRemain: backupRowsRemain,
   deleteGraph: deleteBackupDatabaseGraph,
+};
+
+const defaultComputeDatabase: AccountDeletionComputeDatabase = {
+  async inspectOrganization(organizationId) {
+    const [sandbox] = await dbWrite
+      .select({ id: agentSandboxes.id })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.organization_id, organizationId))
+      .limit(1);
+    const [ambiguousReplacementAttempt] = await dbWrite
+      .select({ id: agentSandboxReplacementAttempts.id })
+      .from(agentSandboxReplacementAttempts)
+      .where(
+        and(
+          eq(agentSandboxReplacementAttempts.organization_id, organizationId),
+          inArray(agentSandboxReplacementAttempts.state, [
+            "in_flight_unresolved",
+            "provider_succeeded",
+          ]),
+        ),
+      )
+      .limit(1);
+    return {
+      sandboxesRemain: sandbox !== undefined,
+      ambiguousReplacementAttemptsRemain: ambiguousReplacementAttempt !== undefined,
+    };
+  },
 };
 
 async function clearVaultKeyGraph(organizationId: string): Promise<void> {
@@ -432,12 +468,18 @@ export function createAccountDeletionProviderAdapters(
     },
     compute_containers: {
       async inspect(context) {
-        const [row] = await dbWrite
-          .select({ id: agentSandboxes.id })
-          .from(agentSandboxes)
-          .where(eq(agentSandboxes.organization_id, context.organizationId))
-          .limit(1);
-        return row ? { state: "needs_execution" } : complete(context, "compute_containers");
+        const observed = await (
+          dependencies.computeDatabase ?? defaultComputeDatabase
+        ).inspectOrganization(context.organizationId);
+        if (observed.ambiguousReplacementAttemptsRemain) {
+          return {
+            state: "action_required",
+            errorCode: "COMPUTE_REPLACEMENT_RECONCILIATION_REQUIRED",
+          };
+        }
+        return observed.sandboxesRemain
+          ? { state: "needs_execution" }
+          : complete(context, "compute_containers");
       },
       async execute(context) {
         const rows = await dbWrite

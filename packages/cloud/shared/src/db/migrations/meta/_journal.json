@@ -2094,6 +2094,13 @@
       "when": 1794254400006,
       "tag": "0315_account_deletion_canceling_state",
       "breakpoints": true
+    },
+    {
+      "idx": 299,
+      "version": "7",
+      "when": 1794254400007,
+      "tag": "0316_account_deletion_admission_recovery",
+      "breakpoints": true
     }
   ]
 }
