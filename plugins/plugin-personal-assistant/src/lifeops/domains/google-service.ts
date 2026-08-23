@@ -566,7 +566,18 @@ export class GoogleDomain {
       ? new URL(servedOrigin).origin
       : undefined;
 
-    const requestedAccountId = googleAccountIdFromGrantId(request.grantId);
+    const createNewGrant =
+      normalizeOptionalBoolean(request.createNewGrant, "createNewGrant") ??
+      false;
+    if (createNewGrant && request.grantId) {
+      fail(
+        400,
+        "createNewGrant cannot be combined with an existing Google grant id.",
+      );
+    }
+    const requestedAccountId = createNewGrant
+      ? null
+      : googleAccountIdFromGrantId(request.grantId);
     const flow = await manager.startOAuth("google", {
       accountId: requestedAccountId ?? undefined,
       scopes: requestedScopesForCapabilities(requestedCapabilities),

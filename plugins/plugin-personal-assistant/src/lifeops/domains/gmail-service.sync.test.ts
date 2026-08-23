@@ -53,6 +53,7 @@ function harness(args: {
   const deleteGmailMessages = vi.fn(async () => undefined);
   const deleteGmailMessagesByExternalId = vi.fn(async () => 1);
   const upsertGmailSyncState = vi.fn(async () => undefined);
+  const publishGmailSeed = vi.fn(async () => undefined);
   const google = {
     getGmailHistoryId: vi.fn(async () => args.historyId ?? "100"),
     listGmailHistoryPage:
@@ -112,6 +113,7 @@ function harness(args: {
     deleteGmailSpamReviewItemsForProvider: vi.fn(async () => undefined),
     deleteGmailSyncState: vi.fn(async () => undefined),
     upsertGmailSyncState,
+    publishGmailSeed,
   };
   const domain = new GmailDomain(
     {
@@ -208,7 +210,7 @@ describe("LifeOps Gmail sync cursors", () => {
     );
   });
 
-  it("falls back to a bounded seed and records why when the cursor expires", async () => {
+  it("requires an explicit complete seed when the cursor expires", async () => {
     const listHistory = vi.fn(async () => {
       throw { code: "GOOGLE_GMAIL_HISTORY_CURSOR_EXPIRED" };
     });
@@ -218,11 +220,16 @@ describe("LifeOps Gmail sync cursors", () => {
       historyId: "200",
     });
 
-    await domain.getGmailTriage(new URL("http://127.0.0.1/"));
+    await expect(
+      domain.getGmailTriage(new URL("http://127.0.0.1/")),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LIFEOPS_GMAIL_RESYNC_REQUIRED",
+    });
 
     expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
       expect.objectContaining({
-        historyId: "200",
+        historyId: null,
         cursorStatus: "resynced",
         fullResyncReason: "history_cursor_expired",
       }),
@@ -255,6 +262,47 @@ describe("LifeOps Gmail sync cursors", () => {
       fullResyncReason: null,
       cachedMessageCount: 4,
       syncedAt: "2026-08-22T08:00:00.000Z",
+    });
+  });
+
+  it("keeps expired-history recovery blocked until a complete seed publishes", async () => {
+    const { domain, google } = harness({
+      previousState: {
+        historyId: null,
+        cursorStatus: "resynced",
+        fullResyncReason: "history_cursor_expired",
+        syncedAt: "2026-08-22T08:00:00.000Z",
+      },
+    });
+
+    await expect(
+      domain.getGmailTriage(new URL("http://127.0.0.1/")),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LIFEOPS_GMAIL_RESYNC_REQUIRED",
+    });
+    expect(google.getGmailHistoryId).not.toHaveBeenCalled();
+    expect(google.searchGmailMessages).not.toHaveBeenCalled();
+  });
+
+  it("reports expired History as resync required rather than current", async () => {
+    const { domain } = harness({
+      previousState: {
+        historyId: null,
+        cursorStatus: "resynced",
+        fullResyncReason: "history_cursor_expired",
+        syncedAt: "2026-08-22T08:00:00.000Z",
+      },
+    });
+
+    await expect(
+      domain.getGmailSyncHealth(new URL("http://127.0.0.1/"), {
+        grantId: grant.id,
+      }),
+    ).resolves.toMatchObject({
+      state: "resync_required",
+      historyCursorPresent: false,
+      fullResyncReason: "history_cursor_expired",
     });
   });
 });
@@ -309,22 +357,31 @@ describe("LifeOps Gmail range seed", () => {
       2,
       expect.objectContaining({ pageToken: "page-2" }),
     );
-    expect(repository.upsertGmailMessage).toHaveBeenCalledTimes(137);
-    expect(google.getGmailHistoryId).toHaveBeenCalledBefore(searchPages);
-    expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
+    expect(repository.publishGmailSeed).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ externalId: "p1-0" }),
+        expect.objectContaining({ externalId: "p2-36" }),
+      ]),
       expect.objectContaining({
         historyId: "300",
         cursorStatus: "seeded",
         maxResults: 137,
       }),
     );
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
+    expect(google.getGmailHistoryId).toHaveBeenCalledBefore(searchPages);
+    expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
   });
 
   it("aborts without a receipt or cursor when the provider repeats a page token", async () => {
-    const searchPages = vi.fn(async () => ({
-      messages: [providerMessage("loop")],
-      nextPageToken: "same-token",
-    }));
+    let page = 0;
+    const searchPages = vi.fn(async () => {
+      page += 1;
+      return {
+        messages: [providerMessage(`loop-${page}`)],
+        nextPageToken: "same-token",
+      };
+    });
     const { domain, repository } = harness({ searchPages });
 
     await expect(
@@ -335,6 +392,8 @@ describe("LifeOps Gmail range seed", () => {
     });
     expect(searchPages).toHaveBeenCalledTimes(2);
     expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
+    expect(repository.publishGmailSeed).not.toHaveBeenCalled();
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
   });
 
   it("fails explicitly instead of issuing a receipt when pagination never ends", async () => {
@@ -353,6 +412,31 @@ describe("LifeOps Gmail range seed", () => {
     });
     expect(searchPages).toHaveBeenCalledTimes(500);
     expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
+    expect(repository.publishGmailSeed).not.toHaveBeenCalled();
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects a repeated provider message before publishing any projection", async () => {
+    const searchPages = vi
+      .fn()
+      .mockResolvedValueOnce({
+        messages: [providerMessage("duplicate")],
+        nextPageToken: "page-2",
+      })
+      .mockResolvedValueOnce({
+        messages: [providerMessage("duplicate")],
+        nextPageToken: null,
+      });
+    const { domain, repository } = harness({ searchPages });
+
+    await expect(
+      domain.seedGmailMessages(url, { grantId: grant.id, rangeDays: 30 }),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "LIFEOPS_GMAIL_SEED_DUPLICATE_MESSAGE",
+    });
+    expect(repository.publishGmailSeed).not.toHaveBeenCalled();
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
   });
 
   it("rejects a range outside the owner-selectable 7/30/90-day windows", async () => {

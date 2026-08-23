@@ -4805,6 +4805,10 @@ export class CalendarService extends Service {
         timeMax: request.timeMax,
         timeZone: request.timeZone,
         forceSync: true,
+        // The request already carries an explicit exact-source selection, so
+        // hidden feed preferences must not make a valid selected source look
+        // absent during authorization/receipt validation.
+        includeHiddenCalendars: true,
       },
       now,
     );
@@ -4820,30 +4824,90 @@ export class CalendarService extends Service {
         "CALENDAR_SEED_INCOMPLETE",
       );
     }
-    const selected = new Set(
-      request.calendars.map((calendar) =>
-        JSON.stringify([
-          calendar.provider,
-          calendar.side,
-          calendar.grantId,
-          calendar.connectorAccountId,
-          calendar.calendarId,
-        ]),
-      ),
+    const serializedSourceKey = (source: LifeOpsCalendarSourceKey) =>
+      JSON.stringify([
+        source.provider,
+        source.side,
+        source.grantId,
+        source.connectorAccountId,
+        source.calendarId,
+      ]);
+    const requestedSourceKeys = request.calendars.map(serializedSourceKey);
+    const selected = new Set(requestedSourceKeys);
+    if (selected.size !== requestedSourceKeys.length) {
+      throw new CalendarServiceError(
+        400,
+        "Calendar seed selection contains the same exact source more than once.",
+        "CALENDAR_SEED_SELECTION_DUPLICATE",
+      );
+    }
+    const authorizedFreshSources = new Set(
+      feed.sources
+        .filter((source) => source.status === "fresh")
+        .map((source) => serializedSourceKey(source.key)),
     );
-    const selectedEvents = feed.events.filter((event) =>
-      selected.has(
-        JSON.stringify([
-          event.provider,
-          event.side,
-          event.grantId ?? "",
-          event.connectorAccountId ?? "",
-          event.calendarId,
-        ]),
-      ),
-    );
+    if (
+      requestedSourceKeys.some(
+        (sourceKey) => !authorizedFreshSources.has(sourceKey),
+      )
+    ) {
+      throw new CalendarServiceError(
+        409,
+        "Calendar seed selection does not match the exact fresh sources authorized in the forced feed.",
+        "CALENDAR_SEED_SOURCE_MISMATCH",
+      );
+    }
+    const serializedUnknownSourceKey = (value: unknown): string | null => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return null;
+      }
+      const source = value as Record<string, unknown>;
+      const fields = [
+        source.provider,
+        source.side,
+        source.grantId,
+        source.connectorAccountId,
+        source.calendarId,
+      ];
+      return fields.every((field) => typeof field === "string")
+        ? JSON.stringify(fields)
+        : null;
+    };
+    const selectedSourceMatches = (event: LifeOpsCalendarEvent): number => {
+      const sourceKeys = new Set<string>();
+      const directKey = serializedSourceKey({
+        provider: event.provider,
+        side: event.side,
+        grantId: event.grantId ?? "",
+        connectorAccountId: event.connectorAccountId ?? "",
+        calendarId: event.calendarId,
+      });
+      sourceKeys.add(directKey);
+      const deduplication = event.metadata?.deduplication;
+      if (
+        deduplication &&
+        typeof deduplication === "object" &&
+        !Array.isArray(deduplication)
+      ) {
+        const sources = (deduplication as Record<string, unknown>).sources;
+        if (Array.isArray(sources)) {
+          for (const source of sources) {
+            const sourceKey = serializedUnknownSourceKey(source);
+            if (sourceKey) sourceKeys.add(sourceKey);
+          }
+        }
+      }
+      return [...sourceKeys].filter((sourceKey) => selected.has(sourceKey))
+        .length;
+    };
+    const selectedEvents = feed.events
+      .map((event) => ({
+        event,
+        selectedSourceMatches: selectedSourceMatches(event),
+      }))
+      .filter(({ selectedSourceMatches }) => selectedSourceMatches > 0);
     const identities = new Set(
-      selectedEvents.map((event) =>
+      selectedEvents.map(({ event }) =>
         JSON.stringify([
           event.provider,
           event.side,
@@ -4862,7 +4926,13 @@ export class CalendarService extends Service {
       feedState: "complete",
       selectedSourceCount: selected.size,
       eventCount: identities.size,
-      duplicateEventCount: selectedEvents.length - identities.size,
+      duplicateEventCount:
+        selectedEvents.length -
+        identities.size +
+        selectedEvents.reduce(
+          (count, event) => count + event.selectedSourceMatches - 1,
+          0,
+        ),
       seededAt: now.toISOString(),
     };
   }

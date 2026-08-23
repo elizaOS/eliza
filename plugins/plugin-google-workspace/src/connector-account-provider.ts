@@ -100,6 +100,20 @@ function createOidcNonce(): string {
   return randomBytes(32).toString("base64url");
 }
 
+/**
+ * Derives the durable connector-account key for a newly authorized Google
+ * identity. The provider subject is stable across email/name changes, while
+ * the role keeps an owner grant distinct from an intentionally separate agent
+ * grant for the same Google account.
+ */
+export function stableGoogleConnectorAccountId(
+  subject: string,
+  role: ConnectorAccountRole
+): string {
+  const digest = createHash("sha256").update(`${role}\u0000${subject}`).digest("hex").slice(0, 32);
+  return `acct_google_${digest}`;
+}
+
 function createCodeChallenge(codeVerifier: string): string {
   return createHash("sha256").update(codeVerifier).digest("base64url");
 }
@@ -634,6 +648,34 @@ export function createGoogleConnectorAccountProvider(
       if (!externalId) {
         throw new Error("Google identity payload did not include sub or email.");
       }
+      const requestedRole = roleFromMetadata(request.flow.metadata);
+      const requestedAccountId = nonEmptyString(request.flow.accountId);
+      const existingAccount = requestedAccountId
+        ? await manager.getAccount(GOOGLE_SERVICE_NAME, requestedAccountId)
+        : null;
+      if (requestedAccountId && !existingAccount) {
+        throw new ElizaError(
+          "Google OAuth cannot reauthorize a connector account that no longer exists.",
+          {
+            code: "GOOGLE_OAUTH_REAUTH_ACCOUNT_NOT_FOUND",
+            context: { accountId: requestedAccountId },
+            severity: "fatal",
+          }
+        );
+      }
+      const existingExternalId = nonEmptyString(existingAccount?.externalId);
+      if (existingExternalId && existingExternalId !== externalId) {
+        throw new ElizaError(
+          "Google OAuth returned a different account than the connector being reauthorized.",
+          {
+            code: "GOOGLE_OAUTH_ACCOUNT_IDENTITY_MISMATCH",
+            context: { accountId: requestedAccountId },
+            severity: "fatal",
+          }
+        );
+      }
+      const accountId =
+        requestedAccountId ?? stableGoogleConnectorAccountId(externalId, requestedRole);
       const expiresAt = Date.now() + tokens.expires_in * 1000;
       const oauthCredentialVersion = String(Date.now());
       const accountMetadata = {
@@ -656,8 +698,9 @@ export function createGoogleConnectorAccountProvider(
       const pendingAccount = await manager.upsertAccount(
         GOOGLE_SERVICE_NAME,
         {
+          ...(existingAccount ?? {}),
           provider: GOOGLE_SERVICE_NAME,
-          role: roleFromMetadata(request.flow.metadata),
+          role: existingAccount?.role ?? requestedRole,
           purpose: purposes,
           accessGate: "open",
           status: "pending",
@@ -669,7 +712,7 @@ export function createGoogleConnectorAccountProvider(
             GOOGLE_OAUTH_PROVIDER_METADATA.label,
           metadata: accountMetadata,
         },
-        request.flow.accountId
+        accountId
       );
       const credentialPersist = await persistConnectorCredentialRefs({
         runtime,

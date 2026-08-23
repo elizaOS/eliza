@@ -341,10 +341,17 @@ export class GmailDomain {
       grant.id,
     );
     let historyId = previousState?.historyId ?? null;
-    let cursorStatus: "seeded" | "incremental" | "resynced" = historyId
+    if (previousState?.fullResyncReason && !historyId) {
+      fail(
+        409,
+        "Gmail history requires a new complete 7, 30, or 90 day seed before the imported projection can be synchronized.",
+        "LIFEOPS_GMAIL_RESYNC_REQUIRED",
+      );
+    }
+    const cursorStatus: "seeded" | "incremental" | "resynced" = historyId
       ? "incremental"
       : "seeded";
-    let fullResyncReason: string | null = null;
+    const fullResyncReason: string | null = null;
 
     if (historyId) {
       const startHistoryId = historyId;
@@ -422,9 +429,10 @@ export class GmailDomain {
           );
         }
       } catch (error) {
-        // error-policy:J4 Only the typed expired-cursor signal degrades to a
-        // full reseed, and the sync state records it as "resynced" with a
-        // reason; every other failure propagates.
+        // error-policy:J4 Only the typed expired-cursor signal becomes an
+        // explicit resync-required state. A bounded query cannot reconcile
+        // deletions from the complete imported projection, so it must not
+        // advance a replacement cursor or claim a healthy automatic resync.
         const code =
           error && typeof error === "object" && "code" in error
             ? (error as { code?: unknown }).code
@@ -432,9 +440,25 @@ export class GmailDomain {
         if (code !== "GOOGLE_GMAIL_HISTORY_CURSOR_EXPIRED") {
           throw error;
         }
-        historyId = null;
-        cursorStatus = "resynced";
-        fullResyncReason = "history_cursor_expired";
+        await this.ctx.repository.upsertGmailSyncState(
+          createLifeOpsGmailSyncState({
+            agentId: this.ctx.agentId(),
+            provider: "google",
+            side: grant.side,
+            mailbox: GOOGLE_GMAIL_MAILBOX,
+            grantId: grant.id,
+            maxResults: previousState?.maxResults ?? 0,
+            historyId: null,
+            cursorStatus: "resynced",
+            fullResyncReason: "history_cursor_expired",
+            syncedAt,
+          }),
+        );
+        fail(
+          409,
+          "Gmail history expired and the imported projection requires a new complete 7, 30, or 90 day seed before it can be reported as current.",
+          "LIFEOPS_GMAIL_RESYNC_REQUIRED",
+        );
       }
     }
 
@@ -522,7 +546,7 @@ export class GmailDomain {
     const seenPageTokens = new Set<string>();
     let pageToken: string | null = null;
     let pageCount = 0;
-    let messageCount = 0;
+    const messagesByExternalId = new Map<string, LifeOpsGmailMessageSummary>();
     do {
       if (pageCount >= GMAIL_SEED_MAX_PAGES) {
         fail(
@@ -540,16 +564,20 @@ export class GmailDomain {
       });
       pageCount += 1;
       for (const message of page.messages) {
-        await this.ctx.repository.upsertGmailMessage(
-          lifeOpsGmailMessageFromGoogle({
-            message,
-            grant,
-            agentId: this.ctx.agentId(),
-            syncedAt: seededAt,
-          }),
-          grant.side,
-        );
-        messageCount += 1;
+        const normalized = lifeOpsGmailMessageFromGoogle({
+          message,
+          grant,
+          agentId: this.ctx.agentId(),
+          syncedAt: seededAt,
+        });
+        if (messagesByExternalId.has(normalized.externalId)) {
+          fail(
+            502,
+            "Gmail returned the same message on more than one search page; the seed was aborted before publishing any projection.",
+            "LIFEOPS_GMAIL_SEED_DUPLICATE_MESSAGE",
+          );
+        }
+        messagesByExternalId.set(normalized.externalId, normalized);
       }
       pageToken = page.nextPageToken;
       if (pageToken) {
@@ -564,7 +592,10 @@ export class GmailDomain {
       }
     } while (pageToken);
 
-    await this.ctx.repository.upsertGmailSyncState(
+    const messages = [...messagesByExternalId.values()];
+    const messageCount = messages.length;
+    await this.ctx.repository.publishGmailSeed(
+      messages,
       createLifeOpsGmailSyncState({
         agentId: this.ctx.agentId(),
         provider: "google",
@@ -631,7 +662,12 @@ export class GmailDomain {
       grantId: grant.id,
       connectorAccountId: grant.connectorAccountId ?? accountIdForGrant(grant),
       mailbox: GOOGLE_GMAIL_MAILBOX,
-      state: state ? "current" : "never_synced",
+      state:
+        state?.fullResyncReason && !state.historyId
+          ? "resync_required"
+          : state
+            ? "current"
+            : "never_synced",
       cursorStatus: state?.cursorStatus ?? "never_synced",
       historyCursorPresent: Boolean(state?.historyId),
       fullResyncReason: state?.fullResyncReason ?? null,

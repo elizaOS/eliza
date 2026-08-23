@@ -55,13 +55,25 @@ const appleSource = {
   calendarId: "apple-work",
 };
 
+function freshSource(key: typeof googleSource | typeof appleSource) {
+  return {
+    key,
+    summary: key.calendarId,
+    accessRole: "owner",
+    visibility: "details",
+    status: "fresh",
+    syncedAt: "2026-08-22T10:00:00.000Z",
+    error: null,
+  };
+}
+
 describe("CalendarService.seedImportedCalendarData", () => {
   it("force-syncs the window and counts only the selected sources", async () => {
     const { seed, getCalendarFeed } = seedWithFeed({
       state: "complete",
       timeMin: "2026-08-15T00:00:00.000Z",
       timeMax: "2026-11-20T00:00:00.000Z",
-      sources: [],
+      sources: [freshSource(googleSource), freshSource(appleSource)],
       events: [
         event({}),
         event({ externalId: "evt-1" }),
@@ -104,6 +116,7 @@ describe("CalendarService.seedImportedCalendarData", () => {
         timeMax: "2026-11-20T00:00:00.000Z",
         timeZone: "UTC",
         forceSync: true,
+        includeHiddenCalendars: true,
       }),
       expect.any(Date),
     );
@@ -154,5 +167,78 @@ describe("CalendarService.seedImportedCalendarData", () => {
       }),
     ).rejects.toMatchObject({ status: 400 });
     expect(getCalendarFeed).not.toHaveBeenCalled();
+  });
+
+  it("rejects a selected source that is absent from the authorized feed", async () => {
+    const { seed } = seedWithFeed({
+      state: "complete",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [freshSource(googleSource)],
+      events: [],
+    });
+
+    await expect(
+      seed({
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [appleSource],
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "CALENDAR_SEED_SOURCE_MISMATCH",
+    });
+  });
+
+  it("rejects duplicate exact-source selections", async () => {
+    const { seed } = seedWithFeed({
+      state: "complete",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [freshSource(googleSource)],
+      events: [],
+    });
+
+    await expect(
+      seed({
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [googleSource, googleSource],
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_SEED_SELECTION_DUPLICATE",
+    });
+  });
+
+  it("counts a selected non-authoritative source retained in dedup metadata", async () => {
+    const merged = event({
+      metadata: {
+        deduplication: {
+          sources: [
+            { ...googleSource, eventId: "google-event" },
+            { ...appleSource, eventId: "apple-event" },
+          ],
+        },
+      },
+    });
+    const { seed } = seedWithFeed({
+      state: "complete",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [freshSource(googleSource), freshSource(appleSource)],
+      events: [merged],
+    });
+
+    await expect(
+      seed({
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [appleSource],
+      }),
+    ).resolves.toMatchObject({
+      eventCount: 1,
+      duplicateEventCount: 0,
+    });
   });
 });
