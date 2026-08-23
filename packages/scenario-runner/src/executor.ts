@@ -74,6 +74,7 @@ import {
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 import { waitForScenarioRequiredServices } from "./required-services.ts";
+import { enterScenarioActionScope } from "./scenario-action-scope.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -117,6 +118,13 @@ export interface ExecutorOptions {
   worldId?: string;
   /** Maximum time to reach post-delivery quiescence before quarantining the runtime. */
   postDeliveryTimeoutMs?: number;
+  /**
+   * Every plugin package declared by *any* scenario sharing this runtime. The
+   * CLI registers that union before the first scenario runs, so the executor
+   * needs it to hide a peer's actions and keep each scenario's tool surface
+   * independent of batch composition. Omit it for a single-scenario runtime.
+   */
+  batchPluginPackages?: readonly string[];
 }
 
 /**
@@ -2838,6 +2846,19 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
+  // Scope the shared runtime's action list to this scenario before anything can
+  // observe it. Restoring in `finally` also drops actions the seed registers, so
+  // neither a peer's plugin nor this scenario's own leaks across the batch.
+  const actionScope = enterScenarioActionScope(
+    runtime,
+    scenario,
+    opts.batchPluginPackages ?? [],
+  );
+  if (actionScope.hiddenActionNames.length > 0) {
+    logger.info(
+      `[scenario-runner] ${scenario.id}: hiding ${actionScope.hiddenActionNames.length} action(s) declared only by batch peers: ${actionScope.hiddenActionNames.join(", ")}`,
+    );
+  }
   try {
     beginScenarioModelFixtureAttempt(
       runtime,
@@ -3234,6 +3255,7 @@ export async function runScenario(
     if (apiServer) {
       await apiServer.close();
     }
+    actionScope.restore();
     report.durationMs = Date.now() - startedAt;
   }
 
