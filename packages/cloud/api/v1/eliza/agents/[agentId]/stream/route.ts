@@ -100,6 +100,7 @@ async function __hono_POST(
         executionCtx: resolved.executionCtx,
         namespace: resolved.namespace,
         agentKind: resolved.agentKind,
+        trustedUserUtterance: parsed.data.params.text,
       },
     );
 

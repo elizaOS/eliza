@@ -371,7 +371,7 @@ describe("adversarial Personal Shared group routing", () => {
           version: blooioGroupBinding.authority_version,
         },
       },
-      undefined,
+      validBlooioGroup.message,
       { type: "GROUP", source: "blooio" },
     );
   });
