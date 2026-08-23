@@ -22,6 +22,17 @@ const probe = `
   const directResearch = await import("@elizaos/plugin-elizacloud/models/research");
   const modelBarrel = await import("@elizaos/plugin-elizacloud/models/index");
   const endpointConfig = await import("@elizaos/plugin-elizacloud/endpoint-config");
+  const hostRoutes = await import("@elizaos/plugin-elizacloud/host-routes");
+  for (const routeName of [
+    "handleCloudBillingRoute",
+    "handleCloudCompatRoute",
+    "handleCloudRelayRoute",
+    "handleCloudRoute",
+  ]) {
+    if (typeof hostRoutes[routeName] !== "function") {
+      throw new Error("built host-route export is missing or malformed: " + routeName);
+    }
+  }
   for (const handler of [directResearch.handleResearch, modelBarrel.handleResearch]) {
     try {
       await handler({}, {});

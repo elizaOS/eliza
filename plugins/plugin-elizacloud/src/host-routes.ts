@@ -8,10 +8,15 @@
  * agent types against the exports here, changing a handler's signature (or its
  * state type) is a compile error in `@elizaos/agent`.
  */
-export { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
-export { handleCloudCompatRoute } from "./routes/cloud-compat-routes";
-export { handleCloudRelayRoute } from "./routes/cloud-relay-routes";
-export { handleCloudRoute } from "./routes/cloud-routes";
+import { handleCloudBillingRoute as handleCloudBillingRouteImpl } from "./routes/cloud-billing-routes.js";
+import { handleCloudCompatRoute as handleCloudCompatRouteImpl } from "./routes/cloud-compat-routes.js";
+import { handleCloudRelayRoute as handleCloudRelayRouteImpl } from "./routes/cloud-relay-routes.js";
+import { handleCloudRoute as handleCloudRouteImpl } from "./routes/cloud-routes.js";
+
+export const handleCloudBillingRoute = handleCloudBillingRouteImpl;
+export const handleCloudCompatRoute = handleCloudCompatRouteImpl;
+export const handleCloudRelayRoute = handleCloudRelayRouteImpl;
+export const handleCloudRoute = handleCloudRouteImpl;
 
 export type { CloudBillingRouteState } from "./routes/cloud-billing-routes";
 export type { CloudCompatRouteState } from "./routes/cloud-compat-routes";

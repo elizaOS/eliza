@@ -221,6 +221,8 @@ const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
 const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-native-activity-tracker",
 );
+const PLUGIN_ELIZACLOUD_PACKAGE_DIR =
+  resolveWorkspacePluginDir("plugin-elizacloud");
 const PLUGIN_OPENAI_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-openai");
 const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
@@ -961,6 +963,10 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-elizacloud",
+    PLUGIN_ELIZACLOUD_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-openai",
