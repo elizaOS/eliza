@@ -445,7 +445,9 @@ export async function transcribeLocalInferenceWav(
     // error-policy:J6 the error body is diagnostic-only; a failed read must not
     // mask the real signal (the HTTP status the throw below already carries).
     const body = await res.text().catch(() => "");
-    throw new Error(`Local inference ASR ${res.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`);
+    throw new Error(
+      `Local inference ASR ${res.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
+    );
   }
   // error-policy:J3 unparseable body falls through to the explicit
   // empty-transcript throw below
