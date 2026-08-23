@@ -265,6 +265,7 @@ export class DockerBackend implements SandboxBackend {
    * above is bypassed. Cleared on boot failure so a retry can start fresh.
    */
   private startPromise: Promise<void> | null = null;
+  private stopPromise: Promise<void> | null = null;
   private helper: ChildProcessWithoutNullStreams | null = null;
   private pending: {
     resolve: (value: unknown) => void;
@@ -292,7 +293,14 @@ export class DockerBackend implements SandboxBackend {
   }
 
   async start(): Promise<void> {
-    if (this.containerId) return;
+    if (this.stopPromise) await this.stopPromise;
+    if (this.containerId && this.helper) return;
+    if (this.containerId) {
+      throw new SandboxBackendUnavailableError(
+        `Docker container ${this.containerId} is retained without a live helper; call stop() to retry cleanup before starting again.`,
+        "docker",
+      );
+    }
     if (this.startPromise) return this.startPromise;
     const boot = this.boot();
     this.startPromise = boot;
@@ -335,40 +343,82 @@ export class DockerBackend implements SandboxBackend {
       );
     }
 
-    const tmp = await mkdtemp(join(tmpdir(), "cua-helper-"));
-    const helperHostPath = join(tmp, "helper.py");
     try {
-      await writeFile(helperHostPath, HELPER_SCRIPT, { encoding: "utf8" });
-      const cpResult = await this.runShell(this.dockerBinary, [
-        "cp",
-        helperHostPath,
-        `${this.containerId}:${HELPER_PATH}`,
+      const tmp = await mkdtemp(join(tmpdir(), "cua-helper-"));
+      const helperHostPath = join(tmp, "helper.py");
+      try {
+        await writeFile(helperHostPath, HELPER_SCRIPT, { encoding: "utf8" });
+        const cpResult = await this.runShell(this.dockerBinary, [
+          "cp",
+          helperHostPath,
+          `${this.containerId}:${HELPER_PATH}`,
+        ]);
+        if (cpResult.code !== 0) {
+          throw new SandboxBackendUnavailableError(
+            `docker cp helper failed: ${cpResult.stderr.trim()}`,
+            "docker",
+          );
+        }
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+
+      const helper = this.spawnExec(this.dockerBinary, [
+        "exec",
+        "-i",
+        this.containerId,
+        "python3",
+        HELPER_PATH,
       ]);
-      if (cpResult.code !== 0) {
+      this.helper = helper;
+      helper.stdout.on("data", (chunk) =>
+        this.handleStdout(helper, String(chunk)),
+      );
+      helper.stderr.on("data", () => {
+        // Helper stderr is informational; suppress to keep the wire silent.
+      });
+      helper.once("close", (code) => this.handleHelperExit(helper, code));
+    } catch (bootError) {
+      try {
+        await this.teardownResources();
+      } catch (cleanupError) {
+        // error-policy:J2 preserve both the boot failure and the exact cleanup
+        // failure; container identity remains retained for a later stop retry.
         throw new SandboxBackendUnavailableError(
-          `docker cp helper failed: ${cpResult.stderr.trim()}`,
+          `Docker boot failed (${errorMessage(bootError)}) and cleanup failed (${errorMessage(cleanupError)}).`,
           "docker",
         );
       }
-    } finally {
-      await rm(tmp, { recursive: true, force: true });
+      throw bootError;
     }
-
-    this.helper = this.spawnExec(this.dockerBinary, [
-      "exec",
-      "-i",
-      this.containerId,
-      "python3",
-      HELPER_PATH,
-    ]);
-    this.helper.stdout.on("data", (chunk) => this.handleStdout(String(chunk)));
-    this.helper.stderr.on("data", () => {
-      // Helper stderr is informational; suppress to keep the wire silent.
-    });
-    this.helper.once("close", (code) => this.handleHelperExit(code));
   }
 
   async stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    const teardown = this.performStop();
+    this.stopPromise = teardown;
+    try {
+      await teardown;
+    } finally {
+      if (this.stopPromise === teardown) this.stopPromise = null;
+    }
+  }
+
+  private async performStop(): Promise<void> {
+    const boot = this.startPromise;
+    if (boot) {
+      try {
+        await boot;
+      } catch {
+        // error-policy:J6 boot performs transactional cleanup before rejecting;
+        // teardown below verifies that no retained resource remains.
+      }
+    }
+    await this.teardownResources();
+    if (this.startPromise === boot) this.startPromise = null;
+  }
+
+  private async teardownResources(): Promise<void> {
     if (this.helper) {
       try {
         this.helper.stdin.end();
@@ -379,14 +429,22 @@ export class DockerBackend implements SandboxBackend {
       this.helper = null;
     }
     const id = this.containerId;
-    this.containerId = null;
-    this.startPromise = null;
-    if (id) {
-      await this.runShell(this.dockerBinary, ["rm", "-f", id]);
-    }
-    while (this.pending.length > 0) {
-      const next = this.pending.shift();
-      next?.reject(new Error("Sandbox stopped before response."));
+    try {
+      if (id) {
+        const result = await this.runShell(this.dockerBinary, ["rm", "-f", id]);
+        if (result.code !== 0) {
+          throw new SandboxBackendUnavailableError(
+            `docker rm failed (code ${result.code}): ${result.stderr.trim() || result.stdout.trim()}`,
+            "docker",
+          );
+        }
+        if (this.containerId === id) this.containerId = null;
+      }
+    } finally {
+      while (this.pending.length > 0) {
+        const next = this.pending.shift();
+        next?.reject(new Error("Sandbox stopped before response."));
+      }
     }
   }
 
@@ -404,7 +462,11 @@ export class DockerBackend implements SandboxBackend {
     });
   }
 
-  private handleStdout(chunk: string): void {
+  private handleStdout(
+    helper: ChildProcessWithoutNullStreams,
+    chunk: string,
+  ): void {
+    if (this.helper !== helper) return;
     this.stdoutBuffer += chunk;
     let nl = this.stdoutBuffer.indexOf("\n");
     while (nl >= 0) {
@@ -441,7 +503,12 @@ export class DockerBackend implements SandboxBackend {
     }
   }
 
-  private handleHelperExit(code: number | null): void {
+  private handleHelperExit(
+    helper: ChildProcessWithoutNullStreams,
+    code: number | null,
+  ): void {
+    if (this.helper !== helper) return;
+    this.helper = null;
     while (this.pending.length > 0) {
       const next = this.pending.shift();
       next?.reject(
@@ -452,4 +519,8 @@ export class DockerBackend implements SandboxBackend {
       );
     }
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

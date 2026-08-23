@@ -218,6 +218,17 @@ function makeDelayedBackend(options: {
   };
 }
 
+function deferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 describe("SandboxDriver lazy-boot idempotency (#26516)", () => {
   it("boots exactly once when three first ops race the initial boot", async () => {
     const backend = makeDelayedBackend({ bootMs: 20 });
@@ -274,6 +285,94 @@ describe("SandboxDriver lazy-boot idempotency (#26516)", () => {
     expect(backend.startCount).toBe(0);
     expect(backend.stopCount).toBe(0);
     expect(backend.running).toBe(0);
+  });
+
+  it("shares concurrent disposal and stops the backend exactly once", async () => {
+    const backend = makeDelayedBackend({ bootMs: 0 });
+    const driver = new SandboxDriver(backend);
+    await driver.screenshot();
+
+    await Promise.all([driver.dispose(), driver.dispose(), driver.dispose()]);
+
+    expect(backend.stopCount).toBe(1);
+    expect(backend.running).toBe(0);
+  });
+
+  it("waits for disposal before an arriving operation starts a fresh backend", async () => {
+    const stopEntered = deferred();
+    const releaseStop = deferred();
+    let running = false;
+    let startCount = 0;
+    let stopCount = 0;
+    const backend: SandboxBackend = {
+      name: "barrier",
+      async start() {
+        startCount++;
+        running = true;
+      },
+      async stop() {
+        stopCount++;
+        stopEntered.resolve();
+        await releaseStop.promise;
+        running = false;
+      },
+      async invoke<TResult>(): Promise<TResult> {
+        if (!running) throw new Error("invoked while stopped");
+        return { base64Png: "" } as TResult;
+      },
+    };
+    const driver = new SandboxDriver(backend);
+    await driver.screenshot();
+
+    const disposal = driver.dispose();
+    await stopEntered.promise;
+    const arrivingOperation = driver.mouseMove(2, 3);
+    await Promise.resolve();
+    expect(startCount).toBe(1);
+
+    releaseStop.resolve();
+    await disposal;
+    await arrivingOperation;
+    expect(startCount).toBe(2);
+    expect(stopCount).toBe(1);
+    expect(running).toBe(true);
+  });
+
+  it("drains an active operation before stopping its backend", async () => {
+    const invokeEntered = deferred();
+    const releaseInvoke = deferred();
+    let running = false;
+    let stopCount = 0;
+    const backend: SandboxBackend = {
+      name: "leased",
+      async start() {
+        running = true;
+      },
+      async stop() {
+        stopCount++;
+        running = false;
+      },
+      async invoke<TResult>(): Promise<TResult> {
+        if (!running) throw new Error("invoked while stopped");
+        invokeEntered.resolve();
+        await releaseInvoke.promise;
+        if (!running) throw new Error("stopped during invoke");
+        return undefined as TResult;
+      },
+    };
+    const driver = new SandboxDriver(backend);
+
+    const operation = driver.mouseMove(4, 5);
+    await invokeEntered.promise;
+    const disposal = driver.dispose();
+    await Promise.resolve();
+    expect(stopCount).toBe(0);
+
+    releaseInvoke.resolve();
+    await operation;
+    await disposal;
+    expect(stopCount).toBe(1);
+    expect(running).toBe(false);
   });
 });
 
@@ -398,6 +497,165 @@ describe("DockerBackend", () => {
     // `docker run`, leaking two of the three containers.
     expect(runCount).toBe(1);
 
+    await backend.stop();
+  });
+
+  it("stop during docker run waits for boot and removes the resulting container", async () => {
+    const runEntered = deferred();
+    const releaseRun = deferred();
+    const removed: string[] = [];
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runEntered.resolve();
+          await releaseRun.promise;
+          return { stdout: "container-racing\n", stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") removed.push(args[2] ?? "");
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+
+    const start = backend.start();
+    await runEntered.promise;
+    const stop = backend.stop();
+    releaseRun.resolve();
+    await start;
+    await stop;
+
+    expect(removed).toEqual(["container-racing"]);
+  });
+
+  it("shares concurrent stop calls and removes the container once", async () => {
+    let removeCount = 0;
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          return { stdout: "container-once\n", stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") removeCount++;
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await backend.start();
+
+    await Promise.all([backend.stop(), backend.stop(), backend.stop()]);
+
+    expect(removeCount).toBe(1);
+  });
+
+  it("start during stop waits for removal before creating a fresh container", async () => {
+    const removeEntered = deferred();
+    const releaseRemove = deferred();
+    let runCount = 0;
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runCount++;
+          return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") {
+          removeEntered.resolve();
+          await releaseRemove.promise;
+        }
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await backend.start();
+
+    const stop = backend.stop();
+    await removeEntered.promise;
+    const restart = backend.start();
+    await Promise.resolve();
+    expect(runCount).toBe(1);
+    releaseRemove.resolve();
+    await stop;
+    await restart;
+    expect(runCount).toBe(2);
+    await backend.stop();
+  });
+
+  it("removes a created container when helper copy fails, then permits retry", async () => {
+    let runCount = 0;
+    let copyCount = 0;
+    const removed: string[] = [];
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runCount++;
+          return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+        }
+        if (args[0] === "cp") {
+          copyCount++;
+          if (copyCount === 1) {
+            return { stdout: "", stderr: "copy failed", code: 1 };
+          }
+        }
+        if (args[0] === "rm") removed.push(args[2] ?? "");
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+
+    await expect(backend.start()).rejects.toThrow("docker cp helper failed");
+    expect(removed).toEqual(["container-1"]);
+    await backend.start();
+    expect(runCount).toBe(2);
+    await backend.stop();
+  });
+
+  it("retains container identity when removal fails and requires cleanup retry", async () => {
+    let runCount = 0;
+    let removeCount = 0;
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runCount++;
+          return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") {
+          removeCount++;
+          if (removeCount === 1) {
+            return { stdout: "", stderr: "daemon unavailable", code: 1 };
+          }
+        }
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await backend.start();
+
+    await expect(backend.stop()).rejects.toThrow("docker rm failed");
+    await expect(backend.start()).rejects.toThrow(
+      "retained without a live helper",
+    );
+    expect(runCount).toBe(1);
+    await backend.stop();
+    await backend.start();
+    expect(runCount).toBe(2);
     await backend.stop();
   });
 
