@@ -135,46 +135,6 @@ export interface BrainStats {
 const COORDINATE_ACTION_KINDS: ReadonlySet<BrainProposedAction["kind"]> =
   new Set(["click", "double_click", "right_click", "scroll", "drag"]);
 
-function sceneCacheSignature(scene: Scene): string {
-  return JSON.stringify({
-    displays: scene.displays.map((display) => ({
-      id: display.id,
-      name: display.name,
-      bounds: display.bounds,
-      primary: display.primary,
-      scaleFactor: display.scaleFactor,
-    })),
-    focused_window: scene.focused_window,
-    apps: scene.apps.map((app) => ({
-      name: app.name,
-      pid: app.pid,
-      windows: app.windows.map((window) => ({
-        id: window.id,
-        title: window.title,
-        bounds: window.bounds,
-        displayId: window.displayId,
-      })),
-    })),
-    ocr: scene.ocr.map((box) => ({
-      id: box.id,
-      text: box.text,
-      bbox: box.bbox,
-      conf: Number(box.conf.toFixed(3)),
-      displayId: box.displayId,
-    })),
-    ax: scene.ax.map((node) => ({
-      id: node.id,
-      role: node.role,
-      label: node.label,
-      bbox: node.bbox,
-      actions: node.actions,
-      displayId: node.displayId,
-    })),
-    vlm_scene: scene.vlm_scene,
-    vlm_elements: scene.vlm_elements,
-  });
-}
-
 export class BrainParseError extends Error {
   constructor(
     message: string,
@@ -209,6 +169,19 @@ export interface BrainInput {
    * supplying these alongside the scene.
    */
   captures: Map<number, DisplayCapture>;
+}
+
+function redactedSceneCacheSignature(serializedScene: string): string {
+  const lines = serializedScene.split("\n");
+  const parsed = JSON.parse(lines.slice(1, -1).join("\n")) as Record<
+    string,
+    unknown
+  >;
+  // Time alone does not make a semantic scene different. The prompt retains
+  // it, while the deduplication key omits it so cosmetic frame churn can reuse
+  // a plan when every redacted structural field is unchanged.
+  delete parsed.timestamp;
+  return JSON.stringify(parsed);
 }
 
 /**
@@ -327,7 +300,10 @@ export class Brain {
     // Frame-dHash cache: a near-identical screen + same goal → reuse the prior
     // plan, skip the (possibly remote) IMAGE_DESCRIPTION call. Tolerant to a few
     // dHash bits so cosmetic churn (cursor, caret, anti-aliasing) still hits.
-    const sceneSignature = sceneCacheSignature(input.scene);
+    // Reuse the already-redacted prompt representation as the cache key. Raw
+    // OCR/AX values can contain credentials; they must not be copied into a
+    // second long-lived in-memory string merely to deduplicate model calls.
+    const sceneSignature = redactedSceneCacheSignature(compactScene);
     const key = this.cacheKey(targetCapture.frame, input.goal, sceneSignature);
     if (key) {
       const cached = this.findCached(key.dh, key.goal, key.sceneSignature);
@@ -595,11 +571,27 @@ export function parseBrainOutput(raw: string): BrainOutput {
     throw new BrainParseError("Brain response is not an object", raw);
   }
   const obj = parsed as Record<string, unknown>;
-  const summary =
-    typeof obj.scene_summary === "string" ? obj.scene_summary : "";
-  const targetDisplay =
-    typeof obj.target_display_id === "number" ? obj.target_display_id : 0;
-  const rois = Array.isArray(obj.roi) ? obj.roi : [];
+  if (typeof obj.scene_summary !== "string") {
+    throw new BrainParseError(
+      "Brain response scene_summary must be a string",
+      raw,
+    );
+  }
+  const summary = obj.scene_summary;
+  if (
+    !Number.isSafeInteger(obj.target_display_id) ||
+    Number(obj.target_display_id) < 0
+  ) {
+    throw new BrainParseError(
+      "Brain response target_display_id must be a non-negative integer",
+      raw,
+    );
+  }
+  const targetDisplay = Number(obj.target_display_id);
+  if (!Array.isArray(obj.roi)) {
+    throw new BrainParseError("Brain response roi must be an array", raw);
+  }
+  const rois = obj.roi;
   const proposed = (obj.proposed_action ?? null) as Record<
     string,
     unknown
@@ -608,47 +600,96 @@ export function parseBrainOutput(raw: string): BrainOutput {
     throw new BrainParseError("Brain response missing proposed_action", raw);
   }
   const kind = proposed.kind;
-  if (typeof kind !== "string") {
+  const actionKinds: ReadonlySet<string> = new Set([
+    "click",
+    "double_click",
+    "right_click",
+    "type",
+    "hotkey",
+    "key",
+    "scroll",
+    "drag",
+    "wait",
+    "finish",
+  ]);
+  if (typeof kind !== "string" || !actionKinds.has(kind)) {
     throw new BrainParseError(
-      "proposed_action.kind missing or not a string",
+      "proposed_action.kind is missing or unsupported",
       raw,
     );
   }
-  const rationale =
-    typeof proposed.rationale === "string" ? proposed.rationale : "";
+  if (typeof proposed.rationale !== "string") {
+    throw new BrainParseError(
+      "proposed_action.rationale must be a string",
+      raw,
+    );
+  }
+  const rationale = proposed.rationale;
   const ref = typeof proposed.ref === "string" ? proposed.ref : undefined;
-  const args =
-    proposed.args && typeof proposed.args === "object"
-      ? (proposed.args as Record<string, unknown>)
-      : undefined;
+  if (
+    proposed.args !== undefined &&
+    (proposed.args === null ||
+      typeof proposed.args !== "object" ||
+      Array.isArray(proposed.args))
+  ) {
+    throw new BrainParseError("proposed_action.args must be an object", raw);
+  }
+  const args = proposed.args as Record<string, unknown> | undefined;
   const validated: BrainOutput = {
     scene_summary: summary,
     target_display_id: targetDisplay,
-    roi: rois
-      .map((r): BrainRoi | null => {
-        if (!r || typeof r !== "object") return null;
-        const ro = r as Record<string, unknown>;
-        const bb = ro.bbox;
-        if (!Array.isArray(bb) || bb.length !== 4) return null;
-        const nums = bb.map((n) => Number(n));
-        if (!nums.every((n) => Number.isFinite(n))) return null;
-        const [x, y, width, height] = nums;
-        if (
-          x === undefined ||
-          y === undefined ||
-          width === undefined ||
-          height === undefined
-        ) {
-          return null;
-        }
-        return {
-          displayId:
-            typeof ro.displayId === "number" ? ro.displayId : targetDisplay,
-          bbox: [x, y, width, height],
-          reason: typeof ro.reason === "string" ? ro.reason : "",
-        };
-      })
-      .filter((x): x is BrainRoi => x !== null),
+    roi: rois.map((r, index): BrainRoi => {
+      if (!r || typeof r !== "object" || Array.isArray(r)) {
+        throw new BrainParseError(
+          `Brain response roi[${index}] must be an object`,
+          raw,
+        );
+      }
+      const ro = r as Record<string, unknown>;
+      const bb = ro.bbox;
+      if (!Array.isArray(bb) || bb.length !== 4) {
+        throw new BrainParseError(
+          `Brain response roi[${index}].bbox must contain four numbers`,
+          raw,
+        );
+      }
+      const nums = bb.map((n) => Number(n));
+      if (!nums.every((n) => Number.isFinite(n))) {
+        throw new BrainParseError(
+          `Brain response roi[${index}].bbox must contain finite numbers`,
+          raw,
+        );
+      }
+      const [x, y, width, height] = nums;
+      if (
+        x === undefined ||
+        y === undefined ||
+        width === undefined ||
+        height === undefined ||
+        width < 0 ||
+        height < 0
+      ) {
+        throw new BrainParseError(
+          `Brain response roi[${index}].bbox has invalid dimensions`,
+          raw,
+        );
+      }
+      if (
+        ro.displayId !== undefined &&
+        (!Number.isSafeInteger(ro.displayId) || Number(ro.displayId) < 0)
+      ) {
+        throw new BrainParseError(
+          `Brain response roi[${index}].displayId must be a non-negative integer`,
+          raw,
+        );
+      }
+      return {
+        displayId:
+          ro.displayId === undefined ? targetDisplay : Number(ro.displayId),
+        bbox: [x, y, width, height],
+        reason: typeof ro.reason === "string" ? ro.reason : "",
+      };
+    }),
     proposed_action: {
       kind: kind as BrainOutput["proposed_action"]["kind"],
       ref,

@@ -151,21 +151,49 @@ describe("parseBrainOutput", () => {
     ).toThrow(/proposed_action/);
   });
 
-  it("drops malformed ROIs without failing the whole parse", () => {
-    const out = parseBrainOutput(
-      JSON.stringify({
-        scene_summary: "x",
-        target_display_id: 0,
-        roi: [
-          { displayId: 0, bbox: [1, 2, 3, 4], reason: "ok" },
-          { displayId: 0, bbox: "not-an-array", reason: "bad" },
-          { displayId: 0, bbox: [1, 2, 3], reason: "short" },
-        ],
-        proposed_action: { kind: "click", rationale: "r" },
-      }),
-    );
-    expect(out.roi).toHaveLength(1);
-    expect(out.roi[0]?.bbox).toEqual([1, 2, 3, 4]);
+  it("rejects malformed ROIs instead of planning from a partial model result", () => {
+    expect(() =>
+      parseBrainOutput(
+        JSON.stringify({
+          scene_summary: "x",
+          target_display_id: 0,
+          roi: [
+            { displayId: 0, bbox: [1, 2, 3, 4], reason: "ok" },
+            { displayId: 0, bbox: "not-an-array", reason: "bad" },
+          ],
+          proposed_action: { kind: "click", rationale: "r" },
+        }),
+      ),
+    ).toThrow(/roi\[1\]\.bbox/);
+  });
+
+  it("rejects unsupported model-emitted action kinds before the cascade", () => {
+    expect(() =>
+      parseBrainOutput(
+        JSON.stringify({
+          scene_summary: "hostile page asked for this",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "send_credentials",
+            rationale: "page instruction",
+          },
+        }),
+      ),
+    ).toThrow(/kind is missing or unsupported/);
+  });
+
+  it("rejects non-object action args and invalid display ids", () => {
+    expect(() =>
+      parseBrainOutput(
+        JSON.stringify({
+          scene_summary: "x",
+          target_display_id: -1,
+          roi: [],
+          proposed_action: { kind: "click", args: [], rationale: "r" },
+        }),
+      ),
+    ).toThrow(/target_display_id/);
   });
 });
 
