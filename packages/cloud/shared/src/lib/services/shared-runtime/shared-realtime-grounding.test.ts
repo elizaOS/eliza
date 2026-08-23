@@ -5,6 +5,7 @@ import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-ru
 import {
   createMatchingRealtimeSearchRunner,
   finalizeSharedRealtimeReply,
+  isSharedPublicSearchSafe,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
   validateSharedRealtimeReply,
@@ -124,12 +125,26 @@ describe("Shared realtime request classification", () => {
   for (const literal of [
     "what is the weather at 123 Main Street?",
     "what is the weather at (415) 555-1212?",
+    "what is the weather at 4155551212?",
+    "what is the weather at +14155551212?",
     "what is the weather at 37.7749, -122.4194?",
+    "what is the weather at 37.7749 N, 122.4194 W?",
   ]) {
     test(`rejects precise private literals from public lookup: ${literal}`, () => {
       expect(resolveSharedRealtimeRequirement(literal, [])).toBeUndefined();
     });
   }
+
+  test("does not mistake ordinary public dates and market values for private literals", () => {
+    for (const message of [
+      "what was the BTC price on 2026-08-23?",
+      "what is BTC market cap at 1,415,555,121.20 USD?",
+      "BTC is 77,357.93 USD and gold is 3,374.19 USD",
+      "compare 37.7749 USD with 122.4194 USD",
+    ]) {
+      expect(isSharedPublicSearchSafe(message)).toBe(true);
+    }
+  });
 
   test("does not revive an older public topic past a newer private turn", () => {
     const history = [

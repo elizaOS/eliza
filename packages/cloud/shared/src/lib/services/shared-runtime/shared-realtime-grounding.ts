@@ -26,10 +26,11 @@ const PRIVATE_STATE =
   /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts|password|passcode|secret|api[- ]?key|credential|ssn|social security|credit card|bank balance|phone number|home address|location)\b/i;
 const SENSITIVE_LITERAL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b\d{3}[- ]\d{2}[- ]\d{4}\b/i;
 const PHONE_LITERAL =
-  /(?:^|[^\p{L}\p{N}])(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)|\d{2,4})[ .-]\d{3,4}[ .-]\d{3,4}(?:$|[^\p{L}\p{N}])/u;
+  /(?:^|[^\p{L}\p{N}])(?:(?:\+[1-9]\d{9,14})|(?:1?[2-9]\d{2}[2-9]\d{6})|(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)|\d{2,4})[ .-]\d{3,4}[ .-]\d{3,4})(?:$|[^\p{L}\p{N}])/u;
 const STREET_ADDRESS_LITERAL =
   /\b\d{1,6}\s+(?:[\p{L}\p{N}.'’-]+\s+){0,5}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|way|parkway|pkwy|highway|hwy)\b/iu;
-const COORDINATE_LITERAL = /[+-]?\d{1,2}\.\d{3,}\s*,\s*[+-]?\d{1,3}\.\d{3,}/u;
+const COORDINATE_LITERAL =
+  /(?:[+-]?\d{1,2}\.\d{3,}\s*,\s*[+-]?\d{1,3}\.\d{3,})|(?:\d{1,2}\.\d{3,}\s*[NS]\s*,?\s*\d{1,3}\.\d{3,}\s*[EW])/iu;
 const MARKETS =
   /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
 const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
