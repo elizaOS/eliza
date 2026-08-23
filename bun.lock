@@ -558,6 +558,9 @@
     "packages/cloud/sdk": {
       "name": "@elizaos/cloud-sdk",
       "version": "2.0.3-beta.7",
+      "dependencies": {
+        "yaml": "2.9.0",
+      },
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
       },
@@ -1129,7 +1132,7 @@
       "dependencies": {
         "@babel/runtime": "^7.29.7",
         "@capacitor/core": "8.4.0",
-        "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -1204,6 +1207,7 @@
         "@capacitor/haptics": "8.0.2",
         "@capacitor/keyboard": "8.0.5",
         "@capacitor/preferences": "^8.0.1",
+        "@elizaos/cloud-shared": "workspace:*",
         "@storybook/addon-a11y": "^10.0.0",
         "@storybook/addon-docs": "^10.0.0",
         "@storybook/addon-themes": "^10.0.0",

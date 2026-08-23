@@ -4,7 +4,7 @@
 
 "use client";
 
-import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-shared/types";
+import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-sdk";
 import {
   Badge,
   Card,

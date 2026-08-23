@@ -2,7 +2,7 @@
  * API Explorer — the auth-gated developer console.
  *
  * Three tabs: a searchable, category-filtered endpoint catalog (static, from
- * `@elizaos/cloud-shared` swagger/endpoint-discovery, with live pricing overlaid
+ * `@elizaos/cloud-sdk/api-explorer`, with live pricing overlaid
  * from `GET /api/v1/pricing/summary`); an Auth manager (auto-mints the explorer
  * key via `GET /api/v1/api-keys/explorer`); and an OpenAPI 3.0 spec viewer with
  * JSON/YAML copy. The tester runs REAL, BILLED calls — the "API calls are
@@ -14,13 +14,11 @@ import {
   API_ENDPOINTS,
   type ApiEndpoint,
   type EndpointPricing,
-  getAvailableCategories,
-} from "@elizaos/cloud-shared/lib/swagger/endpoint-discovery";
-import {
   generateOpenAPISpec,
   generateOpenAPIYAML,
+  getAvailableCategories,
   type OpenAPISpec,
-} from "@elizaos/cloud-shared/lib/swagger/openapi-generator";
+} from "@elizaos/cloud-sdk/api-explorer";
 import {
   ActivityIcon,
   AudioLinesIcon,
