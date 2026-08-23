@@ -415,19 +415,20 @@ export function MyAgentsClient() {
           return (a.name || "").localeCompare(b.name || "");
         }
         if (sortBy === "created") {
-          const getCreatedTime = (char: AgentWithOwnership): number =>
-            char.created_at ? new Date(char.created_at).getTime() : 0;
+          const getCreatedTime = (char: AgentWithOwnership): number => {
+            if (!char.created_at) return 0;
+            const t = Date.parse(char.created_at);
+            return Number.isFinite(t) ? t : 0;
+          };
           const timeDiff = getCreatedTime(b) - getCreatedTime(a);
           if (timeDiff !== 0) return timeDiff;
           return (a.name || "").localeCompare(b.name || "");
         }
         const getRecentTime = (char: AgentWithOwnership): number => {
-          if (char.isOwned) {
-            return char.updated_at ? new Date(char.updated_at).getTime() : 0;
-          }
-          return char.lastInteraction
-            ? new Date(char.lastInteraction).getTime()
-            : 0;
+          const raw = char.isOwned ? char.updated_at : char.lastInteraction;
+          if (!raw) return 0;
+          const t = Date.parse(raw);
+          return Number.isFinite(t) ? t : 0;
         };
         const timeDiff = getRecentTime(b) - getRecentTime(a);
         if (timeDiff !== 0) return timeDiff;

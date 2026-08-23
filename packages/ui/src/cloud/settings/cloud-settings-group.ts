@@ -54,7 +54,11 @@ export function registerSettingsGroup(group: ExtraSettingsGroupDef): void {
 
 /** All registered extra groups, sorted by `order`. */
 export function listExtraSettingsGroups(): ExtraSettingsGroupDef[] {
-  return [...getStore().groups.values()].sort((a, b) => a.order - b.order);
+  return [...getStore().groups.values()].sort(
+    (a, b) =>
+      (Number.isFinite(a.order) ? a.order : 0) -
+      (Number.isFinite(b.order) ? b.order : 0),
+  );
 }
 
 /** Look up a single registered extra group by id. */

@@ -581,7 +581,11 @@ export function ElizaAgentsTable({
       } else if (sortField === "status") {
         cmp = aStatus.localeCompare(bStatus);
       } else {
-        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        const aTime = Date.parse(a.createdAt);
+        const bTime = Date.parse(b.createdAt);
+        const safeA = Number.isFinite(aTime) ? aTime : 0;
+        const safeB = Number.isFinite(bTime) ? bTime : 0;
+        cmp = safeA - safeB;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
