@@ -1098,6 +1098,7 @@ function PillHandle({
   desktopMorphScaleX = 1,
   desktopMorphScaleY = 1,
   ariaLabel = "open chat",
+  expandedGestureTarget = false,
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale. It keeps the detached target at a
@@ -1118,10 +1119,22 @@ function PillHandle({
   desktopMorphScaleX?: MotionValue<number> | number;
   desktopMorphScaleY?: MotionValue<number> | number;
   ariaLabel?: string;
+  /**
+   * The detached transcript owns one broad, painted-surface drag lane around
+   * the same visible white mark. The resting 64x12 pill deliberately keeps an
+   * exact visual hit target so transparent pixels remain click-through.
+   */
+  expandedGestureTarget?: boolean;
 }): React.JSX.Element {
+  const desktopHitWidth = expandedGestureTarget
+    ? 112
+    : CHAT_OVERLAY_RESTING_WINDOW_WIDTH;
+  const desktopHitHeight = expandedGestureTarget
+    ? 44
+    : CHAT_OVERLAY_RESTING_WINDOW_HEIGHT;
   return (
     <motion.div
-      className="h-1.5 w-12 origin-bottom"
+      className="relative h-1.5 w-12 origin-bottom"
       style={{
         scale: counterScale,
         transformOrigin: desktopOverlayHost ? "center" : "bottom center",
@@ -1151,8 +1164,16 @@ function PillHandle({
         style={
           desktopOverlayHost
             ? {
-                width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
-                height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+                position: "absolute",
+                left: "50%",
+                top: 0,
+                width: desktopHitWidth,
+                height: desktopHitHeight,
+                // The open-sheet target grows DOWN into the already painted
+                // panel, never above its top edge. Transparent pixels outside
+                // the panel therefore keep their native click-through contract.
+                transform: "translateX(-50%)",
+                alignItems: expandedGestureTarget ? "flex-start" : "center",
               }
             : undefined
         }
@@ -1208,7 +1229,7 @@ function PillHandle({
             aria-hidden="true"
             data-testid="chat-pill-mark"
             className={cn(
-              "pointer-events-none h-full w-full rounded-full opacity-100",
+              "pointer-events-none h-3 w-16 rounded-full opacity-100",
               breathing && "eliza-chat-handle-breathe",
             )}
             style={{
@@ -7619,6 +7640,7 @@ export function ChatOverlay({
               desktopMorphScaleX={desktopPillTravelerScaleX}
               desktopMorphScaleY={desktopPillTravelerScaleY}
               ariaLabel={sheetOpen ? "close chat" : "open chat"}
+              expandedGestureTarget={sheetOpen}
             />
           </motion.div>
         ) : null}

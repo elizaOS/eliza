@@ -4481,6 +4481,11 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       act(() => fireEvent.click(traveler, { detail: 0 }));
       expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
       expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      // Once transcript content is exposed, the same visible mark owns a
+      // standard 112x44 drag lane inside the painted panel. A natural gesture
+      // near the mark therefore cannot miss into selectable transcript text.
+      expect(traveler.style.width).toBe("112px");
+      expect(traveler.style.height).toBe("44px");
       expect(traveler.getAttribute("aria-label")).toBe("close chat");
       expect(fixedGrabber.style.pointerEvents).toBe("none");
       expect(fixedGrabber.style.opacity).toBe("0");
@@ -4532,8 +4537,8 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(pill.className).not.toContain("border-white/20");
     expect(pill.className).toContain("bg-transparent");
     const mark = screen.getByTestId("chat-pill-mark");
-    expect(mark.className).toContain("h-full");
-    expect(mark.className).toContain("w-full");
+    expect(mark.className).toContain("h-3");
+    expect(mark.className).toContain("w-16");
   });
 
   it("opens detached Mac chat before showing the composer actions menu", () => {

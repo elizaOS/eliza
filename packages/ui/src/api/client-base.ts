@@ -946,6 +946,26 @@ export class ElizaClient {
   }
 
   get apiToken(): string | null {
+    // The Electrobun host owns the credential for the API base it injects into
+    // the renderer. That credential can rotate when the supervised agent
+    // restarts while this WebView (and this client singleton) stays alive. A
+    // previously explicit token must not shadow the newer host credential for
+    // the same base forever: that produced healthy direct API/SSE requests but
+    // 401s from the packaged renderer after a runtime handoff. Keep explicit
+    // tokens authoritative everywhere else (ordinary web, Cloud, or a
+    // separately selected target).
+    if (isElectrobunRuntime()) {
+      const boot = getBootConfig();
+      const bootToken = boot.apiToken?.trim();
+      const bootBase = normalizeBaseUrl(boot.apiBase);
+      if (
+        bootToken &&
+        bootBase &&
+        bootBase === normalizeBaseUrl(this.baseUrl)
+      ) {
+        return bootToken;
+      }
+    }
     if (this._token) return this._token;
     const bootToken = getBootConfig().apiToken;
     if (typeof bootToken === "string" && bootToken.trim())

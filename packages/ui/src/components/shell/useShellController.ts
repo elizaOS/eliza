@@ -366,17 +366,10 @@ function describeCaptureFailure(err: unknown): string {
   if (isMicPermissionDenialError(err)) {
     return "Microphone access was denied. Enable microphone permission in your browser or system settings to use voice.";
   }
-  if (
-    haystack.includes("notfound") ||
-    haystack.includes("devices not found") ||
-    haystack.includes("no device") ||
-    haystack.includes("no microphone")
-  ) {
-    return "No microphone was found. Connect a microphone to use voice.";
-  }
-  // Post-capture transcription failure (cloud/local STT): the mic worked and
-  // the utterance was recorded, but the words could not be transcribed — the
-  // honest message is "didn't catch that", not a microphone accusation.
+  // Post-capture transcription failures can contain the phrase "no microphone
+  // audio was captured" even after getUserMedia succeeded and WebKit produced
+  // a live track. Classify those before the generic no-device branch below or
+  // a quiet/empty utterance falsely tells the user their Mac has no microphone.
   if (
     haystack.includes("cloudstterror") ||
     haystack.includes("cloud asr") ||
@@ -384,6 +377,14 @@ function describeCaptureFailure(err: unknown): string {
     haystack.includes("no microphone audio was captured")
   ) {
     return "Didn't catch that — voice transcription failed. Try again.";
+  }
+  if (
+    haystack.includes("notfound") ||
+    haystack.includes("devices not found") ||
+    haystack.includes("no device") ||
+    haystack.includes("no microphone")
+  ) {
+    return "No microphone was found. Connect a microphone to use voice.";
   }
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
