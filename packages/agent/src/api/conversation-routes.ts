@@ -483,14 +483,21 @@ function canonicalChatFingerprintValue(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
+        // Code-unit order, not localeCompare: ICU collation is locale-dependent
+        // and ranks canonically equivalent distinct keys as equal, so two
+        // replicas would fingerprint one turn differently and admit a duplicate.
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, entry]) => [key, canonicalChatFingerprintValue(entry)]),
     );
   }
   return value;
 }
 
-function buildConversationChatFingerprint(input: {
+/**
+ * Idempotency identity for one chat turn. Exported so the canonical key
+ * ordering it depends on can be pinned by test.
+ */
+export function buildConversationChatFingerprint(input: {
   prompt: string;
   images: unknown;
   source: unknown;
