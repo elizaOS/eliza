@@ -47,11 +47,21 @@ function walkTsx(dir: string): string[] {
   return out;
 }
 
+/**
+ * A view is agent-addressable either by calling `useAgentElement` directly or by
+ * handing a spatial primitive its `agent` prop — `@elizaos/ui/spatial` normalizes
+ * that prop and emits the same `data-agent-id` anchor the hook registers, so the
+ * floating pill can address it. Views that own their controls through spatial
+ * primitives (Messages, Phone) carry no direct hook call.
+ */
+const SPATIAL_AGENT_PROP = /\bagent=(?:\{|")/;
+
 function registersAgentElement(pluginDir: string): boolean {
   const srcDir = path.join(PLUGINS_DIR, pluginDir, "src");
-  return walkTsx(srcDir).some((file) =>
-    readFileSync(file, "utf8").includes("useAgentElement"),
-  );
+  return walkTsx(srcDir).some((file) => {
+    const src = readFileSync(file, "utf8");
+    return src.includes("useAgentElement") || SPATIAL_AGENT_PROP.test(src);
+  });
 }
 
 const UI_COMPONENTS_DIR = path.resolve(here, "../../../ui/src/components");
