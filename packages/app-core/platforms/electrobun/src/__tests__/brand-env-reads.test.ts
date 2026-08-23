@@ -10,7 +10,7 @@ vi.mock("@elizaos/shared", () => ({
 import {
   resolveNamespaceFromEnv,
   resolveRendererUrlFromEnv,
-} from "./brand-env-reads.ts";
+} from "../brand-env-reads.ts";
 
 describe("resolveRendererUrlFromEnv", () => {
   it("prefers ELIZA_RENDERER_URL", () => {
