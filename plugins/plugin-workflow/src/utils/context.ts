@@ -45,8 +45,8 @@ export async function getUserTagName(runtime: IAgentRuntime, userId: string): Pr
   const shortId = userId.replace(/-/g, '').slice(0, 8);
   const agentScopeId = runtime.agentId.replace(/-/g, '');
   const name = entity?.names?.[0];
-  // ElizaOS default name is "User " + UUID — not useful for a tag
-  const isRealName = name && !name.includes(userId);
+  const isDefaultName = name === `User ${userId}` || name === `User${userId}`;
+  const isRealName = name && !isDefaultName;
   const userTag = isRealName ? `${name}_${shortId}` : `user_${shortId}`;
   return `${userTag}_agent_${agentScopeId}`;
 }
