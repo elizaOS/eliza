@@ -53,6 +53,9 @@ try {
   $start.RedirectStandardInput = $true
   $start.RedirectStandardOutput = $true
   $start.RedirectStandardError = $true
+  # Keep the binary native-messaging header at byte zero under Windows
+  # PowerShell 5.1; the default redirected writer emits a UTF-8 BOM.
+  $start.StandardInputEncoding = New-Object System.Text.UTF8Encoding($false)
   $start.EnvironmentVariables["ELIZA_STATE_DIR"] = $stateRoot
   $start.EnvironmentVariables["ELIZA_BROWSER_BRIDGE_CHROME_EXTENSION_IDS"] = $extensionId
   $process = New-Object System.Diagnostics.Process
