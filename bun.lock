@@ -1029,6 +1029,12 @@
       "version": "2.0.3-beta.7",
       "bin": {
         "eliza-scenarios": "./bin/eliza-scenarios",
+        "eliza-provider-canary": "./bin/eliza-provider-canary",
+        "eliza-provider-canary-exact13": "./bin/eliza-provider-canary-exact13",
+        "eliza-provider-operator": "./bin/eliza-provider-operator",
+        "eliza-provider-qualification": "./bin/eliza-provider-qualification",
+        "eliza-provider-readiness": "./bin/eliza-provider-readiness",
+        "eliza-provider-service": "./bin/eliza-provider-service",
       },
       "dependencies": {
         "@elizaos/agent": "workspace:*",
