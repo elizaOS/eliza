@@ -2492,26 +2492,14 @@ async function loadInboxChats(
   );
 
   for (const { latestMemory, room, roomIdKey } of backfilledRooms) {
-    if (latestMemory) {
-      const source =
-        extractSource(latestMemory) ?? readRoomSource(room) ?? undefined;
-      if (source && sourceFilter.has(source.toLowerCase())) {
-        applyInboxChatMemory(accumulator, latestMemory, room, source);
-      }
+    if (!latestMemory) {
       continue;
     }
-
-    const roomSource = readRoomSource(room);
-    if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) {
-      continue;
+    const source =
+      extractSource(latestMemory) ?? readRoomSource(room) ?? undefined;
+    if (source && sourceFilter.has(source.toLowerCase())) {
+      applyInboxChatMemory(accumulator, latestMemory, room, source);
     }
-    accumulator.set(roomIdKey, {
-      latestDiscordChannelId: readRoomChannelId(room),
-      source: roomSource,
-      lastMessageText: "",
-      lastMessageAt: readRoomCreatedAt(room) ?? 0,
-      messageCount: 0,
-    });
   }
 
   const chats: InboxChat[] = [];
