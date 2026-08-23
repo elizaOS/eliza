@@ -4,8 +4,10 @@ import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -15,12 +17,20 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  APPIMAGETOOL_ASSETS,
   buildSelectedLinuxPackages,
+  DEBIAN_RUNTIME_DEPENDS,
+  DEBIAN_RUNTIME_RECOMMENDS,
   DIRECT_LINUX_PACKAGE_FORMATS,
   debArchiveBuildArgs,
   findElectrobunLauncher,
+  RPM_RUNTIME_REQUIRES,
+  renderAppImageLauncher,
+  renderDebianControl,
   renderLinuxLauncherWrapper,
+  resolveAppImageToolAsset,
   resolveLinuxPackageFormats,
+  sha256File,
   stageAppImageMetadata,
   stagePackageRoot,
   withStagingCleanup,
@@ -34,6 +44,22 @@ function tempDir(): string {
   const directory = mkdtempSync(path.join(os.tmpdir(), "linux-package-test-"));
   tempDirs.push(directory);
   return directory;
+}
+
+function expectHardenedTree(root: string): void {
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) continue;
+    const stats = lstatSync(current);
+    if (stats.isSymbolicLink()) continue;
+    expect(stats.mode & 0o022, current).toBe(0);
+    if (stats.isDirectory()) {
+      for (const entry of readdirSync(current)) {
+        pending.push(path.join(current, entry));
+      }
+    }
+  }
 }
 
 afterEach(() => {
@@ -122,6 +148,62 @@ describe("direct Linux package format selection", () => {
   });
 });
 
+describe("Linux package runtime contracts", () => {
+  it("declares the native wrapper, Secret Service, media, and inference dependencies", () => {
+    const control = renderDebianControl();
+    expect(control).toContain(`Depends: ${DEBIAN_RUNTIME_DEPENDS.join(", ")}`);
+    expect(control).toContain(
+      `Recommends: ${DEBIAN_RUNTIME_RECOMMENDS.join(", ")}`,
+    );
+    for (const dependency of [
+      "libc6 (>= 2.38)",
+      "libwebkit2gtk-4.1-0",
+      "libsecret-1-0",
+      "libasound2t64 | libasound2",
+      "libvulkan1",
+      "libgomp1",
+    ]) {
+      expect(DEBIAN_RUNTIME_DEPENDS).toContain(dependency);
+    }
+    expect(RPM_RUNTIME_REQUIRES).toEqual(
+      expect.arrayContaining([
+        "glibc >= 2.38",
+        "webkit2gtk4.1",
+        "libsecret",
+        "vulkan-loader",
+        "libgomp",
+      ]),
+    );
+  });
+
+  it("selects a checksum-pinned native appimagetool for both supported architectures", () => {
+    expect(resolveAppImageToolAsset("x64", "x64")).toEqual(
+      APPIMAGETOOL_ASSETS.x64,
+    );
+    expect(resolveAppImageToolAsset("arm64", "arm64")).toEqual(
+      APPIMAGETOOL_ASSETS.arm64,
+    );
+    expect(() => resolveAppImageToolAsset("arm64", "x64")).toThrow(
+      /native-only/,
+    );
+    expect(() => resolveAppImageToolAsset("riscv64", "riscv64")).toThrow(
+      /No pinned appimagetool asset/,
+    );
+    for (const asset of Object.values(APPIMAGETOOL_ASSETS)) {
+      expect(asset.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(asset.updatedAt).toMatch(/^2025-/);
+    }
+  });
+
+  it("computes the digest used to verify downloaded packaging tools", () => {
+    const fixture = path.join(tempDir(), "asset");
+    writeFileSync(fixture, "verified fixture\n");
+    expect(sha256File(fixture)).toBe(
+      "32dfcc02fe339f75e5d08db10ed9b7bbf2df6dc68ea5ae0b4ba3df3799f22a77",
+    );
+  });
+});
+
 describe("direct Linux package staging cleanup", () => {
   it("removes staging after success", async () => {
     const parent = tempDir();
@@ -181,6 +263,13 @@ describe("direct Debian payload hardening", () => {
     mkdirSync(path.dirname(decoy), { recursive: true });
     writeFileSync(decoy, "#!/usr/bin/env sh\nexit 99\n");
     chmodSync(decoy, 0o755);
+    const permissiveDir = path.join(buildDir, "mutable payload");
+    mkdirSync(permissiveDir, { mode: 0o775 });
+    chmodSync(permissiveDir, 0o775);
+    writeFileSync(path.join(permissiveDir, "group-writable"), "fixture\n", {
+      mode: 0o664,
+    });
+    chmodSync(path.join(permissiveDir, "group-writable"), 0o664);
 
     expect(findElectrobunLauncher(buildDir)).toBe(executable);
 
@@ -204,6 +293,7 @@ describe("direct Debian payload hardening", () => {
     expect(statSync(wrapper).mode & 0o777).toBe(0o755);
     expect(statSync(desktop).mode & 0o777).toBe(0o644);
     expect(statSync(icon).mode & 0o777).toBe(0o644);
+    expectHardenedTree(packageRoot);
 
     const localWrapper = path.join(tempDir(), "quoted-launcher");
     writeFileSync(localWrapper, renderLinuxLauncherWrapper(executable), {
@@ -250,13 +340,9 @@ describe("direct Debian payload hardening", () => {
       appDir,
       "usr/share/metainfo/ai.elizaos.eliza.appdata.xml",
     );
-    expect(readFileSync(appRun, "utf8")).toBe(
-      [
-        "#!/usr/bin/env sh",
-        'HERE="$(dirname "$(readlink -f "$0")")"',
-        `exec "$HERE"/'opt/eliza/bin/launcher' "$@"`,
-        "",
-      ].join("\n"),
+    expect(readFileSync(appRun, "utf8")).toBe(renderAppImageLauncher());
+    expect(readFileSync(appRun, "utf8")).toContain(
+      "Eliza cannot start because Linux runtime libraries are missing",
     );
     expect(readFileSync(metainfo, "utf8")).toContain(
       '<launchable type="desktop-id">ai.elizaos.eliza.desktop</launchable>',

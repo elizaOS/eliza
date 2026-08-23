@@ -8,6 +8,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -23,6 +24,7 @@ import { cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import {
   assertLinuxDistributionClaim,
   LINUX_DISTRIBUTION_CLAIMS,
@@ -60,7 +62,80 @@ const arch = args.get("arch") ?? "x64";
 const debArch = arch === "arm64" ? "arm64" : "amd64";
 const rpmArch = arch === "arm64" ? "aarch64" : "x86_64";
 
+if (!["x64", "arm64"].includes(arch)) {
+  throw new Error(
+    `Unsupported Linux architecture "${arch}". Expected x64 or arm64.`,
+  );
+}
+
 export const DIRECT_LINUX_PACKAGE_FORMATS = ["deb", "rpm", "appimage"];
+
+// These are the host libraries used by the Electrobun wrapper, WebKit renderer,
+// Secret Service integration, audio stack, and portable inference runtime. Keep
+// the pre-t64 alternatives so the metadata remains valid on supported Ubuntu
+// releases while preferring current Debian package names.
+export const DEBIAN_RUNTIME_DEPENDS = [
+  "libc6 (>= 2.38)",
+  "libstdc++6",
+  "libgcc-s1",
+  "libglib2.0-0t64 | libglib2.0-0",
+  "libgtk-3-0t64 | libgtk-3-0",
+  "libgdk-pixbuf-2.0-0",
+  "libcairo2",
+  "libwebkit2gtk-4.1-0",
+  "libjavascriptcoregtk-4.1-0",
+  "libsoup-3.0-0",
+  "libayatana-appindicator3-1",
+  "libsecret-1-0", // gitleaks:allow Debian package name, not credential material
+  "libasound2t64 | libasound2",
+  "libvulkan1",
+  "libgomp1",
+  "ca-certificates",
+  "xdg-utils",
+];
+
+export const DEBIAN_RUNTIME_RECOMMENDS = [
+  "gstreamer1.0-plugins-base",
+  "gstreamer1.0-plugins-good",
+  "gstreamer1.0-libav",
+  "gstreamer1.0-pipewire",
+];
+
+export const RPM_RUNTIME_REQUIRES = [
+  "glibc >= 2.38",
+  "libstdc++",
+  "libgcc",
+  "glib2",
+  "gtk3",
+  "gdk-pixbuf2",
+  "cairo",
+  "webkit2gtk4.1",
+  "javascriptcoregtk4.1",
+  "libsoup3",
+  "libayatana-appindicator-gtk3",
+  "libsecret",
+  "alsa-lib",
+  "vulkan-loader",
+  "libgomp",
+  "ca-certificates",
+  "xdg-utils",
+];
+
+// AppImageKit's continuous release is mutable. Pin both the observed asset
+// update and SHA-256 so an upstream replacement fails closed instead of
+// silently changing the produced artifact. Refresh these values deliberately.
+export const APPIMAGETOOL_ASSETS = {
+  x64: {
+    asset: "appimagetool-x86_64.AppImage",
+    sha256: "b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2",
+    updatedAt: "2025-07-26T07:31:24Z",
+  },
+  arm64: {
+    asset: "appimagetool-aarch64.AppImage",
+    sha256: "a48972e5ae91c944c5a7c80214e7e0a42dd6aa3ae979d8756203512a74ff574d",
+    updatedAt: "2025-07-26T07:31:24Z",
+  },
+};
 
 /** Preserve the historical all-format build unless one format is requested. */
 export function resolveLinuxPackageFormats(requestedFormat) {
@@ -251,16 +326,102 @@ export function stageAppImageMetadata(
   );
   writeFileSync(
     path.join(appDir, "AppRun"),
-    [
-      "#!/usr/bin/env sh",
-      'HERE="$(dirname "$(readlink -f "$0")")"',
-      `exec "$HERE"/${posixShellQuote(
-        path.posix.join(optDir, relativeExecutable.split(path.sep).join("/")),
-      )} "$@"`,
-      "",
-    ].join("\n"),
+    renderAppImageLauncher(relativeExecutable),
     { mode: 0o755 },
   );
+}
+
+export function renderAppImageLauncher(relativeExecutable = "bin/launcher") {
+  const posixExecutable = relativeExecutable.split(path.sep).join("/");
+  const bundleRoot = path.posix.dirname(path.posix.dirname(posixExecutable));
+  const payloadRoot = path.posix.join(optDir, bundleRoot);
+  const nativeWrapper = path.posix.join(payloadRoot, "bin/libNativeWrapper.so");
+  const inferenceLibrary = path.posix.join(
+    payloadRoot,
+    "Resources/app/eliza-dist/local-inference/lib/libelizainference.so",
+  );
+  return [
+    "#!/usr/bin/env sh",
+    'HERE="$(dirname "$(readlink -f "$0")")"',
+    `PAYLOAD_ROOT="$HERE"/${posixShellQuote(payloadRoot)}`,
+    'INFERENCE_LIB="$PAYLOAD_ROOT/Resources/app/eliza-dist/local-inference/lib"',
+    `export LD_LIBRARY_PATH="$PAYLOAD_ROOT/bin:$INFERENCE_LIB\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"`,
+    "if command -v ldd >/dev/null 2>&1; then",
+    `  for library in "$HERE"/${posixShellQuote(nativeWrapper)} "$HERE"/${posixShellQuote(inferenceLibrary)}; do`,
+    '    [ -f "$library" ] || continue',
+    '    missing="$(ldd "$library" 2>/dev/null | awk \'/=> not found/{print $1}\' | sort -u)"',
+    '    if [ -n "$missing" ]; then',
+    "      printf >&2 'Eliza cannot start because Linux runtime libraries are missing:\\n%s\\nSee packages/app-core/docs/linux-development.md for supported hosts.\\n' \"$missing\"",
+    "      exit 127",
+    "    fi",
+    "  done",
+    "fi",
+    `exec "$HERE"/${posixShellQuote(
+      path.posix.join(optDir, posixExecutable),
+    )} "$@"`,
+    "",
+  ].join("\n");
+}
+
+export function renderDebianControl() {
+  return [
+    `Package: ${packageName}`,
+    `Version: ${version.replace(/-/g, "~")}`,
+    "Section: utils",
+    "Priority: optional",
+    `Architecture: ${debArch}`,
+    "Maintainer: elizaOS <hello@elizaos.ai>",
+    `Depends: ${DEBIAN_RUNTIME_DEPENDS.join(", ")}`,
+    `Recommends: ${DEBIAN_RUNTIME_RECOMMENDS.join(", ")}`,
+    `Description: ${displayName} desktop app`,
+    ` The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
+    "",
+  ].join("\n");
+}
+
+export function sha256File(filePath) {
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+}
+
+export function resolveAppImageToolAsset(targetArch, hostArch = process.arch) {
+  const asset = APPIMAGETOOL_ASSETS[targetArch];
+  if (!asset) {
+    throw new Error(`No pinned appimagetool asset for Linux ${targetArch}.`);
+  }
+  if (hostArch !== targetArch) {
+    throw new Error(
+      `AppImage packaging is native-only: target ${targetArch}, host ${hostArch}.`,
+    );
+  }
+  return asset;
+}
+
+function ensureVerifiedAppImageTool(targetArch) {
+  const asset = resolveAppImageToolAsset(targetArch);
+  const fingerprint = asset.sha256.slice(0, 16);
+  const tool = path.join(os.tmpdir(), `${asset.asset}-${fingerprint}`);
+  if (existsSync(tool) && sha256File(tool) === asset.sha256) return tool;
+
+  const download = `${tool}.download-${process.pid}`;
+  try {
+    sh("curl", [
+      "-fsSL",
+      `https://github.com/AppImage/AppImageKit/releases/download/continuous/${asset.asset}`,
+      "-o",
+      download,
+    ]);
+    const actual = sha256File(download);
+    if (actual !== asset.sha256) {
+      throw new Error(
+        `appimagetool SHA-256 mismatch for ${asset.asset}: expected ${asset.sha256}, got ${actual}.`,
+      );
+    }
+    chmodSync(download, 0o755);
+    renameSync(download, tool);
+  } finally {
+    if (existsSync(download)) removePathRecursive(download);
+  }
+  return tool;
 }
 
 export function debArchiveBuildArgs(packageRoot, outputPath) {
@@ -313,6 +474,7 @@ export async function stagePackageRoot(buildDir, destRoot) {
       0o644,
     );
   }
+  hardenLinuxArtifactPermissions(destRoot);
   return relativeExecutable;
 }
 
@@ -322,21 +484,10 @@ async function buildDeb(buildDir) {
     await stagePackageRoot(buildDir, root);
     const controlDir = path.join(root, "DEBIAN");
     mkdirSync(controlDir, { recursive: true, mode: 0o755 });
-    writeFileSync(
-      path.join(controlDir, "control"),
-      [
-        `Package: ${packageName}`,
-        `Version: ${version.replace(/-/g, "~")}`,
-        "Section: utils",
-        "Priority: optional",
-        `Architecture: ${debArch}`,
-        "Maintainer: elizaOS <hello@elizaos.ai>",
-        `Description: ${displayName} desktop app`,
-        ` The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
-        "",
-      ].join("\n"),
-      { mode: 0o644 },
-    );
+    writeFileSync(path.join(controlDir, "control"), renderDebianControl(), {
+      mode: 0o644,
+    });
+    hardenLinuxArtifactPermissions(root);
     const out = path.join(
       artifactRoot,
       `${packageName}_${version}_${debArch}.deb`,
@@ -368,6 +519,7 @@ async function buildRpm(buildDir) {
         `Summary: ${displayName} desktop app`,
         "License: MIT",
         `BuildArch: ${rpmArch}`,
+        ...RPM_RUNTIME_REQUIRES.map((dependency) => `Requires: ${dependency}`),
         "",
         "%description",
         `The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
@@ -402,17 +554,9 @@ async function buildAppImage(buildDir) {
   return withStagingCleanup(appDir, async () => {
     const relativeExecutable = await stagePackageRoot(buildDir, appDir);
     stageAppImageMetadata(appDir, relativeExecutable);
+    hardenLinuxArtifactPermissions(appDir);
 
-    const tool = path.join(os.tmpdir(), "appimagetool-x86_64.AppImage");
-    if (!existsSync(tool)) {
-      sh("curl", [
-        "-fsSL",
-        "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage",
-        "-o",
-        tool,
-      ]);
-      sh("chmod", ["+x", tool]);
-    }
+    const tool = ensureVerifiedAppImageTool(arch);
     const out = path.join(
       artifactRoot,
       `${displayName}-${version}-linux-${arch}.AppImage`,
