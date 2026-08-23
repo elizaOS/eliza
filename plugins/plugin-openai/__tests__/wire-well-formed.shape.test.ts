@@ -109,7 +109,7 @@ beforeEach(() => {
 
 describe("#18025: request bodies are well-formed strict JSON", () => {
   it.each([
-    ["gemma-4-31b", undefined],
+    ["gemma-4-31b", "none"],
     ["gpt-oss-120b", "low"],
     ["zai-glm-4.7", "low"],
   ] as const)(
