@@ -85,4 +85,37 @@ describe("selectBestEliza1Fit — biggest tier that fits, 128k target, QJL alway
       if (fit) expect(fit.tierId).not.toMatch(/0_8b/);
     }
   });
+
+  it("sorts tiers safely when minRamGb contains NaN/undefined", () => {
+    const tiers = [
+      { id: "tier-nan", minRamGb: NaN, sizeGb: 1 } as unknown as (typeof MODEL_CATALOG)[number],
+      { id: "tier-valid-12", minRamGb: 12, sizeGb: 2 } as unknown as (typeof MODEL_CATALOG)[number],
+      { id: "tier-undefined", minRamGb: undefined as unknown as number, sizeGb: 1 } as unknown as (typeof MODEL_CATALOG)[number],
+      { id: "tier-valid-4", minRamGb: 4, sizeGb: 1 } as unknown as (typeof MODEL_CATALOG)[number],
+    ];
+
+    const sorted = [...tiers].sort((a, b) => {
+      const bRam =
+        typeof b.minRamGb === "number" && Number.isFinite(b.minRamGb)
+          ? b.minRamGb
+          : -Infinity;
+      const aRam =
+        typeof a.minRamGb === "number" && Number.isFinite(a.minRamGb)
+          ? a.minRamGb
+          : -Infinity;
+      return bRam - aRam || a.id.localeCompare(b.id);
+    });
+
+    // Valid finite tiers first in descending order, then NaN/undefined last deterministically
+    expect(sorted[0]?.id).toBe("tier-valid-12");
+    expect(sorted[1]?.id).toBe("tier-valid-4");
+    // NaN/undefined pushed to end with stable tie-breaker
+    expect(sorted[2]?.id).toBe("tier-nan");
+    expect(sorted[3]?.id).toBe("tier-undefined");
+
+    // Bare subtraction violates sort contract: NaN contaminates comparator (returns NaN)
+    const unsafe = [...tiers].sort((a, b) => (b.minRamGb as number) - (a.minRamGb as number));
+    const unsafeIds = unsafe.map((t) => t.id);
+    expect(unsafeIds).not.toEqual(sorted.map((t) => t.id));
+  });
 });

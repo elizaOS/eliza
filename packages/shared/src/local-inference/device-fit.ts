@@ -143,7 +143,17 @@ export function selectBestEliza1Fit(freeRamGb: number): Eliza1Fit | null {
     .filter(
       (m) => typeof m.minRamGb === "number" && typeof m.sizeGb === "number",
     )
-    .sort((a, b) => b.minRamGb - a.minRamGb);
+    .sort((a, b) => {
+      const bRam =
+        typeof b.minRamGb === "number" && Number.isFinite(b.minRamGb)
+          ? b.minRamGb
+          : -Infinity;
+      const aRam =
+        typeof a.minRamGb === "number" && Number.isFinite(a.minRamGb)
+          ? a.minRamGb
+          : -Infinity;
+      return bRam - aRam || a.id.localeCompare(b.id);
+    });
 
   for (const tier of tiers) {
     if (tier.minRamGb == null || freeRamGb < tier.minRamGb) continue;
