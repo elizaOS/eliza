@@ -634,12 +634,12 @@ export function CloudModal({
           returnFocusRef.current = null;
         }}
         className={cn(
-          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto rounded-xl border-border bg-card p-0 text-foreground shadow-lg",
+          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto rounded-sm border-border bg-card p-0 sm:p-0 text-foreground shadow-lg",
           maxWidth,
           "max-h-[85vh]",
         )}
       >
-        <div className="border-b border-border px-5 py-4">
+        <div className="border-b border-border px-4 py-2.5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <DialogTitle className="text-[15px] font-semibold leading-6 text-foreground">
@@ -661,9 +661,9 @@ export function CloudModal({
             </button>
           </div>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="px-4 py-3">{children}</div>
         {footer ? (
-          <div className="border-t border-border px-5 py-3">{footer}</div>
+          <div className="border-t border-border px-4 py-2.5">{footer}</div>
         ) : null}
       </DialogContent>
     </Dialog>
