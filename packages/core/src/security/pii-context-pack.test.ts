@@ -319,30 +319,40 @@ describe("sourcesFromRuntime", () => {
 	}
 
 	function makeRuntime(config: FakeRuntimeConfig = {}) {
-		const searchMessages = vi.fn(
-			async (): Promise<MessageSearchHit[]> => [
-				{
-					memory: {
-						id: "m1" as UUID,
-						entityId: AGENT_ID,
-						roomId: AGENT_ID,
-						content: { text: "found message" },
-					} as Memory,
-					ftsRank: 3.2,
-					trigramSimilarity: 0.7,
-				},
-			],
-		);
-		const searchMemories = vi.fn(
-			async (): Promise<Memory[]> => [
-				{
-					id: "mem1" as UUID,
+		const messageHits: MessageSearchHit[] = [
+			{
+				memory: {
+					id: "m1" as UUID,
 					entityId: AGENT_ID,
 					roomId: AGENT_ID,
-					content: { text: "found memory" },
-					similarity: 0.8,
+					content: { text: "found message" },
 				} as Memory,
-			],
+				ftsRank: 3.2,
+				trigramSimilarity: 0.7,
+			},
+		];
+		const searchMessages = vi.fn(
+			async (params: { limit?: number; offset?: number }) =>
+				messageHits.slice(
+					params.offset ?? 0,
+					(params.offset ?? 0) + (params.limit ?? 20),
+				),
+		);
+		const memoryHits: Memory[] = [
+			{
+				id: "mem1" as UUID,
+				entityId: AGENT_ID,
+				roomId: AGENT_ID,
+				content: { text: "found memory" },
+				similarity: 0.8,
+			} as Memory,
+		];
+		const searchMemories = vi.fn(
+			async (params: { count?: number; offset?: number }): Promise<Memory[]> =>
+				memoryHits.slice(
+					params.offset ?? 0,
+					(params.offset ?? 0) + (params.count ?? 10),
+				),
 		);
 		const searchDocuments = vi.fn(async (message: Memory) => {
 			void message;
@@ -441,6 +451,99 @@ describe("sourcesFromRuntime", () => {
 		expect(fragments).toEqual([
 			{ text: "found message", origin: "message", ref: "m1", score: 0.7 },
 		]);
+	});
+
+	test("assembles the first, middle, and last memory beyond the legacy source limit", async () => {
+		const memories = Array.from({ length: 130 }, (_, index) => ({
+			id: `mem-${index}` as UUID,
+			entityId: AGENT_ID,
+			roomId: AGENT_ID,
+			content: { text: `memory evidence ${index}` },
+			similarity: 1 - index / 1_000,
+		})) as Memory[];
+		const searchMemories = vi.fn(
+			async (params: { count?: number; offset?: number }) => {
+				const offset = params.offset ?? 0;
+				return memories.slice(offset, offset + (params.count ?? 10));
+			},
+		);
+		const runtime = {
+			agentId: AGENT_ID,
+			getModel: () => vi.fn(),
+			useModel: vi.fn(async () => [0.1, 0.2]),
+			searchMemories,
+			getService: () => null,
+			adapter: { searchMessages: vi.fn() },
+		} as unknown as IAgentRuntime;
+		const sources = sourcesFromRuntime(runtime, { limit: 1 });
+
+		const pack = await assembleContextPack(sources, {
+			chunk: "John Smith",
+			candidates: [{ surfaceForm: "John Smith", kind: "person" }],
+			map: makeMap(),
+			rulesetVersion: RULESET,
+		});
+
+		expect(pack.contextPack).toContain("memory evidence 0");
+		expect(pack.contextPack).toContain("memory evidence 65");
+		expect(pack.contextPack).toContain("memory evidence 129");
+		expect(searchMemories).toHaveBeenCalledWith(
+			expect.objectContaining({ count: 64, offset: 0 }),
+		);
+		expect(searchMemories).toHaveBeenCalledWith(
+			expect.objectContaining({ count: 256, offset: 0 }),
+		);
+	});
+
+	test("rejects a source that ignores continuation offsets", async () => {
+		const hit = {
+			id: "mem-stalled" as UUID,
+			entityId: AGENT_ID,
+			roomId: AGENT_ID,
+			content: { text: "stalled" },
+		} as Memory;
+		const runtime = {
+			agentId: AGENT_ID,
+			getModel: () => vi.fn(),
+			useModel: vi.fn(async () => [0.1]),
+			searchMemories: vi.fn(async () => [hit]),
+			getService: () => null,
+			adapter: { searchMessages: vi.fn() },
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			sourcesFromRuntime(runtime).searchMemories?.("John"),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_SOURCE_INCOMPLETE" });
+	});
+
+	test("rejects a source that changes between complete traversals", async () => {
+		let prefixReads = 0;
+		const searchMemories = vi.fn(
+			async (params: { offset?: number }): Promise<Memory[]> => {
+				if ((params.offset ?? 0) > 0) return [];
+				prefixReads += 1;
+				return [
+					{
+						id: `mem-${prefixReads}` as UUID,
+						entityId: AGENT_ID,
+						roomId: AGENT_ID,
+						content: { text: `version ${prefixReads}` },
+					} as Memory,
+				];
+			},
+		);
+		const runtime = {
+			agentId: AGENT_ID,
+			getModel: () => vi.fn(),
+			useModel: vi.fn(async () => [0.1]),
+			searchMemories,
+			getService: () => null,
+			adapter: { searchMessages: vi.fn() },
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			sourcesFromRuntime(runtime).searchMemories?.("John"),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_SOURCE_UNSTABLE" });
 	});
 });
 

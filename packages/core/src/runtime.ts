@@ -11519,6 +11519,7 @@ ${section_end}`;
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		roomId?: UUID;
 		unique?: boolean;
 		worldId?: UUID;
