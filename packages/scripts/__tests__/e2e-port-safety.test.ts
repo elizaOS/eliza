@@ -18,9 +18,9 @@ const REPO_ROOT = path.resolve(
 );
 const SCRIPT_EXTENSION = /\.(?:mjs|cjs|js|ts|tsx|sh)$/;
 const TOCTOU_ALLOCATOR = /\ballocateFreePorts\b/;
-const LITERAL_LISTEN_PORT = /\.listen\(\s*["']?(\d{4,5})\b/;
+const LITERAL_LISTEN_PORT = /\.listen\(\s*["']?((?!0+\b)\d{1,5})\b/;
 const LITERAL_DOCKER_HOST_PORT =
-  /(?:^|\s)(?:-p|--publish)(?:=|\s+)["']?(\d{4,5}):/;
+  /(?:^|\s)(?:-p|--publish)(?:=|\s+)["']?(?:(?:\[[0-9a-f:]+\]|(?:\d{1,3}\.){3}\d{1,3}):)?((?!0+\b)\d{1,5}):/i;
 
 function isE2eScript(file: string): boolean {
   return (
@@ -90,6 +90,7 @@ describe("e2e port safety", () => {
   it("rejects literal host listen and Docker-publish ports", () => {
     const offenders: string[] = [];
     for (const file of trackedE2eScripts()) {
+      if (file.endsWith("e2e-port-safety.test.ts")) continue;
       const content = readFileSync(path.join(REPO_ROOT, file), "utf8");
       executableLines(file, content).forEach(({ line, lineNumber }) => {
         if (
@@ -109,12 +110,34 @@ describe("e2e port safety", () => {
 
   it("recognizes unsafe forms while accepting retained dynamic binds", () => {
     expect(LITERAL_LISTEN_PORT.test("server.listen(36414, host)")).toBe(true);
+    expect(LITERAL_LISTEN_PORT.test("server.listen(80, host)")).toBe(true);
+    expect(LITERAL_LISTEN_PORT.test("server.listen('443', host)")).toBe(true);
+    expect(LITERAL_LISTEN_PORT.test("server.listen('00080', host)")).toBe(true);
     expect(LITERAL_LISTEN_PORT.test("server.listen(0, host)")).toBe(false);
+    expect(LITERAL_LISTEN_PORT.test("server.listen('00000', host)")).toBe(
+      false,
+    );
     expect(LITERAL_LISTEN_PORT.test("server.listen(boundPort, host)")).toBe(
       false,
     );
     expect(
       LITERAL_DOCKER_HOST_PORT.test("docker run --publish 8080:80 image"),
+    ).toBe(true);
+    expect(LITERAL_DOCKER_HOST_PORT.test("docker run -p 80:8080 image")).toBe(
+      true,
+    );
+    expect(
+      LITERAL_DOCKER_HOST_PORT.test("docker run -p 00080:8080 image"),
+    ).toBe(true);
+    expect(
+      LITERAL_DOCKER_HOST_PORT.test(
+        'docker run --publish "127.0.0.1:443:8443" image',
+      ),
+    ).toBe(true);
+    expect(
+      LITERAL_DOCKER_HOST_PORT.test(
+        'docker run --publish "[::1]:443:8443" image',
+      ),
     ).toBe(true);
     expect(LITERAL_DOCKER_HOST_PORT.test("docker run -p 5432 image")).toBe(
       false,
