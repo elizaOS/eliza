@@ -58,7 +58,10 @@ the previously compared base at the mutation boundary. An advanced develop tip
 is a neutral stale reconciliation; a behind or divergent main fails instead of
 creating an untested merge commit.
 The delegated `platform-smoke.yml` family preserves macOS and Windows core
-proof without a separate periodic authority.
+proof without a separate periodic authority. Its manual dispatch is the
+read-only route for exact-ref pre-merge platform evidence; it adds no automatic
+pull-request or push authority and does not replace PR Static Smoke or Develop
+Full.
 
 `.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
 manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
