@@ -5,7 +5,7 @@
  * Drives the real signInWithSolana and bs58Encode against deterministic
  * fetch/wallet doubles; no network access occurs.
  */
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 import { getElizacloudUrl } from "../src/lib/api/client";
 import { bs58Encode, signInWithSolana } from "../src/lib/api/siws";
 
