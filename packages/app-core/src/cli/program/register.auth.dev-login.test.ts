@@ -128,6 +128,52 @@ describe("auth dev-login (SIWE wallet)", () => {
     expect(result.message).toContain("verify failed (401)");
   });
 
+  it("truncates verify failure message with surrogate safety", async () => {
+    const longErr = `${"a".repeat(159)}😀${"b".repeat(20)}`;
+    const mock = (async (url: string | URL, _init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/nonce")) {
+        return new Response(
+          JSON.stringify({
+            nonce: "abc123nonce",
+            domain: "www.elizacloud.ai",
+            uri: "https://www.elizacloud.ai",
+            chainId: 1,
+            version: "1",
+            statement: "Sign in to Eliza Cloud",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(longErr, { status: 400 });
+    }) as unknown as typeof fetch;
+
+    const result = await runDevWalletLogin({
+      privateKey: FIXED_PK,
+      save: false,
+      log: () => {},
+      fetchImpl: mock,
+    });
+    expect(result.ok).toBe(false);
+    const message = result.message ?? "";
+    // The raw body cuts mid-surrogate-pair at unit 160: units 0-158 are "a",
+    // unit 159 is the high surrogate of 😀 and unit 160 its low surrogate, so a
+    // plain slice(0, 160) ends in an unpaired high surrogate.
+    expect(message).toBe(message.toWellFormed());
+    for (let i = 0; i < message.length; i += 1) {
+      const unit = message.charCodeAt(i);
+      if (unit >= 0xd800 && unit <= 0xdbff) {
+        const next = i + 1 < message.length ? message.charCodeAt(i + 1) : -1;
+        expect(next).toBeGreaterThanOrEqual(0xdc00);
+        expect(next).toBeLessThanOrEqual(0xdfff);
+        i += 1;
+        continue;
+      }
+      expect(unit >= 0xdc00 && unit <= 0xdfff).toBe(false);
+    }
+    expect(message).toBe(`SIWE verify failed (400): ${"a".repeat(159)}`);
+  });
+
   it("a failed key persist is LOUD: warns, returns saveError, and prints manual-save instructions", async () => {
     const lines: string[] = [];
     const result = await runDevWalletLogin({

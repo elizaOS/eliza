@@ -21,6 +21,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   isLoopbackBindHost,
   readAliasedEnv,
@@ -458,7 +459,7 @@ export async function runDevWalletLogin(
     const txt = await verifyRes.text().catch(() => "");
     return {
       ok: false,
-      message: `SIWE verify failed (${verifyRes.status}): ${txt.slice(0, 160)}`,
+      message: `SIWE verify failed (${verifyRes.status}): ${truncateWellFormed(toWellFormedUnicode(txt), 160)}`,
     };
   }
   const verified = (await verifyRes.json()) as {
