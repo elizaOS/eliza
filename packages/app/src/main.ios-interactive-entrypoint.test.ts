@@ -190,18 +190,6 @@ describe("renderer interactive iOS composition", () => {
       "elizaos://auth/callback?state=smoke&code=synthetic",
       "elizaos://unknown-path",
     ]) {
-      if (url.startsWith("elizaos://first-run/runtime/remote")) {
-        window.localStorage.setItem(
-          "elizaos:active-server",
-          JSON.stringify({
-            id: "remote:http://127.0.0.1:31337",
-            kind: "remote",
-            label: "127.0.0.1:31337",
-            apiBase: "http://127.0.0.1:31337",
-            accessToken: "paired-token",
-          }),
-        );
-      }
       const handled = handleDeepLink?.(url);
       if (url.startsWith("elizaos://first-run/runtime/remote")) {
         await handled;
@@ -224,10 +212,18 @@ describe("renderer interactive iOS composition", () => {
         completeFirstRun: true,
       }),
     );
-    expect(iosBoot.setStorageValue).toHaveBeenCalledWith(
-      "elizaos:active-server",
-      expect.stringContaining('"accessToken":"paired-token"'),
+    const activeServerCall = iosBoot.setStorageValue.mock.calls.find(
+      ([key]) => key === "elizaos:active-server",
     );
+    expect(activeServerCall).toBeDefined();
+    const persistedActiveServer = JSON.parse(activeServerCall?.[1] ?? "{}");
+    expect(persistedActiveServer).toEqual({
+      id: "remote:http://127.0.0.1:31337",
+      kind: "remote",
+      label: "127.0.0.1",
+      apiBase: "http://127.0.0.1:31337",
+    });
+    expect(persistedActiveServer).not.toHaveProperty("accessToken");
     expect(iosBoot.setStorageValue).toHaveBeenCalledWith(
       "eliza:first-run-complete",
       "1",
