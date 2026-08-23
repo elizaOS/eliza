@@ -13,26 +13,28 @@ import type { AuditEvent } from "./audit/types.js";
 // vi.hoisted, so build the collaborators inside the factories and reach them
 // through the mocked module afterwards.
 vi.mock("@/db/client", () => {
-	const values = vi.fn(async (_row: Record<string, unknown>) => undefined);
-	const insert = vi.fn((_table: unknown) => ({ values }));
-	return { dbWrite: { insert }, __values: values, __insert: insert };
+  const values = vi.fn(async (_row: Record<string, unknown>) => undefined);
+  const insert = vi.fn((_table: unknown) => ({ values }));
+  return { dbWrite: { insert }, __values: values, __insert: insert };
 });
 
 vi.mock("@/db/schemas/auth-events", () => ({
-	authEvents: { name: "auth_events" as const },
+  authEvents: { name: "auth_events" as const },
 }));
 
 const dbClientModule = (await import("@/db/client")) as unknown as {
-	__values: ReturnType<typeof vi.fn>;
-	__insert: ReturnType<typeof vi.fn>;
+  __values: ReturnType<typeof vi.fn>;
+  __insert: ReturnType<typeof vi.fn>;
 };
-const authEventsModule = (await import("@/db/schemas/auth-events")) as unknown as {
-	authEvents: { name: "auth_events" };
+const authEventsModule = (await import(
+  "@/db/schemas/auth-events"
+)) as unknown as {
+  authEvents: { name: "auth_events" };
 };
 const harness = {
-	values: dbClientModule.__values,
-	insert: dbClientModule.__insert,
-	authEvents: authEventsModule.authEvents,
+  values: dbClientModule.__values,
+  insert: dbClientModule.__insert,
+  authEvents: authEventsModule.authEvents,
 };
 
 const { AuditEventsSink, auditEventsSink } = await import("./audit-events");
