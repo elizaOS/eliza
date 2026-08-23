@@ -2,13 +2,19 @@
  * Unit coverage for the same-origin post-authentication return contract.
  */
 
-import { describe, expect, test } from "vitest";
+/* The package lane uses Bun while the isolated merge-readiness lane uses Vitest.
+import { describe, expect, test } from "bun:test";
+*/
 import { safeReturnTo } from "../src/lib/auth-return";
 import {
   getTelegramLinkDestination,
   TELEGRAM_ACCOUNT_CONNECTED_PATH,
   TELEGRAM_CONNECTED_PATH,
 } from "../src/lib/telegram-onboarding";
+
+const { describe, expect, test } = process.env.VITEST
+  ? await import("vitest")
+  : await import("bun:test");
 
 describe("safe auth return paths", () => {
   test("accepts internal paths with query strings and hashes", () => {
