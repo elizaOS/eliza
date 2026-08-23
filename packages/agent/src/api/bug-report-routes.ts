@@ -385,10 +385,13 @@ export async function handleBugReportRoutes(
 
     const githubFetch = createBugReportFetchSignal(req);
     try {
-      const sanitizedTitle = sanitize(body.description, 80).replace(
-        /[\r\n]+/g,
-        " ",
-      );
+      // GitHub titles carry a `[Bug] ` prefix; budget the truncation so the
+      // final title (prefix included) stays within the documented 80-char bound
+      // instead of silently growing to 86.
+      const sanitizedTitle = sanitize(
+        body.description,
+        80 - "[Bug] ".length,
+      ).replace(/[\r\n]+/g, " ");
       const issueBody = formatIssueBody(body);
       const issueRes = await fetch(githubIssuesUrl, {
         method: "POST",
