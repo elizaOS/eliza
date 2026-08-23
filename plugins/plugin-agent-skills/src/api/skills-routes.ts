@@ -678,19 +678,72 @@ export async function handleSkillsRoutes(
       const sort = url.searchParams.get("sort") ?? "downloads";
       const sorted = [...all];
       if (sort === "downloads")
+        sorted.sort((a, b) => {
+          const bDownloads =
+            typeof b.stats.downloads === "number" &&
+            Number.isFinite(b.stats.downloads)
+              ? b.stats.downloads
+              : 0;
+          const aDownloads =
+            typeof a.stats.downloads === "number" &&
+            Number.isFinite(a.stats.downloads)
+              ? a.stats.downloads
+              : 0;
+          const bUpdated =
+            typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+              ? b.updatedAt
+              : 0;
+          const aUpdated =
+            typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+              ? a.updatedAt
+              : 0;
+          return (
+            bDownloads - aDownloads ||
+            bUpdated - aUpdated ||
+            a.slug.localeCompare(b.slug)
+          );
+        });
+      else if (sort === "stars")
+        sorted.sort((a, b) => {
+          const bStars =
+            typeof b.stats.stars === "number" && Number.isFinite(b.stats.stars)
+              ? b.stats.stars
+              : 0;
+          const aStars =
+            typeof a.stats.stars === "number" && Number.isFinite(a.stats.stars)
+              ? a.stats.stars
+              : 0;
+          const bUpdated =
+            typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+              ? b.updatedAt
+              : 0;
+          const aUpdated =
+            typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+              ? a.updatedAt
+              : 0;
+          return (
+            bStars - aStars ||
+            bUpdated - aUpdated ||
+            a.slug.localeCompare(b.slug)
+          );
+        });
+      else if (sort === "updated")
+        sorted.sort((a, b) => {
+          const bUpdated =
+            typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+              ? b.updatedAt
+              : 0;
+          const aUpdated =
+            typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+              ? a.updatedAt
+              : 0;
+          return bUpdated - aUpdated || a.slug.localeCompare(b.slug);
+        });
+      else if (sort === "name")
         sorted.sort(
           (a, b) =>
-            b.stats.downloads - a.stats.downloads || b.updatedAt - a.updatedAt,
-        );
-      else if (sort === "stars")
-        sorted.sort(
-          (a, b) => b.stats.stars - a.stats.stars || b.updatedAt - a.updatedAt,
-        );
-      else if (sort === "updated")
-        sorted.sort((a, b) => b.updatedAt - a.updatedAt);
-      else if (sort === "name")
-        sorted.sort((a, b) =>
-          (a.displayName).localeCompare(b.displayName),
+            a.displayName.localeCompare(b.displayName) ||
+            a.slug.localeCompare(b.slug),
         );
 
       // Resolve installed status from the AgentSkillsService
