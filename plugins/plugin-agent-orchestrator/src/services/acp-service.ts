@@ -400,6 +400,7 @@ function findExecutableOnPath(name: string): string | undefined {
  * doubled separators (an executable the native transport cannot spawn).
  */
 function quoteCommandPart(value: string): string {
+  if (value.length === 0) return '""';
   if (!/[\s"']/u.test(value)) return value;
   if (!value.includes('"')) return `"${value}"`;
   // A value containing a double quote cannot live inside a double-quoted span
