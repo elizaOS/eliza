@@ -1548,6 +1548,7 @@ export {
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,
+  executeLifeOpsReminderTask,
   executeLifeOpsSchedulerTask,
   LIFEOPS_TASK_INTERVAL_MS,
   LIFEOPS_TASK_JITTER_MS,

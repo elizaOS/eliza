@@ -57,6 +57,30 @@ bun run cloud:login:test-wallet --base <local-stack-url>
 
 ## Conventions / gotchas
 
+### Exact-three agent stability lane
+
+`stability:keyless` boots the canonical mock Cloud stack once per isolated
+attempt, runs a real `AgentRuntime`, and requires attempts 1, 2, and 3 to pass.
+The scenario sends a real owner message, executes `OWNER_REMINDERS`, fires the
+production scheduler through a retained notification sink, and proves
+authenticated Hetzner mock create/read/delete effects through an audit proxy.
+Strict deterministic fixtures are the only model in the PR lane.
+
+`stability:real -- --provider openai|anthropic` runs the identical scenario,
+world, plugins, services, and mock endpoints while replacing only the model.
+The selected provider is forced through a bounded loopback proxy; a pinned-Bun
+preload rejects direct child fetch egress. Exactly one model credential is
+passed, and real service credentials are never passed.
+
+Attempts retain trajectories, tool receipts, transitions, bounded logs,
+network and mock-service ledgers, and authority hashes. The aggregate retains
+first-attempt success, failure clusters, 3/3 status, a canonical report hash,
+and the asserted three-cycle seed/reset ledger. Failures still upload evidence.
+
+The lane composes #24081, #24136, #24209, and pending #24344. Until those stacks
+land together, source runs need their exact dependency heads; real-model proof
+remains blocking unless an authorized repository secret produced a trajectory.
+
 - **Bun + `eliza-source` condition is mandatory.** The `test` scripts run
   `bun --conditions=eliza-source playwright ...` so Bun drives the package
   command while Playwright workers use Node. The config / `buildSharedEnv`

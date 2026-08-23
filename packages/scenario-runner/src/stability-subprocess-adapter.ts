@@ -378,6 +378,18 @@ function processGroupExists(processGroupId: number | null): boolean {
     ) {
       return false;
     }
+    // Darwin can transiently return EPERM for a process-group probe after a
+    // successful SIGKILL while the kernel is still reaping that group. Treat
+    // it as present so the bounded absence loop keeps waiting; only ESRCH is
+    // accepted as teardown proof.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "EPERM"
+    ) {
+      return true;
+    }
     throw error;
   }
 }
@@ -652,6 +664,7 @@ export class ScenarioStabilitySubprocessAdapter
   ): Promise<void> {
     const boundary = this.#boundaries.get(input.attemptId);
     if (!boundary) return;
+    const failures: Error[] = [];
     try {
       signalProcessGroup(boundary.processGroupId, "SIGTERM");
       signalProcessGroup(boundary.processGroupId, "SIGKILL");
@@ -660,11 +673,6 @@ export class ScenarioStabilitySubprocessAdapter
         processGroupExists(boundary.processGroupId) &&
         Date.now() < deadline
       ) {
-        if (input.signal.aborted) {
-          throw new Error(
-            "stability teardown was cancelled before process-group absence was proven",
-          );
-        }
         await new Promise<void>((resolve) => setTimeout(resolve, 10));
       }
       if (processGroupExists(boundary.processGroupId)) {
@@ -672,18 +680,33 @@ export class ScenarioStabilitySubprocessAdapter
           "stability subprocess group remained alive after SIGKILL",
         );
       }
-      if (input.signal.aborted) {
-        throw new Error(
-          "stability teardown was cancelled before synthetic reset completed",
-        );
-      }
-      await boundary.session.close();
-      this.#boundaries.delete(input.attemptId);
     } catch (error) {
-      // error-policy:J2 A failed process/session teardown quarantines this adapter so no later attempt can claim a clean namespace.
-      this.#quarantine =
-        error instanceof Error ? error : new Error("stability teardown failed");
-      throw this.#quarantine;
+      // error-policy:J7 Process cleanup failure must not prevent the independent synthetic-world reset attempt.
+      failures.push(
+        error instanceof Error ? error : new Error("process teardown failed"),
+      );
     }
+    try {
+      await boundary.session.close();
+    } catch (error) {
+      // error-policy:J2 A failed authority reset is retained alongside any process cleanup failure.
+      failures.push(
+        error instanceof Error
+          ? error
+          : new Error("synthetic session teardown failed"),
+      );
+    }
+    if (failures.length === 0) {
+      this.#boundaries.delete(input.attemptId);
+      return;
+    }
+    // error-policy:J2 Any unproven boundary cleanup quarantines the adapter so no later attempt can claim isolation.
+    this.#quarantine = new AggregateError(
+      failures,
+      `stability subprocess teardown was not fully proven: ${failures
+        .map((failure) => failure.message)
+        .join("; ")}`,
+    );
+    throw this.#quarantine;
   }
 }

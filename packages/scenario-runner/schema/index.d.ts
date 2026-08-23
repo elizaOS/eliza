@@ -658,6 +658,9 @@ export type ScenarioModelFixture = {
     json?: unknown;
     toolCalls?: readonly ScenarioModelToolCall[];
     finishReason?: string;
+    thought?: string;
+    messageToUser?: string;
+    completed?: boolean;
     usage?: { promptTokens: number; completionTokens: number };
   };
   /** Defaults to exactly once for scenario manifests. */
