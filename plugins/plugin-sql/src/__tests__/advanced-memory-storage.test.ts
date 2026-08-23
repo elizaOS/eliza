@@ -205,4 +205,26 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     const [updated] = await service.getLongTermMemories(agentId, entityId);
     expect(updated?.lastAccessedAt?.toISOString()).toBe(older.toISOString());
   });
+
+  it("maintains strict total ordering when updatedAt or createdAt contain invalid dates", async () => {
+    const service = new AdvancedMemoryStorageService();
+    const sorted = (service as any).sortLongTermMemories([
+      {
+        id: "mem-valid",
+        updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+        createdAt: new Date("2026-08-01T00:00:00.000Z"),
+        confidence: 0.9,
+      },
+      {
+        id: "mem-invalid",
+        updatedAt: new Date("invalid-date"),
+        createdAt: new Date("invalid-date"),
+        confidence: 0.5,
+      },
+    ]);
+
+    expect(sorted).toHaveLength(2);
+    expect(sorted[0]?.id).toBe("mem-valid");
+    expect(sorted[1]?.id).toBe("mem-invalid");
+  });
 });
