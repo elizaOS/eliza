@@ -134,7 +134,7 @@ export function compareTriagedNotifications(
   return bScore - aScore || a.id.localeCompare(b.id);
 }
 
-export { formatTriageSummary, scoreNotification, compareTriagedNotifications };
+export { formatTriageSummary, scoreNotification };
 
 export const notificationTriageAction: Action = {
   name: GitHubActions.GITHUB_NOTIFICATION_TRIAGE,
