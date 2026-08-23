@@ -6,7 +6,7 @@ Updated: 2026-08-23 (America/Los_Angeles)
 
 - Preserved the accepted fail-closed lifecycle/authority lineage, including `d6131f9c36d3d0528118132caa822211014663dd`, tag `account-deletion-authoritative-backup-fence-20260822`, and the clean prior current-base candidate `4148261c5aa4594e45dc5452caf5e42eccbd0cea` in `/Users/nubs/.codex/worktrees/account-deletion-current-base-20260823/eliza`. No reset, clean, overwrite, force update, deployment, production migration, provider mutation, or real deletion occurred.
 - Built the publication candidate in the isolated worktree `/Users/nubs/.codex/worktrees/account-deletion-current-base-e1bfbf7-20260823/eliza` on branch `codex/account-deletion-current-base-e1bfbf7-20260823`.
-- Fetched action-time `origin/develop@4f199840ab6d7522f9512f2858e2a18bdaf39f08`. The final upstream advances (33 commits to `db58d18887`, 7 to `0f9911498a`, 14 to `714d7a866a`, then 3 to `4f199840ab`) had zero path overlap with the deletion patch and were composed with normal non-FF merges at `7005e17f2d`, `e477f7e5c8`, `dc0fb86283`, and `aca3c5a6bf`; no rebase, reset, clean, or force update was used. The exact deletion code checkpoint is `0470865a57b87dd2ef33bbc0c9cecc0e0f462bef`; the exact composed head before this ledger commit is `aca3c5a6bf06dc6e91576a6df0f87411bac90592`.
+- Fetched action-time `origin/develop@0242ceed35256bc247ed944932f3ccd49a4a3803`. The 204-commit advance from prior base `4f199840ab` changed 290 paths and had zero overlap with all 74 candidate paths. It was composed with a normal non-FF merge at `db5bd45c2c`; no rebase, reset, clean, history replacement, or force update was used. The exact deletion code checkpoint remains `0470865a57b87dd2ef33bbc0c9cecc0e0f462bef`; the exact composed head before this ledger commit is `db5bd45c2cf6b0eb6981a2f52f69fbf9db82ff16`.
 - Preserved merged #24256 and #24803: current tenant scoping, strict receipt parsing, canonical SSO sign-out, public-route distrust of query parameters, and canonical redacted evidence snapshots remain intact while the unavailable-only presentation is superseded by the authoritative lifecycle.
 - Preserved the deliberate fail-closed fence from #22854 while implementing parent issue #23098 as resumable lifecycle authority rather than reverting the guard.
 - Defined four separate operations and authorities: agent stop/wake, subscription cancellation, shared-member exit/ownership transfer, and personal account deletion.
@@ -22,11 +22,11 @@ Updated: 2026-08-23 (America/Los_Angeles)
 ## Recomposition and identity proof
 
 - Prior-base head: `f666c9df0beddace21043c5ffd29f05f0fee4717` on `d2cdce0d56b91eea0898841cbfa01f0d8476cb7b`.
-- Current-base composition head: `aca3c5a6bf06dc6e91576a6df0f87411bac90592` with deletion code checkpoint `0470865a57b87dd2ef33bbc0c9cecc0e0f462bef` on `4f199840ab6d7522f9512f2858e2a18bdaf39f08`.
+- Current-base composition head: `db5bd45c2cf6b0eb6981a2f52f69fbf9db82ff16` with deletion code checkpoint `0470865a57b87dd2ef33bbc0c9cecc0e0f462bef` on `0242ceed35256bc247ed944932f3ccd49a4a3803`.
 - `git range-diff d2cdce0d56..f666c9df0b c3f070a5ee..077e11519b` maps all 24 code commits one-for-one with `=`.
-- The accepted 24-commit lifecycle series retains aggregate stable patch identity `54c3805e2be12e559f4546e6308842a682b65f59`; the current owner code/data diff against `4f199840ab`, excluding the self-referential `STATUS.md` ledger, has stable patch ID `3c4f7f181c894933a30182f68b42b4d1d5589267`.
+- The accepted 24-commit lifecycle series retains aggregate stable patch identity `54c3805e2be12e559f4546e6308842a682b65f59`; the current owner code/data diff against `0242ceed35`, excluding the self-referential `STATUS.md` ledger, retains stable patch ID `3c4f7f181c894933a30182f68b42b4d1d5589267`.
 - The 24-commit series scans 447.58 KB with gitleaks and contains no detected secret.
-- `git diff --check` passes. Biome checks all 62 changed TypeScript/TSX/JSON files with no findings.
+- `git diff --check` passes. Biome checks all 63 changed TypeScript/TSX/MJS/JSON files with no findings.
 
 ## Tests and evidence
 
@@ -40,11 +40,12 @@ Updated: 2026-08-23 (America/Los_Angeles)
   - Migration release barrier: 19/19.
   - Serialized staging-canary contract/workflow: 12/12.
   - Additional database erasure, rollback, resource purge, and app cleanup tests: 14/14.
-- After the final deletion-adjacent zero-overlap merge to `db58d18887`, 91 high-risk tests pass across migration-chain application, PGlite reservation/concurrency/atomic erasure, full-schema FK classification, compute/backup/spool fail-closed adapters, lifecycle service, authenticated/public replay routes, browser capability persistence, auto-top-up, Stripe webhook, domain renewal, provisioning, and typed four-operation contracts. The subsequent 24 commits through `4f199840ab` touch only app/app-core/core/shared/elizaos tests and generic shortcut/openclaw handling, with no deletion-path overlap. Backend and API tests were isolated per process; one deliberate Bun invocation of a Vitest file was discarded and rerun correctly as 10/10 through the UI package runner.
-- Typechecks pass for Cloud shared, Cloud API, UI, and Cloud E2E. Cloud API typecheck includes a successful Wrangler Worker dry-run; it did not deploy. Owner-scoped Biome lint passes for app-core, Cloud shared, Cloud API, and UI; warnings are confined to untouched upstream tests.
+- On exact current base `0242ceed35`, 91 high-risk tests pass across migration-chain application, PGlite reservation/concurrency/atomic erasure, full-schema FK classification, compute/backup/spool fail-closed adapters, lifecycle service, authenticated/public replay routes, browser capability persistence, auto-top-up, Stripe webhook, domain renewal, provisioning, and typed four-operation contracts. Backend/API suites ran in isolated Bun processes and the browser client ran under its owning Vitest runner.
+- Raw TypeScript checks pass for Cloud shared, Cloud API, UI, and Cloud E2E; only the small current-base logger workspace prerequisite was rebuilt for E2E resolution. No Wrangler dry-run, broad build, install, app audit, or evidence bundle was generated during this recompose.
+- Candidate-only Biome passes all 63 changed source/data files. Full-package lint exposes only current-develop baseline debt outside the deletion diff: formatting in three Agent test files, three Cloud Shared test files, and one UI regression test (plus existing UI warnings); Cloud API lint passes. The prior red CI's six Agent errors were also base-only and are superseded by current develop, but the current base still does not provide a green full affected-package lint baseline.
 - Dedicated Cloud visual audit: both account-deletion desktop and mobile cases pass. Aggregate result is 96 passed, 1 skipped, 4 unrelated baseline failures (`cloud-agents` fixture and `auth-bridge` redirect behavior), with `broken=0` and `needs-work=0`.
 - Full app visual capture: 226/227 tests pass. The single aggregate strict failure records two generic `builtin-settings` overlay collisions at mobile and iPad portrait; the account-deletion dialog/public page and shared Cloud plugin surface pass all audited viewports. This is upstream shell/layout debt, not a deletion-owned route or component failure.
-- Root `bun run verify` passes guide parity, version, i18n, dependency, alias-read, publish-graph, and workspace-resolution gates, then stops in untouched `@elizaos/capacitor-gateway` because the local SwiftLint runtime cannot load `sourcekitdInProc.framework`. Owner paths lint and typecheck cleanly; `git diff --check`, guide parity, and a redacted gitleaks stdin scan pass.
+- The earlier root `bun run verify` passed guide parity, version, i18n, dependency, alias-read, publish-graph, and workspace-resolution gates, then stopped in untouched `@elizaos/capacitor-gateway` because the local SwiftLint runtime could not load `sourcekitdInProc.framework`. It was not repeated after the current-base merge because disk headroom was 4.1 GiB; the focused current-base proof and exact baseline lint debt are recorded above.
 - No hosted final-absence claim is made. Local deterministic and mock-backed evidence is not presented as proof of real provider erasure.
 
 ## Stable server contract
@@ -63,7 +64,7 @@ Updated: 2026-08-23 (America/Los_Angeles)
 
 ## Doing
 
-- Draft PR #25738 is published at `https://github.com/elizaOS/eliza/pull/25738`; its ledger-only branch tip follows response-loss code checkpoint `0470865a57` and evidence commit `ae315bb078`. Maintainer P0 review identified the first-response-loss orphaning risk; the code checkpoint resolves it with hash-only admission recovery and no repeated provider mutation. The PR body and review response now carry the current base, migration, contract, and test evidence. It remains draft pending serialized disposable hosted proof and independent review. No deployment or hosted provider operation was part of this work.
+- Draft PR #25738 is published at `https://github.com/elizaOS/eliza/pull/25738`. The repository merge sweep independently confirmed response-loss checkpoint `0470865a57` appears to address the maintainer P0, but correctly left the standing `CHANGES_REQUESTED` decision to the original reviewer. This lane does not mark the PR ready or request merge without an exact-head re-review. No deployment or hosted provider operation was part of this work.
 
 ## Next / exact external gates
 
