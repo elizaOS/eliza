@@ -53,6 +53,7 @@ export interface HostedSearchResult {
 
 interface GoogleSearchResponse {
   candidates?: Array<{
+    finishReason?: string;
     content?: {
       parts?: Array<{
         text?: string;
@@ -88,7 +89,9 @@ interface GoogleSearchResponse {
 const DEFAULT_SEARCH_MODEL = "google/gemini-2.5-flash";
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_RESULTS = 10;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1_024;
+// Gemini 2.5 Flash advertises a 65,536-token output boundary. Request the
+// complete provider-supported range and reject if that real boundary is hit.
+const GOOGLE_SEARCH_MODEL_OUTPUT_LIMIT = 65_536;
 const GOOGLE_GROUNDED_PROMPT_BASE_COST = 0.035;
 const GOOGLE_GROUNDED_PROMPT_COST =
   Math.round(GOOGLE_GROUNDED_PROMPT_BASE_COST * PLATFORM_MARKUP_MULTIPLIER * 1_000_000) / 1_000_000;
@@ -293,7 +296,7 @@ export async function executeHostedGoogleSearch(
       (await estimateRequestCost(
         normalizedModel,
         [{ role: "user", content: prompt }],
-        DEFAULT_MAX_OUTPUT_TOKENS,
+        GOOGLE_SEARCH_MODEL_OUTPUT_LIMIT,
       )) + GOOGLE_GROUNDED_PROMPT_COST;
 
     try {
@@ -340,7 +343,7 @@ export async function executeHostedGoogleSearch(
           tools: [{ google_search: {} }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+            maxOutputTokens: GOOGLE_SEARCH_MODEL_OUTPUT_LIMIT,
           },
         }),
         signal: AbortSignal.timeout(30_000),
@@ -351,6 +354,15 @@ export async function executeHostedGoogleSearch(
     if (!response.ok) {
       throw new Error(
         body.error?.message || `Google Search request failed with ${response.status}`,
+      );
+    }
+    if (
+      body.candidates?.some((candidate) =>
+        /^(?:MAX_TOKENS|MAX_OUTPUT_TOKENS|LENGTH)$/i.test(candidate.finishReason ?? ""),
+      )
+    ) {
+      throw new Error(
+        "Google Search reached the model output limit before completing its grounded answer",
       );
     }
 

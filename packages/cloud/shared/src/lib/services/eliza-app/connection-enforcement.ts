@@ -111,7 +111,6 @@ const NUDGE_INTERVAL = 3;
 const CONNECTION_STATUS_TTL_SECONDS = 30;
 const CONVERSATION_TTL_SECONDS = 3600;
 const NUDGE_MODEL = "openai/gpt-5-mini";
-const NUDGE_MAX_OUTPUT_TOKENS = 160;
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -446,10 +445,11 @@ class ConnectionEnforcementService {
         model: getLanguageModel(NUDGE_MODEL),
         system,
         prompt: userMessage || "hey",
-        maxOutputTokens: NUDGE_MAX_OUTPUT_TOKENS,
         temperature: mode === "nudge" ? 0.7 : 0.9,
       });
-
+      if (result.finishReason === "length") {
+        throw new Error("Connection response generation reached the provider output limit");
+      }
       return result.text;
     } catch (error) {
       // error-policy:J4 designed user-facing degrade — on model failure, reply with a canned

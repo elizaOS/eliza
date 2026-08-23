@@ -189,6 +189,21 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
 		/maxTokens\s*:/,
 	],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
+		[/maxOutputTokens\s*:/],
+	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
+		[/maxOutputTokens\s*:/, /substring\(0,\s*1021\)/],
+	"packages/cloud/shared/src/lib/services/discord-automation/app-automation.ts":
+		[/maxOutputTokens\s*:/],
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
+		[/NUDGE_MAX_OUTPUT_TOKENS/, /maxOutputTokens\s*:/],
+	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
+		[/INBOUND_MEDIA_DESCRIPTION_MAX_OUTPUT_TOKENS/, /maxOutputTokens\s*:/],
+	"packages/cloud/shared/src/lib/services/google-search.ts": [
+		/DEFAULT_MAX_OUTPUT_TOKENS/,
+		/maxOutputTokens:\s*1_024/,
+	],
+	"packages/cloud/api/v1/generate-prompts/route.ts": [/maxOutputTokens\s*:/],
 	"plugins/plugin-coding-tools/src/shell/services/shellService.ts": [
 		/maxHistoryPerConversation/,
 		/history\.shift\(\)/,

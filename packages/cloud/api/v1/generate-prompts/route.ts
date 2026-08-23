@@ -76,7 +76,6 @@ Random seed: ${promptSeed}`,
         },
       ],
       temperature: 1.5,
-      maxOutputTokens: 500,
       topP: 0.95,
     });
 

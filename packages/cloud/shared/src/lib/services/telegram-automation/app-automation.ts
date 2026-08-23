@@ -245,9 +245,10 @@ Maximum 500 characters.`;
         system: systemPrompt,
         prompt:
           "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
-        maxOutputTokens: 200,
       });
-
+      if (result.finishReason === "length") {
+        throw new Error("Telegram announcement generation reached the provider output limit");
+      }
       return result.text;
     } catch (error) {
       await creditsService.refundCredits({
@@ -323,9 +324,10 @@ Maximum 300 characters.`;
         prompt: userName
           ? `User ${userName} says: "${userMessage}"`
           : `User says: "${userMessage}"`,
-        maxOutputTokens: 150,
       });
-
+      if (result.finishReason === "length") {
+        throw new Error("Telegram reply generation reached the provider output limit");
+      }
       return result.text;
     } catch (error) {
       await creditsService.refundCredits({
@@ -399,22 +401,11 @@ Maximum 300 characters.`;
     let lastError: string | undefined;
 
     try {
-      // If we have a promotional image, send it as a photo with caption
+      // A photo caption cannot carry an arbitrarily long generated message.
+      // Send the media first, then deliver the complete text in ordered chunks.
       if (promotionalImageUrl) {
-        // Telegram photo captions are limited to 1024 characters
-        const caption =
-          messageText.length > 1024 ? messageText.substring(0, 1021) + "..." : messageText;
-
-        const replyMarkup = buttonUrl
-          ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
-          : undefined;
-
         const result = await Promise.race([
-          bot.telegram.sendPhoto(chatId, promotionalImageUrl, {
-            caption,
-            parse_mode: "HTML",
-            reply_markup: replyMarkup,
-          }),
+          bot.telegram.sendPhoto(chatId, promotionalImageUrl),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
           ),
@@ -428,29 +419,27 @@ Maximum 300 characters.`;
           messageId: lastMessageId,
           imageUrl: promotionalImageUrl,
         });
-      } else {
-        // No image - send text message as before
-        const chunks = splitMessage(messageText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      }
 
-        for (const chunk of chunks) {
-          const isLastChunk = chunk === chunks[chunks.length - 1];
-          const replyMarkup =
-            isLastChunk && buttonUrl
-              ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
-              : undefined;
+      const chunks = splitMessage(messageText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      for (const [index, chunk] of chunks.entries()) {
+        const isLastChunk = index === chunks.length - 1;
+        const replyMarkup =
+          isLastChunk && buttonUrl
+            ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
+            : undefined;
 
-          const result = await Promise.race([
-            bot.telegram.sendMessage(chatId, chunk, {
-              parse_mode: "HTML",
-              reply_markup: replyMarkup,
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
-            ),
-          ]);
+        const result = await Promise.race([
+          bot.telegram.sendMessage(chatId, chunk, {
+            parse_mode: "HTML",
+            reply_markup: replyMarkup,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
+          ),
+        ]);
 
-          lastMessageId = result.message_id;
-        }
+        lastMessageId = result.message_id;
       }
     } catch (error) {
       // error-policy:J1 Telegram send transport boundary -> typed PostResult failure the callers surface as success:false

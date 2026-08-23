@@ -682,12 +682,17 @@ function extractSharedTurnFactsOffPath(
             model: getInteractiveCerebrasLanguageModel(model),
             prompt,
             temperature: 0,
-            maxOutputTokens: 512,
             maxRetries: 0,
             // A stalled provider request must not pin the waitUntil task open;
             // the deadline surfaces as a distinct AbortError in the J7 warn.
             abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
           });
+          if (result.finishReason === "length") {
+            throw new ElizaError("Shared fact extraction reached the provider output limit", {
+              code: "SHARED_FACT_EXTRACTION_INCOMPLETE",
+              context: { model },
+            });
+          }
           return result.text;
         },
       });
