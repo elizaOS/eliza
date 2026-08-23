@@ -4,7 +4,7 @@
  * "0"→0 (zero-able), "012"/"0x10"/"1e3"/whitespace→"invalid" (400), Number()
  * coercion never used, upstream not called on invalid.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseCanonicalInteger } from "../utils/number-parsing";
 
 describe("parseCanonicalInteger — high-acceptance behavioral (real)", () => {
@@ -20,8 +20,19 @@ describe("parseCanonicalInteger — high-acceptance behavioral (real)", () => {
     expect(parseCanonicalInteger("0", { min: 0, max: 10 })).toBe(0);
   });
   it.each([
-    ["012"], ["0x10"], ["1e3"], ["00"], ["01"],
-    [" 1"], ["1 "], [" 1 "], ["+1"], ["-1"], ["1.0"], [" 0"], ["0 "]
+    ["012"],
+    ["0x10"],
+    ["1e3"],
+    ["00"],
+    ["01"],
+    [" 1"],
+    ["1 "],
+    [" 1 "],
+    ["+1"],
+    ["-1"],
+    ["1.0"],
+    [" 0"],
+    ["0 "],
   ])('"%s" → "invalid"', (a) => {
     expect(parseCanonicalInteger(a)).toBe("invalid");
     expect(parseCanonicalInteger(a, { min: 1 })).toBe("invalid");
@@ -47,7 +58,9 @@ describe("parseCanonicalInteger — high-acceptance behavioral (real)", () => {
   });
   it("bounds: min/max enforces and clamp works", () => {
     expect(parseCanonicalInteger("101", { min: 1, max: 100 })).toBe("invalid");
-    expect(parseCanonicalInteger("101", { min: 1, max: 100, clamp: true })).toBe(100);
+    expect(
+      parseCanonicalInteger("101", { min: 1, max: 100, clamp: true }),
+    ).toBe(100);
     expect(parseCanonicalInteger("0", { min: 1 })).toBe("invalid");
     expect(parseCanonicalInteger("5", { min: 1, max: 10 })).toBe(5);
   });
