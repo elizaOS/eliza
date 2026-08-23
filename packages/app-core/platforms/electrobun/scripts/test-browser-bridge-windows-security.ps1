@@ -12,7 +12,7 @@ function Read-Exact([System.IO.Stream]$Stream, [int]$Count) {
     if ($read -eq 0) { throw "probe stream closed" }
     $offset += $read
   }
-  return $buffer
+  return ,$buffer
 }
 function Invoke-SecurePipeRoundTrip {
   $pipeName = "eliza-probe-" + [Guid]::NewGuid().ToString("N")
@@ -63,6 +63,12 @@ function Invoke-SecurePipeRoundTrip {
     if ([Text.Encoding]::UTF8.GetString($received) -ne '{"probe":"response"}') {
       throw "secure pipe response forwarding mismatch"
     }
+  } catch {
+    if ($process.HasExited) {
+      $helperError = $process.StandardError.ReadToEnd()
+      throw "secure pipe helper exited with code $($process.ExitCode): $helperError $($_.Exception.Message)"
+    }
+    throw
   } finally {
     if ($null -ne $client) { $client.Dispose() }
     if (-not $process.HasExited) { $process.Kill() }
