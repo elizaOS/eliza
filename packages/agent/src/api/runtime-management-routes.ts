@@ -85,6 +85,10 @@ function parseRequest(
     expectedFingerprint: boundedString(body.expectedFingerprint, 256),
     identityFile: boundedString(body.identityFile, 1024),
     apiBase: boundedString(body.apiBase, 2048),
+    managedNetwork:
+      typeof body.managedNetwork === "boolean"
+        ? body.managedNetwork
+        : undefined,
     sessionId: boundedString(body.sessionId, 256),
     code: boundedString(body.code, 32),
     proposalId: boundedString(body.proposalId, 128),

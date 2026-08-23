@@ -280,6 +280,62 @@ describe("POST /api/runtime/manage", () => {
     );
   });
 
+  it.each([
+    ["enabled", true],
+    ["disabled", false],
+    ["absent", undefined],
+  ] as const)(
+    "preserves an %s managed-network choice through proposal and shell delivery",
+    async (_label, managedNetwork) => {
+      const request = {
+        op: "enroll_host",
+        runtimeId: "vps-1",
+        clientId: "origin-renderer",
+        ...(managedNetwork === undefined ? {} : { managedNetwork }),
+      };
+      const proposed = makeContext(
+        "POST",
+        "/api/runtime/manage/propose",
+        request,
+      );
+      await handleRuntimeManagementRoutes(proposed.ctx);
+      const authority = proposed.json.mock.calls[0]?.[1] as {
+        proposalId: string;
+        proposalNonce: string;
+      };
+
+      const manage = makeContext("POST", "/api/runtime/manage", {
+        ...request,
+        ...authority,
+      });
+      const waiting = handleRuntimeManagementRoutes(manage.ctx);
+      await flushUntil(
+        () => manage.broadcastWsToClientId.mock.calls.length === 1,
+      );
+      const frame = manage.broadcastWsToClientId.mock.calls[0]?.[1] as {
+        requestId: string;
+        request: Body;
+      };
+      expect(frame.request.managedNetwork).toBe(managedNetwork);
+
+      const claim = makeContext("POST", "/api/runtime/manage/claim", {
+        requestId: frame.requestId,
+      });
+      await handleRuntimeManagementRoutes(claim.ctx);
+      const claimBody = claim.json.mock.calls[0]?.[1] as {
+        claimToken: string;
+      };
+      await handleRuntimeManagementRoutes(
+        makeContext("POST", "/api/runtime/manage/result", {
+          requestId: frame.requestId,
+          claimToken: claimBody.claimToken,
+          ok: true,
+        }).ctx,
+      );
+      await waiting;
+    },
+  );
+
   it("targets the renderer that originated an app-chat action", async () => {
     const manage = makeContext("POST", "/api/runtime/manage", {
       op: "list",
