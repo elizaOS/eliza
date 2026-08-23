@@ -1952,6 +1952,7 @@
   "cloud.login.button.github": "GitHub",
   "cloud.login.button.google": "Google",
   "cloud.login.button.magicLink": "Magic Link",
+  "cloud.login.button.existingPasskey": "Use an existing passkey",
   "cloud.login.button.passkey": "Passkey",
   "cloud.login.button.sms": "Text me a code",
   "cloud.login.button.telegram": "Telegram",

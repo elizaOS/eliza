@@ -110,6 +110,10 @@ import {
   type WebPasskeyCapability,
 } from "./passkey-capability";
 import {
+  hasPasskeyDeviceHint,
+  rememberPasskeyDeviceHint,
+} from "./passkey-device-hints";
+import {
   inferPhoneCountry,
   normalizePhoneForCountry,
   PHONE_COUNTRY_OPTIONS,
@@ -1127,21 +1131,25 @@ export default function StewardLoginSection() {
     );
   }
 
-  async function handlePasskey() {
+  function validatePasskeyIntent(): boolean {
     if (!showPasskey) {
       if (providers.email !== false) {
-        await handleEmail();
-        return;
+        void handleEmail();
+        return false;
       }
       setError(
         "Passkeys are not available in this browser. Use Google, Discord, or open this sign-in link on another device.",
       );
-      return;
+      return false;
     }
     if (!email.trim()) {
       setError("Enter your email first");
-      return;
+      return false;
     }
+    return true;
+  }
+
+  async function runScopedPasskeyLogin() {
     setLoading("passkey");
     setError(null);
     setShowPasskeyRecovery(false);
@@ -1151,6 +1159,7 @@ export default function StewardLoginSection() {
           fallbackToRegistration: false,
         }),
       );
+      await rememberPasskeyDeviceHint(email);
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       // error-policy:J4 authentication failures remain visibly distinct and
@@ -1160,11 +1169,6 @@ export default function StewardLoginSection() {
           "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
         );
         setLoading(null);
-      } else if (e instanceof StewardApiError && e.status === 404) {
-        // A typed email with no matching passkey never reached WebAuthn. Continue
-        // directly into the email-verified enrollment path instead of presenting
-        // browser-cancellation recovery for a prompt that never opened.
-        await startPasskeySignup();
       } else if (isUserCancelled(e)) {
         // A browser-owned cancellation is ambiguous, so keep recovery as an
         // explicit user choice rather than sending signup mail automatically.
@@ -1175,6 +1179,27 @@ export default function StewardLoginSection() {
         setLoading(null);
       }
     }
+  }
+
+  async function handlePasskey() {
+    if (!validatePasskeyIntent()) return;
+    setLoading("passkey");
+    setError(null);
+    setShowPasskeyRecovery(false);
+
+    const hinted = await hasPasskeyDeviceHint(email);
+    if (!hinted) {
+      // A new device-local email goes straight to verified enrollment. This
+      // decision never asks Steward whether an account or passkey exists.
+      await startPasskeySignup();
+      return;
+    }
+    await runScopedPasskeyLogin();
+  }
+
+  async function handleExistingPasskey() {
+    if (!validatePasskeyIntent()) return;
+    await runScopedPasskeyLogin();
   }
 
   async function startPasskeySignup() {
@@ -1205,6 +1230,7 @@ export default function StewardLoginSection() {
       const result = requireCompletedAuth(
         await auth.addPasskey(email.trim(), { emailGrant }),
       );
+      await rememberPasskeyDeviceHint(email);
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       if (isUserCancelled(e)) {
@@ -2087,6 +2113,20 @@ export default function StewardLoginSection() {
           </Button>
         )}
       </div>
+
+      {showPasskey && (
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={handleExistingPasskey}
+          disabled={isLoading}
+          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted transition-[color,background-color,transform] hover:bg-bg-hover hover:text-txt active:scale-[0.99] disabled:pointer-events-none disabled:text-muted"
+        >
+          {t("cloud.login.button.existingPasskey", {
+            defaultValue: "Use an existing passkey",
+          })}
+        </Button>
+      )}
 
       {!showPasskey &&
       providers.passkey !== false &&

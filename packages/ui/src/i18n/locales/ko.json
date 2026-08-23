@@ -1690,6 +1690,7 @@
   "cloud.login.button.github": "GitHub",
   "cloud.login.button.google": "Google",
   "cloud.login.button.magicLink": "매직 링크",
+  "cloud.login.button.existingPasskey": "기존 패스키 사용",
   "cloud.login.button.passkey": "패스키",
   "cloud.login.button.sms": "문자로 코드 받기",
   "cloud.login.callback.cantComplete": "Eliza Cloud 로그인을 완료하지 못했어요.",
