@@ -128,7 +128,7 @@ const USAGE_QUOTAS_RELEASE_BARRIER_TAGS = [
 ] as const;
 
 type MigrationReleaseBarrierDecision =
-  | { action: "continue" }
+  | { action: "continue"; atomicPairStartIndex?: number }
   | { action: "pause"; stopBeforeJournalIndex: number };
 
 async function readJournal(): Promise<Journal> {
@@ -302,6 +302,57 @@ async function getAppliedMigrations(
   return result.rows;
 }
 
+/**
+ * Proves that an empty ledger belongs to a database with no application
+ * relations. The migration lock and this query share one session, so a wiped
+ * or truncated ledger cannot impersonate a new database and replay destructive
+ * historical DDL over a live schema.
+ */
+async function assertEmptyLedgerDatabaseIsFresh(
+  client: MigrationClient,
+): Promise<void> {
+  const result = await client.query<{ has_user_relations: boolean }>(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace
+        ON namespace.oid = relation.relnamespace
+      WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+        AND namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND NOT (
+          namespace.nspname = '${MIGRATIONS_SCHEMA}'
+          AND relation.relname IN (
+            '${MIGRATIONS_TABLE}',
+            '${MIGRATIONS_TABLE}_id_seq'
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_depend AS dependency
+          WHERE dependency.classid = 'pg_catalog.pg_class'::regclass
+            AND dependency.objid = relation.oid
+            AND dependency.deptype = 'e'
+        )
+    ) AS has_user_relations
+  `);
+  if (
+    result.rows.length !== 1 ||
+    typeof result.rows[0]?.has_user_relations !== "boolean"
+  ) {
+    throw new Error(
+      "Fresh-database migration proof returned an invalid catalog result",
+    );
+  }
+  if (result.rows[0].has_user_relations) {
+    console.error(
+      "[db:migrate] refusing empty-ledger replay because application relations already exist",
+    );
+    throw new Error(
+      "Migration ledger is empty but the database contains application relations; refusing to replay historical migrations",
+    );
+  }
+}
+
 export function validateAppliedMigrationLedger(
   applied: AppliedMigration[],
   migrations: Migration[],
@@ -418,14 +469,12 @@ export function validateAppliedMigrationLedger(
  * prefix but pauses before the drop, and the deploy continues without exposing
  * the currently-served Worker to the missing table.
  *
- * An empty ledger (no applied migration, lastAppliedJournalIndex === -1) is
- * outside that contract. No Worker has ever been served from a database with
- * no migrations and no rows exist to expose, so pausing there protects nothing;
- * it only strands every fresh environment (e2e stacks, cloud:mock, a new PGlite
- * data dir) at 0281 with every later migration unapplied. A fresh ledger
- * therefore continues through the whole journal: the drop runs immediately
- * followed by the restore, whose adjacency is still validated above. Production
- * and staging ledgers are never empty, so their semantics are unchanged.
+ * An empty ledger alone is not evidence of a fresh database: a live database
+ * can have its ledger truncated or lost. The runner separately proves under
+ * the migration lock that no application relations exist before taking the
+ * empty-ledger path. It also applies the drop, restore, and both ledger rows in
+ * one transaction, so no concurrent Worker can observe the missing-table
+ * window even if the freshness assumption is ever weakened accidentally.
  *
  * Environments that already recorded 0282 must proceed directly to the
  * restoring 0282_01 migration. Any other suffix is unsafe and fails closed
@@ -476,9 +525,12 @@ export function evaluateMigrationReleaseBarrier(
     );
   }
 
-  // A fresh database has no served Worker to protect. Only ledgers that have
-  // already applied at least one migration are release-barrier targets.
-  if (lastAppliedJournalIndex === -1) return { action: "continue" };
+  // runMigrations proves an empty ledger belongs to a relation-free database
+  // before honoring this plan. The explicit index also makes atomic pairing a
+  // required execution contract rather than an adjacency assumption.
+  if (lastAppliedJournalIndex === -1) {
+    return { action: "continue", atomicPairStartIndex: dropIndex };
+  }
 
   if (lastAppliedJournalIndex < dropIndex) {
     return { action: "pause", stopBeforeJournalIndex: dropIndex };
@@ -544,48 +596,55 @@ async function releaseMigrationLock(client: MigrationClient): Promise<void> {
   console.log("[db:migrate] released migration lock");
 }
 
-/** Applies one journal migration atomically and retries only after rollback. */
-export async function applyMigration(
+/** Applies one or more journal entries in one transaction and ledger commit. */
+async function applyMigrationBatch(
   client: MigrationClient,
-  migration: Migration,
+  migrations: readonly Migration[],
   options: LockRetryOptions,
 ): Promise<void> {
-  const { entry, statements, hash } = migration;
+  if (migrations.length === 0) {
+    throw new Error("Migration batch must contain at least one journal entry");
+  }
+  const batchLabel = migrations
+    .map((migration) => migration.entry.tag)
+    .join(" + ");
 
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
-    console.log(
-      `[db:migrate] applying ${entry.tag} (${statements.length} statements, attempt ${attempt}/${options.maxAttempts})`,
-    );
     await client.query("BEGIN");
 
     try {
       await client.query("SELECT set_config('lock_timeout', $1, true)", [
         `${options.timeoutMs}ms`,
       ]);
-      for (const [index, statement] of statements.entries()) {
-        try {
-          await client.query(statement);
-        } catch (error) {
-          console.error(
-            `[db:migrate] failed ${entry.tag} statement ${index + 1}/${statements.length}`,
-          );
-          console.error(`[db:migrate] sql: ${summarizeStatement(statement)}`);
-          console.error(`[db:migrate] error: ${formatDatabaseError(error)}`);
-          throw error;
+      for (const { entry, statements, hash } of migrations) {
+        console.log(
+          `[db:migrate] applying ${entry.tag} (${statements.length} statements, attempt ${attempt}/${options.maxAttempts})`,
+        );
+        for (const [index, statement] of statements.entries()) {
+          try {
+            await client.query(statement);
+          } catch (error) {
+            console.error(
+              `[db:migrate] failed ${entry.tag} statement ${index + 1}/${statements.length}`,
+            );
+            console.error(`[db:migrate] sql: ${summarizeStatement(statement)}`);
+            console.error(`[db:migrate] error: ${formatDatabaseError(error)}`);
+            throw error;
+          }
         }
-      }
 
-      await client.query(
-        `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
-        [hash, entry.when],
-      );
+        await client.query(
+          `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
+          [hash, entry.when],
+        );
+      }
       await client.query("COMMIT");
       return;
     } catch (error) {
       await runCleanupSteps(
         [
           {
-            label: `rollback for ${entry.tag}`,
+            label: `rollback for ${batchLabel}`,
             run: async () => {
               await client.query("ROLLBACK");
             },
@@ -597,17 +656,26 @@ export async function applyMigration(
       if (!isLockTimeout(error)) throw error;
       if (attempt === options.maxAttempts) {
         console.error(
-          `[db:migrate] ${entry.tag} exhausted ${options.maxAttempts} lock-timeout attempts`,
+          `[db:migrate] ${batchLabel} exhausted ${options.maxAttempts} lock-timeout attempts`,
         );
         throw error;
       }
       const delayMs = retryDelayMs(attempt, options);
       console.warn(
-        `[db:migrate] ${entry.tag} lock timeout on attempt ${attempt}/${options.maxAttempts}; retrying in ${delayMs}ms`,
+        `[db:migrate] ${batchLabel} lock timeout on attempt ${attempt}/${options.maxAttempts}; retrying in ${delayMs}ms`,
       );
       await sleep(delayMs);
     }
   }
+}
+
+/** Applies one journal migration atomically and retries only after rollback. */
+export async function applyMigration(
+  client: MigrationClient,
+  migration: Migration,
+  options: LockRetryOptions,
+): Promise<void> {
+  await applyMigrationBatch(client, [migration], options);
 }
 
 async function createPGliteClient(url: string): Promise<MigrationClient> {
@@ -688,6 +756,9 @@ export async function runMigrations(
       await ensureMigrationsTable(client);
 
       const applied = await getAppliedMigrations(client);
+      if (applied.length === 0) {
+        await assertEmptyLedgerDatabaseIsFresh(client);
+      }
       const validatedLedger = validateAppliedMigrationLedger(
         applied,
         migrations,
@@ -723,7 +794,34 @@ export async function runMigrations(
         );
       }
 
-      for (const migration of pending) {
+      for (
+        let pendingIndex = 0;
+        pendingIndex < pending.length;
+        pendingIndex++
+      ) {
+        const journalIndex =
+          validatedLedger.lastAppliedJournalIndex + 1 + pendingIndex;
+        if (
+          releaseBarrier.action === "continue" &&
+          releaseBarrier.atomicPairStartIndex === journalIndex
+        ) {
+          const atomicPair = pending.slice(pendingIndex, pendingIndex + 2);
+          if (
+            atomicPair.length !== 2 ||
+            atomicPair[0]?.entry.tag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[0] ||
+            atomicPair[1]?.entry.tag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]
+          ) {
+            throw new Error(
+              "Migration release barrier atomic pair no longer matches the validated journal",
+            );
+          }
+          await applyMigrationBatch(client, atomicPair, retryOptions);
+          pendingIndex += 1;
+          continue;
+        }
+        const migration = pending[pendingIndex];
+        if (!migration)
+          throw new Error("Migration plan contains an empty entry");
         await applyMigration(client, migration, retryOptions);
       }
 

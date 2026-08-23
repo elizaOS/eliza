@@ -1177,6 +1177,28 @@ describe.skipIf(!ENABLED)(
       await database.client.end();
     }, 30_000);
 
+    test("rejects a wiped empty ledger without changing a nonempty live schema", async () => {
+      const database = await createDatabase();
+      await database.client.query(
+        "CREATE TABLE live_data (id integer PRIMARY KEY, value text NOT NULL)",
+      );
+      await database.client.query(
+        "INSERT INTO live_data (id, value) VALUES (1, 'preserve-me')",
+      );
+
+      const result = await runScript(MIGRATOR, database.url);
+      expect(result.exitCode).toBe(1);
+      const preserved = await database.client.query<{ value: string }>(
+        "SELECT value FROM live_data WHERE id = 1",
+      );
+      expect(preserved.rows).toEqual([{ value: "preserve-me" }]);
+      const ledger = await database.client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations",
+      );
+      expect(ledger.rows[0]?.count).toBe("0");
+      await database.client.end();
+    }, 30_000);
+
     test("restores the legacy usage-quota shape when 0282 is already ledgered", async () => {
       const database = await createDatabase();
       await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
