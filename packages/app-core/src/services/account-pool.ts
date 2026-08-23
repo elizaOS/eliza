@@ -146,6 +146,9 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   zai: "zai-api",
   moonshot: "moonshot-api",
   openrouter: "openrouter-api",
+  // First-run canonicalizes xAI to `grok` and persists that backend id in
+  // `serviceRouting.llmText`; `xai` stays as the compatibility alias.
+  grok: "xai-api",
   xai: "xai-api",
 };
 
@@ -1431,6 +1434,157 @@ export function getDefaultAccountPool(): AccountPool {
   return cachedDefaultPool;
 }
 
+export interface DirectProviderCredentialExportDeps {
+  pool: Pick<AccountPool, "select">;
+  listAccounts: (
+    providerId: DirectAccountProvider,
+  ) => readonly Pick<AccountCredentialRecord, "id">[];
+  getToken: (
+    providerId: DirectAccountProvider,
+    accountId: string,
+  ) => Promise<string | null>;
+  env: NodeJS.ProcessEnv;
+  /** Env values this module exported on earlier passes; cleared on fail-closed. */
+  ledger: DirectProviderEnvLedger;
+}
+
+/**
+ * Tracks which env values the export pass wrote so a later pass can retract
+ * exactly those values. Operator-provided launch env is never touched.
+ */
+export type DirectProviderEnvLedger = Map<
+  DirectAccountProvider,
+  { token: string; openAiCompat: boolean }
+>;
+
+const defaultDirectProviderEnvLedger: DirectProviderEnvLedger = new Map();
+
+function retractExportedDirectProviderEnv(
+  providerId: DirectAccountProvider,
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+): void {
+  const previous = ledger.get(providerId);
+  if (!previous) return;
+  ledger.delete(providerId);
+  const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
+  if (env[envKey] === previous.token) delete env[envKey];
+  if (providerId === "zai-api" && env.Z_AI_API_KEY === previous.token) {
+    delete env.Z_AI_API_KEY;
+  }
+  if (previous.openAiCompat && env.OPENAI_API_KEY === previous.token) {
+    delete env.OPENAI_API_KEY;
+    if (
+      env.OPENAI_BASE_URL === OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
+    ) {
+      delete env.OPENAI_BASE_URL;
+    }
+  }
+}
+
+/**
+ * Export the pool-selected credential of every direct provider into `env`.
+ *
+ * The pool is the authority: when it rejects every linked account (disabled,
+ * invalid, rate-limited, or a pin that names no account) nothing is exported and
+ * any value this pass previously exported for that provider is retracted, so a
+ * user-excluded key can never keep serving billable calls. Launch env set by the
+ * operator is only consulted for the active OpenAI-compatible route when the
+ * provider has no linked accounts at all.
+ */
+export async function applyDirectProviderCredentialsToEnv(
+  activeBackend: string | null | undefined,
+  deps: DirectProviderCredentialExportDeps,
+): Promise<void> {
+  const { pool, env, ledger } = deps;
+  const activeProvider = activeBackend
+    ? DIRECT_PROVIDER_BY_BACKEND[activeBackend]
+    : undefined;
+  let activeProviderToken: string | null = null;
+  let activeProviderHasAccounts = false;
+
+  for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
+    const accounts = deps.listAccounts(providerId);
+    if (accounts.length === 0) {
+      retractExportedDirectProviderEnv(providerId, env, ledger);
+      continue;
+    }
+    if (activeProvider === providerId) activeProviderHasAccounts = true;
+
+    const account = await pool.select({
+      providerId,
+      sessionKey: `env:${providerId}`,
+      ...selectionForProvider(providerId),
+    });
+    const token = account ? await deps.getToken(providerId, account.id) : null;
+    if (!account || !token) {
+      retractExportedDirectProviderEnv(providerId, env, ledger);
+      continue;
+    }
+
+    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
+    env[envKey] = token;
+    if (activeProvider === providerId) {
+      activeProviderToken = token;
+    }
+    if (providerId === "zai-api") {
+      env.Z_AI_API_KEY ??= token;
+    }
+
+    const openAiCompatibleBase =
+      activeProvider === providerId
+        ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
+        : undefined;
+    if (openAiCompatibleBase) {
+      env.OPENAI_API_KEY = token;
+      env.OPENAI_BASE_URL = openAiCompatibleBase;
+    } else {
+      // A provider that was the OpenAI-compatible route on an earlier pass and
+      // no longer is must not leave its token behind as OPENAI_API_KEY.
+      const previous = ledger.get(providerId);
+      if (previous?.openAiCompat && env.OPENAI_API_KEY === previous.token) {
+        delete env.OPENAI_API_KEY;
+        if (
+          env.OPENAI_BASE_URL ===
+          OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
+        ) {
+          delete env.OPENAI_BASE_URL;
+        }
+      }
+    }
+    ledger.set(providerId, {
+      token,
+      openAiCompat: Boolean(openAiCompatibleBase),
+    });
+  }
+
+  if (activeProvider && !activeProviderToken && !activeProviderHasAccounts) {
+    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[activeProvider];
+    activeProviderToken = env[envKey]?.trim() || null;
+    if (!activeProviderToken && activeProvider === "zai-api") {
+      activeProviderToken = env.Z_AI_API_KEY?.trim() || null;
+    }
+    if (!activeProviderToken && activeProvider === "moonshot-api") {
+      activeProviderToken = env.KIMI_API_KEY?.trim() || null;
+    }
+    const openAiCompatibleBase = activeProviderToken
+      ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
+      : undefined;
+    const token = activeProviderToken;
+    if (openAiCompatibleBase && token) {
+      env.OPENAI_API_KEY = token;
+      env.OPENAI_BASE_URL = openAiCompatibleBase;
+    }
+  }
+}
+
+/**
+ * Boot-time and mutation-time bridge: re-reads the selection config, then
+ * exports the selected credential of every direct provider into `process.env`.
+ * The account routes call this after add, replace, enable/disable, priority,
+ * strategy, and delete so the live environment follows pool authority without
+ * a process restart.
+ */
 export async function applyAccountPoolApiCredentials(
   opts: {
     activeBackend?: string | null;
@@ -1442,71 +1596,16 @@ export async function applyAccountPoolApiCredentials(
     accountStrategies: opts.accountStrategies,
     serviceRouting: opts.serviceRouting,
   });
-  const pool = getDefaultAccountPool();
-  const activeProvider = opts.activeBackend
-    ? DIRECT_PROVIDER_BY_BACKEND[opts.activeBackend]
-    : undefined;
-  let activeProviderToken: string | null = null;
-
-  for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
-    const accounts = listProviderAccounts(providerId);
-    if (accounts.length === 0) continue;
-
-    const account =
-      (await pool.select({
-        providerId,
-        sessionKey: `env:${providerId}`,
-        ...selectionForProvider(providerId),
-      })) ??
-      accounts.slice().sort((a, b) => {
-        const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
-        const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
-        return aTime - bTime;
-      })[0];
-    if (!account) continue;
-
-    const token = await getAccountAccessToken(providerId, account.id, {
-      storagePolicy: defaultRuntimeStoragePolicy(),
-    });
-    if (!token) continue;
-
-    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
-    process.env[envKey] = token;
-    if (activeProvider === providerId) {
-      activeProviderToken = token;
-    }
-    if (providerId === "zai-api") {
-      process.env.Z_AI_API_KEY ??= token;
-    }
-
-    const openAiCompatibleBase =
-      activeProvider === providerId
-        ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
-        : undefined;
-    if (openAiCompatibleBase) {
-      process.env.OPENAI_API_KEY = token;
-      process.env.OPENAI_BASE_URL = openAiCompatibleBase;
-    }
-  }
-
-  if (activeProvider && !activeProviderToken) {
-    const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[activeProvider];
-    activeProviderToken = process.env[envKey]?.trim() || null;
-    if (!activeProviderToken && activeProvider === "zai-api") {
-      activeProviderToken = process.env.Z_AI_API_KEY?.trim() || null;
-    }
-    if (!activeProviderToken && activeProvider === "moonshot-api") {
-      activeProviderToken = process.env.KIMI_API_KEY?.trim() || null;
-    }
-    const openAiCompatibleBase = activeProviderToken
-      ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
-      : undefined;
-    const token = activeProviderToken;
-    if (openAiCompatibleBase && token) {
-      process.env.OPENAI_API_KEY = token;
-      process.env.OPENAI_BASE_URL = openAiCompatibleBase;
-    }
-  }
+  await applyDirectProviderCredentialsToEnv(opts.activeBackend, {
+    pool: getDefaultAccountPool(),
+    listAccounts: (providerId) => listProviderAccounts(providerId),
+    getToken: (providerId, accountId) =>
+      getAccountAccessToken(providerId, accountId, {
+        storagePolicy: defaultRuntimeStoragePolicy(),
+      }),
+    env: process.env,
+    ledger: defaultDirectProviderEnvLedger,
+  });
 }
 
 export interface AccountPoolKeepAliveResult {
@@ -1853,6 +1952,7 @@ export function resetDefaultAccountPoolAfterCredentialReset(): void {
   stopAccountPoolKeepAliveForTests();
   cachedDefaultPool = null;
   cachedRuntimeStoragePolicy = null;
+  defaultDirectProviderEnvLedger.clear();
 }
 
 export const __resetDefaultAccountPoolForTests =

@@ -52,10 +52,31 @@ export interface DirectApiProbeResult {
   status: number;
   error?: string;
   latencyMs: number;
-  /** Complete provider catalog within the response-size safety bound. */
+  /**
+   * Complete OpenRouter/xAI model catalog within the response-size safety
+   * bound. Other direct providers never read a successful body.
+   */
   modelIds?: string[];
-  /** True when the provider response exceeded the byte safety bound. */
+  /** True when the catalog response exceeded the byte safety bound. */
   modelCatalogTruncated?: boolean;
+  /**
+   * True when the key authenticated but the optional catalog could not be
+   * fetched (non-2xx status or transport failure). Distinct from an empty
+   * catalog so callers can show "catalog unavailable" rather than "no models".
+   */
+  modelCatalogUnavailable?: boolean;
+}
+
+/** Providers whose successful probe also reads a bounded model catalog. */
+const CATALOG_PROVIDERS: ReadonlySet<DirectAccountProvider> = new Set([
+  "openrouter-api",
+  "xai-api",
+]);
+
+interface ModelCatalogOutcome {
+  modelIds?: string[];
+  modelCatalogTruncated?: true;
+  modelCatalogUnavailable?: true;
 }
 
 const MAX_MODEL_CATALOG_BYTES = 1_048_576;
@@ -163,11 +184,10 @@ function parseBoundedModelIds(text: string): {
   };
 }
 
-async function readModelCatalog(response: Response): Promise<{
-  modelIds?: string[];
-  modelCatalogTruncated?: true;
-}> {
-  if (!response.ok) return {};
+async function readModelCatalog(
+  response: Response,
+): Promise<ModelCatalogOutcome> {
+  if (!response.ok) return { modelCatalogUnavailable: true };
   const catalogBody = await readBoundedResponseText(response);
   const catalog = catalogBody.truncated
     ? { truncated: true }
@@ -181,7 +201,7 @@ async function readModelCatalog(response: Response): Promise<{
 async function fetchOpenRouterCatalog(
   baseUrl: string,
   signal: AbortSignal,
-): Promise<{ modelIds?: string[]; modelCatalogTruncated?: true }> {
+): Promise<ModelCatalogOutcome> {
   try {
     const response = await fetch(`${baseUrl}/models`, {
       method: "GET",
@@ -189,16 +209,19 @@ async function fetchOpenRouterCatalog(
     });
     return await readModelCatalog(response);
   } catch {
-    // error-policy:J4 The public catalog is optional metadata after the
-    // authenticated current-key check has already established account health.
-    return {};
+    // error-policy:J4 user-facing degrade — the catalog is optional metadata
+    // fetched after `/key` has already proven the credential. A transport
+    // failure becomes the explicit `modelCatalogUnavailable` state that the
+    // account test route and UI render, never an empty "no models" catalog.
+    return { modelCatalogUnavailable: true };
   }
 }
 
 /**
  * Verify a direct-API key against a provider-owned authenticated endpoint.
  * OpenRouter uses `/key` and only then reads its public `/models` catalog;
- * other providers authenticate through `/models` directly.
+ * xAI authenticates through `/models` and reads that bounded catalog; every
+ * other provider authenticates through `/models` and never reads a 2xx body.
  */
 export async function probeDirectApiKey(
   providerId: DirectAccountProvider,
@@ -247,16 +270,23 @@ export async function probeDirectApiKey(
         latencyMs: Date.now() - start,
       };
     }
-    const catalog =
+    // Only the catalog providers read a successful body; every other direct
+    // provider keeps its historical status-only probe and never reads one.
+    const catalog: ModelCatalogOutcome =
       providerId === "openrouter-api"
         ? await fetchOpenRouterCatalog(baseUrl, controller.signal)
-        : await readModelCatalog(response);
+        : CATALOG_PROVIDERS.has(providerId)
+          ? await readModelCatalog(response)
+          : {};
     return {
       ok: true,
       status: response.status,
       latencyMs: Date.now() - start,
       ...(catalog.modelIds ? { modelIds: catalog.modelIds } : {}),
       ...(catalog.modelCatalogTruncated ? { modelCatalogTruncated: true } : {}),
+      ...(catalog.modelCatalogUnavailable
+        ? { modelCatalogUnavailable: true }
+        : {}),
     };
   } catch (err) {
     // error-policy:J1 boundary translation — callers need a typed failed probe
