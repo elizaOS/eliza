@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  dedicatedAgentTransportToken,
   isCanonicalPersonalSharedAgent,
   isPersonalSharedAgentId,
   personalDedicatedAgentApiBase,
@@ -103,5 +104,22 @@ describe("personalSharedAgent", () => {
         "https://",
       ),
     ).toBeNull();
+  });
+
+  test("accepts only the runtime's own ELIZA_API_TOKEN as the transport credential", () => {
+    expect(
+      dedicatedAgentTransportToken({ environment_vars: { ELIZA_API_TOKEN: " agent-1 " } }),
+    ).toBe("agent-1");
+    expect(
+      dedicatedAgentTransportToken({ environment_vars: { ELIZA_API_TOKEN: "   " } }),
+    ).toBeNull();
+    expect(
+      dedicatedAgentTransportToken({
+        environment_vars: { ELIZAOS_API_KEY: "eliza_cloud", ELIZAOS_CLOUD_API_KEY: "eliza_cloud" },
+      }),
+    ).toBeNull();
+    expect(dedicatedAgentTransportToken({ environment_vars: { ELIZA_API_TOKEN: 42 } })).toBeNull();
+    expect(dedicatedAgentTransportToken({ environment_vars: null })).toBeNull();
+    expect(dedicatedAgentTransportToken({ environment_vars: ["ELIZA_API_TOKEN"] })).toBeNull();
   });
 });

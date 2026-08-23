@@ -1,8 +1,22 @@
+/**
+ * Owner-scoped loopback hop that lets the local cloud harness reach a Dedicated
+ * Docker runtime through the Shared REST path family.
+ *
+ * Production routes Dedicated traffic to a per-agent hostname, so this
+ * middleware is inert unless `ELIZA_CLOUD_AGENT_BASE_DOMAIN` is the explicit
+ * `https://` sentinel (no DNS host to synthesize). Every Hono leaf under
+ * `/api/v1/eliza/agents/:agentId/api` registers it first so a client pointed at
+ * `personalDedicatedClientApiBase` never falls into a Shared-only handler for a
+ * running Dedicated agent. The Cloud session stays on the Cloud side: ownership
+ * is re-checked per request, cookies and Cloud credentials are stripped, and
+ * the runtime's own `ELIZA_API_TOKEN` is swapped in as the bearer.
+ */
 import type { Context, Next } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { personalDedicatedAgentApiBase } from "@/lib/services/shared-runtime/personal-shared-agent";
+import {
+  dedicatedAgentTransportToken,
+  personalDedicatedAgentApiBase,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
@@ -22,16 +36,18 @@ function runtimeApiPath(requestUrl: string, agentId: string): string | null {
 }
 
 /**
- * Development-only path proxy for Dedicated Docker agents. Production uses a
- * per-agent hostname; the repository's explicit `https://` sentinel has no
- * DNS host, so this route keeps the Cloud ownership/auth boundary and forwards
- * to the validated loopback runtime after swapping in its agent credential.
+ * Forward an owner's request to the loopback Dedicated runtime, or fall through
+ * to the Shared handler when the agent is not a local Dedicated one.
  */
 export async function proxyLocalDedicatedOrNext(
   c: Context<AppEnv>,
   next: Next,
 ): Promise<Response | undefined> {
-  if (c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN !== "https://") {
+  // Leaves mounted without bindings (unit harnesses) have no env object at
+  // all; that is the same "no sentinel configured" state as production and
+  // must leave the Shared handler untouched rather than throw.
+  const baseDomain = c.env ? c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN : undefined;
+  if (baseDomain !== "https://") {
     return continueToNext(next);
   }
   const agentId = c.req.param("agentId")?.trim() ?? "";
@@ -43,6 +59,13 @@ export async function proxyLocalDedicatedOrNext(
     return handleCorsOptions(CORS_METHODS, c.req.header("origin"));
   }
 
+  // Loaded only once a request is eligible so Shared-only leaves that mount
+  // this middleware do not pull the database client into their module graph.
+  const [{ requireUserOrApiKeyWithOrg }, { agentSandboxesRepository }] =
+    await Promise.all([
+      import("@/lib/auth/workers-hono-auth"),
+      import("@/db/repositories/agent-sandboxes"),
+    ]);
   const user = await requireUserOrApiKeyWithOrg(c);
   const sandbox = await agentSandboxesRepository.findByIdAndOrg(
     agentId,
@@ -67,13 +90,8 @@ export async function proxyLocalDedicatedOrNext(
     );
   }
 
-  const runtimeBase = personalDedicatedAgentApiBase(
-    sandbox,
-    c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
-  );
-  const agentToken = (
-    sandbox.environment_vars as Record<string, string> | null
-  )?.ELIZA_API_TOKEN?.trim();
+  const runtimeBase = personalDedicatedAgentApiBase(sandbox, baseDomain);
+  const agentToken = dedicatedAgentTransportToken(sandbox);
   if (!runtimeBase || !agentToken) {
     return applyCorsHeaders(
       Response.json(
@@ -99,13 +117,16 @@ export async function proxyLocalDedicatedOrNext(
   headers.delete("x-eliza-csrf");
   headers.set("authorization", `Bearer ${agentToken}`);
 
-  const init: RequestInit = {
+  const init: RequestInit & { duplex?: "half" } = {
     method: c.req.method,
     headers,
     redirect: "manual",
   };
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+    // Streaming a request body requires half-duplex on Node and Bun fetch;
+    // workerd ignores the flag.
     init.body = c.req.raw.body;
+    init.duplex = "half";
   }
   const upstream = await fetch(new Request(target, init));
   const responseHeaders = new Headers(upstream.headers);

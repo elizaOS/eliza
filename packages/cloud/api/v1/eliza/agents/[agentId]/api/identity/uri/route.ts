@@ -5,6 +5,7 @@ import { dbWrite } from "@/db/helpers";
 import { agentIdentities } from "@/db/schemas/agent-identities";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";
 import {
   getCurrentIdentity,
   identityClient,
@@ -104,6 +105,7 @@ export async function handlePutIdentityUri(
 }
 
 const app = new Hono<AppEnv>();
+app.use("*", proxyLocalDedicatedOrNext);
 app.options("/", () => __next_OPTIONS());
 app.put("/", (c) =>
   handlePutIdentityUri(

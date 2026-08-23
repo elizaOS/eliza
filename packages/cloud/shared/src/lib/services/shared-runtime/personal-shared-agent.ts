@@ -96,6 +96,21 @@ export function personalDedicatedAgentApiBase(
     : (localRestApiBase(target.health_url) ?? localBridgeApiBase(target.bridge_url));
 }
 
+/**
+ * The credential a Cloud-side caller presents to a Dedicated runtime. Only the
+ * container's own `ELIZA_API_TOKEN` is accepted: Cloud API keys stored beside
+ * it authenticate the agent *to* Cloud and a runtime rejects them, so falling
+ * back to one would turn a missing token into an opaque upstream 401.
+ */
+export function dedicatedAgentTransportToken(target: { environment_vars: unknown }): string | null {
+  const env = target.environment_vars;
+  if (!env || typeof env !== "object" || Array.isArray(env)) return null;
+  const value = (env as Record<string, unknown>).ELIZA_API_TOKEN;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /** Resolve the browser-facing base; local Docker stays behind the Cloud proxy. */
 export function personalDedicatedClientApiBase(
   target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url"> & {

@@ -11,8 +11,10 @@
  * LifeOps activity-signal requests into the canonical typed
  * capability-unavailable response. Generated routing mounts the specific
  * conversation, health, identity, and wallet siblings first; unknown catch-all
- * paths remain 404. Dedicated agents use their own subdomain and never enter
- * this adapter.
+ * paths remain 404. Production Dedicated agents use their own subdomain and
+ * never enter this adapter; only the local harness's loopback Dedicated
+ * runtime does, through the owner-scoped proxy middleware registered before
+ * every handler here and on each sibling.
  */
 import { type Context, Hono } from "hono";
 import { MAX_MOBILE_PUSH_TOKEN_CHARACTERS } from "@/lib/mobile-push/types";

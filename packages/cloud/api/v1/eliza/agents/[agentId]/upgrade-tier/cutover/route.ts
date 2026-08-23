@@ -28,6 +28,7 @@ import {
   coordinateSharedCutoverSeal,
 } from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
+  dedicatedAgentTransportToken,
   personalDedicatedAgentApiBase,
   personalDedicatedClientApiBase,
   personalSharedAgentId,
@@ -155,24 +156,6 @@ async function postDedicatedImport(
         ? (parsed as Record<string, unknown>)
         : null,
   };
-}
-
-function dedicatedTransportToken(target: {
-  environment_vars: unknown;
-}): string | null {
-  const env =
-    target.environment_vars && typeof target.environment_vars === "object"
-      ? (target.environment_vars as Record<string, unknown>)
-      : {};
-  for (const key of [
-    "ELIZA_API_TOKEN",
-    "ELIZAOS_API_KEY",
-    "ELIZAOS_CLOUD_API_KEY",
-  ]) {
-    const value = env[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
 }
 
 async function readTodoCutoverSnapshot(
@@ -346,7 +329,7 @@ app.post("/", async (c) => {
         marker.sharedTodoDigest === activeTodoSnapshot.digest &&
         activeBase
       ) {
-        const activeToken = dedicatedTransportToken(active);
+        const activeToken = dedicatedAgentTransportToken(active);
         if (!activeToken) {
           return json(
             {
@@ -465,7 +448,7 @@ app.post("/", async (c) => {
         409,
       );
     }
-    const targetToken = dedicatedTransportToken(target);
+    const targetToken = dedicatedAgentTransportToken(target);
     if (!targetToken) {
       return json(
         {
