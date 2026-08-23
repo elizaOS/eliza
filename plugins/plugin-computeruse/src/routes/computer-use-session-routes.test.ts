@@ -34,6 +34,23 @@ function sessionService() {
     frameProvider: async () => ({ mimeType: "image/png", data: "cG5n" }),
   });
   return {
+    listApps: async () => [
+      { id: "fixture.app", name: "Fixture", pid: 42, active: true },
+    ],
+    getAppState: async (app: string, options?: { disableDiff?: boolean }) => ({
+      stateId: `${app}:state-1`,
+      app: { id: app, name: "Fixture", pid: 42, active: true },
+      capturedAt: "2026-08-23T00:00:00.000Z",
+      permission: "ready" as const,
+      elements: [],
+      axText: "fixture AX tree",
+      ...(options?.disableDiff ? {} : { diff: undefined }),
+    }),
+    getAppControlReadiness: () => ({
+      available: true,
+      adapter: "fixture-ax",
+      permission: "ready",
+    }),
     createSession: (input: CreateComputerUseSessionInput) =>
       manager.create(input),
     listSessions: () => manager.list(),
@@ -118,6 +135,35 @@ async function request(options: {
 }
 
 describe("computer-use session compatibility routes", () => {
+  it("lists apps and returns a no-store app accessibility state", async () => {
+    const service = sessionService();
+    const apps = await request({
+      path: "/api/computer-use/apps",
+      method: "GET",
+      service,
+    });
+    expect(apps).toMatchObject({
+      status: 200,
+      body: { apps: [{ id: "fixture.app", pid: 42 }] },
+    });
+
+    const state = await request({
+      path: "/api/computer-use/apps/state?app=fixture.app&disableDiff=true",
+      method: "GET",
+      service,
+    });
+    expect(state).toMatchObject({
+      status: 200,
+      body: {
+        state: {
+          stateId: "fixture.app:state-1",
+          permission: "ready",
+          axText: "fixture AX tree",
+        },
+      },
+    });
+  });
+
   it("creates, lists, executes, and closes a host session", async () => {
     const service = sessionService();
     const created = await request({

@@ -486,4 +486,100 @@ describe("ComputerUseSessionManager", () => {
       errorCode: "ACCESSIBILITY_PERMISSION_DENIED",
     });
   });
+
+  it("automatically captures a fresh verification observation after an app action", async () => {
+    let frameNumber = 0;
+    const manager = new ComputerUseSessionManager({
+      idFactory: () => "session-one",
+      executor: async () => ({
+        success: true,
+        data: {
+          receipt: {
+            receiptId: "receipt-one",
+            appId: "fixture.app",
+            kind: "click",
+            beforeStateId: "fixture.app:before",
+            afterStateId: "fixture.app:after",
+            executionMode: "semantic_ax",
+            completedAt: "2026-08-23T00:00:01.000Z",
+            changed: true,
+            physicalPointerMoved: false,
+            element_index: 3,
+            targetBounds: { x: 40, y: 50, width: 60, height: 30 },
+          },
+        },
+      }),
+      frameProvider: async () => ({
+        mimeType: "image/png",
+        data: Buffer.from(`frame-${++frameNumber}`).toString("base64"),
+      }),
+    });
+    const session = manager.create({ target: { kind: "host" } });
+    const before = await manager.captureFrame(session.id);
+    const completed = await manager.execute(
+      session.id,
+      action("app-click", 0, {
+        command: "app_click",
+        parameters: {
+          app: "fixture.app",
+          stateId: "fixture.app:before",
+          element_index: 3,
+        },
+        observationId: before.provenance.observationId,
+        observationSequence: before.provenance.sequence,
+      }),
+    );
+
+    expect(completed.result.verificationObservation).toMatchObject({
+      observationId: "session-one:observation:2",
+      sequence: 2,
+    });
+    expect(completed.session.lastOutcome?.observationId).toBe(
+      "session-one:observation:2",
+    );
+    expect(completed.session.lastReceipt).toMatchObject({
+      executionMode: "semantic_ax",
+      physicalPointerMoved: false,
+    });
+    expect(completed.session.targetOverlay).toMatchObject({
+      x: 40,
+      y: 50,
+      width: 60,
+      height: 30,
+      elementIndex: 3,
+      physicalPointerMoved: false,
+    });
+  });
+
+  it("reports uncertain effect when post-action fresh-frame verification fails", async () => {
+    let frameNumber = 0;
+    const manager = new ComputerUseSessionManager({
+      idFactory: () => "session-one",
+      executor: async () => ({ success: true }),
+      frameProvider: async () => {
+        frameNumber += 1;
+        if (frameNumber === 1) return { mimeType: "image/png", data: "cG5n" };
+        throw new Error("fixture capture unavailable");
+      },
+    });
+    const session = manager.create({ target: { kind: "host" } });
+    const before = await manager.captureFrame(session.id);
+    const completed = await manager.execute(
+      session.id,
+      action("click", 0, {
+        command: "click",
+        observationId: before.provenance.observationId,
+        observationSequence: before.provenance.sequence,
+      }),
+    );
+    expect(completed.result).toMatchObject({
+      success: false,
+      outcomeStatus: "UNCERTAIN_EFFECT",
+      errorCode: "FRESH_VERIFICATION_FAILED",
+    });
+    expect(completed.session.lastOutcome).toMatchObject({
+      status: "UNCERTAIN_EFFECT",
+      errorCode: "FRESH_VERIFICATION_FAILED",
+    });
+  });
 });

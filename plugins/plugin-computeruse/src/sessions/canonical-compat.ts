@@ -152,12 +152,22 @@ function pointParameter(
   return x === undefined || y === undefined ? null : { x, y };
 }
 
+function elementIdParameter(
+  parameters: Record<string, unknown>,
+): string | null {
+  const named = stringParameter(parameters, "selector", "ref", "elementId");
+  if (named) return named;
+  const index = numberParameter(parameters, "element_index");
+  return index !== undefined && Number.isSafeInteger(index) && index > 0
+    ? `element_index:${index}`
+    : null;
+}
+
 function pointerPayload(
   parameters: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
-    elementId:
-      stringParameter(parameters, "selector", "ref", "elementId") ?? null,
+    elementId: elementIdParameter(parameters),
     point: pointParameter(parameters),
   };
 }
@@ -188,7 +198,7 @@ function scrollPayload(
   return {
     deltaX: direction === "left" ? -amount : direction === "right" ? amount : 0,
     deltaY: direction === "up" ? -amount : direction === "down" ? amount : 0,
-    elementId: stringParameter(parameters, "selector", "elementId") ?? null,
+    elementId: elementIdParameter(parameters),
   };
 }
 
@@ -211,6 +221,10 @@ function canonicalAction(
     case "detect_elements":
     case "ocr":
     case "list_windows":
+    case "app_list_apps":
+    case "app_get_state":
+    case "list_apps":
+    case "get_app_state":
       return { kind: "observe", payload: {} };
     case "click":
     case "click_with_modifiers":
@@ -218,12 +232,14 @@ function canonicalAction(
     case "mouse_down":
     case "mouse_up":
     case "browser_click":
+    case "app_click":
       return { kind: "click", payload: pointerPayload(parameters) };
     case "double_click":
       return { kind: "double_click", payload: pointerPayload(parameters) };
     case "right_click":
       return { kind: "context_click", payload: pointerPayload(parameters) };
     case "mouse_move":
+    case "app_hover_target":
       return { kind: "hover", payload: pointerPayload(parameters) };
     case "drag": {
       const path = parameters.path;
@@ -249,25 +265,28 @@ function canonicalAction(
     }
     case "scroll":
     case "browser_scroll":
+    case "app_scroll":
       return { kind: "scroll", payload: scrollPayload(parameters) };
     case "type":
     case "browser_type":
+    case "app_type":
+    case "app_paste":
+    case "app_select_text":
       return {
         kind: "type_text",
         payload: {
           text: parameters.text,
-          elementId:
-            stringParameter(parameters, "selector", "elementId") ?? null,
+          elementId: elementIdParameter(parameters),
           sensitive: parameters.sensitive === true,
         },
       };
     case "set_value":
+    case "app_set_value":
       return {
         kind: "set_value",
         payload: {
           text: parameters.text ?? parameters.value,
-          elementId:
-            stringParameter(parameters, "selector", "elementId") ?? null,
+          elementId: elementIdParameter(parameters),
           sensitive: parameters.sensitive === true,
         },
       };
@@ -275,7 +294,16 @@ function canonicalAction(
     case "key_combo":
     case "key_down":
     case "key_up":
+    case "app_key":
       return { kind: "press_key", payload: keyPayload(command, parameters) };
+    case "app_secondary_action":
+      return {
+        kind: "evaluate",
+        payload: {
+          expression: stringParameter(parameters, "secondaryAction"),
+          elementId: numberParameter(parameters, "element_index") ?? null,
+        },
+      };
     case "open":
       return {
         kind: "open",
