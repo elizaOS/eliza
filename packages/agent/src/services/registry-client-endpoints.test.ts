@@ -184,6 +184,25 @@ describe("parseRegistryEndpointUrl", () => {
     expect(parsed.hostname).toBe("[2001:4860:4860::8888]");
   });
 
+  it("rejects URLs containing a username or password without echoing them", () => {
+    for (const url of [
+      "https://alice@1.1.1.1/registry",
+      "https://:s3cr3t@1.1.1.1/registry",
+      "https://alice:s3cr3t@1.1.1.1/registry",
+    ]) {
+      let thrown: unknown;
+      try {
+        parseRegistryEndpointUrl(url);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect(String(thrown)).not.toContain("alice");
+      expect(String(thrown)).not.toContain("s3cr3t");
+    }
+  });
+
   it("rejects a relative or empty value as not an absolute URL", () => {
     expect(() => parseRegistryEndpointUrl("not-a-url")).toThrow(
       "Endpoint URL must be a valid absolute URL",
@@ -578,6 +597,18 @@ describe("mergeCustomEndpoints", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       '[registry-client] Endpoint "insecure" (http://example.com/registry) blocked: Error: Endpoint URL must use https://',
     );
+  });
+
+  it("redacts credentials from diagnostics for a legacy configured URL", async () => {
+    const legacyUrl = "https://alice:s3cr3t@1.1.1.1/registry";
+    await mergeCustomEndpoints(new Map(), [endpoint(legacyUrl, "legacy")]);
+
+    expect(fetchWithSsrfGuard).not.toHaveBeenCalled();
+    const warnings = vi.mocked(logger.warn).mock.calls.flat().map(String);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("https://1.1.1.1/registry");
+    expect(warnings[0]).not.toContain("alice");
+    expect(warnings[0]).not.toContain("s3cr3t");
   });
 
   it("does not fetch when DNS cannot resolve the hostname", async () => {

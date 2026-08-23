@@ -23,6 +23,7 @@ import {
   mergeCustomEndpoints,
   normaliseEndpointUrl,
   parseRegistryEndpointUrl,
+  redactEndpointUrlForDiagnostic,
 } from "./registry-client-endpoints.ts";
 import {
   applyLocalWorkspaceApps,
@@ -230,7 +231,9 @@ export function removeRegistryEndpoint(url: string): void {
     (ep) => normaliseEndpointUrl(ep.url) !== normalised,
   );
   if (updated.length === endpoints.length) {
-    throw new Error(`Endpoint not found: ${url}`);
+    throw new Error(
+      `Endpoint not found: ${redactEndpointUrlForDiagnostic(url)}`,
+    );
   }
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = updated;
@@ -244,7 +247,11 @@ export function toggleRegistryEndpoint(url: string, enabled: boolean): void {
   const cfg = loadElizaConfig();
   const endpoints = cfg.plugins?.registryEndpoints ?? [];
   const ep = endpoints.find((e) => normaliseEndpointUrl(e.url) === normalised);
-  if (!ep) throw new Error(`Endpoint not found: ${url}`);
+  if (!ep) {
+    throw new Error(
+      `Endpoint not found: ${redactEndpointUrlForDiagnostic(url)}`,
+    );
+  }
   ep.enabled = enabled;
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = endpoints;
