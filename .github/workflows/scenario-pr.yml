@@ -3,7 +3,7 @@ name: Scenario E2E
 # Scenario-heavy and browser matrix coverage for the integrated develop tree.
 
 on:
-  # Reusable entry for the exhaustive Develop Full lane (#12342).
+  # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
     inputs:
       concurrency_scope:
@@ -11,6 +11,11 @@ on:
         required: false
         type: string
         default: standalone
+  push:
+    branches: [develop]
+  schedule:
+    # Nightly heavy lane (#14051): 07:00 UTC.
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 # A reusable caller's scope separates it from the standalone ref domain.
@@ -353,8 +358,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  app-browser-extended:
-    name: Zero-Key app browser extended
+  app-browser-ratcheted:
+    name: Zero-Key app browser ratcheted
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -384,17 +389,17 @@ jobs:
       - name: Install Playwright browsers
         run: .github/scripts/install-playwright-browsers.sh chromium
 
-      - name: Actual app extended keyless browser coverage
+      - name: Actual app ratcheted keyless browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
 
       - name: Native workflow browser-to-runtime coverage
         run: ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_WORKFLOW_JOURNEY=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 bun run --cwd packages/app test:e2e test/ui-smoke/workflow-real-local.spec.ts --project=chromium
 
-      - name: Upload app browser extended artifacts
+      - name: Upload app browser ratcheted artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: scenario-pr-app-browser-extended
+          name: scenario-pr-app-browser-ratcheted
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
@@ -841,7 +846,12 @@ jobs:
       # Git, passes each file explicitly under the eliza-source condition, and
       # writes the exact inventory plus JUnit evidence before build:core.
       - name: Complete packages/scripts test sweep
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
+
+      - name: Per-plugin keyless e2e coverage gate
+        run: bun run audit:e2e-coverage
 
       - name: E2E coverage matrix report
         if: always()
@@ -876,7 +886,7 @@ jobs:
       - app-browser-all-pages
       - app-browser-feature-interactions
       - app-browser-cloud-keyless
-      - app-browser-extended
+      - app-browser-ratcheted
       - app-browser-perf-kpi
       - app-browser-auto-discovered
       - app-browser-touch-dashboard
@@ -901,7 +911,7 @@ jobs:
             "app-browser-all-pages:${{ needs.app-browser-all-pages.result }}" \
             "app-browser-feature-interactions:${{ needs.app-browser-feature-interactions.result }}" \
             "app-browser-cloud-keyless:${{ needs.app-browser-cloud-keyless.result }}" \
-            "app-browser-extended:${{ needs.app-browser-extended.result }}" \
+            "app-browser-ratcheted:${{ needs.app-browser-ratcheted.result }}" \
             "app-browser-perf-kpi:${{ needs.app-browser-perf-kpi.result }}" \
             "app-browser-auto-discovered:${{ needs.app-browser-auto-discovered.result }}" \
             "app-browser-touch-dashboard:${{ needs.app-browser-touch-dashboard.result }}" \
