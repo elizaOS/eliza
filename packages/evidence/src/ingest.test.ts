@@ -100,6 +100,8 @@ function buildFixtureRepo(): string {
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
   // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
+  // Stage-1 group-chat timing evaluation reports.
+  write(repo, "reports/group-chat-timing/when2speak.json", "{}\n");
   // Progressive content access corpus, benchmark, and access-ledger output.
   write(repo, "reports/content-context/benchmark.json", "{}");
   write(repo, "reports/content-context/page-ledger.jsonl", "{}\n");
@@ -404,6 +406,11 @@ describe("ingestAllSilos", () => {
         status: "ingested",
         artifactCount: 1,
       },
+      "group-chat-timing": {
+        silo: "group-chat-timing",
+        status: "ingested",
+        artifactCount: 1,
+      },
       "content-context": {
         silo: "content-context",
         status: "ingested",
@@ -441,6 +448,11 @@ describe("ingestAllSilos", () => {
     expect(
       byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
+    expect(byPath["lanes/evaluation/when2speak.json"]).toMatchObject({
+      kind: "report",
+      source: "group-chat-timing",
+      lane: "evaluation",
+    });
     expect(byPath["lanes/content-context/benchmark.json"]).toMatchObject({
       kind: "report",
       source: "content-context",

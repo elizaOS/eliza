@@ -19,6 +19,23 @@ SCENARIO_USE_DETERMINISTIC_MODEL=1 eliza-scenarios run ./test/scenarios
 eliza-scenarios list ./test/scenarios
 ```
 
+## When2Speak Stage-1 evaluation
+
+Run the full labeled JSONL through the same `runV5MessageRuntimeStage1` model
+boundary used by production group messages:
+
+```bash
+bun run --cwd packages/scenario-runner eval:when2speak -- \
+  --input=/path/to/finetune_test_dialogue.jsonl \
+  --provider=anthropic
+```
+
+The command writes `reports/group-chat-timing/when2speak.json`. It reports
+accuracy, SPEAK precision/recall/F1, false intervention rate, missed
+intervention rate, and slices by direct address, speaker count, and context
+length. It sends every accepted dialogue to Stage 1 in full. A malformed row is
+recorded as a failure and makes the command exit nonzero.
+
 ## Writing a scenario
 
 Create a `<name>.scenario.ts` file and export a `ScenarioDefinition`:
