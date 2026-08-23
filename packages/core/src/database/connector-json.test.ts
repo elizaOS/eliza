@@ -230,4 +230,76 @@ describe("connector JSON projection", () => {
 		expect(redacted.values).toBe(CONNECTOR_JSON_BOUNDED);
 		expect(redacted).not.toHaveProperty("mustNotSurvive");
 	});
+	it("rejects over-length strings and keys without encoding them (#24778)", () => {
+		// UTF-8 never encodes a JS string to fewer bytes than its UTF-16 length, so
+		// a string longer than the byte ceiling is already over budget and must be
+		// rejected before an encode forces a proportional allocation and full scan.
+		const utf8Encode = TextEncoder.prototype.encode;
+		let encodeCalls = 0;
+		TextEncoder.prototype.encode = function encode(
+			this: TextEncoder,
+			input?: string,
+		) {
+			encodeCalls += 1;
+			return utf8Encode.call(this, input as string);
+		} as typeof utf8Encode;
+
+		try {
+			const overLength = "a".repeat(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
+
+			encodeCalls = 0;
+			expect(() => cloneConnectorJsonObject({ value: overLength })).toThrowError(
+				expect.objectContaining({ code: CONNECTOR_JSON_UNBOUNDED }),
+			);
+			expect(encodeCalls).toBe(0);
+
+			encodeCalls = 0;
+			expect(() =>
+				cloneConnectorJsonObject({ [overLength]: "value" }),
+			).toThrowError(
+				expect.objectContaining({ code: CONNECTOR_JSON_UNBOUNDED }),
+			);
+			expect(encodeCalls).toBe(0);
+
+			// Audit mode keeps its sentinel behavior, still without encoding.
+			encodeCalls = 0;
+			expect(
+				redactConnectorJsonAudit({ value: overLength }, () => false),
+			).toEqual({ value: CONNECTOR_JSON_BOUNDED });
+			expect(encodeCalls).toBe(0);
+		} finally {
+			TextEncoder.prototype.encode = utf8Encode;
+		}
+	});
+
+	it("still measures exact UTF-8 bytes for strings that may fit (#24778)", () => {
+		// Multibyte strings whose UTF-16 length is within the ceiling must not be
+		// short-circuited: the precise byte check decides, so a value sitting
+		// exactly on the byte boundary stays accepted while one byte past it is
+		// rejected.
+		const exactAscii = "a".repeat(MAX_CONNECTOR_JSON_STRING_BYTES);
+		expect(cloneConnectorJsonObject({ value: exactAscii })).toEqual({
+			value: exactAscii,
+		});
+
+		// "é" is 2 UTF-8 bytes: half the ceiling in code units, exactly the ceiling
+		// in bytes.
+		const exactMultibyte = "é".repeat(MAX_CONNECTOR_JSON_STRING_BYTES / 2);
+		expect(exactMultibyte.length).toBeLessThanOrEqual(
+			MAX_CONNECTOR_JSON_STRING_BYTES,
+		);
+		expect(cloneConnectorJsonObject({ value: exactMultibyte })).toEqual({
+			value: exactMultibyte,
+		});
+
+		// One code point more is over the byte ceiling while still under the
+		// code-unit ceiling, so only the precise check can reject it.
+		const overByBytesOnly = `${exactMultibyte}é`;
+		expect(overByBytesOnly.length).toBeLessThanOrEqual(
+			MAX_CONNECTOR_JSON_STRING_BYTES,
+		);
+		expect(() =>
+			cloneConnectorJsonObject({ value: overByBytesOnly }),
+		).toThrowError(expect.objectContaining({ code: CONNECTOR_JSON_UNBOUNDED }));
+	});
 });
