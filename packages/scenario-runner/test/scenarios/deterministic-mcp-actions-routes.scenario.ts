@@ -163,7 +163,7 @@ function unsupportedMcpPostToolFixture(input: string, op: string) {
   };
 }
 
-type RuntimeWithMcpScenario = IAgentRuntime &
+type RuntimeWithMcpScenario = Omit<IAgentRuntime, "routes"> &
   RuntimeWithScenarioModelFixtures & {
     plugins?: Plugin[];
     getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
