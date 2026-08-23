@@ -292,10 +292,23 @@ async function reconcileEvent(
       `auto-join policy changed to "${policy}"`,
     );
   }
-  const current = live.filter((task) => taskMode(task) === policy);
+
+  // Gate (re)creation on tasks that already exist for this event under the
+  // current policy mode in ANY non-dismissed state — not just live ones. A
+  // one-shot approval/join whose lifecycle already ran (terminal status
+  // completed/skipped/expired/failed) must NOT be resurrected within the same
+  // event window: recreating a completed approval re-prompts the owner to
+  // approve a meeting they already approved, and recreating a completed join
+  // schedules a fresh join anchored at start-1min (now in the past → due
+  // immediately) that re-joins the same meeting. Only `dismissed` — the state
+  // reserved for tasks we intentionally retired (policy change, deletion,
+  // ended event) — is treated as absent so a later policy switch can recreate.
+  const existingForMode = existing.filter(
+    (task) => taskMode(task) === policy && task.state.status !== "dismissed",
+  );
 
   if (policy === "all") {
-    const join = current.find((task) => taskRole(task) === "join");
+    const join = existingForMode.find((task) => taskRole(task) === "join");
     if (join) return [join];
     const scheduled = await runner.schedule(
       joinTaskInput(event, parsed, "all", {
@@ -317,7 +330,7 @@ async function reconcileEvent(
   }
 
   // policy === "ask"
-  let approval = current.find((task) => taskRole(task) === "approval");
+  let approval = existingForMode.find((task) => taskRole(task) === "approval");
   if (!approval) {
     approval = await runner.schedule(approvalTaskInput(event, parsed));
     logger.info(
@@ -329,7 +342,7 @@ async function reconcileEvent(
       `${LOG_PREFIX} Scheduled join approval for event ${event.id}.`,
     );
   }
-  let join = current.find((task) => taskRole(task) === "join");
+  let join = existingForMode.find((task) => taskRole(task) === "join");
   if (!join) {
     join = await runner.schedule(
       joinTaskInput(event, parsed, "ask", {

@@ -44,7 +44,7 @@ interface Harness {
   anchors: AnchorRegistry;
 }
 
-function makeHarness(): Harness {
+function makeHarness(now: Date = NOW): Harness {
   const cache = new Map<string, unknown>();
   const anchors = createAnchorRegistry();
   const gates = createTaskGateRegistry();
@@ -69,7 +69,7 @@ function makeHarness(): Harness {
     subjectStore: { wasUpdatedSince: () => false },
     dispatcher: TestNoopScheduledTaskDispatcher,
     channelKeys: () => new Set(["in_app", MEETING_JOIN_CHANNEL_KEY]),
-    now: () => NOW,
+    now: () => now,
   });
 
   const runnerService = { getRunner: () => runner };
@@ -120,6 +120,15 @@ function makeEvent(
 async function autoJoinTasks(runner: ScheduledTaskRunnerHandle) {
   const tasks = await runner.list();
   return tasks.filter((task) => task.metadata?.calendarAutoJoin === true);
+}
+
+async function tasksByRole(
+  runner: ScheduledTaskRunnerHandle,
+  role: "join" | "approval",
+) {
+  return (await autoJoinTasks(runner)).filter(
+    (task) => task.metadata?.role === role,
+  );
 }
 
 describe("reconcileMeetingAutoJoin", () => {
@@ -356,6 +365,117 @@ describe("reconcileMeetingAutoJoin", () => {
     expect(dismissed).toBe(4);
     const tasks = await autoJoinTasks(harness.runner);
     expect(tasks.every((t) => t.state.status === "dismissed")).toBe(true);
+  });
+
+  it("ask: an approved (completed) approval is NOT recreated on the next sync (#26483)", async () => {
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const approvalBefore = await tasksByRole(harness.runner, "approval");
+    expect(approvalBefore).toHaveLength(1);
+
+    // Owner approves: the one-shot approval reaches a terminal state and the
+    // after_task-gated join fires.
+    await harness.runner.apply(approvalBefore[0].taskId, "complete");
+    expect(
+      (await tasksByRole(harness.runner, "approval"))[0].state.status,
+    ).toBe("completed");
+
+    // A routine periodic feed sync re-reconciles the same ongoing event.
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+
+    // No brand-new scheduled approval may be created — the owner must not be
+    // re-prompted to approve a meeting they already approved.
+    const approvalAfter = await tasksByRole(harness.runner, "approval");
+    expect(approvalAfter).toHaveLength(1);
+    expect(approvalAfter[0].taskId).toBe(approvalBefore[0].taskId);
+    expect(approvalAfter[0].state.status).toBe("completed");
+    expect(
+      approvalAfter.filter((t) => t.state.status === "scheduled"),
+    ).toHaveLength(0);
+  });
+
+  it("all: a completed mid-meeting join is NOT recreated (no re-join) (#26483)", async () => {
+    // Event in progress: 15:00–15:30, now 15:10.
+    const now = new Date("2026-07-03T15:10:00.000Z");
+    harness = makeHarness(now);
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => now,
+    });
+    const joinBefore = await tasksByRole(harness.runner, "join");
+    expect(joinBefore).toHaveLength(1);
+
+    // The agent joins: the one-shot join task completes.
+    await harness.runner.apply(joinBefore[0].taskId, "complete");
+    expect((await tasksByRole(harness.runner, "join"))[0].state.status).toBe(
+      "completed",
+    );
+
+    // Another periodic sync fires mid-meeting.
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => now,
+    });
+
+    // No new join anchored at start-1min (14:59, already past → due
+    // immediately) may be scheduled — the agent must not re-join.
+    const joinAfter = await tasksByRole(harness.runner, "join");
+    expect(joinAfter).toHaveLength(1);
+    expect(joinAfter[0].taskId).toBe(joinBefore[0].taskId);
+    expect(joinAfter[0].state.status).toBe("completed");
+    expect(
+      joinAfter.filter((t) => t.state.status === "scheduled"),
+    ).toHaveLength(0);
+  });
+
+  it("a completed direct join still yields to a genuine policy change all→ask (#26483)", async () => {
+    // Regression guard: the terminal-status gate must not defeat the
+    // policy-change dismiss/recreate path. A completed "all" join carries a
+    // different mode than "ask", so switching policy must still create the
+    // approval pair.
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const join = (await tasksByRole(harness.runner, "join"))[0];
+    await harness.runner.apply(join.taskId, "complete");
+
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+
+    const live = (await autoJoinTasks(harness.runner)).filter(
+      (t) => t.state.status === "scheduled",
+    );
+    expect(live).toHaveLength(2);
+    expect(live.every((t) => t.metadata?.autoJoinMode === "ask")).toBe(true);
+    expect(live.some((t) => t.metadata?.role === "approval")).toBe(true);
+    expect(live.some((t) => t.metadata?.role === "join")).toBe(true);
   });
 
   it("survives a runtime with no scheduling runner (typed skip, no crash)", async () => {
