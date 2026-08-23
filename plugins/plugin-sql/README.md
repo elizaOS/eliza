@@ -30,6 +30,22 @@ The attestation request rejects unknown fields, including client-authored
 `confirmed`, `verified`, actor, and role values. Attestations are immutable
 audit evidence and never create canonical redirects or merge-journal rows.
 
+## Membership authority
+
+`SqlMembershipService` is the durable authority for connector-account room
+membership. Commands are fenced by both the scope generation and the
+connector's monotonically increasing source version, with account-scoped
+idempotency receipts so duplicate or out-of-order evidence cannot resurrect a
+newer revocation. Authorization permits only an active canonical principal in
+a scope whose reconciliation health is `current`; missing, stale, unavailable,
+and unsupported authority all deny explicitly.
+
+The service commits security state before clearing its internal decision cache,
+running registered cache invalidators synchronously, and notifying runtime
+observers. Connector event and roster-reconciliation adapters are responsible
+for supplying typed commands; the membership service has no model-callable
+mutation action.
+
 ## Database Schema
 
 The plugin uses the following main tables:
