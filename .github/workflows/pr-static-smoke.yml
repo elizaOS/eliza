@@ -29,7 +29,10 @@ jobs:
   static-smoke:
     name: All Tests Passed
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The affected closure can legitimately consume the original 30-minute
+    # budget before the setup action archives its Turbo cache in post-job
+    # cleanup. Keep enough headroom for that non-product cleanup to complete.
+    timeout-minutes: 45
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
