@@ -230,6 +230,45 @@ describe("SSH runtime RPC", () => {
     });
   });
 
+  it("removes the private known-hosts directory when process creation throws", async () => {
+    let temporaryDirectory = "";
+
+    await expect(
+      sshRuntimeInternals.createSshTunnelChild(
+        `[host.example]:22 ssh-ed25519 ${ED25519_KEY}`,
+        (knownHostsPath) => {
+          temporaryDirectory = path.dirname(knownHostsPath);
+          throw new Error("spawn rejected arguments");
+        },
+      ),
+    ).rejects.toThrow("spawn rejected arguments");
+
+    expect(temporaryDirectory).not.toBe("");
+    await expect(fs.stat(temporaryDirectory)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("observes spontaneous-exit cleanup failure without an unhandled rejection", async () => {
+    const child = fakeTunnelChild();
+    const tunnel = await createFakeTunnel(child as unknown as ChildProcess);
+    const recordCleanupFailure = vi.fn();
+
+    sshRuntimeInternals.observeTunnelExit("vps", tunnel, {
+      dispose: async () => {
+        throw new Error("temporary directory is busy");
+      },
+      recordCleanupFailure,
+    });
+    child.exitCode = 255;
+    child.emit("exit", 255, null);
+
+    await vi.waitFor(() => {
+      expect(recordCleanupFailure).toHaveBeenCalledWith("vps");
+    });
+    await fs.rm(tunnel.tempDir, { force: true, recursive: true });
+  });
+
   it("rehydrates restart intent only after secure pin and identity validation", async () => {
     const starts: unknown[] = [];
     await sshRuntimeInternals.rehydrateSshRuntimeIntent(RESTART_INTENT, {
