@@ -52,7 +52,10 @@ describe("SandboxAuditLog", () => {
 
   it("records token replacement with metadata (outbound)", () => {
     const log = new SandboxAuditLog({ console: false });
-    log.recordTokenReplacement("outbound", "https://api.x.com", ["tok-1", "tok-2"]);
+    log.recordTokenReplacement("outbound", "https://api.x.com", [
+      "tok-1",
+      "tok-2",
+    ]);
     const entry = log.getByType("secret_token_replacement_outbound")[0];
     expect(entry.metadata?.tokenCount).toBe(2);
     expect(entry.metadata?.tokenIds).toBe("tok-1,tok-2");
@@ -89,7 +92,11 @@ describe("SandboxAuditLog", () => {
   it("invokes a configured sink", () => {
     const sink = vi.fn();
     const log = new SandboxAuditLog({ console: false, sink });
-    log.record({ type: "security_kill_switch", summary: "kill", severity: "critical" });
+    log.record({
+      type: "security_kill_switch",
+      summary: "kill",
+      severity: "critical",
+    });
     expect(sink).toHaveBeenCalledTimes(1);
     expect(sink.mock.calls[0][0].type).toBe("security_kill_switch");
   });
@@ -97,7 +104,11 @@ describe("SandboxAuditLog", () => {
   it("getRecent returns the newest N", () => {
     const log = new SandboxAuditLog({ console: false });
     for (let i = 0; i < 5; i++) {
-      log.record({ type: "sandbox_lifecycle", summary: `e${i}`, severity: "info" });
+      log.record({
+        type: "sandbox_lifecycle",
+        summary: `e${i}`,
+        severity: "info",
+      });
     }
     const recent = log.getRecent(2);
     expect(recent).toHaveLength(2);
@@ -148,7 +159,9 @@ describe("audit feed (process-wide)", () => {
     const firstTs = Date.parse(log.getRecent(1)[0].timestamp);
     log.record({ type: "sandbox_lifecycle", summary: "b", severity: "info" });
     // Entries at or after firstTs are included (both were recorded at ~now).
-    expect(queryAuditFeed({ sinceMs: firstTs }).length).toBeGreaterThanOrEqual(1);
+    expect(queryAuditFeed({ sinceMs: firstTs }).length).toBeGreaterThanOrEqual(
+      1,
+    );
     // A far-future sinceMs excludes everything.
     expect(queryAuditFeed({ sinceMs: Date.now() + 60_000 })).toHaveLength(0);
   });
@@ -156,7 +169,11 @@ describe("audit feed (process-wide)", () => {
   it("bounds the limit", () => {
     const log = new SandboxAuditLog({ console: false });
     for (let i = 0; i < 5; i++) {
-      log.record({ type: "sandbox_lifecycle", summary: `e${i}`, severity: "info" });
+      log.record({
+        type: "sandbox_lifecycle",
+        summary: `e${i}`,
+        severity: "info",
+      });
     }
     expect(queryAuditFeed({ limit: 2 })).toHaveLength(2);
   });
