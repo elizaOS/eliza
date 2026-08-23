@@ -237,6 +237,9 @@ beforeAll(async () => {
     const { users } = await import("../../../db/schemas/users");
     const { userIdentities } = await import("../../../db/schemas/user-identities");
     const { organizationInvites } = await import("../../../db/schemas/organization-invites");
+    const { personalAccountConvergences } = await import(
+      "../../../db/schemas/personal-account-convergences"
+    );
     const { apiKeys } = await import("../../../db/schemas/api-keys");
     const { creditTransactions } = await import("../../../db/schemas/credit-transactions");
     const { userCharacters } = await import("../../../db/schemas/user-characters");
@@ -264,6 +267,7 @@ beforeAll(async () => {
         organizations,
         users,
         userIdentities,
+        personalAccountConvergences,
         organizationInvites,
         apiKeys,
         creditTransactions,
