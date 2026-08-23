@@ -17,7 +17,7 @@ vi.mock("node:fs", () => ({
 import {
   getElectrobunPreloadStatus,
   readBuiltPreloadScript,
-} from "./preload-validation.ts";
+} from "../preload-validation.ts";
 
 const fakeFs = {
   existsSync: (p: string) => mocks.existsSync(p),
