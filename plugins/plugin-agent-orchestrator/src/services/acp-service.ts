@@ -5881,6 +5881,21 @@ interface SessionEventTrailEntry {
 const EVENT_TRAIL_MAX_ENTRIES = 15;
 const EVENT_TRAIL_HINT_MAX_CHARS = 120;
 
+/** Keep untrusted diagnostic fields on one physical log line. */
+function oneLineEventTrailValue(value: string): string {
+  let withoutControls = "";
+  for (const char of value) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const isControl =
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      codePoint === 0x2028 ||
+      codePoint === 0x2029;
+    withoutControls += isControl ? " " : char;
+  }
+  return withoutControls.replace(/\s+/gu, " ").trim();
+}
+
 /**
  * Distills a session-event payload into a one-line forensic hint for the
  * event trail. Purely structural key probes on the shapes emitSessionEvent
@@ -5898,11 +5913,13 @@ function eventTrailHint(data: unknown): string | undefined {
     typeof terminalFailure.transient === "boolean" &&
     typeof record.delivered === "boolean"
   ) {
-    const code =
+    const kind = oneLineEventTrailValue(terminalFailure.kind);
+    const normalizedCode =
       typeof terminalFailure.code === "string"
-        ? ` code=${terminalFailure.code}`
+        ? oneLineEventTrailValue(terminalFailure.code)
         : "";
-    return `kind=${terminalFailure.kind}${code} transient=${terminalFailure.transient} delivered=${record.delivered}`.slice(
+    const code = normalizedCode.length > 0 ? ` code=${normalizedCode}` : "";
+    return `kind=${kind || "unknown"}${code} transient=${terminalFailure.transient} delivered=${record.delivered}`.slice(
       0,
       EVENT_TRAIL_HINT_MAX_CHARS,
     );
@@ -5920,7 +5937,10 @@ function eventTrailHint(data: unknown): string | undefined {
     (candidate): candidate is string =>
       typeof candidate === "string" && candidate.trim().length > 0,
   );
-  return hint?.trim().slice(0, EVENT_TRAIL_HINT_MAX_CHARS);
+  const normalizedHint = hint ? oneLineEventTrailValue(hint) : "";
+  return normalizedHint
+    ? normalizedHint.slice(0, EVENT_TRAIL_HINT_MAX_CHARS)
+    : undefined;
 }
 
 export interface NormalizedUsage {

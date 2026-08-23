@@ -193,6 +193,38 @@ describe("SwarmCoordinatorService ACP bind race (coordinator silent give-up)", (
     await service.stop();
   });
 
+  it("fans out parent-agent failure receipts without changing legacy task status", async () => {
+    const { runtime, registerAcp } = makeRuntime();
+    const { acp, emit } = makeFakeAcp();
+    registerAcp(acp);
+    const service = new SwarmCoordinatorService(runtime);
+    (service as unknown as { bindToAcp: () => void }).bindToAcp();
+    await vi.advanceTimersByTimeAsync(1);
+
+    const seen: string[] = [];
+    service.subscribe((event) => seen.push(event.type));
+    emit("s-parent-failure", "ready", { label: "worker" });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(service.getTaskContext("s-parent-failure")?.status).toBe("ready");
+
+    emit("s-parent-failure", "parent_agent_failure", {
+      type: "parent_agent_failure",
+      version: 1,
+      brokerSuccess: false,
+      delivered: true,
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        transient: true,
+        message: "Shell execution failed.",
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(seen).toContain("parent_agent_failure");
+    expect(service.getTaskContext("s-parent-failure")?.status).toBe("ready");
+    await service.stop();
+  });
+
   it("marks UNBOUND loudly when ACP fails to start (load-promise rejects)", async () => {
     const errorSpy = vi
       .spyOn(logger, "error")

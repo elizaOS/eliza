@@ -827,6 +827,10 @@ export class SwarmCoordinatorService
     event: string,
     data: unknown,
   ): void {
+    // A parent-broker failure is diagnostic for one nested broker operation,
+    // not a child-session lifecycle transition. Preserve the live legacy task
+    // status while still allowing handleAcpEvent to fan out the typed receipt.
+    if (event === "parent_agent_failure") return;
     if (!isRecord(data)) {
       this.tasks.set(sessionId, { sessionId, status: event });
       return;
