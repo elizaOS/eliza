@@ -39,6 +39,9 @@ function sessionService() {
     listSessions: () => manager.list(),
     getSession: (sessionId: string) => manager.get(sessionId),
     closeSession: (sessionId: string) => manager.close(sessionId),
+    pauseSession: (sessionId: string) => manager.pause(sessionId),
+    resumeSession: (sessionId: string) => manager.resume(sessionId),
+    stopSession: (sessionId: string) => manager.stop(sessionId),
     renewSessionLease: (sessionId: string, leaseTtlMs?: number) =>
       manager.renewHostLease(sessionId, leaseTtlMs),
     executeSessionAction: (
@@ -51,6 +54,20 @@ function sessionService() {
     subscribeSessions: (
       listener: Parameters<ComputerUseSessionManager["subscribe"]>[0],
     ) => manager.subscribe(listener),
+    getCapabilities: () => ({
+      screenshot: { available: true, tool: "fixture-capture" },
+      computerUse: { available: true, tool: "fixture-input" },
+      windowList: { available: true, tool: "fixture-window" },
+      browser: { available: true, tool: "fixture-browser" },
+      terminal: { available: false, tool: "disabled" },
+      fileSystem: { available: false, tool: "disabled" },
+      clipboard: { available: false, tool: "disabled" },
+    }),
+    getApprovalSnapshot: () => ({
+      mode: "smart_approve" as const,
+      pendingCount: 0,
+      pendingApprovals: [],
+    }),
   };
 }
 
@@ -112,6 +129,17 @@ describe("computer-use session compatibility routes", () => {
     expect(created.status).toBe(201);
     const session = created.body.session as { id: string; sequence: number };
 
+    const observed = await request({
+      path: `/api/computer-use/sessions/${session.id}/frame`,
+      method: "GET",
+      service,
+    });
+    const provenance = (
+      observed.body.frame as {
+        provenance: { observationId: string; sequence: number };
+      }
+    ).provenance;
+
     const actionResult = await request({
       path: `/api/computer-use/sessions/${session.id}/actions`,
       method: "POST",
@@ -120,6 +148,8 @@ describe("computer-use session compatibility routes", () => {
         expectedSequence: 0,
         command: "mouse_move",
         parameters: { coordinate: [20, 30] },
+        observationId: provenance.observationId,
+        observationSequence: provenance.sequence,
       },
       service,
     });
@@ -147,6 +177,14 @@ describe("computer-use session compatibility routes", () => {
     expect(listed.body.sessions).toEqual([
       expect.objectContaining({ id: session.id, sequence: 1 }),
     ]);
+    expect(listed.body).toMatchObject({
+      readiness: {
+        capture: { available: true, tool: "fixture-capture" },
+        input: { available: true, tool: "fixture-input" },
+        approvalMode: "smart_approve",
+      },
+      events: expect.any(Array),
+    });
 
     const closed = await request({
       path: `/api/computer-use/sessions/${session.id}`,
