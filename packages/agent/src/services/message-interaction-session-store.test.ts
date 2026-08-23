@@ -755,7 +755,9 @@ describe("FileMessageInteractionSessionStore", () => {
       code: "INTERACTION_STORE_LOCK_TIMEOUT",
     });
 
-    await fs.utimes(lockPath, new Date(now - 101), new Date(now - 101));
+    // Stay well beyond the ceiling so filesystem timestamp precision cannot
+    // turn this into a boundary assertion on platforms with rounded mtimes.
+    await fs.utimes(lockPath, new Date(now - 1_000), new Date(now - 1_000));
     await expect(store.deleteExpired(now)).resolves.toBe(0);
   });
 
