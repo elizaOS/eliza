@@ -105,7 +105,12 @@ export function parseRuntimeManagementRequest(
 
 function userExplicitlyConfirmed(message: Memory): boolean {
 	const text = userRequestMessageText(message).trim();
-	return /(?:^|\b)(?:confirm(?:ed)?|yes|yep|proceed|do it|go ahead)(?:\b|$)/i.test(
+	if (
+		/\b(?:cancel|decline|do not|don't|dont|never|no|refuse|stop)\b/i.test(text)
+	) {
+		return false;
+	}
+	return /^(?:please\s+)?(?:confirm(?:ed)?|yes|yep|proceed|do it|go ahead)(?:\b|[.!])/i.test(
 		text,
 	);
 }
@@ -129,9 +134,10 @@ async function defaultManageRuntime(
 		body: JSON.stringify({ ...request, clientId }),
 		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 	});
-	const body = (await response
-		.json()
-		.catch(() => null)) as RuntimeManagementResult | null;
+	const body = (await response.json().catch(() => {
+		// error-policy:J3 an invalid shell response remains explicitly invalid.
+		return null;
+	})) as RuntimeManagementResult | null;
 	if (!response.ok || !body) {
 		return {
 			ok: false,

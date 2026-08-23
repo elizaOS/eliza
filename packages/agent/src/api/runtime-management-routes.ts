@@ -102,7 +102,10 @@ export async function handleRuntimeManagementRoutes(
 
   if (method === "POST" && pathname === PREFIX) {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
-      () => null,
+      () => {
+        // error-policy:J3 malformed transport input remains explicitly invalid.
+        return null;
+      },
     );
     if (!body) return true;
     const request = parseRequest(body);
@@ -162,6 +165,7 @@ export async function handleRuntimeManagementRoutes(
         ...(typeof detail.error === "string" ? { error: detail.error } : {}),
       } satisfies RuntimeManagementResult);
     } catch {
+      // error-policy:J1 the HTTP boundary translates an expired shell wait.
       json(res, { ok: false, op: request.op, error: "no-shell" });
     } finally {
       claims.delete(requestId);
@@ -171,7 +175,10 @@ export async function handleRuntimeManagementRoutes(
 
   if (method === "POST" && pathname === `${PREFIX}/claim`) {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
-      () => null,
+      () => {
+        // error-policy:J3 malformed transport input remains explicitly invalid.
+        return null;
+      },
     );
     if (!body) return true;
     const requestId = boundedString(body.requestId, 128);
@@ -191,7 +198,10 @@ export async function handleRuntimeManagementRoutes(
 
   if (method === "POST" && pathname === `${PREFIX}/result`) {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
-      () => null,
+      () => {
+        // error-policy:J3 malformed transport input remains explicitly invalid.
+        return null;
+      },
     );
     if (!body) return true;
     const requestId = boundedString(body.requestId, 128);

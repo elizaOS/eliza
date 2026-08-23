@@ -332,6 +332,35 @@ describe("bindReadyPhase shell:manage-runtime handler", () => {
     expect(executeRuntimeManagementCommand).not.toHaveBeenCalled();
     cleanup();
   });
+
+  it("surfaces a lost result callback after a local mutation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ claimed: true, claimToken: "claim-3" }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 503 })),
+    );
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("shell:manage-runtime")?.({
+      requestId: "request-3",
+      request: { op: "remove", runtimeId: "vps-1" },
+    });
+
+    await vi.waitFor(() =>
+      expect(setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("completed locally"),
+        "error",
+      ),
+    );
+    cleanup();
+  });
 });
 
 describe("bindReadyPhase shell:model-switch handler", () => {
