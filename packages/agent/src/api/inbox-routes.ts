@@ -2596,11 +2596,6 @@ async function loadInboxChats(
       typeof a.lastMessageAt === "number" && Number.isFinite(a.lastMessageAt)
         ? a.lastMessageAt
         : 0;
-    // Tie-break on the room id so equal timestamps sort deterministically.
-    // InboxChat's room id is `id` (there is no `roomId` field): reading
-    // `a.roomId` here returned undefined and threw on `.localeCompare` for
-    // any two chats sharing a timestamp — including the common case of two
-    // chats whose `lastMessageAt` is absent or non-finite and both clamp to 0.
     return bLast - aLast || a.id.localeCompare(b.id);
   });
   return chats;
