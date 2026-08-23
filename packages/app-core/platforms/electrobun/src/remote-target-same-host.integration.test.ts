@@ -39,6 +39,7 @@ import type {
   RemoteTargetClaim,
   RemoteTargetEnrollmentRequest,
   RemoteTargetEnrollmentResponse,
+  RemoteTargetHostRevocationPage,
   RemoteTargetRelayTransport,
 } from "./remote-target-transport";
 import { RemoteTargetVault } from "./remote-target-vault";
@@ -187,6 +188,7 @@ class DeterministicRelay implements RemoteTargetRelayTransport {
   };
   enrollmentRequest: RemoteTargetEnrollmentRequest | null = null;
   claimRequests = 0;
+  revokeRequests = 0;
   readonly claims: RemoteTargetClaim[] = [];
   readonly starts: Array<
     Parameters<RemoteTargetRelayTransport["recordStart"]>[0]
@@ -247,6 +249,23 @@ class DeterministicRelay implements RemoteTargetRelayTransport {
     input: Parameters<RemoteTargetRelayTransport["complete"]>[0],
   ): Promise<void> {
     this.completions.push(input);
+  }
+
+  async revokeHost(
+    input: Parameters<RemoteTargetRelayTransport["revokeHost"]>[0],
+  ): Promise<RemoteTargetHostRevocationPage> {
+    expect(input.enrollment.identity.runtimeId).toBe(HOST_ID);
+    this.revokeRequests += 1;
+    return {
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: this.revokeRequests > 1,
+      cleanup: {
+        sessions: this.revokeRequests === 1 ? 1 : 0,
+        commands: this.revokeRequests === 1 ? 1 : 0,
+        more: false,
+      },
+    };
   }
 }
 
@@ -493,6 +512,7 @@ describe("same-host remote target integration with injected secret-store and rel
       hostId: HOST_ID,
       cloudRevoked: true,
     });
+    expect(relay.revokeRequests).toBe(1);
 
     expect(secureStore.values.size).toBe(0);
     const afterRevoke = new RemoteTargetDesktopService(

@@ -167,7 +167,7 @@ export class RemoteTargetDesktopService {
     input: RemoteTargetLoopbackConfiguration,
   ): Promise<DesktopRemoteTargetResumeResult> {
     const prepared = this.prepareLoopbackConfiguration(input);
-    return await this.enqueueConfiguration(async () => {
+    return this.enqueueConfiguration(async () => {
       const runner = await this.installLoopbackConfiguration(prepared);
       const [enrollment, state] = await Promise.all([
         this.vault.load(),
@@ -200,10 +200,6 @@ export class RemoteTargetDesktopService {
       await runner.start();
       return { resumed: true, reason: "active_authority" as const };
     });
-    // error-policy:J5 the current configure caller receives `configure`; this
-    // tail suppression only keeps a later replacement from inheriting failure.
-    this.configurationTail = configure.catch(() => undefined);
-    return configure;
   }
 
   async enroll(params: unknown): Promise<DesktopRemoteTargetEnrollmentResult> {
@@ -356,6 +352,13 @@ export class RemoteTargetDesktopService {
     return await this.enqueueConfiguration(async () => {
       const enrollment = await this.vault.load();
       if (enrollment?.status !== "enrolled") {
+        const state = await this.stateStore.read();
+        if (
+          Object.keys(state.sessions).length === 0 &&
+          Object.keys(state.commands).length === 0
+        ) {
+          return { cleaned: true };
+        }
         throw new ElizaError("Remote host enrollment is unavailable", {
           code: "REMOTE_HOST_ENROLLMENT_UNAVAILABLE",
           context: { hostId },
