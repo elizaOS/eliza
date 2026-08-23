@@ -1219,9 +1219,17 @@ export function TaskInspector({
   locale?: string;
 }) {
   const plan = normalizePlan(detail.currentPlan);
-  const sessions = [...detail.sessions].sort(
-    (a, b) => b.lastActivityAt - a.lastActivityAt,
-  );
+  const sessions = [...detail.sessions].sort((a, b) => {
+    const bTime =
+      typeof b.lastActivityAt === "number" && Number.isFinite(b.lastActivityAt)
+        ? b.lastActivityAt
+        : 0;
+    const aTime =
+      typeof a.lastActivityAt === "number" && Number.isFinite(a.lastActivityAt)
+        ? a.lastActivityAt
+        : 0;
+    return bTime - aTime || a.id.localeCompare(b.id);
+  });
   // The real git change set the latest sub-agent produced, mirrored onto its
   // session record's metadata at task_complete and served by the existing
   // task-detail route. Read-only review surface; absent for in-flight or
