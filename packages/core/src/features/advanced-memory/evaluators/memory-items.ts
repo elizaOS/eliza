@@ -248,7 +248,11 @@ async function prepareSummary(
 	});
 	const allDialogueMessages = allMessages
 		.filter(isDialogueMessage)
-		.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+		.sort((a, b) => {
+			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			return aTime - bTime;
+		});
 	const existingSummary = await memoryService.getCurrentSessionSummary(
 		message.roomId,
 	);
@@ -302,7 +306,11 @@ async function prepareLongTermMemory(
 		memoryService,
 		recentMessages: recentRaw
 			.filter((memory) => !isSyntheticConversationArtifactMemory(memory))
-			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
+			.sort((a, b) => {
+			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			return aTime - bTime;
+		}),
 		existingMemories,
 		currentMessageCount,
 	};
