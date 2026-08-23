@@ -1,10 +1,10 @@
 /**
  * Pins the fail-closed contract of inbound-media vision enrichment: the flag
- * and provider gates throw the typed disabled error, every fetch/size/type/
- * model failure throws the typed description error (so callers degrade instead
- * of dropping the turn), and a truncated or empty completion is rejected, never
- * returned. Deterministic mocks stand in for safe-fetch, the provider factory,
- * and the AI SDK — no network.
+ * and provider gates throw the typed disabled error, every fetch/body-read/
+ * cancellation/size/type/model failure throws the typed description error (so
+ * callers degrade instead of dropping the turn), and a truncated or empty
+ * completion is rejected, never returned. Deterministic mocks stand in for
+ * safe-fetch, the provider factory, and the AI SDK — no network.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -274,6 +274,98 @@ describe("describeInboundImageMedia — enrichment path", () => {
     });
     safeFetch.mockResolvedValue(
       new Response(stream, {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      }),
+    );
+    await expectDescriptionFailure(describeInboundImageMedia(ENABLED, [URL_A]), "media_too_large");
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
+  test("a body stream that errors mid-read becomes media_read_failed", async () => {
+    const streamFault = new TypeError("terminated");
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        // First pull delivers bytes; the connection drops on the second.
+        if (pulls++ === 0) {
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+        } else {
+          controller.error(streamFault);
+        }
+      },
+    });
+    safeFetch.mockResolvedValue(
+      new Response(stream, { status: 200, headers: { "content-type": "image/jpeg" } }),
+    );
+    const error = await expectDescriptionFailure(
+      describeInboundImageMedia(ENABLED, [URL_A]),
+      "media_read_failed",
+    );
+    expect(error.cause).toBe(streamFault);
+    expect(error.context).toMatchObject({ url: URL_A, bytesRead: 3 });
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
+  test("a fetch timeout that fires during the body read becomes media_read_failed", async () => {
+    const timeout = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(timeout);
+      },
+    });
+    safeFetch.mockResolvedValue(
+      new Response(stream, { status: 200, headers: { "content-type": "image/jpeg" } }),
+    );
+    const error = await expectDescriptionFailure(
+      describeInboundImageMedia(ENABLED, [URL_A]),
+      "media_read_failed",
+    );
+    expect(error.cause).toBe(timeout);
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
+  test("a failing cancel while discarding a body keeps the typed degrade error", async () => {
+    const bodyThatCannotCancel = () =>
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(4 * 1024 * 1024));
+        },
+        cancel() {
+          throw new Error("socket already closed");
+        },
+      });
+    // Declared above the ceiling: discarded before any read.
+    safeFetch.mockResolvedValue(
+      new Response(bodyThatCannotCancel(), {
+        status: 200,
+        headers: {
+          "content-type": "image/jpeg",
+          "content-length": String(MAX_INBOUND_IMAGE_BYTES + 1),
+        },
+      }),
+    );
+    await expectDescriptionFailure(describeInboundImageMedia(ENABLED, [URL_A]), "media_too_large");
+    // Not an image: discarded before any read.
+    safeFetch.mockResolvedValue(
+      new Response(bodyThatCannotCancel(), {
+        status: 200,
+        headers: { "content-type": "application/pdf" },
+      }),
+    );
+    await expectDescriptionFailure(
+      describeInboundImageMedia(ENABLED, [URL_A]),
+      "unsupported_media_type",
+    );
+    // Non-2xx: discarded before any read.
+    safeFetch.mockResolvedValue(new Response(bodyThatCannotCancel(), { status: 503 }));
+    await expectDescriptionFailure(
+      describeInboundImageMedia(ENABLED, [URL_A]),
+      "media_fetch_failed",
+    );
+    // Streamed past the ceiling without Content-Length: discarded mid-read.
+    safeFetch.mockResolvedValue(
+      new Response(bodyThatCannotCancel(), {
         status: 200,
         headers: { "content-type": "image/jpeg" },
       }),

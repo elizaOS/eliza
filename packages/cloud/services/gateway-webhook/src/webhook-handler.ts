@@ -633,9 +633,13 @@ export async function handleWebhook(
           err.deliveryStatus === "failed")
       ) {
         try {
-          // The Shared endpoint is idempotent. Blooio also keys provider
-          // egress by the inbound message id, so a lost receipt response can
-          // safely reopen the webhook without sending a second text.
+          // The Shared endpoint is idempotent, including its pooled-key media
+          // enrichment: the Worker keys a durable description record by the
+          // forwarded `<platform>:<project>:<messageId>`, so a reopened
+          // delivery reuses the stored description instead of re-spending.
+          // Blooio also keys provider egress by the inbound message id, so a
+          // lost receipt response can safely reopen the webhook without
+          // sending a second text.
           await redis.del(dedupKey);
         } catch (cleanupError) {
           // error-policy:J7 The original delivery failure is already observed;
@@ -1088,11 +1092,14 @@ async function sendPersonalSharedReply(
     );
   }
   // Media turns mirror voice: the cloud route may spend fetch + vision + the
-  // model turn, so a re-POST can overlap a still-running route execution and
-  // re-run the unbilled vision call. Group Blooio events carry mediaUrls too
-  // but are never forwarded as media (no vision runs), and with the vision
-  // flag off no media is forwarded at all, so both keep the plain text-turn
-  // retry/timeout posture.
+  // model turn, so an inline re-POST can overlap a still-running route
+  // execution. The Worker's per-message description claim makes the overlap
+  // spend-safe (the second execution sees the live claim and keeps the raw
+  // text), but that raw turn would only race the enriched one, so media turns
+  // still hand provider/transport failures to the durable redelivery path.
+  // Group Blooio events carry mediaUrls too but are never forwarded as media
+  // (no vision runs), and with the vision flag off no media is forwarded at
+  // all, so both keep the plain text-turn retry/timeout posture.
   const isMediaTurn =
     inboundMediaVisionEnabled() &&
     adapter.platform === "blooio" &&
