@@ -1,9 +1,13 @@
+/**
+ * Exercises the API authentication token helpers with deterministic request headers.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   extractHeaderValue,
   getProvidedApiToken,
   tokenMatches,
-} from "./tokens.ts";
+} from "../tokens.ts";
 
 describe("tokenMatches", () => {
   it("matches equal tokens", () => {
