@@ -44,7 +44,10 @@ Every authorization rechecks persisted `validUntil` values against the trusted
 service clock. Missing, expired, stale, unavailable, and unsupported authority
 deny explicitly. Complete snapshots atomically upsert observed members and
 retain absent active members as revoked facts; incomplete or failed pagination
-changes no roster. Point proof for one principal creates no fact about another.
+atomically marks the scope stale without changing the roster or advancing its
+durable cursor. Authorization also requires a membership fact to match the
+scope's current publisher generation. Point proof for one principal creates no
+fact about another.
 The service invalidates registered dependent caches before notifying observers.
 Connector composition and document authorization remain separate slices, and
 the service exposes no model-callable mutation action.
