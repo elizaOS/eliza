@@ -17,6 +17,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginInfo } from "../../../api/client-types-config";
+import en from "../../../i18n/locales/en.json";
 import { __setAppValueForTests } from "../../../state/app-store";
 
 const { clientMock, loadPluginsMock, modesMock } = vi.hoisted(() => ({
@@ -55,6 +56,12 @@ function pluginInfo(overrides: Partial<PluginInfo> = {}): PluginInfo {
 }
 
 describe("ConnectorCardWidget", () => {
+  it("keeps the production security note aligned with the transport contract", () => {
+    expect(en["connectorcard.StorageNote"]).toBe(
+      "Sent directly to the agent — never posted to chat.",
+    );
+  });
+
   afterEach(() => {
     cleanup();
     __setAppValueForTests(null);
