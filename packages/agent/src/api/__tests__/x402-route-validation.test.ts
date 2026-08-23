@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   routeNeedsX402Validation,
   runtimeRoutesNeedX402Validation,
-} from "./x402-route-validation.ts";
+} from "../x402-route-validation.ts";
 
 describe("routeNeedsX402Validation", () => {
   it("detects any non-nullish x402 marker", () => {
