@@ -12,6 +12,7 @@ const migrations = [
   "0275_remote_sessions_first_class_expiry",
   "0305_secure_remote_hosts",
   "0306_secure_remote_command_relay",
+  "0312_remote_host_managed_network",
 ] as const;
 
 async function apply(database: PGlite, name: string): Promise<void> {
@@ -112,17 +113,38 @@ describe("secure remote relay migrations", () => {
           WHERE id = '70000000-0000-4000-8000-000000000001'
         `),
       ).rejects.toThrow(/session_sequence_unique/i);
+      await database.exec(`
+          INSERT INTO remote_hosts (
+            id, organization_id, user_id, device_id, display_name, platform,
+            connection_mode, runtime_key_id, signing_public_jwk,
+            encryption_public_jwk, host_token_hash, status
+          ) VALUES (
+            '40000000-0000-4000-8000-000000000002',
+            '10000000-0000-4000-8000-000000000001',
+            '20000000-0000-4000-8000-000000000001',
+            'linux-pending', 'Linux Pending', 'linux', 'relay',
+            'target-key-pending', '{"kty":"EC"}', '{"kty":"EC"}',
+            'sha256:pending', 'pending'
+          )
+        `);
+      await expect(
+        database.exec(`
+          UPDATE remote_hosts
+          SET status = 'revoked', revoked_at = NULL
+          WHERE id = '40000000-0000-4000-8000-000000000002'
+        `),
+      ).rejects.toThrow(/remote_hosts_status_check/i);
 
       const journal = JSON.parse(
         await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
       ) as { entries: Array<{ idx: number; tag: string; when: number }> };
       const relayEntries = journal.entries.slice(-3);
       expect(relayEntries.map((entry) => entry.tag)).toEqual([
-        "0304_personal_shared_group_delivery_lease",
-        "0305_secure_remote_hosts",
-        "0306_secure_remote_command_relay",
+        "0310_personal_shared_inbound_media_admission",
+        "0311_remote_session_two_phase_activation",
+        "0312_remote_host_managed_network",
       ]);
-      expect(relayEntries.map((entry) => entry.idx)).toEqual([287, 288, 289]);
+      expect(relayEntries.map((entry) => entry.idx)).toEqual([293, 294, 295]);
       expect(relayEntries[1]!.when).toBeGreaterThan(relayEntries[0]!.when);
       expect(relayEntries[2]!.when).toBeGreaterThan(relayEntries[1]!.when);
       expect(new Set(journal.entries.map((entry) => entry.when)).size).toBe(journal.entries.length);

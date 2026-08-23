@@ -5,11 +5,20 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
-export const REMOTE_HOST_STATUSES = ["active", "revoked"] as const;
+export const REMOTE_HOST_STATUSES = ["pending", "active", "revoked"] as const;
 export type RemoteHostStatus = (typeof REMOTE_HOST_STATUSES)[number];
 
 export const remoteHosts = pgTable(
@@ -26,6 +35,10 @@ export const remoteHosts = pgTable(
     display_name: text("display_name").notNull(),
     platform: text("platform").notNull(),
     connection_mode: text("connection_mode").notNull(),
+    headscale_hostname: text("headscale_hostname"),
+    headscale_preauth_key_id: text("headscale_preauth_key_id"),
+    headscale_cleanup_pending: boolean("headscale_cleanup_pending").notNull().default(false),
+    headscale_cleanup_error: text("headscale_cleanup_error"),
     runtime_key_id: text("runtime_key_id").notNull(),
     signing_public_jwk: jsonb("signing_public_jwk").notNull().$type<JsonWebKey>(),
     encryption_public_jwk: jsonb("encryption_public_jwk").notNull().$type<JsonWebKey>(),
@@ -49,6 +62,9 @@ export const remoteHosts = pgTable(
       table.runtime_key_id,
     ),
     statusIdx: index("remote_hosts_status_idx").on(table.status),
+    headscaleCleanupIdx: index("remote_hosts_headscale_cleanup_pending_idx").on(
+      table.headscale_cleanup_pending,
+    ),
   }),
 );
 

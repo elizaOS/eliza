@@ -180,6 +180,34 @@ describe("DevicesRuntimesSection", () => {
     expect(screen.queryByLabelText("Pairing session ID")).toBeNull();
   });
 
+  it("requires an explicit managed-network opt-in before native enrollment", async () => {
+    const user = userEvent.setup();
+    const onEnrollLinuxTarget = vi.fn();
+    render(
+      <DevicesRuntimesSection
+        {...props({
+          linuxTarget: {
+            hostId: null,
+            enrolled: false,
+            running: false,
+            activeSessions: 0,
+            lastErrorCode: null,
+          },
+          onEnrollLinuxTarget,
+        })}
+      />,
+    );
+    await user.click(
+      screen.getByRole("switch", {
+        name: "Use Eliza managed private network",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Enroll this computer" }),
+    );
+    expect(onEnrollLinuxTarget).toHaveBeenCalledWith(true);
+  });
+
   it("requires inspection before connect and blocks a changed host key", async () => {
     const user = userEvent.setup();
     const onInspectSsh = vi.fn();

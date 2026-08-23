@@ -600,6 +600,7 @@ export interface RemoteTargetEnrollParams {
   ownerId: string;
   ownerAccessToken: string;
   displayName: string;
+  managedNetwork?: boolean;
 }
 
 export interface RemoteTargetRunnerStatusResponse {

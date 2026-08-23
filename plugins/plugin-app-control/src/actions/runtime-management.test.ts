@@ -192,6 +192,7 @@ describe("RUNTIMES action", () => {
 			code: undefined,
 			proposalId: undefined,
 			proposalNonce: undefined,
+			managedNetwork: undefined,
 		});
 		expect(result?.success).toBe(true);
 		expect(result?.text).toContain("123456");
@@ -217,6 +218,15 @@ describe("RUNTIMES action", () => {
 			}),
 		);
 		expect(manageRuntime).not.toHaveBeenCalled();
+	});
+
+	it("preserves explicit managed-network opt-in without accepting a secret", () => {
+		expect(
+			parseRuntimeManagementRequest({
+				op: "enroll_host",
+				managedNetwork: true,
+			}),
+		).toMatchObject({ op: "enroll_host", managedNetwork: true });
 	});
 
 	it("returns every saved runtime in model-visible text and structured data", async () => {

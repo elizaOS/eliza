@@ -35,6 +35,7 @@ export interface RuntimeManagementRequest {
   /** One-use server proposal authority for an exact destructive request. */
   proposalId?: string;
   proposalNonce?: string;
+  managedNetwork?: boolean;
 }
 
 export interface RuntimeManagementResult {
