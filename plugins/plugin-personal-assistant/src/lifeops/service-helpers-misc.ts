@@ -175,7 +175,16 @@ export function normalizeReminderSteps(value: unknown): LifeOpsReminderStep[] {
       label,
     } satisfies LifeOpsReminderStep;
   });
-  steps.sort((left, right) => left.offsetMinutes - right.offsetMinutes);
+  steps.sort((left, right) => {
+    const leftOffset = Number.isFinite(left.offsetMinutes)
+      ? left.offsetMinutes
+      : 0;
+    const rightOffset = Number.isFinite(right.offsetMinutes)
+      ? right.offsetMinutes
+      : 0;
+    if (leftOffset !== rightOffset) return leftOffset - rightOffset;
+    return left.label.localeCompare(right.label);
+  });
   return steps;
 }
 
@@ -239,7 +248,14 @@ export function resolveUpcomingWindowStart(
 ): Date {
   const matchingWindows = windowPolicy.windows
     .filter((window) => candidateNames.includes(window.name))
-    .sort((left, right) => left.startMinute - right.startMinute);
+    .sort((left, right) => {
+      const leftMin = Number.isFinite(left.startMinute) ? left.startMinute : 0;
+      const rightMin = Number.isFinite(right.startMinute)
+        ? right.startMinute
+        : 0;
+      if (leftMin !== rightMin) return leftMin - rightMin;
+      return left.name.localeCompare(right.name);
+    });
   const candidateMinutes =
     matchingWindows.length > 0
       ? matchingWindows.map((window) => window.startMinute)
