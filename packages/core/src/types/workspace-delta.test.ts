@@ -77,6 +77,34 @@ describe("WorkspaceDeltaReceipt", () => {
 		});
 	});
 
+	it("requires pending and terminal background receipts to carry matching lifecycle status", () => {
+		const pending = {
+			...observed("unchanged"),
+			outcome: "indeterminate",
+			afterFingerprint: undefined,
+			reasonCode: "BACKGROUND_RECEIPT_PENDING",
+			operation: {
+				kind: "background_shell",
+				handle: "bg-1",
+				status: "terminating",
+			},
+		};
+		expect(normalizeWorkspaceDeltaReceipt(pending)).toMatchObject({
+			outcome: "indeterminate",
+			operation: { handle: "bg-1", status: "terminating" },
+		});
+		expect(() =>
+			normalizeWorkspaceDeltaReceipt({
+				...observed("unchanged"),
+				operation: {
+					kind: "background_shell",
+					handle: "bg-1",
+					status: "running",
+				},
+			}),
+		).toThrow(/terminal status/);
+	});
+
 	it.each([
 		{ ...observed("changed"), version: 2 },
 		{ ...observed("changed"), outcome: "maybe" },
@@ -112,6 +140,7 @@ describe("WorkspaceDeltaReceipt", () => {
 			operation: {
 				kind: "background_shell",
 				handle: "bg-1",
+				status: "exited",
 				extra: true,
 			},
 		},

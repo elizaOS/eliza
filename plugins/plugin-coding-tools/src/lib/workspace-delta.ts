@@ -8,10 +8,10 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
-import { arch, hostname, platform } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
+  type IAgentRuntime,
   WORKSPACE_DELTA_RECEIPT_DATA_KEY,
   type WorkspaceDeltaIndeterminateReasonCode,
   type WorkspaceDeltaReceipt,
@@ -23,14 +23,8 @@ const execFileAsync = promisify(execFile);
 export const WORKSPACE_DELTA_OBSERVATION_TIMEOUT_MS = 900;
 export const WORKSPACE_DELTA_FILE_BYTE_BUDGET = 64 * 1024 * 1024;
 export const WORKSPACE_DELTA_GIT_OUTPUT_BUDGET = 8 * 1024 * 1024;
-const LOCAL_EXECUTION_DOMAIN_ID = createHash("sha256")
-  .update("eliza-workspace-execution-domain-v1\0")
-  .update(hostname())
-  .update("\0")
-  .update(platform())
-  .update("\0")
-  .update(arch())
-  .digest("hex");
+export const WORKSPACE_DELTA_DIRECTORY_ENTRY_BUDGET = 100_000;
+export const WORKSPACE_DELTA_DIRECTORY_NAME_BYTE_BUDGET = 8 * 1024 * 1024;
 
 interface GitWorkspaceSnapshot {
   root: string;
@@ -41,7 +35,7 @@ type GitRunner = (
   cwd: string,
   args: string[],
   limits?: { timeoutMs: number; maxOutputBytes: number },
-) => Promise<string>;
+) => Promise<string | { stdout: string; stderr: string }>;
 
 export interface LocalWorkspaceDeltaDependencies {
   /** Test seam for Git failures and resource-budget boundaries. */
@@ -49,6 +43,8 @@ export interface LocalWorkspaceDeltaDependencies {
   maxObservationMs?: number;
   maxFileBytes?: number;
   maxGitOutputBytes?: number;
+  maxDirectoryEntries?: number;
+  maxDirectoryNameBytes?: number;
   now?: () => number;
   executionDomainId?: string;
   fs?: Partial<WorkspaceDeltaFs>;
@@ -58,7 +54,7 @@ interface WorkspaceDeltaFs {
   realpath(value: string): Promise<string>;
   lstat(value: string): Promise<Awaited<ReturnType<typeof fs.lstat>>>;
   readlink(value: string): Promise<string>;
-  readdir(value: string): Promise<string[]>;
+  opendir(value: string): ReturnType<typeof fs.opendir>;
   createReadStream(value: string): ReturnType<typeof createReadStream>;
 }
 
@@ -66,6 +62,8 @@ interface ObservationLimits {
   maxObservationMs: number;
   maxFileBytes: number;
   maxGitOutputBytes: number;
+  maxDirectoryEntries: number;
+  maxDirectoryNameBytes: number;
   now: () => number;
   executionDomainId: string;
   fs: WorkspaceDeltaFs;
@@ -75,6 +73,8 @@ interface SnapshotBudget {
   deadline: number;
   remainingFileBytes: number;
   remainingGitOutputBytes: number;
+  remainingDirectoryEntries: number;
+  remainingDirectoryNameBytes: number;
   now: () => number;
   fs: WorkspaceDeltaFs;
 }
@@ -107,14 +107,14 @@ async function git(
   cwd: string,
   args: string[],
   limits?: { timeoutMs: number; maxOutputBytes: number },
-): Promise<string> {
+): Promise<{ stdout: string; stderr: string }> {
   const result = await execFileAsync("git", args, {
     cwd,
     encoding: "utf8",
     timeout: limits?.timeoutMs ?? WORKSPACE_DELTA_OBSERVATION_TIMEOUT_MS,
     maxBuffer: limits?.maxOutputBytes ?? WORKSPACE_DELTA_GIT_OUTPUT_BUDGET,
   });
-  return result.stdout;
+  return { stdout: result.stdout, stderr: result.stderr };
 }
 
 function positiveLimit(value: number | undefined, fallback: number): number {
@@ -140,17 +140,55 @@ function resolveLimits(
       dependencies.maxGitOutputBytes,
       WORKSPACE_DELTA_GIT_OUTPUT_BUDGET,
     ),
+    maxDirectoryEntries: positiveLimit(
+      dependencies.maxDirectoryEntries,
+      WORKSPACE_DELTA_DIRECTORY_ENTRY_BUDGET,
+    ),
+    maxDirectoryNameBytes: positiveLimit(
+      dependencies.maxDirectoryNameBytes,
+      WORKSPACE_DELTA_DIRECTORY_NAME_BYTE_BUDGET,
+    ),
     now: dependencies.now ?? Date.now,
-    executionDomainId:
-      dependencies.executionDomainId ?? LOCAL_EXECUTION_DOMAIN_ID,
+    executionDomainId: canonicalExecutionDomainId(
+      dependencies.executionDomainId,
+    ),
     fs: {
       realpath: fsDependencies.realpath ?? fs.realpath,
       lstat: fsDependencies.lstat ?? fs.lstat,
       readlink: fsDependencies.readlink ?? fs.readlink,
-      readdir: fsDependencies.readdir ?? fs.readdir,
+      opendir: fsDependencies.opendir ?? fs.opendir,
       createReadStream: fsDependencies.createReadStream ?? createReadStream,
     },
   };
+}
+
+function canonicalExecutionDomainId(value: string | undefined): string {
+  if (!value || !/^[a-f0-9]{64}$/.test(value)) {
+    throw new TypeError(
+      "Local workspace observation requires a canonical runtime-owned executionDomainId.",
+    );
+  }
+  return value;
+}
+
+/** Derives an opaque domain from stable identity owned by the runtime host. */
+export function runtimeWorkspaceExecutionDomainId(
+  runtime: Pick<IAgentRuntime, "agentId" | "getSetting">,
+): string {
+  const configured = ["ELIZA_RUNTIME_INSTANCE_ID", "ELIZA_INSTANCE_ID"]
+    .map((key) => runtime.getSetting(key))
+    .find((value) => typeof value === "string" && value.trim().length > 0);
+  const ownerIdentity =
+    typeof configured === "string"
+      ? configured.trim()
+      : String(runtime.agentId);
+  if (!ownerIdentity) {
+    throw new TypeError("Runtime execution identity is unavailable.");
+  }
+  return createHash("sha256")
+    .update("eliza-runtime-workspace-execution-domain-v1\0")
+    .update(ownerIdentity)
+    .digest("hex");
 }
 
 function newBudget(value: ObservationLimits): SnapshotBudget {
@@ -158,6 +196,8 @@ function newBudget(value: ObservationLimits): SnapshotBudget {
     deadline: value.now() + value.maxObservationMs,
     remainingFileBytes: value.maxFileBytes,
     remainingGitOutputBytes: value.maxGitOutputBytes,
+    remainingDirectoryEntries: value.maxDirectoryEntries,
+    remainingDirectoryNameBytes: value.maxDirectoryNameBytes,
     now: value.now,
     fs: value.fs,
   };
@@ -176,6 +216,8 @@ function remainingLimits(
     ),
     maxFileBytes: budget.remainingFileBytes,
     maxGitOutputBytes: budget.remainingGitOutputBytes,
+    maxDirectoryEntries: budget.remainingDirectoryEntries,
+    maxDirectoryNameBytes: budget.remainingDirectoryNameBytes,
   };
 }
 
@@ -253,7 +295,7 @@ async function budgetedGit(
     throw new ObservationBudgetError("OBSERVATION_OUTPUT_BUDGET_EXCEEDED");
   }
   const remainingMs = Math.max(1, budget.deadline - budget.now());
-  let output: string;
+  let output: string | { stdout: string; stderr: string };
   try {
     output = await withinDeadline(
       runGit(cwd, args, {
@@ -266,6 +308,8 @@ async function budgetedGit(
     const failure = error as NodeJS.ErrnoException & {
       killed?: boolean;
       signal?: NodeJS.Signals;
+      stdout?: string;
+      stderr?: string;
     };
     if (
       failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ||
@@ -276,15 +320,28 @@ async function budgetedGit(
     if (failure.killed || failure.signal === "SIGTERM") {
       throw new ObservationBudgetError("OBSERVATION_TIME_BUDGET_EXCEEDED");
     }
+    const capturedBytes =
+      Buffer.byteLength(
+        typeof failure.stdout === "string" ? failure.stdout : "",
+      ) +
+      Buffer.byteLength(
+        typeof failure.stderr === "string" ? failure.stderr : "",
+      );
+    if (capturedBytes > budget.remainingGitOutputBytes) {
+      throw new ObservationBudgetError("OBSERVATION_OUTPUT_BUDGET_EXCEEDED");
+    }
+    budget.remainingGitOutputBytes -= capturedBytes;
     throw error;
   }
   assertTime(budget);
-  const bytes = Buffer.byteLength(output);
+  const stdout = typeof output === "string" ? output : output.stdout;
+  const stderr = typeof output === "string" ? "" : output.stderr;
+  const bytes = Buffer.byteLength(stdout) + Buffer.byteLength(stderr);
   if (bytes > budget.remainingGitOutputBytes) {
     throw new ObservationBudgetError("OBSERVATION_OUTPUT_BUDGET_EXCEEDED");
   }
   budget.remainingGitOutputBytes -= bytes;
-  return output;
+  return stdout;
 }
 
 function nullSeparatedPaths(raw: string): string[] {
@@ -346,6 +403,41 @@ async function hashFileBounded(
   }
 }
 
+async function directoryEntriesBounded(
+  absolute: string,
+  budget: SnapshotBudget,
+): Promise<string[]> {
+  const directory = await withinDeadline(budget.fs.opendir(absolute), budget);
+  const iterator = directory[Symbol.asyncIterator]();
+  const entries: string[] = [];
+  try {
+    while (true) {
+      const next = await withinDeadline(iterator.next(), budget, () => {
+        // error-policy:J6 Timeout abort owns the observation failure; a racing
+        // close rejection is teardown-only and is observed here.
+        void directory.close().catch(() => undefined);
+      });
+      if (next.done) break;
+      const name = next.value.name;
+      const nameBytes = Buffer.byteLength(name);
+      if (
+        budget.remainingDirectoryEntries <= 0 ||
+        nameBytes > budget.remainingDirectoryNameBytes
+      ) {
+        throw new ObservationBudgetError("OBSERVATION_BYTE_BUDGET_EXCEEDED");
+      }
+      budget.remainingDirectoryEntries -= 1;
+      budget.remainingDirectoryNameBytes -= nameBytes;
+      entries.push(name);
+    }
+  } finally {
+    // error-policy:J6 Directory close is teardown-only; traversal errors and
+    // budget failures remain authoritative, and Dir may already be auto-closed.
+    void directory.close().catch(() => undefined);
+  }
+  return entries.sort((a, b) => a.localeCompare(b));
+}
+
 async function pathFingerprint(
   root: string,
   relative: string,
@@ -363,9 +455,7 @@ async function pathFingerprint(
     else if (stat.isSymbolicLink()) {
       hash.update(await withinDeadline(budget.fs.readlink(absolute), budget));
     } else if (stat.isDirectory()) {
-      const entries = (
-        await withinDeadline(budget.fs.readdir(absolute), budget)
-      ).sort((a, b) => a.localeCompare(b));
+      const entries = await directoryEntriesBounded(absolute, budget);
       for (const entry of entries) {
         const child = path.posix.join(
           relative.split(path.sep).join("/"),
@@ -694,6 +784,7 @@ export async function beginLocalWorkspaceDeltaObservation(
 export async function finishLocalWorkspaceDeltaObservation(
   observation: LocalWorkspaceDeltaObservation | undefined,
   backgroundHandle?: string,
+  backgroundStatus?: "exited" | "killed" | "error",
 ): Promise<WorkspaceDeltaReceipt | undefined> {
   if (!observation) return undefined;
   const base = {
@@ -711,6 +802,7 @@ export async function finishLocalWorkspaceDeltaObservation(
           operation: {
             kind: "background_shell" as const,
             handle: backgroundHandle,
+            status: backgroundStatus ?? "error",
           },
         }
       : {}),
@@ -763,6 +855,12 @@ export function indeterminateWorkspaceDeltaReceipt(
   },
   reasonCode: WorkspaceDeltaIndeterminateReasonCode,
   backgroundHandle?: string,
+  backgroundStatus:
+    | "running"
+    | "terminating"
+    | "exited"
+    | "killed"
+    | "error" = "running",
 ): WorkspaceDeltaReceipt {
   return {
     version: 1,
@@ -777,6 +875,7 @@ export function indeterminateWorkspaceDeltaReceipt(
           operation: {
             kind: "background_shell" as const,
             handle: backgroundHandle,
+            status: backgroundStatus,
           },
         }
       : {}),

@@ -38,6 +38,7 @@ export interface WorkspaceDeltaReceipt {
 	operation?: {
 		kind: "background_shell";
 		handle: string;
+		status: "running" | "terminating" | "exited" | "killed" | "error";
 	};
 	outcome: WorkspaceDeltaOutcome;
 	/** SHA-256 of the complete observed baseline state, when available. */
@@ -129,7 +130,7 @@ export function normalizeWorkspaceDeltaReceipt(
 	if (operation) {
 		assertExactKeys(
 			operation,
-			["kind", "handle"],
+			["kind", "handle", "status"],
 			"WorkspaceDeltaReceipt.operation",
 		);
 		if (
@@ -138,7 +139,10 @@ export function normalizeWorkspaceDeltaReceipt(
 			operation.handle.length === 0 ||
 			operation.handle.length > 200 ||
 			operation.handle.trim() !== operation.handle ||
-			/[\0\r\n]/.test(operation.handle)
+			/[\0\r\n]/.test(operation.handle) ||
+			!["running", "terminating", "exited", "killed", "error"].includes(
+				String(operation.status),
+			)
 		) {
 			throw new TypeError("WorkspaceDeltaReceipt has an invalid operation.");
 		}
@@ -186,6 +190,18 @@ export function normalizeWorkspaceDeltaReceipt(
 				"A pending background WorkspaceDeltaReceipt requires its operation handle.",
 			);
 		}
+		if (
+			operation &&
+			(raw.reasonCode === "BACKGROUND_RECEIPT_PENDING"
+				? operation.status !== "running" && operation.status !== "terminating"
+				: operation.status !== "exited" &&
+					operation.status !== "killed" &&
+					operation.status !== "error")
+		) {
+			throw new TypeError(
+				"WorkspaceDeltaReceipt operation status contradicts its observation state.",
+			);
+		}
 		return {
 			version: 1,
 			kind: "workspace_delta",
@@ -201,6 +217,12 @@ export function normalizeWorkspaceDeltaReceipt(
 						operation: {
 							kind: "background_shell" as const,
 							handle: operation.handle as string,
+							status: operation.status as
+								| "running"
+								| "terminating"
+								| "exited"
+								| "killed"
+								| "error",
 						},
 					}
 				: {}),
@@ -220,6 +242,16 @@ export function normalizeWorkspaceDeltaReceipt(
 	if (raw.reasonCode !== undefined) {
 		throw new TypeError(
 			"Observed WorkspaceDeltaReceipt values cannot include reasonCode.",
+		);
+	}
+	if (
+		operation &&
+		operation.status !== "exited" &&
+		operation.status !== "killed" &&
+		operation.status !== "error"
+	) {
+		throw new TypeError(
+			"Observed WorkspaceDeltaReceipt operations require a terminal status.",
 		);
 	}
 	const beforeFingerprint = fingerprint(
@@ -254,6 +286,12 @@ export function normalizeWorkspaceDeltaReceipt(
 					operation: {
 						kind: "background_shell" as const,
 						handle: operation.handle as string,
+						status: operation.status as
+							| "running"
+							| "terminating"
+							| "exited"
+							| "killed"
+							| "error",
 					},
 				}
 			: {}),

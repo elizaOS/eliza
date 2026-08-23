@@ -47,6 +47,7 @@ import {
   beginLocalWorkspaceDeltaObservation,
   finishLocalWorkspaceDeltaObservation,
   indeterminateWorkspaceDeltaReceipt,
+  runtimeWorkspaceExecutionDomainId,
   unattestedRemoteWorkspaceScope,
   workspaceDeltaResultData,
 } from "../lib/workspace-delta.js";
@@ -1554,6 +1555,8 @@ export const shellAction: Action = {
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "write_background",
+            handle: session.handle,
+            status: session.status,
             session: redactedBackgroundSession(runtime, session),
             ...redactedWorkspaceDeltaResultData(
               runtime,
@@ -1575,6 +1578,8 @@ export const shellAction: Action = {
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "kill_background",
+            handle: session.handle,
+            status: session.status,
             session: redactedBackgroundSession(runtime, session),
             ...redactedWorkspaceDeltaResultData(
               runtime,
@@ -1954,8 +1959,10 @@ export const shellAction: Action = {
           message: "Background shell service unavailable.",
         });
       }
-      const backgroundObservation =
-        await beginLocalWorkspaceDeltaObservation(cwd);
+      const backgroundObservation = await beginLocalWorkspaceDeltaObservation(
+        cwd,
+        { executionDomainId: runtimeWorkspaceExecutionDomainId(runtime) },
+      );
       let startedSession:
         | ReturnType<BackgroundShellService["startSession"]>
         | undefined;
@@ -2058,7 +2065,12 @@ export const shellAction: Action = {
     // remotely receives an indeterminate receipt instead of pairing remote
     // execution with this local snapshot.
     const capabilityRouterPresent = getCapabilityRouter(runtime) !== null;
-    const workspaceObservation = await beginLocalWorkspaceDeltaObservation(cwd);
+    const workspaceObservation = await beginLocalWorkspaceDeltaObservation(
+      cwd,
+      {
+        executionDomainId: runtimeWorkspaceExecutionDomainId(runtime),
+      },
+    );
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
     coreLogger.info(
@@ -2094,10 +2106,11 @@ export const shellAction: Action = {
 
     const workspaceDelta =
       result.sandbox === "capability-router"
-        ? indeterminateWorkspaceDeltaReceipt(
+        ? (result.workspaceDeltaReceipt ??
+          indeterminateWorkspaceDeltaReceipt(
             result.workspaceExecution ?? unattestedRemoteWorkspaceScope(cwd),
             "REMOTE_EXECUTION_UNOBSERVED",
-          )
+          ))
         : await finishLocalWorkspaceDeltaObservation(workspaceObservation);
     const workspaceDeltaData = redactedWorkspaceDeltaResultData(
       runtime,

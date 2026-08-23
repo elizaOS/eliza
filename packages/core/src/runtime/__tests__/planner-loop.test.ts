@@ -12,6 +12,7 @@ import { plannerTemplate } from "../../prompts/planner";
 import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
+	__codingMutationRequiresVerificationForTests,
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
 	FAILED_TOOL_FALLBACK_MESSAGE,
@@ -556,10 +557,25 @@ describe("v5 planner loop skeleton", () => {
 			rootId?: string;
 			executionDomainId?: string;
 			backgroundHandle?: string;
+			backgroundStatus?:
+				| "running"
+				| "terminating"
+				| "exited"
+				| "killed"
+				| "error";
 			reasonCode?: "WORKTREE_PROBE_FAILED" | "BACKGROUND_RECEIPT_PENDING";
 		} = {},
 	) => ({
-		...(options.backgroundHandle ? { handle: options.backgroundHandle } : {}),
+		...(options.backgroundHandle
+			? {
+					handle: options.backgroundHandle,
+					status:
+						options.backgroundStatus ??
+						(options.reasonCode === "BACKGROUND_RECEIPT_PENDING"
+							? "running"
+							: "exited"),
+				}
+			: {}),
 		workspaceDeltaReceipt: {
 			version: 1,
 			kind: "workspace_delta",
@@ -582,6 +598,11 @@ describe("v5 planner loop skeleton", () => {
 						operation: {
 							kind: "background_shell",
 							handle: options.backgroundHandle,
+							status:
+								options.backgroundStatus ??
+								(options.reasonCode === "BACKGROUND_RECEIPT_PENDING"
+									? "running"
+									: "exited"),
 						},
 					}
 				: {}),
@@ -1361,6 +1382,86 @@ describe("v5 planner loop skeleton", () => {
 			});
 			expect(result.finalMessage).toContain("coding task is incomplete");
 		});
+	});
+
+	it("preserves an exact background handle through running operations and resolves only a proven terminal poll", async () => {
+		const running = (status: "running" | "terminating") =>
+			workspaceDelta("indeterminate", "/workspace", {
+				backgroundHandle: "bg-1",
+				backgroundStatus: status,
+				reasonCode: "BACKGROUND_RECEIPT_PENDING",
+			});
+		const steps: Array<Record<string, unknown>> = [];
+		const trajectory = { steps, archivedSteps: [] } as unknown as Parameters<
+			typeof __codingMutationRequiresVerificationForTests
+		>[0];
+		const append = (
+			action: string,
+			data: Record<string, unknown> | undefined,
+			handle?: string,
+			success = true,
+		) => {
+			steps.push({
+				toolCall: {
+					name: "SHELL",
+					params: {
+						action,
+						...(handle ? { handle } : { command: "npm test" }),
+					},
+				},
+				result: { success, text: action, ...(data ? { data } : {}) },
+			});
+		};
+
+		append("start_background", running("running"), undefined, false);
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+		append("poll_background", running("running"), "bg-1");
+		append("write_background", running("running"), "bg-1");
+		append("kill_background", running("terminating"), "bg-1", false);
+		append("poll_background", undefined, "unknown", false);
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+		append(
+			"poll_background",
+			workspaceDelta("unchanged", "/workspace", {
+				backgroundHandle: "bg-1",
+				backgroundStatus: "error",
+			}),
+			"bg-1",
+			false,
+		);
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+			false,
+		);
+	});
+
+	it("keeps a fast terminal start owned until a later terminal poll", async () => {
+		const terminal = workspaceDelta("unchanged", "/workspace", {
+			backgroundHandle: "bg-fast",
+			backgroundStatus: "exited",
+		});
+		const steps = [
+			{
+				toolCall: {
+					name: "SHELL",
+					params: { action: "start_background", command: "true" },
+				},
+				result: { success: false, text: "callback failed", data: terminal },
+			},
+		];
+		const trajectory = { steps, archivedSteps: [] } as unknown as Parameters<
+			typeof __codingMutationRequiresVerificationForTests
+		>[0];
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+		steps.push({
+			toolCall: {
+				name: "SHELL",
+				params: { action: "poll_background", handle: "bg-fast" },
+			},
+			result: { success: true, text: "exited", data: terminal },
+		});
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+			false,
+		);
 	});
 
 	it("does not treat a successful inspection command as coding verification", async () => {
