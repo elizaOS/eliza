@@ -80,6 +80,7 @@ export const CONFIGS = {
         lanes: ["server", "client", "plugins", "desktop", "zero_key"],
         patterns: [
           "packages/core/**",
+          "packages/corpus-tools/**",
           "packages/agent/**",
           "packages/shared/**",
           "packages/prompts/**",
@@ -217,6 +218,7 @@ export const CONFIGS = {
           "packages/app-core/**",
           "packages/scenario-runner/**",
           "packages/core/**",
+          "packages/corpus-tools/**",
           "packages/agent/**",
           "packages/shared/**",
           "packages/scripts/**",

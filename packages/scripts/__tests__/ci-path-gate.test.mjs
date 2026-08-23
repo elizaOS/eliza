@@ -81,6 +81,41 @@ describe("classifier self-registration regression", () => {
   });
 });
 
+describe("progressive content path coverage", () => {
+  it("routes corpus contract changes through runtime and scenario lanes", () => {
+    writeFileSync(
+      tmpFile,
+      "packages/corpus-tools/src/progressive-content-evidence.ts\n",
+    );
+    try {
+      const testResult = evaluate(CONFIGS.test, {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      for (const lane of [
+        "server",
+        "client",
+        "plugins",
+        "desktop",
+        "zero_key",
+      ]) {
+        expect(testResult.matchesByLane.get(lane).length).toBeGreaterThan(0);
+      }
+      const scenarioResult = evaluate(CONFIGS["scenario-pr"], {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      expect(
+        scenarioResult.matchesByLane.get("run_scenario_pr").length,
+      ).toBeGreaterThan(0);
+    } finally {
+      unlinkSync(tmpFile);
+    }
+  });
+});
+
 describe("parseGitNameStatus", () => {
   it("returns an empty inventory for an empty diff", () => {
     expect(parseGitNameStatus("")).toEqual([]);
