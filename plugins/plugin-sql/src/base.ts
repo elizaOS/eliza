@@ -14,6 +14,7 @@ import {
   type AgentRunSummary,
   type AgentRunSummaryResult,
   type AppendConnectorAccountAuditEventParams,
+  actorFromAccessContext,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -206,6 +207,97 @@ function normalizeAgentBio(value: unknown): string[] | undefined {
 /** Escape an ILIKE literal so user keywords match literally (no `%`/`_` wildcards). */
 function escapeIlikeLiteral(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+/**
+ * Storage-level memory authorization predicate. Every condition returned here
+ * is pushed into the same query that orders/ranks and paginates so ineligible
+ * rows can neither leak nor starve an authorized page.
+ */
+function memoryAccessContextConditions(
+  accessContext: AccessContext | undefined,
+  agentId: UUID
+): SQL[] {
+  if (!accessContext) return [];
+
+  const conditions: SQL[] = [eq(memoryTable.agentId, agentId)];
+  if (accessContext.authorizedRoomIds !== undefined) {
+    if (accessContext.worldId !== undefined) {
+      conditions.push(eq(memoryTable.worldId, accessContext.worldId));
+    }
+    const roomIds = [...new Set(accessContext.authorizedRoomIds)];
+    conditions.push(roomIds.length === 0 ? sql`false` : inArray(memoryTable.roomId, roomIds));
+  }
+
+  const actor = actorFromAccessContext(accessContext, agentId);
+  if (actor.role === "UNRESOLVED") {
+    conditions.push(sql`false`);
+    return conditions;
+  }
+
+  const metadata = memoryTable.metadata;
+  const validScope = sql`(
+    NOT (${metadata} ? 'scope')
+    OR (
+      jsonb_typeof(${metadata}->'scope') = 'string'
+      AND ${metadata}->>'scope' IN (
+        'shared', 'private', 'room', 'global', 'owner-private',
+        'user-private', 'agent-private'
+      )
+    )
+  )`;
+  const scope = sql`CASE
+    WHEN NOT (${metadata} ? 'scope') THEN 'private'
+    ELSE ${metadata}->>'scope'
+  END`;
+  const scopedEntityId = sql`COALESCE(
+    CASE
+      WHEN jsonb_typeof(${metadata}->'scopedToEntityId') = 'string'
+      THEN ${metadata}->>'scopedToEntityId'
+    END,
+    CASE
+      WHEN jsonb_typeof(${metadata}->'addedBy') = 'string'
+      THEN ${metadata}->>'addedBy'
+    END,
+    ${memoryTable.entityId}::text
+  )`;
+  const publicScope = sql`${scope} IN ('global', 'shared', 'room')`;
+
+  let visibility: SQL;
+  switch (actor.role) {
+    case "OWNER":
+      visibility = sql`(
+        ${publicScope}
+        OR ${scope} IN ('owner-private', 'agent-private')
+        OR (${scope} IN ('private', 'user-private') AND ${scopedEntityId} = ${actor.entityId})
+      )`;
+      break;
+    case "AGENT":
+      visibility = sql`(
+        ${publicScope}
+        OR ${scope} = 'agent-private'
+        OR ${scope} IN ('private', 'user-private')
+      )`;
+      break;
+    case "RUNTIME":
+      visibility = sql`(
+        ${publicScope}
+        OR ${scope} IN ('owner-private', 'agent-private', 'private', 'user-private')
+      )`;
+      break;
+    case "ADMIN":
+    case "USER":
+      visibility = sql`(
+        ${publicScope}
+        OR (${scope} IN ('private', 'user-private') AND ${scopedEntityId} = ${actor.entityId})
+      )`;
+      break;
+    case "GUEST":
+      visibility = publicScope;
+      break;
+  }
+  conditions.push(sql`(${validScope} AND ${visibility})`);
+  return conditions;
 }
 
 const DOCUMENT_UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
@@ -2739,6 +2831,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
 
+      conditions.push(...memoryAccessContextConditions(params.accessContext, this.agentId));
+
       if (start !== undefined) {
         conditions.push(gte(memoryTable.createdAt, new Date(start)));
       }
@@ -2910,6 +3004,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const conditions = [
         eq(memoryTable.type, params.tableName),
         inArray(memoryTable.roomId, params.roomIds),
+        ...memoryAccessContextConditions(params.accessContext, this.agentId),
       ];
 
       conditions.push(eq(memoryTable.agentId, this.agentId));
@@ -2940,7 +3035,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         })
         .from(memoryTable)
         .where(and(...conditions))
-        .orderBy(desc(memoryTable.createdAt));
+        .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
       const { limit, offset } = params;
       const rows = await (async () => {
@@ -3048,6 +3143,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.agentId),
         inArray(memoryTable.roomId, params.roomIds),
+        ...memoryAccessContextConditions(params.accessContext, this.agentId),
         ...timeConditions,
         sql`(${tsvector} @@ ${tsquery} OR ${literalMatch} OR ${trigramMatch})`,
       ];
@@ -3124,6 +3220,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               eq(memoryTable.type, tableName),
               eq(memoryTable.agentId, this.agentId),
               inArray(memoryTable.roomId, params.roomIds),
+              ...memoryAccessContextConditions(params.accessContext, this.agentId),
               ...timeConditions,
               or(
                 sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(params.query)}%`} ESCAPE '\\'`,
@@ -3767,6 +3864,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId: params.entityId,
       unique: params.unique,
       tableName: params.tableName,
+      accessContext: params.accessContext,
     });
   }
 
@@ -3794,6 +3892,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId?: UUID;
       unique?: boolean;
       tableName: string;
+      accessContext?: AccessContext;
     }
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
@@ -3830,6 +3929,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         isNotNull(activeColumn),
         eq(memoryTable.type, params.tableName),
         eq(memoryTable.agentId, this.agentId),
+        ...memoryAccessContextConditions(params.accessContext, this.agentId),
       ];
 
       if (params.unique) {
