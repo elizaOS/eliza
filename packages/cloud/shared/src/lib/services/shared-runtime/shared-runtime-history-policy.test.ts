@@ -203,6 +203,26 @@ describe("shared runtime long-term transcript context", () => {
     }
   });
 
+  test("rejects persisted public evidence whose prose embeds a private URL", () => {
+    expect(
+      parseSharedPublicWebGrounding({
+        kind: "web_search",
+        query: "service status",
+        provider: "parallel",
+        text: "bounded result",
+        observedAt: Date.now(),
+        sourceUrls: ["https://status.example.com/current"],
+        sources: [
+          {
+            url: "https://status.example.com/current",
+            text: "See http://127.0.0.1/admin for status.",
+          },
+        ],
+        truncated: false,
+      }),
+    ).toBeUndefined();
+  });
+
   test("preserves complete astral code points beyond the retired byte cap", () => {
     const grounding = parseSharedPublicWebGrounding({
       kind: "web_search",
