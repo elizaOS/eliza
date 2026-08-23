@@ -26,6 +26,8 @@ import {
 	type Service,
 	ServiceType,
 	stringToUuid,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	TurnAbortedError,
 	type UUID,
 } from "@elizaos/core";
@@ -2523,10 +2525,7 @@ export class MessageManager {
 									reason: repeatsPriorFact
 										? "fact-signature"
 										: "identical-text",
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: truncateWellFormed(toWellFormedUnicode(textContent.replace(/\s+/g, " ").trim()), 200),
 								},
 								"Suppressing duplicate callback reply",
 							);
@@ -2565,10 +2564,7 @@ export class MessageManager {
 								agentId: this.runtime.agentId,
 								channelId: channel.id,
 								messageId: message.id,
-								textPreview: textContent
-									.replace(/\s+/g, " ")
-									.trim()
-									.slice(0, 200),
+								textPreview: truncateWellFormed(toWellFormedUnicode(textContent.replace(/\s+/g, " ").trim()), 200),
 							},
 							"Suppressing duplicate Discord outbound delivery",
 						);
