@@ -130,7 +130,9 @@ export function buildUtcDateFromLocalParts(
 ): Date {
   const baseUtcMs = localPartsToEpochMs(parts);
   if (!Number.isFinite(baseUtcMs)) {
-    throw new RangeError(`Local date-time cannot be resolved in timezone ${timeZone}`);
+    throw new RangeError(
+      `Local date-time cannot be resolved in timezone ${timeZone}`,
+    );
   }
   const offsets = new Set(
     OFFSET_SAMPLE_HOURS.map((hours) =>
@@ -158,7 +160,9 @@ export function buildUtcDateFromLocalParts(
     .map((candidate) => {
       let wallDeltaMs: number;
       try {
-        wallDeltaMs = localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs;
+        wallDeltaMs =
+          localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) -
+          baseUtcMs;
       } catch {
         wallDeltaMs = Number.NaN;
       }
@@ -166,7 +170,9 @@ export function buildUtcDateFromLocalParts(
     })
     .filter(
       ({ wallDeltaMs, candidate }) =>
-        Number.isFinite(wallDeltaMs) && wallDeltaMs > 0 && Number.isFinite(candidate.getTime()),
+        Number.isFinite(wallDeltaMs) &&
+        wallDeltaMs > 0 &&
+        Number.isFinite(candidate.getTime()),
     )
     .sort(
       (left, right) =>
