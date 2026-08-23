@@ -53,20 +53,67 @@ const WORKSPACE_DELTA_INDETERMINATE_REASONS: readonly WorkspaceDeltaIndeterminat
 export interface WorkspaceDeltaReceipt {
 	version: typeof WORKSPACE_DELTA_RECEIPT_VERSION;
 	status: WorkspaceDeltaStatus;
-	/** Present only when `status` is `indeterminate`. */
+	/** Required when `status` is `indeterminate`, forbidden otherwise. */
 	reason?: WorkspaceDeltaIndeterminateReason;
-	/** Digest of the pre-execution fingerprint; absent when capture failed. */
+	/**
+	 * Digest of the pre-execution fingerprint. Required by `changed` and
+	 * `unchanged`; on `indeterminate` it is present only when the baseline
+	 * capture succeeded and the post-execution capture is what failed.
+	 */
 	beforeFingerprint?: string;
-	/** Digest of the post-execution fingerprint; absent when capture failed. */
+	/**
+	 * Digest of the post-execution fingerprint. Required by `changed` and
+	 * `unchanged` — equal to `beforeFingerprint` for `unchanged` and different
+	 * for `changed` — and never present on `indeterminate`, which by definition
+	 * never completed both captures.
+	 */
 	afterFingerprint?: string;
 }
 
 const FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
 
 /**
- * Validates an untrusted value as a {@link WorkspaceDeltaReceipt}. Returns
- * `null` for anything malformed instead of guessing — a malformed receipt must
- * never pass as evidence that the workspace stayed unchanged.
+ * Whether an `indeterminate` receipt may carry a `beforeFingerprint`, keyed by
+ * the capture failure its reason names. A baseline that never completed cannot
+ * have produced a digest, so those reasons forbid one; a post-execution
+ * failure always has the baseline in hand, so it requires one. Only
+ * `git_unavailable` is legitimately either, because git can disappear before
+ * the baseline capture or between the two captures.
+ */
+const INDETERMINATE_BEFORE_FINGERPRINT: Readonly<
+	Record<
+		WorkspaceDeltaIndeterminateReason,
+		"required" | "forbidden" | "optional"
+	>
+> = {
+	not_a_git_worktree: "forbidden",
+	baseline_capture_failed: "forbidden",
+	execution_route_unknown: "forbidden",
+	post_capture_failed: "required",
+	git_unavailable: "optional",
+};
+
+function isFingerprint(value: unknown): value is string {
+	return typeof value === "string" && FINGERPRINT_PATTERN.test(value);
+}
+
+/**
+ * Validates an untrusted value as a {@link WorkspaceDeltaReceipt}, failing
+ * closed unless the receipt's own fields prove the status it declares.
+ *
+ * A well-formed shape is deliberately not enough. This value is the evidence
+ * the planner's coding completion gate acts on, and it arrives inside an
+ * `ActionResult` the runtime does not control, so a receipt that merely
+ * *claims* `unchanged` — with no digests at all, or with two digests that
+ * disagree — would clear a pending mutation without ever establishing a
+ * before/after relationship. Such receipts are rejected here rather than
+ * downgraded, because a caller that cannot tell a proven verdict from an
+ * asserted one has no safe way to use the difference.
+ *
+ * The accepted shapes are exactly the ones the coding-tools producer emits:
+ * `changed`/`unchanged` carry both digests and no reason, with a digest
+ * relationship matching the verdict; `indeterminate` carries a typed reason
+ * and only the digests its particular capture failure could have produced.
  */
 export function parseWorkspaceDeltaReceipt(
 	value: unknown,
@@ -81,39 +128,64 @@ export function parseWorkspaceDeltaReceipt(
 	) {
 		return null;
 	}
-	const reason = candidate.reason;
-	if (reason !== undefined) {
+
+	let beforeFingerprint: string | undefined;
+	if (candidate.beforeFingerprint !== undefined) {
+		if (!isFingerprint(candidate.beforeFingerprint)) return null;
+		beforeFingerprint = candidate.beforeFingerprint;
+	}
+	let afterFingerprint: string | undefined;
+	if (candidate.afterFingerprint !== undefined) {
+		if (!isFingerprint(candidate.afterFingerprint)) return null;
+		afterFingerprint = candidate.afterFingerprint;
+	}
+
+	if (status === "indeterminate") {
+		const reason = candidate.reason;
 		if (
 			typeof reason !== "string" ||
 			!WORKSPACE_DELTA_INDETERMINATE_REASONS.includes(
 				reason as WorkspaceDeltaIndeterminateReason,
-			) ||
-			status !== "indeterminate"
+			)
 		) {
 			return null;
 		}
-	}
-	for (const key of ["beforeFingerprint", "afterFingerprint"] as const) {
-		const digest = candidate[key];
-		if (digest === undefined) continue;
-		if (typeof digest !== "string" || !FINGERPRINT_PATTERN.test(digest)) {
-			return null;
+		// No indeterminate path ever completes the post-execution capture, so an
+		// `afterFingerprint` contradicts the status it is attached to.
+		if (afterFingerprint !== undefined) return null;
+		const rule =
+			INDETERMINATE_BEFORE_FINGERPRINT[
+				reason as WorkspaceDeltaIndeterminateReason
+			];
+		if (rule === "required" && beforeFingerprint === undefined) return null;
+		if (rule === "forbidden" && beforeFingerprint !== undefined) return null;
+		const receipt: WorkspaceDeltaReceipt = {
+			version: WORKSPACE_DELTA_RECEIPT_VERSION,
+			status: "indeterminate",
+			reason: reason as WorkspaceDeltaIndeterminateReason,
+		};
+		if (beforeFingerprint !== undefined) {
+			receipt.beforeFingerprint = beforeFingerprint;
 		}
+		return receipt;
 	}
-	const receipt: WorkspaceDeltaReceipt = {
+
+	// `changed` and `unchanged` are claims about a completed before/after pair:
+	// both digests must be present, a reason would contradict the status, and
+	// the digest relationship must be the one the verdict asserts.
+	if (candidate.reason !== undefined) return null;
+	if (beforeFingerprint === undefined || afterFingerprint === undefined) {
+		return null;
+	}
+	if ((beforeFingerprint === afterFingerprint) !== (status === "unchanged")) {
+		return null;
+	}
+	return {
 		version: WORKSPACE_DELTA_RECEIPT_VERSION,
 		status: status as WorkspaceDeltaStatus,
+		beforeFingerprint,
+		afterFingerprint,
 	};
-	if (reason !== undefined) {
-		receipt.reason = reason as WorkspaceDeltaIndeterminateReason;
-	}
-	if (typeof candidate.beforeFingerprint === "string") {
-		receipt.beforeFingerprint = candidate.beforeFingerprint;
-	}
-	if (typeof candidate.afterFingerprint === "string") {
-		receipt.afterFingerprint = candidate.afterFingerprint;
-	}
-	return receipt;
 }
 
 /**

@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { parseWorkspaceDeltaReceipt } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   captureWorkspaceBaseline,
@@ -182,5 +183,56 @@ describe("workspace-delta receipt (real git)", () => {
       status: "indeterminate",
       reason: "execution_route_unknown",
     });
+  });
+
+  it("emits only receipts the core parser accepts", async () => {
+    // The parser is a trust boundary that rejects any receipt whose fields do
+    // not prove its status. This pins the producer to that contract from the
+    // other side: if a capture path ever emits a shape the parser refuses,
+    // the planner would silently stop seeing real evidence.
+    const unchangedBaseline = await captureWorkspaceBaseline(repo);
+    const unchanged = await resolveWorkspaceDeltaReceipt(
+      unchangedBaseline,
+      repo,
+    );
+    expect(unchanged.status).toBe("unchanged");
+
+    const changedBaseline = await captureWorkspaceBaseline(repo);
+    await fs.writeFile(path.join(repo, "untracked.txt"), "new\n");
+    const changed = await resolveWorkspaceDeltaReceipt(changedBaseline, repo);
+    expect(changed.status).toBe("changed");
+
+    const plain = mkdtempSync(path.join(tmpdir(), "workspace-delta-parse-"));
+    const notAWorktree = await resolveWorkspaceDeltaReceipt(
+      await captureWorkspaceBaseline(plain),
+      plain,
+    );
+    expect(notAWorktree.reason).toBe("not_a_git_worktree");
+
+    const gone = mkdtempSync(
+      path.join(tmpdir(), "workspace-delta-parse-gone-"),
+    );
+    await initRepo(gone);
+    await fs.writeFile(path.join(gone, "a.txt"), "a\n");
+    await git(gone, "add", "a.txt");
+    await git(gone, "commit", "-m", "initial");
+    const goneBaseline = await captureWorkspaceBaseline(gone);
+    rmSync(gone, { recursive: true, force: true });
+    const postFailure = await resolveWorkspaceDeltaReceipt(goneBaseline, gone);
+    expect(postFailure.reason).toBe("post_capture_failed");
+
+    try {
+      for (const receipt of [
+        unchanged,
+        changed,
+        notAWorktree,
+        postFailure,
+        unknownExecutionRouteReceipt(),
+      ]) {
+        expect(parseWorkspaceDeltaReceipt(receipt)).toEqual(receipt);
+      }
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
   });
 });

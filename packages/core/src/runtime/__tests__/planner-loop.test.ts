@@ -1036,14 +1036,32 @@ describe("v5 planner loop skeleton", () => {
 	});
 
 	describe("workspace delta receipts", () => {
+		// The parser rejects any receipt whose own fields do not prove its
+		// status, so these fixtures carry a real before/after relationship
+		// rather than a bare status claim: `unchanged` repeats one digest,
+		// `changed` uses two, and an indeterminate reason carries only the
+		// digest its particular capture failure could have produced.
+		const digestBefore = "a".repeat(64);
+		const digestAfter = "b".repeat(64);
 		const receipt = (
 			status: "changed" | "unchanged" | "indeterminate",
 			reason?: string,
-		) => ({
-			version: 1,
-			status,
-			...(reason ? { reason } : {}),
-		});
+		) =>
+			status === "indeterminate"
+				? {
+						version: 1,
+						status,
+						reason: reason ?? "not_a_git_worktree",
+						...(reason === "post_capture_failed"
+							? { beforeFingerprint: digestBefore }
+							: {}),
+					}
+				: {
+						version: 1,
+						status,
+						beforeFingerprint: digestBefore,
+						afterFingerprint: status === "changed" ? digestAfter : digestBefore,
+					};
 		const codingShellTools = [
 			{ name: "WRITE", description: "Write a file." },
 			{ name: "SHELL", description: "Run a command." },
@@ -1329,6 +1347,127 @@ describe("v5 planner loop skeleton", () => {
 						text: "ok",
 						data: {
 							workspace_delta: receipt("indeterminate", "post_capture_failed"),
+						},
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+				expect(result.finalMessage).toBe("Generated and verified.");
+				expect(continueDeferrals(result)).toHaveLength(1);
+			});
+		});
+
+		it("does not clear pending mutation with a fabricated unchanged receipt", async () => {
+			// A receipt reaches the gate inside an ActionResult the runtime does
+			// not control. A bare `unchanged` claim carries no before/after
+			// relationship at all, so it must fail parsing and leave the pending
+			// mutation exactly as unproven as a receipt-less result would.
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(
+							shellCall("mutate-1", "echo generated > out.txt"),
+						)
+						.mockResolvedValueOnce(shellCall("verify-forged", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-early", "Generated the file."),
+						)
+						.mockResolvedValueOnce(shellCall("verify-clean", "go vet ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Generated and verified."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("changed") },
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						// Semantically impossible: claims the workspace is unchanged
+						// while proving nothing about it.
+						data: { workspace_delta: { version: 1, status: "unchanged" } },
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+				expect(result.finalMessage).toBe("Generated and verified.");
+				expect(continueDeferrals(result)).toHaveLength(1);
+			});
+		});
+
+		it("does not clear pending mutation with a contradictory unchanged receipt", async () => {
+			// Two different digests cannot attest that the workspace stayed the
+			// same; the contradiction must fail closed rather than be trusted.
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(
+							shellCall("mutate-1", "echo generated > out.txt"),
+						)
+						.mockResolvedValueOnce(
+							shellCall("verify-contradictory", "go test ./..."),
+						)
+						.mockResolvedValueOnce(
+							codingReply("reply-early", "Generated the file."),
+						)
+						.mockResolvedValueOnce(shellCall("verify-clean", "go vet ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Generated and verified."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("changed") },
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: {
+							workspace_delta: {
+								version: 1,
+								status: "unchanged",
+								beforeFingerprint: digestBefore,
+								afterFingerprint: digestAfter,
+							},
 						},
 					})
 					.mockResolvedValueOnce({
