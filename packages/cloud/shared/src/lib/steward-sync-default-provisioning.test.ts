@@ -2,9 +2,9 @@
  * Deterministic coverage for direct-signup post-commit provisioning.
  *
  * Worker callers return only after the canonical user, organization, identity,
- * and required default API key are ready. waitUntil owns only the independently
- * self-healing default-character and Steward-tenant tail; non-Worker callers
- * retain the strict inline ordering for every provisioning resource.
+ * required default API key, and an optional caller barrier are ready. waitUntil
+ * owns only the independently self-healing default-character and Steward-tenant
+ * tail; non-Worker callers retain strict inline provisioning without a barrier.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -33,6 +33,8 @@ let tenantProvision = deferred<{ tenantId: string }>();
 let apiKeyProvisionStarted = false;
 let characterProvisionStarted = false;
 let tenantProvisionStarted = false;
+let welcomeEmailStarted = false;
+let discordLogStarted = false;
 let finalIdentityReadCompleted = false;
 const loggerErrors: Array<{ message: string; context?: unknown }> = [];
 const loggerInfos: Array<{ message: string; context?: unknown }> = [];
@@ -134,10 +136,18 @@ mock.module("./services/steward-tenant-config", () => ({
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
 mock.module("./services/discord", () => ({
-  discordService: { logUserSignup: async () => undefined },
+  discordService: {
+    logUserSignup: async () => {
+      discordLogStarted = true;
+    },
+  },
 }));
 mock.module("./services/email", () => ({
-  emailService: { sendWelcomeEmail: async () => undefined },
+  emailService: {
+    sendWelcomeEmail: async () => {
+      welcomeEmailStarted = true;
+    },
+  },
 }));
 mock.module("./utils/logger", () => ({
   logger: {
@@ -177,19 +187,28 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
     apiKeyProvisionStarted = false;
     characterProvisionStarted = false;
     tenantProvisionStarted = false;
+    welcomeEmailStarted = false;
+    discordLogStarted = false;
     finalIdentityReadCompleted = false;
     loggerErrors.length = 0;
     loggerInfos.length = 0;
     loggerWarnings.length = 0;
   });
 
-  test("Worker waits for the required API key, then hands one concurrent safe tail to waitUntil", async () => {
+  test("Worker orders key, caller barrier, safe tail, then best-effort notifications", async () => {
     const background: Promise<unknown>[] = [];
+    const callerBarrier = deferred<void>();
+    let callerBarrierStarted = false;
 
     const syncPromise = syncUserFromSteward({
       ...baseParams,
       executionCtx: {
         waitUntil: (promise) => background.push(promise),
+      },
+      afterRequiredSignupProvisioning: async (user) => {
+        expect(user.id).toBe("user-new-1");
+        callerBarrierStarted = true;
+        await callerBarrier.promise;
       },
     });
     await waitFor(() => apiKeyProvisionStarted);
@@ -198,14 +217,27 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
     expect(background).toHaveLength(0);
     expect(characterProvisionStarted).toBe(false);
     expect(tenantProvisionStarted).toBe(false);
+    expect(callerBarrierStarted).toBe(false);
+    expect(welcomeEmailStarted).toBe(false);
+    expect(discordLogStarted).toBe(false);
 
     apiKeyProvision.resolve();
+    await waitFor(() => callerBarrierStarted);
+    expect(background).toHaveLength(0);
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
+    expect(welcomeEmailStarted).toBe(false);
+    expect(discordLogStarted).toBe(false);
+
+    callerBarrier.resolve();
     const user = await syncPromise;
 
     expect(user.id).toBe("user-new-1");
     expect(user.postCommitProvisioningDeferred).toBe(true);
     expect(background).toHaveLength(1);
     await waitFor(() => characterProvisionStarted && tenantProvisionStarted);
+    expect(welcomeEmailStarted).toBe(true);
+    expect(discordLogStarted).toBe(true);
 
     characterProvision.resolve({ id: "char-1" });
     tenantProvision.resolve({ tenantId: "elizacloud-org-new-1" });

@@ -260,6 +260,12 @@ export interface StewardSyncParams {
   sharedRuntimeConversationNamespace?: RuntimeDurableObjectNamespace;
   /** Worker lifetime for direct-new-user post-commit provisioning. */
   executionCtx?: StewardSyncExecutionContext;
+  /**
+   * Optional direct-signup barrier invoked after required API-key readiness
+   * and before independently recoverable onboarding work starts. The caller
+   * owns its error policy; returning-user and account-link paths never run it.
+   */
+  afterRequiredSignupProvisioning?: (user: UserWithOrganization) => Promise<void>;
 }
 
 type DirectSignupProvisioningOperation = {
@@ -290,14 +296,20 @@ async function provisionDirectSignupResources(input: {
   userId: string;
   organizationId: string;
   executionCtx?: StewardSyncExecutionContext;
+  afterRequiredSignupProvisioning?: () => Promise<void>;
 }): Promise<void> {
-  const { userId, organizationId, executionCtx } = input;
+  const { userId, organizationId, executionCtx, afterRequiredSignupProvisioning } = input;
 
   // A default API key is required account readiness, and no durable outbox or
   // restart-safe reconciler owns it. Keep this strict and on the response path
   // for Worker and non-Worker callers alike. The route can therefore prime its
   // verified session cache only after required key readiness has succeeded.
   await apiKeysService.provisionDefaultApiKey(userId, organizationId);
+
+  // The Cloud auth boundary uses this barrier to prime the verified session
+  // projection before optional character/tenant subrequests begin. Keeping the
+  // hook here makes that ordering explicit without weakening API-key readiness.
+  await afterRequiredSignupProvisioning?.();
 
   if (!executionCtx) {
     // Preserve the non-Worker contract: character and tenant provisioning keep
@@ -1213,7 +1225,29 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     throw new Error(`Failed to fetch newly created Steward user ${stewardUserId}`);
   }
 
-  // Send welcome email (fire-and-forget)
+  // Identity is committed above, but the default API key remains required
+  // readiness and is awaited strictly before this function can return. Only
+  // the default character and Steward tenant have proven deterministic repair
+  // paths, so Workers may keep those two concurrent operations alive through
+  // waitUntil. Tests and non-Worker callers retain the prior inline ordering.
+  const newOrganizationId = userWithOrg.organization?.id;
+  if (!newOrganizationId) {
+    throw new Error(`New Steward user ${userWithOrg.id} is missing its organization`);
+  }
+  const afterRequiredSignupProvisioning = params.afterRequiredSignupProvisioning;
+  await provisionDirectSignupResources({
+    userId: userWithOrg.id,
+    organizationId: newOrganizationId,
+    executionCtx: params.executionCtx,
+    afterRequiredSignupProvisioning: afterRequiredSignupProvisioning
+      ? () => afterRequiredSignupProvisioning(userWithOrg)
+      : undefined,
+  });
+
+  // Start best-effort notifications only after required key readiness, the
+  // caller's session-cache barrier, and waitUntil registration have completed.
+  // This keeps external notification subrequests from contending with the
+  // first authorization projection write.
   const recipientEmail = email || userWithOrg.organization?.billing_email;
   if (recipientEmail) {
     queueWelcomeEmail({
@@ -1231,7 +1265,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     });
   }
 
-  // Log to Discord (fire-and-forget)
   discordService
     .logUserSignup({
       userId: userWithOrg.id,
@@ -1247,21 +1280,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     .catch((error) => {
       logger.error("[StewardSync] Discord signup log failed:", { error });
     });
-
-  // Identity is committed above, but the default API key remains required
-  // readiness and is awaited strictly before this function can return. Only
-  // the default character and Steward tenant have proven deterministic repair
-  // paths, so Workers may keep those two concurrent operations alive through
-  // waitUntil. Tests and non-Worker callers retain the prior inline ordering.
-  const newOrganizationId = userWithOrg.organization?.id;
-  if (!newOrganizationId) {
-    throw new Error(`New Steward user ${userWithOrg.id} is missing its organization`);
-  }
-  await provisionDirectSignupResources({
-    userId: userWithOrg.id,
-    organizationId: newOrganizationId,
-    executionCtx: params.executionCtx,
-  });
 
   return {
     ...userWithOrg,
