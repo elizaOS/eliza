@@ -13,7 +13,28 @@ function safeSort(nodes: { createdAtMs: number; id: string }[]) {
 }
 
 describe("backup-diff safe-sort", () => {
-  it("sorts descending", () => { expect(safeSort([{createdAtMs:1,id:"a"},{createdAtMs:2,id:"b"}])[0].id).toBe("b"); });
-  it("NaN fallback", () => { expect(safeSort([{createdAtMs:NaN,id:"a"},{createdAtMs:1,id:"b"}])[0].id).toBe("b"); });
-  it("tiebreak", () => { expect(safeSort([{createdAtMs:1,id:"b"},{createdAtMs:1,id:"a"}])[0].id).toBe("a"); });
+  it("sorts descending", () => {
+    expect(
+      safeSort([
+        { createdAtMs: 1, id: "a" },
+        { createdAtMs: 2, id: "b" },
+      ])[0].id,
+    ).toBe("b");
+  });
+  it("NaN fallback", () => {
+    expect(
+      safeSort([
+        { createdAtMs: NaN, id: "a" },
+        { createdAtMs: 1, id: "b" },
+      ])[0].id,
+    ).toBe("b");
+  });
+  it("tiebreak", () => {
+    expect(
+      safeSort([
+        { createdAtMs: 1, id: "b" },
+        { createdAtMs: 1, id: "a" },
+      ])[0].id,
+    ).toBe("a");
+  });
 });

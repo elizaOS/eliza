@@ -9,6 +9,7 @@
  * with credentials stored in the secrets service.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import crypto from "crypto";
 import { timingSafeEqualSecret } from "../../auth/cron";
 import { cache } from "../../cache/client";
@@ -19,7 +20,6 @@ import {
   WHATSAPP_PHONE_NUMBER_ID,
   WHATSAPP_VERIFY_TOKEN,
 } from "../../constants/secrets";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "../../utils/logger";
 import {
   sendWhatsAppMessage,
