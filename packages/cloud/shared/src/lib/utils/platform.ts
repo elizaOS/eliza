@@ -99,11 +99,29 @@ export function getSafeAreaInsets(): {
   const computedStyle = getComputedStyle(document.documentElement);
 
   return {
-    top: parseInt(computedStyle.getPropertyValue("--sat") || "0", 10),
-    right: parseInt(computedStyle.getPropertyValue("--sar") || "0", 10),
-    bottom: parseInt(computedStyle.getPropertyValue("--sab") || "0", 10),
-    left: parseInt(computedStyle.getPropertyValue("--sal") || "0", 10),
+    top: readInsetPx(computedStyle, "--sat"),
+    right: readInsetPx(computedStyle, "--sar"),
+    bottom: readInsetPx(computedStyle, "--sab"),
+    left: readInsetPx(computedStyle, "--sal"),
   };
+}
+
+/**
+ * One safe-area edge as a usable pixel count.
+ *
+ * `parseInt` returns NaN for any custom property it cannot read as a leading
+ * number, and these variables are conventionally declared as
+ * `--sat: env(safe-area-inset-top)` — a token stream `parseInt` cannot parse.
+ * `calc(...)`, `auto`, and an unset property behave the same way. Callers do
+ * layout arithmetic with these values, so one NaN edge silently poisons every
+ * offset derived from it. A negative inset is equally unusable: an inset is
+ * physical padding, and a negative one would shrink the layout instead of
+ * protecting it. Both collapse to 0, which is what the previous `|| "0"`
+ * default already meant for the unset case.
+ */
+function readInsetPx(computedStyle: CSSStyleDeclaration, name: string): number {
+  const parsed = Number.parseInt(computedStyle.getPropertyValue(name), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 /**
