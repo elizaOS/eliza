@@ -473,17 +473,15 @@ export class SqlMembershipService extends MembershipService {
     });
   }
 
-  private invalidateScope(scope: MembershipScope, receipt: MembershipMutationReceipt): boolean {
+  private invalidateScope(scope: MembershipScope, receipt: MembershipMutationReceipt): void {
     const prefix = `${scopeKey(scope)}\n`;
     for (const key of this.decisionCache.keys()) {
       if (key.startsWith(prefix)) this.decisionCache.delete(key);
     }
-    let succeeded = true;
     for (const invalidator of this.invalidators) {
       try {
         invalidator(scope, receipt);
       } catch (error) {
-        succeeded = false;
         // error-policy:J7 cache-invalidation diagnostics must not fabricate a rollback after commit.
         this.runtime.reportError("membership-authority-invalidator", error, {
           operation: receipt.operation,
@@ -491,7 +489,6 @@ export class SqlMembershipService extends MembershipService {
         });
       }
     }
-    return succeeded;
   }
 
   private async notify(scope: MembershipScope, receipt: MembershipMutationReceipt): Promise<void> {
@@ -582,8 +579,8 @@ export class SqlMembershipService extends MembershipService {
       return result;
     });
     if (!receipt.idempotentReplay) {
-      const invalidated = this.invalidateScope(command, receipt);
-      if (invalidated) await this.notify(command, receipt);
+      this.invalidateScope(command, receipt);
+      await this.notify(command, receipt);
     }
     return receipt;
   }
@@ -618,8 +615,8 @@ export class SqlMembershipService extends MembershipService {
       return result;
     });
     if (!receipt.idempotentReplay) {
-      const invalidated = this.invalidateScope(command, receipt);
-      if (invalidated) await this.notify(command, receipt);
+      this.invalidateScope(command, receipt);
+      await this.notify(command, receipt);
     }
     return receipt;
   }

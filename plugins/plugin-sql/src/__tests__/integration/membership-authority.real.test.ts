@@ -169,6 +169,46 @@ describe("SqlMembershipService real authority", () => {
     await expect(apply("revoked", "left", 2, 3, "join-once")).rejects.toMatchObject({
       code: "MEMBERSHIP_IDEMPOTENCY_CONFLICT",
     });
+
+    const restarted = new SqlMembershipService(runtime);
+    await expect(restarted.authorize(scope, principalId)).resolves.toMatchObject({
+      decision: "allowed",
+      generation: 2,
+    });
+    await expect(
+      restarted.applyMembership({
+        ...scope,
+        canonicalPrincipalId: principalId,
+        state: "active",
+        reason: "joined",
+        roles: ["member"],
+        permissionSnapshot: { canRead: true },
+        runtime: { worldId: null, roomId: null, entityId: principalId },
+        expectedGeneration: 1,
+        sourceVersion: 2,
+        sourceCursor: "cursor-2",
+        idempotencyKey: "join-once",
+        observedAt: new Date(1_700_000_000_002).toISOString(),
+      })
+    ).resolves.toEqual(replay);
+    await restarted.stop();
+  });
+
+  it("invalidates a warm allow decision when reconciliation becomes stale", async () => {
+    await setHealth("current", 0, 1);
+    await apply("active", "joined", 1, 2);
+    await expect(service.authorize(scope, principalId)).resolves.toMatchObject({
+      decision: "allowed",
+      generation: 2,
+    });
+
+    await setHealth("stale", 2, 3);
+    await expect(service.authorize(scope, principalId)).resolves.toMatchObject({
+      decision: "denied",
+      reason: "authority_stale",
+      health: "stale",
+      generation: 3,
+    });
   });
 
   it("commits denial and invalidates a warm allow cache before observers run", async () => {
@@ -208,6 +248,38 @@ describe("SqlMembershipService real authority", () => {
       reason: "membership_revoked",
       generation: 3,
     });
+  });
+
+  it("reports a failed invalidator after commit without suppressing later invalidators or observers", async () => {
+    await setHealth("current", 0, 1);
+    await apply("active", "joined", 1, 2);
+    await expect(service.authorize(scope, principalId)).resolves.toMatchObject({
+      decision: "allowed",
+    });
+
+    const order: string[] = [];
+    service.registerInvalidator(() => {
+      order.push("failed-invalidator");
+      throw new Error("test invalidator failure");
+    });
+    service.registerInvalidator(() => {
+      order.push("later-invalidator");
+    });
+    runtime.registerEvent(EventType.MEMBERSHIP_AUTHORITY_CHANGED, async (event) => {
+      if (event.receipt.committedGeneration !== 3) return;
+      order.push("observer");
+      await expect(service.authorize(scope, principalId)).resolves.toMatchObject({
+        decision: "denied",
+        reason: "membership_revoked",
+        generation: 3,
+      });
+    });
+
+    await expect(apply("revoked", "left", 2, 3)).resolves.toMatchObject({
+      committedGeneration: 3,
+      membership: { state: "revoked" },
+    });
+    expect(order).toEqual(["failed-invalidator", "later-invalidator", "observer"]);
   });
 
   it("prevents duplicate, stale, and out-of-order evidence from resurrecting a revocation", async () => {
@@ -267,5 +339,53 @@ describe("SqlMembershipService real authority", () => {
     await expect(apply("active", "joined", 1, 2)).rejects.toMatchObject({
       code: "MEMBERSHIP_PRINCIPAL_NOT_FOUND",
     });
+  });
+
+  it("isolates identical external scope and idempotency values by connector account", async () => {
+    const secondAccountId = crypto.randomUUID() as UUID;
+    await db.insert(connectorAccountsTable).values({
+      id: secondAccountId,
+      agentId,
+      provider: "test-connector",
+      accountKey: `account-${secondAccountId}`,
+    });
+    const secondScope = { ...scope, connectorAccountId: secondAccountId };
+    const observedAt = new Date(1_700_000_000_001).toISOString();
+    await service.setScopeHealth({
+      ...scope,
+      health: "current",
+      reason: "current-by-test",
+      expectedGeneration: 0,
+      sourceVersion: 1,
+      sourceCursor: "cursor-1",
+      idempotencyKey: "shared-health-key",
+      observedAt,
+    });
+    await service.setScopeHealth({
+      ...secondScope,
+      health: "current",
+      reason: "current-by-test",
+      expectedGeneration: 0,
+      sourceVersion: 1,
+      sourceCursor: "cursor-1",
+      idempotencyKey: "shared-health-key",
+      observedAt,
+    });
+
+    await expect(service.getScopeHealth(scope)).resolves.toMatchObject({
+      connectorAccountId: accountId,
+      generation: 1,
+    });
+    await expect(service.getScopeHealth(secondScope)).resolves.toMatchObject({
+      connectorAccountId: secondAccountId,
+      generation: 1,
+    });
+    const journalRows = await db
+      .select()
+      .from(membershipAuthorityJournalTable)
+      .where(eq(membershipAuthorityJournalTable.idempotencyKey, "shared-health-key"));
+    expect(journalRows.map((row) => row.connectorAccountId).sort()).toEqual(
+      [accountId, secondAccountId].sort()
+    );
   });
 });
