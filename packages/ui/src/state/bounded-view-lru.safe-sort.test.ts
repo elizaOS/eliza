@@ -1,76 +1,89 @@
 /**
- * Verifies safe sorting in bounded view LRU eviction planner and UI state helpers when timestamps contain NaN or Infinity.
+ * Regression coverage for the bounded-view LRU and module-cache eviction
+ * planners when `lastActiveAt` / `lastUsedAt` carry NaN or non-finite values.
+ * Deterministic, and drives the exported planners directly — no mocks.
  */
 
 import { describe, expect, it } from "vitest";
 import {
-  selectLruEvictions,
-  planModuleCacheEvictions,
   type ModuleCacheEntryLike,
+  planModuleCacheEvictions,
+  selectLruEvictions,
 } from "./bounded-view-lru.js";
-import {
-  listPendingChatTurns,
-  savePendingChatTurn,
-  clearSettledPendingChatTurns,
-} from "./pending-chat-turns.js";
 
-describe("bounded-view-lru safe sort", () => {
-  it("safely plans retained view evictions when lastActiveAt contains NaN or non-finite numbers", () => {
-    const retainedIds = ["view-a", "view-b", "view-c", "view-d"];
+describe("selectLruEvictions with non-finite lastActiveAt", () => {
+  it("treats NaN and Infinity timestamps as oldest instead of poisoning the sort", () => {
+    const retainedIds = ["view-a", "view-b", "view-c", "view-d", "view-e"];
     const exempt = new Set<string>(["view-a"]);
     const lastActiveAt = new Map<string, number>([
-      ["view-b", NaN],
+      ["view-b", Number.NaN],
       ["view-c", 1000],
       ["view-d", 2000],
+      ["view-e", Number.POSITIVE_INFINITY],
     ]);
 
-    // Cap at 1 evictable view -> should evict 2 oldest eligible views
-    const evictions = selectLruEvictions(retainedIds, lastActiveAt, 1, exempt);
-    expect(evictions).toHaveLength(2);
-    // NaN falls back to 0, which is oldest -> view-b is evicted first
-    expect(evictions[0]).toBe("view-b");
-    expect(evictions[1]).toBe("view-c");
+    const evictions = selectLruEvictions(retainedIds, lastActiveAt, 2, exempt);
+
+    // Both non-finite timestamps collapse to 0, then tie-break by id.
+    expect(evictions).toEqual(["view-b", "view-e"]);
   });
 
-  it("safely plans module cache evictions when lastUsedAt contains NaN", () => {
-    interface TestEntry extends ModuleCacheEntryLike {
-      id: string;
-    }
+  it("keeps an Infinity timestamp from masquerading as the most recent view", () => {
+    const evictions = selectLruEvictions(
+      ["stale", "fresh"],
+      new Map<string, number>([
+        ["stale", Number.POSITIVE_INFINITY],
+        ["fresh", 5000],
+      ]),
+      1,
+      new Set<string>(),
+    );
 
+    expect(evictions).toEqual(["stale"]);
+  });
+});
+
+describe("planModuleCacheEvictions with non-finite lastUsedAt", () => {
+  interface TestEntry extends ModuleCacheEntryLike {
+    id: string;
+  }
+
+  it("TTL-evicts an idle entry whose lastUsedAt is NaN", () => {
     const entries: TestEntry[] = [
-      { id: "mod-1", refCount: 0, lastUsedAt: NaN },
-      { id: "mod-2", refCount: 0, lastUsedAt: 5000 },
-      { id: "mod-3", refCount: 1, lastUsedAt: 1000 },
+      { id: "mod-nan", refCount: 0, lastUsedAt: Number.NaN },
+      { id: "mod-fresh", refCount: 0, lastUsedAt: 9500 },
+      { id: "mod-active", refCount: 1, lastUsedAt: 1000 },
     ];
 
     const plan = planModuleCacheEvictions(entries, {
-      now: 10000,
+      now: 10_000,
       ttlMs: 3000,
       maxEntries: 10,
       force: false,
-      totalSize: 3,
+      totalSize: entries.length,
     });
 
-    expect(plan.length).toBeGreaterThan(0);
-    // mod-1 (NaN -> 0, idle > 3000ms) should be evicted under TTL
-    expect(plan.some((p) => (p.entry as TestEntry).id === "mod-1")).toBe(true);
+    expect(
+      plan.map((p) => ({ id: (p.entry as TestEntry).id, phase: p.phase })),
+    ).toEqual([{ id: "mod-nan", phase: "ttl" }]);
   });
 
-  it("safely sorts pending chat turn receipts when sentAt contains NaN or non-finite values", () => {
-    const receipts = [
-      { conversationId: "c1", clientMessageId: "m1", text: "hi", sentAt: 200, restoreAt: 300 },
-      { conversationId: "c1", clientMessageId: "m2", text: "hey", sentAt: NaN, restoreAt: 300 },
-      { conversationId: "c1", clientMessageId: "m3", text: "yo", sentAt: 100, restoreAt: 300 },
+  it("orders a NaN-timestamped entry ahead of live ones in the LRU phase", () => {
+    const entries: TestEntry[] = [
+      { id: "mod-recent", refCount: 0, lastUsedAt: 9900 },
+      { id: "mod-nan", refCount: 0, lastUsedAt: Number.NaN },
     ];
 
-    receipts.sort(
-      (a, b) =>
-        (Number.isFinite(a.sentAt) ? a.sentAt : 0) -
-        (Number.isFinite(b.sentAt) ? b.sentAt : 0),
-    );
+    const plan = planModuleCacheEvictions(entries, {
+      now: 10_000,
+      ttlMs: Number.POSITIVE_INFINITY,
+      maxEntries: 1,
+      force: false,
+      totalSize: entries.length,
+    });
 
-    expect(receipts[0].clientMessageId).toBe("m2"); // NaN -> 0
-    expect(receipts[1].clientMessageId).toBe("m3"); // 100
-    expect(receipts[2].clientMessageId).toBe("m1"); // 200
+    expect(
+      plan.map((p) => ({ id: (p.entry as TestEntry).id, phase: p.phase })),
+    ).toEqual([{ id: "mod-nan", phase: "lru" }]);
   });
 });
