@@ -18,6 +18,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   getSwarmCoordinatorService,
   hasTextGenerationHandler,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
@@ -226,7 +228,7 @@ function describeRuntimeServiceOrder(
   );
 }
 
-function serializeForRuntimeDebug(
+export function serializeForRuntimeDebug(
   value: unknown,
   options: RuntimeDebugSerializeOptions,
 ): unknown {
@@ -242,7 +244,7 @@ function serializeForRuntimeDebug(
       return {
         __type: "string",
         length: (current as string).length,
-        preview: `${(current as string).slice(0, options.maxStringLength - 3)}...`,
+        preview: `${truncateWellFormed(toWellFormedUnicode(current as string), Math.max(0, options.maxStringLength - 3))}...`,
         truncated: true,
       };
     }
