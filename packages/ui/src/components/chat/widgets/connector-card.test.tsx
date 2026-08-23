@@ -56,9 +56,24 @@ function pluginInfo(overrides: Partial<PluginInfo> = {}): PluginInfo {
 }
 
 describe("ConnectorCardWidget", () => {
-  it("keeps the production security note aligned with the transport contract", () => {
+  it("keeps production status copy aligned with the connector contract", () => {
     expect(en["connectorcard.StorageNote"]).toBe(
       "Sent directly to the agent — never posted to chat.",
+    );
+    expect(en["connectorcard.AuthorizeRejected"]).toBe(
+      "The connector could not start authorization.",
+    );
+    expect(en["connectorcard.SecretSaveRejected"]).toBe(
+      "The token could not be saved. Try again.",
+    );
+    expect(en["connectorcard.SecretSaveUnconfirmed"]).toBe(
+      "The agent did not confirm saving every required token. Try again.",
+    );
+    expect(en["connectorcard.EnableRejectedAfterSave"]).toBe(
+      "The token was saved, but the connector could not be enabled{{detail}}",
+    );
+    expect(en["connectorcard.RefreshFailedAfterSave"]).toBe(
+      "Connected, but the connector list could not be refreshed.",
     );
   });
 
@@ -203,6 +218,28 @@ describe("ConnectorCardWidget", () => {
     expect(openSpy).not.toHaveBeenCalled();
     expect(clientMock.getPlugins).toHaveBeenCalledTimes(1);
     openSpy.mockRestore();
+  });
+
+  it("renders a distinct rejection when OAuth fails without provider detail", async () => {
+    clientMock.getPlugins.mockResolvedValue({
+      plugins: [pluginInfo({ id: "google" })],
+    });
+    modesMock.mockReturnValue([
+      { id: "oauth", label: "OAuth", description: "", kind: "oauth" },
+    ]);
+    clientMock.startConnectorAccountOAuth.mockResolvedValue({ ok: false });
+
+    render(<ConnectorCardWidget pluginId="google" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("connector-card-authorize")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("connector-card-authorize"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("connector-card").textContent).toContain(
+        "The connector could not start authorization.",
+      );
+    });
   });
 
   it("shows Add token for a token connector and saves through updateSecrets without echoing the value", async () => {
@@ -396,6 +433,49 @@ describe("ConnectorCardWidget", () => {
     expect(
       (screen.getByLabelText("SLACK_BOT_TOKEN") as HTMLInputElement).value,
     ).toBe(rawToken);
+  });
+
+  it("keeps the connected state and reports a failed list refresh", async () => {
+    clientMock.getPlugins.mockResolvedValue({
+      plugins: [
+        pluginInfo({
+          parameters: [
+            {
+              key: "SLACK_BOT_TOKEN",
+              type: "string",
+              description: "Bot token",
+              required: true,
+              sensitive: true,
+              currentValue: null,
+              isSet: false,
+            },
+          ],
+        }),
+      ],
+    });
+    clientMock.updateSecrets.mockResolvedValue({
+      ok: true,
+      updated: ["SLACK_BOT_TOKEN"],
+    });
+    clientMock.updatePlugin.mockResolvedValue({ ok: true });
+    loadPluginsMock.mockRejectedValue(new Error("refresh unavailable"));
+
+    render(<ConnectorCardWidget pluginId="slack" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("connector-card-add-token")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("connector-card-add-token"));
+    fireEvent.change(screen.getByLabelText("SLACK_BOT_TOKEN"), {
+      target: { value: "xoxb-refresh-failed" },
+    });
+    fireEvent.click(screen.getByTestId("connector-card-token-submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("connector-card").textContent).toContain(
+        "Connected, but the connector list could not be refreshed.",
+      );
+    });
+    expect(screen.getByTestId("connector-card-connected")).toBeTruthy();
   });
 
   it("renders a passive Connected state for an already-connected connector", async () => {
