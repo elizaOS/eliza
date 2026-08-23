@@ -13,6 +13,7 @@ import {
   AgentRuntime,
   basicProviders,
   basicServices,
+  ChannelType,
   CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
   ElizaError,
@@ -57,6 +58,7 @@ import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-ru
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
+import { withGroupTurnNamingRule } from "./group-participant-labels";
 import type {
   RunSharedAgentTurnInput,
   RunSharedAgentTurnResult,
@@ -763,13 +765,20 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const preflightWebSearchResult = input.preflightActionResults?.find(
     (result) => result.data?.actionName === "WEB_SEARCH",
   );
+  // A group turn labels each speaker `Participant <n>` (see
+  // `group-participant-labels.ts`). That is a slot, not a name, so the model
+  // needs one line telling it where real names come from; scoping it to the
+  // channel type keeps every direct turn's prompt byte-identical.
+  const isGroupTurn = input.execution.channel.type === ChannelType.GROUP;
   const runtime = createRuntime({
     agentKey: input.agentKey,
     agentId,
     actionsEnabled,
     webSearchEnabled,
     adapter,
-    character: input.character,
+    character: isGroupTurn
+      ? { ...input.character, system: withGroupTurnNamingRule(input.character.system) }
+      : input.character,
     modelPlugin,
     ...(preflightWebSearchResult
       ? {
