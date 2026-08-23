@@ -65,6 +65,13 @@ owner, no transaction starts. Offline recovery must additionally verify the
 reported owner token/inode, remove both the exact marker and owner paths, fsync
 the parent directory, and restart. Owner-candidate cleanup failure is likewise
 typed as pre-mutation and safely detaches its published owner when possible.
+After the state temp is renamed, a parent-directory sync failure reports
+`INTERACTION_STORE_COMMIT_AMBIGUOUS` with `committed: "unknown"`; a close
+failure after successful sync uses the same code with `committed: true`.
+Both are non-retryable and require reading the reported state file to reconcile
+the persisted session outcome. If lock unlink and transition cleanup both fail,
+the committed cleanup error retains the unlink cause, cleanup error, marker,
+lock identity/token, and exact offline recovery authority.
 
 The file authority durably commits an effect before dispatch. If the process
 dies after that commit but before retaining the receipt, the session remains

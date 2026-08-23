@@ -443,6 +443,79 @@ describe("FileMessageInteractionSessionStore", () => {
     });
   });
 
+  it("marks a visible post-rename sync failure as an ambiguous commit", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { store, created, now } = await seed(stateDirectory);
+    await store.claimIfCurrent({
+      ...bindings,
+      reference: created.session.reference,
+      replayKey: "replay-sync-failure",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+      claimTtlMs: 30_000,
+    });
+    const failing = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeStateDirectorySync: async () => {
+          throw new Error("simulated directory sync failure");
+        },
+      },
+    });
+    await expect(
+      failing.commitIfClaimed({
+        reference: created.session.reference,
+        replayKey: "replay-sync-failure",
+        claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        now,
+      }),
+    ).rejects.toMatchObject({
+      code: "INTERACTION_STORE_COMMIT_AMBIGUOUS",
+      context: {
+        committed: "unknown",
+        reconciliationRequired: true,
+        retrySafe: false,
+      },
+    });
+    const reopened = new FileMessageInteractionSessionStore({ stateDirectory });
+    await expect(
+      reopened.get(created.session.reference),
+    ).resolves.toMatchObject({
+      consume: {
+        state: "committed",
+        replayKey: "replay-sync-failure",
+      },
+    });
+  });
+
+  it("marks post-sync directory close failure as committed and non-retryable", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { created, now } = await seed(stateDirectory);
+    const reference = "abcdefabcdefabcdefabcdefabcdefab";
+    const failing = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        afterStateDirectoryClose: async () => {
+          throw new Error("simulated directory close failure");
+        },
+      },
+    });
+    await expect(
+      failing.create({ ...created.session, reference }),
+    ).rejects.toMatchObject({
+      code: "INTERACTION_STORE_COMMIT_AMBIGUOUS",
+      context: {
+        committed: true,
+        reconciliationRequired: true,
+        retrySafe: false,
+      },
+    });
+    const reopened = new FileMessageInteractionSessionStore({ stateDirectory });
+    await expect(reopened.get(reference)).resolves.toMatchObject({ reference });
+  });
+
   it("fails fast on corruption instead of fabricating an empty store", async () => {
     const stateDirectory = await temporaryDirectory();
     const filePath = path.join(
@@ -947,6 +1020,44 @@ describe("FileMessageInteractionSessionStore", () => {
     await expect(fs.lstat(`${lockPath}.transition`)).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("preserves lock unlink and marker cleanup failures together", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeLockUnlink: async () => {
+          throw new Error("primary lock unlink failure");
+        },
+        beforeTransitionAbortCleanup: async () => {
+          throw new Error("secondary marker cleanup failure");
+        },
+      },
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED",
+      context: {
+        cleanupError: "secondary marker cleanup failure",
+        committed: true,
+        lockIdentity: expect.any(String),
+        lockPath,
+        markerPath: `${lockPath}.transition`,
+        ownerToken: expect.any(String),
+        recovery:
+          "Stop all store users, verify lockPath still has lockIdentity and ownerToken when reported, remove markerPath and lockPath, fsync their parent directory, then restart.",
+        releaseErrorCode: "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
+        retrySafeAfterRecovery: false,
+      },
+    });
+    expect(await fs.lstat(lockPath)).toBeDefined();
+    expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();
   });
 
   it("marks stale-recovery cleanup failure as uncommitted and retryable after recovery", async () => {

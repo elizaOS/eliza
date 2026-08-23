@@ -138,6 +138,11 @@ the structured release code and recovery context. A publisher that finds a
 transition marker after linking its owner performs no mutation and reports both
 paths plus the owner token/inode: offline recovery must remove the verified
 marker and owner while all users are stopped, fsync the parent, then restart.
+Post-rename directory sync or close failures are non-retryable commit outcomes:
+the former reports `committed: "unknown"`, while a failure after successful
+sync reports `committed: true`; callers reconcile by reading the persisted
+session rather than repeating the transition. Dual lock-unlink/marker-cleanup
+failure preserves both errors and the exact owner/marker recovery authority.
 Multi-host deployments must implement the
 same store interface with a transactional database and idempotent effect/outbox
 boundary; the JSON store does not claim distributed exactly-once semantics.
