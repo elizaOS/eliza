@@ -53,18 +53,25 @@ try {
   $start.RedirectStandardInput = $true
   $start.RedirectStandardOutput = $true
   $start.RedirectStandardError = $true
-  # Keep the binary native-messaging header at byte zero under Windows
-  # PowerShell 5.1; the default redirected writer emits a UTF-8 BOM.
-  $start.StandardInputEncoding = New-Object System.Text.UTF8Encoding($false)
   $start.EnvironmentVariables["ELIZA_STATE_DIR"] = $stateRoot
   $start.EnvironmentVariables["ELIZA_BROWSER_BRIDGE_CHROME_EXTENSION_IDS"] = $extensionId
   $process = New-Object System.Diagnostics.Process
   $process.StartInfo = $start
-  if (-not $process.Start()) { throw "compiled Windows browser native host did not start" }
+  # Windows PowerShell 5.1 has no ProcessStartInfo.StandardInputEncoding.
+  # Construct StandardInput while Console.InputEncoding is BOM-free so the
+  # binary native-messaging header remains at byte zero.
+  $previousInputEncoding = [Console]::InputEncoding
+  [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
   try {
-    $process.StandardInput.BaseStream.Write($requestHeader, 0, $requestHeader.Length)
-    $process.StandardInput.BaseStream.Write($requestBytes, 0, $requestBytes.Length)
-    $process.StandardInput.BaseStream.Flush()
+    if (-not $process.Start()) { throw "compiled Windows browser native host did not start" }
+    $processInput = $process.StandardInput.BaseStream
+  } finally {
+    [Console]::InputEncoding = $previousInputEncoding
+  }
+  try {
+    $processInput.Write($requestHeader, 0, $requestHeader.Length)
+    $processInput.Write($requestBytes, 0, $requestBytes.Length)
+    $processInput.Flush()
     $process.StandardInput.Close()
     if (-not $process.WaitForExit(15000)) {
       $process.Kill()
