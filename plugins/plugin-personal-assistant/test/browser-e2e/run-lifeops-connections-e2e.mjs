@@ -53,7 +53,7 @@ const bundle = buildResult.output.find(
 )?.code;
 if (!bundle) throw new Error("LifeOps fixture bundle was empty.");
 
-const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--txt:#f7f2eb;--muted:#b8aea2;--bg:#0b0b0b;--card:#171412;--bg-muted:#29231f;--bg-accent:#211c18;--accent:#ff5800;--accent-hover:#c24400;--accent-foreground:#fffaf6;--accent-subtle:#2b170d;--border:#3c332c;--border-strong:#5a4b40;--destructive:#c53b30;--destructive-foreground:#fff8f6;--destructive-subtle:#2e1513;--status-success:#55b982;--status-success-bg:#13271d;--status-warning:#f0a44b;--status-warning-bg:#332514;--status-danger:#ff776d;--status-danger-bg:#321816;--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
+const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LifeOps no-provider acceptance</title><style>:root{color-scheme:dark;--brand-white:#fdfaf7;--brand-black:#000;--txt:var(--brand-white);--muted:rgba(255,255,255,.56);--bg:var(--brand-black);--card:#121212;--bg-muted:rgba(255,255,255,.06);--bg-accent:var(--brand-black);--accent:#ff6a1f;--accent-muted:#c94400;--accent-foreground:var(--brand-black);--accent-subtle:rgba(255,106,31,.14);--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.22);--destructive:#ff6a1f;--destructive-foreground:var(--brand-black);--destructive-subtle:rgba(255,106,31,.12);--status-success:#4ade80;--status-success-bg:rgba(74,222,128,.16);--status-warning:#ff6a1f;--status-warning-bg:rgba(255,106,31,.12);--status-danger:#ff6a1f;--status-danger-bg:rgba(255,106,31,.12);--scrim:rgba(0,0,0,.72)}html,body,#root{width:100%;height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>${bundle}</script></body></html>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
@@ -80,21 +80,26 @@ function assert(condition, message) {
   if (!condition) failures += 1;
 }
 
+function relativeLuminance(color) {
+  const [red, green, blue] = color
+    .match(/[\d.]+/g)
+    .slice(0, 3)
+    .map((value) => Number(value) / 255)
+    .map((value) =>
+      value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
+    );
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
 function contrastRatio(foreground, background) {
-  const channels = (color) =>
-    color
-      .match(/[\d.]+/g)
-      .slice(0, 3)
-      .map((value) => Number(value) / 255)
-      .map((value) =>
-        value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
-      );
-  const luminance = (color) => {
-    const [red, green, blue] = channels(color);
-    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-  };
-  const light = Math.max(luminance(foreground), luminance(background));
-  const dark = Math.min(luminance(foreground), luminance(background));
+  const light = Math.max(
+    relativeLuminance(foreground),
+    relativeLuminance(background),
+  );
+  const dark = Math.min(
+    relativeLuminance(foreground),
+    relativeLuminance(background),
+  );
   return (light + 0.05) / (dark + 0.05);
 }
 
@@ -117,6 +122,47 @@ try {
     contrastRatio(initialColors.foreground, initialColors.background) >= 7,
     "primary text keeps enhanced contrast in the standalone fixture",
   );
+  const primaryButton = desktop.getByRole("button", {
+    name: "Seed selected context",
+  });
+  const primaryRestColors = await primaryButton.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      foreground: style.color,
+      background: style.backgroundColor,
+    };
+  });
+  assert(
+    contrastRatio(primaryRestColors.foreground, primaryRestColors.background) >=
+      4.5,
+    "primary action resting contrast remains WCAG AA",
+  );
+  await primaryButton.hover();
+  const primaryHoverColors = await primaryButton.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      foreground: style.color,
+      background: style.backgroundColor,
+    };
+  });
+  assert(
+    contrastRatio(
+      primaryHoverColors.foreground,
+      primaryHoverColors.background,
+    ) >= 4.5,
+    "primary action hover contrast remains WCAG AA",
+  );
+  assert(
+    relativeLuminance(primaryHoverColors.background) <
+      relativeLuminance(primaryRestColors.background),
+    "primary action hover is darker than its resting orange",
+  );
+  await desktop.screenshot({
+    path: join(outputDir, "desktop-primary-hover.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await desktop.mouse.move(0, 0);
   assert(
     await desktop.getByText(/Some calendar sources failed/).isVisible(),
     "partial source failure is explicit",
