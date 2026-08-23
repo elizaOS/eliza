@@ -351,6 +351,10 @@ describe("FileMessageInteractionSessionStore", () => {
         afterLockPublishBeforeCandidateCleanup: async () => markPublished(),
       },
     }).deleteExpired(now);
+    const creatorError = creator.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await afterCheck.entered;
 
     const recoveryCleanup = barrier();
@@ -364,16 +368,20 @@ describe("FileMessageInteractionSessionStore", () => {
         },
       },
     }).deleteExpired(now);
+    const recovererError = recoverer.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     await recoveryCleanup.entered;
     afterCheck.release();
     await published;
     recoveryCleanup.release();
 
-    await expect(recoverer).rejects.toMatchObject({
+    await expect(recovererError).resolves.toMatchObject({
       code: "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED",
       context: { committed: false },
     });
-    await expect(creator).rejects.toMatchObject({
+    await expect(creatorError).resolves.toMatchObject({
       code: "INTERACTION_STORE_RECOVERY_REQUIRED",
       context: {
         committed: false,
