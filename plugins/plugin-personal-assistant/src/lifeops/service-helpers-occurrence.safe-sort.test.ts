@@ -4,7 +4,10 @@
  * reported streaks do not depend on the caller's incoming array order.
  */
 import { describe, expect, it } from "vitest";
-import type { LifeOpsOccurrence, LifeOpsTaskDefinition } from "../contracts/index.js";
+import type {
+  LifeOpsOccurrence,
+  LifeOpsTaskDefinition,
+} from "../contracts/index.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 
 const definition = {

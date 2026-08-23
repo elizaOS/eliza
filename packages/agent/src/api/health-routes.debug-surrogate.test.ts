@@ -11,7 +11,7 @@ describe("serializeForRuntimeDebug surrogate safety", () => {
     const result = serializeForRuntimeDebug(longString, {
       maxDepth: 4,
       maxArrayLength: 20,
-      maxObjectKeys: 20,
+      maxObjectEntries: 20,
       maxStringLength: 20,
     }) as {
       __type: string;
@@ -26,6 +26,10 @@ describe("serializeForRuntimeDebug surrogate safety", () => {
     expect(result.preview.includes("😀")).toBe(false);
     // The real invariant: truncation must not leave an unpaired surrogate.
     expect(result.preview).toBe(result.preview.toWellFormed());
-    expect(/[\uD800-\uDFFF]/.test(result.preview.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""))).toBe(false);
+    expect(
+      /[\uD800-\uDFFF]/.test(
+        result.preview.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""),
+      ),
+    ).toBe(false);
   });
 });

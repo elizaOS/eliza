@@ -191,9 +191,9 @@ describe("relationships-graph-builder safe sort", () => {
 
 		// Tied activity falls back to roomId, and the unparseable timestamp sorts
 		// last instead of poisoning the comparator.
-		expect(detail?.recentConversations.map((snippet) => snippet.roomId)).toEqual(
-			[ROOM_A, ROOM_B, ROOM_C],
-		);
+		expect(
+			detail?.recentConversations.map((snippet) => snippet.roomId),
+		).toEqual([ROOM_A, ROOM_B, ROOM_C]);
 
 		expect(detail?.facts.map((fact) => fact.id)).toEqual([
 			FACT_EARLY_ID,

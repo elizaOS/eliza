@@ -16,7 +16,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readOcAgentHome } from "./openclaw-reader.ts";
+import { readOcAgentHome } from "./openclaw-reader.js";
 
 const made: string[] = [];
 

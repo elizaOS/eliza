@@ -30,7 +30,6 @@ describe("AuditLog", () => {
     await audit.record({
       action: "set",
       key: "api.key",
-      success: true,
       caller: "cli",
     });
 
@@ -38,10 +37,9 @@ describe("AuditLog", () => {
     const lines = content.trim().split("\n");
     expect(lines.length).toBe(1);
 
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(lines[0] ?? "");
     expect(parsed.action).toBe("set");
     expect(parsed.key).toBe("api.key");
-    expect(parsed.success).toBe(true);
     expect(parsed.caller).toBe("cli");
     expect(typeof parsed.ts).toBe("number");
     expect(parsed.ts).toBeGreaterThan(0);
@@ -54,7 +52,6 @@ describe("AuditLog", () => {
     await audit.record({
       action: "get",
       key: "db.password",
-      success: false,
       ts: customTimestamp,
     });
 
@@ -63,21 +60,20 @@ describe("AuditLog", () => {
     expect(parsed.ts).toBe(customTimestamp);
     expect(parsed.action).toBe("get");
     expect(parsed.key).toBe("db.password");
-    expect(parsed.success).toBe(false);
   });
 
   it("appends multiple entries monotonically", async () => {
     const audit = new AuditLog(auditFilePath);
 
-    await audit.record({ action: "set", key: "k1", success: true });
-    await audit.record({ action: "remove", key: "k1", success: true });
+    await audit.record({ action: "set", key: "k1" });
+    await audit.record({ action: "remove", key: "k1" });
 
     const content = await fs.readFile(auditFilePath, "utf8");
     const lines = content.trim().split("\n");
     expect(lines.length).toBe(2);
 
-    const first = JSON.parse(lines[0]);
-    const second = JSON.parse(lines[1]);
+    const first = JSON.parse(lines[0] ?? "");
+    const second = JSON.parse(lines[1] ?? "");
     expect(first.action).toBe("set");
     expect(second.action).toBe("remove");
   });
@@ -89,7 +85,7 @@ describe("AuditLog", () => {
     const audit = new AuditLog(invalidPath, logger);
 
     await expect(
-      audit.record({ action: "set", key: "test", success: true }),
+      audit.record({ action: "set", key: "test" }),
     ).rejects.toThrow();
 
     expect(warn).toHaveBeenCalledWith(

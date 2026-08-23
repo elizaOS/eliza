@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  deterministicOwnerEntityId: vi.fn((agentId: string) => `owner(${agentId})`),
   resolveCanonicalOwnerId: vi.fn(),
-  stringToUuid: vi.fn((s: string) => `uuid(${s})`),
   logger: { debug: vi.fn(), warn: vi.fn() },
 }));
 
 vi.mock("@elizaos/core", () => ({
-  resolveCanonicalOwnerId: (...a: unknown[]) =>
-    mocks.resolveCanonicalOwnerId(...a),
-  stringToUuid: (...a: unknown[]) => mocks.stringToUuid(...a),
+  deterministicOwnerEntityId: mocks.deterministicOwnerEntityId,
+  resolveCanonicalOwnerId: mocks.resolveCanonicalOwnerId,
   logger: mocks.logger,
 }));
 
@@ -19,21 +18,17 @@ import {
 } from "../owner-entity.ts";
 
 describe("resolveFallbackOwnerEntityId", () => {
-  it("derives a synthetic id from the character name", () => {
+  it("derives a deterministic owner id from the agent id", () => {
     const runtime = {
       agentId: "agent-1",
       character: { name: "Alice" },
     } as never;
-    expect(resolveFallbackOwnerEntityId(runtime)).toBe(
-      "uuid(Alice-admin-entity)",
-    );
+    expect(resolveFallbackOwnerEntityId(runtime)).toBe("owner(agent-1)");
   });
 
   it("falls back to agentId when the name is blank", () => {
     const runtime = { agentId: "agent-1", character: { name: "  " } } as never;
-    expect(resolveFallbackOwnerEntityId(runtime)).toBe(
-      "uuid(agent-1-admin-entity)",
-    );
+    expect(resolveFallbackOwnerEntityId(runtime)).toBe("owner(agent-1)");
   });
 });
 
@@ -64,6 +59,6 @@ describe("resolveOwnerEntityId", () => {
       character: { name: "Bob" },
       getRoomsForParticipant: async () => [],
     } as never;
-    expect(await resolveOwnerEntityId(runtime)).toBe("uuid(Bob-admin-entity)");
+    expect(await resolveOwnerEntityId(runtime)).toBe("owner(a1)");
   });
 });
