@@ -410,9 +410,6 @@ function installNetworkAudit(context: BrowserContext) {
   context.on("response", (response) => {
     const responseHeaders = response.headers();
     const contentType = responseHeaders["content-type"];
-    const contentEncoding = responseHeaders["content-encoding"]
-      ?.trim()
-      .toLowerCase();
     audit.observeResponse(
       response.request().method(),
       response.url(),
@@ -420,12 +417,11 @@ function installNetworkAudit(context: BrowserContext) {
       {
         contentType,
         async read(maxBytes) {
-          if (contentEncoding && contentEncoding !== "identity") return null;
           if (await response.finished()) return null;
           const { responseBodySize } = await response.request().sizes();
           if (
-            !Number.isSafeInteger(responseBodySize) ||
-            responseBodySize <= 0 ||
+            Number.isSafeInteger(responseBodySize) &&
+            responseBodySize > 0 &&
             responseBodySize > maxBytes
           )
             return null;
