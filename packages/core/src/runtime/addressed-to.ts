@@ -417,7 +417,7 @@ function vocativelyAddressesOtherParticipant(args: {
 		typeof message.content?.text === "string" ? message.content.text : "";
 	if (!text.trim()) return false;
 
-	const lead = text.slice(0, 80);
+	const lead = text;
 	// A leading vocative of OUR name keeps the turn ours ("nubilio, ask
 	// eliza …" opens with us, not them). Loop-invariant: computed once.
 	for (const own of self) {
@@ -516,7 +516,7 @@ export async function classifyLeadingVocative(args: {
 	const { runtime, message } = args;
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";
-	const match = VOCATIVE_TOKEN_RE.exec(text.slice(0, 80));
+	const match = VOCATIVE_TOKEN_RE.exec(text);
 	const raw = match?.[1] ?? match?.[2];
 	if (!raw) return { kind: "none" };
 	const name = normalizeName(raw);
