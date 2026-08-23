@@ -82,6 +82,7 @@ import {
 	type JsonValue,
 } from "../../types/primitives.ts";
 import { ServiceType } from "../../types/service.ts";
+import { textContainsAgentName } from "../../utils/agent-name-match.ts";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,
@@ -234,33 +235,6 @@ async function readBoundedMediaResponse(
 		}
 	}
 	return await readResponseWithLimit(response, MAX_MEDIA_BYTES);
-}
-
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function textContainsAgentName(
-	text: string | undefined,
-	names: Array<string | null | undefined>,
-): boolean {
-	if (!text) {
-		return false;
-	}
-
-	const safeText = toWellFormedUnicode(text);
-	return names.some((name) => {
-		const candidate = name?.trim();
-		if (!candidate) {
-			return false;
-		}
-
-		const pattern = new RegExp(
-			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
-			"iu",
-		);
-		return pattern.test(safeText);
-	});
 }
 
 function textContainsUserTag(text: string | undefined): boolean {

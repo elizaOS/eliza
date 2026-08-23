@@ -24,16 +24,15 @@ import type {
 	ActionExample,
 	ActionResult,
 	AgentContext,
-	CustomMetadata,
-	Entity,
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 	State,
-	UUID,
 } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
+import { sliceToFitBudget } from "../../../utils/slice-to-fit-budget.ts";
 import { formatMessages } from "../../../utils.ts";
+import { ensureFormattingEntities } from "../providers/recentMessages.ts";
 
 export const CHANNEL_RECAP_CONTEXTS = ["general"] satisfies AgentContext[];
 
@@ -67,43 +66,12 @@ function resolveRequestedCount(options?: HandlerOptions): number | undefined {
 			? (options.parameters as Record<string, unknown>).count
 			: undefined;
 	if (typeof raw === "number" && Number.isFinite(raw)) return Math.floor(raw);
-	if (typeof raw === "string") {
-		const parsed = Number(raw.trim());
-		if (Number.isFinite(parsed)) return Math.floor(parsed);
+	// Same integer-digits-only rule as the offset parser: "50.9" or "1e2" is a
+	// malformed count, not a request — fall back to the default.
+	if (typeof raw === "string" && /^\d+$/.test(raw.trim())) {
+		return Number(raw.trim());
 	}
 	return undefined;
-}
-
-/**
- * Historical rooms can contain senders whose entity row is gone (they left the
- * room). Mirror the RECENT_MESSAGES provider's fallback: synthesize a
- * formatting entity from the message's stamped `entityName` metadata so the
- * transcript keeps a real name instead of "Unknown User".
- */
-function fallbackFormattingEntities(
-	known: readonly Entity[],
-	messages: readonly Memory[],
-): Entity[] {
-	const byId = new Map<UUID, Entity>();
-	for (const entity of known) {
-		if (entity.id) byId.set(entity.id, entity);
-	}
-	for (const memory of messages) {
-		if (!memory.entityId || byId.has(memory.entityId)) continue;
-		const metadata = memory.metadata as CustomMetadata | undefined;
-		const entityName =
-			typeof metadata?.entityName === "string"
-				? metadata.entityName.trim()
-				: "";
-		if (entityName.length === 0) continue;
-		byId.set(memory.entityId, {
-			id: memory.entityId,
-			agentId: memory.agentId,
-			names: [entityName],
-			metadata: { name: entityName, userName: entityName },
-		} as Entity);
-	}
-	return Array.from(byId.values());
 }
 
 export const channelRecapAction: Action = {
@@ -220,10 +188,12 @@ export const channelRecapAction: Action = {
 			unique: false,
 		});
 
-		// Strip only the agent's own machinery rows (action_result records and
-		// internal bridge relays) — the same structural filter RECENT_MESSAGES
-		// applies so the model never re-reads its own tooling as conversation.
-		// Every retained dialogue row is rendered complete.
+		// Strip only the agent's own structural machinery rows: action_result
+		// records and internal bridge relays. This is a SUBSET of the
+		// RECENT_MESSAGES filter (which additionally strips synthetic failure
+		// replies, transient status posts, leaked tool transcripts/path dumps,
+		// and dedupes) — a recap is a verbatim read-back, so only rows that are
+		// never conversation are removed. Every retained row renders complete.
 		const allDialogue = rows.filter(
 			(row) =>
 				row.content?.type !== "action_result" && !isInternalBridgeMessage(row),
@@ -233,33 +203,39 @@ export const channelRecapAction: Action = {
 		// documented transcript fit bound. Messages are always complete; only
 		// the served WINDOW shrinks, and the continuation offset is stated.
 		const ranged = allDialogue.slice(offset, offset + fetchCount);
-		let fitChars = 0;
-		let served = 0;
-		for (const row of ranged) {
-			const rowChars = (row.content?.text ?? "").length + 120;
-			if (
-				served > 0 &&
-				fitChars + rowChars > CHANNEL_RECAP_TRANSCRIPT_FIT_CHARS
-			) {
-				break;
-			}
-			fitChars += rowChars;
-			served += 1;
+		let dialogue = sliceToFitBudget(
+			ranged,
+			(row) => (row.content?.text ?? "").length + 120,
+			CHANNEL_RECAP_TRANSCRIPT_FIT_CHARS,
+		);
+		// A single message larger than the whole fit bound is served alone,
+		// complete — the bound shrinks the window, never a message.
+		if (dialogue.length === 0 && ranged.length > 0) {
+			dialogue = ranged.slice(0, 1);
 		}
-		const dialogue = ranged.slice(0, served);
-		const olderRemaining = ranged.length - served;
+		const olderRemaining = ranged.length - dialogue.length;
 
 		const roomEntities = await getEntityDetails({ runtime, roomId });
-		const entities = fallbackFormattingEntities(roomEntities, dialogue);
+		const entities = await ensureFormattingEntities(
+			runtime,
+			roomEntities,
+			dialogue,
+		);
 		const transcript = formatMessages({ messages: dialogue, entities });
 
 		const boundNote =
 			validRequested !== undefined && validRequested > CHANNEL_RECAP_MAX_FETCH
 				? ` The requested ${validRequested} exceeds the documented storage read bound of ${CHANNEL_RECAP_MAX_FETCH} messages per recap; the ${CHANNEL_RECAP_MAX_FETCH} newest were read.`
 				: "";
+		// Store-exhaustion is measured against the full fetch depth
+		// (count + offset): with a nonzero offset the store can satisfy
+		// `fetchCount` rows and still be exhausted short of the requested page.
+		const requestedDepth = fetchCount + offset;
 		const depthNote =
-			rows.length < fetchCount
-				? ` This room's stored history holds ${rows.length} message(s); the read requested up to ${fetchCount}.`
+			rows.length < requestedDepth
+				? ` This room's stored history holds ${rows.length} message(s); the read requested up to ${requestedDepth}${
+						offset > 0 ? ` (count ${fetchCount} + offset ${offset})` : ""
+					}.`
 				: "";
 		const rangeLabel =
 			offset > 0
