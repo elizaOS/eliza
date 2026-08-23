@@ -110,7 +110,19 @@ export function scoreEntries<T extends RegistryPluginInfo>(
     }
   }
 
-  scored.sort((a, b) => b.s - a.s || b.p.stars - a.p.stars);
+  scored.sort((a, b) => {
+    const bS = typeof b.s === "number" && Number.isFinite(b.s) ? b.s : 0;
+    const aS = typeof a.s === "number" && Number.isFinite(a.s) ? a.s : 0;
+    const bStars =
+      typeof b.p.stars === "number" && Number.isFinite(b.p.stars)
+        ? b.p.stars
+        : 0;
+    const aStars =
+      typeof a.p.stars === "number" && Number.isFinite(a.p.stars)
+        ? a.p.stars
+        : 0;
+    return bS - aS || bStars - aStars || a.p.name.localeCompare(b.p.name);
+  });
   return scored.slice(0, limit);
 }
 
