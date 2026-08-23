@@ -92,6 +92,34 @@ describe("TRUST record interaction", () => {
 		expect(recordInteraction).not.toHaveBeenCalled();
 	});
 
+	it("applies the documented impact default of 10 when impact is omitted", async () => {
+		// TRUST documents impact as "Default 10." (trust.ts), but the handler cast
+		// the optional value and forwarded it unchanged, so a request carrying a
+		// valid type and no impact persisted `undefined` into a
+		// TrustInteraction.impact that the contract and the column both type as a
+		// number -- and still reported success. Reported by @attentionhead.
+		const recordInteraction = vi.fn(async () => undefined);
+		const runtime = createRuntime(recordInteraction);
+		vi.spyOn(Date, "now").mockReturnValue(1_234);
+
+		const result = await recordTrustInteractionHandler(
+			runtime as never,
+			{
+				...message,
+				content: { text: '{"type":"helpful_action"}' },
+			} as never,
+			undefined,
+			undefined,
+		);
+
+		const recorded = recordInteraction.mock.calls[0][0] as {
+			impact: number;
+		};
+		expect(recorded.impact).toBe(10);
+		expect(typeof recorded.impact).toBe("number");
+		expect(result.success).toBe(true);
+	});
+
 	it("records JSON input with canonical type casing and default target and description", async () => {
 		const recordInteraction = vi.fn(async () => undefined);
 		const runtime = createRuntime(recordInteraction);

@@ -81,7 +81,13 @@ export async function recordTrustInteractionHandler(
 	const evidenceType = parsedContent.type as TrustEvidenceType;
 	const targetEntityId = (parsedContent.entityId ??
 		parsedContent.targetEntityId) as UUID | undefined;
-	const impact = parsedContent.impact as number;
+	// TRUST documents this parameter as "Numerical trust impact
+	// (record_interaction). Default 10." (trust.ts), but the value was cast
+	// and forwarded unchanged, so omitting it persisted `undefined` into a
+	// TrustInteraction.impact that the contract and the column both type as a
+	// number -- while the action still reported success. Nullish coalescing so
+	// an explicit 0 stays 0.
+	const impact = (parsedContent.impact ?? 10) as number;
 
 	const validTypes = Object.values(TrustEvidenceType);
 	const normalizedType = evidenceType.toUpperCase();
