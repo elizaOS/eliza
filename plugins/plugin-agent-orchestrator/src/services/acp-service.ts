@@ -411,7 +411,7 @@ function quoteCommandPart(value: string): string {
     "Command part contains both quote characters and cannot be represented",
     {
       code: "ACP_COMMAND_UNQUOTABLE",
-      context: { value },
+      context: { valueLength: value.length },
     },
   );
 }

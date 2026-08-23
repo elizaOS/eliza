@@ -147,12 +147,12 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
   };
 });
 
+import { splitCommandLine } from "../../src/services/acp-native-transport.js";
 import {
   AcpService,
   defaultCodexAcpCommand,
   normalizeClaudeAcpModelId,
 } from "../../src/services/acp-service.js";
-import { splitCommandLine } from "../../src/services/acp-native-transport.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
 
 vi.mock("node:child_process", () => ({
