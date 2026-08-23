@@ -15,7 +15,7 @@ vi.mock("node:crypto", () => ({
 import {
   buildElizaAgentArchive,
   MIN_PASSWORD_LENGTH,
-} from "./archive-format.ts";
+} from "../archive-format.ts";
 
 function fakeCipher() {
   return {
