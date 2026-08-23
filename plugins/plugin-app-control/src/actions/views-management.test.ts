@@ -460,6 +460,48 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
+	it("keeps human-only typed capabilities out of agent selection", async () => {
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "orchestrator",
+						label: "Orchestrator",
+						capabilities: [
+							{
+								id: "orchestrator-status",
+								description: "Read orchestrator status.",
+							},
+							{
+								id: "orchestrator-validate-task",
+								description: "Approve task validation.",
+								authority: "human",
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("approve this task") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "orchestrator",
+				capability: "orchestrator-validate-task",
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(false);
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
 	it("normalizes legacy Notes title/body payloads into the declared one-field content contract", async () => {
 		const { runtime } = createRuntime();
 		const action = createViewsAction({
