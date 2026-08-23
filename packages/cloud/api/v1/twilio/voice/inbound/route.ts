@@ -209,7 +209,10 @@ app.post("/", async (c) => {
     );
     const priorConversationPromise = Promise.resolve(
       dbRead
-        .select({ messages: sharedRuntimeHistory.messages })
+        // Continuity needs only evidence and recency, never the potentially
+        // large JSON history payload. The media turn hydrates complete history
+        // separately through the canonical conversation Durable Object.
+        .select({ updatedAt: sharedRuntimeHistory.updated_at })
         .from(sharedRuntimeHistory)
         .where(
           and(
@@ -232,7 +235,9 @@ app.post("/", async (c) => {
       ...(priorCall?.receivedAt
         ? { priorCallAt: priorCall.receivedAt.getTime() }
         : {}),
-      historyMessages: priorConversation ? priorConversation.messages : [],
+      historyMessages: priorConversation
+        ? [{ createdAt: priorConversation.updatedAt.getTime() }]
+        : [],
     });
     callOpening = await claimInboundCallOpeningContext(
       {
