@@ -33,7 +33,9 @@ describe("HomePill", () => {
     expect(mark.className).toContain("w-12");
     expect(mark.className).toContain("shadow-[0_0_0_1px_rgba(0,0,0,0.12)]");
     expect(btn.textContent).toBe("");
-    expect(btn.className).toContain("bg-[#181a20]/95");
+    // Transparent resting surface: the handle is the only painted pixel run;
+    // the button still spans the full 64x44 native window for hit bounds.
+    expect(btn.className).toContain("bg-transparent");
     expect(btn.className).toContain("h-11");
     expect(btn.className).not.toContain("mb-2");
   });
