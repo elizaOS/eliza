@@ -7,7 +7,9 @@ import {
 
 describe("normalizeRouteKey", () => {
   it("combines method and collapsed pathname", () => {
-    expect(normalizeRouteKey("GET", "/api/users/123")).toBe("GET /api/users/:n");
+    expect(normalizeRouteKey("GET", "/api/users/123")).toBe(
+      "GET /api/users/:n",
+    );
   });
 
   it("collapses numeric segments only", () => {
