@@ -116,6 +116,7 @@ describe("progressive content corpus", () => {
         "no-final-newline",
         "single-line",
         "minified-json-like",
+        "binary",
         "invalid-utf8",
       ]),
     );
@@ -136,6 +137,10 @@ describe("progressive content corpus", () => {
           new TextDecoder("utf-8", { fatal: true }).decode(bytes),
         ).toThrow();
       }
+      if (object.format === "binary" && object.byteLength > 256) {
+        expect(bytes.includes(0x00)).toBe(true);
+        expect(bytes.includes(0xff)).toBe(true);
+      }
       if (object.format === "crlf-lines" && object.byteLength > 256) {
         expect(bytes.includes(Buffer.from("\r\n"))).toBe(true);
       }
@@ -144,6 +149,41 @@ describe("progressive content corpus", () => {
       }
     }
   });
+
+  it("builds every family at 1 MiB plus a deterministic 10 MiB FILE case", async () => {
+    const root = await makeRoot();
+    const manifest = await generateProgressiveContentCorpus({
+      outDir: root,
+      profile: "scale",
+      rootSeed: "scale-seed",
+      generatorRevision: "test-revision",
+    });
+    expect(manifest.objects).toHaveLength(7);
+    expect(new Set(manifest.objects.map(({ family }) => family))).toEqual(
+      new Set([
+        "file",
+        "document",
+        "memory",
+        "email",
+        "attachment",
+        "tool-output",
+      ]),
+    );
+    expect(
+      manifest.objects.every(({ byteLength }) => byteLength >= 1024 * 1024),
+    ).toBe(true);
+    expect(
+      manifest.objects.some(
+        ({ byteLength }) => byteLength === 10 * 1024 * 1024,
+      ),
+    ).toBe(true);
+    expect(
+      manifest.objects.reduce((total, object) => total + object.byteLength, 0),
+    ).toBe(16 * 1024 * 1024);
+    await expect(verifyProgressiveContentCorpus(root)).resolves.toEqual(
+      manifest,
+    );
+  }, 30_000);
 
   it("plans every required byte boundary in non-micro profiles", async () => {
     const root = await makeRoot();

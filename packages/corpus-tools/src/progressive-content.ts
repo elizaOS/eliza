@@ -27,7 +27,7 @@ import {
 } from "./progressive-content-formats.ts";
 
 export const PROGRESSIVE_CONTENT_SCHEMA_VERSION =
-  "elizaos.progressive-content.v2";
+  "elizaos.progressive-content.v3";
 export const PROGRESSIVE_CONTENT_ANCHOR_TIME = "2026-01-01T00:00:00.000Z";
 
 export type ProgressiveContentFamily =
@@ -38,7 +38,12 @@ export type ProgressiveContentFamily =
   | "attachment"
   | "tool-output";
 
-export type ProgressiveContentProfile = "micro" | "pr" | "nightly" | "release";
+export type ProgressiveContentProfile =
+  | "micro"
+  | "scale"
+  | "pr"
+  | "nightly"
+  | "release";
 
 export type ProgressiveContentFormat =
   | "lf-lines"
@@ -46,6 +51,7 @@ export type ProgressiveContentFormat =
   | "no-final-newline"
   | "single-line"
   | "minified-json-like"
+  | "binary"
   | "invalid-utf8";
 
 export interface ProgressiveContentCanary {
@@ -105,6 +111,24 @@ const PROFILE_SHAPES: Readonly<
       email: 16 * 1024,
       attachment: 24 * 1024,
       "tool-output": 32 * 1024,
+    },
+  },
+  scale: {
+    counts: {
+      file: 2,
+      document: 1,
+      memory: 1,
+      email: 1,
+      attachment: 1,
+      "tool-output": 1,
+    },
+    baseBytes: {
+      file: 1024 * 1024,
+      document: 1024 * 1024,
+      memory: 1024 * 1024,
+      email: 1024 * 1024,
+      attachment: 1024 * 1024,
+      "tool-output": 1024 * 1024,
     },
   },
   pr: {
@@ -178,6 +202,7 @@ const FORMAT_ORDER: readonly ProgressiveContentFormat[] = [
   "no-final-newline",
   "single-line",
   "minified-json-like",
+  "binary",
   "invalid-utf8",
 ];
 
@@ -1000,6 +1025,9 @@ function objectByteLength(
   profile: ProgressiveContentProfile,
 ) {
   const base = shape.baseBytes[family];
+  if (profile === "scale") {
+    return family === "file" && index === 1 ? 10 * 1024 * 1024 : base;
+  }
   const boundaryCases =
     profile === "micro"
       ? PROGRESSIVE_CONTENT_BOUNDARY_BYTES.slice(0, 9)
@@ -1049,14 +1077,15 @@ function deterministicObjectChunk(
   canaries: readonly ProgressiveContentCanary[],
   format: ProgressiveContentFormat,
 ): Buffer {
-  const chunkBytes = 64 * 1024;
-  const chunk = Buffer.alloc(
-    length,
-    0x61 + (Math.floor(offset / chunkBytes) % 26),
-  );
+  const chunk = Buffer.allocUnsafe(length);
+  const unicodePattern = Buffer.from("世界🙂ABCDEF", "utf8");
   const jsonPattern = Buffer.from('{"key":"escaped\\nvalue","n":123},');
   for (let local = 0; local < length; local += 1) {
     const absolute = offset + local;
+    chunk[local] =
+      format === "binary"
+        ? (absolute * 131 + 17) & 0xff
+        : (unicodePattern[absolute % unicodePattern.length] ?? 0x61);
     if (format === "lf-lines" && absolute % 80 === 79) chunk[local] = 0x0a;
     if (format === "crlf-lines") {
       if (absolute % 80 === 78) chunk[local] = 0x0d;
