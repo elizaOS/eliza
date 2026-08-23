@@ -1,3 +1,7 @@
+/**
+ * Exercises the API authentication token helpers with deterministic request headers.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   extractHeaderValue,
