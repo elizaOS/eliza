@@ -5353,9 +5353,11 @@ const calendarAction: CalendarHandlerAction = {
             if (right.score !== left.score) {
               return right.score - left.score;
             }
-            return (
-              Date.parse(left.event.startAt) - Date.parse(right.event.startAt)
-            );
+            const aTime = Date.parse(left.event.startAt);
+            const bTime = Date.parse(right.event.startAt);
+            const aSafe = Number.isFinite(aTime) ? aTime : 0;
+            const bSafe = Number.isFinite(bTime) ? bTime : 0;
+            return aSafe - bSafe;
           });
         const strongestScore = rankedEvents[0]?.score ?? 0;
         const strongestThreshold =
