@@ -21,6 +21,7 @@ function makeApp(
     launchType: "overlay",
     launchUrl: null,
     icon: "test-icon",
+    heroImage: null,
     capabilities: [],
     stars: 0,
     repository: "",
