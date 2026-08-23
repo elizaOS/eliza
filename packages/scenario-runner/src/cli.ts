@@ -819,6 +819,7 @@ export async function runCli(
         // a peer's actions and keep this scenario's tool surface identical to a
         // solo run.
         batchPluginPackages: requiredPlugins,
+        scenarioDeclaredActionNames: runtimeResult.scenarioDeclaredActionNames,
       });
       const report =
         executionProfile === "provider-qualified"

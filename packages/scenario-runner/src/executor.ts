@@ -125,6 +125,13 @@ export interface ExecutorOptions {
    * independent of batch composition. Omit it for a single-scenario runtime.
    */
   batchPluginPackages?: readonly string[];
+  /**
+   * Action names present only because a scenario declared the contributing
+   * package, from `createScenarioRuntime`. Without it every peer-declared
+   * package's actions are hidden, including baseline ones an undeclaring
+   * scenario legitimately drives.
+   */
+  scenarioDeclaredActionNames?: readonly string[];
 }
 
 /**
@@ -1982,6 +1989,7 @@ async function executeActionTurn(
   room: ScenarioRoomDefinition,
   currentNow: Date,
   turnTimeoutMs: number,
+  hiddenActionNames: readonly string[] = [],
 ): Promise<{
   validation: NonNullable<ScenarioTurnExecution["validation"]>;
   responseText: string;
@@ -2006,6 +2014,15 @@ async function executeActionTurn(
     (candidate: Action) => candidate.name === actionName,
   );
   if (!action) {
+    // Distinguish "this action does not exist" from "per-scenario action
+    // scoping hid it because only a batch peer declared the owning package".
+    // The second reads as a missing action but is a declaration gap, and
+    // saying so is the difference between a one-line fix and an afternoon.
+    if (hiddenActionNames.includes(actionName)) {
+      throw new Error(
+        `[executor] action turn '${turn.name}' requested '${actionName}', which is hidden from this scenario because only another scenario in this run declared the plugin that provides it; add that package to this scenario's requires.plugins`,
+      );
+    }
     throw new Error(
       `[executor] action turn '${turn.name}' requested unknown action '${actionName}'`,
     );
@@ -2853,6 +2870,7 @@ export async function runScenario(
     runtime,
     scenario,
     opts.batchPluginPackages ?? [],
+    opts.scenarioDeclaredActionNames,
   );
   if (actionScope.hiddenActionNames.length > 0) {
     logger.info(
@@ -3052,6 +3070,7 @@ export async function runScenario(
                       resolveTurnRoom(turn, rooms),
                       logicalNow,
                       opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                      actionScope.hiddenActionNames,
                     )),
                   }
                 : kind === "wait"

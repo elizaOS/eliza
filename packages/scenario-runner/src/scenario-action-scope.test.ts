@@ -82,6 +82,22 @@ describe("foreignScenarioActionNames", () => {
     expect([...hidden].sort()).toEqual(["APP"]);
   });
 
+  it("never hides a baseline action, even when a peer declared its package", () => {
+    // plugin-browser is both a runtime baseline capability and something some
+    // scenarios declare. A scenario that drives BROWSER without declaring the
+    // package must keep it; only actions that exist *because* of a declaration
+    // may be hidden.
+    const hidden = foreignScenarioActionNames(
+      runtime,
+      scenarioDeclaring("coding", ["@elizaos/plugin-coding-tools"]),
+      ["@elizaos/plugin-coding-tools", "@elizaos/plugin-app-control"],
+      // Only APP exists because a scenario declared app-control; VIEWS is a
+      // baseline action the runtime carries either way.
+      ["APP"],
+    );
+    expect([...hidden]).toEqual(["APP"]);
+  });
+
   it("hides nothing when the runtime carries no peer declarations", () => {
     const hidden = foreignScenarioActionNames(
       runtime,

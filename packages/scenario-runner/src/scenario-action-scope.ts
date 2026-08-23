@@ -60,6 +60,7 @@ export function foreignScenarioActionNames(
   runtime: ActionScopedRuntime,
   scenario: ScenarioDefinition,
   batchPluginPackages: readonly string[],
+  scenarioDeclaredActionNames?: readonly string[],
 ): Set<string> {
   const declared = resolveRequiredPluginPackages(scenario);
   const declaredSet = new Set(declared);
@@ -69,6 +70,17 @@ export function foreignScenarioActionNames(
   const foreign = actionNamesForPackages(runtime, foreignPackages);
   for (const name of actionNamesForPackages(runtime, declared)) {
     foreign.delete(name);
+  }
+  // A package a peer declared may also be part of the runtime's baseline, and
+  // a scenario is entitled to every baseline action whether or not it declared
+  // the owning package. Hiding those broke scenarios that legitimately drive a
+  // baseline action without a `requires.plugins` entry, so restrict the hidden
+  // set to the actions that exist solely because of a scenario declaration.
+  if (scenarioDeclaredActionNames) {
+    const scenarioOnly = new Set(scenarioDeclaredActionNames);
+    for (const name of [...foreign]) {
+      if (!scenarioOnly.has(name)) foreign.delete(name);
+    }
   }
   return foreign;
 }
@@ -83,12 +95,14 @@ export function enterScenarioActionScope(
   runtime: ActionScopedRuntime,
   scenario: ScenarioDefinition,
   batchPluginPackages: readonly string[],
+  scenarioDeclaredActionNames?: readonly string[],
 ): { hiddenActionNames: string[]; restore: () => void } {
   const snapshot = [...runtime.actions];
   const hidden = foreignScenarioActionNames(
     runtime,
     scenario,
     batchPluginPackages,
+    scenarioDeclaredActionNames,
   );
   if (hidden.size > 0) {
     const kept = snapshot.filter((action) => !hidden.has(action.name));
