@@ -10,11 +10,11 @@ describe("anchorBundleSafety", () => {
 	});
 
 	it("uses unique keys per name (no collisions)", () => {
-		anchorBundleSafety("barrel-a", [1]);
-		anchorBundleSafety("barrel-b", [2]);
+		anchorBundleSafety("barrela", [1]);
+		anchorBundleSafety("barrelb", [2]);
 		const g = globalThis as Record<string, unknown>;
-		expect(g.__bundle_safety_barrel_a__).toEqual([1]);
-		expect(g.__bundle_safety_barrel_b__).toEqual([2]);
+		expect(g.__bundle_safety_barrela__).toEqual([1]);
+		expect(g.__bundle_safety_barrelb__).toEqual([2]);
 	});
 
 	it("overwrites the same name key on re-anchor", () => {
