@@ -292,6 +292,7 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     expect(delivered).not.toContain("Unsupported trailing prose");
     expect(delivered).toContain("ETH is 3,500 USD.");
     expect(delivered).toContain("https://coin.example/eth");
+    expect(delivered).toContain("left out part of the draft");
     expect(delivered).not.toContain("https://coin.example/btc");
   });
 

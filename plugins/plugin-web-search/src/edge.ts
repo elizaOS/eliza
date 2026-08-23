@@ -269,7 +269,7 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const result = await runner(query, {
                 numResults: readResultCount(parameters),
             });
-            if (runner === runWebSearchEdge && result.success !== true && result.text) {
+            if (result.success !== true && result.text) {
                 await callback?.({ text: result.text });
             }
             return result;

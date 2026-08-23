@@ -70,7 +70,7 @@ import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import {
   createMatchingRealtimeSearchRunner,
-  isSharedPublicSearchSafe,
+  resolveSharedRealtimeRequirement,
 } from "./shared-realtime-grounding";
 import {
   createSharedRuntimeCapabilitiesPlugin,
@@ -734,7 +734,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
   const modelPlugin = sharedModelPlugin(modelHandler);
   const actionsEnabled = input.messageRole !== "system";
-  const webSearchEnabled = actionsEnabled && isSharedPublicSearchSafe(input.message);
+  const webSearchEnabled =
+    actionsEnabled &&
+    Boolean(resolveSharedRealtimeRequirement(input.capabilityText ?? input.message, input.history));
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({

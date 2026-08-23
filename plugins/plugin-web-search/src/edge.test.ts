@@ -3,6 +3,7 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+    createWebSearchEdgePlugin,
     runWebSearchEdge,
     webSearchEdgeAction,
     webSearchEdgePlugin,
@@ -309,5 +310,30 @@ describe("webSearchEdgePlugin", () => {
         );
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+    });
+
+    it("reports injected runner failures through the channel callback", async () => {
+        const callback = vi.fn();
+        const [action] =
+            createWebSearchEdgePlugin(async (query) => ({
+                success: false,
+                text: "The authorized public read is unavailable.",
+                error: "The authorized public read is unavailable.",
+                data: { actionName: "WEB_SEARCH", query },
+            })).actions ?? [];
+        if (!action) throw new Error("Expected the injected WEB_SEARCH action");
+
+        await action.handler(
+            {} as IAgentRuntime,
+            {} as Memory,
+            undefined,
+            { parameters: { query: "current public result" } },
+            callback
+        );
+
+        expect(callback).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledWith({
+            text: "The authorized public read is unavailable.",
+        });
     });
 });
