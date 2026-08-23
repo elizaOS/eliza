@@ -82,18 +82,55 @@ describe("billing cancellation capability authority", () => {
       organization_id: "org-current",
       role: "owner",
     });
-    const forwarded = mock(async () => Response.json({ success: true, resourceId: "resource-1" }));
+    const forwarded = mock(async () => Response.json({ success: true }));
     globalThis.fetch = forwarded as typeof fetch;
 
     const result = await executeCloudCapabilityRest(context, "billing.cancel_resource", {
-      resourceId: "resource-1",
+      resourceId: "30000000-0000-4000-8000-000000000001",
+      resourceType: "container",
+      expectedLifecycleRevision: 7,
+      idempotencyKey: "billing-cancel-request-0001",
     });
 
     expect(result.response.ok).toBe(true);
     expect(forwarded).toHaveBeenCalledTimes(1);
     expect(String(forwarded.mock.calls[0]?.[0])).toContain(
-      "/api/v1/billing/resources/resource-1/cancel",
+      "/api/v1/billing/resources/30000000-0000-4000-8000-000000000001/cancel",
     );
+    const init = forwarded.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(init.headers).get("idempotency-key")).toBe("billing-cancel-request-0001");
+    expect(JSON.parse(String(init.body))).toEqual({
+      resourceType: "container",
+      mode: "stop",
+      expectedLifecycleRevision: 7,
+    });
+  });
+
+  test("nested capability params preserve the durable cancellation contract", async () => {
+    requireCurrentBillingManagerSession.mockResolvedValue({
+      id: "owner-current",
+      organization_id: "org-current",
+      role: "owner",
+    });
+    const forwarded = mock(async () => Response.json({ success: true }));
+    globalThis.fetch = forwarded as typeof fetch;
+
+    await executeCloudCapabilityRest(context, "billing.cancel_resource", {
+      params: {
+        resourceId: "30000000-0000-4000-8000-000000000001",
+        resourceType: "agent_sandbox",
+        expectedLifecycleRevision: 11,
+        idempotencyKey: "billing-cancel-request-nested",
+      },
+    });
+
+    const init = forwarded.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(init.headers).get("idempotency-key")).toBe("billing-cancel-request-nested");
+    expect(JSON.parse(String(init.body))).toEqual({
+      resourceType: "agent_sandbox",
+      mode: "stop",
+      expectedLifecycleRevision: 11,
+    });
   });
 
   test("preserves cookie-session CSRF proof through the internal REST boundary", async () => {
@@ -118,7 +155,10 @@ describe("billing cancellation capability authority", () => {
     }) as typeof fetch;
 
     const result = await executeCloudCapabilityRest(cookieContext(), "billing.cancel_resource", {
-      resourceId: "resource-1",
+      resourceId: "30000000-0000-4000-8000-000000000001",
+      resourceType: "container",
+      expectedLifecycleRevision: 7,
+      idempotencyKey: "billing-cancel-request-0001",
     });
 
     expect(result.response.status).toBe(200);

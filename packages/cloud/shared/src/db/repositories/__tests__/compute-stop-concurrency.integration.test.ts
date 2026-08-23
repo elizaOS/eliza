@@ -161,6 +161,7 @@ beforeAll(async () => {
       CREATE TABLE container_compute_stop_intents (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
         container_id uuid NOT NULL, lifecycle_revision bigint NOT NULL,
+        "authorization" text NOT NULL DEFAULT 'billing_request',
         status text NOT NULL DEFAULT 'pending', job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
         attempts integer NOT NULL DEFAULT 0, last_error text,
         next_attempt_at timestamp NOT NULL DEFAULT now(), provider_started_at timestamp,
@@ -171,9 +172,13 @@ beforeAll(async () => {
       CREATE UNIQUE INDEX container_compute_stop_intents_active_unique
         ON container_compute_stop_intents (organization_id, container_id)
         WHERE status IN ('pending', 'dispatching', 'retry', 'terminal_attention');
+      CREATE UNIQUE INDEX container_compute_stop_intents_user_generation_unique
+        ON container_compute_stop_intents (organization_id, container_id, lifecycle_revision)
+        WHERE "authorization" = 'user_request';
       CREATE TABLE agent_compute_stop_intents (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
         agent_id uuid NOT NULL, lifecycle_revision bigint NOT NULL,
+        "authorization" text NOT NULL DEFAULT 'billing_request',
         status text NOT NULL DEFAULT 'pending', job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
         attempts integer NOT NULL DEFAULT 0, last_error text,
         next_attempt_at timestamptz NOT NULL DEFAULT now(), provider_started_at timestamptz,
@@ -183,6 +188,9 @@ beforeAll(async () => {
       CREATE UNIQUE INDEX agent_compute_stop_intents_active_unique
         ON agent_compute_stop_intents (organization_id, agent_id)
         WHERE status IN ('pending', 'dispatching', 'retry', 'terminal_attention');
+      CREATE UNIQUE INDEX agent_compute_stop_intents_user_request_unique
+        ON agent_compute_stop_intents (organization_id, agent_id, lifecycle_revision)
+        WHERE "authorization" = 'user_request';
     `),
   );
 }, 30_000);

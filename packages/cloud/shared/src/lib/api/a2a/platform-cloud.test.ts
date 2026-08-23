@@ -19,7 +19,7 @@ const requireCurrentBillingManagerSession = mock();
 const requireUserOrApiKeyWithOrg = mock();
 const taskStoreSet = mock();
 const loggerError = mock();
-const cancelResource = mock();
+const requestCancellation = mock();
 
 mock.module("../../cloud-capabilities", () => ({
   executeCloudCapabilityRest,
@@ -58,7 +58,7 @@ mock.module("../../services/active-billing", () => ({
   activeBillingService: {
     listActiveResources: mock(),
     listLedger: mock(),
-    cancelResource,
+    requestCancellation,
   },
 }));
 
@@ -122,7 +122,7 @@ beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
   requireCurrentBillingManagerSession.mockReset();
   taskStoreSet.mockReset();
-  cancelResource.mockReset();
+  requestCancellation.mockReset();
   loggerError.mockReset();
 
   requireUserOrApiKeyWithOrg.mockResolvedValue(user);
@@ -257,7 +257,9 @@ describe("Cloud platform A2A billing cancellation authority", () => {
               params: {
                 resourceId: "resource-1",
                 resourceType: "container",
-                mode: "delete",
+                mode: "stop",
+                expectedLifecycleRevision: 7,
+                idempotencyKey: "billing-cancel-request-0001",
               },
             },
           },
@@ -267,20 +269,23 @@ describe("Cloud platform A2A billing cancellation authority", () => {
   }
 
   test("persists success only after cancellation uses current authorized tenant", async () => {
-    cancelResource.mockImplementation(async (options) => {
+    requestCancellation.mockImplementation(async (options) => {
       await options.authorizeInfrastructureMutation();
-      return { status: "cancelled" };
+      return { disposition: "accepted", receipt: { status: "accepted" } };
     });
 
     const task = await handlePlatformMessageSend(context, cancellationParams());
 
     expect(task.status.state).toBe("completed");
-    expect(cancelResource).toHaveBeenCalledTimes(1);
-    expect(cancelResource).toHaveBeenCalledWith({
+    expect(requestCancellation).toHaveBeenCalledTimes(1);
+    expect(requestCancellation).toHaveBeenCalledWith({
       organizationId: "org-current",
+      requestedByUserId: "user-1",
       resourceId: "resource-1",
       resourceType: "container",
-      mode: "delete",
+      expectedLifecycleRevision: 7,
+      idempotencyKey: "billing-cancel-request-0001",
+      triggerEnv: { NEXT_PUBLIC_APP_URL: "https://cloud.test" },
       authorizeInfrastructureMutation: expect.any(Function),
     });
     expect(requireCurrentBillingManagerSession).toHaveBeenCalledTimes(2);
@@ -297,7 +302,7 @@ describe("Cloud platform A2A billing cancellation authority", () => {
       );
     }
 
-    expect(cancelResource).not.toHaveBeenCalled();
+    expect(requestCancellation).not.toHaveBeenCalled();
     expect(taskStoreSet).not.toHaveBeenCalled();
   });
 });

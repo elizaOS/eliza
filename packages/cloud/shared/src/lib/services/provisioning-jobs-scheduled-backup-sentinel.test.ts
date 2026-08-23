@@ -305,7 +305,13 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
  */
 describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
   async function seedAgent(
-    opts: { status?: string; lastHeartbeatAt?: Date | null; executionTier?: string } = {},
+    opts: {
+      status?: string;
+      lastHeartbeatAt?: Date | null;
+      executionTier?: string;
+      poolStatus?: string | null;
+      deletedAt?: Date | null;
+    } = {},
   ): Promise<{
     agentId: string;
     orgId: string;
@@ -321,6 +327,8 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         agent_name: uniq("agent"),
         status: (opts.status ?? "running") as never,
         execution_tier: (opts.executionTier ?? "dedicated-lazy") as never,
+        pool_status: (opts.poolStatus ?? null) as never,
+        deleted_at: opts.deletedAt ?? null,
         bridge_url: REACHABLE_BRIDGE,
         last_heartbeat_at: opts.lastHeartbeatAt ?? null,
       })
@@ -591,12 +599,403 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(billing.created).toBe(false);
     expect(billing.job.id).toBe(manual.job.id);
     expect(billing.job.data).toMatchObject({ authorization: "user_request" });
+    const [intent] = await dbWrite
+      .select()
+      .from(agentComputeStopIntents)
+      .where(eq(agentComputeStopIntents.agent_id, agentId));
+    expect(intent).toMatchObject({
+      authorization: "user_request",
+      job_id: manual.job.id,
+    });
+  });
+
+  test("an exact user replay wins over a now-stale current lifecycle revision", async () => {
+    const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    const first = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "user_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: lifecycleRevision + 1 })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const replay = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "user_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+
+    expect(replay).toMatchObject({ created: false });
+    expect(replay.job.id).toBe(first.job.id);
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND)).toHaveLength(1);
+    const intents = await dbWrite
+      .select()
+      .from(agentComputeStopIntents)
+      .where(eq(agentComputeStopIntents.agent_id, agentId));
+    expect(intents).toHaveLength(1);
+    expect(intents[0]).toMatchObject({
+      lifecycle_revision: lifecycleRevision,
+      authorization: "user_request",
+      job_id: first.job.id,
+    });
+  });
+
+  test("a stale first user request creates neither stop intent nor job", async () => {
+    const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    await expect(
+      provisioningJobService.enqueueAgentSuspendOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+        expectedLifecycleRevision: lifecycleRevision + 1,
+      }),
+    ).rejects.toThrow("Agent lifecycle changed before suspend");
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND)).toHaveLength(0);
     expect(
       await dbWrite
         .select()
         .from(agentComputeStopIntents)
         .where(eq(agentComputeStopIntents.agent_id, agentId)),
     ).toHaveLength(0);
+  });
+
+  test("a stale first user request cannot promote an older billing intent", async () => {
+    const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    const billing = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "billing_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: lifecycleRevision + 1 })
+      .where(eq(agentSandboxes.id, agentId));
+
+    await expect(
+      provisioningJobService.enqueueAgentSuspendOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+        expectedLifecycleRevision: lifecycleRevision,
+      }),
+    ).rejects.toThrow("Agent lifecycle changed before suspend");
+
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND)).toHaveLength(1);
+    const [intent] = await dbWrite
+      .select()
+      .from(agentComputeStopIntents)
+      .where(eq(agentComputeStopIntents.agent_id, agentId));
+    expect(intent).toMatchObject({
+      authorization: "billing_request",
+      lifecycle_revision: lifecycleRevision,
+      job_id: billing.job.id,
+    });
+  });
+
+  test("a first user stop cannot claim pool-owned or soft-deleted capacity", async () => {
+    const targets = [
+      await seedAgent({ executionTier: "dedicated-always", poolStatus: "unclaimed" }),
+      await seedAgent({
+        executionTier: "dedicated-always",
+        deletedAt: new Date("2026-08-23T00:00:00.000Z"),
+      }),
+    ];
+    for (const target of targets) {
+      await expect(
+        provisioningJobService.enqueueAgentSuspendOnce({
+          agentId: target.agentId,
+          organizationId: target.orgId,
+          userId: target.userId,
+          authorization: "user_request",
+          expectedLifecycleRevision: target.lifecycleRevision,
+        }),
+      ).rejects.toMatchObject({ status: 404, code: "resource_not_found" });
+      expect(await jobsOfType(target.agentId, JOB_TYPES.AGENT_SUSPEND)).toHaveLength(0);
+      expect(
+        await dbWrite
+          .select()
+          .from(agentComputeStopIntents)
+          .where(eq(agentComputeStopIntents.agent_id, target.agentId)),
+      ).toHaveLength(0);
+    }
+  });
+
+  test("a queued billing stop is promoted in place by exact user authority", async () => {
+    const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    const billing = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "billing_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+    const user = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "user_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+
+    expect(user.created).toBe(false);
+    expect(user.job.id).toBe(billing.job.id);
+    // Promotion never mutates the already-claimable job envelope; authority
+    // moves monotonically on the exact locked intent.
+    expect(user.job.data).toMatchObject({
+      authorization: "billing_request",
+      lifecycleRevision,
+    });
+    const [intent] = await dbWrite
+      .select()
+      .from(agentComputeStopIntents)
+      .where(eq(agentComputeStopIntents.agent_id, agentId));
+    expect(intent).toMatchObject({
+      authorization: "user_request",
+      lifecycle_revision: lifecycleRevision,
+      job_id: billing.job.id,
+    });
+  });
+
+  test("a funded user stop reads locked intent authority and is never reactivated", async () => {
+    const { agentId, orgId, userId } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "10.000000" })
+      .where(eq(organizations.id, orgId));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ sandbox_id: `sandbox-${agentId}`, billing_status: "active" })
+      .where(eq(agentSandboxes.id, agentId));
+    const [current] = await dbWrite
+      .select({ lifecycleRevision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, agentId));
+    const enqueued = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "user_request",
+      expectedLifecycleRevision: current.lifecycleRevision,
+    });
+    type UserSuspendService = {
+      executeSuspend(
+        targetAgentId: string,
+        targetOrganizationId: string,
+        jobId: string,
+        authorization: "user_request" | "billing_request",
+        expectedLifecycleRevision?: number,
+      ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
+      runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
+    };
+    const service = elizaSandboxService as unknown as UserSuspendService;
+    const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
+      null,
+    );
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
+    try {
+      // The stale job hint deliberately says billing; the locked intent must
+      // dominate it and preserve the unconditional user request.
+      await expect(
+        service.executeSuspend(
+          agentId,
+          orgId,
+          enqueued.job.id,
+          "billing_request",
+          current.lifecycleRevision,
+        ),
+      ).resolves.toMatchObject({ success: true, containerStopped: true });
+      expect(providerStop).toHaveBeenCalledTimes(1);
+      const [stopped] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, agentId));
+      expect(stopped).toMatchObject({ status: "stopped", billing_status: "suspended" });
+      const [intent] = await dbWrite
+        .select()
+        .from(agentComputeStopIntents)
+        .where(eq(agentComputeStopIntents.agent_id, agentId));
+      expect(intent.status).toBe("provider_confirmed");
+    } finally {
+      providerStop.mockRestore();
+      gateSpy.mockRestore();
+    }
+  });
+
+  test("an already-stopped agent is billing-suspended before provider confirmation is exposed", async () => {
+    const { agentId, orgId, userId } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "stopped",
+        billing_status: "active",
+        sandbox_id: `sandbox-${agentId}`,
+        bridge_url: REACHABLE_BRIDGE,
+        health_url: "http://10.0.0.5:8081",
+        scheduled_shutdown_at: new Date(0),
+        shutdown_warning_sent_at: new Date(0),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+    const [stoppedBeforeAdmission] = await dbWrite
+      .select({ lifecycleRevision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, agentId));
+    const lifecycleRevision = stoppedBeforeAdmission.lifecycleRevision;
+    const enqueued = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "user_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+    type AlreadyStoppedSuspendService = {
+      executeSuspend(
+        targetAgentId: string,
+        targetOrganizationId: string,
+        jobId: string,
+        authorization: "user_request" | "billing_request",
+        expectedLifecycleRevision?: number,
+      ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
+      runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
+    };
+    const service = elizaSandboxService as unknown as AlreadyStoppedSuspendService;
+    const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
+      null,
+    );
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
+    try {
+      await expect(
+        service.executeSuspend(agentId, orgId, enqueued.job.id, "user_request", lifecycleRevision),
+      ).resolves.toMatchObject({ success: true, containerStopped: true });
+      expect(gateSpy).not.toHaveBeenCalled();
+      expect(providerStop).not.toHaveBeenCalled();
+      const [sandbox] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, agentId));
+      expect(sandbox).toMatchObject({
+        status: "stopped",
+        billing_status: "suspended",
+        bridge_url: null,
+        health_url: null,
+        scheduled_shutdown_at: null,
+        shutdown_warning_sent_at: null,
+      });
+      const [intent] = await dbWrite
+        .select()
+        .from(agentComputeStopIntents)
+        .where(eq(agentComputeStopIntents.agent_id, agentId));
+      expect(intent.status).toBe("provider_confirmed");
+    } finally {
+      providerStop.mockRestore();
+      gateSpy.mockRestore();
+    }
+  });
+
+  test("execution lifecycle drift is a terminal safe no-op before backup or provider", async () => {
+    const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    const enqueued = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "user_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: lifecycleRevision + 1 })
+      .where(eq(agentSandboxes.id, agentId));
+    type StaleSuspendService = {
+      executeSuspend(
+        targetAgentId: string,
+        targetOrganizationId: string,
+        jobId: string,
+        authorization: "user_request" | "billing_request",
+        expectedLifecycleRevision?: number,
+      ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
+      runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
+    };
+    const service = elizaSandboxService as unknown as StaleSuspendService;
+    const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
+      null,
+    );
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
+    try {
+      await expect(
+        service.executeSuspend(agentId, orgId, enqueued.job.id, "user_request", lifecycleRevision),
+      ).resolves.toEqual({
+        success: true,
+        containerStopped: false,
+        skipped: true,
+        reason: "lifecycle_changed",
+      });
+      expect(gateSpy).not.toHaveBeenCalled();
+      expect(providerStop).not.toHaveBeenCalled();
+      const [intent] = await dbWrite
+        .select()
+        .from(agentComputeStopIntents)
+        .where(eq(agentComputeStopIntents.agent_id, agentId));
+      expect(intent.status).toBe("superseded");
+
+      const processed = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_SUSPEND],
+      });
+      expect(processed).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
+      const [settledJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, enqueued.job.id));
+      expect(settledJob).toMatchObject({
+        status: "completed",
+        result: {
+          cloudAgentId: agentId,
+          containerStopped: false,
+          skipped: true,
+          reason: "lifecycle_changed",
+        },
+      });
+    } finally {
+      providerStop.mockRestore();
+      gateSpy.mockRestore();
+    }
   });
 
   test("concurrent manual and billing enqueues converge on manual authority", async () => {
@@ -616,12 +1015,6 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       }),
     ]);
     const persisted = await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND);
-    expect(
-      persisted.some(
-        (job) =>
-          (job.data as { authorization?: unknown } | undefined)?.authorization === "user_request",
-      ),
-    ).toBe(true);
     expect(new Set([billing.job.id, manual.job.id]).size).toBe(persisted.length);
     const activeIntents = await dbWrite
       .select()
@@ -632,10 +1025,11 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
           sql`${agentComputeStopIntents.status} IN ('pending', 'dispatching', 'retry', 'terminal_attention')`,
         ),
       );
-    expect(activeIntents.length).toBeLessThanOrEqual(1);
-    if (activeIntents[0]) {
-      expect(activeIntents[0].job_id).toBe(billing.job.id);
-    }
+    expect(activeIntents).toHaveLength(1);
+    expect(activeIntents[0]).toMatchObject({
+      authorization: "user_request",
+      job_id: billing.job.id,
+    });
   });
 
   test("a legacy suspend job derives billing authority from its exact backfilled intent", async () => {

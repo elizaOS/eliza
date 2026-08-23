@@ -95,31 +95,54 @@ function capabilityToolDefinitions(): McpToolDefinition[] {
       modes: capability.auth.modes,
       organizationRoles: capability.auth.organizationRoles ?? [],
     },
-    inputSchema: jsonSchemaObject({
-      action: {
-        type: "string",
-        description: "Optional action or subcommand for compatible capability routes.",
-      },
-      method: {
-        type: "string",
-        enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-        description: "Optional REST method override when this capability supports multiple verbs.",
-      },
-      pathParams: { type: "object", additionalProperties: true },
-      query: { type: "object", additionalProperties: true },
-      body: { type: "object", additionalProperties: true },
-      headers: {
-        type: "object",
-        additionalProperties: true,
-        description: "Optional safe forwarded headers, such as x-payment for x402 settlement.",
-      },
-      params: {
-        type: "object",
-        additionalProperties: true,
-        description:
-          "Capability-specific parameters. Path params can be supplied here by name, e.g. id or amount.",
-      },
-    }),
+    inputSchema:
+      capability.id === "billing.cancel_resource"
+        ? jsonSchemaObject(
+            {
+              resourceId: { type: "string", format: "uuid" },
+              resourceType: { type: "string", enum: ["container", "agent_sandbox"] },
+              mode: { type: "string", enum: ["stop"], default: "stop" },
+              expectedLifecycleRevision: {
+                type: "integer",
+                minimum: 0,
+                maximum: Number.MAX_SAFE_INTEGER,
+              },
+              idempotencyKey: {
+                type: "string",
+                minLength: 8,
+                maxLength: 128,
+                pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$",
+              },
+            },
+            ["resourceId", "resourceType", "expectedLifecycleRevision", "idempotencyKey"],
+          )
+        : jsonSchemaObject({
+            action: {
+              type: "string",
+              description: "Optional action or subcommand for compatible capability routes.",
+            },
+            method: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+              description:
+                "Optional REST method override when this capability supports multiple verbs.",
+            },
+            pathParams: { type: "object", additionalProperties: true },
+            query: { type: "object", additionalProperties: true },
+            body: { type: "object", additionalProperties: true },
+            headers: {
+              type: "object",
+              additionalProperties: true,
+              description:
+                "Optional safe forwarded headers, such as x-payment for x402 settlement.",
+            },
+            params: {
+              type: "object",
+              additionalProperties: true,
+              description:
+                "Capability-specific parameters. Path params can be supplied here by name, e.g. id or amount.",
+            },
+          }),
   }));
 }
 
@@ -287,13 +310,31 @@ export async function callPlatformCloudMcpTool(c: AppContext, name: string, args
         input.resourceType === "container" || input.resourceType === "agent_sandbox"
           ? input.resourceType
           : undefined;
+      if (!resourceType) throw new Error("resourceType is required");
+      if (input.mode !== undefined && input.mode !== "stop") {
+        throw new Error("Only mode=stop supports durable billing cancellation");
+      }
+      const expectedLifecycleRevision = input.expectedLifecycleRevision;
+      if (
+        !Number.isSafeInteger(expectedLifecycleRevision) ||
+        Number(expectedLifecycleRevision) < 0
+      ) {
+        throw new Error("expectedLifecycleRevision is required");
+      }
+      const idempotencyKey =
+        typeof input.idempotencyKey === "string"
+          ? input.idempotencyKey
+          : (c.req.header("idempotency-key") ?? "");
       const user = await requireCurrentBillingManagerSession(c);
       return jsonText(
-        await activeBillingService.cancelResource({
+        await activeBillingService.requestCancellation({
           organizationId: user.organization_id,
+          requestedByUserId: user.id,
           resourceId,
           resourceType,
-          mode: input.mode === "delete" ? "delete" : "stop",
+          expectedLifecycleRevision: Number(expectedLifecycleRevision),
+          idempotencyKey,
+          triggerEnv: c.env,
           authorizeInfrastructureMutation: async () => {
             await requireCurrentBillingManagerSession(c);
           },

@@ -23,7 +23,8 @@
  */
 
 import Decimal from "decimal.js";
-import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, ne, sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { settleComputeRateSegments } from "../../db/repositories/compute-billing-segments";
 import { containersRepository } from "../../db/repositories/containers";
@@ -44,6 +45,30 @@ export interface ContainerStopOutcome {
 
 const STOP_INTENT_MAX_ORDINARY_ATTEMPTS = 3;
 const STOP_INTENT_RETRY_MS = 5 * 60 * 1000;
+const ACTIVE_STOP_INTENT_STATUSES = [
+  "pending",
+  "dispatching",
+  "retry",
+  "terminal_attention",
+] as const;
+
+export type EnqueueContainerUserStopResult =
+  | {
+      requested: true;
+      intentId: string;
+      jobId: string;
+      created: boolean;
+      replayed: boolean;
+    }
+  | {
+      requested: false;
+      intentId: null;
+      jobId: null;
+      created: false;
+      replayed: false;
+      reason: "stale_lifecycle";
+      currentLifecycleRevision: number | null;
+    };
 
 /** Extract + validate a CONTAINER_STOP job payload (throws if malformed). */
 export function readContainerStopJobData(job: { data: unknown }): {
@@ -128,42 +153,11 @@ export async function dispatchContainerStopJob(job: {
       .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)))
       .for("update")
       .limit(1);
-    const [organization] = await tx
-      .select({
-        credit_balance: organizations.credit_balance,
-        pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings,
-      })
-      .from(organizations)
-      .where(eq(organizations.id, organizationId))
-      .for("update")
-      .limit(1);
-    if (!organization) throw new Error("CONTAINER_STOP billing organization not found");
-
-    let earningsAvailable = new Decimal(0);
-    if (organization.pay_as_you_go_from_earnings) {
-      const [sourceUser] = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.organization_id, organizationId))
-        .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.created_at), asc(users.id))
-        .limit(1);
-      if (sourceUser) {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${sourceUser.id}`}))`,
-        );
-        const [earnings] = await tx
-          .select({ available_balance: redeemableEarnings.available_balance })
-          .from(redeemableEarnings)
-          .where(eq(redeemableEarnings.user_id, sourceUser.id))
-          .for("update")
-          .limit(1);
-        if (earnings) earningsAvailable = new Decimal(earnings.available_balance);
-      }
-    }
-
-    // Intent is always the final lock in the billing order. A lifecycle writer
-    // that owns workload+organization can supersede it without deadlocking a
-    // simultaneous stop claim.
+    // Authorization is durable effect authority, so the daemon must branch on
+    // the locked intent rather than trusting the job payload. The workload row
+    // is locked first, matching every lifecycle writer for this container; a
+    // concurrent promotion or restart therefore cannot cross the provider
+    // fence while this claim is in flight.
     const [intent] = await tx
       .select()
       .from(containerComputeStopIntents)
@@ -191,11 +185,12 @@ export async function dispatchContainerStopJob(job: {
     if (intent.status === "superseded") {
       return { outcome: { stopped: false, reason: "superseded" } };
     }
+    const userRequested = intent.authorization === "user_request";
     if (
       !container ||
       container.lifecycle_revision !== lifecycleRevision ||
       container.status !== "running" ||
-      container.billing_status !== "shutdown_pending"
+      (!userRequested && container.billing_status !== "shutdown_pending")
     ) {
       const supersededAt = new Date();
       await tx
@@ -205,34 +200,74 @@ export async function dispatchContainerStopJob(job: {
       return { outcome: { stopped: false, reason: "stale-lifecycle-generation" } };
     }
 
-    const settled = await settleComputeRateSegments(tx, {
-      organizationId,
-      workloadKind: "container",
-      workloadId: containerId,
-      periodStart: container.last_billed_at ?? container.created_at,
-      periodEnd: new Date(),
-    });
-    const creditAvailable = new Decimal(organization.credit_balance);
-    if (!creditAvailable.isFinite() || !earningsAvailable.isFinite()) {
-      throw new Error("CONTAINER_STOP funding source contains an invalid numeric balance");
-    }
-    if (creditAvailable.plus(earningsAvailable).gte(settled.amount)) {
-      const fundedAt = new Date();
-      await tx
-        .update(containerComputeStopIntents)
-        .set({ status: "superseded", superseded_at: fundedAt, updated_at: fundedAt })
-        .where(eq(containerComputeStopIntents.id, intentId));
-      await tx
-        .update(containers)
-        .set({
-          billing_status: "active",
-          next_billing_at: fundedAt,
-          shutdown_warning_sent_at: null,
-          scheduled_shutdown_at: null,
-          updated_at: fundedAt,
+    // Billing authority remains conditional on insufficient funding at the
+    // effect boundary. An explicit user request is unconditional: it skips all
+    // funding, earnings, settlement, and reactivation work.
+    if (!userRequested) {
+      const [organization] = await tx
+        .select({
+          credit_balance: organizations.credit_balance,
+          pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings,
         })
-        .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)));
-      return { outcome: { stopped: false, reason: "funding-restored" } };
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for("update")
+        .limit(1);
+      if (!organization) throw new Error("CONTAINER_STOP billing organization not found");
+
+      let earningsAvailable = new Decimal(0);
+      if (organization.pay_as_you_go_from_earnings) {
+        const [sourceUser] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.organization_id, organizationId))
+          .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.created_at), asc(users.id))
+          .limit(1);
+        if (sourceUser) {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${sourceUser.id}`}))`,
+          );
+          const [earnings] = await tx
+            .select({ available_balance: redeemableEarnings.available_balance })
+            .from(redeemableEarnings)
+            .where(eq(redeemableEarnings.user_id, sourceUser.id))
+            .for("update")
+            .limit(1);
+          if (earnings) earningsAvailable = new Decimal(earnings.available_balance);
+        }
+      }
+
+      const settled = await settleComputeRateSegments(tx, {
+        organizationId,
+        workloadKind: "container",
+        workloadId: containerId,
+        periodStart: container.last_billed_at ?? container.created_at,
+        periodEnd: new Date(),
+      });
+      const creditAvailable = new Decimal(organization.credit_balance);
+      if (!creditAvailable.isFinite() || !earningsAvailable.isFinite()) {
+        throw new Error("CONTAINER_STOP funding source contains an invalid numeric balance");
+      }
+      if (creditAvailable.plus(earningsAvailable).gte(settled.amount)) {
+        const fundedAt = new Date();
+        await tx
+          .update(containerComputeStopIntents)
+          .set({ status: "superseded", superseded_at: fundedAt, updated_at: fundedAt })
+          .where(eq(containerComputeStopIntents.id, intentId));
+        await tx
+          .update(containers)
+          .set({
+            billing_status: "active",
+            next_billing_at: fundedAt,
+            shutdown_warning_sent_at: null,
+            scheduled_shutdown_at: null,
+            updated_at: fundedAt,
+          })
+          .where(
+            and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)),
+          );
+        return { outcome: { stopped: false, reason: "funding-restored" } };
+      }
     }
 
     const attempt = intent.attempts + 1;
@@ -257,7 +292,14 @@ export async function dispatchContainerStopJob(job: {
       const confirmedAt = new Date();
       await tx
         .update(containers)
-        .set({ status: "stopped", billing_status: "suspended", updated_at: confirmedAt })
+        .set({
+          status: "stopped",
+          billing_status: "suspended",
+          next_billing_at: null,
+          shutdown_warning_sent_at: null,
+          scheduled_shutdown_at: null,
+          updated_at: confirmedAt,
+        })
         .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)));
       await tx
         .update(containerComputeStopIntents)
@@ -325,6 +367,243 @@ export function enqueueContainerStop(
   });
 }
 
+async function insertContainerStopJobInTx(
+  tx: DbTransaction,
+  p: {
+    containerId: string;
+    organizationId: string;
+    userId: string;
+    intentId: string;
+    lifecycleRevision: number;
+  },
+): Promise<string> {
+  const [created] = await tx
+    .insert(jobs)
+    .values({
+      type: JOB_TYPES.CONTAINER_STOP,
+      status: "pending",
+      organization_id: p.organizationId,
+      user_id: p.userId,
+      data: {
+        containerId: p.containerId,
+        organizationId: p.organizationId,
+        intentId: p.intentId,
+        lifecycleRevision: p.lifecycleRevision,
+      },
+    })
+    .returning({ id: jobs.id });
+  if (!created) throw new Error("Container stop job insert returned no row");
+  await tx
+    .update(containerComputeStopIntents)
+    .set({ job_id: created.id, updated_at: new Date() })
+    .where(eq(containerComputeStopIntents.id, p.intentId));
+  return created.id;
+}
+
+/**
+ * Persist an explicit user stop inside the caller's transaction.
+ *
+ * The exact logical user intent is read before the current lifecycle revision,
+ * so a retry after a lost response returns the original job even if that job
+ * has already stopped the generation. A first-time stale request creates
+ * neither an intent nor a job. Billing authority for the same live generation
+ * is promoted in place and can never be downgraded again.
+ */
+export async function enqueueContainerUserStopInTx(
+  tx: DbTransaction,
+  p: {
+    containerId: string;
+    organizationId: string;
+    userId: string;
+    expectedLifecycleRevision: number;
+  },
+): Promise<EnqueueContainerUserStopResult> {
+  if (!Number.isSafeInteger(p.expectedLifecycleRevision) || p.expectedLifecycleRevision < 0) {
+    throw new Error("Container stop expected lifecycle revision must be a non-negative integer");
+  }
+
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${`container-stop:${p.organizationId}:${p.containerId}`}))`,
+  );
+
+  const [replayedIntent] = await tx
+    .select()
+    .from(containerComputeStopIntents)
+    .where(
+      and(
+        eq(containerComputeStopIntents.organization_id, p.organizationId),
+        eq(containerComputeStopIntents.container_id, p.containerId),
+        eq(containerComputeStopIntents.lifecycle_revision, p.expectedLifecycleRevision),
+        eq(containerComputeStopIntents.authorization, "user_request"),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (replayedIntent) {
+    if (!replayedIntent.job_id) {
+      throw new Error("Container user stop intent is missing its atomic job binding");
+    }
+    return {
+      requested: true,
+      intentId: replayedIntent.id,
+      jobId: replayedIntent.job_id,
+      created: false,
+      replayed: true,
+    };
+  }
+
+  const [container] = await tx
+    .select({
+      lifecycle_revision: containers.lifecycle_revision,
+      status: containers.status,
+    })
+    .from(containers)
+    .where(and(eq(containers.id, p.containerId), eq(containers.organization_id, p.organizationId)))
+    .for("update")
+    .limit(1);
+  if (
+    !container ||
+    container.lifecycle_revision !== p.expectedLifecycleRevision ||
+    container.status !== "running"
+  ) {
+    return {
+      requested: false,
+      intentId: null,
+      jobId: null,
+      created: false,
+      replayed: false,
+      reason: "stale_lifecycle",
+      currentLifecycleRevision: container?.lifecycle_revision ?? null,
+    };
+  }
+
+  const [billingIntent] = await tx
+    .select()
+    .from(containerComputeStopIntents)
+    .where(
+      and(
+        eq(containerComputeStopIntents.organization_id, p.organizationId),
+        eq(containerComputeStopIntents.container_id, p.containerId),
+        eq(containerComputeStopIntents.lifecycle_revision, p.expectedLifecycleRevision),
+        eq(containerComputeStopIntents.authorization, "billing_request"),
+        inArray(containerComputeStopIntents.status, [...ACTIVE_STOP_INTENT_STATUSES]),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (billingIntent) {
+    const [liveBillingJob] = billingIntent.job_id
+      ? await tx
+          .select({ id: jobs.id })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.id, billingIntent.job_id),
+              eq(jobs.type, JOB_TYPES.CONTAINER_STOP),
+              eq(jobs.organization_id, p.organizationId),
+              inArray(jobs.status, ["pending", "in_progress"]),
+            ),
+          )
+          .for("update")
+          .limit(1)
+      : [undefined];
+    const promotedAt = new Date();
+    await tx
+      .update(containerComputeStopIntents)
+      .set(
+        liveBillingJob
+          ? { authorization: "user_request", updated_at: promotedAt }
+          : {
+              authorization: "user_request",
+              status: "pending",
+              job_id: null,
+              attempts: 0,
+              last_error: null,
+              next_attempt_at: promotedAt,
+              provider_started_at: null,
+              provider_confirmed_at: null,
+              superseded_at: null,
+              updated_at: promotedAt,
+            },
+      )
+      .where(eq(containerComputeStopIntents.id, billingIntent.id));
+    if (liveBillingJob) {
+      // Preserve the existing job envelope verbatim. A daemon may already hold
+      // a claimed snapshot whose settlement fence includes user_id; rewriting
+      // it here would strand that safe in-flight execution.
+      return {
+        requested: true,
+        intentId: billingIntent.id,
+        jobId: liveBillingJob.id,
+        created: false,
+        replayed: false,
+      };
+    }
+    const jobId = await insertContainerStopJobInTx(tx, {
+      ...p,
+      intentId: billingIntent.id,
+      lifecycleRevision: p.expectedLifecycleRevision,
+    });
+    return {
+      requested: true,
+      intentId: billingIntent.id,
+      jobId,
+      created: true,
+      replayed: false,
+    };
+  }
+
+  // A stale active intent from an older generation cannot retain the
+  // per-container active slot once the locked container proves a newer live
+  // generation. Its already-enqueued job remains safe: dispatch observes the
+  // terminal status/lifecycle fence and performs no provider call.
+  const supersededAt = new Date();
+  await tx
+    .update(containerComputeStopIntents)
+    .set({ status: "superseded", superseded_at: supersededAt, updated_at: supersededAt })
+    .where(
+      and(
+        eq(containerComputeStopIntents.organization_id, p.organizationId),
+        eq(containerComputeStopIntents.container_id, p.containerId),
+        ne(containerComputeStopIntents.lifecycle_revision, p.expectedLifecycleRevision),
+        inArray(containerComputeStopIntents.status, [...ACTIVE_STOP_INTENT_STATUSES]),
+      ),
+    );
+
+  const [intent] = await tx
+    .insert(containerComputeStopIntents)
+    .values({
+      organization_id: p.organizationId,
+      container_id: p.containerId,
+      lifecycle_revision: p.expectedLifecycleRevision,
+      authorization: "user_request",
+    })
+    .returning();
+  if (!intent) throw new Error("Container user stop intent insert returned no row");
+  const jobId = await insertContainerStopJobInTx(tx, {
+    ...p,
+    intentId: intent.id,
+    lifecycleRevision: p.expectedLifecycleRevision,
+  });
+  return {
+    requested: true,
+    intentId: intent.id,
+    jobId,
+    created: true,
+    replayed: false,
+  };
+}
+
+/** Public transaction wrapper for callers that do not already own a receipt transaction. */
+export async function enqueueContainerUserStopOnce(p: {
+  containerId: string;
+  organizationId: string;
+  userId: string;
+  expectedLifecycleRevision: number;
+}): Promise<EnqueueContainerUserStopResult> {
+  return await dbWrite.transaction((tx) => enqueueContainerUserStopInTx(tx, p));
+}
+
 /**
  * Persist one active stop job per tenant/container under a transaction-scoped
  * lock. Retries after a route crash reuse the pending/in-progress job instead
@@ -366,6 +645,26 @@ export async function enqueueContainerStopOnce(p: {
       container.scheduled_shutdown_at > now
     ) {
       throw new Error("Container is not eligible for a billing stop intent");
+    }
+    const [userIntent] = await tx
+      .select()
+      .from(containerComputeStopIntents)
+      .where(
+        and(
+          eq(containerComputeStopIntents.organization_id, p.organizationId),
+          eq(containerComputeStopIntents.container_id, p.containerId),
+          eq(containerComputeStopIntents.lifecycle_revision, container.lifecycle_revision),
+          eq(containerComputeStopIntents.authorization, "user_request"),
+          inArray(containerComputeStopIntents.status, [...ACTIVE_STOP_INTENT_STATUSES]),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (userIntent) {
+      if (!userIntent.job_id) {
+        throw new Error("Container user stop intent is missing its atomic job binding");
+      }
+      return { requested: true, id: userIntent.job_id, created: false };
     }
     const [organization] = await tx
       .select({
@@ -419,6 +718,7 @@ export async function enqueueContainerStopOnce(p: {
           and(
             eq(containerComputeStopIntents.organization_id, p.organizationId),
             eq(containerComputeStopIntents.container_id, p.containerId),
+            eq(containerComputeStopIntents.authorization, "billing_request"),
             inArray(containerComputeStopIntents.status, [
               "pending",
               "dispatching",
@@ -470,6 +770,7 @@ export async function enqueueContainerStopOnce(p: {
             organization_id: p.organizationId,
             container_id: p.containerId,
             lifecycle_revision: container.lifecycle_revision,
+            authorization: "billing_request",
           })
           .returning();
     if (!intent) throw new Error("Container stop intent insert returned no row");

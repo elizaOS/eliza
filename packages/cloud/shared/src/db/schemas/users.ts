@@ -1,7 +1,16 @@
 // Defines the users Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**
@@ -110,6 +119,7 @@ export const users = pgTable(
     deleted_at: timestamp("deleted_at"),
   },
   (table) => ({
+    tenant_identity_unique: unique("users_id_org_unique").on(table.id, table.organization_id),
     email_idx: index("users_email_idx").on(table.email),
     email_blind_index_idx: index("users_email_blind_index_idx").on(table.email_blind_index),
     wallet_address_idx: index("users_wallet_address_idx").on(table.wallet_address),

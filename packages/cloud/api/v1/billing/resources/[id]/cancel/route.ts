@@ -1,6 +1,7 @@
 /**
  * POST /api/v1/billing/resources/:id/cancel
- * Stops future billing for a container or managed agent sandbox.
+ * Durably admits a provider stop for a container or managed agent sandbox.
+ * Billing is reported stopped only after provider confirmation is persisted.
  */
 
 import { Hono } from "hono";
@@ -11,16 +12,14 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  activeBillingService,
-  type BillableResourceType,
-} from "@/lib/services/active-billing";
+import { activeBillingService } from "@/lib/services/active-billing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CancelSchema = z.object({
-  resourceType: z.enum(["container", "agent_sandbox"]).optional(),
-  mode: z.enum(["stop", "delete"]).optional(),
+  resourceType: z.enum(["container", "agent_sandbox"]),
+  mode: z.literal("stop").default("stop"),
+  expectedLifecycleRevision: z.number().int().nonnegative().safe(),
 });
 
 const app = new Hono<AppEnv>();
@@ -32,6 +31,12 @@ app.post("/", async (c) => {
     const resourceId = c.req.param("id");
     if (!resourceId) {
       return c.json({ success: false, error: "Resource id required" }, 400);
+    }
+    if (!z.uuid().safeParse(resourceId).success) {
+      return c.json(
+        { success: false, error: "Resource id must be a UUID" },
+        400,
+      );
     }
 
     const body = (await c.req.json().catch(() => ({}))) as Record<
@@ -55,20 +60,34 @@ app.post("/", async (c) => {
     }
 
     const user = await requireCurrentBillingManagerSession(c);
-    const result = await activeBillingService.cancelResource({
+    const result = await activeBillingService.requestCancellation({
       organizationId: user.organization_id,
+      requestedByUserId: user.id,
       resourceId,
-      resourceType: parsed.data.resourceType as
-        | BillableResourceType
-        | undefined,
-      mode: parsed.data.mode,
+      resourceType: parsed.data.resourceType,
+      expectedLifecycleRevision: parsed.data.expectedLifecycleRevision,
+      idempotencyKey: c.req.header("Idempotency-Key")?.trim() ?? "",
       triggerEnv: c.env,
       authorizeInfrastructureMutation: async () => {
         await requireCurrentBillingManagerSession(c);
       },
     });
 
-    return c.json({ success: true, ...result });
+    const status =
+      result.receipt.status === "accepted"
+        ? 202
+        : result.receipt.status === "conflict"
+          ? 409
+          : 200;
+    return c.json(
+      {
+        success: !["conflict", "terminal_attention"].includes(
+          result.receipt.status,
+        ),
+        ...result,
+      },
+      status,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === "Billable resource not found") {
