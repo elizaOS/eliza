@@ -249,7 +249,7 @@ export default function AppChargePaymentPage() {
   if (isLoading) {
     return (
       <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-muted" />
+        <Loader2 className="size-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -259,7 +259,7 @@ export default function AppChargePaymentPage() {
       <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4 text-txt">
         <div className="w-full max-w-sm border border-destructive/30 bg-destructive-subtle p-5">
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-destructive" />
+            <AlertCircle className="size-6 text-destructive" />
             <div>
               <h1 className="text-base font-semibold">
                 {t("cloud.appCharge.unavailableTitle", {
@@ -286,13 +286,13 @@ export default function AppChargePaymentPage() {
   }
 
   const statusIcon = isPaid ? (
-    <CheckCircle2 className="h-7 w-7 text-status-success" />
+    <CheckCircle2 className="size-7 text-status-success" />
   ) : isExpired ? (
-    <AlertCircle className="h-7 w-7 text-accent" />
+    <AlertCircle className="size-7 text-accent" />
   ) : returnedFromPayment ? (
-    <Loader2 className="h-7 w-7 animate-spin text-muted-strong" />
+    <Loader2 className="size-7 animate-spin text-muted-strong" />
   ) : (
-    <CreditCard className="h-7 w-7 text-muted-strong" />
+    <CreditCard className="size-7 text-muted-strong" />
   );
   const statusText = isPaid
     ? t("cloud.appCharge.statusPaid", { defaultValue: "Paid" })
@@ -321,10 +321,10 @@ export default function AppChargePaymentPage() {
                 <img
                   src={details.app.logo_url}
                   alt=""
-                  className="h-12 w-12 shrink-0 border border-border object-cover"
+                  className="size-12 shrink-0 border border-border object-cover"
                 />
               ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center border border-border bg-bg-elevated text-sm font-semibold text-muted">
+                <div className="flex size-12 shrink-0 items-center justify-center border border-border bg-bg-elevated text-sm font-semibold text-muted">
                   {details.app.name.slice(0, 2).toUpperCase()}
                 </div>
               )}
@@ -352,15 +352,15 @@ export default function AppChargePaymentPage() {
               })}
               onClick={() => loadCharge()}
               disabled={isLoading}
-              className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-bg-elevated text-muted transition hover:border-border-strong hover:text-txt disabled:opacity-40"
+              className="flex size-10 shrink-0 items-center justify-center border border-border bg-bg-elevated text-muted transition hover:border-border-strong hover:text-txt disabled:opacity-40"
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw className="size-4" />
             </Button>
           </div>
 
           <div className="mt-10 flex flex-col items-center text-center">
             <div
-              className={`flex h-16 w-16 items-center justify-center border ${statusClass}`}
+              className={`flex size-16 items-center justify-center border ${statusClass}`}
             >
               {statusIcon}
             </div>
@@ -386,14 +386,14 @@ export default function AppChargePaymentPage() {
 
           {error && (
             <div className="mt-7 flex items-center gap-3 border border-destructive/30 bg-destructive-subtle p-3 text-sm text-txt">
-              <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+              <AlertCircle className="size-5 shrink-0 text-destructive" />
               <span>{error}</span>
             </div>
           )}
 
           {returnedFromPayment && !isPaid && !isExpired && (
             <div className="mt-7 flex items-center gap-3 border border-border-strong bg-surface p-3 text-sm text-txt">
-              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-strong" />
+              <Loader2 className="size-5 shrink-0 animate-spin text-muted-strong" />
               <span>
                 {t("cloud.appCharge.waitingConfirmation", {
                   defaultValue: "Waiting for confirmation.",
@@ -418,9 +418,9 @@ export default function AppChargePaymentPage() {
               className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 bg-accent-subtle text-txt transition hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-30"
             >
               {checkoutProvider === "stripe" ? (
-                <Loader2 className="h-9 w-9 animate-spin" />
+                <Loader2 className="size-9 animate-spin" />
               ) : (
-                <CreditCard className="h-9 w-9 transition group-hover:scale-105" />
+                <CreditCard className="size-9 transition group-hover:scale-105" />
               )}
               <span className="text-sm font-medium">
                 {t("cloud.appCharge.card", { defaultValue: "Card" })}
@@ -441,9 +441,9 @@ export default function AppChargePaymentPage() {
               className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-status-success/25 bg-status-success-bg text-status-success transition hover:border-status-success/60 disabled:pointer-events-none disabled:opacity-30"
             >
               {checkoutProvider === "oxapay" ? (
-                <Loader2 className="h-9 w-9 animate-spin" />
+                <Loader2 className="size-9 animate-spin" />
               ) : (
-                <Coins className="h-9 w-9 transition group-hover:scale-105" />
+                <Coins className="size-9 transition group-hover:scale-105" />
               )}
               <span className="text-sm font-medium">
                 {t("cloud.appCharge.crypto", { defaultValue: "Crypto" })}

@@ -47,12 +47,12 @@ function LoadedPackRow({
       trailing={
         isActive ? (
           <span
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-accent"
+            className="inline-flex size-6 shrink-0 items-center justify-center text-accent"
             title={activeLabel}
             role="img"
             aria-label={activeLabel}
           >
-            <Check className="h-4 w-4" aria-hidden />
+            <Check className="size-4" aria-hidden />
           </span>
         ) : null
       }

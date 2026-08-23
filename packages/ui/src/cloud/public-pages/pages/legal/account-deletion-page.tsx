@@ -30,7 +30,7 @@ export default function AccountDeletionPage() {
         </div>
 
         <section className="space-y-5 rounded-lg border border-border bg-bg-elevated p-6">
-          <ShieldCheck className="h-7 w-7 text-accent" />
+          <ShieldCheck className="size-7 text-accent" />
           <h2 className="text-xl font-semibold">Submit a verified request</h2>
           <p className="text-muted-strong">
             Sign in to verify ownership and check whether the complete,

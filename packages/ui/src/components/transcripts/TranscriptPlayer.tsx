@@ -61,12 +61,12 @@ export function TranscriptPlayer({
             data-testid="transcript-play"
             aria-label={audio.playing ? "pause" : "play"}
             onClick={audio.toggle}
-            className="h-10 w-10 shrink-0 rounded-full bg-accent/12 text-accent-fg transition-colors hover:bg-accent/20"
+            className="size-10 shrink-0 rounded-full bg-accent/12 text-accent-fg transition-colors hover:bg-accent/20"
           >
             {audio.playing ? (
-              <Pause className="h-5 w-5" aria-hidden />
+              <Pause className="size-5" aria-hidden />
             ) : (
-              <Play className="h-5 w-5 translate-x-px" aria-hidden />
+              <Play className="size-5 translate-x-px" aria-hidden />
             )}
           </Button>
           <Input

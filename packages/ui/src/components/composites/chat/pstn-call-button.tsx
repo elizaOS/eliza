@@ -216,7 +216,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
         aria-label="Have Eliza call me"
         data-testid="chat-composer-phone-call"
       >
-        <PhoneCall className="h-5 w-5" />
+        <PhoneCall className="size-5" />
       </Button>
       <Dialog open={open} onOpenChange={(next) => void handleOpenChange(next)}>
         <DialogContent className="max-w-md">
@@ -251,7 +251,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
                     disabled={hangingUp}
                   >
                     {hangingUp ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-2  size-4 animate-spin" />
                     ) : null}
                     Hang up
                   </Button>
@@ -309,7 +309,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
                   }
                 >
                   {submitting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 size-4 animate-spin" />
                   ) : null}
                   Call me
                 </Button>

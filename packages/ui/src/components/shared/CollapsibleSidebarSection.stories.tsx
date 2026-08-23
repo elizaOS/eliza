@@ -67,7 +67,7 @@ export const WithAddAction: Story = {
 
 export const WithIconAndIndicator: Story = {
   args: {
-    icon: <Folder className="h-3 w-3" />,
+    icon: <Folder className="size-3" />,
     indicator: (
       <span className="rounded-sm bg-line/60 px-1 text-[10px] font-medium text-txt">
         3

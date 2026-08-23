@@ -88,7 +88,7 @@ function DashboardSidebarComponent({
               className="relative z-10 border border-white/10 bg-white/5 p-2 transition-colors hover:border-white/20 hover:bg-white/10   md:hidden"
               aria-label="Close navigation"
             >
-              <X className="h-4 w-4 text-white" />
+              <X className="size-4 text-white" />
             </Button>
           )}
         </div>

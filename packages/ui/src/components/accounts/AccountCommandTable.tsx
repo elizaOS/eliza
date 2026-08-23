@@ -123,7 +123,7 @@ function UsageBar({ label, pct }: UsageBarProps) {
         clamped == null ? "Unknown" : `${Math.round(clamped)}%`
       }`}
     >
-      <span className="w-6 shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
+      <span className="w-6 shrink-0 text-2xs font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
       <div className="relative h-1.5 w-16 overflow-hidden rounded-full bg-bg-accent">
@@ -132,7 +132,7 @@ function UsageBar({ label, pct }: UsageBarProps) {
           style={{ width: `${clamped ?? 0}%` }}
         />
       </div>
-      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-muted">
+      <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-muted">
         {clamped == null ? "Unknown" : `${Math.round(clamped)}%`}
       </span>
     </div>
@@ -165,14 +165,14 @@ function SortHeader({
       type="button"
       onClick={() => onSort(columnKey)}
       className={cn(
-        "inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted transition-colors hover:text-txt-strong",
+        "inline-flex items-center gap-1 text-2xs font-semibold uppercase tracking-wider text-muted transition-colors hover:text-txt-strong",
         align === "right" && "flex-row-reverse",
       )}
     >
       <span>{label}</span>
       <Icon
         className={cn(
-          "h-3 w-3 shrink-0",
+          "size-3 shrink-0",
           active ? "text-txt-strong" : "text-muted/60",
         )}
         aria-hidden
@@ -210,7 +210,7 @@ function HealthCell({ account, t }: HealthCellProps) {
     <div className="flex flex-col gap-0.5" title={tooltip.join(" · ")}>
       <StatusBadge label={label} tone={health.tone} withDot />
       {countdown ? (
-        <span className="text-[10px] tabular-nums text-warn">
+        <span className="text-2xs tabular-nums text-warn">
           {t("accounts.table.resetsIn", {
             defaultValue: `resets in ${countdown}`,
             countdown,
@@ -342,7 +342,7 @@ export function AccountCommandTable({
         <thead>
           <tr className="border-b border-border/40 bg-bg-accent/40">
             <th scope="col" className="px-3 py-2 font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.account", { defaultValue: "Account" })}
               </span>
             </th>
@@ -375,7 +375,7 @@ export function AccountCommandTable({
               />
             </th>
             <th scope="col" className="px-3 py-2 font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.resets", { defaultValue: "Resets" })}
               </span>
             </th>
@@ -394,7 +394,7 @@ export function AccountCommandTable({
               />
             </th>
             <th scope="col" className="px-3 py-2 font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.enabled", { defaultValue: "Enabled" })}
               </span>
             </th>
@@ -414,7 +414,7 @@ export function AccountCommandTable({
             </th>
             {showLeaseColumn ? (
               <th scope="col" className="px-3 py-2 font-normal">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                   {t("accounts.table.col.leases", {
                     defaultValue: "Leases",
                   })}
@@ -422,7 +422,7 @@ export function AccountCommandTable({
               </th>
             ) : null}
             <th scope="col" className="px-3 py-2 text-right font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.actions", {
                   defaultValue: "Actions",
                 })}
@@ -438,7 +438,7 @@ export function AccountCommandTable({
                 className="px-3 py-6 text-center text-xs text-muted"
               >
                 <span className="inline-flex items-center gap-2">
-                  <Spinner className="h-3.5 w-3.5" />
+                  <Spinner className="size-3.5" />
                   {t("accounts.table.loading", {
                     defaultValue: "Loading accounts…",
                   })}
@@ -524,7 +524,7 @@ export function AccountCommandTable({
                               defaultValue: `Rename ${account.label}`,
                               label: account.label,
                             })}
-                            className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-xs font-medium text-txt-strong outline-none"
+                            className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-base font-medium text-txt-strong outline-none sm:text-xs"
                           />
                         ) : (
                           <button
@@ -541,7 +541,7 @@ export function AccountCommandTable({
                         )}
                         {account.email && account.email !== account.label ? (
                           <span
-                            className="truncate text-[10px] text-muted"
+                            className="truncate text-2xs text-muted"
                             title={account.email}
                           >
                             {account.email}
@@ -573,7 +573,7 @@ export function AccountCommandTable({
                         ) : null}
                       </div>
                     ) : (
-                      <span className="text-[10px] text-muted">
+                      <span className="text-2xs text-muted">
                         {t("accounts.table.usage.notApplicable", {
                           defaultValue: "Not reported",
                         })}
@@ -582,7 +582,7 @@ export function AccountCommandTable({
                   </td>
                   <td className="px-3 py-2.5 align-middle">
                     {hasWindowUsage ? (
-                      <div className="flex flex-col gap-0.5 text-[10px] tabular-nums text-muted">
+                      <div className="flex flex-col gap-0.5 text-2xs tabular-nums text-muted">
                         <span title="All-model weekly reset">
                           7d: {resetIn ?? "Unknown"}
                         </span>
@@ -593,14 +593,12 @@ export function AccountCommandTable({
                         ) : null}
                       </div>
                     ) : (
-                      <span className="text-[10px] text-muted">
-                        Not reported
-                      </span>
+                      <span className="text-2xs text-muted">Not reported</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 align-middle">
                     <span
-                      className="text-[11px] tabular-nums text-muted"
+                      className="text-xs-tight tabular-nums text-muted"
                       title={t("accounts.table.priority.tooltip", {
                         defaultValue: "Lower value runs first",
                       })}
@@ -624,7 +622,7 @@ export function AccountCommandTable({
                     />
                   </td>
                   <td className="px-3 py-2.5 align-middle">
-                    <span className="text-[11px] text-muted">
+                    <span className="text-xs-tight text-muted">
                       {account.lastUsedAt
                         ? formatRelativeTimeShort(account.lastUsedAt)
                         : "-"}
@@ -635,7 +633,7 @@ export function AccountCommandTable({
                       <div className="flex flex-col gap-0.5">
                         <span
                           className={cn(
-                            "text-[11px] tabular-nums",
+                            "text-xs-tight tabular-nums",
                             lease && lease.activeLeaseCount > 0
                               ? "text-txt-strong"
                               : "text-muted",
@@ -647,7 +645,7 @@ export function AccountCommandTable({
                           {lease?.activeLeaseCount ?? 0}
                         </span>
                         {lease?.servedLastRequest ? (
-                          <span className="text-[9px] uppercase tracking-wider text-accent">
+                          <span className="text-3xs uppercase tracking-wider text-accent">
                             {t("accounts.table.leases.servedLast", {
                               defaultValue: "served last",
                             })}
@@ -679,9 +677,9 @@ export function AccountCommandTable({
                             title={t("accounts.table.moveUp.tooltip", {
                               defaultValue: "Raise priority",
                             })}
-                            className="h-7 w-7 p-0"
+                            className="size-7 p-0"
                           >
-                            <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+                            <ChevronUp className="size-3.5" aria-hidden />
                           </Button>
                           <Button
                             type="button"
@@ -704,9 +702,9 @@ export function AccountCommandTable({
                             title={t("accounts.table.moveDown.tooltip", {
                               defaultValue: "Lower priority",
                             })}
-                            className="h-7 w-7 p-0"
+                            className="size-7 p-0"
                           >
-                            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                            <ChevronDown className="size-3.5" aria-hidden />
                           </Button>
                         </>
                       ) : null}
@@ -719,10 +717,10 @@ export function AccountCommandTable({
                             rowSaving || saving.has(`test:${account.id}`)
                           }
                           onClick={() => runAction(() => onTest(account.id))}
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 px-2 text-xs-tight"
                         >
                           {saving.has(`test:${account.id}`) ? (
-                            <Spinner className="h-3 w-3" />
+                            <Spinner className="size-3" />
                           ) : (
                             t("accounts.table.test", { defaultValue: "Test" })
                           )}
@@ -746,12 +744,12 @@ export function AccountCommandTable({
                           title={t("accounts.table.refresh.tooltip", {
                             defaultValue: "Refresh usage",
                           })}
-                          className="h-7 w-7 p-0"
+                          className="size-7 p-0"
                         >
                           {saving.has(`usage:${account.id}`) ? (
-                            <Spinner className="h-3 w-3" />
+                            <Spinner className="size-3" />
                           ) : (
-                            <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                            <RotateCw className="size-3.5" aria-hidden />
                           )}
                         </Button>
                       ) : null}
@@ -762,9 +760,9 @@ export function AccountCommandTable({
                           size="sm"
                           disabled={rowSaving}
                           onClick={() => onReauthenticate(account)}
-                          className="h-7 gap-1 px-2 text-[11px] text-bg"
+                          className="h-7 gap-1 px-2 text-xs-tight text-bg"
                         >
-                          <KeyRound className="h-3 w-3" aria-hidden />
+                          <KeyRound className="size-3" aria-hidden />
                           {account.source === "oauth"
                             ? t("accounts.table.reauth", {
                                 defaultValue: "Reauth",
@@ -787,9 +785,9 @@ export function AccountCommandTable({
                         title={t("accounts.table.remove", {
                           defaultValue: "Remove account",
                         })}
-                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                        className="size-7 p-0 text-destructive hover:bg-destructive/10"
                       >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        <Trash2 className="size-3.5" aria-hidden />
                       </Button>
                     </div>
                   </td>
@@ -842,7 +840,7 @@ export function AccountCommandTable({
               onClick={confirmDelete}
             >
               {deleteBusy ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : (
                 t("accounts.table.delete.confirm", {
                   defaultValue: "Remove account",

@@ -39,6 +39,8 @@
     "ensure-plugin-test-conventions": "bun packages/scripts/ensure-plugin-test-conventions.mjs",
     "ensure-plugin-test-conventions:check": "bun packages/scripts/ensure-plugin-test-conventions.mjs --check",
     "trajectory:inspect": "bun packages/scripts/trajectory.ts",
+    "audit:design": "node packages/scripts/design-doctor-gate.mjs",
+    "audit:design:update-baseline": "node packages/scripts/design-doctor-gate.mjs --update-baseline",
     "audit:focused-tests": "node packages/scripts/audit-focused-skipped-tests.mjs",
     "audit:focused-tests:self-test": "node packages/scripts/audit-focused-skipped-tests.mjs --self-test",
     "audit:type-duplication": "node packages/scripts/type-duplication-audit.mjs",

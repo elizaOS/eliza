@@ -387,7 +387,7 @@ export function StreamingPermissionsSettingsView({
                     aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
                   >
                     {isRequesting ? (
-                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                      <Loader2 className="size-3 animate-spin" aria-hidden />
                     ) : null}
                     {isRequesting
                       ? translateWithFallback(
@@ -402,7 +402,7 @@ export function StreamingPermissionsSettingsView({
                         )}
                   </Button>
                 ) : (
-                  <Check className="h-4 w-4 text-ok" aria-hidden />
+                  <Check className="size-4 text-ok" aria-hidden />
                 )
               }
             />

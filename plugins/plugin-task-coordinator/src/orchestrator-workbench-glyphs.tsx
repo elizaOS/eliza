@@ -268,10 +268,7 @@ export function VerificationGlyph({
       aria-label={label}
       role="img"
     >
-      <Icon
-        className={`h-3.5 w-3.5 ${VERIFICATION_TONE[status]}`}
-        aria-hidden
-      />
+      <Icon className={`size-3.5 ${VERIFICATION_TONE[status]}`} aria-hidden />
     </span>
   );
 }
@@ -293,7 +290,7 @@ export function PlanStepGlyph({ status, t }: { status: string; t: Translate }) {
       aria-label={label}
       role="img"
     >
-      <Icon className={`h-3.5 w-3.5 ${tone}`} aria-hidden />
+      <Icon className={`size-3.5 ${tone}`} aria-hidden />
     </span>
   );
 }

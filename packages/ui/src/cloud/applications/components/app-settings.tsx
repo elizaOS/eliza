@@ -194,7 +194,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       {/* Basic Settings */}
       <div className="bg-card rounded-sm p-4 space-y-4">
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-          <Settings className="h-4 w-4 text-muted" />
+          <Settings className="size-4 text-muted" />
           {t("cloud.appSettings.basicSettings", {
             defaultValue: "Basic Settings",
           })}
@@ -327,7 +327,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       <div className="bg-card rounded-sm p-4 space-y-4">
         <div>
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-            <Shield className="h-4 w-4 text-muted" />
+            <Shield className="size-4 text-muted" />
             {t("cloud.appSettings.allowedOrigins", {
               defaultValue: "Allowed Origins",
             })}
@@ -359,7 +359,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             size="icon"
             className="shrink-0 border-border hover:bg-bg-hover"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="size-4" />
           </Button>
         </div>
 
@@ -377,7 +377,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   onClick={() => removeOrigin(origin)}
                   className="ml-1 p-0.5 hover:bg-bg-hover rounded-sm transition-colors"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="size-3" />
                 </Button>
               </Badge>
             ))}
@@ -394,12 +394,12 @@ export function AppSettings({ app }: AppSettingsProps) {
         >
           {isLoading ? (
             <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="size-4 mr-2 animate-spin" />
               {t("cloud.appSettings.saving", { defaultValue: "Saving..." })}
             </>
           ) : (
             <>
-              <Save className="h-4 w-4 mr-2" />
+              <Save className="size-4 mr-2" />
               {t("cloud.appSettings.saveChanges", {
                 defaultValue: "Save Changes",
               })}
@@ -411,7 +411,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       {/* Danger Zone */}
       <div className="bg-red-500/10 rounded-sm p-4 space-y-4 border border-red-500/20">
         <h3 className="text-sm font-medium text-red-400 flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" />
+          <AlertTriangle className="size-4" />
           {t("cloud.appSettings.dangerZone", { defaultValue: "Danger Zone" })}
         </h3>
 
@@ -437,10 +437,10 @@ export function AppSettings({ app }: AppSettingsProps) {
                   disabled={isRegenerating}
                 >
                   {isRegenerating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="size-4 animate-spin" />
                   ) : (
                     <>
-                      <Key className="h-4 w-4 mr-1.5" />
+                      <Key className="size-4 mr-1.5" />
                       {t("cloud.appSettings.regenerate", {
                         defaultValue: "Regenerate",
                       })}
@@ -500,10 +500,10 @@ export function AppSettings({ app }: AppSettingsProps) {
                   disabled={isDeleting}
                 >
                   {isDeleting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="size-4 animate-spin" />
                   ) : (
                     <>
-                      <Trash2 className="h-4 w-4 mr-1.5" />
+                      <Trash2 className="size-4 mr-1.5" />
                       {t("cloud.appSettings.deleteApp", {
                         defaultValue: "Delete App",
                       })}

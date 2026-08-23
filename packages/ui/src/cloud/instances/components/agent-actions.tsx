@@ -525,7 +525,7 @@ export function ElizaAgentActions({
             className="flex items-start gap-3 rounded-sm border border-white/10 bg-white/5 p-3"
             data-testid="agent-deactivated-panel"
           >
-            <Moon className="h-4 w-4 shrink-0 mt-0.5 text-white/50" />
+            <Moon className="size-4 shrink-0 mt-0.5 text-white/50" />
             <p
               className="text-sm text-white/60"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -547,7 +547,7 @@ export function ElizaAgentActions({
                 className="min-h-touch"
                 onClick={() => void openWebUIWithPairing(agentId)}
               >
-                <ExternalLink className="h-4 w-4" />
+                <ExternalLink className="size-4" />
                 {t("cloud.containers.agentActions.openWebUi", {
                   defaultValue: "Open Web UI",
                 })}
@@ -568,9 +568,9 @@ export function ElizaAgentActions({
                 })}
               >
                 {loading === "upgrade-tier" || loading === "upgrade-quote" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Rocket className="h-4 w-4" />
+                  <Rocket className="size-4" />
                 )}
                 {upgradeQuoteQuery.data?.canActivate === false
                   ? t("cloud.containers.agentActions.addCredits", {
@@ -591,9 +591,9 @@ export function ElizaAgentActions({
                 disabled={!!loading || isBusy}
               >
                 {loading === "resume" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Play className="h-4 w-4" />
+                  <Play className="size-4" />
                 )}
                 {t("cloud.containers.agentActions.resume", {
                   defaultValue: "Resume Agent",
@@ -614,9 +614,9 @@ export function ElizaAgentActions({
                 })}
               >
                 {loading === "wake" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Sun className="h-4 w-4" />
+                  <Sun className="size-4" />
                 )}
                 {t("cloud.containers.agentActions.reactivate", {
                   defaultValue: "Reactivate Agent",
@@ -633,9 +633,9 @@ export function ElizaAgentActions({
                 disabled={!!loading || isBusy}
               >
                 {loading === "suspend" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Pause className="h-4 w-4" />
+                  <Pause className="size-4" />
                 )}
                 {t("cloud.containers.agentActions.suspend", {
                   defaultValue: "Suspend Agent",
@@ -658,9 +658,9 @@ export function ElizaAgentActions({
                 })}
               >
                 {loading === "sleep" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Moon className="h-4 w-4" />
+                  <Moon className="size-4" />
                 )}
                 {t("cloud.containers.agentActions.deactivate", {
                   defaultValue: "Deactivate Agent",
@@ -676,7 +676,7 @@ export function ElizaAgentActions({
                 disabled={!!loading || isBusy}
                 className="min-h-touch text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="size-4" />
                 {t("cloud.containers.agentActions.delete", {
                   defaultValue: "Delete Agent",
                 })}
@@ -699,7 +699,7 @@ export function ElizaAgentActions({
                   className="min-h-touch text-red-400 border-red-500/50 hover:bg-red-500/20"
                 >
                   {loading === "delete" ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin" />
                   ) : null}
                   {t("cloud.containers.agentActions.yesDelete", {
                     defaultValue: "Yes, delete",
@@ -726,7 +726,7 @@ export function ElizaAgentActions({
               className="text-sm text-yellow-400/80 flex items-center gap-2"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
               {t("cloud.containers.agentActions.upgradeProgressHint", {
                 defaultValue:
                   "Upgrading — provisioning a dedicated agent and moving your conversation onto it. This can take a few minutes; keep this page open.",
@@ -752,7 +752,7 @@ export function ElizaAgentActions({
               className="text-sm text-yellow-400/80 flex items-center gap-2"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
               {trackedAction === "delete"
                 ? t("cloud.containers.agentActions.deleteHint", {
                     defaultValue:
@@ -879,9 +879,9 @@ export function ElizaAgentActions({
                 data-testid="agent-upgrade-tier-confirm"
               >
                 {loading === "upgrade-tier" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Rocket className="h-4 w-4" />
+                  <Rocket className="size-4" />
                 )}
                 {upgradeQuote.activation.state === "in_progress"
                   ? t("cloud.containers.agentActions.upgradeContinue", {
@@ -955,9 +955,9 @@ export function ElizaAgentActions({
               onClick={() => doAction("sleep")}
             >
               {loading === "sleep" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Moon className="h-4 w-4" />
+                <Moon className="size-4" />
               )}
               {t("cloud.containers.agentActions.deactivateConfirm", {
                 defaultValue: "Yes, deactivate",

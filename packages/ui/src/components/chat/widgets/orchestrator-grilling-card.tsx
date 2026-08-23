@@ -43,19 +43,19 @@ function statusStyle(status: GrillingStatus): StatusStyle {
       return {
         label: "Criteria met",
         toneClass: "bg-accent/20 text-accent",
-        icon: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
+        icon: <CheckCircle2 className="size-3.5" aria-hidden />,
       };
     case "criteria-failed":
       return {
         label: "Criteria failed",
         toneClass: "bg-danger/20 text-danger",
-        icon: <XCircle className="h-3.5 w-3.5" aria-hidden />,
+        icon: <XCircle className="size-3.5" aria-hidden />,
       };
     default:
       return {
         label: "Reviewing evidence",
         toneClass: "bg-muted/20 text-muted",
-        icon: <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />,
+        icon: <Loader2 className="size-3.5 animate-spin" aria-hidden />,
       };
   }
 }
@@ -63,11 +63,11 @@ function statusStyle(status: GrillingStatus): StatusStyle {
 function criterionIcon(state: GrillingCriterionState): ReactNode {
   switch (state) {
     case "met":
-      return <CheckCircle2 className="h-4 w-4 text-accent" aria-hidden />;
+      return <CheckCircle2 className="size-4 text-accent" aria-hidden />;
     case "failed":
-      return <XCircle className="h-4 w-4 text-danger" aria-hidden />;
+      return <XCircle className="size-4 text-danger" aria-hidden />;
     default:
-      return <CircleDashed className="h-4 w-4 text-muted" aria-hidden />;
+      return <CircleDashed className="size-4 text-muted" aria-hidden />;
   }
 }
 

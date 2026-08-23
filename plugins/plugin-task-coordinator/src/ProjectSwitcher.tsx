@@ -164,7 +164,7 @@ export function ProjectSwitcher({
         title={state.error}
         className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-danger/40 bg-danger/10 px-2.5 text-xs font-medium text-danger"
       >
-        <FolderGit2 className="h-3.5 w-3.5 shrink-0" />
+        <FolderGit2 className="size-3.5 shrink-0" />
         <span className="truncate">
           {t("projectswitcher.unavailable", {
             defaultValue: "Projects unavailable",
@@ -206,7 +206,7 @@ export function ProjectSwitcher({
           className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-border/50 bg-bg-accent/30 px-2.5 text-xs font-medium text-txt hover:text-txt-strong"
           {...triggerAgentProps}
         >
-          <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <FolderGit2 className="size-3.5 shrink-0 text-accent" />
           <span className="truncate">{activeName}</span>
         </Button>
       </DropdownMenuTrigger>
@@ -228,7 +228,7 @@ export function ProjectSwitcher({
               className="flex items-start gap-2"
             >
               <Check
-                className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                className={`mt-0.5 size-3.5 shrink-0 ${
                   isActive ? "text-accent" : "text-transparent"
                 }`}
                 aria-hidden="true"

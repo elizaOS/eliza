@@ -156,7 +156,7 @@ function PrChip({ pr }: { pr: TaskPullRequest }) {
       }
       className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-accent transition-colors hover:border-accent hover:text-accent-hover"
     >
-      <GitPullRequest className="h-3 w-3" aria-hidden="true" />
+      <GitPullRequest className="size-3" aria-hidden="true" />
       <span className="tabular-nums">#{pr.number}</span>
     </a>
   );
@@ -286,13 +286,13 @@ export const TaskWidget = memo(function TaskWidget({
           className="flex h-auto min-w-0 flex-1 items-start justify-start gap-2 whitespace-normal rounded-sm -mx-2 px-2 py-1.5 text-left font-normal transition-colors hover:bg-bg-hover"
         >
           <span
-            className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
+            className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
             role="img"
             aria-label={STATUS_LABEL[status]}
             title={STATUS_LABEL[status]}
           >
             <StatusIcon
-              className={`h-3.5 w-3.5 ${
+              className={`size-3.5 ${
                 STATUS_PULSE.has(status) ? "animate-pulse" : ""
               }`}
             />
@@ -331,7 +331,7 @@ export const TaskWidget = memo(function TaskWidget({
             </span>
           </span>
           <ChevronDown
-            className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition-transform ${
+            className={`mt-0.5 size-4 shrink-0 text-muted transition-transform ${
               expanded ? "rotate-180" : ""
             }`}
           />

@@ -833,9 +833,9 @@ export const ChatMessage = memo(function ChatMessage({
               handleCancelEditing();
             }}
             disabled={savingEdit}
-            className="keyboard-focus-emphasis h-7 w-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
           </Button>
           <Button
             variant="ghost"
@@ -852,15 +852,15 @@ export const ChatMessage = memo(function ChatMessage({
               void handleSaveEdit();
             }}
             disabled={editSaveDisabled}
-            className="keyboard-focus-emphasis h-7 w-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
           >
             {savingEdit ? (
               <LoaderCircle
                 aria-hidden="true"
-                className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                className="size-3.5 animate-spin motion-reduce:animate-none"
               />
             ) : (
-              <Check className="h-3.5 w-3.5" />
+              <Check className="size-3.5" />
             )}
           </Button>
         </>
@@ -882,7 +882,7 @@ export const ChatMessage = memo(function ChatMessage({
             className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
           >
             {savingEdit
-              ? (labels.saving ?? "Saving...")
+              ? (labels.saving ?? "Saving…")
               : (labels.saveAndResend ?? "Save and resend")}
           </Button>
         </>
@@ -1036,7 +1036,7 @@ export const ChatMessage = memo(function ChatMessage({
             // toggling the bubble's click-to-reveal action row.
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1 text-xs font-medium text-[rgb(255,148,84)]">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                <Sparkles className="size-3.5" aria-hidden="true" />
                 Suggestion
               </span>
               <div className="flex items-center gap-1">
@@ -1067,9 +1067,9 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onDismissSuggestion(message.id);
                     }}
-                    className="h-6 w-6 rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
+                    className="size-6 rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
                   >
-                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    <X className="size-3.5" aria-hidden="true" />
                   </Button>
                 ) : null}
               </div>
@@ -1247,8 +1247,12 @@ export const ChatMessage = memo(function ChatMessage({
                 <motion.div
                   key={accessoryMode}
                   className="flex"
-                  initial={reduceMotion ? false : { opacity: 0, y: 2 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={
+                    reduceMotion
+                      ? false
+                      : { opacity: 0, transform: "translateY(2px)" }
+                  }
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
                   transition={{
                     duration: reduceMotion ? 0.08 : 0.14,
                     ease: GLASS_EASE,
@@ -1291,7 +1295,7 @@ export const ChatMessage = memo(function ChatMessage({
               }}
               className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm-tight font-medium text-white/80 transition-colors hover:bg-white/20"
             >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+              <RotateCcw className="size-3.5" aria-hidden />
               Retry
             </Button>
           ) : null}
@@ -1424,7 +1428,7 @@ export const ChatMessage = memo(function ChatMessage({
           {isSuggestion && !isEditing ? (
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1 text-xs-tight font-medium text-accent/85">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                <Sparkles className="size-3.5" aria-hidden="true" />
                 {labels.suggestion ?? "Suggestion"}
               </span>
               <div className="flex items-center gap-1">
@@ -1445,11 +1449,11 @@ export const ChatMessage = memo(function ChatMessage({
                     variant="surface"
                     size="icon"
                     onClick={() => onDismissSuggestion(message.id)}
-                    className="h-6 w-6 rounded-sm text-muted"
+                    className="size-6 rounded-sm text-muted"
                     title={labels.dismiss ?? "Dismiss suggestion"}
                     aria-label={labels.dismiss ?? "Dismiss suggestion"}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="size-3.5" />
                   </Button>
                 ) : null}
               </div>

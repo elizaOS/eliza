@@ -66,7 +66,7 @@ export function EarningsSimulator({
     <div className={cn("bg-neutral-900 rounded-sm p-4", className)}>
       {/* Header */}
       <h3 className="text-sm font-medium text-white flex items-center gap-2 mb-4">
-        <Calculator className="h-4 w-4 text-accent" />
+        <Calculator className="size-4 text-accent" />
         Earnings Calculator
       </h3>
 
@@ -76,7 +76,7 @@ export function EarningsSimulator({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-neutral-400 flex items-center gap-1.5">
-              <Users className="h-3 w-3" />
+              <Users className="size-3" />
               Monthly Active Users
             </span>
             <span className="text-sm font-mono text-white">{users}</span>
@@ -90,7 +90,7 @@ export function EarningsSimulator({
             step={10}
             className="w-full"
           />
-          <div className="flex justify-between text-[10px] text-neutral-600">
+          <div className="flex justify-between text-2xs text-neutral-600">
             <span>10</span>
             <span>1,000</span>
           </div>
@@ -100,7 +100,7 @@ export function EarningsSimulator({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-neutral-400 flex items-center gap-1.5">
-              <DollarSign className="h-3 w-3" />
+              <DollarSign className="size-3" />
               Avg. Spend per User
             </span>
             <span className="text-sm font-mono text-white">
@@ -116,7 +116,7 @@ export function EarningsSimulator({
             step={1}
             className="w-full"
           />
-          <div className="flex justify-between text-[10px] text-neutral-600">
+          <div className="flex justify-between text-2xs text-neutral-600">
             <span>$1</span>
             <span>$100</span>
           </div>
@@ -129,7 +129,7 @@ export function EarningsSimulator({
       {/* Results */}
       <div className="space-y-2">
         <p className="text-xs text-neutral-500 flex items-center gap-1.5 mb-3">
-          <TrendingUp className="h-3 w-3" />
+          <TrendingUp className="size-3" />
           Estimated Monthly Earnings
         </p>
 
@@ -144,7 +144,7 @@ export function EarningsSimulator({
         {/* Inference earnings */}
         <div className="flex items-center justify-between text-sm">
           <span className="text-accent flex items-center gap-1.5">
-            <Zap className="h-3 w-3" />
+            <Zap className="size-3" />
             Inference ({markupPercentage}%)
           </span>
           <span className="font-mono text-accent">
@@ -155,7 +155,7 @@ export function EarningsSimulator({
         {/* Purchase earnings */}
         <div className="flex items-center justify-between text-sm">
           <span className="text-white/90 flex items-center gap-1.5">
-            <Coins className="h-3 w-3" />
+            <Coins className="size-3" />
             Purchase ({purchaseSharePercentage}%)
           </span>
           <span className="font-mono text-white/90">
@@ -175,7 +175,7 @@ export function EarningsSimulator({
         </div>
 
         {/* Illustrative-estimate disclaimer */}
-        <p className="text-[10px] text-neutral-600 leading-snug pt-2">
+        <p className="text-2xs text-neutral-600 leading-snug pt-2">
           Illustrative estimate only. Assumes{" "}
           {Math.round(ASSUMED_INFERENCE_SPEND_SHARE * 100)}% of spend goes to
           inference and {Math.round(ASSUMED_PURCHASE_SPEND_SHARE * 100)}% to

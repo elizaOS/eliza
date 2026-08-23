@@ -50,7 +50,7 @@ export function DashboardStatCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+          <p className="text-xs-tight uppercase tracking-[0.24em] text-muted-foreground">
             {label}
           </p>
           <p

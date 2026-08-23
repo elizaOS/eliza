@@ -71,7 +71,7 @@ export const ConnectionStatus = React.forwardRef<
       >
         <span
           className={cn(
-            "h-2 w-2 rounded-full",
+            "size-2 rounded-full",
             state === "connected"
               ? "bg-ok"
               : state === "disconnected"

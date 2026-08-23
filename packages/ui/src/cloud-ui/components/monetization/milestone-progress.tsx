@@ -40,7 +40,7 @@ export function MilestoneProgress({
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between text-xs">
         <span className="text-neutral-500 flex items-center gap-1.5">
-          <Target className="h-3 w-3" />
+          <Target className="size-3" />
           {label}
         </span>
         {showAmount && (
@@ -65,7 +65,7 @@ export function MilestoneProgress({
       <div className="flex items-center justify-between">
         {isComplete ? (
           <span className="text-xs text-emerald-400 flex items-center gap-1.5">
-            <CheckCircle2 className="h-3.5 w-3.5" />
+            <CheckCircle2 className="size-3.5" />
             Ready to withdraw!
           </span>
         ) : (

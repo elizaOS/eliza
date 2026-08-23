@@ -44,7 +44,7 @@ export const WithForm: Story = {
               Name
             </label>
             <input
-              className="rounded-sm border border-border bg-bg px-2 py-1 text-sm"
+              className="rounded-sm border border-border bg-bg px-2 py-1 text-base sm:text-sm"
               defaultValue="Eliza"
               id="popover-name"
             />

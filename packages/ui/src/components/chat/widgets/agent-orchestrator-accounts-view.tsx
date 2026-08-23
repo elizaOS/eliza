@@ -122,12 +122,12 @@ export function OrchestratorAccountsView({
         title={t("agentorchestrator.accounts", {
           defaultValue: "Coding accounts",
         })}
-        icon={<Zap className="h-4 w-4" />}
+        icon={<Zap className="size-4" />}
         action={connectAction}
         testId="chat-widget-accounts"
       >
         <EmptyWidgetState
-          icon={<Zap className="h-5 w-5" />}
+          icon={<Zap className="size-5" />}
           title={t("agentorchestrator.noAccounts", {
             defaultValue: "No coding subscriptions connected.",
           })}
@@ -145,7 +145,7 @@ export function OrchestratorAccountsView({
       title={t("agentorchestrator.accounts", {
         defaultValue: "Coding accounts",
       })}
-      icon={<Zap className="h-4 w-4" />}
+      icon={<Zap className="size-4" />}
       action={connectAction}
       testId="chat-widget-accounts"
     >
@@ -192,7 +192,7 @@ export function OrchestratorAccountsView({
             >
               <div className="flex items-center gap-1.5">
                 <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${HEALTH_TONE[account.health] ?? HEALTH_TONE.unknown}`}
+                  className={`size-1.5 shrink-0 rounded-full ${HEALTH_TONE[account.health] ?? HEALTH_TONE.unknown}`}
                 />
                 <span className="truncate font-medium text-txt">
                   {account.label}
@@ -248,7 +248,7 @@ export function OrchestratorAccountsView({
                     key={`${room.taskId}:${p.kind}:${p.id}`}
                     className="flex items-center gap-1 pl-1 text-3xs text-muted"
                   >
-                    <Workflow className="h-3 w-3 shrink-0 text-muted" />
+                    <Workflow className="size-3 shrink-0 text-muted" />
                     <span className="truncate font-medium text-txt">
                       {p.label}
                     </span>
@@ -275,7 +275,7 @@ export function OrchestratorAccountsView({
                 key={a.sessionId}
                 className="flex items-center gap-1 text-3xs text-muted"
               >
-                <Workflow className="h-3 w-3 shrink-0 text-muted" />
+                <Workflow className="size-3 shrink-0 text-muted" />
                 <span className="truncate font-medium text-txt">{a.label}</span>
                 <span className="shrink-0 text-muted">→</span>
                 <span className="truncate">{a.accountLabel}</span>

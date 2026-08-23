@@ -20,7 +20,7 @@ export function DesktopWorkspaceDisplay({
       description={t("desktopworkspacesection.DiagnosticsDescription")}
     >
       <SettingsRow label={t("desktopworkspacesection.Diagnostics")} stacked>
-        <pre className="overflow-x-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
+        <pre className="overflow-x-auto break-all rounded-sm border border-border bg-bg p-3 text-xs-tight leading-5 text-txt">
           {diagnosticsText}
         </pre>
       </SettingsRow>

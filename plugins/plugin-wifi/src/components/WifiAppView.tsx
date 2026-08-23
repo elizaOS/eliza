@@ -94,8 +94,8 @@ function ConnectedCard({
     return (
       <div className="px-1 py-2">
         <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center">
-            <WifiOff className="h-5 w-5 text-muted-strong" />
+          <span className="flex size-9 shrink-0 items-center justify-center">
+            <WifiOff className="size-5 text-muted-strong" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-txt">Wi-Fi is off</div>
@@ -106,7 +106,7 @@ function ConnectedCard({
               className="mt-3"
               onClick={onOpenSettings}
             >
-              <Settings className="mr-2 h-4 w-4" />
+              <Settings className="mr-2 size-4" />
               Network settings
             </Button>
           </div>
@@ -118,7 +118,7 @@ function ConnectedCard({
     return (
       <div className="px-1 py-2">
         <div className="flex items-center gap-3">
-          <WifiIcon className="h-5 w-5 text-muted-strong" />
+          <WifiIcon className="size-5 text-muted-strong" />
           <div className="text-sm text-muted">Not connected</div>
         </div>
       </div>
@@ -128,7 +128,7 @@ function ConnectedCard({
     <div className="px-1 py-2">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-ok" />
+          <CheckCircle2 className="size-5 text-ok" />
           <div>
             <div className="text-2xs font-semibold uppercase text-muted/70">
               Connected
@@ -168,14 +168,14 @@ function NetworkRow({ network, onSelect }: NetworkRowProps) {
       unstyled
       type="button"
       onClick={() => onSelect(network)}
-      className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left transition-colors hover:bg-bg-accent/50"
+      className="flex w-full items-center justify-between gap-3 p-2 text-left transition-colors hover:bg-bg-accent/50"
       data-testid={`wifi-network-${network.bssid || network.ssid || "hidden"}`}
     >
       <div className="flex min-w-0 items-center gap-3">
         {network.secured ? (
-          <Lock className="h-4 w-4 shrink-0 text-muted-strong" />
+          <Lock className="size-4 shrink-0 text-muted-strong" />
         ) : (
-          <WifiIcon className="h-4 w-4 shrink-0 text-muted-strong" />
+          <WifiIcon className="size-4 shrink-0 text-muted-strong" />
         )}
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-txt">
@@ -307,7 +307,7 @@ export function WifiAppView(props: OverlayAppContext) {
             onClick={exitToApps}
             aria-label="Back to apps"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="size-4" />
           </Button>
           <div className="text-base font-semibold text-txt">WiFi</div>
         </div>
@@ -321,7 +321,7 @@ export function WifiAppView(props: OverlayAppContext) {
           data-testid="wifi-scan"
         >
           <RefreshCw
-            className={`mr-1 h-4 w-4 ${scanning ? "animate-spin" : ""}`}
+            className={`mr-1 size-4 ${scanning ? "animate-spin" : ""}`}
           />
           Scan
         </Button>
@@ -343,14 +343,14 @@ export function WifiAppView(props: OverlayAppContext) {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-              <WifiIcon className="h-4 w-4 text-muted" />
+              <WifiIcon className="size-4 text-muted" />
               Networks
             </div>
             <span className="text-xs text-muted">{sortedNetworks.length}</span>
           </div>
           {sortedNetworks.length === 0 && !scanning ? (
             <div className="px-4 py-8 text-center">
-              <WifiOff className="mx-auto h-9 w-9 text-muted" />
+              <WifiOff className="mx-auto size-9 text-muted" />
               <div className="mt-3 text-sm font-medium text-txt">None</div>
               <div className="sr-only">Check Wi-Fi and location access.</div>
               <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
@@ -362,7 +362,7 @@ export function WifiAppView(props: OverlayAppContext) {
                     void scan();
                   }}
                 >
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                  <RefreshCw className="mr-2 size-4" />
                   Scan again
                 </Button>
                 <Button
@@ -371,7 +371,7 @@ export function WifiAppView(props: OverlayAppContext) {
                   className=""
                   onClick={openNetworkSettings}
                 >
-                  <Settings className="mr-2 h-4 w-4" />
+                  <Settings className="mr-2 size-4" />
                   Network settings
                 </Button>
               </div>

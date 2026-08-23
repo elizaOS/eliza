@@ -190,7 +190,7 @@ function WorkflowWidget({
           {widget.title}
         </p>
         <span
-          className="mt-1 h-2.5 w-2.5 rounded-full bg-primary"
+          className="mt-1 size-2.5 rounded-full bg-primary"
           title={widget.component}
         >
           <span className="sr-only">{widget.component}</span>
@@ -200,7 +200,7 @@ function WorkflowWidget({
         {widget.component === "status" ? (
           <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">
             <span
-              className={`h-2.5 w-2.5 rounded-full ${value === false || value === "failed" || value === "error" ? "bg-destructive" : "bg-status-success"}`}
+              className={`size-2.5 rounded-full ${value === false || value === "failed" || value === "error" ? "bg-destructive" : "bg-status-success"}`}
             />
             <span className="font-medium">
               {typeof value === "string" || typeof value === "number"
@@ -264,7 +264,7 @@ function WorkflowWidget({
                 key={pretty(item)}
                 className="flex gap-2 rounded-lg bg-muted/30 p-2"
               >
-                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <span className="mt-1  size-2 shrink-0 rounded-full bg-primary" />
                 <span>{typeof item === "string" ? item : pretty(item)}</span>
               </li>
             ))}
@@ -516,12 +516,12 @@ export function WorkflowEditor({
               key={value}
               type="button"
               onClick={() => setTab(value)}
-              className={`grid h-8 w-8 place-items-center rounded-md transition ${tab === value ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+              className={`grid size-8 place-items-center rounded-md transition ${tab === value ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
               aria-label={label}
               aria-current={tab === value ? "page" : undefined}
               title={label}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="size-4" />
             </button>
           ))}
         </nav>
@@ -529,20 +529,20 @@ export function WorkflowEditor({
           <button
             type="button"
             onClick={() => void toggleActive()}
-            className="grid h-8 w-8 place-items-center rounded-md hover:bg-muted/60"
+            className="grid size-8 place-items-center rounded-md hover:bg-muted/60"
             aria-label={
               workflow.active ? "Disable workflow" : "Enable workflow"
             }
             title={workflow.active ? "Enabled" : "Disabled"}
           >
             <span
-              className={`h-2.5 w-2.5 rounded-full ${workflow.active ? "bg-status-success" : "bg-muted-foreground/40"}`}
+              className={`size-2.5 rounded-full ${workflow.active ? "bg-status-success" : "bg-muted-foreground/40"}`}
             />
           </button>
         ) : null}
         {dirty ? (
           <span
-            className="h-2 w-2 shrink-0 rounded-full bg-primary"
+            className="size-2 shrink-0 rounded-full bg-primary"
             title="Unsaved changes"
           >
             <span className="sr-only">Unsaved changes</span>
@@ -556,7 +556,7 @@ export function WorkflowEditor({
           aria-label="Edit with Eliza"
           title="Edit with Eliza"
         >
-          <MessageSquareText className="h-4 w-4" />
+          <MessageSquareText className="size-4" />
         </Button>
         <Button
           data-agent-id="save-workflow"
@@ -568,9 +568,9 @@ export function WorkflowEditor({
           title="Save workflow"
         >
           {saving ? (
-            <Spinner className="h-4 w-4" />
+            <Spinner className="size-4" />
           ) : (
-            <Save className="h-4 w-4" />
+            <Save className="size-4" />
           )}
         </Button>
         <Button
@@ -582,9 +582,9 @@ export function WorkflowEditor({
           title="Run"
         >
           {running ? (
-            <Spinner className="h-4 w-4" />
+            <Spinner className="size-4" />
           ) : (
-            <Play className="h-4 w-4" />
+            <Play className="size-4" />
           )}
         </Button>
         {onCancel ? (
@@ -594,7 +594,7 @@ export function WorkflowEditor({
             onClick={onCancel}
             aria-label="Close workflow"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         ) : null}
       </div>
@@ -647,7 +647,7 @@ export function WorkflowEditor({
             }
             spellCheck={false}
             aria-label="Smithers workflow source"
-            className="min-h-[420px] flex-1 resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-[12px] leading-5 text-zinc-100"
+            className="min-h-[420px] flex-1 resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-xs leading-5 text-zinc-100"
           />
         </section>
       ) : null}
@@ -658,12 +658,12 @@ export function WorkflowEditor({
             <div className="flex justify-end">
               <button
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                 onClick={() => void refreshRuns()}
                 aria-label="Refresh runs"
                 title="Refresh"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="size-3.5" />
               </button>
             </div>
             <div className="space-y-1">
@@ -676,14 +676,14 @@ export function WorkflowEditor({
                   title={`${execution.status} · ${execution.id}`}
                 >
                   <span
-                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusDot(execution.status)}`}
+                    className={`size-2.5 shrink-0 rounded-full ${statusDot(execution.status)}`}
                   >
                     <span className="sr-only">{execution.status}</span>
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
+                  <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
                     {execution.id.slice(0, 12)}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/70">
+                  <span className="text-2xs text-muted-foreground/70">
                     {new Date(execution.startedAt).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -696,7 +696,7 @@ export function WorkflowEditor({
                   className="grid min-h-32 place-items-center"
                   title="No runs"
                 >
-                  <Activity className="h-6 w-6 text-muted-foreground/40" />
+                  <Activity className="size-6 text-muted-foreground/40" />
                   <span className="sr-only">No runs</span>
                 </div>
               ) : null}
@@ -707,7 +707,7 @@ export function WorkflowEditor({
               <div className="mx-auto max-w-4xl space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`h-2.5 w-2.5 rounded-full ${statusDot(selectedRun.status)}`}
+                    className={`size-2.5 rounded-full ${statusDot(selectedRun.status)}`}
                     title={selectedRun.status}
                   >
                     <span className="sr-only">{selectedRun.status}</span>
@@ -743,7 +743,7 @@ export function WorkflowEditor({
                           .then(refreshRuns);
                       }}
                     >
-                      <CircleStop className="h-4 w-4" />
+                      <CircleStop className="size-4" />
                     </Button>
                   ) : null}
                 </div>
@@ -751,7 +751,7 @@ export function WorkflowEditor({
                   {hasObjectValues(selectedRun.input) ? (
                     <div className="rounded-xl border border-border/60 bg-card p-3">
                       <FileInput
-                        className="mb-2 h-4 w-4 text-muted-foreground"
+                        className="mb-2 size-4 text-muted-foreground"
                         aria-label="Input"
                       />
                       <pre className="max-h-64 overflow-auto text-xs">
@@ -763,7 +763,7 @@ export function WorkflowEditor({
                     className={`rounded-xl border border-border/60 bg-card p-3 ${hasObjectValues(selectedRun.input) ? "" : "md:col-span-2"}`}
                   >
                     <FileOutput
-                      className="mb-2 h-4 w-4 text-muted-foreground"
+                      className="mb-2 size-4 text-muted-foreground"
                       aria-label="Output"
                     />
                     <pre className="max-h-64 overflow-auto text-xs">
@@ -773,7 +773,7 @@ export function WorkflowEditor({
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-3">
                   <ListTree
-                    className="mb-3 h-4 w-4 text-muted-foreground"
+                    className="mb-3 size-4 text-muted-foreground"
                     aria-label="Events"
                   />
                   <div className="space-y-0">
@@ -785,8 +785,8 @@ export function WorkflowEditor({
                           key={event.id}
                           className="grid grid-cols-[22px_70px_minmax(0,1fr)] gap-2 border-l border-border pb-3 text-xs last:pb-0"
                         >
-                          <div className="-ml-[5px] mt-1 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" />
-                          <span className="font-mono text-[10px] text-muted-foreground/70">
+                          <div className="-ml-[5px] mt-1 size-2.5 rounded-full border-2 border-card bg-primary" />
+                          <span className="font-mono text-2xs text-muted-foreground/70">
                             {new Date(event.timestamp).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
@@ -815,7 +815,7 @@ export function WorkflowEditor({
                                   ) : null}
                                 </span>
                                 <ChevronRight
-                                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
+                                  className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
                                 />
                               </button>
                             ) : (
@@ -831,7 +831,7 @@ export function WorkflowEditor({
                               </span>
                             )}
                             {selected ? (
-                              <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/40 p-2 text-[10px] leading-4">
+                              <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/40 p-2 text-2xs leading-4">
                                 {pretty(event.payload)}
                               </pre>
                             ) : null}
@@ -840,14 +840,14 @@ export function WorkflowEditor({
                       );
                     })}
                     {(selectedRun.events ?? []).length === 0 ? (
-                      <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+                      <div className="size-2 animate-pulse rounded-full bg-primary" />
                     ) : null}
                   </div>
                 </div>
                 {selectedRun.status === "waiting-approval" ? (
                   <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
                     <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                      <span className="size-2.5 rounded-full bg-amber-500" />
                       <p className="text-sm font-semibold">Approval required</p>
                     </div>
                     {pendingApproval?.prompt ? (
@@ -893,7 +893,7 @@ export function WorkflowEditor({
                                   .then(refreshRuns)
                               }
                             >
-                              <Check className="h-4 w-4" />
+                              <Check className="size-4" />
                             </Button>
                             <Button
                               size="icon-sm"
@@ -911,7 +911,7 @@ export function WorkflowEditor({
                                   .then(refreshRuns)
                               }
                             >
-                              <X className="h-4 w-4" />
+                              <X className="size-4" />
                             </Button>
                           </>
                         );
@@ -925,7 +925,7 @@ export function WorkflowEditor({
                 className="grid h-full place-items-center"
                 title="Select a run"
               >
-                <Activity className="h-7 w-7 text-muted-foreground/40" />
+                <Activity className="size-7 text-muted-foreground/40" />
                 <span className="sr-only">Select a run</span>
               </div>
             )}
@@ -949,7 +949,7 @@ export function WorkflowEditor({
                 className="col-span-full grid min-h-72 place-items-center"
                 title="No workflow widgets"
               >
-                <LayoutDashboard className="h-8 w-8 text-muted-foreground/40" />
+                <LayoutDashboard className="size-8 text-muted-foreground/40" />
                 <span className="sr-only">No workflow widgets</span>
               </div>
             ) : null}
@@ -966,11 +966,11 @@ export function WorkflowEditor({
                 className="flex items-center gap-3 rounded-lg border border-transparent bg-card px-3 py-2 hover:border-border/60"
                 title={revision.operation}
               >
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted">
-                  <History className="h-4 w-4" />
+                <div className="grid size-8 place-items-center rounded-lg bg-muted">
+                  <History className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {new Date(revision.capturedAt).toLocaleString("en-US")}
                   </p>
                 </div>
@@ -998,7 +998,7 @@ export function WorkflowEditor({
                       });
                   }}
                 >
-                  <ArchiveRestore className="h-4 w-4" />
+                  <ArchiveRestore className="size-4" />
                 </Button>
               </div>
             ))}
@@ -1007,7 +1007,7 @@ export function WorkflowEditor({
                 className="grid min-h-72 place-items-center"
                 title="No saved revisions"
               >
-                <History className="h-8 w-8 text-muted-foreground/40" />
+                <History className="size-8 text-muted-foreground/40" />
                 <span className="sr-only">No saved revisions</span>
               </div>
             ) : null}
@@ -1019,7 +1019,7 @@ export function WorkflowEditor({
         <div className="absolute inset-0 z-30 grid place-items-center bg-background/80 p-4">
           <form
             aria-label="Workflow input"
-            className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-4 shadow-xl"
+            className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-4"
             onSubmit={(event) => {
               event.preventDefault();
               setRunInputOpen(false);
@@ -1027,7 +1027,7 @@ export function WorkflowEditor({
             }}
           >
             <div className="mb-3 flex items-center gap-2">
-              <FileInput className="h-4 w-4 text-primary" />
+              <FileInput className="size-4 text-primary" />
               <span className="text-sm font-semibold">Input</span>
               <div className="flex-1" />
               <Button
@@ -1037,7 +1037,7 @@ export function WorkflowEditor({
                 aria-label="Close input"
                 onClick={() => setRunInputOpen(false)}
               >
-                <X className="h-4 w-4" />
+                <X className="size-4" />
               </Button>
             </div>
             <div className="space-y-2.5">
@@ -1088,9 +1088,9 @@ export function WorkflowEditor({
             </div>
             <Button type="submit" className="mt-4 w-full" disabled={running}>
               {running ? (
-                <Spinner className="h-4 w-4" />
+                <Spinner className="size-4" />
               ) : (
-                <Play className="h-4 w-4" />
+                <Play className="size-4" />
               )}
               <span className="sr-only">Run workflow</span>
             </Button>

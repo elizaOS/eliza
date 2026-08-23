@@ -43,7 +43,7 @@ function StatusBadge({ granted }: { granted: boolean }) {
     >
       <Circle
         className={cn(
-          "h-2 w-2 fill-current",
+          "size-2 fill-current",
           granted ? "text-success" : "text-muted-foreground",
         )}
         aria-hidden

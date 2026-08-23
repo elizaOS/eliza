@@ -54,7 +54,7 @@ export function StatusBar({
     >
       <div className="flex items-center gap-2">
         <span
-          className={`w-2.5 h-2.5 rounded-full ${
+          className={`size-2.5 rounded-full ${
             streamLive ? "bg-danger   animate-pulse" : "bg-muted"
           }`}
         />
@@ -120,7 +120,7 @@ export function StatusBar({
           <Button
             variant="ghost"
             size="sm"
-            className="inline-flex h-11 min-h-11 w-11 items-center justify-center rounded-sm bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt"
+            className="inline-flex size-11 min-h-11 items-center justify-center rounded-sm bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const popoutWin = openStreamPopout(getBootConfig().apiBase);
@@ -145,7 +145,7 @@ export function StatusBar({
               }
             }}
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <ExternalLink className="size-3.5" />
           </Button>
         )}
       </div>

@@ -227,7 +227,7 @@ export function RelationshipsWorkspaceView({
               defaultValue: "Platform filter",
             })}
           </label>
-          <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Filter className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Select value={platform} onValueChange={setPlatform}>
             <SelectTrigger
               ref={platformAgent.ref}
@@ -284,7 +284,7 @@ export function RelationshipsWorkspaceView({
       ) : !graph || graph.people.length === 0 ? (
         <PagePanel.Empty
           className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
-          icon={<Network className="h-6 w-6" aria-hidden />}
+          icon={<Network className="size-6" aria-hidden />}
           title={
             search || platform !== "all"
               ? t("relationships.noMatching", {
@@ -310,7 +310,7 @@ export function RelationshipsWorkspaceView({
           >
             <PagePanel
               variant="surface"
-              className="min-w-0 px-3 py-3 sm:px-4 sm:py-4"
+              className="min-w-0 p-3 sm:px-4 sm:py-4"
             >
               <RelationshipsGraphPanel
                 snapshot={graph}
@@ -378,7 +378,7 @@ export function RelationshipsWorkspaceView({
                 aria-label={t("relationships.activity", {
                   defaultValue: "Activity",
                 })}
-                className="px-3 py-3"
+                className="p-3"
               >
                 <div className="max-h-[24rem] overflow-auto pr-1">
                   <RelationshipsActivityFeed />

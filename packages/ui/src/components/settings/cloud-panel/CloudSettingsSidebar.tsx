@@ -67,7 +67,7 @@ export function CloudAccountMenu({
 
   if (accountState === "disconnected") {
     return (
-      <div className="border-t border-border px-3 py-3">
+      <div className="border-t border-border p-3">
         <button
           type="button"
           className="keyboard-focus-surface flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
@@ -84,7 +84,7 @@ export function CloudAccountMenu({
             });
           }}
         >
-          <Circle className="h-2.5 w-2.5 text-muted-foreground" />
+          <Circle className="size-2.5 text-muted-foreground" />
           Connect Cloud
         </button>
       </div>
@@ -93,7 +93,7 @@ export function CloudAccountMenu({
 
   if (accountState === "signing-out") {
     return (
-      <div className="border-t border-border px-3 py-3">
+      <div className="border-t border-border p-3">
         <div
           aria-live="polite"
           className="flex min-h-9 items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground"
@@ -101,7 +101,7 @@ export function CloudAccountMenu({
         >
           <Loader2
             aria-hidden="true"
-            className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+            className="size-3.5 animate-spin motion-reduce:animate-none"
           />
           Signing out…
         </div>
@@ -111,7 +111,7 @@ export function CloudAccountMenu({
 
   if (accountState === "sign-out-failed") {
     return (
-      <div className="space-y-2 border-t border-border px-3 py-3">
+      <div className="space-y-2 border-t border-border p-3">
         <p className="px-2 text-xs text-destructive" role="alert">
           Cloud sign-out didn&apos;t finish.
         </p>
@@ -120,7 +120,7 @@ export function CloudAccountMenu({
           className="keyboard-focus-surface flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
           onClick={startSignOut}
         >
-          <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+          <RotateCcw aria-hidden="true" className="size-3.5" />
           Retry sign out
         </button>
       </div>
@@ -137,12 +137,12 @@ export function CloudAccountMenu({
         onClick={() => setOpen(!open)}
       >
         <span className="flex items-center gap-2 truncate">
-          <Circle className="h-2.5 w-2.5 shrink-0 text-ok" />
+          <Circle className="size-2.5 shrink-0 text-ok" />
           <span className="truncate text-muted-foreground">Connected</span>
         </span>
         <ChevronUp
           className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            "size-4 shrink-0 text-muted-foreground transition-transform",
             !open && "rotate-180",
           )}
         />
@@ -150,7 +150,7 @@ export function CloudAccountMenu({
       {open && (
         <div
           id="cloud-account-menu"
-          className="mt-1 space-y-0.5 rounded-md border border-border bg-card p-1"
+          className="mt-1 space-y-0.5 rounded-md border border-border bg-card p-2"
         >
           {cloudPanelAccountFooterSections().map((section) => (
             <FooterLink
@@ -227,13 +227,13 @@ function SectionItem({
     >
       <Icon
         className={cn(
-          "h-4 w-4 shrink-0",
+          "size-4 shrink-0",
           active ? "text-foreground" : "text-muted-foreground",
         )}
       />
       <span className="truncate">{section.label}</span>
       {active && (
-        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-foreground" />
+        <Check className="ml-auto size-3.5 shrink-0 text-foreground" />
       )}
     </button>
   );

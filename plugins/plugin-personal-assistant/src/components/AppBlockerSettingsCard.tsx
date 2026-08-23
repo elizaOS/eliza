@@ -97,7 +97,7 @@ function AppBlockerStatusIcon({ label }: { label: string }) {
       aria-label={label}
       title={label}
     >
-      <Sparkles className="h-4 w-4 opacity-70" aria-hidden />
+      <Sparkles className="size-4 opacity-70" aria-hidden />
       <span className="sr-only">{label}</span>
     </div>
   );
@@ -288,8 +288,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
     return (
       <div className="px-1 py-2">
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
-            <Smartphone className="h-5 w-5 text-muted" aria-hidden />
+          <div className="flex size-9 shrink-0 items-center justify-center">
+            <Smartphone className="size-5 text-muted" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -315,8 +315,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
     <div className="px-1 py-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
-            <ShieldBan className="h-5 w-5 text-txt" aria-hidden />
+          <div className="flex size-9 shrink-0 items-center justify-center">
+            <ShieldBan className="size-5 text-txt" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -327,7 +327,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 }`}
               >
                 {badge.ready ? (
-                  <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden />
+                  <CheckCircle2 className="mr-1 size-3" aria-hidden />
                 ) : null}
                 {badge.label}
               </span>
@@ -338,7 +338,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               ) : null}
               {status?.active ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted">
-                  <Timer className="mr-1 h-3 w-3" aria-hidden />
+                  <Timer className="mr-1 size-3" aria-hidden />
                   {translate(
                     t,
                     "permissionssection.appBlocking.active",
@@ -364,7 +364,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <span className="inline-flex items-center gap-1 text-xs text-muted">
-                <ListChecks className="h-3.5 w-3.5" aria-hidden />
+                <ListChecks className="size-3.5" aria-hidden />
                 {status?.active
                   ? `${status.blockedCount}`
                   : `${selectedPackageNames.length + selectedIosApps.length}`}{" "}
@@ -372,7 +372,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               </span>
               {status?.active && status.endsAt ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted">
-                  <Clock3 className="h-3.5 w-3.5" aria-hidden />
+                  <Clock3 className="size-3.5" aria-hidden />
                   {formatEndsAt(status.endsAt)}
                 </span>
               ) : null}
@@ -394,9 +394,9 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
             aria-label={translate(t, "common.refresh", "Refresh")}
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <Loader2 className="size-4 animate-spin" aria-hidden />
             ) : (
-              <RefreshCw className="h-4 w-4" aria-hidden />
+              <RefreshCw className="size-4" aria-hidden />
             )}
           </Button>
           {permission?.status !== "granted" ? (
@@ -408,7 +408,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               onClick={() => void handleRequestPermissions()}
               disabled={busy}
             >
-              <CheckCircle2 className="mr-1.5 h-4 w-4" aria-hidden />
+              <CheckCircle2 className="mr-1.5 size-4" aria-hidden />
               {translate(
                 t,
                 "permissionssection.RequestApproval",
@@ -425,7 +425,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               onClick={() => void handleStopBlock()}
               disabled={busy}
             >
-              <Square className="mr-1.5 h-4 w-4" aria-hidden />
+              <Square className="mr-1.5 size-4" aria-hidden />
               {translate(
                 t,
                 "permissionssection.appBlocking.stop",
@@ -464,7 +464,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   )}
                 </span>
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
                   <Input
                     id="app-blocker-search"
                     aria-labelledby="app-blocker-search-label"
@@ -498,7 +498,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                         type="checkbox"
                         checked={checked}
                         onChange={() => togglePackageName(app.packageName)}
-                        className="mt-0.5 h-4 w-4 rounded border-border p-0"
+                        className="mt-0.5 size-4 rounded border-border p-0"
                       />
                       <span className="min-w-0">
                         <span className="block font-medium text-txt">
@@ -548,7 +548,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
                     setIndefinite(event.target.checked)
                   }
-                  className="h-4 w-4 rounded border-border p-0"
+                  className="size-4 rounded border-border p-0"
                 />
                 {translate(
                   t,
@@ -589,7 +589,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 onClick={() => void handleStartBlock()}
                 disabled={busy || selectedPackageNames.length === 0}
               >
-                <ShieldBan className="mr-1.5 h-4 w-4" aria-hidden />
+                <ShieldBan className="mr-1.5 size-4" aria-hidden />
                 {translate(
                   t,
                   "permissionssection.appBlocking.start",
@@ -639,7 +639,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 onClick={() => void handleSelectIosApps()}
                 disabled={busy}
               >
-                <ListChecks className="mr-1.5 h-4 w-4" aria-hidden />
+                <ListChecks className="mr-1.5 size-4" aria-hidden />
                 {translate(
                   t,
                   "permissionssection.appBlocking.chooseApps",
@@ -654,7 +654,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 onClick={() => void handleStartBlock()}
                 disabled={busy || selectedIosApps.length === 0}
               >
-                <ShieldBan className="mr-1.5 h-4 w-4" aria-hidden />
+                <ShieldBan className="mr-1.5 size-4" aria-hidden />
                 {translate(
                   t,
                   "permissionssection.appBlocking.start",

@@ -573,7 +573,7 @@ function SearchableSelectInner({
         data-field-type="select"
       >
         <span className={inputVal ? "" : "text-muted opacity-60"}>
-          {inputVal || "Select..."}
+          {inputVal || "Select…"}
         </span>
         <span className="text-muted text-2xs shrink-0">
           {open ? "\u25B2" : "\u25BC"}
@@ -627,7 +627,7 @@ function SearchableSelectInner({
                 </Button>
               )}
               {filtered.length === 0 && (
-                <div className="px-3 py-3 text-xs text-muted text-center">
+                <div className="p-3 text-xs text-muted text-center">
                   {t("config-field.NoMatches", {
                     defaultValue: "No matches",
                   })}
@@ -838,7 +838,7 @@ function RadioFieldInner({ fp: props }: { fp: FieldRenderProps }) {
               onChange={() => handleChange(opt.value)}
               onClick={() => fireAction(props, "click")}
               onBlur={() => fireAction(props, "blur")}
-              className="mt-0.5 h-4 w-4 shrink-0 p-0"
+              className="mt-0.5 size-4 shrink-0 p-0"
             />
             <span>
               {opt.label}
@@ -923,7 +923,7 @@ function MultiselectFieldInner({ fp: props }: { fp: FieldRenderProps }) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="inline-flex items-center justify-center w-3.5 h-3.5 text-2xs rounded-full hover:bg-accent hover:text-accent-fg transition-colors"
+                  className="inline-flex items-center justify-center size-3.5  text-2xs rounded-full hover:bg-accent hover:text-accent-fg transition-colors"
                   onClick={() => remove(opt.value)}
                 >
                   ×
@@ -1133,7 +1133,7 @@ function ArrayItem({
               defaultValue: "Move down",
             })}
           >
-            <ChevronDown className="w-3 h-3" />
+            <ChevronDown className="size-3" />
           </Button>
         </div>
       )}
@@ -1154,7 +1154,7 @@ function ArrayItem({
           className="px-2 py-1.5 bg-bg-hover text-xs text-muted transition-colors hover:bg-surface hover:text-destructive h-9 rounded-sm"
           onClick={onRemove}
         >
-          <X className="w-3 h-3" />
+          <X className="size-3" />
         </Button>
       )}
     </div>
@@ -1326,7 +1326,7 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
                 fireAction(props, "click");
               }}
             >
-              <X className="w-3 h-3" />
+              <X className="size-3" />
             </Button>
           )}
         </div>

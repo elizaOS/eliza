@@ -37,15 +37,15 @@ function statusIcon(status: TrajectoryTimelineStatus | undefined) {
   switch (status) {
     case "running":
     case "queued":
-      return <Clock3 className="h-3.5 w-3.5 text-primary" />;
+      return <Clock3 className="size-3.5 text-primary" />;
     case "success":
-      return <CheckCircle className="h-3.5 w-3.5 text-success" />;
+      return <CheckCircle className="size-3.5 text-success" />;
     case "failure":
-      return <XCircle className="h-3.5 w-3.5 text-danger" />;
+      return <XCircle className="size-3.5 text-danger" />;
     case "skipped":
-      return <Circle className="h-3.5 w-3.5 text-muted/50" />;
+      return <Circle className="size-3.5 text-muted/50" />;
     default:
-      return <Circle className="h-3.5 w-3.5 text-muted" />;
+      return <Circle className="size-3.5 text-muted" />;
   }
 }
 
@@ -68,7 +68,7 @@ export function TrajectoryEventTimeline({
           {events.map((event) => (
             <li
               key={event.id}
-              className="grid grid-cols-[1.5rem_1fr] gap-3 rounded-sm border border-border/40 bg-bg/40 px-3 py-3"
+              className="grid grid-cols-[1.5rem_1fr] gap-3 rounded-sm border border-border/40 bg-bg/40 p-3"
             >
               <div className="mt-0.5 flex justify-center">
                 {statusIcon(event.status)}
@@ -79,7 +79,7 @@ export function TrajectoryEventTimeline({
                     {event.label}
                   </span>
                   {event.stage ? (
-                    <span className="rounded-sm border border-border/50 px-1.5 py-0.5 text-[11px] uppercase tracking-[0.12em] text-muted">
+                    <span className="rounded-sm border border-border/50 px-1.5 py-0.5 text-xs-tight uppercase tracking-[0.12em] text-muted">
                       {event.stage}
                     </span>
                   ) : null}

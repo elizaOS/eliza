@@ -113,7 +113,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                 defaultValue: "Predictive analytics",
               })}
             >
-              <Activity className="mr-1 h-3 w-3" />
+              <Activity className="mr-1 size-3" />
             </Badge>
           </div>
         </CardHeader>
@@ -280,7 +280,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
             <div className="flex flex-wrap items-center gap-4 text-xs">
               <div className="flex items-center gap-2">
                 <div
-                  className="h-3 w-3 rounded-full"
+                  className="size-3 rounded-full"
                   style={{ backgroundColor: chartConfig.historical.color }}
                 />
                 <span className="text-muted-foreground">
@@ -291,7 +291,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
               </div>
               <div className="flex items-center gap-2">
                 <div
-                  className="h-3 w-3 rounded-full opacity-70"
+                  className="size-3 rounded-full opacity-70"
                   style={{ backgroundColor: chartConfig.projected.color }}
                 />
                 <span className="text-muted-foreground">
@@ -328,7 +328,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                     data-alert-severity={severity}
                     variant={getAlertVariant(alert.type)}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="size-4" />
                     <AlertTitle>{alert.title}</AlertTitle>
                     <AlertDescription className="mt-2">
                       {alert.message}

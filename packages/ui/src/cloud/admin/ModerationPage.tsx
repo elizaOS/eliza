@@ -240,7 +240,7 @@ export default function ModerationPage(): React.JSX.Element {
           </p>
         </div>
         <Button variant="outline" onClick={loadAll}>
-          <RefreshCw className="mr-2 h-4 w-4" />
+          <RefreshCw className="mr-2 size-4" />
           {t("cloud.admin.refresh", { defaultValue: "Refresh" })}
         </Button>
       </div>
@@ -252,7 +252,7 @@ export default function ModerationPage(): React.JSX.Element {
               defaultValue: "Total Violations",
             })}
             value={overview.totalViolations}
-            icon={<AlertTriangle className="h-4 w-4 text-warn" />}
+            icon={<AlertTriangle className="size-4 text-warn" />}
             accent="amber"
           />
           <DashboardStatCard
@@ -260,7 +260,7 @@ export default function ModerationPage(): React.JSX.Element {
               defaultValue: "Flagged Users",
             })}
             value={overview.flaggedUsers}
-            icon={<UserX className="h-4 w-4 text-accent" />}
+            icon={<UserX className="size-4 text-accent" />}
             accent="orange"
           />
           <DashboardStatCard
@@ -268,13 +268,13 @@ export default function ModerationPage(): React.JSX.Element {
               defaultValue: "Banned Users",
             })}
             value={overview.bannedUsers}
-            icon={<Ban className="h-4 w-4 text-danger" />}
+            icon={<Ban className="size-4 text-danger" />}
             accent="red"
           />
           <DashboardStatCard
             label={t("cloud.admin.stat.admins", { defaultValue: "Admins" })}
             value={overview.adminCount}
-            icon={<Shield className="h-4 w-4 text-txt-strong/70" />}
+            icon={<Shield className="size-4 text-txt-strong/70" />}
             accent="white"
           />
         </div>
@@ -283,15 +283,15 @@ export default function ModerationPage(): React.JSX.Element {
       <Tabs defaultValue="violations" className="space-y-4">
         <TabsList>
           <TabsTrigger value="violations" onClick={loadViolations}>
-            <AlertTriangle className="mr-2 h-4 w-4" />
+            <AlertTriangle className="mr-2 size-4" />
             {t("cloud.admin.tab.violations", { defaultValue: "Violations" })}
           </TabsTrigger>
           <TabsTrigger value="users" onClick={loadUsers}>
-            <Users className="mr-2 h-4 w-4" />
+            <Users className="mr-2 size-4" />
             {t("cloud.admin.tab.users", { defaultValue: "Users" })}
           </TabsTrigger>
           <TabsTrigger value="admins" onClick={loadAdmins}>
-            <Shield className="mr-2 h-4 w-4" />
+            <Shield className="mr-2 size-4" />
             {t("cloud.admin.tab.admins", { defaultValue: "Admins" })}
           </TabsTrigger>
         </TabsList>
@@ -379,7 +379,7 @@ export default function ModerationPage(): React.JSX.Element {
                           size="sm"
                           onClick={() => loadUserDetail(v.userId)}
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="size-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -407,7 +407,7 @@ export default function ModerationPage(): React.JSX.Element {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <UserX className="h-5 w-5 text-accent" />
+                  <UserX className="size-5 text-accent" />
                   {t("cloud.admin.flagged.title", {
                     defaultValue: "Flagged Users",
                   })}
@@ -449,7 +449,7 @@ export default function ModerationPage(): React.JSX.Element {
                           size="sm"
                           onClick={() => loadUserDetail(u.userId)}
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="size-4" />
                         </Button>
                         <Button
                           variant="destructive"
@@ -463,7 +463,7 @@ export default function ModerationPage(): React.JSX.Element {
                             })
                           }
                         >
-                          <Ban className="h-4 w-4" />
+                          <Ban className="size-4" />
                         </Button>
                       </div>
                     </div>
@@ -482,7 +482,7 @@ export default function ModerationPage(): React.JSX.Element {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Ban className="h-5 w-5 text-danger" />
+                  <Ban className="size-5 text-danger" />
                   {t("cloud.admin.banned.title", {
                     defaultValue: "Banned Users",
                   })}
@@ -550,7 +550,7 @@ export default function ModerationPage(): React.JSX.Element {
               </div>
               {adminRole === "super_admin" && (
                 <Button onClick={() => setAddAdminOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="mr-2 size-4" />
                   {t("cloud.admin.addAdmin", { defaultValue: "Add Admin" })}
                 </Button>
               )}
@@ -614,7 +614,7 @@ export default function ModerationPage(): React.JSX.Element {
                                 })
                               }
                             >
-                              <Trash2 className="h-4 w-4 text-danger" />
+                              <Trash2 className="size-4 text-danger" />
                             </Button>
                           )}
                       </TableCell>
@@ -649,7 +649,7 @@ export default function ModerationPage(): React.JSX.Element {
                 })}
               </Label>
               <Input
-                placeholder="0x..."
+                placeholder="0x…"
                 value={newAdminWallet}
                 onChange={(e) => setNewAdminWallet(e.target.value)}
               />
@@ -703,7 +703,7 @@ export default function ModerationPage(): React.JSX.Element {
               disabled={actionLoading || !newAdminWallet}
             >
               {actionLoading && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 size-4 animate-spin" />
               )}
               {t("cloud.admin.addAdmin", { defaultValue: "Add Admin" })}
             </Button>
@@ -870,14 +870,14 @@ export default function ModerationPage(): React.JSX.Element {
                   }
                   disabled={actionLoading || !selectedUserId}
                 >
-                  <Ban className="mr-2 h-4 w-4" />
+                  <Ban className="mr-2 size-4" />
                   {t("cloud.admin.banUser", { defaultValue: "Ban User" })}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" />
+              <Loader2 className="size-8 animate-spin" />
             </div>
           )}
         </DialogContent>

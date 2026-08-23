@@ -34,7 +34,7 @@ function DashboardHeaderComponent({
   const defaultAnonymousCta = (
     <a href={loginHref}>
       <BrandButton variant="primary" className="h-8 gap-2 px-3 md:h-10 md:px-4">
-        <LogIn className="h-4 w-4" />
+        <LogIn className="size-4" />
         <span className="hidden md:inline">Sign Up Free</span>
         <span className="md:hidden">Sign Up</span>
       </BrandButton>
@@ -51,7 +51,7 @@ function DashboardHeaderComponent({
           onClick={onToggleSidebar}
           aria-label="Toggle navigation"
         >
-          <Menu className="h-4 w-4 text-white" />
+          <Menu className="size-4 text-white" />
         </BrandButton>
 
         {pageInfo && (

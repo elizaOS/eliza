@@ -174,7 +174,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
           ) : (
             <div className="max-w-md p-6 text-center">
               <div
-                className={`mx-auto mb-4 h-3 w-3 rounded-full ${
+                className={`mx-auto mb-4 size-3 rounded-full ${
                   streamLive ? "bg-danger animate-pulse" : "bg-muted"
                 }`}
               />

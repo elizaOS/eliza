@@ -329,7 +329,7 @@ describe("MessageContent sensitive requests", () => {
     );
     expect(
       screen.getByTestId("sensitive-request-security-note").textContent,
-    ).toContain("Sent directly to the agent — never posted to chat");
+    ).toContain("Sent directly to the agent. Never posted to chat.");
     expect(
       screen.getByTestId("sensitive-request-security-note").textContent,
     ).not.toContain("encrypted");

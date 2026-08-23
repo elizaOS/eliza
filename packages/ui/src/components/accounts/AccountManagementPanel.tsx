@@ -40,8 +40,8 @@ interface AccountManagementPanelProps {
 function RowSkeleton() {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-card/40 px-3 py-2.5">
-      <Skeleton className="h-3.5 w-3.5" />
-      <Skeleton className="h-8 w-8 rounded-md" />
+      <Skeleton className="size-3.5" />
+      <Skeleton className="size-8 rounded-md" />
       <div className="flex flex-1 flex-col gap-1.5">
         <Skeleton className="h-3.5 w-40" />
         <Skeleton className="h-2.5 w-24" />
@@ -230,12 +230,12 @@ export function AccountManagementPanel({
   if (accounts.error && !accounts.data) {
     return (
       <div
-        className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-4"
+        className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4"
         data-testid="account-management-panel"
         data-state="error"
       >
         <div className="flex items-center gap-2 text-sm text-destructive">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+          <AlertTriangle className="size-4 shrink-0" aria-hidden />
           <span>
             {t("accounts.error.load", {
               defaultValue: "Couldn't load your accounts.",
@@ -250,7 +250,7 @@ export function AccountManagementPanel({
           className="h-8 gap-1.5 px-3 text-xs"
           onClick={() => void accounts.refresh()}
         >
-          <RotateCw className="h-3.5 w-3.5" aria-hidden />
+          <RotateCw className="size-3.5" aria-hidden />
           {t("accounts.error.retry", { defaultValue: "Retry" })}
         </Button>
       </div>
@@ -280,7 +280,7 @@ export function AccountManagementPanel({
           onClick={() => openAdd(undefined)}
           className="h-8 shrink-0 gap-1.5 px-3 text-xs"
         >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
+          <Plus className="size-3.5" aria-hidden />
           {t("accounts.add.button", { defaultValue: "Add account" })}
         </Button>
       </div>
@@ -288,8 +288,8 @@ export function AccountManagementPanel({
       {nothingConnected ? (
         // ── Teaching empty state (not just "nothing here") ──
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border/50 bg-bg-accent/20 px-6 py-8 text-center">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-accent/25 bg-accent/10 text-accent">
-            <Plus className="h-5 w-5" aria-hidden />
+          <span className="flex size-11 items-center justify-center rounded-full border border-accent/25 bg-accent/10 text-accent">
+            <Plus className="size-5" aria-hidden />
           </span>
           <div className="grid gap-1">
             <p className="text-sm font-medium text-txt-strong">
@@ -311,7 +311,7 @@ export function AccountManagementPanel({
             onClick={() => openAdd(undefined)}
             className="h-8 gap-1.5 px-3 text-xs"
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
+            <Plus className="size-3.5" aria-hidden />
             {t("accounts.empty.cta", {
               defaultValue: "Connect your first account",
             })}
@@ -338,12 +338,12 @@ export function AccountManagementPanel({
           <button
             type="button"
             onClick={() => setShowAvailable((v) => !v)}
-            className="flex w-full items-center gap-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong"
+            className="flex w-full items-center gap-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong"
             aria-expanded={showAvailable}
           >
             <ChevronRight
               className={cn(
-                "h-3.5 w-3.5 shrink-0 transition-transform",
+                "size-3.5 shrink-0 transition-transform",
                 showAvailable && "rotate-90",
               )}
               aria-hidden

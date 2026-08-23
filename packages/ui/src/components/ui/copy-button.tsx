@@ -82,9 +82,9 @@ export const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
         {...props}
       >
         {copied ? (
-          <Check className="h-3.5 w-3.5 text-ok" />
+          <Check className="size-3.5 text-ok" />
         ) : (
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className="size-3.5" />
         )}
         {children}
       </button>

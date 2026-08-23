@@ -150,7 +150,7 @@ function connectorIcon(plugin: PluginInfo): LucideIcon {
         <img
           src={imageSrc}
           alt=""
-          className="h-[18px] w-[18px] shrink-0 rounded-sm object-contain"
+          className="size-[18px] shrink-0 rounded-sm object-contain"
         />
       );
     const IconComponent = Inner;
@@ -200,7 +200,7 @@ function ConnectorListRow({
       trailing={
         <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted">
           {label}
-          <ChevronRight className="h-4 w-4" aria-hidden />
+          <ChevronRight className="size-4" aria-hidden />
         </span>
       }
       chevron={false}
@@ -438,8 +438,8 @@ function ConnectorDetailPage({
           {t("connectors.detail.back", { defaultValue: "← Connectors" })}
         </button>
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border/50 bg-bg-accent/70">
-            <Icon className="h-5 w-5 text-txt" />
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-border/50 bg-bg-accent/70">
+            <Icon className="size-5 text-txt" />
           </span>
           <div className="min-w-0">
             <h2 className="text-lg font-semibold tracking-tight text-txt-strong">

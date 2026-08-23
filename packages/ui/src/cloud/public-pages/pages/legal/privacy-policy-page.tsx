@@ -131,7 +131,7 @@ export default function PrivacyPolicyPage() {
             to="/login"
             className="inline-flex items-center gap-2 text-sm text-muted transition-opacity hover:opacity-75"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
             {t("cloud.privacy.backToLogin", { defaultValue: "Back to login" })}
           </Link>
 

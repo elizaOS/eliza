@@ -11,7 +11,7 @@ import {
 const railItems = ["A", "B", "C", "D", "E"];
 
 const RailItem = ({ label }: { label: string }) => (
-  <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-border/60 bg-card/40 text-sm font-medium">
+  <div className="flex size-11 items-center justify-center rounded-sm border border-border/60 bg-card/40 text-sm font-medium">
     {label}
   </div>
 );

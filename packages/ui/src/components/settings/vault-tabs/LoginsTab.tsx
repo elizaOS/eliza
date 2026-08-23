@@ -311,7 +311,7 @@ export function LoginsTab() {
           className="h-8 shrink-0 gap-1 rounded-sm px-2"
           onClick={() => setShowAdd((v) => !v)}
         >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
+          <Plus className="size-3.5" aria-hidden />
           {t("logins.addLogin", { defaultValue: "Add login" })}
         </Button>
       </div>
@@ -433,7 +433,7 @@ export function LoginsTab() {
             >
               {submitting ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
                   {t("logins.saving", { defaultValue: "Saving…" })}
                 </>
               ) : (
@@ -461,13 +461,13 @@ export function LoginsTab() {
 
       {logins === null ? (
         <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />{" "}
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />{" "}
           {t("logins.loading", { defaultValue: "Loading…" })}
         </div>
       ) : logins.length === 0 ? (
         <div
           data-testid="saved-logins-empty"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
         >
           {t("logins.empty", {
             defaultValue:
@@ -477,7 +477,7 @@ export function LoginsTab() {
       ) : filtered.length === 0 ? (
         <div
           data-testid="saved-logins-no-match"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
         >
           {t("logins.noMatch", {
             filter,
@@ -572,7 +572,7 @@ function AgentAutoallowToggle({
       {...agentProps}
       variant="ghost"
       size="sm"
-      className={`h-7 w-7 shrink-0 rounded-sm p-0 ${
+      className={`size-7 shrink-0 rounded-sm p-0 ${
         allowed ? "text-accent hover:text-accent" : "text-muted hover:text-txt"
       }`}
       aria-label={label}
@@ -581,7 +581,7 @@ function AgentAutoallowToggle({
       data-testid={`agent-autoallow-toggle-${domain}`}
       data-allowed={allowed ? "1" : "0"}
     >
-      <Bot className="h-3.5 w-3.5" aria-hidden />
+      <Bot className="size-3.5" aria-hidden />
     </Button>
   );
 }
@@ -609,14 +609,14 @@ function DeleteLoginButton({
       {...agentProps}
       variant="ghost"
       size="sm"
-      className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+      className="size-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
       aria-label={t("logins.deleteLabel", {
         target,
         defaultValue: "Delete saved login for {{target}}",
       })}
       onClick={onDelete}
     >
-      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+      <Trash2 className="size-3.5" aria-hidden />
     </Button>
   );
 }
@@ -649,7 +649,7 @@ function ExternalRowAction({ login }: { login: SavedLogin }) {
       aria-label={viewLabel}
       title={viewLabel}
     >
-      <ExternalLink className="h-3 w-3" aria-hidden />
+      <ExternalLink className="size-3" aria-hidden />
       {t("logins.view", { defaultValue: "View" })}
     </a>
   );

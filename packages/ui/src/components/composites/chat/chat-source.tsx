@@ -77,11 +77,11 @@ export function ChatVoiceSpeakerBadge({
       role="img"
       aria-label={isOwner ? `${label}, OWNER, spoken` : `${label}, spoken`}
     >
-      <Mic className="h-2.5 w-2.5" aria-hidden />
+      <Mic className="size-2.5" aria-hidden />
       <span className="text-txt">{label}</span>
       {isOwner ? (
         <Crown
-          className="h-2.5 w-2.5 text-accent"
+          className="size-2.5 text-accent"
           aria-hidden
           data-testid="chat-voice-speaker-owner-crown"
         />

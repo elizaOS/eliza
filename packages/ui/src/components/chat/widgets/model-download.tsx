@@ -432,7 +432,7 @@ function ModelProgressCard({
       <span className="flex w-full items-center gap-3">
         <span
           className={cn(
-            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg-hover text-txt-strong [&>svg]:h-4 [&>svg]:w-4",
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-bg-hover text-txt-strong [&>svg]:h-4 [&>svg]:w-4",
             tone === "danger" && "text-danger",
           )}
         >

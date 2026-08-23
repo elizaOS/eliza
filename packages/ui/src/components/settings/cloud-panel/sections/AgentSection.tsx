@@ -618,7 +618,7 @@ export function AgentSection() {
                 <span className="flex items-center gap-2">
                   <Circle
                     className={cn(
-                      "h-2.5 w-2.5 shrink-0 fill-current",
+                      "size-2.5 shrink-0 fill-current",
                       statusDotClass(activeAgent.status),
                     )}
                     aria-hidden
@@ -675,7 +675,7 @@ export function AgentSection() {
                 void refresh();
               }}
             >
-              <RefreshCw className="h-4 w-4" aria-hidden />
+              <RefreshCw className="size-4" aria-hidden />
             </Button>
           }
         />
@@ -697,7 +697,7 @@ export function AgentSection() {
                   void refresh();
                 }}
               >
-                <RefreshCw className="mr-1 h-4 w-4" aria-hidden />
+                <RefreshCw className="mr-1  size-4" aria-hidden />
                 Try again
               </Button>
             }
@@ -727,7 +727,7 @@ export function AgentSection() {
                   <span className="flex items-center gap-2">
                     <Circle
                       className={cn(
-                        "h-2.5 w-2.5 shrink-0",
+                        "size-2.5 shrink-0",
                         isActive
                           ? cn("fill-current", statusDotClass(status))
                           : "text-muted-foreground/50",
@@ -783,7 +783,7 @@ export function AgentSection() {
                         title="Suspend"
                         onClick={() => void suspendAgent(agent)}
                       >
-                        <Pause className="h-4 w-4" aria-hidden />
+                        <Pause className="size-4" aria-hidden />
                       </Button>
                     ) : null}
                     {canResume ? (
@@ -795,7 +795,7 @@ export function AgentSection() {
                         title="Wake"
                         onClick={() => void resumeAgent(agent)}
                       >
-                        <Play className="h-4 w-4" aria-hidden />
+                        <Play className="size-4" aria-hidden />
                       </Button>
                     ) : null}
                     <Button
@@ -806,7 +806,7 @@ export function AgentSection() {
                       title="Rename"
                       onClick={() => openDetails(agent)}
                     >
-                      <Pencil className="h-4 w-4" aria-hidden />
+                      <Pencil className="size-4" aria-hidden />
                     </Button>
                     <Button
                       variant="ghost"
@@ -817,7 +817,7 @@ export function AgentSection() {
                       title="Delete"
                       onClick={() => deleteAgent(agent)}
                     >
-                      <Trash2 className="h-4 w-4" aria-hidden />
+                      <Trash2 className="size-4" aria-hidden />
                     </Button>
                   </span>
                 }
@@ -915,7 +915,7 @@ export function AgentSection() {
                     void createAgent();
                   }}
                 >
-                  <Plus className="mr-1 h-4 w-4" aria-hidden />
+                  <Plus className="mr-1 size-4" aria-hidden />
                   {creating ? "Creating…" : "Create"}
                 </Button>
                 <Button
@@ -943,7 +943,7 @@ export function AgentSection() {
                 size="sm"
                 onClick={() => setShowCreate(true)}
               >
-                <Plus className="mr-1 h-4 w-4" aria-hidden />
+                <Plus className="mr-1 size-4" aria-hidden />
                 New Agent
               </Button>
             }

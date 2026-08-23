@@ -1,0 +1,17 @@
+{
+  "design-no-em-dash-in-jsx-text": 1,
+  "design-no-redundant-padding-axes": 2,
+  "design-no-redundant-size-axes": 2,
+  "design-no-space-on-flex-children": 2,
+  "design-no-three-period-ellipsis": 1,
+  "no-common-root-font": 5,
+  "no-cramped-container-padding": 1,
+  "no-flat-page-type-scale": 1,
+  "no-hover-only-reveal": 8,
+  "no-inline-exhaustive-style": 1,
+  "no-invisible-focus-control": 2,
+  "no-layout-shifting-interaction-state": 2,
+  "no-nested-card-surface": 26,
+  "no-pure-black-background": 47,
+  "no-symmetric-text-button-padding": 2
+}

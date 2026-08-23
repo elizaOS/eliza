@@ -141,7 +141,7 @@ export function CloudOverviewSection() {
             disabled={elizaCloudLoginBusy}
             {...agentProps}
           >
-            <Cloud className="h-4 w-4" aria-hidden />
+            <Cloud className="size-4" aria-hidden />
             {elizaCloudLoginBusy
               ? t("settings.cloudOverview.connecting", {
                   defaultValue: "Connecting...",
@@ -207,7 +207,7 @@ export function CloudOverviewSection() {
                 onClick={handleSignOut}
                 disabled={elizaCloudDisconnecting}
               >
-                <LogOut className="h-4 w-4" aria-hidden />
+                <LogOut className="size-4" aria-hidden />
                 {elizaCloudDisconnecting
                   ? t("settings.cloudOverview.signingOut", {
                       defaultValue: "Signing out...",

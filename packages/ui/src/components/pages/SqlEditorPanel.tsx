@@ -117,7 +117,7 @@ export function SqlEditorPanel({
         <PagePanel.Empty
           variant="inset"
           className="mt-4 min-h-[12rem]"
-          icon={<SearchX className="h-6 w-6" aria-hidden />}
+          icon={<SearchX className="size-6" aria-hidden />}
           title={t("databaseview.QueryReturnedNoRo")}
         />
       ) : null}

@@ -83,13 +83,13 @@ const RunningAppCard = memo(function RunningAppCard({
 
       <span
         title={needsAttention ? attentionReasons[0] : run.health.state}
-        className={`pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full ${tone.dot} ${tone.ring}`}
+        className={`pointer-events-none absolute right-4 top-4 size-2.5 rounded-full ${tone.dot} ${tone.ring}`}
       />
 
       {needsAttention ? (
         <span
           title={attentionReasons[0]}
-          className="pointer-events-none absolute right-10 top-3.5 inline-flex items-center rounded-full border border-warn/40 bg-black/40 px-2 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.2em] text-warn"
+          className="pointer-events-none absolute right-10 top-3.5 inline-flex items-center rounded-full border border-warn/40 bg-black/40 px-2 py-0.5 text-2xs font-semibold text-warn"
         >
           !
         </span>
@@ -102,16 +102,16 @@ const RunningAppCard = memo(function RunningAppCard({
           data-testid={`running-app-stop-${run.runId}`}
           aria-label={`Stop ${run.displayName}`}
           disabled={isStopping}
-          className="absolute bottom-3 right-3 h-8 w-8 rounded-full bg-black/70 p-0 text-white/90 transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute bottom-3 right-3 size-8 rounded-full bg-black/70 p-0 text-white/90 transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
             onStopRun(run);
           }}
         >
           {isStopping ? (
-            <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+            <span className="size-2 animate-pulse rounded-full bg-white" />
           ) : (
-            <Square className="h-3.5 w-3.5" aria-hidden />
+            <Square className="size-3.5" aria-hidden />
           )}
         </Button>
       ) : null}

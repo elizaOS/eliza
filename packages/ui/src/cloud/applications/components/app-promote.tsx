@@ -95,7 +95,7 @@ export function AppPromote({ app }: AppPromoteProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-neutral-400" />
+        <Loader2 className="size-8 animate-spin text-neutral-400" />
       </div>
     );
   }
@@ -106,7 +106,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-            <Megaphone className="h-4 w-4 text-muted" />
+            <Megaphone className="size-4 text-muted" />
             {t("cloud.appPromote.title", {
               name: app.name,
               defaultValue: "Promote {{name}}",
@@ -129,14 +129,14 @@ export function AppPromote({ app }: AppPromoteProps) {
           >
             {isGeneratingAssets ? (
               <>
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                <Loader2 className="size-4 mr-1.5 animate-spin" />
                 {t("cloud.appPromote.generating", {
                   defaultValue: "Generating...",
                 })}
               </>
             ) : (
               <>
-                <Sparkles className="h-4 w-4 mr-1.5" />
+                <Sparkles className="size-4 mr-1.5" />
                 {t("cloud.appPromote.generateAssets", {
                   defaultValue: "Generate Assets",
                 })}
@@ -148,7 +148,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             size="sm"
             className="bg-txt hover:bg-txt/90 text-bg rounded-sm"
           >
-            <Megaphone className="h-4 w-4 mr-1.5" />
+            <Megaphone className="size-4 mr-1.5" />
             {t("cloud.appPromote.launch", { defaultValue: "Launch Promotion" })}
           </Button>
         </div>
@@ -170,8 +170,8 @@ export function AppPromote({ app }: AppPromoteProps) {
           <div className="space-y-2">
             {suggestions.tips.map((tip, index) => (
               <div key={tip} className="flex items-start gap-2">
-                <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-txt text-[10px] font-semibold">
+                <div className="size-5 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-txt text-2xs font-semibold">
                     {index + 1}
                   </span>
                 </div>
@@ -221,7 +221,7 @@ export function AppPromote({ app }: AppPromoteProps) {
                 }
               }}
             >
-              <Plus className="h-4 w-4 mr-1.5" />
+              <Plus className="size-4 mr-1.5" />
               {t("cloud.appPromote.connect", { defaultValue: "Connect" })}
             </Link>
           </Button>
@@ -229,7 +229,7 @@ export function AppPromote({ app }: AppPromoteProps) {
 
         {adAccounts.length === 0 ? (
           <div className="text-center py-6 text-neutral-500">
-            <Megaphone className="h-10 w-10 mx-auto mb-2 opacity-40" />
+            <Megaphone className="size-10 mx-auto mb-2 opacity-40" />
             <p className="text-xs">
               {t("cloud.appPromote.noAccounts", {
                 defaultValue: "No ad accounts connected",
@@ -262,9 +262,9 @@ export function AppPromote({ app }: AppPromoteProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 rounded-sm"
+                  className="size-8 p-0 rounded-sm"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="size-4" />
                 </Button>
               </div>
             ))}

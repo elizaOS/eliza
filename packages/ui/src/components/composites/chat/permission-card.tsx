@@ -216,9 +216,9 @@ export function PermissionCard({
             size="sm"
             disabled
             data-testid="permission-card-primary"
-            title="Coming soon — requires app entitlement."
+            title="Coming soon: requires app entitlement."
           >
-            {labels.comingSoon ?? "Coming soon — requires app entitlement"}
+            {labels.comingSoon ?? "Coming soon: requires app entitlement"}
           </Button>
         ) : isRestrictedUnavailable || state.status === "not-applicable" ? (
           <Button
@@ -261,7 +261,7 @@ export function PermissionCard({
             disabled={checking || requesting}
             data-testid="permission-card-check-again"
           >
-            {checking ? "Checking..." : "Check again"}
+            {checking ? "Checking…" : "Check again"}
           </Button>
         ) : null}
         {fallbackOffered ? (

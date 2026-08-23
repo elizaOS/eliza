@@ -202,6 +202,20 @@ hues, broken states, stray type/spacing), then fix worst-first with the
 `better-*` review skills. The gates encode each dynamic finding class once it
 is understood, so it can never silently regress.
 
+A third layer wraps the external `react-doctor design` diagnostics (redundant
+utility axes, arbitrary px font sizes, dvh/vh, deprecated Tailwind classes,
+hover-only reveals, …) behind a repo-root ratchet:
+
+```bash
+bun run audit:design                  # react-doctor design vs committed baseline; fails on any rule growing
+bun run audit:design:update-baseline  # ratchet the baseline down after a cleanup PR
+```
+
+The baseline lives in `packages/scripts/design-doctor-baseline.json`; like the
+brand-token ratchet, counts may only decrease. The runner executes npx from a
+temp cwd because the repo root `overrides` conflict with react-doctor's own
+dependency tree.
+
 ### Scroll + tap-target certification (`src/testing/scroll-cert.ts`, #14380)
 
 A UI-library-wide certification harness holds every scrollable / interactive
