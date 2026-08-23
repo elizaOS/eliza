@@ -52,6 +52,23 @@ const RAIL_GESTURE_PARK_MAX_MS = 5_000;
 const VERTEX_SOURCE = `attribute vec3 position;
 void main(){ gl_Position = vec4(position, 1.0); }`;
 
+/** Longest compile-error excerpt carried in the fallback reason. */
+const COMPILE_ERROR_REASON_LIMIT = 200;
+
+/**
+ * Fallback reason for a fragment compile failure. Driver-supplied logs are
+ * untrusted bytes and may contain lone surrogates, so the excerpt is sanitized
+ * and then truncated on a code-point boundary — a naive `slice` could both keep
+ * an isolated surrogate and split a surrogate pair at the cap, producing an
+ * ill-formed string that later crosses a JSON/structured-clone boundary.
+ */
+export function shaderCompileFallbackReason(compileError: string): string {
+  return `compile: ${truncateWellFormed(
+    toWellFormedUnicode(compileError),
+    COMPILE_ERROR_REASON_LIMIT,
+  )}`;
+}
+
 export interface ProgrammableShaderBackgroundProps {
   /** GLSL ES 1.00 fragment source (already static-gated upstream). */
   source: string;
@@ -139,7 +156,7 @@ export function ProgrammableShaderBackground({
     const compileError = fragmentCompileError(gl, source);
     if (compileError) {
       renderer.dispose();
-      fallback(`compile: ${truncateWellFormed(toWellFormedUnicode(compileError), 200)}`);
+      fallback(shaderCompileFallbackReason(compileError));
       return;
     }
 
