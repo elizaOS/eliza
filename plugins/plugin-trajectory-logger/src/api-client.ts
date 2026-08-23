@@ -66,9 +66,13 @@ export interface TrajectoryDetail {
 }
 
 function toWellFormedUnicodeLocal(text: string): string {
-  const maybe = text as unknown as { toWellFormed?: () => string; isWellFormed?: () => boolean };
+  const maybe = text as unknown as {
+    toWellFormed?: () => string;
+    isWellFormed?: () => boolean;
+  };
   if (typeof maybe.toWellFormed === "function") return maybe.toWellFormed();
-  if (typeof maybe.isWellFormed === "function" && maybe.isWellFormed()) return text;
+  if (typeof maybe.isWellFormed === "function" && maybe.isWellFormed())
+    return text;
   let out = "";
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
@@ -115,8 +119,12 @@ export class TrajectoryHttpError extends Error {
   readonly status: number;
 
   constructor(status: number, statusText: string, body: string) {
-    const errorBodyPreview = body ? truncateWellFormedLocal(toWellFormedUnicodeLocal(body), 200) : "";
-    super(`[trajectory-logger] ${status} ${statusText}${errorBodyPreview ? `: ${errorBodyPreview}` : ""}`);
+    const errorBodyPreview = body
+      ? truncateWellFormedLocal(toWellFormedUnicodeLocal(body), 200)
+      : "";
+    super(
+      `[trajectory-logger] ${status} ${statusText}${errorBodyPreview ? `: ${errorBodyPreview}` : ""}`,
+    );
     this.name = "TrajectoryHttpError";
     this.status = status;
   }

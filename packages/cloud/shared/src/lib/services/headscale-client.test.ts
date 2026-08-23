@@ -356,6 +356,33 @@ describe("getNodeByNameOrSuffixed (Headscale collision-rename tolerance)", () =>
     expect(node?.name).toBe("eliza-abc123-k9x2m4p1");
   });
 
+  it("strict cleanup lookup returns the actual collision-suffixed node", async () => {
+    const createdAfter = new Date("2026-08-22T12:00:00.000Z");
+    mockNodes([
+      makeNode("4", "eliza-abc123-old1old1", "2026-08-22T11:59:59.000Z"),
+      makeNode("10", "eliza-abc123-new7new7", "2026-08-22T12:00:01.000Z"),
+    ]);
+    const node = await client().getNodeByNameOrSuffixedStrict("eliza-abc123", {
+      createdAfter,
+    });
+    expect(node).toMatchObject({ id: "10", name: "eliza-abc123-new7new7" });
+  });
+
+  it("strict cleanup lookup propagates Headscale listing failure", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("unavailable", {
+          status: 503,
+          statusText: "Service Unavailable",
+        }),
+    ) as typeof fetch;
+    await expect(client().getNodeByNameOrSuffixedStrict("eliza-abc123")).rejects.toMatchObject({
+      status: 503,
+      method: "GET",
+      path: "/api/v1/node",
+    });
+  });
+
   it("matches the rename shape observed in production", async () => {
     mockNodes([makeNode("11", "eliza-00e6292c-e55-cnpx9uop")]);
     const node = await client().getNodeByNameOrSuffixed("eliza-00e6292c-e55");

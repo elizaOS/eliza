@@ -135,6 +135,18 @@ describe("Devices & Runtimes reconciliation", () => {
     expect(target.canSelect).toBe(false);
   });
 
+  it("keeps a pending managed host visible but non-pairable", () => {
+    const target = devicesRuntimesInternals.hostTarget(
+      { ...HOST, status: "pending" },
+      new Map(),
+      null,
+    );
+    expect(target.status).toBe("pairing");
+    expect(target.activity).toBe("Finishing managed network enrollment");
+    expect(target.canPair).toBe(false);
+    expect(target.canRevoke).toBe(true);
+  });
+
   it("marks a stale local relay profile as an error instead of connected", () => {
     const directory: RemoteHostDirectory = {
       ownerId: "owner-1",

@@ -32,6 +32,7 @@ export interface RuntimeManagementRequest {
   apiBase?: string;
   sessionId?: string;
   code?: string;
+  managedNetwork?: boolean;
 }
 
 export interface RuntimeManagementResult {

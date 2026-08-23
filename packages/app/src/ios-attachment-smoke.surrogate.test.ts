@@ -11,7 +11,7 @@ describe("ios-attachment-smoke surrogate-safe", () => {
   });
   it("does not split astral at 500", () => {
     expect(
-      truncateWellFormed(toWellFormedUnicode("x".repeat(499) + "🦊"), 500),
+      truncateWellFormed(toWellFormedUnicode(`${"x".repeat(499)}🦊`), 500),
     ).toBe("x".repeat(499));
   });
   it("caps at 500", () => {

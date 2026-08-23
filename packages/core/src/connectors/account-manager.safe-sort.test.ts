@@ -41,12 +41,7 @@ describe("InMemoryConnectorAccountStorage safe sort", () => {
 		const accounts = await storage.listAccounts("slack");
 		// NaN and Infinity fall back to 0, so a and c (both 0) come first sorted
 		// by id, then d (50), then b (100).
-		expect(accounts.map((account) => account.id)).toEqual([
-			"a",
-			"c",
-			"d",
-			"b",
-		]);
+		expect(accounts.map((account) => account.id)).toEqual(["a", "c", "d", "b"]);
 	});
 
 	it("produces a total order for a single non-finite entry", async () => {

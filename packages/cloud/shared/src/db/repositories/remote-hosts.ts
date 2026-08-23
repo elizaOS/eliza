@@ -6,7 +6,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { canonicalizeRemoteControlValue } from "@elizaos/shared/contracts/remote-control";
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, lte, or, type SQL } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import { dbWrite } from "../helpers";
@@ -66,7 +66,7 @@ export class RemoteHostsRepository {
       !input.device_id ||
       !input.runtime_key_id ||
       !input.host_token_hash ||
-      input.status === "revoked"
+      (input.status !== undefined && !["pending", "active"].includes(input.status))
     ) {
       throw new ElizaError("Remote host enrollment input is incomplete", {
         code: "REMOTE_HOST_INVALID_INPUT",
@@ -130,6 +130,39 @@ export class RemoteHostsRepository {
     return host;
   }
 
+  /**
+   * Authenticates the one host bearer allowed to finish managed-network
+   * enrollment. Pending rows remain excluded from every relay/session path;
+   * this method is intentionally scoped to the activation endpoint and also
+   * accepts an already-active row so a lost activation response is retryable.
+   */
+  async authenticateManagedEnrollment(
+    hostId: string,
+    token: string,
+  ): Promise<RemoteHost | undefined> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(token);
+    } catch {
+      return undefined;
+    }
+    const [host] = await this.database
+      .select()
+      .from(remoteHosts)
+      .where(
+        and(
+          eq(remoteHosts.id, hostId),
+          eq(remoteHosts.host_token_hash, tokenHash),
+          inArray(remoteHosts.status, ["pending", "active"]),
+          eq(remoteHosts.headscale_cleanup_pending, true),
+          isNotNull(remoteHosts.headscale_hostname),
+          isNotNull(remoteHosts.headscale_preauth_key_id),
+        ),
+      )
+      .limit(1);
+    return host;
+  }
+
   async recordManagedEnrollment(input: {
     hostId: string;
     organizationId: string;
@@ -140,7 +173,6 @@ export class RemoteHostsRepository {
     const [host] = await this.database
       .update(remoteHosts)
       .set({
-        status: "active",
         headscale_hostname: input.hostname,
         headscale_preauth_key_id: input.preAuthKeyId,
         headscale_cleanup_pending: true,
@@ -162,6 +194,80 @@ export class RemoteHostsRepository {
       });
     }
     return host;
+  }
+
+  /**
+   * Promotes a managed host only after its external enrollment material is
+   * durably recorded. Until this compare-and-set succeeds, host bearer
+   * authentication and every relay authority path remain unavailable.
+   */
+  async activateManagedEnrollment(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    hostname: string;
+  }): Promise<RemoteHost> {
+    const now = new Date();
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({
+        status: "active",
+        headscale_hostname: input.hostname,
+        updated_at: now,
+      })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+          eq(remoteHosts.status, "pending"),
+          eq(remoteHosts.headscale_cleanup_pending, true),
+          isNotNull(remoteHosts.headscale_hostname),
+          isNotNull(remoteHosts.headscale_preauth_key_id),
+        ),
+      )
+      .returning();
+    if (!host) {
+      throw storageFailure("Managed remote-host enrollment could not be activated", {
+        hostId: input.hostId,
+      });
+    }
+    return host;
+  }
+
+  /**
+   * Returns only cleanup work that is safe for the background reconciler:
+   * revoked rows immediately, or pending enrollment rows whose one-use key
+   * window has elapsed. Active managed hosts retain their cleanup marker as
+   * durable external-resource ownership and are never selected here.
+   */
+  async listManagedCleanupCandidates(input: {
+    pendingUpdatedBefore: Date;
+    limit: number;
+  }): Promise<RemoteHost[]> {
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 100) {
+      throw new ElizaError("Managed cleanup batch limit is invalid", {
+        code: "REMOTE_HOST_INVALID_INPUT",
+        severity: "fatal",
+      });
+    }
+    return this.database
+      .select()
+      .from(remoteHosts)
+      .where(
+        and(
+          eq(remoteHosts.headscale_cleanup_pending, true),
+          or(
+            eq(remoteHosts.status, "revoked"),
+            and(
+              eq(remoteHosts.status, "pending"),
+              lte(remoteHosts.updated_at, input.pendingUpdatedBefore),
+            ),
+          ),
+        ),
+      )
+      .orderBy(asc(remoteHosts.updated_at), asc(remoteHosts.id))
+      .limit(input.limit);
   }
 
   async recordManagedCleanupPending(input: {

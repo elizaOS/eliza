@@ -31,29 +31,29 @@ app.get("/", async (c) => {
       success: true,
       data: {
         ownerId: user.id,
-        hosts: hosts
-          .filter((host) => host.status !== "pending")
-          .map((host) => ({
-            id: host.id,
-            deviceId: host.device_id,
-            displayName: host.display_name,
-            platform: host.platform,
-            connectionMode: host.connection_mode,
-            runtimeKeyId: host.runtime_key_id,
-            signingPublicKeyJwk: host.signing_public_jwk,
-            encryptionPublicKeyJwk: host.encryption_public_jwk,
-            status:
-              host.status === "revoked"
-                ? "revoked"
+        hosts: hosts.map((host) => ({
+          id: host.id,
+          deviceId: host.device_id,
+          displayName: host.display_name,
+          platform: host.platform,
+          connectionMode: host.connection_mode,
+          runtimeKeyId: host.runtime_key_id,
+          signingPublicKeyJwk: host.signing_public_jwk,
+          encryptionPublicKeyJwk: host.encryption_public_jwk,
+          status:
+            host.status === "revoked"
+              ? "revoked"
+              : host.status === "pending"
+                ? "pending"
                 : host.last_seen_at &&
                     Date.now() - host.last_seen_at.getTime() <=
                       REMOTE_HOST_ONLINE_WINDOW_MS
                   ? "active"
                   : "offline",
-            lastSeenAt: host.last_seen_at,
-            createdAt: host.created_at,
-            revokedAt: host.revoked_at,
-          })),
+          lastSeenAt: host.last_seen_at,
+          createdAt: host.created_at,
+          revokedAt: host.revoked_at,
+        })),
       },
     });
   } catch (error) {
@@ -191,7 +191,7 @@ app.post("/", async (c) => {
           signing_public_jwk: identity.signingPublicKeyJwk,
           encryption_public_jwk: identity.encryptionPublicKeyJwk,
           host_token_hash: hostTokenHash,
-          status: networkConfig ? "pending" : "active",
+          status: managedNetworkRequested ? "pending" : "active",
         });
     if (result.kind === "conflict") {
       return c.json(
@@ -220,6 +220,7 @@ app.post("/", async (c) => {
     let managedNetworkEnrollment: Awaited<
       ReturnType<typeof enrollManagedNetwork>
     > | null = null;
+    const responseHost = result.host;
     if (result.kind === "created" && networkConfig) {
       try {
         managedNetworkEnrollment = await enrollManagedNetwork({
@@ -230,14 +231,23 @@ app.post("/", async (c) => {
           repository: remoteHostsRepository,
         });
       } catch (cause) {
-        // The host must never remain authoritative when its requested network
-        // enrollment failed. Any incomplete Headscale compensation remains on
-        // the revoked row for the retry-safe revoke endpoint.
-        await remoteHostsRepository.revoke(
-          result.host.id,
-          user.organization_id,
-          user.id,
-        );
+        // Managed hosts begin non-authoritative. Even if this compensation
+        // write fails, the pending bearer cannot authenticate or reach relay
+        // authority. A successful revoke retains Headscale metadata for the
+        // retry-safe cleanup endpoint.
+        try {
+          await remoteHostsRepository.revoke(
+            result.host.id,
+            user.organization_id,
+            user.id,
+          );
+        } catch (revokeCause) {
+          throw new AggregateError(
+            [cause, revokeCause],
+            "Managed-network enrollment failed; host revocation is pending retry.",
+            { cause },
+          );
+        }
         throw cause;
       }
     }
@@ -248,9 +258,12 @@ app.post("/", async (c) => {
         data: {
           hostId: result.host.id,
           hostToken: token,
-          runtimeKeyId: result.host.runtime_key_id,
-          status: managedNetworkEnrollment ? "active" : result.host.status,
-          createdAt: result.host.created_at,
+          runtimeKeyId: responseHost.runtime_key_id,
+          // Managed enrollment remains non-authoritative until the native
+          // client joins Headscale and redeems the host-scoped activation
+          // endpoint. Non-managed relay enrollment is active immediately.
+          status: managedNetworkEnrollment ? "pending" : responseHost.status,
+          createdAt: responseHost.created_at,
           recovered: result.kind === "recovered",
           managedNetworkEnrollment,
         },

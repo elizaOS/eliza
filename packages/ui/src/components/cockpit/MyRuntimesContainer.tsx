@@ -5,13 +5,12 @@
  * this public export as a thin adapter so older consumers do not silently lose
  * their settings entry while avoiding a second registry/pairing/SSH lifecycle.
  */
-import { DevicesRuntimesContainer } from "../settings/DevicesRuntimesContainer";
+import {
+  DevicesRuntimesContainer,
+  type DevicesRuntimesContainerProps,
+} from "../settings/DevicesRuntimesContainer";
 
-export interface MyRuntimesContainerProps {
-  className?: string;
-}
+export type MyRuntimesContainerProps = DevicesRuntimesContainerProps;
 
 /** @deprecated Use DevicesRuntimesContainer from the settings package. */
-export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
-  return <DevicesRuntimesContainer className={className} />;
-}
+export const MyRuntimesContainer = DevicesRuntimesContainer;

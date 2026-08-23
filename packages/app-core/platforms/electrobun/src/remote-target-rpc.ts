@@ -11,6 +11,10 @@ import {
   normalizeRemoteTargetLoopbackBase,
 } from "./remote-target-executor";
 import {
+  type RemoteTargetManagedNetworkJoiner,
+  TailscaleCliManagedNetworkJoiner,
+} from "./remote-target-managed-network";
+import {
   RemoteTargetRunner,
   type RemoteTargetRunnerStatus,
 } from "./remote-target-runner";
@@ -22,6 +26,7 @@ import {
   HttpRemoteTargetRelayTransport,
   normalizeRemoteTargetApiBase,
   type RemoteTargetRelayTransport,
+  RemoteTargetTransportError,
 } from "./remote-target-transport";
 import {
   RemoteTargetVault,
@@ -85,6 +90,7 @@ export class RemoteTargetDesktopService {
     private readonly stateStore: RemoteTargetStateStore = new JsonFileRemoteTargetStateStore(),
     private readonly transport: RemoteTargetRelayTransport = new HttpRemoteTargetRelayTransport(),
     private readonly now: () => number = Date.now,
+    private readonly managedNetworkJoiner: RemoteTargetManagedNetworkJoiner = new TailscaleCliManagedNetworkJoiner(),
   ) {}
 
   async configureLoopback(input: {
@@ -137,6 +143,14 @@ export class RemoteTargetDesktopService {
     );
     const displayName = requireString(value.displayName, "display name", 128);
     const platform = requireDesktopPlatform(value.platform);
+    const managedNetworkValue = value.managedNetwork;
+    if (
+      managedNetworkValue !== undefined &&
+      typeof managedNetworkValue !== "boolean"
+    ) {
+      throw new Error("Managed network selection is invalid.");
+    }
+    const managedNetwork = managedNetworkValue === true;
     const prepared = await this.vault.prepare({
       ownerId,
       displayName,
@@ -153,21 +167,65 @@ export class RemoteTargetDesktopService {
         identity: prepared.identity,
       };
     }
-    const response = await this.transport.enroll({
-      apiBaseUrl,
-      ownerAccessToken,
-      ownerId,
-      deviceId: prepared.deviceId,
-      displayName: prepared.displayName,
-      platform: prepared.platform,
-      runtimeKeyId: prepared.keyId,
-      signingPublicKeyJwk: remoteTargetVaultInternals.publicJwk(
-        prepared.signingPrivateKeyJwk,
-      ),
-      encryptionPublicKeyJwk: remoteTargetVaultInternals.publicJwk(
-        prepared.encryptionPrivateKeyJwk,
-      ),
-    });
+    let response: Awaited<ReturnType<RemoteTargetRelayTransport["enroll"]>>;
+    try {
+      response = await this.transport.enroll({
+        apiBaseUrl,
+        ownerAccessToken,
+        ownerId,
+        deviceId: prepared.deviceId,
+        displayName: prepared.displayName,
+        platform: prepared.platform,
+        runtimeKeyId: prepared.keyId,
+        signingPublicKeyJwk: remoteTargetVaultInternals.publicJwk(
+          prepared.signingPrivateKeyJwk,
+        ),
+        encryptionPublicKeyJwk: remoteTargetVaultInternals.publicJwk(
+          prepared.encryptionPrivateKeyJwk,
+        ),
+        managedNetwork,
+      });
+    } catch (error) {
+      if (
+        error instanceof RemoteTargetTransportError &&
+        error.code === "REMOTE_HOST_REVOKED"
+      ) {
+        if (!(await this.vault.delete())) {
+          throw new Error(
+            "Stale remote target identity could not be cleared.",
+            {
+              cause: error,
+            },
+          );
+        }
+        throw new Error(
+          "The revoked enrollment was cleared locally. Retry to create a fresh host identity.",
+          { cause: error },
+        );
+      }
+      if (
+        error instanceof RemoteTargetTransportError &&
+        error.code === "MANAGED_ENROLLMENT_PENDING"
+      ) {
+        throw new Error(
+          "A prior managed enrollment is still pending. Revoke its host card, then retry.",
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    const managedEnrollment = managedNetwork
+      ? response.managedNetworkEnrollment
+      : undefined;
+    if (
+      managedNetwork &&
+      (!managedEnrollment || response.status !== "pending")
+    ) {
+      throw new Error("Cloud did not return pending managed enrollment.");
+    }
+    if (!managedNetwork && response.status !== "active") {
+      throw new Error("Cloud did not activate remote host enrollment.");
+    }
     const enrolled = await this.vault.commitEnrollment({
       apiBaseUrl,
       hostId: response.hostId,
@@ -175,6 +233,48 @@ export class RemoteTargetDesktopService {
       runtimeKeyId: response.runtimeKeyId,
       createdAt: response.createdAt,
     });
+    if (managedNetwork) {
+      try {
+        // The response was validated before committing credentials, so this
+        // assertion only narrows the discriminated managed path for TypeScript.
+        if (!managedEnrollment)
+          throw new Error("Managed enrollment is missing.");
+        await this.managedNetworkJoiner.join(managedEnrollment);
+        await this.transport.activateManagedNetwork({
+          enrollment: enrolled,
+          expectedHostname: managedEnrollment.hostname,
+        });
+      } catch (cause) {
+        try {
+          for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
+            const page = await this.transport.revokeHost({
+              enrollment: enrolled,
+            });
+            if (!page.cleanup.more) {
+              if (!(await this.vault.delete())) {
+                throw new Error(
+                  "Managed enrollment was revoked, but local credentials could not be removed.",
+                );
+              }
+              throw cause;
+            }
+            if (page.cleanup.sessions === 0 && page.cleanup.commands === 0) {
+              throw new Error("Managed enrollment cleanup made no progress.");
+            }
+          }
+          throw new Error(
+            "Managed enrollment cleanup exceeded its retry bound.",
+          );
+        } catch (cleanupCause) {
+          if (cleanupCause === cause) throw cause;
+          throw new AggregateError(
+            [cause, cleanupCause],
+            "Managed enrollment failed and cleanup must be retried from Devices & Runtimes.",
+            { cause },
+          );
+        }
+      }
+    }
     return {
       hostId: enrolled.identity.runtimeId,
       status: "active",

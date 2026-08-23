@@ -93,7 +93,7 @@ describe("control-plane mock — containers CRUD", () => {
     const id = created.data.id;
 
     const running = await pollContainer(id, (s) => s === "running");
-    expect(running!.status).toBe("running");
+    expect(running?.status).toBe("running");
 
     const patchEnvRes = await cpFetch(`/api/v1/containers/${id}`, {
       method: "PATCH",

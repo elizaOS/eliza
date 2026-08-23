@@ -219,6 +219,125 @@ describe("remote target native boundaries", () => {
     expect(result).not.toHaveProperty("ownerAccessToken");
   });
 
+  it("keeps managed enrollment pending until the native join activation succeeds", async () => {
+    const signing = keyPair();
+    const encryption = keyPair();
+    const hostId = "11111111-1111-4111-8111-111111111111";
+    const createdAt = new Date(2_000_000_000_000).toISOString();
+    const store = new MemorySecureStore();
+    const vault = new RemoteTargetVault(store, "managed-target-test");
+    const pending = await vault.prepare({
+      ownerId: "owner-1",
+      displayName: "Linux target",
+      platform: "linux",
+      now: 1_999_999_999_000,
+    });
+    if (pending.status !== "pending") throw new Error("expected pending");
+    const requests: Request[] = [];
+    let call = 0;
+    const transport = new HttpRemoteTargetRelayTransport(
+      async (input, init) => {
+        call += 1;
+        requests.push(new Request(input, init));
+        if (call === 1) {
+          return jsonResponse({
+            success: true,
+            data: { ownerId: "owner-1", hosts: [] },
+          });
+        }
+        if (call === 2) {
+          return jsonResponse(
+            {
+              success: true,
+              data: {
+                hostId,
+                hostToken: `rhost_v1_${"A".repeat(43)}`,
+                runtimeKeyId: pending.keyId,
+                status: "pending",
+                createdAt,
+                recovered: false,
+                managedNetworkEnrollment: {
+                  loginServer: "https://headscale.example.test",
+                  authKey: "hskey-auth-one-use-secret",
+                  hostname: "eliza-host-one",
+                  expiresAt: new Date(2_000_000_030_000).toISOString(),
+                },
+              },
+            },
+            201,
+          );
+        }
+        if (call === 3) {
+          return jsonResponse({
+            success: true,
+            data: {
+              ownerId: "owner-1",
+              hosts: [
+                {
+                  id: hostId,
+                  deviceId: "device-1",
+                  displayName: "Linux target",
+                  platform: "linux",
+                  connectionMode: "relay",
+                  runtimeKeyId: pending.keyId,
+                  signingPublicKeyJwk: signing.publicKey,
+                  encryptionPublicKeyJwk: encryption.publicKey,
+                  status: "pending",
+                  createdAt,
+                  revokedAt: null,
+                },
+              ],
+            },
+          });
+        }
+        return jsonResponse({
+          success: true,
+          data: {
+            hostId,
+            status: "active",
+            hostname: "eliza-host-one-cnpx9uop",
+          },
+        });
+      },
+    );
+    const enrolled = await transport.enroll({
+      apiBaseUrl: "https://api.example.test",
+      ownerAccessToken: "owner-token-123456789",
+      ownerId: "owner-1",
+      deviceId: "device-1",
+      displayName: "Linux target",
+      platform: "linux",
+      runtimeKeyId: pending.keyId,
+      signingPublicKeyJwk: signing.publicKey,
+      encryptionPublicKeyJwk: encryption.publicKey,
+      managedNetwork: true,
+    });
+    expect(enrolled).toMatchObject({
+      status: "pending",
+      managedNetworkEnrollment: {
+        hostname: "eliza-host-one",
+      },
+    });
+    expect(await requests[1]?.json()).toMatchObject({ managedNetwork: true });
+
+    const credential = await vault.commitEnrollment({
+      apiBaseUrl: "https://api.example.test",
+      hostId,
+      hostToken: enrolled.hostToken,
+      runtimeKeyId: pending.keyId,
+      createdAt: enrolled.createdAt,
+    });
+    await expect(
+      transport.activateManagedNetwork({
+        enrollment: credential,
+        expectedHostname: "eliza-host-one",
+      }),
+    ).resolves.toEqual({ hostname: "eliza-host-one-cnpx9uop" });
+    expect(requests[3]?.url).toContain(
+      `/remote/hosts/${hostId}/managed-network/activate`,
+    );
+  });
+
   it("rejects insecure API URLs and private/public secure-store tampering", async () => {
     expect(() => normalizeRemoteTargetApiBase("http://example.com")).toThrow(
       "HTTPS",

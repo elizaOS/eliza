@@ -209,6 +209,7 @@ function hostTarget(
       session.controllerKeyId === controller.keyId,
   );
   const revoked = host.status === "revoked";
+  const pending = host.status === "pending";
   return {
     id: `host:${host.id}`,
     label: host.displayName,
@@ -224,18 +225,20 @@ function hostTarget(
     selected: false,
     activity: revoked
       ? "Access revoked"
-      : activeHere
-        ? "Paired securely"
-        : active
-          ? "Paired on another controller"
-          : host.lastSeenAt
-            ? `Last seen ${new Date(host.lastSeenAt).toLocaleString()}`
-            : "Awaiting first connection",
+      : pending
+        ? "Finishing managed network enrollment"
+        : activeHere
+          ? "Paired securely"
+          : active
+            ? "Paired on another controller"
+            : host.lastSeenAt
+              ? `Last seen ${new Date(host.lastSeenAt).toLocaleString()}`
+              : "Awaiting first connection",
     error: revoked
       ? "This host was revoked and cannot accept new sessions."
       : undefined,
-    canPair: !revoked && !activeHere,
-    canRevoke: !revoked && Boolean(activeHere),
+    canPair: !revoked && !pending && !activeHere,
+    canRevoke: !revoked && (pending || Boolean(activeHere)),
     canSelect: false,
   };
 }
@@ -305,11 +308,13 @@ function canSelectProfileForBuild(
   );
 }
 
+export interface DevicesRuntimesContainerProps {
+  className?: string;
+}
+
 export function DevicesRuntimesContainer({
   className,
-}: {
-  className?: string;
-}) {
+}: DevicesRuntimesContainerProps) {
   const [registry, setRegistry] = useState(() => loadAgentProfileRegistry());
   const [directory, setDirectory] = useState<RemoteHostDirectory | null>(null);
   const [controller, setController] =
@@ -612,10 +617,11 @@ export function DevicesRuntimesContainer({
       await refresh();
     });
 
-  const onEnrollDesktopTarget = () =>
+  const onEnrollDesktopTarget = (managedNetwork: boolean) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
         op: "enroll_host",
+        managedNetwork,
       });
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();

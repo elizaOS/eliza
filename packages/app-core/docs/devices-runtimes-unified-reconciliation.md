@@ -33,9 +33,10 @@ invariants; the range-diff must not be misrepresented as blob identity.
 ## Canonical architecture
 
 - `DevicesRuntimesContainer` is the only stateful Devices & Runtimes UI.
-  `MyRuntimesContainer` is a compatibility adapter and `MyRuntimesSection` is
-  catalog-only legacy presentation. Settings exposes the canonical surface to
-  users; it is no longer developer-only.
+  `MyRuntimesContainer` is a deprecated direct alias of that component, so old
+  imports cannot create a second stateful implementation. `MyRuntimesSection`
+  is catalog-only legacy presentation. Settings exposes the canonical surface
+  to users; it is no longer developer-only.
 - Cloud migrations remain one contiguous suffix:
   `0305_secure_remote_hosts.sql`, `0306_secure_remote_command_relay.sql`, and
   `0311_remote_host_managed_network.sql`. Upstream owns
@@ -56,20 +57,26 @@ invariants; the range-diff must not be misrepresented as blob identity.
   target addresses are never written to the receipt store.
 - Optional managed Headscale enrollment is a server-side infrastructure
   primitive, not a user-visible Devices enrollment claim in this release. Only
-  the public numeric pre-auth key identifier and cleanup state are stored;
-  enrollment failures revoke authority and compensation is durable and
-  retryable. The committed ACL grants its dedicated tag only an outbound HTTPS
-  edge to the relay proxy, with no agent, peer-host, or inbound edge.
+  the public numeric pre-auth key identifier and cleanup state are stored. A
+  managed host remains `pending` and has no bearer authority until external
+  enrollment succeeds, its durable Headscale record is written, and a guarded
+  compare-and-swap activates the host. Failed activation and failed revoke
+  therefore cannot leave an authoritative host behind. Compensation resolves
+  and deletes the actual collision-suffixed Headscale hostname and remains
+  durable and retryable. The committed ACL grants its dedicated tag only an
+  outbound HTTPS edge to the relay proxy, with no agent, peer-host, or inbound
+  edge.
 
 ## Compatibility disposition
 
-The compatibility adapter preserves imports of `MyRuntimesContainer` while
-rendering the canonical UI. Existing v1 remote-target identity records that
-lack a platform are read as Linux, but a stored identity cannot silently move
-between platforms. The trusted private/Tailscale URL add path remains available
-inside the canonical Advanced surface, while store/mobile builds hide and
-refuse local execution. Old SSH lifecycle receipts are not trusted as
-credentials; the secure store remains the sole credential authority.
+The deprecated direct alias preserves imports of `MyRuntimesContainer` while
+guaranteeing referential identity with the canonical UI. Existing v1
+remote-target identity records that lack a platform are read as Linux, but a
+stored identity cannot silently move between platforms. The trusted
+private/Tailscale URL add path remains available inside the canonical Advanced
+surface, while store/mobile builds hide and refuse local execution. Old SSH
+lifecycle receipts are not trusted as credentials; the secure store remains the
+sole credential authority.
 
 ## Review proof
 
@@ -80,8 +87,8 @@ The exact publication head must pass:
    integration, and Electrobun typecheck.
 3. Cloud remote API tests, shared repository/Headscale/PGlite tests, and both
    Cloud typechecks.
-4. Disposable real PostgreSQL composition of migrations 0305-0311, including
-   upstream 0307 through 0310 before the Devices managed-network suffix.
+4. Disposable real PostgreSQL composition through migration 0311, including
+   upstream 0307-0310 before the Devices managed-network suffix.
 5. Production story build plus responsive interaction at 380x844 and
    1440x1000 with no horizontal overflow and 44-point actions.
 6. An exact-head unsigned iOS Simulator build whose cloud-only attestation
