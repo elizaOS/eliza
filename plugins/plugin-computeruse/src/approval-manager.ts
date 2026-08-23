@@ -50,6 +50,11 @@ const SAFE_COMMANDS = new Set<string>([
   "terminal_read",
   "terminal_connect",
   "list_windows",
+  "app_list_apps",
+  "app_get_state",
+  "list_apps",
+  "get_app_state",
+  "app_hover_target",
 ]);
 
 type ApprovalDecision = {

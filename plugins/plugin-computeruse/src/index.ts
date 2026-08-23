@@ -192,6 +192,8 @@ export {
 } from "./actions/use-computer-agent.js";
 // WS7: Brain / Actor / Cascade / Dispatch — autonomous desktop loop.
 export * from "./actor/index.js";
+export * from "./app-control/coordinator.js";
+export * from "./app-control/types.js";
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
 export {
