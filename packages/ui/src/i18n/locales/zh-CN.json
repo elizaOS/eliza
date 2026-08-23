@@ -1690,6 +1690,7 @@
   "cloud.login.button.github": "GitHub",
   "cloud.login.button.google": "Google",
   "cloud.login.button.magicLink": "魔法链接",
+  "cloud.login.button.existingPasskey": "使用现有通行密钥",
   "cloud.login.button.passkey": "通行密钥",
   "cloud.login.button.sms": "发送短信验证码",
   "cloud.login.callback.cantComplete": "无法完成 Eliza Cloud 登录。",

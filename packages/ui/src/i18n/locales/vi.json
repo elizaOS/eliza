@@ -1690,6 +1690,7 @@
   "cloud.login.button.github": "GitHub",
   "cloud.login.button.google": "Google",
   "cloud.login.button.magicLink": "Magic Link",
+  "cloud.login.button.existingPasskey": "Dùng passkey hiện có",
   "cloud.login.button.passkey": "Passkey",
   "cloud.login.callback.cantComplete": "Không hoàn tất đăng nhập Eliza Cloud.",
   "cloud.login.callback.cantRestore": "Không khôi phục được phiên Steward cục bộ",

@@ -1690,6 +1690,7 @@
   "cloud.login.button.github": "GitHub",
   "cloud.login.button.google": "Google",
   "cloud.login.button.magicLink": "Magic Link",
+  "cloud.login.button.existingPasskey": "Gumamit ng kasalukuyang passkey",
   "cloud.login.button.passkey": "Passkey",
   "cloud.login.callback.cantComplete": "Hindi natapos ang Eliza Cloud sign-in.",
   "cloud.login.callback.cantRestore": "Hindi nai-restore ang local Steward session",
