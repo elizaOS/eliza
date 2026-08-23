@@ -220,14 +220,14 @@ describe("TriageService message reads and search ordering", () => {
 		});
 	});
 
-	it("sorts searches newest-first while preserving input order for ties", async () => {
+	it("sorts searches newest-first with deterministic ids breaking ties", async () => {
 		const service = new TriageService(new MessageRefStore());
 		service.register(
 			adapter("gmail", {
 				searchMessages: async () => [
 					message("old", "gmail", { receivedAtMs: 1 }),
-					message("tie-a", "gmail", { receivedAtMs: 3 }),
 					message("tie-b", "gmail", { receivedAtMs: 3 }),
+					message("tie-a", "gmail", { receivedAtMs: 3 }),
 				],
 			}),
 		);
@@ -244,6 +244,31 @@ describe("TriageService message reads and search ordering", () => {
 			limit: 2,
 			hasMore: true,
 		});
+	});
+
+	it("orders non-finite timestamps as epoch values without corrupting peers", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(
+			adapter("gmail", {
+				searchMessages: async () => [
+					message("nan", "gmail", { receivedAtMs: Number.NaN }),
+					message("newest", "gmail", { receivedAtMs: 5 }),
+					message("infinity", "gmail", {
+						receivedAtMs: Number.POSITIVE_INFINITY,
+					}),
+					message("older", "gmail", { receivedAtMs: 1 }),
+				],
+			}),
+		);
+
+		const refs = await service.search(runtime(), { content: "message" });
+
+		expect(refs.map(({ id }) => id)).toEqual([
+			"newest",
+			"older",
+			"infinity",
+			"nan",
+		]);
 	});
 
 	it.each([undefined, 0, -1, Number.NaN])(
