@@ -30,23 +30,24 @@ describe("scheduleUpdateNotification", () => {
     mocks.loadElizaConfig.mockReset();
     mocks.resolveChannel.mockReset();
     mocks.resolveChannel.mockReturnValue("stable");
-    originalIsTTY = process.stderr.isTTY;
+    originalIsTTY = (process.stderr as { isTTY?: boolean }).isTTY;
     originalCI = process.env.CI;
     mod = await import("./update-notifier.ts");
   });
 
   afterEach(() => {
-    Object.defineProperty(process.stderr, "isTTY", {
-      value: originalIsTTY,
-      configurable: true,
-    });
+    (process.stderr as { isTTY?: boolean }).isTTY = originalIsTTY;
     if (originalCI === undefined) delete process.env.CI;
     else process.env.CI = originalCI;
   });
 
+  function forceTTY(on: boolean) {
+    (process.stderr as { isTTY?: boolean }).isTTY = on;
+  }
+
   it("skips when checkOnStart is disabled", async () => {
     mocks.loadElizaConfig.mockReturnValue({ update: { checkOnStart: false } });
-    Object.defineProperty(process.stderr, "isTTY", { value: true });
+    forceTTY(true);
     mod.scheduleUpdateNotification();
     expect(mocks.checkForUpdate).not.toHaveBeenCalled();
   });
@@ -60,7 +61,7 @@ describe("scheduleUpdateNotification", () => {
 
   it("writes an update notice when a newer version exists", async () => {
     mocks.loadElizaConfig.mockReturnValue({});
-    Object.defineProperty(process.stderr, "isTTY", { value: true });
+    forceTTY(true);
     mocks.checkForUpdate.mockResolvedValue({
       updateAvailable: true,
       latestVersion: "2.0.0",
