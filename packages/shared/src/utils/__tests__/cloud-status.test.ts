@@ -6,8 +6,12 @@ import {
 
 describe("isCloudStatusReasonApiKeyOnly", () => {
   it("classifies api-key-only reasons", () => {
-    expect(isCloudStatusReasonApiKeyOnly("api_key_present_not_authenticated")).toBe(true);
-    expect(isCloudStatusReasonApiKeyOnly("api_key_present_runtime_not_started")).toBe(true);
+    expect(
+      isCloudStatusReasonApiKeyOnly("api_key_present_not_authenticated"),
+    ).toBe(true);
+    expect(
+      isCloudStatusReasonApiKeyOnly("api_key_present_runtime_not_started"),
+    ).toBe(true);
   });
 
   it("rejects other reasons and nullish", () => {
@@ -22,6 +26,8 @@ describe("isCloudStatusAuthenticated", () => {
   it("requires connected and non-api-key-only", () => {
     expect(isCloudStatusAuthenticated(true, "ok")).toBe(true);
     expect(isCloudStatusAuthenticated(false, "ok")).toBe(false);
-    expect(isCloudStatusAuthenticated(true, "api_key_present_not_authenticated")).toBe(false);
+    expect(
+      isCloudStatusAuthenticated(true, "api_key_present_not_authenticated"),
+    ).toBe(false);
   });
 });
