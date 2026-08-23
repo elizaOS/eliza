@@ -116,7 +116,7 @@ describe("direct provider authority", () => {
     expect(JSON.stringify(result)).not.toContain("secret-value");
   });
 
-  it("keeps an authenticated OpenRouter key healthy when public catalog metadata fails", async () => {
+  it("keeps an authenticated OpenRouter key healthy and reports the catalog unavailable when its fetch fails", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("/key")) {
         return new Response(JSON.stringify({ data: { limit: 10 } }), {
@@ -133,8 +133,47 @@ describe("direct provider authority", () => {
       ok: true,
       status: 200,
       latencyMs: expect.any(Number),
+      modelCatalogUnavailable: true,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const transportFailure = vi.fn(async (url: string) => {
+      if (url.endsWith("/key")) {
+        return new Response(JSON.stringify({ data: { limit: 10 } }), {
+          status: 200,
+        });
+      }
+      throw new TypeError("fetch failed");
+    });
+    globalThis.fetch = transportFailure as unknown as typeof fetch;
+
+    await expect(
+      probeDirectApiKey("openrouter-api", "secret-value"),
+    ).resolves.toEqual({
+      ok: true,
+      status: 200,
+      latencyMs: expect.any(Number),
+      modelCatalogUnavailable: true,
+    });
+  });
+
+  it("reads the xAI catalog from the authenticated models response", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ data: [{ id: "grok-4" }, { id: "grok-4" }] }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    await expect(probeDirectApiKey("xai-api", "secret-value")).resolves.toEqual(
+      {
+        ok: true,
+        status: 200,
+        latencyMs: expect.any(Number),
+        modelIds: ["grok-4"],
+      },
+    );
   });
 });
 
@@ -189,17 +228,27 @@ describe("existing direct-provider diagnostics", () => {
     });
   });
 
-  it("does not read an absent successful catalog body", async () => {
-    const text = vi.fn();
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text,
-    }) as unknown as typeof fetch;
+  it.each(["cerebras-api", "openai-api", "deepseek-api"] as const)(
+    "does not read a successful %s response body or report a catalog",
+    async (providerId) => {
+      const text = vi.fn();
+      const getReader = vi.fn();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text,
+        body: { getReader },
+      }) as unknown as typeof fetch;
 
-    await expect(
-      probeDirectApiKey("cerebras-api", "provider-key"),
-    ).resolves.toMatchObject({ ok: true, status: 200 });
-    expect(text).not.toHaveBeenCalled();
-  });
+      await expect(
+        probeDirectApiKey(providerId, "provider-key"),
+      ).resolves.toEqual({
+        ok: true,
+        status: 200,
+        latencyMs: expect.any(Number),
+      });
+      expect(text).not.toHaveBeenCalled();
+      expect(getReader).not.toHaveBeenCalled();
+    },
+  );
 });
