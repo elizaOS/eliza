@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMockChildProcess } from "./process-helpers.ts";
+import { createMockChildProcess } from "../process-helpers.ts";
 
 describe("createMockChildProcess", () => {
   it("emits close with the exit code", async () => {
