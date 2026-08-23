@@ -2,9 +2,9 @@
  * WS7 — ScreenSeekeR cascade.
  *
  * Step 1: Brain looks at the full-screen scene for `target_display_id`.
- * Step 2: For each ROI (up to BRAIN_MAX_ROIS), crop the *native resolution*
- *         region from the captured PNG and hand it to the Actor for
- *         fine grounding. The Actor returns display-local coords.
+ * Step 2: Preserve every Brain ROI and use the first region, when needed, for
+ *         fine grounding at native resolution. The Actor returns display-local
+ *         coordinates without rewriting the Brain output.
  * Step 3: Combine the Brain's proposed action with the Actor's coordinates
  *         (or fall back to the OCR/AX deterministic actor on `ref`) and
  *         produce a single `ProposedAction` for the dispatcher.
@@ -23,7 +23,7 @@ import type { DisplayCapture } from "../platform/capture.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { Actor, ActorGroundArgs } from "./actor.js";
 import { resolveReference } from "./actor.js";
-import { BRAIN_MAX_ROIS, type Brain } from "./brain.js";
+import type { Brain } from "./brain.js";
 import type { BrainOutput, BrainRoi, CascadeResult } from "./types.js";
 
 export interface CascadeDeps {
@@ -127,7 +127,7 @@ export class Cascade {
     if (action.kind === "wait" || action.kind === "finish") {
       return {
         scene_summary: brainOut.scene_summary,
-        rois: brainOut.roi.slice(0, BRAIN_MAX_ROIS),
+        rois: brainOut.roi,
         proposed: {
           kind: action.kind,
           displayId: targetDisplay,
@@ -145,7 +145,7 @@ export class Cascade {
       }
       return {
         scene_summary: brainOut.scene_summary,
-        rois: brainOut.roi.slice(0, BRAIN_MAX_ROIS),
+        rois: brainOut.roi,
         proposed: {
           kind: "type",
           displayId: targetDisplay,
@@ -163,7 +163,7 @@ export class Cascade {
       }
       return {
         scene_summary: brainOut.scene_summary,
-        rois: brainOut.roi.slice(0, BRAIN_MAX_ROIS),
+        rois: brainOut.roi,
         proposed: {
           kind: "hotkey",
           displayId: targetDisplay,
@@ -181,7 +181,7 @@ export class Cascade {
       }
       return {
         scene_summary: brainOut.scene_summary,
-        rois: brainOut.roi.slice(0, BRAIN_MAX_ROIS),
+        rois: brainOut.roi,
         proposed: {
           kind: "key",
           displayId: targetDisplay,
@@ -204,7 +204,7 @@ export class Cascade {
       const cy = anchor?.y ?? Math.round((display?.bounds[3] ?? 0) / 2);
       return {
         scene_summary: brainOut.scene_summary,
-        rois: brainOut.roi.slice(0, BRAIN_MAX_ROIS),
+        rois: brainOut.roi,
         proposed: {
           kind: "scroll",
           displayId: targetDisplay,
@@ -235,7 +235,7 @@ export class Cascade {
       }
       return {
         scene_summary: brainOut.scene_summary,
-        rois: brainOut.roi.slice(0, BRAIN_MAX_ROIS),
+        rois: brainOut.roi,
         proposed: {
           kind: "drag",
           displayId: targetDisplay,
@@ -256,7 +256,7 @@ export class Cascade {
     }
     return {
       scene_summary: brainOut.scene_summary,
-      rois: brainOut.roi.slice(0, BRAIN_MAX_ROIS),
+      rois: brainOut.roi,
       proposed: {
         kind: action.kind,
         displayId: coords.displayId,
@@ -322,7 +322,7 @@ export class Cascade {
     }
     // Strategy 2: fine grounding on the first ROI via the registered actor.
     if (this.deps.actor && brainOut.roi.length > 0) {
-      const roi = brainOut.roi.slice(0, BRAIN_MAX_ROIS)[0];
+      const roi = brainOut.roi[0];
       if (!roi) return null;
       const grounded = await this.groundRoi(input, brainOut, roi);
       if (grounded) return grounded;

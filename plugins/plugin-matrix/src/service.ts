@@ -527,13 +527,21 @@ async function readJoinedRoomMessages(
   accountId: string,
   limit: number
 ): Promise<Memory[]> {
-  const rooms = (await service.getJoinedRooms(accountId)).slice(0, 10);
+  const rooms = await service.getJoinedRooms(accountId);
   const chunks = await Promise.all(
     rooms.map((room) => service.getRoomMessages(room.roomId, limit, accountId))
   );
   return chunks
     .flat()
-    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+    .sort((left, right) => {
+      const r =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const l =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
+      return r - l;
+    })
     .slice(0, limit);
 }
 
@@ -662,14 +670,19 @@ export class MatrixService extends Service implements IMatrixService {
           return rooms
             .map((room) => ({ room, score: scoreMatrixRoom(room, query) }))
             .filter(({ score }) => score > 0)
-            .sort((left, right) => right.score - left.score)
-            .slice(0, 10)
+            .sort((left, right) => {
+              const r =
+                typeof right.score === "number" && Number.isFinite(right.score) ? right.score : 0;
+              const l =
+                typeof left.score === "number" && Number.isFinite(left.score) ? left.score : 0;
+              return r - l;
+            })
             .map(({ room, score }) => matrixRoomToConnectorTarget(room, score, accountId));
         },
         listRecentTargets: async () =>
-          (await service.getJoinedRooms(accountId))
-            .slice(0, 10)
-            .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId)),
+          (await service.getJoinedRooms(accountId)).map((room) =>
+            matrixRoomToConnectorTarget(room, 0.5, accountId)
+          ),
         listRooms: async () =>
           (await service.getJoinedRooms(accountId)).map((room) =>
             matrixRoomToConnectorTarget(room, 0.5, accountId)

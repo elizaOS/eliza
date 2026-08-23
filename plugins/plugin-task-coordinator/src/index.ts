@@ -22,6 +22,9 @@ import {
   registerOrchestratorCommands,
 } from "./orchestrator-command";
 
+// Keep this manifest as a literal array so the repository view inventory can
+// prove every capability id statically. Authority is explicit on each guarded
+// descriptor and checked against the runtime authority set by the parity suite.
 const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   { id: "orchestrator-status", description: "Get orchestrator status" },
   {
@@ -78,6 +81,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   {
     id: "orchestrator-pause-task",
     description: "Pause an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to pause" },
     },
@@ -85,6 +89,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   {
     id: "orchestrator-resume-task",
     description: "Resume an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to resume" },
     },
@@ -92,14 +97,17 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   {
     id: "orchestrator-pause-all",
     description: "Pause all active orchestrator tasks",
+    authority: "human",
   },
   {
     id: "orchestrator-resume-all",
     description: "Resume all paused orchestrator tasks",
+    authority: "human",
   },
   {
     id: "orchestrator-delete-task",
     description: "Delete an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to delete" },
     },
@@ -107,6 +115,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   {
     id: "orchestrator-fork-task",
     description: "Fork an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Source task thread id" },
       title: { type: "string", description: "Title for the fork" },
@@ -125,6 +134,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
     id: "orchestrator-update-task",
     description:
       "Update an orchestrator task's title, goal, summary, priority, or acceptance criteria",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to update" },
       title: { type: "string", description: "New task title" },
@@ -143,6 +153,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   {
     id: "orchestrator-validate-task",
     description: "Record a validation result for an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id to validate" },
       passed: { type: "boolean", description: "Whether validation passed" },
@@ -155,15 +166,12 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
         type: "string",
         description: "Who or what performed validation",
       },
-      humanOverride: {
-        type: "boolean",
-        description: "Whether a human explicitly overrode the result",
-      },
     },
   },
   {
     id: "orchestrator-add-agent",
     description: "Add a sub-agent to an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Target task thread id" },
       framework: {
@@ -185,6 +193,7 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   {
     id: "orchestrator-stop-agent",
     description: "Stop a sub-agent on an orchestrator task",
+    authority: "human",
     params: {
       taskId: { type: "string", description: "Task thread id" },
       sessionId: {
@@ -228,10 +237,6 @@ const taskCoordinatorPlugin: Plugin = {
       path: "/task-coordinator",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
       componentExport: "TaskCoordinatorView",
       relatedActions: ["TASKS"],
       capabilities: [
@@ -321,9 +326,12 @@ const taskCoordinatorPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "CockpitRoute",
       // The cockpit drives the same orchestrator interact protocol (list /
-      // open-task / create-task / add-agent / stop-agent …) as /orchestrator,
-      // so it advertises the same capabilities — this is what lets app-control
-      // route session-control intents ("stop that agent") to the cockpit.
+      // open-task / create-task / send-message / stop-agent …) as
+      // /orchestrator, so it advertises the same capability descriptors,
+      // including their `authority`. app-control may route the agent-callable
+      // ones (status/list/open/create/send-message) to the cockpit; the
+      // human-only mutations such as stop-agent are listed so the shared
+      // dispatcher refuses them uniformly, never so the planner selects them.
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "cockpit"],
       visibleInManager: true,

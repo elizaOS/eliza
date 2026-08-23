@@ -36,6 +36,7 @@ import {
   Service,
   ServiceType,
   type TargetInfo,
+  truncateWellFormed,
   trustedLocalMediaUrl,
   type UUID,
 } from "@elizaos/core";
@@ -820,7 +821,17 @@ export class IMessageService extends Service implements IIMessageService {
             (createUniqueUuid(context.runtime, `imessage-read:${chatId ?? "recent"}`) as UUID);
           return platformMessages
             .map((message) => publicIMessageToMemory(context.runtime, message, roomId, accountId))
-            .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+            .sort((left, right) => {
+              const rightCreated =
+                typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+                  ? right.createdAt
+                  : 0;
+              const leftCreated =
+                typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+                  ? left.createdAt
+                  : 0;
+              return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
+            })
             .slice(0, limit);
         }
         if (target?.roomId) {
@@ -1620,7 +1631,7 @@ export class IMessageService extends Service implements IIMessageService {
       }
 
       logger.debug(
-        `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${row.text.slice(0, 40)}"`
+        `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${truncateWellFormed(row.text, 40)}"`
       );
       try {
         await this.dispatchInboundMessage(row);

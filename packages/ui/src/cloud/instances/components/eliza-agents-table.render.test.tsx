@@ -10,7 +10,7 @@
  * action, and the deactivate confirm dialog's billing-transparency copy.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
@@ -29,8 +29,11 @@ vi.mock("../lib/i18n", () => ({
     options?.defaultValue ?? _key,
 }));
 
-function row(overrides: Partial<AgentListItemDto>): AgentListItemDto {
+function row(
+  overrides: Partial<NormalizedAgentListItemDto>,
+): NormalizedAgentListItemDto {
   return {
+    activeJob: null,
     id: "00000000-1111-2222-3333-444444444444",
     agentName: "Ada",
     status: "running",
@@ -52,7 +55,7 @@ function row(overrides: Partial<AgentListItemDto>): AgentListItemDto {
 }
 
 function derive(
-  overrides: Partial<AgentListItemDto>,
+  overrides: Partial<NormalizedAgentListItemDto>,
   {
     active = false,
     actionInProgress = null,
@@ -83,8 +86,8 @@ describe("ElizaAgentsTable per-row view model", () => {
     cleanup();
   });
 
-  it("marks a running cloud sandbox as stoppable with standalone Web UI access", () => {
-    const vm = derive({ status: "running" });
+  it("offers authenticated Web UI pairing for a running dedicated agent without a published URL", () => {
+    const vm = derive({ status: "running", webUiUrl: null });
 
     expect(vm.displayStatus).toBe("running");
     expect(vm.runtimeKind).toBe("sandbox");
@@ -147,6 +150,7 @@ describe("ElizaAgentsTable per-row view model", () => {
               executionTier: "custom",
               dockerImage: "private-image",
               agentName: "Dedicated Eliza",
+              webUiUrl: null,
             }),
           ]}
         />
@@ -193,10 +197,13 @@ describe("ElizaAgentsTable per-row view model", () => {
       }),
     ).toBeTruthy();
     expect(
-      within(dedicatedRow as HTMLElement).getByRole("button", {
+      within(dedicatedRow as HTMLElement).getAllByRole("button", {
         name: "Open Web UI",
       }),
-    ).toBeTruthy();
+    ).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Dedicated Eliza" })).toBeNull();
+    expect(screen.getAllByText("Dedicated Eliza")).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: "Open Eliza app" })).toBeNull();
     expect(
       within(dedicatedRow as HTMLElement).getByRole("button", {
         name: "Delete agent",

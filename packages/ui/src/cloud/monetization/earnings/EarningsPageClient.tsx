@@ -21,7 +21,7 @@ import {
   type RedemptionNetwork,
   type RedemptionQuoteResponse,
   type RedemptionStatusResponse,
-} from "@elizaos/cloud-shared/types/redemption-contract";
+} from "@elizaos/cloud-sdk/redemption-contract";
 import {
   AlertTriangle,
   AppWindow,
@@ -536,7 +536,7 @@ export function EarningsPageClient() {
           corners={false}
         >
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-status-warning" />
+            <AlertTriangle className="size-5 text-status-warning" />
             <div>
               <h4 className="font-semibold text-status-warning">
                 {t("cloud.earnings.redemptionsLimited", {
@@ -572,7 +572,7 @@ export function EarningsPageClient() {
               </p>
             </div>
             <div className="p-2 rounded-sm bg-accent-subtle">
-              <Wallet className="h-6 w-6 text-accent" />
+              <Wallet className="size-6 text-accent" />
             </div>
           </div>
           <Button
@@ -580,7 +580,7 @@ export function EarningsPageClient() {
             disabled={!balance?.eligibility.canRedeem}
             onClick={() => handleRedeemDialogOpenChange(true)}
           >
-            <Coins className="mr-2 h-4 w-4" />
+            <Coins className="mr-2 size-4" />
             {t("cloud.earnings.redeemForEliza", {
               defaultValue: "Redeem for elizaOS",
             })}
@@ -611,7 +611,7 @@ export function EarningsPageClient() {
               </p>
             </div>
             <div className="p-2 rounded-sm bg-status-success-bg">
-              <TrendingUp className="h-6 w-6 text-status-success" />
+              <TrendingUp className="size-6 text-status-success" />
             </div>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2">
@@ -619,7 +619,7 @@ export function EarningsPageClient() {
               const Icon = SOURCE_ICONS[source.source];
               return (
                 <div key={source.source} className="text-center">
-                  <Icon className="h-4 w-4 mx-auto text-muted mb-1" />
+                  <Icon className="size-4 mx-auto text-muted mb-1" />
                   <p className="text-xs text-muted">
                     {SOURCE_LABELS[source.source]}
                   </p>
@@ -651,7 +651,7 @@ export function EarningsPageClient() {
               </p>
             </div>
             <div className="p-2 rounded-sm bg-bg-muted">
-              <CheckCircle className="h-6 w-6 text-muted-strong" />
+              <CheckCircle className="size-6 text-muted-strong" />
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-border space-y-2">
@@ -687,7 +687,7 @@ export function EarningsPageClient() {
       {/* How it Works */}
       <BrandCard className="relative" corners={false}>
         <div className="flex items-start gap-3">
-          <Info className="h-4 w-4 text-accent mt-0.5 shrink-0" />
+          <Info className="size-4 text-accent mt-0.5 shrink-0" />
           <div>
             <h4 className="font-semibold text-txt-strong mb-1">
               {t("cloud.earnings.howItWorksTitle", {
@@ -722,7 +722,7 @@ export function EarningsPageClient() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-sm bg-bg-muted">
-                      <Icon className="h-4 w-4 text-muted" />
+                      <Icon className="size-4 text-muted" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-txt-strong">
@@ -760,7 +760,7 @@ export function EarningsPageClient() {
             }}
           >
             <RefreshCw
-              className={`h-4 w-4 ${redemptionsLoading ? "animate-spin" : ""}`}
+              className={`size-4 ${redemptionsLoading ? "animate-spin" : ""}`}
             />
           </Button>
         </div>
@@ -773,7 +773,7 @@ export function EarningsPageClient() {
           </div>
         ) : redemptions.length === 0 ? (
           <div className="text-center py-8 text-muted">
-            <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <Wallet className="size-12 mx-auto mb-3 opacity-50" />
             <p>
               {t("cloud.earnings.noRedemptionsYet", {
                 defaultValue: "No redemptions yet",
@@ -844,7 +844,7 @@ export function EarningsPageClient() {
                         className="text-accent hover:underline inline-flex min-h-touch items-center gap-1"
                       >
                         {t("cloud.earnings.view", { defaultValue: "View" })}{" "}
-                        <ExternalLink className="h-3 w-3" />
+                        <ExternalLink className="size-3" />
                       </a>
                     ) : (
                       <span className="text-muted">-</span>
@@ -937,7 +937,7 @@ export function EarningsPageClient() {
 
             {/* Network Select */}
             <div>
-              <p className="text-sm text-muted mb-2 block">
+              <p className="text-sm text-muted mb-2">
                 {t("cloud.earnings.networkLabel", { defaultValue: "Network" })}
               </p>
               <Select
@@ -961,7 +961,7 @@ export function EarningsPageClient() {
                     >
                       <span className="flex items-center gap-2">
                         <span
-                          className={`inline-block h-2.5 w-2.5 rounded-full ${network.dotClass}`}
+                          className={`inline-block size-2.5 rounded-full ${network.dotClass}`}
                           aria-hidden="true"
                         />
                         <span>{network.label}</span>
@@ -1043,7 +1043,7 @@ export function EarningsPageClient() {
                       </span>
                     </div>
                     <div className="flex justify-center py-2">
-                      <ArrowRight className="h-4 w-4 text-muted" />
+                      <ArrowRight className="size-4 text-muted" />
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted">
@@ -1074,7 +1074,7 @@ export function EarningsPageClient() {
                           })}
                         </span>
                         <span>
-                          <Clock className="inline h-3 w-3 mr-1" />
+                          <Clock className="inline size-3 mr-1" />
                           {new Date(
                             quote.quote.validUntil,
                           ).toLocaleTimeString()}
@@ -1112,7 +1112,7 @@ export function EarningsPageClient() {
                           variant="outline"
                           onClick={handleRefreshQuote}
                         >
-                          <RefreshCw className="h-3.5 w-3.5" />
+                          <RefreshCw className="size-3.5" />
                           {t("cloud.earnings.refreshQuote", {
                             defaultValue: "Refresh quote",
                           })}
@@ -1155,14 +1155,14 @@ export function EarningsPageClient() {
             >
               {submitting ? (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  <RefreshCw className="mr-2 size-4 animate-spin" />
                   {t("cloud.earnings.submitting", {
                     defaultValue: "Submitting...",
                   })}
                 </>
               ) : (
                 <>
-                  <Coins className="mr-2 h-4 w-4" />
+                  <Coins className="mr-2 size-4" />
                   {t("cloud.earnings.redeemTokens", {
                     defaultValue: "Redeem Tokens",
                   })}

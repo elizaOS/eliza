@@ -6,11 +6,18 @@
  * so no real model runs; the few real-binary cases are skipped unless
  * `claude`/`codex` resolve through the SOC2 allowlist on this box.
  */
-import { readFileSync } from "node:fs";
-import type { ChatMessage, IAgentRuntime, PluginAutoEnableContext } from "@elizaos/core";
+import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
+import type {
+  ChatMessage,
+  GenerateTextParams,
+  IAgentRuntime,
+  PluginAutoEnableContext,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
 import {
+  __setClaudeSdkSessionFactoryForTests,
+  __setCodexSdkSessionFactoryForTests,
   buildCleanRoutingParams,
   buildCleanRoutingSystemPrompt,
   buildEnvelopeBody,
@@ -19,10 +26,13 @@ import {
   buildRouterBody,
   ClaudeCli,
   ClaudeSdkSession,
+  CliInferenceConfigurationError,
   CodexSdkSession,
   cliInferencePlugin,
+  disposeSdkSessions,
   findHandleResponseTool,
   LARGE_TIER_MODEL_TYPES,
+  parseTimeout,
   parseTurnTimeout,
   resolveCliBackend,
   resolveSdkEffort,
@@ -96,9 +106,40 @@ function recordingSpawn(result: Partial<SpawnResult>) {
   return { calls, fn };
 }
 
-afterEach(() => {
+type TestBackend = "claude" | "claude-sdk" | "codex" | "codex-sdk";
+type TestModelHandler = (runtime: IAgentRuntime, params: GenerateTextParams) => Promise<string>;
+
+function textLargeHandler(backend: TestBackend): TestModelHandler {
+  const models = buildModels({ ELIZA_CHAT_VIA_CLI: backend }) as Record<string, TestModelHandler>;
+  return models.TEXT_LARGE;
+}
+
+function modelRuntime(
+  backend: TestBackend,
+  settings: Record<string, string | boolean | number | null | undefined> = {}
+): IAgentRuntime {
+  return {
+    getSetting: (key: string) => (key === "ELIZA_CHAT_VIA_CLI" ? backend : (settings[key] ?? null)),
+  } as IAgentRuntime;
+}
+
+const sessionFactoryRestores: Array<() => void> = [];
+
+function trackSessionFactoryRestore(restore: () => void): () => void {
+  sessionFactoryRestores.push(restore);
+  return restore;
+}
+
+afterEach(async () => {
+  while (sessionFactoryRestores.length > 0) {
+    sessionFactoryRestores.pop()?.();
+  }
+  await disposeSdkSessions();
   delete process.env.ELIZA_CHAT_VIA_CLI;
   delete process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+  delete process.env.ELIZA_CLI_TIMEOUT_MS;
+  delete process.env.ELIZA_CLI_SDK_RESTART_AFTER_TURNS;
+  delete process.env.ELIZA_CLI_SDK_TURN_TIMEOUT_MS;
   vi.restoreAllMocks();
 });
 
@@ -474,6 +515,79 @@ describe("defaultSpawn timeout escalation (fix 6: SIGKILL if SIGTERM ignored)", 
   }, 10_000);
 });
 
+describe("defaultSpawn stdin fd lifecycle (#24979: no /dev/null fd leak)", () => {
+  // Node dup's the stdin fd into the child at spawn() time but does NOT
+  // auto-close the parent's integer fd passed via `stdio`. This is the shared
+  // production spawner for BOTH ClaudeCli.generate() and CodexCli.generate(),
+  // and the CLI inference route cold-spawns per model call (~4-8/turn), so a
+  // one-fd-per-spawn leak marches the process toward EMFILE and breaks every
+  // later open/spawn/socket, not just inference. Linux-only: relies on the
+  // /proc/<pid>/fd introspection interface to count and resolve live fds.
+  const canProbeFds = process.platform === "linux" && existsSync(`/proc/${process.pid}/fd`);
+  const fdDir = `/proc/${process.pid}/fd`;
+  const countFds = (): number => readdirSync(fdDir).length;
+  const countDevNullFds = (): number =>
+    readdirSync(fdDir).filter((fd) => {
+      try {
+        return readlinkSync(`${fdDir}/${fd}`) === "/dev/null";
+      } catch {
+        return false;
+      }
+    }).length;
+  const spawnOpts = {
+    cwd: process.cwd(),
+    env: { PATH: process.env.PATH ?? "" } as Record<string, string>,
+    timeoutMs: 5_000,
+    stdinPath: "/dev/null",
+  };
+
+  it.skipIf(!canProbeFds)(
+    "closes the parent's stdin fd on every spawn (no leak across 40 iterations)",
+    async () => {
+      // Warm-up so any first-call lazy fd allocation is already counted.
+      await defaultSpawn(["/bin/true"], spawnOpts);
+      const beforeTotal = countFds();
+      const beforeDevNull = countDevNullFds();
+      for (let i = 0; i < 40; i++) {
+        const result = await defaultSpawn(["/bin/true"], spawnOpts);
+        // Each spawn must run the real child to a clean exit, not the timeout
+        // or an fd-exhaustion (EMFILE) failure.
+        expect(result.timedOut).toBe(false);
+        expect(result.code).toBe(0);
+      }
+      const afterTotal = countFds();
+      const afterDevNull = countDevNullFds();
+      // Pre-fix: exactly one /dev/null fd leaks per spawn (delta ~= 40). The fix
+      // closes the parent's copy on every terminal outcome, so the count is
+      // stable regardless of how many times we spawn.
+      expect(afterTotal - beforeTotal).toBeLessThan(5);
+      expect(afterDevNull - beforeDevNull).toBeLessThan(5);
+    },
+    30_000
+  );
+
+  it.skipIf(!canProbeFds)(
+    "does not leak the stdin fd when the child times out and is killed",
+    async () => {
+      // A child that traps SIGTERM forces the SIGKILL escalation path, which
+      // resolves through the same clearTimers()->closeStdinFd() cleanup. The fd
+      // must be reclaimed on the timeout terminal outcome too, not only on a
+      // clean exit.
+      const script =
+        "process.on('SIGTERM',()=>{});setTimeout(()=>process.exit(0),30000);process.stderr.write('ready');";
+      const beforeDevNull = countDevNullFds();
+      const result = await defaultSpawn([process.execPath, "-e", script], {
+        ...spawnOpts,
+        timeoutMs: 300,
+      });
+      expect(result.timedOut).toBe(true);
+      const afterDevNull = countDevNullFds();
+      expect(afterDevNull - beforeDevNull).toBeLessThan(2);
+    },
+    10_000
+  );
+});
+
 describe("plugin routing priority (fix 4)", () => {
   it("registers an explicit high priority so it wins the tiers it serves", () => {
     expect(cliInferencePlugin.priority).toBe(100);
@@ -541,9 +655,458 @@ describe("models map gating (large-tier only)", () => {
       const argv = calls[0].argv;
       expect(argv[0]).toBe(FAKE_CLAUDE);
       expect(argv[argv.indexOf("--model") + 1]).toBe("claude-opus-4-8");
+      expect(calls[0].opts.timeoutMs).toBe(120_000);
     } finally {
       restore();
     }
+  });
+
+  it.each(["", "abc", "1.5", "2147483648", "9007199254740993", "0", "-1", "-0"])(
+    "rejects an explicitly invalid cold timeout %j before any spawn",
+    async (invalid) => {
+      const { calls, fn } = recordingSpawn({ stdout: "must not run" });
+      const restore = __setClaudeSpawn(fn);
+      try {
+        const models = buildModels({ ELIZA_CHAT_VIA_CLI: "claude" }) as Record<
+          string,
+          (
+            runtime: { getSetting: (key: string) => string | undefined },
+            params: unknown
+          ) => Promise<string>
+        >;
+        const runtime = {
+          getSetting: (key: string) =>
+            key === "ELIZA_CHAT_VIA_CLI"
+              ? "claude"
+              : key === "ELIZA_CLI_TIMEOUT_MS"
+                ? invalid
+                : key === "ELIZA_CLI_CLAUDE_BIN"
+                  ? FAKE_CLAUDE
+                  : undefined,
+        };
+
+        const error = await models.TEXT_LARGE(runtime, { prompt: "hello" }).then(
+          () => undefined,
+          (cause: unknown) => cause
+        );
+        expect(error).toBeInstanceOf(CliInferenceConfigurationError);
+        expect(error).toMatchObject({
+          code: "CLI_INFERENCE_INVALID_CONFIGURATION",
+          setting: "ELIZA_CLI_TIMEOUT_MS",
+        });
+        expect(calls).toHaveLength(0);
+      } finally {
+        restore();
+      }
+    }
+  );
+
+  it("rejects an invalid cold Codex timeout before any spawn", async () => {
+    const { calls, fn } = recordingSpawn({ stdout: "must not run" });
+    const restoreSpawn = __setCodexSpawn(fn);
+    try {
+      const error = await textLargeHandler("codex")(
+        modelRuntime("codex", {
+          ELIZA_CLI_TIMEOUT_MS: "broken",
+          ELIZA_CLI_CODEX_BIN: FAKE_CODEX,
+        }),
+        { prompt: "hello" }
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause
+      );
+
+      expect(error).toBeInstanceOf(CliInferenceConfigurationError);
+      expect(error).toMatchObject({ setting: "ELIZA_CLI_TIMEOUT_MS" });
+      expect(calls).toHaveLength(0);
+    } finally {
+      restoreSpawn();
+    }
+  });
+
+  it("validates only the general timeout for a cold backend", async () => {
+    const { calls, fn } = recordingSpawn({ stdout: "from claude" });
+    const restoreSpawn = __setClaudeSpawn(fn);
+    try {
+      await expect(
+        textLargeHandler("claude")(
+          modelRuntime("claude", {
+            ELIZA_CLI_TIMEOUT_MS: "2500",
+            ELIZA_CLI_SDK_RESTART_AFTER_TURNS: "invalid-but-unused",
+            ELIZA_CLI_SDK_TURN_TIMEOUT_MS: "invalid-but-unused",
+            ELIZA_CLI_CLAUDE_BIN: FAKE_CLAUDE,
+          }),
+          { prompt: "hello" }
+        )
+      ).resolves.toBe("from claude");
+      expect(calls).toHaveLength(1);
+      expect(calls[0].opts.timeoutMs).toBe(2_500);
+    } finally {
+      restoreSpawn();
+    }
+  });
+
+  it("prefers a valid runtime timeout over an invalid environment timeout", async () => {
+    process.env.ELIZA_CLI_TIMEOUT_MS = "invalid-env";
+    const { calls, fn } = recordingSpawn({
+      stdout: '{"type":"agent_message","message":"from codex"}',
+    });
+    const restoreSpawn = __setCodexSpawn(fn);
+    try {
+      await expect(
+        textLargeHandler("codex")(
+          modelRuntime("codex", {
+            ELIZA_CLI_TIMEOUT_MS: 2_147_483_647,
+            ELIZA_CLI_CODEX_BIN: FAKE_CODEX,
+          }),
+          { prompt: "hello" }
+        )
+      ).resolves.toBe("from codex");
+      expect(calls).toHaveLength(1);
+      expect(calls[0].opts.timeoutMs).toBe(2_147_483_647);
+    } finally {
+      restoreSpawn();
+    }
+  });
+
+  it("rejects an env-only invalid timeout with a bounded typed diagnostic", async () => {
+    process.env.ELIZA_CLI_TIMEOUT_MS = `not-a-number-${"x".repeat(10_000)}`;
+    const { calls, fn } = recordingSpawn({ stdout: "must not run" });
+    const restoreSpawn = __setClaudeSpawn(fn);
+    try {
+      const error = await textLargeHandler("claude")(
+        modelRuntime("claude", { ELIZA_CLI_CLAUDE_BIN: FAKE_CLAUDE }),
+        { prompt: "hello" }
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause
+      );
+
+      expect(error).toBeInstanceOf(CliInferenceConfigurationError);
+      expect(error).toMatchObject({
+        code: "CLI_INFERENCE_INVALID_CONFIGURATION",
+        setting: "ELIZA_CLI_TIMEOUT_MS",
+        context: { valueType: "string" },
+      });
+      expect((error as Error).message.length).toBeLessThan(260);
+      expect(
+        String((error as CliInferenceConfigurationError).context?.valuePreview).length
+      ).toBeLessThanOrEqual(96);
+      expect(calls).toHaveLength(0);
+    } finally {
+      restoreSpawn();
+    }
+  });
+
+  it.each([
+    ["ELIZA_CLI_TIMEOUT_MS", "2147483648"],
+    ["ELIZA_CLI_SDK_RESTART_AFTER_TURNS", ""],
+    ["ELIZA_CLI_SDK_RESTART_AFTER_TURNS", "0"],
+    ["ELIZA_CLI_SDK_RESTART_AFTER_TURNS", "-0"],
+    ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "abc"],
+    ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "0.5"],
+    ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "-0"],
+    ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "+0"],
+    ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "2147483648"],
+  ] as const)("rejects invalid warm setting %s=%j before session creation", async (key, value) => {
+    let sessionCreations = 0;
+    const restoreFactory = trackSessionFactoryRestore(
+      __setClaudeSdkSessionFactoryForTests(() => {
+        sessionCreations += 1;
+        throw new Error("warm session constructor must not be reached");
+      })
+    );
+    try {
+      const models = buildModels({ ELIZA_CHAT_VIA_CLI: "claude-sdk" }) as Record<
+        string,
+        (
+          runtime: { getSetting: (setting: string) => string | undefined },
+          params: unknown
+        ) => Promise<string>
+      >;
+      const runtime = {
+        getSetting: (setting: string) =>
+          setting === "ELIZA_CHAT_VIA_CLI" ? "claude-sdk" : setting === key ? value : undefined,
+      };
+
+      const error = await models.TEXT_LARGE(runtime, { prompt: "hello" }).then(
+        () => undefined,
+        (cause: unknown) => cause
+      );
+      expect(error).toBeInstanceOf(CliInferenceConfigurationError);
+      expect(error).toMatchObject({
+        code: "CLI_INFERENCE_INVALID_CONFIGURATION",
+        setting: key,
+      });
+      expect(sessionCreations).toBe(0);
+    } finally {
+      restoreFactory();
+    }
+  });
+
+  it("rejects an invalid Codex SDK restart before session creation", async () => {
+    let sessionCreations = 0;
+    trackSessionFactoryRestore(
+      __setCodexSdkSessionFactoryForTests(() => {
+        sessionCreations += 1;
+        throw new Error("Codex warm session constructor must not be reached");
+      })
+    );
+
+    const error = await textLargeHandler("codex-sdk")(
+      modelRuntime("codex-sdk", { ELIZA_CLI_SDK_RESTART_AFTER_TURNS: "" }),
+      { prompt: "hello" }
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause
+    );
+
+    expect(error).toBeInstanceOf(CliInferenceConfigurationError);
+    expect(error).toMatchObject({ setting: "ELIZA_CLI_SDK_RESTART_AFTER_TURNS" });
+    expect(sessionCreations).toBe(0);
+  });
+
+  it("Codex SDK accepts a counter-only restart above the Node timer ceiling", async () => {
+    const createdConfigs: Array<ConstructorParameters<typeof CodexSdkSession>[0]> = [];
+    trackSessionFactoryRestore(
+      __setCodexSdkSessionFactoryForTests((config) => {
+        createdConfigs.push(config);
+        return new CodexSdkSession(config);
+      })
+    );
+    vi.spyOn(CodexSdkSession.prototype, "generate").mockResolvedValue("from codex sdk");
+
+    await expect(
+      textLargeHandler("codex-sdk")(
+        modelRuntime("codex-sdk", {
+          ELIZA_CLI_TIMEOUT_MS: "invalid-but-unused",
+          ELIZA_CLI_SDK_TURN_TIMEOUT_MS: "invalid-but-unused",
+          ELIZA_CLI_SDK_RESTART_AFTER_TURNS: "2147483648",
+        }),
+        { prompt: "hello" }
+      )
+    ).resolves.toBe("from codex sdk");
+
+    expect(createdConfigs).toHaveLength(1);
+    expect(createdConfigs[0].restartAfterTurns).toBe(2_147_483_648);
+  });
+
+  it("does not let a valid SDK turn timeout mask an invalid general timeout", async () => {
+    let sessionCreations = 0;
+    const restoreFactory = trackSessionFactoryRestore(
+      __setClaudeSdkSessionFactoryForTests(() => {
+        sessionCreations += 1;
+        throw new Error("warm session constructor must not be reached");
+      })
+    );
+    try {
+      const models = buildModels({ ELIZA_CHAT_VIA_CLI: "claude-sdk" }) as Record<
+        string,
+        (
+          runtime: { getSetting: (key: string) => string | undefined },
+          params: unknown
+        ) => Promise<string>
+      >;
+      const runtime = {
+        getSetting: (key: string) =>
+          key === "ELIZA_CHAT_VIA_CLI"
+            ? "claude-sdk"
+            : key === "ELIZA_CLI_TIMEOUT_MS"
+              ? "broken"
+              : key === "ELIZA_CLI_SDK_TURN_TIMEOUT_MS"
+                ? "45000"
+                : undefined,
+      };
+
+      const error = await models.TEXT_LARGE(runtime, { prompt: "hello" }).then(
+        () => undefined,
+        (cause: unknown) => cause
+      );
+      expect(error).toMatchObject({
+        code: "CLI_INFERENCE_INVALID_CONFIGURATION",
+        setting: "ELIZA_CLI_TIMEOUT_MS",
+      });
+      expect(sessionCreations).toBe(0);
+    } finally {
+      restoreFactory();
+    }
+  });
+
+  it("does not let an invalid SDK turn timeout fall through to a valid general timeout", async () => {
+    let sessionCreations = 0;
+    const restoreFactory = trackSessionFactoryRestore(
+      __setClaudeSdkSessionFactoryForTests(() => {
+        sessionCreations += 1;
+        throw new Error("warm session constructor must not be reached");
+      })
+    );
+    try {
+      const models = buildModels({ ELIZA_CHAT_VIA_CLI: "claude-sdk" }) as Record<
+        string,
+        (
+          runtime: { getSetting: (key: string) => string | undefined },
+          params: unknown
+        ) => Promise<string>
+      >;
+      const runtime = {
+        getSetting: (key: string) =>
+          key === "ELIZA_CHAT_VIA_CLI"
+            ? "claude-sdk"
+            : key === "ELIZA_CLI_TIMEOUT_MS"
+              ? "45000"
+              : key === "ELIZA_CLI_SDK_TURN_TIMEOUT_MS"
+                ? "broken"
+                : undefined,
+      };
+
+      const error = await models.TEXT_LARGE(runtime, { prompt: "hello" }).then(
+        () => undefined,
+        (cause: unknown) => cause
+      );
+      expect(error).toMatchObject({
+        code: "CLI_INFERENCE_INVALID_CONFIGURATION",
+        setting: "ELIZA_CLI_SDK_TURN_TIMEOUT_MS",
+      });
+      expect(sessionCreations).toBe(0);
+    } finally {
+      restoreFactory();
+    }
+  });
+
+  it.each([
+    [undefined, undefined, undefined, 20, 90_000],
+    ["45000", undefined, undefined, 20, 45_000],
+    [undefined, "0", undefined, 20, 0],
+    [undefined, "2147483647", undefined, 20, 2_147_483_647],
+    [undefined, "+45000", "7", 7, 45_000],
+  ] as const)(
+    "keeps warm defaults/fallbacks for general=%j turn=%j restart=%j",
+    async (generalTimeout, turnTimeout, restart, expectedRestart, expectedTurnTimeout) => {
+      let created: ClaudeSdkSession | undefined;
+      const restoreFactory = trackSessionFactoryRestore(
+        __setClaudeSdkSessionFactoryForTests((config) => {
+          created = new ClaudeSdkSession(config);
+          return created;
+        })
+      );
+      vi.spyOn(ClaudeSdkSession.prototype, "send").mockResolvedValue("from sdk");
+      try {
+        const models = buildModels({ ELIZA_CHAT_VIA_CLI: "claude-sdk" }) as Record<
+          string,
+          (
+            runtime: { getSetting: (key: string) => string | undefined },
+            params: unknown
+          ) => Promise<string>
+        >;
+        const runtime = {
+          getSetting: (key: string) =>
+            key === "ELIZA_CHAT_VIA_CLI"
+              ? "claude-sdk"
+              : key === "ELIZA_CLI_TIMEOUT_MS"
+                ? generalTimeout
+                : key === "ELIZA_CLI_SDK_TURN_TIMEOUT_MS"
+                  ? turnTimeout
+                  : key === "ELIZA_CLI_SDK_RESTART_AFTER_TURNS"
+                    ? restart
+                    : undefined,
+        };
+
+        await expect(models.TEXT_LARGE(runtime, { prompt: "hello" })).resolves.toBe("from sdk");
+        expect(created).toBeDefined();
+        expect(
+          (created as unknown as { restartAfterTurns: number; turnTimeoutMs: number })
+            .restartAfterTurns
+        ).toBe(expectedRestart);
+        expect(
+          (created as unknown as { restartAfterTurns: number; turnTimeoutMs: number }).turnTimeoutMs
+        ).toBe(expectedTurnTimeout);
+      } finally {
+        restoreFactory();
+      }
+    }
+  );
+
+  it("replaces the logical Claude session when effective lifecycle config changes", async () => {
+    const sessions: Array<{
+      config: ConstructorParameters<typeof ClaudeSdkSession>[0];
+      dispose: ReturnType<typeof vi.fn>;
+    }> = [];
+    trackSessionFactoryRestore(
+      __setClaudeSdkSessionFactoryForTests((config) => {
+        const session = {
+          config,
+          send: vi.fn().mockResolvedValue("from sdk"),
+          dispose: vi.fn().mockResolvedValue(undefined),
+        };
+        sessions.push(session);
+        return session as unknown as ClaudeSdkSession;
+      })
+    );
+    const settings: Record<string, string | undefined> = {
+      ELIZA_CLI_SDK_RESTART_AFTER_TURNS: "3",
+      ELIZA_CLI_SDK_TURN_TIMEOUT_MS: "0",
+    };
+    const runtime = modelRuntime("claude-sdk", settings);
+    const handler = textLargeHandler("claude-sdk");
+
+    await handler(runtime, { prompt: "same prompt" });
+    settings.ELIZA_CLI_SDK_TURN_TIMEOUT_MS = "45000";
+    await handler(runtime, { prompt: "same prompt" });
+    settings.ELIZA_CLI_SDK_TURN_TIMEOUT_MS = "0";
+    await handler(runtime, { prompt: "same prompt" });
+    delete settings.ELIZA_CLI_SDK_TURN_TIMEOUT_MS;
+    await handler(runtime, { prompt: "same prompt" });
+    settings.ELIZA_CLI_SDK_RESTART_AFTER_TURNS = "4";
+    await handler(runtime, { prompt: "same prompt" });
+
+    expect(sessions.map(({ config }) => [config.restartAfterTurns, config.turnTimeoutMs])).toEqual([
+      [3, 0],
+      [3, 45_000],
+      [3, 0],
+      [3, 90_000],
+      [4, 90_000],
+    ]);
+    for (const stale of sessions.slice(0, -1)) {
+      expect(stale.dispose).toHaveBeenCalledTimes(1);
+    }
+    expect(sessions.at(-1)?.dispose).not.toHaveBeenCalled();
+  });
+
+  it("replaces the logical Codex session when effective restart config changes", async () => {
+    const sessions: Array<{
+      config: ConstructorParameters<typeof CodexSdkSession>[0];
+      dispose: ReturnType<typeof vi.fn>;
+    }> = [];
+    trackSessionFactoryRestore(
+      __setCodexSdkSessionFactoryForTests((config) => {
+        const session = {
+          config,
+          generate: vi.fn().mockResolvedValue("from codex sdk"),
+          dispose: vi.fn(),
+        };
+        sessions.push(session);
+        return session as unknown as CodexSdkSession;
+      })
+    );
+    const settings: Record<string, string | undefined> = {
+      ELIZA_CLI_SDK_RESTART_AFTER_TURNS: "3",
+    };
+    const runtime = modelRuntime("codex-sdk", settings);
+    const handler = textLargeHandler("codex-sdk");
+
+    await handler(runtime, { prompt: "same prompt" });
+    settings.ELIZA_CLI_SDK_RESTART_AFTER_TURNS = "4";
+    await handler(runtime, { prompt: "same prompt" });
+    settings.ELIZA_CLI_SDK_RESTART_AFTER_TURNS = "3";
+    await handler(runtime, { prompt: "same prompt" });
+    delete settings.ELIZA_CLI_SDK_RESTART_AFTER_TURNS;
+    await handler(runtime, { prompt: "same prompt" });
+
+    expect(sessions.map(({ config }) => config.restartAfterTurns)).toEqual([3, 4, 3, 20]);
+    for (const stale of sessions.slice(0, -1)) {
+      expect(stale.dispose).toHaveBeenCalledTimes(1);
+    }
+    expect(sessions.at(-1)?.dispose).not.toHaveBeenCalled();
   });
 
   it("routes warm Claude SDK handlers through the current default Opus model", async () => {
@@ -1277,8 +1840,43 @@ describe("parseTurnTimeout (#16553)", () => {
 
   it("parses a positive budget and rejects junk/negatives to undefined (bounded default applies)", () => {
     expect(parseTurnTimeout("120000")).toBe(120_000);
+    expect(parseTurnTimeout("2147483647")).toBe(2_147_483_647);
     expect(parseTurnTimeout(undefined)).toBeUndefined();
     expect(parseTurnTimeout("abc")).toBeUndefined();
     expect(parseTurnTimeout("-5")).toBeUndefined();
+  });
+
+  it("rejects prefix-parsed, fractional, and unsafe values", () => {
+    expect(parseTurnTimeout("0junk")).toBeUndefined();
+    expect(parseTurnTimeout("0.5")).toBeUndefined();
+    expect(parseTurnTimeout("120000junk")).toBeUndefined();
+    expect(parseTurnTimeout("2147483648")).toBeUndefined();
+    expect(parseTurnTimeout("9007199254740993")).toBeUndefined();
+  });
+
+  it("preserves the previously accepted explicit plus sign", () => {
+    expect(parseTurnTimeout("+120000")).toBe(120_000);
+  });
+
+  it("rejects alternate spellings of zero so only the documented literal opts out", () => {
+    expect(parseTurnTimeout("-0")).toBeUndefined();
+    expect(parseTurnTimeout("+0")).toBeUndefined();
+    expect(parseTurnTimeout("00")).toBeUndefined();
+    expect(parseTurnTimeout(" 0 ")).toBeUndefined();
+  });
+});
+
+describe("parseTimeout", () => {
+  it("accepts only whole, safe, strictly positive values", () => {
+    expect(parseTimeout("120000")).toBe(120_000);
+    expect(parseTimeout("+120000")).toBe(120_000);
+    expect(parseTimeout(" 120000 ")).toBe(120_000);
+    expect(parseTimeout("2147483648")).toBe(2_147_483_648);
+    expect(parseTimeout(undefined)).toBeUndefined();
+    expect(parseTimeout("0")).toBeUndefined();
+    expect(parseTimeout("-5")).toBeUndefined();
+    expect(parseTimeout("120000junk")).toBeUndefined();
+    expect(parseTimeout("120000.5")).toBeUndefined();
+    expect(parseTimeout("9007199254740993")).toBeUndefined();
   });
 });

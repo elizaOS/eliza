@@ -26,6 +26,7 @@ import type {
   ProvisioningRecoverySummary,
   RecoveryResult,
 } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import { usesLocalDockerSandboxProvider } from "@elizaos/cloud-shared/lib/services/sandbox-provider";
 import { loadLocalEnv } from "./shared/load-env";
 
 type WorkerLogger =
@@ -2251,18 +2252,22 @@ async function main(): Promise<void> {
 
   await assertProvisioningWorkerPreflight({ logger });
 
-  // Fail-fast on a missing SSH key BEFORE the first heartbeat: key resolution is
+  // Fail-fast on a missing SSH key BEFORE the first heartbeat for remote-node
+  // providers. Local Docker never uses SSH, so requiring a key there would keep
+  // its real provisioning queue permanently pending.
   // otherwise lazy (first node SSH, ~30s in), so a misconfigured key would let
   // the worker publish a healthy heartbeat while silently failing every node
   // SSH forever. Crash loudly instead; systemd `Restart=always` relaunches it
   // and the misconfig is visible.
-  try {
-    assertSSHKeyAvailable();
-  } catch (error) {
-    logger.error(
-      `[provisioning-worker] CRITICAL: ${formatErrorWithCause(error)}`,
-    );
-    throw error;
+  if (!usesLocalDockerSandboxProvider()) {
+    try {
+      assertSSHKeyAvailable();
+    } catch (error) {
+      logger.error(
+        `[provisioning-worker] CRITICAL: ${formatErrorWithCause(error)}`,
+      );
+      throw error;
+    }
   }
 
   preflightOk = true;

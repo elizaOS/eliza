@@ -1,5 +1,5 @@
 /**
- * Coverage ratchet: every converted plugin view must register at least one
+ * Coverage guard: every converted plugin view must register at least one
  * element with the agent surface (useAgentElement) so the floating pill can
  * address it. Guards against a view regressing to an unaddressable surface.
  */
@@ -23,7 +23,7 @@ const CONVERTED_PLUGINS = [
   "plugin-trajectory-logger",
 ] as const;
 
-/** Remaining views to convert; must stay empty for the ratchet to pass. */
+/** Remaining views to convert; must stay empty for the guard to pass. */
 const PENDING_PLUGINS: readonly string[] = [];
 
 function walkTsx(dir: string): string[] {
@@ -47,11 +47,21 @@ function walkTsx(dir: string): string[] {
   return out;
 }
 
+/**
+ * A view is agent-addressable either by calling `useAgentElement` directly or by
+ * handing a spatial primitive its `agent` prop — `@elizaos/ui/spatial` normalizes
+ * that prop and emits the same `data-agent-id` anchor the hook registers, so the
+ * floating pill can address it. Views that own their controls through spatial
+ * primitives (Messages, Phone) carry no direct hook call.
+ */
+const SPATIAL_AGENT_PROP = /\bagent=(?:\{|")/;
+
 function registersAgentElement(pluginDir: string): boolean {
   const srcDir = path.join(PLUGINS_DIR, pluginDir, "src");
-  return walkTsx(srcDir).some((file) =>
-    readFileSync(file, "utf8").includes("useAgentElement"),
-  );
+  return walkTsx(srcDir).some((file) => {
+    const src = readFileSync(file, "utf8");
+    return src.includes("useAgentElement") || SPATIAL_AGENT_PROP.test(src);
+  });
 }
 
 const UI_COMPONENTS_DIR = path.resolve(here, "../../../ui/src/components");

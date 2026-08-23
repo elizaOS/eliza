@@ -94,6 +94,11 @@ import {
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
 } from "./native/agent";
+import {
+  isBrowserBridgeLoopbackApiBase,
+  startBrowserBridgeDesktopLifecycle,
+  stopBrowserBridgeDesktopLifecycle,
+} from "./native/browser-bridge-desktop-lifecycle";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
@@ -462,6 +467,7 @@ const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 function applyMacOSWindowEffects(
   win: BrowserWindow,
   nativeShadow: boolean,
+  nativeInteractiveChrome: boolean,
 ): void {
   if (process.platform !== "darwin") return;
 
@@ -503,8 +509,10 @@ function applyMacOSWindowEffects(
     );
 
   const alignChrome = () => {
-    alignButtons();
-    alignDragRegion();
+    if (nativeInteractiveChrome) {
+      alignButtons();
+      alignDragRegion();
+    }
     disableSwipeBackGesture();
   };
 
@@ -1272,14 +1280,22 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         );
       }
     }
-    applyMacOSWindowEffects(win, presentation.nativeShadow);
+    applyMacOSWindowEffects(
+      win,
+      presentation.nativeShadow,
+      presentation.nativeInteractiveChrome,
+    );
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
     getDesktopManager().enableBottomBarReanchor();
     return win;
   }
 
-  applyMacOSWindowEffects(win, presentation.nativeShadow);
+  applyMacOSWindowEffects(
+    win,
+    presentation.nativeShadow,
+    presentation.nativeInteractiveChrome,
+  );
   win.on("resize", () => scheduleStateSave(statePath, win));
   win.on("move", () => scheduleStateSave(statePath, win));
 
@@ -1933,6 +1949,19 @@ async function _startAgent(): Promise<void> {
     logger.info(
       `[Main] Skipping embedded agent startup (${runtimeResolution.mode} mode)`,
     );
+    const externalApiBase = runtimeResolution.externalApi.base;
+    if (externalApiBase && isBrowserBridgeLoopbackApiBase(externalApiBase)) {
+      try {
+        await startBrowserBridgeDesktopLifecycle({ apiBase: externalApiBase });
+      } catch (error) {
+        // error-policy:J4 external-runtime enrollment is visibly unavailable when secure setup fails.
+        logger.warn(
+          `[BrowserBridgeBroker] External-runtime enrollment unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     injectApiBaseIntoOpenRendererWindows();
     return;
   }
@@ -1958,6 +1987,16 @@ async function _startAgent(): Promise<void> {
       // the bridge succeeds, the renderer skips the login UI; if it fails,
       // the renderer behaves like a remote browser (password-required).
       await primeDesktopSessionAuth(apiBase, rendererBase);
+      try {
+        await startBrowserBridgeDesktopLifecycle({ apiBase });
+      } catch (error) {
+        // error-policy:J4 browser enrollment remains visibly unavailable when secure setup fails.
+        logger.warn(
+          `[BrowserBridgeBroker] Secure enrollment broker unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       const apiToken = resolveApiToken(process.env) ?? "";
       // Set the source-of-truth API base FIRST (correct even with zero open
       // windows), then push to every open window.
@@ -2417,6 +2456,16 @@ async function runShutdownCleanup(reason: string): Promise<void> {
       }
     }
     try {
+      await stopBrowserBridgeDesktopLifecycle();
+    } catch (error) {
+      // error-policy:J6 shutdown continues after reporting best-effort broker disposal.
+      logger.warn(
+        `[Main] Browser bridge broker disposal failed during shutdown: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    try {
       await disposeNativeModules();
     } catch (error) {
       logger.warn(
@@ -2542,7 +2591,10 @@ async function main(): Promise<void> {
   // ship no embedded runtime; promote that to the runtime env contract before
   // the first runtime-mode resolution. Runs after env-file loading so an
   // operator's explicit env always wins.
-  const cloudOnlyHydration = hydrateCloudOnlyEnv(BRAND.cloudOnly);
+  const cloudOnlyHydration = hydrateCloudOnlyEnv(
+    BRAND.cloudOnly,
+    BRAND.cloudApiBase,
+  );
   if (cloudOnlyHydration.applied.length > 0) {
     console.log(
       `[Env] cloud-only brand flag raised: ${cloudOnlyHydration.applied.join(", ")}`,

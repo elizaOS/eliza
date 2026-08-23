@@ -259,7 +259,7 @@ export function AffiliatesPageClient() {
       {/* Introduction Banner */}
       <BrandCard className="relative" corners={false}>
         <div className="flex items-start gap-3">
-          <UserCog className="h-5 w-5 text-accent mt-0.5 shrink-0" />
+          <UserCog className="size-5 text-accent mt-0.5 shrink-0" />
           <div>
             <h3 className="text-xl font-semibold text-txt-strong mb-2">
               {t("cloud.affiliates.programTitle", {
@@ -297,12 +297,9 @@ export function AffiliatesPageClient() {
       {/* Referral invite: uses GET /api/v1/referrals (parallel to affiliate
           fetch, own loading state). Different URL (?ref= vs ?affiliate=),
           economics, and copy from the affiliate card below. */}
-      <BrandCard
-        corners={false}
-        className="border-l-4 border-l-accent border border-border"
-      >
+      <BrandCard corners={false} className="border border-accent/40">
         <div className="flex items-start gap-3 mb-4">
-          <Users className="h-5 w-5 text-accent mt-0.5 shrink-0" />
+          <Users className="size-5 text-accent mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-semibold text-txt-strong mb-1">
               {t("cloud.affiliates.inviteFriends", {
@@ -400,11 +397,11 @@ export function AffiliatesPageClient() {
                 >
                   {referralCopied ? (
                     <CheckCircle2
-                      className="h-4 w-4 mr-2 text-status-success"
+                      className="size-4 mr-2 text-status-success"
                       aria-hidden
                     />
                   ) : (
-                    <Copy className="h-4 w-4 mr-2" aria-hidden />
+                    <Copy className="size-4 mr-2" aria-hidden />
                   )}
                   {referralCopied
                     ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
@@ -451,11 +448,11 @@ export function AffiliatesPageClient() {
             >
               {copied ? (
                 <CheckCircle2
-                  className="h-4 w-4 mr-2 text-status-success"
+                  className="size-4 mr-2 text-status-success"
                   aria-hidden
                 />
               ) : (
-                <Copy className="h-4 w-4 mr-2" aria-hidden />
+                <Copy className="size-4 mr-2" aria-hidden />
               )}
               {copied
                 ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
@@ -539,7 +536,7 @@ export function AffiliatesPageClient() {
         </div>
 
         <div className="mt-4 p-4 rounded-sm bg-status-warning-bg border border-status-warning/20 flex gap-3 text-sm">
-          <AlertTriangle className="h-5 w-5 text-status-warning shrink-0" />
+          <AlertTriangle className="size-5 text-status-warning shrink-0" />
           <div className="text-status-warning">
             <strong>
               {t("cloud.affiliates.pricingExampleLabel", {
@@ -578,7 +575,7 @@ export function AffiliatesPageClient() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="size-6 p-0"
               onClick={() => {
                 void (async () => {
                   const codeSnippet = `curl -X POST https://api.eliza.app/v1/chat/completions \\
@@ -605,7 +602,7 @@ export function AffiliatesPageClient() {
                 })();
               }}
             >
-              <Copy className="h-3 w-3" />
+              <Copy className="size-3" />
             </Button>
           </div>
           <pre className="p-4 overflow-x-auto text-sm font-mono text-txt leading-relaxed">

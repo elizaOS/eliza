@@ -101,10 +101,13 @@ function normalizeSleepHour(hour: number): number {
 }
 
 function median(values: number[]): number | null {
-  if (values.length === 0) {
+  const finiteValues = values.filter(
+    (v) => typeof v === "number" && Number.isFinite(v),
+  );
+  if (finiteValues.length === 0) {
     return null;
   }
-  const sorted = [...values].sort((left, right) => left - right);
+  const sorted = [...finiteValues].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   if (sorted.length % 2 === 1) {
     return sorted[middle] ?? null;
@@ -482,12 +485,27 @@ function selectLatestCompletedSleep(
   const candidates = dayAnchoring.length > 0 ? dayAnchoring : completed;
   return (
     candidates.sort((left, right) => {
-      const leftEnd = left.endMs ?? 0;
-      const rightEnd = right.endMs ?? 0;
+      const leftEnd =
+        typeof left.endMs === "number" && Number.isFinite(left.endMs)
+          ? left.endMs
+          : 0;
+      const rightEnd =
+        typeof right.endMs === "number" && Number.isFinite(right.endMs)
+          ? right.endMs
+          : 0;
       if (rightEnd !== leftEnd) {
         return rightEnd - leftEnd;
       }
-      return right.confidence - left.confidence;
+      const rightConf =
+        typeof right.confidence === "number" &&
+        Number.isFinite(right.confidence)
+          ? right.confidence
+          : 0;
+      const leftConf =
+        typeof left.confidence === "number" && Number.isFinite(left.confidence)
+          ? left.confidence
+          : 0;
+      return rightConf - leftConf;
     })[0] ?? null
   );
 }
@@ -498,7 +516,19 @@ function selectCurrentSleep(
   return (
     [...episodes]
       .filter((episode) => episode.current)
-      .sort((left, right) => right.confidence - left.confidence)[0] ?? null
+      .sort((left, right) => {
+        const rightConf =
+          typeof right.confidence === "number" &&
+          Number.isFinite(right.confidence)
+            ? right.confidence
+            : 0;
+        const leftConf =
+          typeof left.confidence === "number" &&
+          Number.isFinite(left.confidence)
+            ? left.confidence
+            : 0;
+        return rightConf - leftConf;
+      })[0] ?? null
   );
 }
 

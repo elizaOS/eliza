@@ -102,13 +102,13 @@ export function ConnectorAccountPicker({
             variant="outline"
             size="sm"
             disabled={disabled || loading}
-            className="h-7 max-w-full rounded-full px-2 text-[11px] shadow-none"
+            className="h-7 max-w-full rounded-full px-2 text-xs-tight shadow-none"
             data-testid="connector-account-picker-trigger"
           >
             {loading ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
-              <UserRound className="h-3.5 w-3.5" aria-hidden />
+              <UserRound className="size-3.5" aria-hidden />
             )}
             <span className="min-w-0 truncate">
               {sourceLabel}: {selectedName}
@@ -116,7 +116,7 @@ export function ConnectorAccountPicker({
             {selectedStatus ? (
               <span
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full",
+                  "size-1.5 rounded-full",
                   selectedStatus.tone === "success"
                     ? "bg-ok"
                     : selectedStatus.tone === "warning"
@@ -128,7 +128,7 @@ export function ConnectorAccountPicker({
                 aria-hidden
               />
             ) : null}
-            <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden />
+            <ChevronDown className="size-3.5 opacity-70" aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -156,8 +156,8 @@ export function ConnectorAccountPicker({
                   onSelectAccount(account.id);
                 }}
               >
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-                  {selected ? <Check className="h-3.5 w-3.5" /> : null}
+                <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+                  {selected ? <Check className="size-3.5" /> : null}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex min-w-0 items-center gap-1.5">
@@ -165,7 +165,7 @@ export function ConnectorAccountPicker({
                       {connectorAccountDisplayName(account)}
                     </span>
                     {account.isDefault ? (
-                      <span className="rounded-sm border border-border/40 px-1 py-0 text-[9px] uppercase text-muted">
+                      <span className="rounded-sm border border-border/40 px-1 py-0 text-3xs uppercase tracking-wider text-muted">
                         Default
                       </span>
                     ) : null}
@@ -174,9 +174,9 @@ export function ConnectorAccountPicker({
                     <StatusBadge
                       label={status.label}
                       tone={status.tone}
-                      className="px-1.5 py-0 text-[9px]"
+                      className="px-1.5 py-0 text-3xs"
                     />
-                    <span className="truncate text-[10px] text-muted">
+                    <span className="truncate text-2xs text-muted">
                       {accountSecondaryText(account)}
                     </span>
                   </span>
@@ -186,7 +186,7 @@ export function ConnectorAccountPicker({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 shrink-0 p-0"
+                    className="size-7 shrink-0 p-0"
                     title="Reconnect account"
                     aria-label={`Reconnect ${connectorAccountDisplayName(account)}`}
                     onClick={(event) => {
@@ -195,7 +195,7 @@ export function ConnectorAccountPicker({
                       onReconnectAccount(account.id);
                     }}
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
+                    <RefreshCw className="size-3.5" />
                   </Button>
                 ) : null}
               </DropdownMenuItem>
@@ -212,7 +212,7 @@ export function ConnectorAccountPicker({
                   onConnectAccount();
                 }}
               >
-                {connectBusy ? <Spinner className="h-3 w-3" /> : null}
+                {connectBusy ? <Spinner className="size-3" /> : null}
                 Connect another account
               </DropdownMenuItem>
             </>
@@ -220,7 +220,7 @@ export function ConnectorAccountPicker({
         </DropdownMenuContent>
       </DropdownMenu>
       {selectedAccount && !isConnectorAccountUsable(selectedAccount) ? (
-        <span className="truncate text-[11px] text-warn">
+        <span className="truncate text-xs-tight text-warn">
           Account needs attention
         </span>
       ) : null}

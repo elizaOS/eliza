@@ -832,7 +832,12 @@ function ContactSheet({
   }, [onClose]);
 
   return (
-    <dialog ref={dialogRef} className="landing-sheet" onClose={onClose}>
+    <dialog
+      ref={dialogRef}
+      className="landing-sheet"
+      aria-labelledby="landing-contact-sheet-title"
+      onClose={onClose}
+    >
       <div className="landing-sheet-body">
         <header className="landing-sheet-head">
           <img
@@ -843,7 +848,7 @@ function ContactSheet({
             height={423}
             decoding="async"
           />
-          <strong>Eliza</strong>
+          <strong id="landing-contact-sheet-title">Eliza</strong>
           <span>
             {t("homepage_eliza.landing.contactSheetSubtitle", {
               defaultValue: "Reach me wherever you already message.",
@@ -1089,7 +1094,7 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue: "Four hours of your time back every week.",
+              defaultValue: "Eliza is everywhere you are.",
             })}
           </h1>
           <div className="landing-hero-actions">

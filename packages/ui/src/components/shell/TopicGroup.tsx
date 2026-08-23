@@ -105,11 +105,11 @@ function TitledTopicGroup({
           )}
         >
           <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/60"
+            className="size-1.5 shrink-0 rounded-full bg-white/60"
             aria-hidden
           />
-          <span className="truncate text-[13px] font-medium">{label}</span>
-          <span className="ml-auto shrink-0 text-[11px] text-white/45">
+          <span className="truncate text-sm-tight font-medium">{label}</span>
+          <span className="ml-auto shrink-0 text-xs-tight tabular-nums text-white/45">
             {count} {count === 1 ? "message" : "messages"}
           </span>
         </Button>
@@ -128,7 +128,7 @@ function TitledTopicGroup({
           )}
         >
           <span className="h-px flex-1 bg-white/10" aria-hidden />
-          <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide">
+          <span className="shrink-0 text-2xs font-medium uppercase tracking-wider">
             {label}
           </span>
           <span className="h-px flex-1 bg-white/10" aria-hidden />

@@ -159,7 +159,11 @@ export const skillInstructionsProvider: Provider = {
 				score: calculateSkillRelevance(skill, fullContext),
 			}))
 			.filter((s) => s.score > 0)
-			.sort((a, b) => b.score - a.score);
+			.sort((a, b) => {
+				const aScore = Number.isFinite(a.score) ? a.score : 0;
+				const bScore = Number.isFinite(b.score) ? b.score : 0;
+				return bScore - aScore;
+			});
 
 		// Require minimum relevance score
 		if (scoredSkills.length === 0 || scoredSkills[0].score < 3) {

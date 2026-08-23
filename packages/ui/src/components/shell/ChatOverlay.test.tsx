@@ -1405,7 +1405,7 @@ describe("ChatOverlay", () => {
     });
     const className = screen.getByTestId("chat-composer-textarea").className;
     expect(className).toContain("text-sm");
-    expect(className).toContain("pointer-coarse:text-[16px]");
+    expect(className).toContain("pointer-coarse:text-base");
   });
 
   it("renders composer controls icon-only — no capsule/border/fill, neutral when active (#10711)", () => {
@@ -1459,11 +1459,7 @@ describe("ChatOverlay", () => {
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
   });
 
-  it("hides the topic chips bar + dividers on a single-topic thread", () => {
-    // The lock-screen leak: a fresh thread whose only Stage-1 topic is
-    // `greeting` was rendering a grey `greeting` chip top-left and a
-    // "— GREETING —" divider above the only message. One topic group must
-    // open clean — no chips rail, no divider.
+  it("renders a single-topic thread without topic chrome", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1490,12 +1486,11 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
     expect(screen.queryByTestId("topic-group-header")).toBeNull();
     expect(screen.queryByTestId("topic-group-pill")).toBeNull();
-    // The message still renders — gating only removes the topic chrome.
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("how can I help");
   });
 
-  it("shows the chips bar + dividers once the thread spans two topics", () => {
+  it("renders multiple-topic messages as one flat chronological transcript", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1519,15 +1514,13 @@ describe("ChatOverlay", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("topic-chips-bar")).toBeTruthy();
-    // Two distinct topics → two group dividers, labels humanized.
-    expect(screen.getAllByTestId("topic-group-header").length).toBe(2);
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Deployment",
-    );
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Billing",
-    );
+    expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
+    expect(screen.queryByTestId("topic-group-header")).toBeNull();
+    expect(screen.queryByTestId("topic-group-pill")).toBeNull();
+    const lines = screen.getAllByTestId("thread-line");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.textContent).toContain("deploy failing");
+    expect(lines[1]?.textContent).toContain("charged twice");
   });
 
   it("aligns the assistant bubble left and the user bubble right", () => {
@@ -4209,7 +4202,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(controller.clearConversation).not.toHaveBeenCalled();
   });
 
-  it("renders the infinite-scroll top sentinel above a populated flat thread (#14279)", () => {
+  it("renders the infinite-scroll top sentinel above a populated thread (#14279)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     openSheet();
@@ -4625,6 +4618,25 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
     // Thread stays mounted, but with no in-flight load there is no spinner.
     expect(document.getElementById("continuous-thread")).not.toBeNull();
     expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
+  });
+
+  it("reads as loading, not designed-empty, when opened during boot-time hydration", () => {
+    // A programmatic open (boot-recovery, deep link) can expand the sheet
+    // before the server transcript has hydrated. An empty sheet there is a
+    // loading state, never a broken empty box.
+    const { rerender } = render(<ChatOverlay controller={makeController()} />);
+    openSheetToHalf();
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "booting",
+          messages: [],
+          conversationLoading: false,
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
   });
 });
 
@@ -5504,6 +5516,53 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
       .getByText("The required capability is unavailable.")
       .closest('[data-testid="thread-line"]');
     expect(failedTurn?.getAttribute("data-failure")).toBe("missing_capability");
+    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
+  });
+
+  it("shows Retry when a typed terminal failure explicitly marks a normally permanent kind transient", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "fix it", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "Shell execution failed.",
+          createdAt: 2,
+          failureKind: "coding_tool_failure",
+          terminalFailure: {
+            kind: "coding_tool_failure",
+            message: "Shell execution failed.",
+            transient: true,
+            code: "SHELL_UNAVAILABLE",
+          },
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.getByTestId("thread-line-retry")).toBeTruthy();
+  });
+
+  it("hides Retry when a typed terminal failure marks a normally retryable kind permanent", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "try it", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "The planner cannot continue.",
+          createdAt: 2,
+          failureKind: "planner_exhaustion",
+          terminalFailure: {
+            kind: "planner_exhaustion",
+            message: "The planner cannot continue.",
+            transient: false,
+          },
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
 

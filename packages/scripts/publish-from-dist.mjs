@@ -21,33 +21,13 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { formatViolation, runGuard } from "./publish-graph-guard.mjs";
+import { listPackages } from "./lib/workspaces.mjs";
+import { assertPublishableWorkspaceGraph } from "./verify-publish-graph.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-
-// Refuse to publish when a published package pins an unpublishable workspace
-// target (#15833): the rewritten version would 404 for external `npm install`.
-// Only NEW edges (outside publish-graph-baseline.json) abort — the known
-// pre-existing ones are tracked as follow-up so this stays a usable gate.
-function assertPublishGraphClean() {
-  const { ok, newViolations, stale } = runGuard();
-  if (ok) return;
-  if (newViolations.length > 0) {
-    console.error(
-      `[publish-from-dist] Aborting: ${newViolations.length} NEW unpublishable workspace dependency(ies) would 404 for npm consumers (see #15833):`,
-    );
-    for (const v of newViolations) console.error(formatViolation(v));
-  }
-  if (stale.length > 0) {
-    console.error(
-      `[publish-from-dist] Aborting: ${stale.length} publish-graph-baseline.json entry(ies) no longer dangle — remove them to ratchet the gate down.`,
-    );
-  }
-  process.exit(1);
-}
 
 function npmInvocation(args) {
   if (process.platform === "win32") {
@@ -65,8 +45,7 @@ function npmInvocation(args) {
   return { command: "npm", args };
 }
 
-function parseArgs() {
-  const argv = process.argv.slice(2);
+export function parseArgs(argv = process.argv.slice(2)) {
   const flags = {
     apply: argv.includes("--apply"),
     tag: undefined,
@@ -83,43 +62,18 @@ function parseArgs() {
   return flags;
 }
 
-const WORKSPACE_GLOBS = ["packages", "plugins", "cloud/packages"];
-
-function walkPackages() {
-  const out = [];
-  for (const glob of WORKSPACE_GLOBS) {
-    const base = join(REPO_ROOT, glob);
-    if (!existsSync(base)) continue;
-    walk(base, 3, out);
-  }
-  return out;
-}
-
-function walk(dir, depth, out) {
-  if (depth < 0) return;
-  if (!statSync(dir).isDirectory()) return;
-  const pkgPath = join(dir, "package.json");
-  if (existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-      if (pkg.name && pkg.private !== true) {
-        out.push({ name: pkg.name, dir, version: pkg.version });
-      }
-    } catch {}
-    return;
-  }
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name === "node_modules" || entry.name === "dist") continue;
-    if (entry.name.startsWith(".")) continue;
-    walk(join(dir, entry.name), depth - 1, out);
-  }
-}
-
-function main() {
-  const flags = parseArgs();
-  assertPublishGraphClean();
-  const pkgs = walkPackages();
+export function main(options = {}) {
+  const flags = options.flags ?? parseArgs();
+  const workspacePackages = assertPublishableWorkspaceGraph(
+    options.packages ?? listPackages(),
+  );
+  const pkgs = workspacePackages
+    .filter((pkg) => pkg.packageJson?.name && pkg.packageJson.private !== true)
+    .map((pkg) => ({
+      name: pkg.packageJson.name,
+      dir: resolve(REPO_ROOT, pkg.dir),
+      version: pkg.packageJson.version,
+    }));
   const filtered = flags.filter
     ? pkgs.filter((p) => flags.filter.includes(p.name))
     : pkgs;
@@ -159,6 +113,19 @@ function main() {
 
   console.log(`\nDone. ${succeeded} succeeded, ${failed} failed.`);
   if (failed) process.exit(1);
+  return { succeeded, failed };
 }
 
-main();
+const invokedDirectly =
+  import.meta.main ||
+  (Boolean(process.argv[1]) &&
+    resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (invokedDirectly) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
+}

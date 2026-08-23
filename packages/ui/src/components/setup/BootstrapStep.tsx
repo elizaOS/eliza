@@ -294,7 +294,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
       <div
         className={cn(
           "rounded-sm px-4 py-3",
-          "border border-[rgba(240,185,11,0.18)] bg-[rgba(240,185,11,0.07)]",
+          "border border-accent/20 bg-accent/10",
         )}
       >
         <p

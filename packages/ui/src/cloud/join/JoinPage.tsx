@@ -113,6 +113,11 @@ export default function JoinPage(): React.JSX.Element {
 
   useEffect(
     () => () => {
+      // React StrictMode performs a development-only setup → cleanup → setup
+      // cycle while preserving refs. Reset the launch guard before aborting so
+      // the second setup can replace the intentionally cancelled request.
+      // On a real unmount there is no second setup, so this remains inert.
+      startedRef.current = false;
       activeAttemptRef.current?.controller.abort(
         new DOMException("Join page unmounted", "AbortError"),
       );
@@ -192,7 +197,7 @@ export default function JoinPage(): React.JSX.Element {
 
   return (
     <div
-      className="theme-cloud flex min-h-screen w-full flex-col items-center justify-center bg-black px-4 text-white"
+      className="theme-cloud flex min-h-dvh w-full flex-col items-center justify-center bg-black px-4 text-white"
       style={{ background: "var(--background)" }}
     >
       <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
@@ -232,7 +237,7 @@ export default function JoinPage(): React.JSX.Element {
             role="status"
             aria-busy="true"
           >
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
+            <div className="size-8 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
             <p className="text-sm text-white/72">
               {detail ||
                 t("cloud.join.connecting", {

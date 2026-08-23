@@ -188,7 +188,7 @@ export function ChatVoiceStatusBar({
     >
       <span
         className={cn(
-          "inline-block h-2 w-2 rounded-full",
+          "inline-block size-2 rounded-full",
           STATUS_DOT_CLASS[status],
         )}
         aria-hidden="true"
@@ -207,7 +207,7 @@ export function ChatVoiceStatusBar({
             className="inline-flex items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
             data-testid="chat-voice-realtime-paused"
           >
-            <PauseCircle className="h-3 w-3" aria-hidden="true" />
+            <PauseCircle className="size-3" aria-hidden="true" />
             <span>Paused</span>
           </span>
         ) : (
@@ -216,7 +216,7 @@ export function ChatVoiceStatusBar({
             data-testid="chat-voice-realtime-live"
             title="Realtime voice session"
           >
-            <Radio className="h-3 w-3" aria-hidden="true" />
+            <Radio className="size-3" aria-hidden="true" />
             <span>Live</span>
           </span>
         )
@@ -226,7 +226,7 @@ export function ChatVoiceStatusBar({
           data-testid="chat-voice-realtime-connecting"
           title="Realtime voice session connecting"
         >
-          <Radio className="h-3 w-3 animate-pulse" aria-hidden="true" />
+          <Radio className="size-3 animate-pulse" aria-hidden="true" />
           <span>Connecting</span>
         </span>
       ) : realtimeEligible ? (
@@ -235,7 +235,7 @@ export function ChatVoiceStatusBar({
           data-testid="chat-voice-realtime-armed"
           title="Realtime voice armed, connecting on mic start"
         >
-          <Radio className="h-3 w-3" aria-hidden="true" />
+          <Radio className="size-3" aria-hidden="true" />
           <span>Realtime armed</span>
         </span>
       ) : null}
@@ -247,7 +247,7 @@ export function ChatVoiceStatusBar({
           data-reason={realtimeFallbackReason}
           title={`Realtime fallback reason: ${realtimeFallbackReason}`}
         >
-          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
           <span className="truncate">
             Realtime voice unavailable, using standard voice mode
           </span>
@@ -260,7 +260,7 @@ export function ChatVoiceStatusBar({
           data-testid="chat-voice-realtime-error"
           title={realtimeErrorMessage}
         >
-          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{realtimeErrorMessage}</span>
         </span>
       ) : null}
@@ -272,7 +272,7 @@ export function ChatVoiceStatusBar({
           data-engine={ttsError.engine}
           title={ttsError.message}
         >
-          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
           <span className="truncate">
             {TTS_ERROR_ENGINE_LABEL[ttsError.engine]} unavailable
           </span>
@@ -286,7 +286,7 @@ export function ChatVoiceStatusBar({
         >
           {isOwnerSpeaking ? (
             <Crown
-              className="h-3 w-3 text-accent"
+              className="size-3 text-accent"
               aria-label="Owner"
               data-testid="chat-voice-speaker-owner"
             />
@@ -300,7 +300,7 @@ export function ChatVoiceStatusBar({
           className="inline-flex items-center gap-1 rounded-sm border border-border/40 bg-card/50 px-2 py-0.5 text-muted"
           data-testid="chat-voice-mic-reconnected"
         >
-          <RefreshCw className="h-3 w-3" aria-hidden="true" />
+          <RefreshCw className="size-3" aria-hidden="true" />
           <span>Mic reconnected</span>
         </span>
       ) : null}
@@ -318,7 +318,7 @@ export function ChatVoiceStatusBar({
               "    ",
             )}
           >
-            <VolumeX className="h-3 w-3" aria-hidden="true" />
+            <VolumeX className="size-3" aria-hidden="true" />
             <span>Tap to enable sound</span>
           </Button>
         ) : (
@@ -326,7 +326,7 @@ export function ChatVoiceStatusBar({
             className="inline-flex items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
             data-testid="chat-voice-audio-unlock"
           >
-            <VolumeX className="h-3 w-3" aria-hidden="true" />
+            <VolumeX className="size-3" aria-hidden="true" />
             <span>Tap anywhere to enable sound</span>
           </span>
         )
@@ -348,7 +348,7 @@ export function ChatVoiceStatusBar({
 
       <span
         className={cn(
-          "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-[10px] font-medium",
+          "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-2xs font-medium",
           TONE_CLASS[tone],
         )}
         data-testid="chat-voice-latency-badge"
@@ -364,7 +364,9 @@ export function ChatVoiceStatusBar({
       >
         {formatLatency(primaryLatency)}
         {cached ? (
-          <span className="text-[9px] uppercase opacity-70">cached</span>
+          <span className="text-3xs uppercase tracking-wider opacity-70">
+            cached
+          </span>
         ) : null}
       </span>
 

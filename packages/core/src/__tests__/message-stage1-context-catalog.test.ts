@@ -109,6 +109,10 @@ function makeRuntimeWithContexts(
 		actions: [],
 		providers: [],
 		getRoom: vi.fn(async () => null),
+		// Stage 1 resolves the structural always-respond bypass through
+		// `runtime.getSetting`, which every real runtime implements; the fake
+		// answers "unconfigured" so only the built-in bypass list applies.
+		getSetting: vi.fn(() => undefined),
 		reportError: vi.fn(),
 		contexts: registry,
 		responseHandlerFieldRegistry,
@@ -173,7 +177,7 @@ describe("formatAvailableContextsForPrompt", () => {
 		);
 	});
 
-	it("compact mode renders descriptionCompressed and never the full description", () => {
+	it("renders the COMPLETE description even when a compressed hint exists (compact tier retired by #24134)", () => {
 		const contexts: readonly ContextDefinition[] = [
 			{
 				id: "general",
@@ -183,18 +187,18 @@ describe("formatAvailableContextsForPrompt", () => {
 			{
 				id: "tasks",
 				label: "Tasks",
-				description: "A very long routing description that must not render.",
+				description: "The complete long-form routing description.",
 				descriptionCompressed: "reminders/habits/todos",
 			},
 		];
-		const block = formatAvailableContextsForPrompt(contexts, {
-			compact: true,
-		});
-		// Compressed hint when present; bare id line when absent.
-		expect(block).toContain("- tasks [label=Tasks]: reminders/habits/todos");
-		expect(block).toContain("- general [label=General]");
-		expect(block).not.toContain("Normal conversation.");
-		expect(block).not.toContain("must not render");
+		const block = formatAvailableContextsForPrompt(contexts);
+		// The complete description always renders; the compressed hint never
+		// substitutes for it in model-facing context (prompt-integrity).
+		expect(block).toContain(
+			"- tasks [label=Tasks]: The complete long-form routing description.",
+		);
+		expect(block).toContain("- general [label=General]: Normal conversation.");
+		expect(block).not.toContain("reminders/habits/todos");
 	});
 });
 
@@ -240,6 +244,7 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 			actions: [],
 			providers: [],
 			getRoom: vi.fn(async () => null),
+			getSetting: vi.fn(() => undefined),
 			reportError: vi.fn(),
 			contexts: undefined,
 			responseHandlerFieldRegistry,

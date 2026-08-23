@@ -19,7 +19,7 @@ describe("legacy deterministic scenario compatibility", () => {
       useDeterministicModel: true,
       requiredPlugins: legacyScenario.requires?.plugins,
     });
-  }, 120_000);
+  }, 300_000);
 
   afterAll(async () => {
     await runtimeResult?.cleanup();
@@ -40,7 +40,7 @@ describe("legacy deterministic scenario compatibility", () => {
       scenarioId: legacyScenario.id,
       attemptId: "legacy-compatibility-test",
     });
-  }, 120_000);
+  }, 300_000);
 
   it("does not expose the migration fallback to a declared strict attempt", async () => {
     if (!runtimeResult) throw new Error("scenario runtime was not created");

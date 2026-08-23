@@ -117,6 +117,7 @@ the operation truly needs lifecycle ownership; export public contracts from
 
 - **`@elizaos/plugin-sql` must be loaded first.** The schema registration relies on the runtime's `runtime.db`. The plugin declares this in `dependencies: ["@elizaos/plugin-sql"]`.
 - **No Android SMS.** SMS routing intentionally stays in `plugin-messages`. Do not add SMS channel handling here.
+- **Complete planner choices.** Triage responses emit an actionable choice block for every returned entry. Do not cap the entry count in `appendInboxTriageChoiceMarkers`; connector-specific hard limits belong in the connector adapter, which must preserve every option through native controls or a truthful free-text fallback.
 - **Schema name is `app_inbox`** (not `inbox`) to avoid collisions with any host-app `inbox` table the runtime might also surface.
 - **Snooze is additive.** `snoozed_until` is append-only schema growth on `life_inbox_triage_entries`; migration repairs old targets and maps old `app_lifeops` rows with `NULL AS snoozed_until`.
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. The views bundle (`dist/views/bundle.js`) is what the view registration's `bundlePath` points to. Both must be run for a complete build.

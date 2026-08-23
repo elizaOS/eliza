@@ -74,7 +74,10 @@ import {
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
-import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
+import {
+  CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
+  Z_SHELL_OVERLAY,
+} from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
@@ -166,14 +169,6 @@ import {
   filterRenderableShellMessages,
   type ShellMessage,
 } from "./shell-state";
-import { ShellTopicChipsBar } from "./TopicChipsBar";
-import { TopicGroup } from "./TopicGroup";
-import { findTopicElement } from "./topic-element";
-import {
-  deriveChannelTopics,
-  groupMessagesByTopic,
-  hasMultipleTopicGroups,
-} from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ConversationNav, ShellController } from "./useShellController";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
@@ -715,7 +710,7 @@ function ComposerMicActivity({
       </span>
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent"
+        className="pointer-events-none absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-linear-to-r from-transparent via-white/15 to-transparent"
       />
       {COMPOSER_MIC_BARS.map(({ id, height }, index) => (
         <span
@@ -2171,26 +2166,6 @@ export function ChatOverlay({
     markLayoutShiftIntent,
   ]);
 
-  // Topic grouping + chips bar (#8928). Derived from the per-message Stage-1
-  // topic tags. The chips rail and dividers ONLY earn their pixels once a
-  // transcript genuinely spans MULTIPLE topics — a fresh/single-subject thread
-  // renders flat so the lock-screen chat opens clean (no machine-topic pill
-  // top-left, no "— GREETING —" divider above the only group). See
-  // `hasMultipleTopicGroups`. Chip labels are humanized from the tagger's
-  // machine slugs (`user_greeting` → "User Greeting").
-  const topicSegments = React.useMemo(
-    () => groupMessagesByTopic(visibleMessages),
-    [visibleMessages],
-  );
-  const hasTopics = React.useMemo(
-    () => hasMultipleTopicGroups(topicSegments),
-    [topicSegments],
-  );
-  const channelTopics = React.useMemo(
-    () => deriveChannelTopics(visibleMessages),
-    [visibleMessages],
-  );
-
   // ── Infinite upward scroll (#13532/#14329), wired into the overlay per #14279
   // The overlay is the primary mobile/PWA chat surface. The shadcn
   // MessageScroller owns bottom-follow and streamed growth on `threadRef`; the
@@ -2202,13 +2177,9 @@ export function ChatOverlay({
     scrollRef: threadRef,
     sentinelRef: topSentinelRef,
     onLoadOlder: renderWindow.onLoadOlder,
-    // Topic grouping wraps rows in collapsible segments, which breaks the
-    // sentinel's flat-prepend anchor math; restrict load-older to the flat
-    // transcript (the common case). A topic-grouped thread still shows its
-    // recent window; scroll-up paging there is a follow-up.
-    hasMore: !hasTopics && renderWindow.canLoadOlder,
+    hasMore: renderWindow.canLoadOlder,
     topItemKey: visibleMessages[0]?.id ?? "",
-    enabled: threadPresented && !hasTopics,
+    enabled: threadPresented,
   });
 
   // ── Message search across previous chats (#9955, wired into the overlay per
@@ -2387,35 +2358,6 @@ export function ChatOverlay({
     ],
   );
 
-  const [collapsedTopics, setCollapsedTopics] = React.useState<
-    ReadonlySet<string>
-  >(() => new Set<string>());
-  const setTopicCollapsed = React.useCallback(
-    (key: string, collapsed: boolean) => {
-      setCollapsedTopics((prev) => {
-        if (collapsed === prev.has(key)) return prev;
-        const next = new Set(prev);
-        if (collapsed) next.add(key);
-        else next.delete(key);
-        return next;
-      });
-    },
-    [],
-  );
-  // Tapping a chip expands its group and scrolls its header into view.
-  const scrollToTopic = React.useCallback((topic: string) => {
-    setCollapsedTopics((prev) => {
-      if (!prev.has(topic)) return prev;
-      const next = new Set(prev);
-      next.delete(topic);
-      return next;
-    });
-    if (typeof requestAnimationFrame === "undefined") return;
-    requestAnimationFrame(() => {
-      const el = findTopicElement(threadRef.current, topic);
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }, []);
   // The stable body renderer keeps ChatMessage's memo intact while the sheet
   // moves; only the active assistant row receives volatile turn status.
   const renderRowBody = React.useCallback(
@@ -3146,7 +3088,7 @@ export function ChatOverlay({
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
-  // The actions menu is portaled above the composer. INPUT's shallow 96px
+  // The actions menu is portaled above the composer. INPUT's shallow 64px
   // native desktop host would clip that portal at the window boundary. The
   // dedicated INPUT_MENU host adds height only: it retains INPUT's exact width
   // and bottom anchor so opening the floating menu cannot resize the composer.
@@ -6027,7 +5969,7 @@ export function ChatOverlay({
               <div
                 data-testid="chat-sheet-top-sheen"
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
+                className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-linear-to-b from-surface to-transparent"
               />
             ) : null}
 
@@ -6119,7 +6061,7 @@ export function ChatOverlay({
                 {transcriptionComposerActive ? (
                   <div
                     data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/75"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-3 py-2 text-xs-tight font-medium text-white/75"
                   >
                     {transcriptionFinishing
                       ? "Finishing transcription…"
@@ -6250,27 +6192,22 @@ export function ChatOverlay({
                         className="scrollbar-hide relative min-h-0 w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                       >
                         {/* Empty-thread loading: a fresh/cleared chat awaiting its
-                      greeting, or a swipe past the prefetch window. Centered
-                      spinner so the open sheet reads as "loading," never as a
-                      broken empty box. Cache-hit swipes paint instantly, so this
-                      only shows on a genuine network wait. */}
-                        {visibleMessages.length === 0 && conversationLoading ? (
+                      greeting, a swipe past the prefetch window, or a sheet
+                      opened before boot-time history hydration finished (a
+                      programmatic open can land while the server transcript is
+                      still in flight). Centered spinner so the open sheet reads
+                      as "loading," never as a broken empty box. Cache-hit
+                      swipes paint instantly, so this only shows on a genuine
+                      wait; first-run owns its own empty state. */}
+                        {visibleMessages.length === 0 &&
+                        !firstRunOpen &&
+                        (conversationLoading || booting) ? (
                           <div
                             data-testid="chat-thread-loading"
                             className="pointer-events-none absolute inset-0 grid place-items-center"
                           >
-                            <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                            <Loader2 className="size-6 animate-spin text-accent" />
                           </div>
-                        ) : null}
-                        {/* Topic chips bar (#8928): the channel's current topics,
-                      sticky above the scrolling transcript. Tap a chip to jump
-                      to (and expand) its group. Hidden when nothing is tagged. */}
-                        {hasTopics ? (
-                          <ShellTopicChipsBar
-                            topics={channelTopics}
-                            onSelectTopic={scrollToTopic}
-                            className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
-                          />
                         ) : null}
                         {/* Normal chat consumes only the free space in genuinely
                   short threads to keep their latest line near the composer.
@@ -6292,10 +6229,8 @@ export function ChatOverlay({
                         a zero-height marker just above the oldest turn. When it
                         nears the top of the scroller, useLoadOlderOnScroll
                         prefetches + prepends an older page a viewport early and
-                        preserves the reader's anchor so the thread never jumps.
-                        Only meaningful in the flat (non-topic) transcript. */}
+                        preserves the reader's anchor so the thread never jumps. */}
                           {!firstRunOpen &&
-                          !hasTopics &&
                           renderWindow.canLoadOlder &&
                           visibleMessages.length > 0 ? (
                             <div
@@ -6305,57 +6240,12 @@ export function ChatOverlay({
                               className="pointer-events-none h-px w-full shrink-0"
                             />
                           ) : null}
-                          {hasTopics
-                            ? // Topic-grouped transcript: each cluster collapses via a
-                              // gesture on its header (no visible buttons).
-                              (() => {
-                                let lineIndex = 0;
-                                return topicSegments.map((segment) => {
-                                  const lines = segment.messages.map((m) =>
-                                    renderThreadLine(m, lineIndex++),
-                                  );
-                                  return (
-                                    // The React key is the segment's first message id
-                                    // (stable + unique) because a topic can recur in a
-                                    // non-adjacent run (A → B → A). Collapse state stays
-                                    // keyed by topic (`segment.key`) so a chip tap
-                                    // expands every run of that topic.
-                                    <MessageScrollerItem
-                                      key={
-                                        segment.messages[0]?.id ?? segment.key
-                                      }
-                                      messageId={`topic:${segment.messages[0]?.id ?? segment.key}`}
-                                      className="w-full"
-                                    >
-                                      <TopicGroup
-                                        topic={segment.topic}
-                                        count={segment.messages.length}
-                                        collapsed={collapsedTopics.has(
-                                          segment.key,
-                                        )}
-                                        onCollapsedChange={(collapsed) =>
-                                          setTopicCollapsed(
-                                            segment.key,
-                                            collapsed,
-                                          )
-                                        }
-                                      >
-                                        {lines}
-                                      </TopicGroup>
-                                    </MessageScrollerItem>
-                                  );
-                                });
-                              })()
-                            : // Flat transcript (no topic tags) — unchanged behavior.
-                              // Only the LAST, content-less assistant turn (the
-                              // in-flight one) reads turnStatus — every settled bubble
-                              // gets undefined so its memo identity is unchanged.
-                              null}
-                          {hasTopics
-                            ? null
-                            : visibleMessages.map((m, i) =>
-                                renderThreadLine(m, i),
-                              )}
+                          {/* Topic metadata remains available to search and
+                          memory consumers, but ordinary chat is always one
+                          chronological transcript. */}
+                          {visibleMessages.map((m, i) =>
+                            renderThreadLine(m, i),
+                          )}
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>
@@ -6368,11 +6258,27 @@ export function ChatOverlay({
                           key="chat-reply-target"
                           data-testid="chat-reply-lane"
                           initial={
-                            reduce ? false : { height: 0, opacity: 0, y: 5 }
+                            reduce
+                              ? false
+                              : {
+                                  height: 0,
+                                  opacity: 0,
+                                  transform: "translateY(5px)",
+                                }
                           }
-                          animate={{ height: "auto", opacity: 1, y: 0 }}
+                          animate={{
+                            height: "auto",
+                            opacity: 1,
+                            transform: "translateY(0px)",
+                          }}
                           exit={
-                            reduce ? undefined : { height: 0, opacity: 0, y: 5 }
+                            reduce
+                              ? undefined
+                              : {
+                                  height: 0,
+                                  opacity: 0,
+                                  transform: "translateY(5px)",
+                                }
                           }
                           transition={{
                             duration: reduce ? 0 : 0.32,
@@ -6449,7 +6355,7 @@ export function ChatOverlay({
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile. Bottom placement keeps
                           // that hit zone clear of the grabber above the sheet.
-                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
+                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 grid  size-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
                         >
                           ×
                         </Button>
@@ -6459,12 +6365,12 @@ export function ChatOverlay({
                         return (
                           <div
                             key={tileKey}
-                            className="group relative h-14 w-14 shrink-0"
+                            className="group relative size-14 shrink-0"
                           >
                             <img
                               src={`data:${img.mimeType};base64,${img.data}`}
                               alt={img.name}
-                              className="h-14 w-14 rounded-lg border border-border-strong object-cover"
+                              className="size-14 rounded-lg border border-border-strong object-cover"
                             />
                             {removeButton}
                           </div>
@@ -6482,7 +6388,7 @@ export function ChatOverlay({
                           className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-border-strong bg-surface px-2.5 text-txt"
                           title={img.name}
                         >
-                          <KindIcon className="h-5 w-5 shrink-0 text-muted-strong" />
+                          <KindIcon className="size-5 shrink-0 text-muted-strong" />
                           <span className="min-w-0 truncate text-xs-tight leading-tight">
                             {img.name}
                           </span>
@@ -6611,7 +6517,7 @@ export function ChatOverlay({
                     sideOffset={10}
                     // Above the shell overlay (z 9000); mirrors the config-select
                     // floating layer so the menu never hides behind the glass.
-                    style={{ zIndex: 12000 }}
+                    style={{ zIndex: CONFIG_SELECT_FLOATING_LAYER_Z_INDEX }}
                     // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
                     // variant) instead of the flat opaque card.
                     glass
@@ -6625,7 +6531,7 @@ export function ChatOverlay({
                         }}
                       >
                         <House
-                          className="h-4 w-4 shrink-0 text-muted"
+                          className="size-4 shrink-0 text-muted"
                           aria-hidden
                         />
                         Back to Home
@@ -6636,7 +6542,7 @@ export function ChatOverlay({
                       onSelect={() => openSearch()}
                     >
                       <Search
-                        className="h-4 w-4 shrink-0 text-muted"
+                        className="size-4 shrink-0 text-muted"
                         aria-hidden
                       />
                       Search chat…
@@ -6647,7 +6553,7 @@ export function ChatOverlay({
                       onSelect={() => fileInputRef.current?.click()}
                     >
                       <Paperclip
-                        className="h-4 w-4 shrink-0 text-muted"
+                        className="size-4 shrink-0 text-muted"
                         aria-hidden
                       />
                       Upload file
@@ -6775,7 +6681,7 @@ export function ChatOverlay({
                   // even when the glass pill sits over dark wallpaper. During
                   // onboarding `disabled:opacity-100` prevents the browser from
                   // dimming the locked cue.
-                  className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-[16px] disabled:pointer-events-none disabled:opacity-100"
+                  className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-base disabled:pointer-events-none disabled:opacity-100"
                 />
               )}
               {!transcriptionComposerActive &&
@@ -6783,8 +6689,8 @@ export function ChatOverlay({
               !noProviderConfigured &&
               !firstRunOpen ? (
                 <span id="cc-booting-hint" className="sr-only">
-                  {agentName} is waking up — you can type now; your message
-                  sends and the reply arrives in a moment.
+                  {agentName} is waking up. You can type now; your message sends
+                  and the reply arrives in a moment.
                 </span>
               ) : null}
               {/* Trailing controls. */}

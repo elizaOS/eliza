@@ -6,7 +6,11 @@
  * provider against it. No hardware, no vi.mock, no network egress.
  */
 import type { AddressInfo } from "node:net";
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  validateActionParams,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { type WebSocket as DeviceSocket, WebSocketServer } from "ws";
 import { getCompanionStatusAction, setCompanionMoodAction } from "./actions";
@@ -320,7 +324,7 @@ describe("commands (UC1/UC2)", () => {
       stub.runtime,
       NO_MESSAGE,
       undefined,
-      { mood: "angry" },
+      { parameters: { mood: "angry" } },
     );
     expect(result?.success).toBe(false);
     expect(result?.text).toContain("invalid mood");
@@ -364,6 +368,139 @@ describe("commands (UC1/UC2)", () => {
     );
     expect(result?.success).toBe(false);
     expect(result?.text).toContain("mood");
+  });
+
+  it("SET_COMPANION_MOOD rejects missing, non-string, and blank planner payloads", async () => {
+    const device = await startMockDevice();
+    const { service, stub } = await startService(device.url);
+    await until(() => service.isReady());
+
+    for (const parameters of [
+      {},
+      { mood: { name: "curious" } },
+      { mood: "   " },
+    ]) {
+      const validation = validateActionParams(
+        setCompanionMoodAction,
+        parameters,
+      );
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).not.toHaveLength(0);
+      const result = await setCompanionMoodAction.handler(
+        stub.runtime,
+        NO_MESSAGE,
+        undefined,
+        { parameters },
+      );
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("requires a `mood` parameter");
+    }
+    expect(
+      device.received.filter((frame) => frame.type === "SET_MOOD"),
+    ).toHaveLength(0);
+  });
+
+  it("SET_COMPANION_MOOD accepts the canonical planner parameter envelope", async () => {
+    const device = await startMockDevice();
+    const { service, stub } = await startService(device.url);
+    await until(() => service.isReady());
+
+    expect(setCompanionMoodAction.parameters).toEqual([
+      expect.objectContaining({
+        name: "mood",
+        required: true,
+        schema: expect.objectContaining({
+          type: "string",
+          minLength: 1,
+          pattern: "\\S",
+        }),
+      }),
+    ]);
+    const result = await setCompanionMoodAction.handler(
+      stub.runtime,
+      NO_MESSAGE,
+      undefined,
+      { parameters: { mood: " curious " } },
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { mood: "curious" },
+    });
+  });
+});
+
+describe("planner validation gate", () => {
+  /**
+   * `validate` answers exactly one question: is the COMPANION service live on
+   * this runtime? It reads neither the device connection state nor the planner
+   * payload, so a rejected validation means "service not started" and nothing
+   * else. Callers that drive these actions right after `registerPlugin` must
+   * wait on the service itself, because core registers plugin services lazily
+   * and starts them fire-and-forget (packages/core/src/runtime.ts).
+   */
+  it("validates only while the COMPANION service is registered", async () => {
+    const device = await startMockDevice();
+    const { service, stub } = await startService(device.url);
+    await until(() => service.isReady());
+
+    stub.services.delete(CompanionService.serviceType);
+    expect(
+      await setCompanionMoodAction.validate(stub.runtime, NO_MESSAGE),
+    ).toBe(false);
+    expect(
+      await getCompanionStatusAction.validate(stub.runtime, NO_MESSAGE),
+    ).toBe(false);
+
+    stub.services.set(CompanionService.serviceType, service);
+    expect(
+      await setCompanionMoodAction.validate(stub.runtime, NO_MESSAGE),
+    ).toBe(true);
+    expect(
+      await getCompanionStatusAction.validate(stub.runtime, NO_MESSAGE),
+    ).toBe(true);
+  });
+
+  it("does not gate on device readiness: a registered-but-unconnected service still validates", async () => {
+    const device = await startMockDevice({ autoRegister: false });
+    const { service, stub } = await startService(device.url);
+    expect(service.isReady()).toBe(false);
+
+    expect(
+      await setCompanionMoodAction.validate(stub.runtime, NO_MESSAGE),
+    ).toBe(true);
+    const result = await setCompanionMoodAction.handler(
+      stub.runtime,
+      NO_MESSAGE,
+      undefined,
+      { parameters: { mood: "curious" } },
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("COMPANION_NOT_CONNECTED");
+  });
+
+  it("does not gate on the payload: an empty parameter envelope validates and fails in the handler", async () => {
+    const device = await startMockDevice();
+    const { service, stub } = await startService(device.url);
+    await until(() => service.isReady());
+
+    expect(
+      await setCompanionMoodAction.validate(
+        stub.runtime,
+        NO_MESSAGE,
+        undefined,
+        {
+          parameters: {},
+        },
+      ),
+    ).toBe(true);
+    const result = await setCompanionMoodAction.handler(
+      stub.runtime,
+      NO_MESSAGE,
+      undefined,
+      { parameters: {} },
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("requires a `mood` parameter");
   });
 });
 

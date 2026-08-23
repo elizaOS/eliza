@@ -1,4 +1,5 @@
 // Coordinates cloud service discord behavior behind route handlers.
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "../utils/logger";
 
 const DISCORD_API = "https://discord.com/api/v10";
@@ -311,7 +312,7 @@ class DiscordService {
     const fields: DiscordEmbedField[] = [
       {
         name: "Error Message",
-        value: `\`\`\`${error.message.slice(0, 1000)}\`\`\``,
+        value: `\`\`\`${truncateWellFormed(toWellFormedUnicode(error.message), 1000)}\`\`\``,
         inline: false,
       },
     ];
@@ -319,7 +320,7 @@ class DiscordService {
     if (error.stack) {
       fields.push({
         name: "Stack Trace",
-        value: `\`\`\`${error.stack.slice(0, 1000)}\`\`\``,
+        value: `\`\`\`${truncateWellFormed(toWellFormedUnicode(error.stack), 1000)}\`\`\``,
         inline: false,
       });
     }
@@ -327,7 +328,7 @@ class DiscordService {
     if (error.context) {
       fields.push({
         name: "Context",
-        value: `\`\`\`json\n${JSON.stringify(error.context, null, 2).slice(0, 1000)}\`\`\``,
+        value: `\`\`\`json\n${truncateWellFormed(toWellFormedUnicode(JSON.stringify(error.context, null, 2)), 1000)}\`\`\``,
         inline: false,
       });
     }
@@ -878,7 +879,7 @@ class DiscordService {
     if (warning.context) {
       fields.push({
         name: "Context",
-        value: `\`\`\`json\n${JSON.stringify(warning.context, null, 2).slice(0, 1000)}\`\`\``,
+        value: `\`\`\`json\n${truncateWellFormed(toWellFormedUnicode(JSON.stringify(warning.context, null, 2)), 1000)}\`\`\``,
         inline: false,
       });
     }

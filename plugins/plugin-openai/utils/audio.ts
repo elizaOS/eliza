@@ -86,6 +86,48 @@ export function detectAudioMimeType(buffer: Uint8Array): AudioMimeType {
   return "application/octet-stream";
 }
 
+/**
+ * Maps a declared audio Content-Type — including the common non-canonical
+ * aliases servers actually send (`audio/mp3`, `audio/x-wav`, `audio/x-m4a`,
+ * `audio/aac`, …) — onto a canonical `AudioMimeType`. Any unrecognized value
+ * collapses to `application/octet-stream` so callers never build a filename
+ * from an unbounded, untrusted string. The keys are compared against the
+ * lowercased type without its parameter suffix (e.g. `; codecs=...`).
+ */
+const AUDIO_MIME_ALIASES: Readonly<Record<string, AudioMimeType>> = {
+  "audio/wav": "audio/wav",
+  "audio/x-wav": "audio/wav",
+  "audio/wave": "audio/wav",
+  "audio/vnd.wave": "audio/wav",
+  "audio/mpeg": "audio/mpeg",
+  "audio/mp3": "audio/mpeg",
+  "audio/mpeg3": "audio/mpeg",
+  "audio/x-mpeg-3": "audio/mpeg",
+  "audio/mpg": "audio/mpeg",
+  "audio/ogg": "audio/ogg",
+  "audio/opus": "audio/ogg",
+  "audio/oga": "audio/ogg",
+  "audio/vorbis": "audio/ogg",
+  "audio/flac": "audio/flac",
+  "audio/x-flac": "audio/flac",
+  "audio/mp4": "audio/mp4",
+  "audio/m4a": "audio/mp4",
+  "audio/x-m4a": "audio/mp4",
+  "audio/x-m4b": "audio/mp4",
+  "audio/aac": "audio/mp4",
+  "audio/x-aac": "audio/mp4",
+  "audio/webm": "audio/webm",
+  "application/octet-stream": "application/octet-stream",
+} as const;
+
+export function normalizeAudioMimeType(raw: string | null | undefined): AudioMimeType {
+  if (!raw) {
+    return "application/octet-stream";
+  }
+  const base = raw.split(";")[0]?.trim().toLowerCase() ?? "";
+  return AUDIO_MIME_ALIASES[base] ?? "application/octet-stream";
+}
+
 export function getExtensionForMimeType(mimeType: AudioMimeType): string {
   switch (mimeType) {
     case "audio/wav":
@@ -101,6 +143,10 @@ export function getExtensionForMimeType(mimeType: AudioMimeType): string {
     case "audio/webm":
       return "webm";
     case "application/octet-stream":
+      return "bin";
+    default:
+      // Defense in depth: a caller that cast an arbitrary string to
+      // AudioMimeType must still yield a real extension, never `undefined`.
       return "bin";
   }
 }

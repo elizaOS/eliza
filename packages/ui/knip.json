@@ -66,9 +66,6 @@
     "*.config.{ts,mts,mjs}",
     "scripts/**/*.{ts,mts,mjs}"
   ],
-  "ignoreDependencies": [
-    "@metamask/connect-evm",
-    "pixelmatch"
-  ],
+  "ignoreDependencies": ["@metamask/connect-evm", "pixelmatch"],
   "vitest": false
 }

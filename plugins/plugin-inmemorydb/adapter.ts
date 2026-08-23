@@ -22,6 +22,7 @@ import {
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   compareMemoryIds,
+  compareTasksForQuery,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -70,6 +71,7 @@ import {
   validateDocumentDirectGrantEntityIds,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
+  validateTaskQueryPagination,
   type World,
   withinCreatedAtWindow,
 } from "@elizaos/core";
@@ -362,6 +364,24 @@ function levenshtein(a: string, b: string): number {
 // ────────────────────────────────────────────────────────────────────────────
 // Adapter
 // ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Newest-first `(createdAt DESC, id DESC)` ordering, matching what the SQL
+ * adapters return for the unpaginated memory reads. A non-finite `createdAt`
+ * is normalised to `0` so the comparator never returns `NaN` — a `NaN` result
+ * makes `Array#sort` treat the pair as equal and leave surrounding runs in an
+ * engine-defined order, so one corrupted row silently reorders its neighbours.
+ * Ids break timestamp ties through the same case-insensitive comparison
+ * PostgreSQL applies.
+ */
+function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): number {
+  const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
+  const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
+  if (ta !== tb) return tb - ta;
+  const aId = typeof a.id === "string" ? a.id : "";
+  const bId = typeof b.id === "string" ? b.id : "";
+  return compareMemoryIds(bId, aId);
+}
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -1068,8 +1088,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     const direction = params.orderDirection ?? "desc";
     memories.sort((a, b) => {
-      const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
-      const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
+      const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
+      const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";
@@ -1124,7 +1144,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
       return true;
     });
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort(compareStoredMemoriesNewestFirst);
     const offset = typeof params.offset === "number" ? params.offset : 0;
     let sliced = offset > 0 ? memories.slice(offset) : memories;
     if (params.limit !== undefined) sliced = sliced.slice(0, params.limit);
@@ -1395,7 +1415,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
         (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
     );
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort(compareStoredMemoriesNewestFirst);
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;
     return sliced.map(toMemory);
   }
@@ -1415,7 +1435,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (params.type && l.type !== params.type) return false;
       return true;
     });
-    logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    logs.sort((a, b) => {
+      const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+        ? new Date(b.createdAt).getTime()
+        : 0;
+      const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+        ? new Date(a.createdAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
     const offset = params.offset ?? 0;
     if (offset > 0) logs = logs.slice(offset);
     if (params.limit !== undefined) logs = logs.slice(0, params.limit);
@@ -1970,26 +1998,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async getTasks(params: {
     roomId?: UUID;
+    worldId?: UUID;
     tags?: string[];
     entityId?: UUID;
     agentIds: UUID[];
     limit?: number;
     offset?: number;
   }): Promise<Task[]> {
+    validateTaskQueryPagination(params);
+    if (params.agentIds.length === 0) return [];
     const agentSet = new Set(params.agentIds);
     let tasks = await this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => {
       const taskAgentId = (t as Task & { agentId?: UUID }).agentId;
-      if (agentSet.size > 0 && taskAgentId !== undefined && !agentSet.has(taskAgentId)) {
-        return false;
-      }
+      if (taskAgentId === undefined || !agentSet.has(taskAgentId)) return false;
       if (params.roomId && t.roomId !== params.roomId) return false;
+      if (params.worldId && t.worldId !== params.worldId) return false;
       if (params.entityId && t.entityId !== params.entityId) return false;
       if (params.tags && params.tags.length > 0) {
         const tags = t.tags ?? [];
-        if (!params.tags.some((tag) => tags.includes(tag))) return false;
+        if (!params.tags.every((tag) => tags.includes(tag))) return false;
       }
       return true;
     });
+    tasks.sort(compareTasksForQuery);
     const offset = params.offset ?? 0;
     if (offset > 0) tasks = tasks.slice(offset);
     if (params.limit !== undefined) tasks = tasks.slice(0, params.limit);
@@ -2074,7 +2105,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
       const direction = query.order === "newest" ? -1 : 1;
       requests.sort((a, b) => {
-        const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+          ? new Date(a.createdAt).getTime()
+          : 0;
+        const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+          ? new Date(b.createdAt).getTime()
+          : 0;
+        const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
         const aId = String(a.id);
         const bId = String(b.id);
@@ -2119,7 +2156,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
       const direction = query.order === "newest" ? -1 : 1;
       entries.sort((a, b) => {
-        const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+          ? new Date(a.createdAt).getTime()
+          : 0;
+        const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+          ? new Date(b.createdAt).getTime()
+          : 0;
+        const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
         const aId = String(a.id);
         const bId = String(b.id);

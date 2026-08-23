@@ -4,11 +4,14 @@
  * Instances table while the count still read >0). Removal is tombstone-only.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import { describe, expect, it } from "vitest";
 import { mergeAgentList, retireExpiredTombstones } from "./eliza-agents-table";
 
-function row(id: string, status: AgentListItemDto["status"]): AgentListItemDto {
+function row(
+  id: string,
+  status: NormalizedAgentListItemDto["status"],
+): NormalizedAgentListItemDto {
   return {
     id,
     agentName: `agent-${id}`,
@@ -26,13 +29,14 @@ function row(id: string, status: AgentListItemDto["status"]): AgentListItemDto {
     dockerImage: null,
     executionTier: "dedicated-lazy",
     webUiUrl: null,
+    activeJob: null,
   };
 }
 
 function apiAgent(
   id: string,
-  status: AgentListItemDto["status"],
-): AgentListItemDto {
+  status: NormalizedAgentListItemDto["status"],
+): NormalizedAgentListItemDto {
   return row(id, status);
 }
 

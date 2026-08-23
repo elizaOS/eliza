@@ -89,6 +89,7 @@ export {
   type WhatsAppRouteDeps,
   type WhatsAppRouteState,
 } from "./api/whatsapp-routes";
+export { resolveWhatsAppAuthDirectory } from "./baileys/auth";
 export { ClientFactory } from "./clients/factory";
 // Channel configuration types
 export type {
@@ -158,6 +159,7 @@ import {
   handleWhatsAppRoute as _bs_14_handleWhatsAppRoute,
   MAX_PAIRING_SESSIONS as _bs_15_MAX_PAIRING_SESSIONS,
 } from "./api/whatsapp-routes";
+import { resolveWhatsAppAuthDirectory as _bs_40_resolveWhatsAppAuthDirectory } from "./baileys/auth";
 import { ClientFactory as _bs_16_ClientFactory } from "./clients/factory";
 import {
   createWhatsAppConnectorAccountProvider as _bs_17_createWhatsAppConnectorAccountProvider,
@@ -233,6 +235,7 @@ const __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ = [
   _bs_37_WhatsAppConnectorService,
   _bs_38_stopAllPairingSessions,
   _bs_39_whatsappSetupRoutes,
+  _bs_40_resolveWhatsAppAuthDirectory,
 ];
 const bundleSafetyGlobal = globalThis as typeof globalThis & {
   __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__;

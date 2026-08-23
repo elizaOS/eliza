@@ -662,27 +662,88 @@ export async function handleSkillsRoutes(
       const all = (await getCatalogSkills()).filter((skill) =>
         shouldExposeBinanceSkillRecord(skill),
       );
-      const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
-      const perPage = Math.min(
-        100,
-        Math.max(1, Number(url.searchParams.get("perPage")) || 50),
-      );
+      // `Number()` accepts "Infinity" and fractions, which reach the slice
+      // below as `start = Infinity` (an empty page reported as `"page": null`)
+      // or as fractional bounds that make consecutive pages overlap. The shared
+      // strict parser is already used elsewhere in this file.
+      const page = parseClampedInteger(url.searchParams.get("page"), {
+        min: 1,
+        fallback: 1,
+      });
+      const perPage = parseClampedInteger(url.searchParams.get("perPage"), {
+        min: 1,
+        max: 100,
+        fallback: 50,
+      });
       const sort = url.searchParams.get("sort") ?? "downloads";
       const sorted = [...all];
       if (sort === "downloads")
+        sorted.sort((a, b) => {
+          const bDownloads =
+            typeof b.stats.downloads === "number" &&
+            Number.isFinite(b.stats.downloads)
+              ? b.stats.downloads
+              : 0;
+          const aDownloads =
+            typeof a.stats.downloads === "number" &&
+            Number.isFinite(a.stats.downloads)
+              ? a.stats.downloads
+              : 0;
+          const bUpdated =
+            typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+              ? b.updatedAt
+              : 0;
+          const aUpdated =
+            typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+              ? a.updatedAt
+              : 0;
+          return (
+            bDownloads - aDownloads ||
+            bUpdated - aUpdated ||
+            a.slug.localeCompare(b.slug)
+          );
+        });
+      else if (sort === "stars")
+        sorted.sort((a, b) => {
+          const bStars =
+            typeof b.stats.stars === "number" && Number.isFinite(b.stats.stars)
+              ? b.stats.stars
+              : 0;
+          const aStars =
+            typeof a.stats.stars === "number" && Number.isFinite(a.stats.stars)
+              ? a.stats.stars
+              : 0;
+          const bUpdated =
+            typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+              ? b.updatedAt
+              : 0;
+          const aUpdated =
+            typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+              ? a.updatedAt
+              : 0;
+          return (
+            bStars - aStars ||
+            bUpdated - aUpdated ||
+            a.slug.localeCompare(b.slug)
+          );
+        });
+      else if (sort === "updated")
+        sorted.sort((a, b) => {
+          const bUpdated =
+            typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+              ? b.updatedAt
+              : 0;
+          const aUpdated =
+            typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+              ? a.updatedAt
+              : 0;
+          return bUpdated - aUpdated || a.slug.localeCompare(b.slug);
+        });
+      else if (sort === "name")
         sorted.sort(
           (a, b) =>
-            b.stats.downloads - a.stats.downloads || b.updatedAt - a.updatedAt,
-        );
-      else if (sort === "stars")
-        sorted.sort(
-          (a, b) => b.stats.stars - a.stats.stars || b.updatedAt - a.updatedAt,
-        );
-      else if (sort === "updated")
-        sorted.sort((a, b) => b.updatedAt - a.updatedAt);
-      else if (sort === "name")
-        sorted.sort((a, b) =>
-          (a.displayName).localeCompare(b.displayName),
+            a.displayName.localeCompare(b.displayName) ||
+            a.slug.localeCompare(b.slug),
         );
 
       // Resolve installed status from the AgentSkillsService
@@ -745,10 +806,11 @@ export async function handleSkillsRoutes(
       const { searchCatalogSkills } = await import(
         "../services/skill-catalog-client"
       );
-      const limit = Math.min(
-        100,
-        Math.max(1, Number(url.searchParams.get("limit")) || 30),
-      );
+      const limit = parseClampedInteger(url.searchParams.get("limit"), {
+        min: 1,
+        max: 100,
+        fallback: 30,
+      });
       const results = (await searchCatalogSkills(q, limit)).filter((skill) =>
         shouldExposeBinanceSkillRecord(skill),
       );

@@ -63,7 +63,7 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
           >
             {metric.icon ? (
               <div className="absolute right-5 top-5 text-muted-foreground">
-                <metric.icon className="h-5 w-5" />
+                <metric.icon className="size-5" />
               </div>
             ) : null}
             <div className="space-y-2 p-6 pb-4">

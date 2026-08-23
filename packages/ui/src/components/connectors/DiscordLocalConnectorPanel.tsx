@@ -353,7 +353,7 @@ export function DiscordLocalConnectorPanel() {
               })}
             </div>
             {guilds.length > 0 ? (
-              <div className="block space-y-1">
+              <div className="space-y-1">
                 <span className="font-medium text-txt">
                   {t("common.server", {
                     defaultValue: "Server",
@@ -410,7 +410,7 @@ export function DiscordLocalConnectorPanel() {
                     })}
                   </div>
                 ) : channels.length > 0 ? (
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-sm border border-border/30 bg-bg/40 p-2">
+                  <div className="max-h-56 space-y-2 overflow-y-auto border-y border-border/30 py-2">
                     {channels.map((channel) => {
                       const checked = selectedChannelIds.includes(channel.id);
                       return (

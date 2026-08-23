@@ -566,7 +566,7 @@ export function CloudAgentsSection() {
             className="flex items-center gap-2 px-4 py-3 text-sm text-txt-muted"
             data-testid="cloud-agents-loading"
           >
-            <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
+            <RefreshCw className="size-4 animate-spin" aria-hidden />
             Loading agents…
           </div>
         ) : loadError ? (
@@ -584,7 +584,7 @@ export function CloudAgentsSection() {
                 void refresh();
               }}
             >
-              <RefreshCw className="mr-1 h-4 w-4" aria-hidden />
+              <RefreshCw className="mr-1  size-4" aria-hidden />
               Try again
             </Button>
           </div>
@@ -619,10 +619,7 @@ export function CloudAgentsSection() {
                   key={agent.agent_id}
                   className="flex items-center gap-2 px-4 py-3"
                 >
-                  <Bot
-                    className="h-5 w-5 shrink-0 text-txt-muted"
-                    aria-hidden
-                  />
+                  <Bot className="size-5 shrink-0 text-txt-muted" aria-hidden />
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
@@ -701,7 +698,7 @@ export function CloudAgentsSection() {
                   <div className="flex items-center gap-2">
                     {isActive ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
-                        <Check className="h-4 w-4" aria-hidden />
+                        <Check className="size-4" aria-hidden />
                         Active
                       </span>
                     ) : (
@@ -723,7 +720,7 @@ export function CloudAgentsSection() {
                         title="Shut down"
                         onClick={() => void suspendAgent(agent)}
                       >
-                        <Power className="h-4 w-4" aria-hidden />
+                        <Power className="size-4" aria-hidden />
                       </Button>
                     )}
                     {canResume && (
@@ -735,7 +732,7 @@ export function CloudAgentsSection() {
                         title="Start"
                         onClick={() => void resumeAgent(agent)}
                       >
-                        <Play className="h-4 w-4" aria-hidden />
+                        <Play className="size-4" aria-hidden />
                       </Button>
                     )}
                     <Button
@@ -746,7 +743,7 @@ export function CloudAgentsSection() {
                       data-testid={`cloud-agent-rename-${agent.agent_id}`}
                       onClick={() => startRename(agent)}
                     >
-                      <Pencil className="h-4 w-4" aria-hidden />
+                      <Pencil className="size-4" aria-hidden />
                     </Button>
                     <Button
                       variant="ghost"
@@ -755,7 +752,7 @@ export function CloudAgentsSection() {
                       aria-label={`Delete ${agent.agent_name || agent.agent_id}`}
                       onClick={() => deleteAgent(agent)}
                     >
-                      <Trash2 className="h-4 w-4" aria-hidden />
+                      <Trash2 className="size-4" aria-hidden />
                     </Button>
                   </div>
                 }
@@ -793,7 +790,7 @@ export function CloudAgentsSection() {
               void createAgent();
             }}
           >
-            <Plus className="mr-1 h-4 w-4" aria-hidden />
+            <Plus className="mr-1 size-4" aria-hidden />
             {creating ? "Creating…" : "Create"}
           </Button>
         </div>

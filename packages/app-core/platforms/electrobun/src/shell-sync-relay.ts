@@ -6,6 +6,7 @@
  * idempotent redelivery. Renderer heartbeats are driven by native pings so a
  * hidden/throttled webview cannot accidentally create split-brain ownership.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "./logger";
 
 import type { SendToWebview } from "./types";
@@ -530,7 +531,7 @@ export class ShellControllerAuthority {
           ok: false,
           error:
             typeof params.error === "string" && params.error
-              ? params.error.slice(0, 2_000)
+              ? truncateWellFormed(toWellFormedUnicode(params.error), 2_000)
               : "owner-command-failed",
         };
     this.rememberOutcome(key, result);

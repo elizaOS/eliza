@@ -58,6 +58,14 @@ describe("Notes boundary validation", () => {
       expect(() => parseNoteContent(123)).toThrow();
       expect(() => parseNoteContent("   ")).toThrow();
     });
+
+    it("splits long single-line content with surrogate safety at max title length", () => {
+      const longTitle = `${"a".repeat(239)}😀${"b".repeat(20)}`;
+      const result = parseNoteContent(longTitle);
+      expect(result.title.length).toBe(239);
+      expect(result.title.endsWith("😀")).toBe(false);
+      expect(result.body.startsWith("😀")).toBe(true);
+    });
   });
 
   describe("parseEntityId", () => {

@@ -362,7 +362,7 @@ export function ChatComposer({
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
+          className={`size-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
             chatPendingImagesCount > 0 ? "text-accent hover:text-accent" : ""
           }`}
           onClick={onAttachImage}
@@ -370,7 +370,7 @@ export function ChatComposer({
           title={t("aria.attachImage")}
           disabled={isComposerLocked}
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="size-5" />
         </Button>
       ) : null;
 
@@ -414,7 +414,7 @@ export function ChatComposer({
       <Button
         variant="ghost"
         size="icon"
-        className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
+        className={`size-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
           voice.isListening
             ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
             : "bg-bg text-muted hover:bg-bg hover:text-txt"
@@ -427,7 +427,7 @@ export function ChatComposer({
         aria-label={voiceButtonTitle}
         aria-pressed={voice.isListening}
       >
-        <Mic className="h-4.5 w-4.5" />
+        <Mic className="size-4.5" />
       </Button>
     );
 
@@ -436,7 +436,7 @@ export function ChatComposer({
         variant="ghost"
         data-testid="chat-composer-action"
         size="icon"
-        className="h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+        className="size-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
         onClick={onSend}
         // Keep the textarea focused through the tap: without this, tapping the
         // send button blurs the composer (the keyboard starts to dismiss) and the
@@ -446,7 +446,7 @@ export function ChatComposer({
         title={actionButtonLabel}
         aria-label={actionButtonLabel}
       >
-        <ArrowUp className="h-4.5 w-4.5" />
+        <ArrowUp className="size-4.5" />
       </Button>
     );
 
@@ -454,13 +454,13 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+        className="size-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
         onClick={onStop}
         size="icon"
         title={actionButtonLabel}
         aria-label={actionButtonLabel}
       >
-        <Square className="h-3.5 w-3.5 fill-current" />
+        <Square className="size-3.5 fill-current" />
       </Button>
     );
 
@@ -468,13 +468,13 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+        className="size-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
         onClick={onStopSpeaking}
         size="icon"
         title={actionButtonLabel}
         aria-label={actionButtonLabel}
       >
-        <Square className="h-3.5 w-3.5 fill-current" />
+        <Square className="size-3.5 fill-current" />
       </Button>
     );
 
@@ -571,9 +571,9 @@ export function ChatComposer({
           disabled={isComposerLocked}
         >
           {isInline ? (
-            <Plus className="h-5 w-5" />
+            <Plus className="size-5" />
           ) : (
-            <Paperclip className="h-6 w-6" />
+            <Paperclip className="size-6" />
           )}
         </Button>
       ) : null}
@@ -609,7 +609,7 @@ export function ChatComposer({
             title={voiceButtonTitle}
             disabled={isComposerLocked}
           >
-            <Mic className="h-6 w-6" />
+            <Mic className="size-6" />
           </Button>
         </>
       ) : null}
@@ -626,10 +626,10 @@ export function ChatComposer({
           density={isInline ? null : undefined}
           className={
             isGameModal
-              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-[16px]"
+              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-chat disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-chat-body leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-[16px]"
               : isInline
                 ? inlineTextareaClass
-                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-[16px]"
+                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-chat disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-chat-body leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-[16px]"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
@@ -677,9 +677,9 @@ export function ChatComposer({
           disabled={isComposerLocked}
         >
           {agentVoiceEnabled ? (
-            <Volume2 className={isGameModal ? "h-5 w-5" : "h-4 w-4"} />
+            <Volume2 className={isGameModal ? "size-5" : "size-4"} />
           ) : (
-            <VolumeX className={isGameModal ? "h-5 w-5" : "h-4 w-4"} />
+            <VolumeX className={isGameModal ? "size-5" : "size-4"} />
           )}
         </Button>
       ) : null}
@@ -722,15 +722,13 @@ export function ChatComposer({
           title={actionButtonLabel}
           aria-label={actionButtonLabel}
         >
-          <Square
-            className={isInline ? "h-3.5 w-3.5 fill-current" : "h-4 w-4"}
-          />
+          <Square className={isInline ? "size-3.5 fill-current" : "size-4"} />
         </Button>
       ) : isInline && !hasDraft ? (
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
+          className={`size-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
             voice.isListening
               ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
               : "bg-bg text-muted hover:bg-bg hover:text-txt"
@@ -743,7 +741,7 @@ export function ChatComposer({
           aria-label={voiceButtonTitle}
           aria-pressed={voice.isListening}
         >
-          <Mic className="h-4.5 w-4.5" />
+          <Mic className="size-4.5" />
         </Button>
       ) : (
         <Button
@@ -770,9 +768,9 @@ export function ChatComposer({
           aria-label={actionButtonLabel}
         >
           {isInline ? (
-            <ArrowUp className="h-4.5 w-4.5" />
+            <ArrowUp className="size-4.5" />
           ) : (
-            <Send className={isGameModal ? "h-4.5 w-4.5" : "h-6 w-6"} />
+            <Send className={isGameModal ? "size-4.5" : "size-6"} />
           )}
         </Button>
       )}

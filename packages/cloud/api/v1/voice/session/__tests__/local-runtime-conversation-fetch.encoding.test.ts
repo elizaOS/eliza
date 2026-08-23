@@ -4,6 +4,9 @@ import { beforeAll, describe, expect, mock, test } from "bun:test";
 const TRANSPORT = "realtime-voice-client";
 
 mock.module("@elizaos/shared", () => ({
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER: "X-Eliza-Local-Voice-Agent-Id",
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER:
+    "X-Eliza-Local-Voice-Conversation-Id",
   REALTIME_VOICE_CLIENT_TRANSPORT: TRANSPORT,
 }));
 mock.module("@/lib/voice-session/eliza-sse-bridge", () => ({

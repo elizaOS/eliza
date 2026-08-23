@@ -3,7 +3,7 @@
  *
  * Legacy checkout/invoice/crypto DTOs remain local for now. New billing
  * snapshot code imports its canonical versioned contract directly from
- * `@elizaos/cloud-shared/types`; do not add another local snapshot copy here.
+ * `@elizaos/cloud-sdk`; do not add another local snapshot copy here.
  */
 
 export type IsoDateString = string;
@@ -125,6 +125,7 @@ export interface CryptoStatusResponse {
 
 /** Minimal confirmed membership shape the billing surface consumes. */
 export interface BillingUser {
+  id: string;
   organization_id: string;
   wallet_address?: string | null;
 }
@@ -133,6 +134,7 @@ export interface BillingUser {
 export interface CurrentUserResponse {
   success: true;
   data: {
+    id: string;
     organization_id: string | null;
     wallet_address: string | null;
     organization: {

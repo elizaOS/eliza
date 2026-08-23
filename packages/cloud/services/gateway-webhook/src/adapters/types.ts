@@ -1,5 +1,6 @@
 /** Defines normalized webhook events, configuration, and platform adapters. */
 import type { TelegramDeliveryHooks } from "@elizaos/cloud-services-common/telegram-delivery";
+import { ElizaError } from "@elizaos/core";
 export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
 export interface ChatEvent {
@@ -77,6 +78,32 @@ export interface PlatformAdapter {
 
 export interface PlatformDeliveryReceipt {
   providerMessageIds: string[];
+}
+
+/** Carries whether a provider failure is safe to replay across the gateway boundary. */
+export class PlatformDeliveryError extends ElizaError {
+  override readonly name: string = "PlatformDeliveryError";
+
+  constructor(
+    message: string,
+    readonly deliveryStatus: "failed" | "uncertain",
+    code: string,
+    readonly retryable: boolean,
+    readonly providerStatus?: number,
+    options?: { cause?: unknown; context?: Record<string, unknown> },
+  ) {
+    super(message, {
+      code,
+      cause: options?.cause,
+      context: {
+        deliveryStatus,
+        retryable,
+        ...(providerStatus === undefined ? {} : { providerStatus }),
+        ...options?.context,
+      },
+      severity: deliveryStatus === "uncertain" ? "fatal" : "ephemeral",
+    });
+  }
 }
 
 export interface ResolvedVoiceNote {

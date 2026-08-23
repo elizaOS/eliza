@@ -39,6 +39,7 @@
  * to this chunk, never the whole secret artifact and never a real alias.
  */
 
+import { ElizaError } from "../errors.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import type { Memory, UUID } from "../types/index.js";
 import type {
@@ -80,7 +81,7 @@ export interface PiiScrubCandidate {
 	readonly identity?: { readonly platform: string; readonly handle: string };
 }
 
-/** One retrieved context fragment, ranked and bounded into the pack. */
+/** One retrieved context fragment included completely in source order. */
 export interface PiiContextFragment {
 	readonly text: string;
 	readonly origin: "document" | "memory" | "message" | "attachment";
@@ -156,7 +157,7 @@ export interface PiiContextSources {
 /** Output 1 of the stage: the context pack for the LLM-pass. */
 export interface PiiContextPack {
 	/**
-	 * Bounded, human-readable context text for the `PII_SCRUB` model call:
+	 * Complete, human-readable context text for the `PII_SCRUB` model call:
 	 * resolved-entity summaries (with the assigned pseudonym marker when the
 	 * cluster is already mapped) + nearest fragments. Never the secret map.
 	 */
@@ -165,7 +166,7 @@ export interface PiiContextPack {
 	readonly assignments: readonly PiiPseudonymAssignment[];
 	/** Entity candidates that resolved with sufficient confidence. */
 	readonly resolvedEntities: readonly PiiResolvedEntity[];
-	/** Candidate surface forms, deduped — the seam's `candidateSpans`. */
+	/** Candidate surface forms in their original order — the seam's `candidateSpans`. */
 	readonly candidateSpans: readonly string[];
 	/** Which sources were queried vs structurally absent (audit). */
 	readonly sourcesQueried: readonly string[];
@@ -188,14 +189,156 @@ export interface AssembleContextPackRequest {
 	 * and leave fuzzy ones to the model.
 	 */
 	readonly minEntityConfidence?: number;
-	/** Max fragments folded into the pack (default 8). */
+	/** @deprecated Retained for source compatibility; every fragment is included. */
 	readonly maxFragments?: number;
 	/** @deprecated Retained for source compatibility; pack text is never clipped. */
 	readonly maxChars?: number;
 }
 
 const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6;
-const DEFAULT_MAX_FRAGMENTS = 8;
+const COMPLETE_SOURCE_INITIAL_PREFIX = 64;
+
+interface PrefixRequest {
+	readonly limit: number;
+	readonly offset: number;
+}
+
+function sameOrderedValues<T>(
+	left: readonly T[],
+	right: readonly T[],
+): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function readStableCompletePrefix<T>(
+	source: string,
+	fetchPrefix: (request: PrefixRequest) => Promise<readonly T[]>,
+): Promise<readonly T[]> {
+	let limit = COMPLETE_SOURCE_INITIAL_PREFIX;
+	let previous: readonly T[] = [];
+
+	for (;;) {
+		const current = await fetchPrefix({ limit, offset: 0 });
+		if (current.length > limit) {
+			throw new ElizaError(
+				`PII context ${source} source exceeded its requested page`,
+				{
+					code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
+					context: { source, requested: limit, received: current.length },
+					severity: "fatal",
+				},
+			);
+		}
+		if (
+			previous.length > 0 &&
+			!sameOrderedValues(current.slice(0, previous.length), previous)
+		) {
+			throw new ElizaError(
+				`PII context ${source} source changed during traversal`,
+				{
+					code: "PII_CONTEXT_SOURCE_UNSTABLE",
+					context: { source, requested: limit },
+				},
+			);
+		}
+
+		if (current.length < limit) {
+			const continuation = await fetchPrefix({
+				limit: 1,
+				offset: current.length,
+			});
+			if (continuation.length > 0) {
+				throw new ElizaError(
+					`PII context ${source} source returned a capped prefix`,
+					{
+						code: "PII_CONTEXT_SOURCE_INCOMPLETE",
+						context: { source, returned: current.length, requested: limit },
+					},
+				);
+			}
+
+			const verified = await fetchPrefix({ limit, offset: 0 });
+			const verifiedContinuation = await fetchPrefix({
+				limit: 1,
+				offset: verified.length,
+			});
+			if (
+				!sameOrderedValues(current, verified) ||
+				verifiedContinuation.length > 0
+			) {
+				throw new ElizaError(
+					`PII context ${source} source changed during verification`,
+					{
+						code: "PII_CONTEXT_SOURCE_UNSTABLE",
+						context: { source, requested: limit },
+					},
+				);
+			}
+			return verified;
+		}
+
+		previous = current;
+		if (limit > Math.floor(Number.MAX_SAFE_INTEGER / 2)) {
+			throw new ElizaError(
+				`PII context ${source} result count is not representable`,
+				{
+					code: "PII_CONTEXT_SOURCE_TOO_LARGE",
+					context: { source, requested: limit },
+					severity: "fatal",
+				},
+			);
+		}
+		limit *= 2;
+	}
+}
+
+function assertWellFormedContextText(value: string, field: string): void {
+	if (toWellFormedUnicode(value) !== value) {
+		throw new ElizaError(`PII context ${field} contains malformed Unicode`, {
+			code: "PII_CONTEXT_MALFORMED_UNICODE",
+			context: { field },
+			severity: "fatal",
+		});
+	}
+}
+
+function assertCandidate(candidate: PiiScrubCandidate, index: number): void {
+	assertWellFormedContextText(
+		candidate.surfaceForm,
+		`candidates[${index}].surfaceForm`,
+	);
+	if (candidate.surfaceForm.trim().length === 0) {
+		throw new ElizaError(
+			"PII context candidate surface form must not be blank",
+			{
+				code: "PII_CONTEXT_INVALID_CANDIDATE",
+				context: { index },
+				severity: "fatal",
+			},
+		);
+	}
+}
+
+function assertResolvedEntity(entity: PiiResolvedEntity, field: string): void {
+	assertWellFormedContextText(entity.clusterId, `${field}.clusterId`);
+	assertWellFormedContextText(entity.kind, `${field}.kind`);
+	entity.aliases.forEach((alias, index) => {
+		assertWellFormedContextText(alias, `${field}.aliases[${index}]`);
+	});
+	entity.identities.forEach((identity, index) => {
+		assertWellFormedContextText(
+			identity.platform,
+			`${field}.identities[${index}].platform`,
+		);
+		assertWellFormedContextText(
+			identity.handle,
+			`${field}.identities[${index}].handle`,
+		);
+	});
+	entity.evidence.forEach((evidence, index) => {
+		assertWellFormedContextText(evidence, `${field}.evidence[${index}]`);
+	});
+}
 
 /**
  * Assemble the context pack + pseudonym-assignment slice for one chunk.
@@ -211,7 +354,7 @@ export async function assembleContextPack(
 		map,
 		rulesetVersion,
 		minEntityConfidence = DEFAULT_MIN_ENTITY_CONFIDENCE,
-		maxFragments = DEFAULT_MAX_FRAGMENTS,
+		maxFragments: _maxFragments,
 		maxChars: _maxChars,
 	} = request;
 
@@ -219,36 +362,29 @@ export async function assembleContextPack(
 	const resolvedEntities: PiiResolvedEntity[] = [];
 	const fragments: PiiContextFragment[] = [];
 
-	// Dedupe candidate surface forms (the seam's candidateSpans) while keeping
-	// first-seen order; drop empty/whitespace forms (adversarial input).
-	const candidateSpans: string[] = [];
-	const seenSpans = new Set<string>();
-	for (const candidate of candidates) {
-		const form = candidate.surfaceForm?.trim();
-		if (!form) continue;
-		if (seenSpans.has(form)) continue;
-		seenSpans.add(form);
-		candidateSpans.push(form);
-	}
+	const candidateSpans = candidates.map((candidate, index) => {
+		assertCandidate(candidate, index);
+		return candidate.surfaceForm;
+	});
 
 	// 1. Entity resolution — the alias backbone. Confident resolutions are
 	// upserted into the corpus map so this person's pseudonym is the SAME one
 	// every other artifact got.
 	if (sources.resolveEntity) {
 		sourcesQueried.push("entities");
-		const seenClusters = new Set<string>();
-		for (const candidate of candidates) {
-			if (!candidate.surfaceForm?.trim()) continue;
+		for (const [candidateIndex, candidate] of candidates.entries()) {
 			const resolved = await sources.resolveEntity(candidate);
-			for (const entity of resolved) {
-				if (seenClusters.has(entity.clusterId)) continue;
-				seenClusters.add(entity.clusterId);
+			for (const [entityIndex, entity] of resolved.entries()) {
+				assertResolvedEntity(
+					entity,
+					`candidates[${candidateIndex}].resolvedEntities[${entityIndex}]`,
+				);
 				resolvedEntities.push(entity);
 				if (entity.confidence >= minEntityConfidence) {
 					map.assign({
 						clusterId: entity.clusterId,
 						kind: entity.kind,
-						aliases: [candidate.surfaceForm.trim(), ...entity.aliases],
+						aliases: [candidate.surfaceForm, ...entity.aliases],
 						identities: entity.identities,
 						evidence: entity.evidence,
 						rulesetVersion,
@@ -258,7 +394,8 @@ export async function assembleContextPack(
 		}
 	}
 
-	// 2. Related fragments, one query per distinct surface form per source.
+	// 2. Related fragments, one query per candidate per source. Repeated
+	// candidates and repeated results are model evidence and remain ordered.
 	const fragmentSources: [
 		string,
 		((query: string) => Promise<readonly PiiContextFragment[]>) | undefined,
@@ -272,18 +409,15 @@ export async function assembleContextPack(
 		sourcesQueried.push(name);
 		for (const form of candidateSpans) {
 			const results = await search(form);
-			for (const fragment of results) {
-				if (typeof fragment.text === "string" && fragment.text.trim()) {
-					fragments.push(fragment);
-				}
+			for (const [fragmentIndex, fragment] of results.entries()) {
+				assertWellFormedContextText(
+					fragment.text,
+					`${name}[${fragmentIndex}].text`,
+				);
+				fragments.push(fragment);
 			}
 		}
 	}
-
-	// Rank (measured scores first, descending; unscored keep arrival order) and
-	// bound the pack.
-	fragments.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-	const kept = fragments.slice(0, maxFragments);
 
 	// 3. The per-chunk assignment slice: clusters whose aliases occur in the
 	// chunk, plus clusters resolved above. NEVER the whole map.
@@ -314,14 +448,14 @@ export async function assembleContextPack(
 		});
 		sections.push(`Resolved entity candidates:\n${lines.join("\n")}`);
 	}
-	if (kept.length > 0) {
-		const lines = kept.map(
-			(f) => `- [${f.origin}${f.ref ? ` ${f.ref}` : ""}] ${f.text.trim()}`,
+	if (fragments.length > 0) {
+		const lines = fragments.map(
+			(f) => `- [${f.origin}${f.ref ? ` ${f.ref}` : ""}] ${f.text}`,
 		);
 		sections.push(`Related context:\n${lines.join("\n")}`);
 	}
-	let contextPack = sections.join("\n\n");
-	contextPack = toWellFormedUnicode(contextPack);
+	const contextPack = sections.join("\n\n");
+	assertWellFormedContextText(contextPack, "contextPack");
 
 	return {
 		contextPack,
@@ -340,18 +474,17 @@ export async function assembleContextPack(
  */
 export function entityResolverFromStore(
 	store: PiiEntityResolverStore,
-	options: { maxCandidates?: number } = {},
+	_options: { maxCandidates?: number } = {},
 ): (candidate: PiiScrubCandidate) => Promise<readonly PiiResolvedEntity[]> {
-	const maxCandidates = options.maxCandidates ?? 3;
 	return async (candidate) => {
 		const query: {
 			name?: string;
 			identity?: { platform: string; handle: string };
 		} = candidate.identity
 			? { identity: candidate.identity }
-			: { name: candidate.surfaceForm.trim() };
+			: { name: candidate.surfaceForm };
 		const resolved = await store.resolve(query);
-		return resolved.slice(0, maxCandidates).map((match) => {
+		return resolved.map((match) => {
 			const aliases = [
 				match.entity.preferredName,
 				...(match.entity.fullName ? [match.entity.fullName] : []),
@@ -379,7 +512,7 @@ export interface RuntimeContextSourceOptions {
 	 * When omitted, the messages source is structurally absent.
 	 */
 	readonly roomIds?: readonly UUID[];
-	/** Per-source result limit (default 5). */
+	/** @deprecated Retained for compatibility; complete source traversal ignores it. */
 	readonly limit?: number;
 	/**
 	 * The entity resolver, wired by the pipeline from the knowledge-graph
@@ -409,7 +542,6 @@ export function sourcesFromRuntime(
 	runtime: IAgentRuntime,
 	options: RuntimeContextSourceOptions = {},
 ): PiiContextSources {
-	const limit = options.limit ?? 5;
 	const sources: {
 		-readonly [K in keyof PiiContextSources]: PiiContextSources[K];
 	} = {};
@@ -449,12 +581,17 @@ export function sourcesFromRuntime(
 				ModelType.TEXT_EMBEDDING,
 				params,
 			);
-			const memories = await runtime.searchMemories({
-				embedding,
-				query,
-				tableName: "messages",
-				count: limit,
-			});
+			const memories = await readStableCompletePrefix(
+				"memories",
+				async ({ limit, offset }) =>
+					runtime.searchMemories({
+						embedding,
+						query,
+						tableName: "messages",
+						count: limit,
+						offset,
+					}),
+			);
 			return memories
 				.filter((memory) => typeof memory.content.text === "string")
 				.map((memory) => ({
@@ -471,11 +608,16 @@ export function sourcesFromRuntime(
 	const roomIds = options.roomIds;
 	if (roomIds && roomIds.length > 0) {
 		sources.searchMessages = async (query) => {
-			const hits = await runtime.adapter.searchMessages({
-				roomIds: [...roomIds],
-				query,
-				limit,
-			});
+			const hits = await readStableCompletePrefix(
+				"messages",
+				async ({ limit, offset }) =>
+					runtime.adapter.searchMessages({
+						roomIds: [...roomIds],
+						query,
+						limit,
+						offset,
+					}),
+			);
 			return hits
 				.filter((hit) => typeof hit.memory.content.text === "string")
 				.map((hit) => ({

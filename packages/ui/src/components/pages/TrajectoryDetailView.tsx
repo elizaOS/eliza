@@ -663,7 +663,7 @@ export function TrajectoryDetailView({
       Object.keys(trajectory.metadata).length > 0 &&
       formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
         <PagePanel variant="section" className="p-5">
-          <pre className="max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+          <pre className="max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 p-4 text-xs leading-6 text-txt">
             {formatProviderPayload(trajectory.metadata)}
           </pre>
         </PagePanel>
@@ -690,10 +690,10 @@ export function TrajectoryDetailView({
                 onClick={() => setActiveStage(null)}
                 variant="ghost"
                 size="icon-sm"
-                className="h-5 w-5 rounded-sm p-0.5 hover:bg-muted/10"
+                className="size-5 rounded-sm p-0.5 hover:bg-muted/10"
                 {...clearStageFilter.agentProps}
               >
-                <X className="h-3 w-3" />
+                <X className="size-3" />
               </Button>
             </div>
           ) : null}
@@ -753,7 +753,7 @@ export function TrajectoryDetailView({
             {providerAccesses.map((access, index) => (
               <PagePanel variant="inset" key={access.id} className="p-4">
                 <div className="flex flex-col gap-1">
-                  <div className="text-[11px] font-semibold text-muted">
+                  <div className="text-xs-tight font-semibold text-muted">
                     {t("trajectorydetailview.ProviderAccess", {
                       defaultValue: "Provider Access",
                     })}{" "}
@@ -773,7 +773,7 @@ export function TrajectoryDetailView({
                         defaultValue: "Query",
                       })}
                     </div>
-                    <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+                    <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 p-4 text-xs leading-6 text-txt">
                       {formatProviderPayload(access.query)}
                     </pre>
                   </div>
@@ -784,7 +784,7 @@ export function TrajectoryDetailView({
                       defaultValue: "Data",
                     })}
                   </div>
-                  <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+                  <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 p-4 text-xs leading-6 text-txt">
                     {formatProviderPayload(access.data)}
                   </pre>
                 </div>

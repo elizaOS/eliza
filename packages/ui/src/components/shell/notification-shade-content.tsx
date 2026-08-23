@@ -126,7 +126,7 @@ export function ClearConfirmationContent({
       >
         <X
           aria-hidden
-          className="eliza-notif-control-transition h-3.5 w-3.5 shrink-0 transition-[opacity,transform] duration-200 ease-out"
+          className="eliza-notif-control-transition size-3.5 shrink-0 transition-[opacity,transform] duration-200 ease-out"
         />
       </span>
       {armingLabel ? (
@@ -188,12 +188,12 @@ function NotificationSourceIcon({
       }
       title={decorative ? undefined : meta.label}
       className={cn(
-        "eliza-notif-source-icon relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
+        "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
         registered && meta.iconClassName,
       )}
     >
       {registered ? (
-        <Icon className="h-5 w-5" />
+        <Icon className="size-5" />
       ) : decorative ? (
         <span
           data-notification-stack-preview-source-initial={
@@ -215,7 +215,7 @@ function NotificationSourceIcon({
           }
           aria-hidden
           style={{ opacity: countVisibility }}
-          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
+          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-xs-tight font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(16,10,5,0.7),0_1px_4px_rgba(16,10,5,0.45)]"
         >
           {decorative ? null : count > 99 ? "99+" : count}
         </span>

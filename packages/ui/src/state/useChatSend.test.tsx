@@ -1065,6 +1065,117 @@ describe("useChatSend action handoff", () => {
     ).toBe(false);
   });
 
+  it("preserves a completed turn when the post-send history refresh temporarily lags its receipts", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Hello from Eliza.",
+      completed: true,
+      userMessageId: "persisted-current-user",
+      messageId: "persisted-current-assistant",
+      historyRefreshRequired: true,
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const staleHistory: ConversationMessage[] = [
+      {
+        id: "persisted-older-user",
+        role: "user",
+        text: "Earlier question",
+        timestamp: Date.now() - 60_000,
+      },
+      {
+        id: "persisted-older-assistant",
+        role: "assistant",
+        text: "Earlier answer",
+        timestamp: Date.now() - 59_000,
+      },
+    ];
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      // Real Cloud history can be briefly behind the successful stream receipt.
+      // It is still authoritative for older rows, but must not erase the exact
+      // just-completed turn while those receipt ids converge into the listing.
+      deps.setConversationMessages(staleHistory);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello with unique marker", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.map(({ id, role, text }) => ({
+        id,
+        role,
+        text,
+      })),
+    ).toEqual([
+      ...staleHistory.map(({ id, role, text }) => ({ id, role, text })),
+      {
+        id: "persisted-current-user",
+        role: "user",
+        text: "hello with unique marker",
+      },
+      {
+        id: "persisted-current-assistant",
+        role: "assistant",
+        text: "Hello from Eliza.",
+      },
+    ]);
+  });
+
+  it("does not duplicate a completed turn once history contains both receipt ids", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Hello from Eliza.",
+      completed: true,
+      userMessageId: "persisted-current-user",
+      messageId: "persisted-current-assistant",
+      historyRefreshRequired: true,
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        {
+          id: "persisted-current-user",
+          role: "user",
+          text: "hello with unique marker",
+          timestamp: Date.now(),
+        },
+        {
+          id: "persisted-current-assistant",
+          role: "assistant",
+          text: "Hello from Eliza.",
+          timestamp: Date.now() + 1,
+        },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello with unique marker", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.filter(
+        (message) => message.id === "persisted-current-user",
+      ),
+    ).toHaveLength(1);
+    expect(
+      deps.conversationMessagesRef.current.filter(
+        (message) => message.id === "persisted-current-assistant",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("opens a workflow created by a completed chat action", async () => {
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: 'Created workflow "Daily digest".',
@@ -2499,6 +2610,39 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
     );
     expect(assistant.length).toBe(1);
     expect(assistant[0]?.failureKind).toBe("no_provider");
+  });
+
+  it("retains typed terminal failure details on the completed assistant turn", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "Shell execution failed.",
+      completed: true,
+      failureKind: "coding_tool_failure",
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        message: "Shell execution failed.",
+        transient: true,
+        code: "SHELL_UNAVAILABLE",
+      },
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("fix it", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.find(
+      (message) => message.role === "assistant",
+    );
+    expect(assistant?.terminalFailure).toMatchObject({
+      kind: "coding_tool_failure",
+      transient: true,
+      code: "SHELL_UNAVAILABLE",
+    });
   });
 
   it("still drops an empty terminal reply that carries no failureKind", async () => {

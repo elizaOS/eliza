@@ -6,8 +6,8 @@
  * (`packages/agent/src/api/server.ts` → `setupSvc.setBroadcastWs(state.broadcastWs)`;
  * `ConnectorSetupService.broadcastWs` relays to every connected dashboard WS
  * client). Publishing `MeetingWsEvent` envelopes through that service needs
- * ZERO changes in packages/agent — it is the same path Signal/WhatsApp pairing
- * events already ride.
+ * ZERO changes in packages/agent — it is the same path WhatsApp pairing events
+ * already ride.
  *
  * Policy: `meeting-status` is emitted on every session transition (rare);
  * `meeting-transcript` is throttled to at most 2 events/second per session

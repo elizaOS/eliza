@@ -1,6 +1,6 @@
 /**
  * Generic QR-code pairing overlay shared by the phone-linking connectors
- * (WhatsApp, Signal). Given a pairing status, QR data URL, and lifecycle
+ * (currently WhatsApp). Given a pairing status, QR data URL, and lifecycle
  * callbacks, it renders the step instructions plus the QR/connected/error
  * states; connector-specific overlays such as `WhatsAppQrOverlay`
  * wrap it with their own pairing hook and copy.
@@ -114,7 +114,7 @@ export function ConnectorQrPairingOverlay({
       >
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-semibold text-ok">
-            <span className="inline-block h-2 w-2 rounded-full bg-ok" />
+            <span className="inline-block size-2 rounded-full bg-ok" />
             <span>
               {t("common.connected")}
               {phoneNumber ? ` (${connectedPhonePrefix}${phoneNumber})` : ""}
@@ -187,7 +187,7 @@ export function ConnectorQrPairingOverlay({
             />
           ) : (
             <div
-              className="flex h-40 w-40 items-center justify-center sm:h-48 sm:w-48"
+              className="flex size-40 items-center justify-center sm:h-48 sm:w-48"
               style={{
                 border: "1px solid var(--border)",
                 background: "var(--bg-hover)",

@@ -102,7 +102,7 @@ export function ChatConversationRenameDialog({
               onClick={() => void onSuggest()}
               disabled={suggestDisabled || saveDisabled}
             >
-              <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <Sparkles className="size-3.5 shrink-0" aria-hidden />
               {suggesting ? suggestPendingLabel : suggestLabel}
             </Button>
           ) : (

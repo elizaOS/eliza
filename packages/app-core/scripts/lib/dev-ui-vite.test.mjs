@@ -1,4 +1,4 @@
-/** Verifies the development Vite subprocess uses the direct TypeScript config loader. */
+/** Verifies the development Vite subprocess resolves source TypeScript config imports. */
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -11,7 +11,7 @@ const appDir = path.resolve(
   "../../../app",
 );
 
-test("resolveViteCommand uses workspace source while skipping config bundling", () => {
+test("resolveViteCommand uses the source-aware runner config loader", () => {
   const resolved = resolveViteCommand({
     appDir,
     nodePath: "/test/node",
@@ -25,7 +25,7 @@ test("resolveViteCommand uses workspace source while skipping config bundling", 
     "tsx",
     path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
     "--configLoader",
-    "native",
+    "runner",
     "--port",
     "2138",
   ]);

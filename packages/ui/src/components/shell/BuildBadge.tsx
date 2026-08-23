@@ -382,7 +382,7 @@ export function BuildBadge() {
             <span
               data-testid="build-badge-geom"
               title="Live viewport geometry (ih=innerHeight vv=visualViewport ce=docEl.clientHeight sh=screen.height rc=reclaim-var rcw=reclaim-wiring lv=100lvh dv=100dvh)"
-              className="font-mono tracking-tight text-3xs text-muted/80"
+              className="font-mono tracking-tight text-3xs text-muted"
             >
               {geom}
             </span>
@@ -394,7 +394,7 @@ export function BuildBadge() {
             aria-label="Hide build badge for this session"
             onClick={dismiss}
           >
-            <X aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
+            <X aria-hidden="true" className="size-2.5 shrink-0" />
           </button>
         </span>
       </div>
@@ -429,7 +429,7 @@ export function BuildBadge() {
                 onClick={closeDiag}
                 className="text-muted hover:text-foreground"
               >
-                <X aria-hidden="true" className="h-3.5 w-3.5" />
+                <X aria-hidden="true" className="size-3.5" />
               </button>
             </div>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono leading-tight">

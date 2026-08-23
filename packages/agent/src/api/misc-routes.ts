@@ -43,6 +43,10 @@ import { runShell } from "../services/shell-execution-router.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import {
+  capturedTerminalOutputIsSafe,
+  MAX_TERMINAL_CAPTURE_BYTES,
+} from "./terminal-output-contract.ts";
+import {
   resolveRequestedTerminalRunId,
   resolveTerminalRunLimits,
 } from "./terminal-run-limits.ts";
@@ -504,7 +508,7 @@ export async function handleMiscRoutes(
     };
 
     const captureOutput = body.captureOutput === true;
-    const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
+    const MAX_CAPTURE_BYTES = MAX_TERMINAL_CAPTURE_BYTES;
 
     const runId = resolveRequestedTerminalRunId(
       req.headers["x-eliza-terminal-run-id"],
@@ -604,8 +608,11 @@ export async function handleMiscRoutes(
     }, maxDurationMs);
 
     const appendAndEmit = (stream: "stdout" | "stderr", text: string) => {
-      if (stream === "stdout") stdout = appendOutput(stdout, text);
-      else stderr = appendOutput(stderr, text);
+      if (captureOutput) {
+        if (stream === "stdout") stdout = appendOutput(stdout, text);
+        else stderr = appendOutput(stderr, text);
+        return;
+      }
       emitTerminalEvent({
         type: "terminal-output",
         runId,
@@ -635,14 +642,15 @@ export async function handleMiscRoutes(
       })
       .then((result) => {
         finalize();
-        emitTerminalEvent({
-          type: "terminal-output",
-          runId,
-          event: "exit",
-          code: result.exitCode,
-        });
+        const runTimedOut = timedOut || result.exitCode === 124;
         if (captureOutput) {
           if (captureOverflowed) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "error",
+              data: "Terminal output exceeded the complete-capture limit",
+            });
             error(
               res,
               `Terminal output exceeded the ${MAX_CAPTURE_BYTES}-byte complete-capture safety limit; no partial result was returned.`,
@@ -650,6 +658,52 @@ export async function handleMiscRoutes(
             );
             return;
           }
+          if (runTimedOut) {
+            error(
+              res,
+              "Terminal execution timed out; no partial result was returned.",
+              504,
+            );
+            return;
+          }
+          if (!capturedTerminalOutputIsSafe(stdout, stderr)) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "error",
+              data: "Terminal output was not valid safe text",
+            });
+            error(
+              res,
+              "Terminal output was not valid safe text; no result was returned.",
+              422,
+            );
+            return;
+          }
+          if (stdout) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "stdout",
+              data: stdout,
+            });
+          }
+          if (stderr) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "stderr",
+              data: stderr,
+            });
+          }
+        }
+        emitTerminalEvent({
+          type: "terminal-output",
+          runId,
+          event: "exit",
+          code: result.exitCode,
+        });
+        if (captureOutput) {
           json(res, {
             ok: true,
             runId,
@@ -657,7 +711,7 @@ export async function handleMiscRoutes(
             exitCode: result.exitCode,
             stdout,
             stderr,
-            timedOut: timedOut || result.exitCode === 124,
+            timedOut: runTimedOut,
             truncated: false,
             maxDurationMs,
             sandbox: result.sandbox,
@@ -665,16 +719,16 @@ export async function handleMiscRoutes(
           });
         }
       })
-      .catch((err: Error) => {
+      .catch((_error: Error) => {
         finalize();
         emitTerminalEvent({
           type: "terminal-output",
           runId,
           event: "error",
-          data: err.message,
+          data: "Terminal execution failed",
         });
         if (captureOutput) {
-          error(res, err.message, 500);
+          error(res, "Terminal execution failed", 500);
         }
       });
 

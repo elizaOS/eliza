@@ -9,6 +9,7 @@
  * Consumed by relationships providers/actions, LifeOps, and the dashboard.
  */
 import { sql } from "drizzle-orm";
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Component, Entity, Relationship } from "../types/environment";
 import type {
@@ -39,6 +40,39 @@ import {
  * level CONTACT_PLATFORM_SET in agent/src/services/relationships-graph.ts.
  */
 const CONTACT_HANDLE_PLATFORMS = new Set(["email", "phone", "website"]);
+const RELATIONSHIP_MESSAGE_PAGE_SIZE = 200;
+
+async function getAllRelationshipMessages(
+	runtime: IAgentRuntime,
+	roomIds: UUID[],
+): Promise<Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>>> {
+	const messages: Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>> =
+		[];
+	const seenMemoryIds = new Set<UUID>();
+	for (let offset = 0; ; offset += RELATIONSHIP_MESSAGE_PAGE_SIZE) {
+		const page = await runtime.getMemoriesByRoomIds({
+			tableName: "messages",
+			roomIds,
+			limit: RELATIONSHIP_MESSAGE_PAGE_SIZE,
+			offset,
+		});
+		const pageIds = page.flatMap((memory) => (memory.id ? [memory.id] : []));
+		if (
+			page.length === RELATIONSHIP_MESSAGE_PAGE_SIZE &&
+			pageIds.length === page.length &&
+			pageIds.every((id) => seenMemoryIds.has(id))
+		) {
+			throw new ElizaError("Relationship message pagination made no progress", {
+				code: "RELATIONSHIP_MESSAGE_PAGINATION_STALLED",
+				context: { offset, pageSize: RELATIONSHIP_MESSAGE_PAGE_SIZE },
+				severity: "fatal",
+			});
+		}
+		for (const id of pageIds) seenMemoryIds.add(id);
+		messages.push(...page);
+		if (page.length < RELATIONSHIP_MESSAGE_PAGE_SIZE) return messages;
+	}
+}
 
 function isConfirmedIdentityLinkLike(relationship: Relationship): boolean {
 	const tags = relationship.tags;
@@ -419,6 +453,18 @@ export interface EntityEventData {
 	mergedEntities?: Entity[];
 	source?: string;
 	confidence?: number;
+}
+
+/**
+ * Sort key for comparators over numbers that may be corrupted upstream. `NaN`
+ * (an unparseable timestamp, a missing metric) collapses to 0 so a comparator
+ * never returns `NaN` and leaves the array in an arbitrary engine-defined
+ * order; `Infinity` is preserved because callers use it as a real "never
+ * contacted" extreme.
+ */
+export function safeSortNumber(value: unknown): number {
+	const numeric = typeof value === "number" ? value : Number(value);
+	return Number.isNaN(numeric) ? 0 : numeric;
 }
 
 /**
@@ -1061,11 +1107,7 @@ export class RelationshipsService extends Service {
 		);
 		const sharedMessages =
 			sharedRoomIds.length > 0
-				? await this.runtime.getMemoriesByRoomIds({
-						tableName: "messages",
-						roomIds: sharedRoomIds,
-						limit: 200,
-					})
+				? await getAllRelationshipMessages(this.runtime, sharedRoomIds)
 				: [];
 
 		const interactions = sharedMessages
@@ -1074,7 +1116,12 @@ export class RelationshipsService extends Service {
 					message.entityId === sourceEntityId ||
 					message.entityId === targetEntityId,
 			)
-			.sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
+			.sort((a, b) => {
+				const aSafe = safeSortNumber(a.createdAt ?? 0);
+				const bSafe = safeSortNumber(b.createdAt ?? 0);
+				if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
+				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+			});
 
 		if (!relationship && interactions.length === 0) {
 			return null;
@@ -1140,7 +1187,7 @@ export class RelationshipsService extends Service {
 			lastInteractionAt,
 			averageResponseTime,
 			sentimentScore: 0.7, // Default neutral-positive score until sentiment is observed
-			topicsDiscussed: Array.from(topicsSet).slice(0, 10),
+			topicsDiscussed: Array.from(topicsSet),
 		};
 
 		// Update relationship with calculated strength
@@ -1252,17 +1299,24 @@ export class RelationshipsService extends Service {
 		}
 
 		// Sort by relevance
-		insights.strongestRelationships.sort(
-			(a, b) => b.analytics.strength - a.analytics.strength,
-		);
-		insights.needsAttention.sort(
-			(a, b) => b.daysSinceContact - a.daysSinceContact,
-		);
-		insights.recentInteractions.sort(
-			(a, b) =>
-				new Date(b.lastInteraction).getTime() -
-				new Date(a.lastInteraction).getTime(),
-		);
+		insights.strongestRelationships.sort((a, b) => {
+			const aSafe = safeSortNumber(a.analytics.strength);
+			const bSafe = safeSortNumber(b.analytics.strength);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
+		});
+		insights.needsAttention.sort((a, b) => {
+			const aSafe = safeSortNumber(a.daysSinceContact);
+			const bSafe = safeSortNumber(b.daysSinceContact);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
+		});
+		insights.recentInteractions.sort((a, b) => {
+			const aSafe = safeSortNumber(new Date(a.lastInteraction).getTime());
+			const bSafe = safeSortNumber(new Date(b.lastInteraction).getTime());
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
+		});
 
 		return insights;
 	}
@@ -1458,10 +1512,12 @@ export class RelationshipsService extends Service {
 			occurredAt,
 		};
 
-		const appended = [...contact.interactions, interaction].sort(
-			(a, b) =>
-				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
-		);
+		const appended = [...contact.interactions, interaction].sort((a, b) => {
+			const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
+			const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
+			if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		});
 		const latestAt = appended[appended.length - 1]?.occurredAt;
 		const currentLatest = contact.lastInteractionAt
 			? new Date(contact.lastInteractionAt).getTime()
@@ -1541,8 +1597,12 @@ export class RelationshipsService extends Service {
 			interactionMap.set(i.id, i);
 		}
 		const mergedInteractions = Array.from(interactionMap.values()).sort(
-			(a, b) =>
-				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+			(a, b) => {
+				const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
+				const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
+				if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
+				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+			},
 		);
 		const mergedCategories = Array.from(
 			new Set([...primary.categories, ...secondary.categories]),
@@ -1700,7 +1760,14 @@ export class RelationshipsService extends Service {
 			}
 		}
 
-		results.sort((a, b) => b.daysSinceInteraction - a.daysSinceInteraction);
+		results.sort((a, b) => {
+			const aSafe = safeSortNumber(a.daysSinceInteraction);
+			const bSafe = safeSortNumber(b.daysSinceInteraction);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.contact.entityId).localeCompare(
+				String(b.contact.entityId),
+			);
+		});
 		return results;
 	}
 
@@ -2148,6 +2215,40 @@ export class RelationshipsService extends Service {
 			return [primaryEntityId];
 		}
 		return members;
+	}
+
+	/**
+	 * Return the connected component formed only by explicitly confirmed
+	 * `identity_link` relationships. Sensitive disclosure paths use this legacy
+	 * fallback when the canonical identity-resolution authority is unavailable;
+	 * inferred same-handle matches are deliberately excluded.
+	 */
+	async getVerifiedMemberEntityIds(primaryEntityId: UUID): Promise<UUID[]> {
+		const uf = new UnionFind<UUID>([primaryEntityId]);
+		const visited = new Set<UUID>();
+		let frontier: UUID[] = [primaryEntityId];
+		while (frontier.length > 0) {
+			const pending = frontier.filter((id) => !visited.has(id));
+			if (pending.length === 0) break;
+			for (const id of pending) visited.add(id);
+			const nextFrontier = new Set<UUID>();
+			const relationships = await this.runtime.getRelationships({
+				entityIds: pending,
+			});
+			for (const relationship of relationships) {
+				if (!isConfirmedIdentityLinkLike(relationship)) continue;
+				uf.union(relationship.sourceEntityId, relationship.targetEntityId);
+				if (!visited.has(relationship.sourceEntityId)) {
+					nextFrontier.add(relationship.sourceEntityId);
+				}
+				if (!visited.has(relationship.targetEntityId)) {
+					nextFrontier.add(relationship.targetEntityId);
+				}
+			}
+			frontier = Array.from(nextFrontier);
+		}
+		const members = uf.componentOf(primaryEntityId);
+		return members.length > 0 ? members : [primaryEntityId];
 	}
 
 	/**

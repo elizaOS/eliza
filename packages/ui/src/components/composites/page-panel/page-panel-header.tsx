@@ -144,7 +144,7 @@ export function PanelNotice({
       className={cn(
         // Dense by default — callers that need air add it explicitly. The old
         // px-1 py-2 read as empty padding inside accordion/setup rows.
-        "px-0 py-0 text-sm",
+        "p-0 text-sm",
         className,
       )}
       {...props}

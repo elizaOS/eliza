@@ -201,7 +201,7 @@ describe("XService account status", () => {
     });
   });
 
-  it("reports accountId-first env capabilities without making a network call", async () => {
+  it("reports default-account env capabilities without making a network call", async () => {
     const service = serviceWithRuntime({
       TWITTER_AUTH_MODE: "env",
       TWITTER_API_KEY: "api-key",
@@ -210,12 +210,32 @@ describe("XService account status", () => {
       TWITTER_ACCESS_TOKEN_SECRET: "access-secret",
     });
 
-    await expect(service.getAccountStatus("primary")).resolves.toMatchObject({
-      accountId: "primary",
+    await expect(service.getAccountStatus("default")).resolves.toMatchObject({
+      accountId: "default",
       configured: true,
       connected: true,
       reason: "connected",
       grantedCapabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
+      authMode: "env",
+    });
+  });
+
+  it("does not leak default env credentials to an unknown explicit account", async () => {
+    const service = serviceWithRuntime({
+      TWITTER_AUTH_MODE: "env",
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET_KEY: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_TOKEN_SECRET: "access-secret",
+    });
+
+    await expect(service.getAccountStatus("secondary")).resolves.toMatchObject({
+      accountId: "secondary",
+      configured: false,
+      connected: false,
+      reason: "config_missing",
+      grantedCapabilities: [],
+      grantedScopes: [],
       authMode: "env",
     });
   });
@@ -228,10 +248,8 @@ describe("XService account status", () => {
       TWITTER_SCOPES: "tweet.read users.read dm.read",
     });
 
-    await expect(
-      service.getAccountStatus("oauth-account"),
-    ).resolves.toMatchObject({
-      accountId: "oauth-account",
+    await expect(service.getAccountStatus("default")).resolves.toMatchObject({
+      accountId: "default",
       configured: true,
       connected: true,
       grantedCapabilities: ["x.read", "x.dm.read"],
@@ -494,6 +512,86 @@ describe("XService trusted account routing", () => {
 
     expect(createPost).toHaveBeenCalledWith(
       expect.objectContaining({ quotedPostId: "source-post-1" }),
+      profile,
+    );
+  });
+
+  it("rejects CJK text that exceeds the X weighted 280 cap before egress", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const getClient = vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    );
+
+    await expect(
+      service.handleSendPost(runtime, {
+        text: "你".repeat(141),
+      } as Content),
+    ).rejects.toMatchObject({
+      code: "X_POST_LENGTH_EXCEEDED",
+      context: { weightedLength: 282, maxWeightedLength: 280 },
+    });
+    expect(getClient).not.toHaveBeenCalled();
+  });
+
+  it("admits 140 CJK characters and 280 Latin characters", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const profile = {
+      id: "account-owner",
+      username: "account-owner",
+      screenName: "Account Owner",
+      bio: "",
+      nicknames: [],
+    };
+    const base = {
+      profile,
+      withAuthenticatedSession: async <T>(
+        operation: (session: {
+          client: never;
+          profile: typeof profile;
+          revision: number;
+        }) => Promise<T>,
+      ) => operation({ client: {} as never, profile, revision: 1 }),
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+    const createPost = vi
+      .spyOn(TwitterPostService.prototype, "createPost")
+      .mockResolvedValue({
+        id: "post-cjk",
+        agentId: runtime.agentId,
+        roomId: "room-1" as never,
+        userId: "account-owner",
+        username: "account-owner",
+        text: "ok",
+        timestamp: 1,
+      });
+
+    createPost.mockClear();
+    await service.handleSendPost(runtime, {
+      text: "你".repeat(140),
+    } as Content);
+    await service.handleSendPost(runtime, {
+      text: "a".repeat(280),
+    } as Content);
+
+    expect(createPost).toHaveBeenCalledTimes(2);
+    expect(createPost).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ text: "你".repeat(140) }),
+      profile,
+    );
+    expect(createPost).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ text: "a".repeat(280) }),
       profile,
     );
   });

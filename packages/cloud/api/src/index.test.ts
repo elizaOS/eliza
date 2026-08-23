@@ -12,6 +12,7 @@ import cloudApiWorker, {
   isInternalDiscordGatewayPath,
   isThinInferenceEnabled,
   isThinStewardEmailAuthPath,
+  isThinStewardPasskeyLoginOptionsPath,
   isThinStewardPath,
   isThinStewardPublicPath,
   isUnsupportedLegacyWildcardHostname,
@@ -402,18 +403,41 @@ describe("thin Steward public path dispatch (#18049)", () => {
     expect(isThinStewardPublicPath("/api/v1/oauth/providers")).toBe(false);
   });
 
-  test("POST Magic Link email legs are thin-eligible; other mutations are not", () => {
+  test("only exact pre-auth email and passkey-bootstrap POSTs are thin-eligible", () => {
     expect(isThinStewardEmailAuthPath("/steward/auth/email/send")).toBe(true);
     expect(isThinStewardEmailAuthPath("/steward/auth/email/code/verify")).toBe(
       true,
     );
     expect(isThinStewardEmailAuthPath("/steward/auth/email/status")).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/otp/send")).toBe(
+      true,
+    );
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/otp/verify")).toBe(
+      true,
+    );
+    expect(
+      isThinStewardPasskeyLoginOptionsPath(
+        "/steward/auth/passkey/login/options",
+      ),
+    ).toBe(true);
     expect(isThinStewardEmailAuthPath("/steward/vault/keys")).toBe(false);
     expect(isThinStewardPath("POST", "/steward/auth/email/send")).toBe(true);
+    expect(
+      isThinStewardPath("POST", "/steward/auth/passkey/login/options"),
+    ).toBe(true);
+    expect(
+      isThinStewardPath("POST", "/steward/auth/passkey/login/verify"),
+    ).toBe(false);
+    expect(
+      isThinStewardPath("POST", "/steward/auth/passkey/register/options"),
+    ).toBe(false);
     expect(isThinStewardPath("POST", "/steward/auth/providers")).toBe(false);
     expect(isThinStewardPath("GET", "/steward/auth/email/send")).toBe(false);
     expect(isThinStewardPath("DELETE", "/steward/auth/email/send")).toBe(false);
     expect(isThinStewardPath("OPTIONS", "/steward/auth/email/send")).toBe(true);
+    expect(
+      isThinStewardPath("OPTIONS", "/steward/auth/passkey/login/options"),
+    ).toBe(true);
   });
 
   test("dispatches POST /steward/auth/email/send through the thin shell", async () => {
@@ -462,6 +486,99 @@ describe("thin Steward public path dispatch (#18049)", () => {
     }
   });
 
+  test.each([
+    [
+      "/steward/auth/passkey/login/options",
+      404,
+      { email: "new-user@example.com" },
+    ],
+    ["/steward/auth/email/otp/send", 200, { email: "new-user@example.com" }],
+    [
+      "/steward/auth/email/otp/verify",
+      200,
+      { email: "new-user@example.com", code: "123456" },
+    ],
+  ] as const)(
+    "dispatches POST %s through the thin shell with thin telemetry",
+    async (path, upstreamStatus, requestBody) => {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        expect(url).toBe(
+          `https://steward.example.test${path.slice("/steward".length)}`,
+        );
+        return Response.json(
+          upstreamStatus === 404
+            ? {
+                success: false,
+                error: "Passkey authentication is unavailable",
+              }
+            : { ok: true, data: { accepted: true } },
+          { status: upstreamStatus },
+        );
+      }) as unknown as typeof fetch;
+
+      try {
+        const response = await cloudApiWorker.fetch(
+          new Request(`https://api.eliza.app${path}`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              origin: "https://cloud.eliza.app",
+            },
+            body: JSON.stringify(requestBody),
+          }),
+          stewardEnv,
+          executionCtx,
+        );
+
+        expect(response.status).toBe(upstreamStatus);
+        expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+        expect(response.headers.get("server-timing")).toMatch(
+          /entry_dispatch;dur=\d+(?:\.\d+)?/,
+        );
+        expect(response.headers.get("server-timing")).not.toContain(
+          "full_app_dispatch",
+        );
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    },
+  );
+
+  test.each([
+    "/steward/auth/passkey/login/options",
+    "/steward/auth/email/otp/send",
+    "/steward/auth/email/otp/verify",
+  ])("dispatches OPTIONS %s through the thin shell", async (path) => {
+    const response = await cloudApiWorker.fetch(
+      new Request(`https://api.eliza.app${path}`, {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://cloud.eliza.app",
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "content-type",
+        },
+      }),
+      stewardEnv,
+      executionCtx,
+    );
+
+    expect(response.status).toBeLessThan(500);
+    expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://cloud.eliza.app",
+    );
+    expect(response.headers.get("server-timing")).toContain("entry_dispatch");
+    expect(response.headers.get("server-timing")).not.toContain(
+      "full_app_dispatch",
+    );
+  });
+
   test("dispatches GET /steward/auth/providers through the thin shell", async () => {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url =
@@ -481,6 +598,7 @@ describe("thin Steward public path dispatch (#18049)", () => {
           google: false,
           discord: false,
           github: false,
+          twitter: false,
           oauth: [],
         },
       });
@@ -553,7 +671,12 @@ describe("thin Steward public path dispatch (#18049)", () => {
         data: {
           passkey: true,
           email: true,
+          siwe: false,
+          siws: false,
           google: false,
+          discord: false,
+          github: false,
+          twitter: false,
           oauth: [],
         },
       });
@@ -996,6 +1119,36 @@ describe("cloud-api worker entrypoint", () => {
       personalSharedTelegramEdge: { enabled: false },
       schemaCompatibility: { usageQuotasTombstone: true },
     });
+  });
+
+  test("exposes an E2E run receipt only inside the explicit local test gate", async () => {
+    const request = new Request("http://127.0.0.1:8787/api/health", {
+      headers: { host: "127.0.0.1:8787" },
+    });
+    const testResponse = await cloudApiWorker.fetch(
+      request,
+      {
+        NODE_ENV: "test",
+        CLOUD_E2E: "1",
+        CLOUD_E2E_RUN_RECEIPT: "run-receipt-1",
+      } as never,
+      {} as never,
+    );
+    expect(await testResponse.json()).toMatchObject({
+      status: "ok",
+      e2eRunReceipt: "run-receipt-1",
+    });
+
+    const productionResponse = await cloudApiWorker.fetch(
+      request,
+      {
+        NODE_ENV: "production",
+        CLOUD_E2E: "1",
+        CLOUD_E2E_RUN_RECEIPT: "must-not-leak",
+      } as never,
+      {} as never,
+    );
+    expect(await productionResponse.text()).not.toContain("must-not-leak");
   });
 
   test("reports only the served Personal Shared Telegram edge gate state", async () => {

@@ -16,6 +16,7 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { toPaymentRequestDto } from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -52,7 +53,7 @@ app.post("/", async (c) => {
 
     return c.json({
       success: true,
-      paymentRequest: after,
+      paymentRequest: toPaymentRequestDto(after),
       expired: wasExpired,
     });
   } catch (error) {

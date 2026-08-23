@@ -93,11 +93,11 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
         {...props}
       >
         {resolvedVariant === "processing" ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <Loader2 className="size-3 animate-spin" />
         ) : icon ? (
           <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
         ) : showDot ? (
-          <span className="relative flex h-2 w-2">
+          <span className="relative flex  size-2">
             {pulse && (
               <span
                 className={cn(
@@ -108,7 +108,7 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
             )}
             <span
               className={cn(
-                "relative inline-flex h-2 w-2 rounded-full",
+                "relative inline-flex size-2 rounded-full",
                 statusDotClasses(resolvedVariant),
               )}
             />
@@ -145,7 +145,7 @@ export const StatusDot = React.forwardRef<HTMLSpanElement, StatusDotProps>(
       <span
         ref={ref}
         className={cn(
-          "inline-block h-2 w-2 rounded-full",
+          "inline-block size-2 rounded-full",
           statusDotClasses(variant),
           className,
         )}

@@ -10,13 +10,16 @@ import {
   StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
+import { client } from "../../api";
 import {
   removeManagedSharedCloudAgentProfiles,
   scrubPersistedAgentProfileTokens,
 } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { clearSharedCloudAccountBinding } from "../../state/shared-cloud-account-binding";
+import { clearElizaApiToken } from "../../utils/eliza-globals";
 import { decodeJwtPayload } from "../lib/jwt";
+import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
 
 export function isPlaceholderValue(value: string | undefined): boolean {
@@ -121,6 +124,9 @@ function stewardSessionClearUrls(): string[] {
 }
 
 export function clearServerStewardSessionCookies(): void {
+  // Invalidate before issuing any best-effort DELETE: a rejected request must
+  // never leave a proof that can suppress a later session-establishing POST.
+  invalidateStewardServerCookieSyncMarker();
   for (const url of stewardSessionClearUrls()) {
     // error-policy:J6 best-effort sign-out cookie clear across session hosts;
     // the local token is already cleared and an expired cookie self-heals.
@@ -161,6 +167,10 @@ export function tokenSecsRemaining(token: string): number | null {
 
 export async function clearStaleStewardSession(): Promise<void> {
   if (typeof window === "undefined") return;
+  // This is deliberately before protected-storage removal. That operation can
+  // reject and abort the rest of teardown, but an attempted session clear must
+  // still retire any unconsumed proof from the previous authority epoch.
+  invalidateStewardServerCookieSyncMarker();
   let storedTokenClearError: unknown;
   try {
     await clearStoredStewardToken();
@@ -171,6 +181,14 @@ export async function clearStaleStewardSession(): Promise<void> {
     // then rethrow the original storage error with its stack intact.
     storedTokenClearError = error;
   }
+  // `ElizaClient` mirrors its live bearer into boot config, while native and
+  // desktop hosts can independently inject the same owner key through the
+  // window-scoped API token. Both are canonical request-authority sources and
+  // must end in the same teardown transaction as the Steward JWT. Clearing
+  // only persisted profiles would leave the running renderer authenticated
+  // until reload (and native Cloud calls could keep using the injected key).
+  client.setToken(null);
+  clearElizaApiToken();
   // Every shared-agent profile belongs to the ending Steward account, even
   // when a dedicated or self-hosted target happens to be active at sign-out.
   removeManagedSharedCloudAgentProfiles();

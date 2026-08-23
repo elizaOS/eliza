@@ -111,14 +111,14 @@ const accentGradientStyle = {
   background:
     "linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%) 0%, var(--accent) 100%)",
   color: "var(--accent-foreground)",
-  borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.5)",
+  borderColor: "rgba(var(--accent-rgb), 0.5)",
 } as const;
 
 const idleSaveBtnStyle = {
   background:
-    "linear-gradient(180deg, rgba(var(--accent-rgb,240,185,11),0.16) 0%, rgba(var(--accent-rgb,240,185,11),0.1) 100%)",
-  color: "rgba(var(--accent-rgb, 240, 185, 11), 0.78)",
-  borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.22)",
+    "linear-gradient(180deg, rgba(var(--accent-rgb),0.16) 0%, rgba(var(--accent-rgb),0.1) 100%)",
+  color: "rgba(var(--accent-rgb), 0.78)",
+  borderColor: "rgba(var(--accent-rgb), 0.22)",
 } as const;
 
 /* ── Constants ─────────────────────────────────────────────────────── */
@@ -1128,7 +1128,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-sm"
+        className="size-9 rounded-sm"
         onActivate={() => document.getElementById(uploadInputId)?.click()}
         onClick={() => document.getElementById(uploadInputId)?.click()}
         title={t("aria.upload", {
@@ -1138,7 +1138,7 @@ export function CharacterEditor({
           defaultValue: "Upload VRM",
         })}
       >
-        <UploadIcon className="h-4 w-4" />
+        <UploadIcon className="size-4" />
       </CharacterAgentButton>
       <CharacterAgentButton
         agentId="action-export-json"
@@ -1150,7 +1150,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-sm"
+        className="size-9 rounded-sm"
         onActivate={handleExportCharacter}
         onClick={handleExportCharacter}
         disabled={!currentCharacter}
@@ -1161,7 +1161,7 @@ export function CharacterEditor({
           defaultValue: "Export JSON",
         })}
       >
-        <DownloadIcon className="h-4 w-4" />
+        <DownloadIcon className="size-4" />
       </CharacterAgentButton>
       <CharacterAgentButton
         agentId="action-reset"

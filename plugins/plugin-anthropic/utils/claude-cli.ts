@@ -7,7 +7,13 @@
  * `tools`, `toolChoice`, or `responseSchema`.
  */
 import type { IAgentRuntime, ModelTypeName, TextStreamResult } from "@elizaos/core";
-import { buildCanonicalSystemPrompt, ElizaError, logger } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  ElizaError,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { emitModelUsageEvent } from "./events";
 
 interface ClaudeCliModelUsage {
@@ -263,7 +269,9 @@ export async function generateViaCli(
   const { output, stderr, exitCode } = await collectClaudeCliOutput(proc);
 
   if (exitCode !== 0) {
-    throw new Error(`[Anthropic CLI] claude -p failed (exit ${exitCode}): ${stderr.slice(0, 500)}`);
+    throw new Error(
+      `[Anthropic CLI] claude -p failed (exit ${exitCode}): ${truncateWellFormed(toWellFormedUnicode(stderr), 500)}`
+    );
   }
 
   let data: ClaudeCliResult;
@@ -272,9 +280,12 @@ export async function generateViaCli(
   } catch (error) {
     // error-policy:J2 context-adding rethrow — surface the raw CLI output that
     // failed to parse, with the parse error as cause.
-    throw new Error(`[Anthropic CLI] Failed to parse JSON. Raw: ${output.slice(0, 500)}`, {
-      cause: error,
-    });
+    throw new Error(
+      `[Anthropic CLI] Failed to parse JSON. Raw: ${truncateWellFormed(toWellFormedUnicode(output), 500)}`,
+      {
+        cause: error,
+      }
+    );
   }
 
   logger.debug(
@@ -456,7 +467,7 @@ export function streamViaCli(
         const settledStderr = await stderrOutcome;
         const stderrText = settledStderr.ok ? settledStderr.value : "";
         throw new Error(
-          `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${stderrText.slice(0, 500)}`
+          `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${truncateWellFormed(toWellFormedUnicode(stderrText), 500)}`
         );
       }
     } catch (error) {

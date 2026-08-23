@@ -89,10 +89,7 @@ function placeMapUris(place: MapsCardPlace): {
 function AttributionLine({ attribution }: { attribution: string | null }) {
   if (!attribution) return null;
   return (
-    <div
-      className="pt-0.5 text-3xs text-muted"
-      data-testid="maps-attribution"
-    >
+    <div className="pt-0.5 text-3xs text-muted" data-testid="maps-attribution">
       {attribution}
     </div>
   );
@@ -110,7 +107,7 @@ function PlaceRow({
   const uris = placeMapUris(place);
   return (
     <div className="flex min-w-0 items-start gap-2 py-1">
-      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
+      <MapPin className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{place.name}</div>
         {place.formattedAddress ? (
@@ -141,7 +138,7 @@ function PlaceRow({
             )
           }
         >
-          <Route className="h-3.5 w-3.5" aria-hidden />
+          <Route className="size-3.5" aria-hidden />
           Directions
         </Button>
         <a
@@ -196,7 +193,7 @@ function LocateCard({
   return (
     <div className="my-2 space-y-2 text-sm" data-testid="maps-locate">
       <div className="flex items-center gap-2">
-        <Crosshair className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+        <Crosshair className="size-4 shrink-0 text-accent" aria-hidden />
         <span className="min-w-0 flex-1">{prompt}</span>
       </div>
       {status === "idle" ? (
@@ -206,7 +203,7 @@ function LocateCard({
           data-testid="maps-locate-start"
           onClick={locate}
         >
-          <Crosshair className="h-3.5 w-3.5" aria-hidden />
+          <Crosshair className="size-3.5" aria-hidden />
           Share precise location
         </Button>
       ) : null}
@@ -215,7 +212,7 @@ function LocateCard({
           className="inline-flex items-center gap-1.5 text-xs text-muted"
           data-testid="maps-locate-locating"
         >
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
           Getting your precise location…
         </span>
       ) : null}
@@ -224,7 +221,7 @@ function LocateCard({
           className="inline-flex items-center gap-1.5 text-xs text-muted"
           data-testid="maps-locate-sent"
         >
-          <Check className="h-3.5 w-3.5 text-accent" aria-hidden />
+          <Check className="size-3.5 text-accent" aria-hidden />
           Location shared with the agent.
         </span>
       ) : null}
@@ -279,7 +276,7 @@ function HandoffCard({
   return (
     <div className="my-2 space-y-2 text-sm" data-testid="maps-handoff">
       <div className="flex min-w-0 items-center gap-2">
-        <Navigation className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+        <Navigation className="size-4 shrink-0 text-accent" aria-hidden />
         <span className="min-w-0 flex-1 truncate font-medium">
           {isShare
             ? `Share ${card.place.name}`
@@ -294,7 +291,7 @@ function HandoffCard({
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm" data-testid="maps-handoff-open">
           <a href={primary} target="_blank" rel="noreferrer">
-            <Navigation className="h-3.5 w-3.5" aria-hidden />
+            <Navigation className="size-3.5" aria-hidden />
             {isShare ? "Open map" : "Start navigation"}
           </a>
         </Button>
@@ -308,9 +305,9 @@ function HandoffCard({
             onClick={copy}
           >
             {copied ? (
-              <Check className="h-3.5 w-3.5" aria-hidden />
+              <Check className="size-3.5" aria-hidden />
             ) : (
-              <Copy className="h-3.5 w-3.5" aria-hidden />
+              <Copy className="size-3.5" aria-hidden />
             )}
             {copied ? "Copied" : "Copy link"}
           </Button>
@@ -380,7 +377,7 @@ export function MapsCardWidget({
           </div>
           {card.nextCursor ? (
             <div className="pt-1 text-xs text-muted" data-testid="maps-more">
-              More results are available — ask for the next page.
+              More results are available. Ask for the next page.
             </div>
           ) : null}
           <AttributionLine attribution={card.attribution} />
@@ -391,7 +388,7 @@ export function MapsCardWidget({
       return (
         <div className="my-2 space-y-1 text-sm" data-testid="maps-route">
           <div className="flex min-w-0 items-center gap-2">
-            <Route className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+            <Route className="size-4 shrink-0 text-accent" aria-hidden />
             <span className="min-w-0 flex-1 truncate font-medium">
               {card.origin.name} → {card.destination.name}
             </span>

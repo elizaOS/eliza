@@ -13,6 +13,7 @@ import {
   type BrowserBridgeCompanionPairingResponse,
   type BrowserBridgeCompanionPreflightRequest,
   type BrowserBridgeCompanionPreflightResponse,
+  type BrowserBridgeCompanionRevocationResetResponse,
   type BrowserBridgeCompanionRevokeResponse,
   type BrowserBridgeCompanionSessionBeginRequest,
   type BrowserBridgeCompanionSessionProgressRequest,
@@ -62,7 +63,6 @@ import {
   normalizePageForms,
   normalizePageHeadings,
   normalizePageLinks,
-  normalizePendingBrowserPairingTokenHashes,
   redactSecretLikeText,
   resolveAwaitingBrowserActionId,
   selectRememberedBrowserTabs,
@@ -347,6 +347,21 @@ export class BrowserDomain {
       this.ctx.agentId(),
       requireNonEmptyString(companionId, "companionId"),
     );
+    if (
+      credential &&
+      (await this.ctx.repository.getBrowserCompanionRevocation(
+        this.ctx.agentId(),
+        this.ctx.ownerEntityId(),
+        credential.companion.browser,
+        credential.companion.profileId,
+      ))
+    ) {
+      fail(
+        401,
+        "Browser companion pairing token was revoked",
+        "browser_bridge_companion_token_revoked",
+      );
+    }
     const pairingTokenHash = hashBrowserCompanionPairingToken(pairingToken);
     const auth = authenticateBrowserBridgeCompanionCredential({
       credential,
@@ -365,38 +380,27 @@ export class BrowserDomain {
       return credential.companion;
     }
     const nowIso = new Date().toISOString();
-    const remainingPendingPairingTokens =
-      normalizePendingBrowserPairingTokenHashes(
-        auth.remainingPendingPairingTokens.map((candidate) => candidate.hash),
+    const promotion =
+      await this.ctx.repository.promoteBrowserCompanionPendingPairingToken({
+        agentId: this.ctx.agentId(),
+        ownerEntityId: this.ctx.ownerEntityId(),
+        companionId: credential.companion.id,
         pairingTokenHash,
-      ).map((hash) => {
-        const previous = auth.remainingPendingPairingTokens.find(
-          (candidate) => candidate.hash === hash,
-        );
-        return {
-          hash,
-          expiresAt: previous?.expiresAt ?? null,
-        };
+        pairedAt: nowIso,
+        updatedAt: nowIso,
       });
-    const expiresAt =
-      auth.expiresAt ??
-      resolveBrowserBridgeCompanionPairingTokenExpiresAt(nowMs);
-    await this.ctx.repository.promoteBrowserCompanionPendingPairingToken(
-      this.ctx.agentId(),
-      credential.companion.id,
-      pairingTokenHash,
-      remainingPendingPairingTokens,
-      expiresAt,
-      nowIso,
-      nowIso,
-    );
-    return {
-      ...credential.companion,
-      pairingTokenExpiresAt: expiresAt,
-      pairingTokenRevokedAt: null,
-      pairedAt: nowIso,
-      updatedAt: nowIso,
-    };
+    if (!promotion.ok) {
+      fail(
+        401,
+        promotion.reason === "revoked"
+          ? "Browser companion pairing token was revoked"
+          : "Browser companion pairing token is invalid",
+        promotion.reason === "revoked"
+          ? "browser_bridge_companion_token_revoked"
+          : "browser_bridge_companion_token_invalid",
+      );
+    }
+    return promotion.companion;
   }
 
   public async claimQueuedBrowserSession(
@@ -932,6 +936,24 @@ export class BrowserDomain {
       BROWSER_BRIDGE_KINDS,
     );
     const profileId = requireNonEmptyString(request.profileId, "profileId");
+    const pairingKind = normalizeEnumValue(
+      request.pairingKind ?? "manual",
+      "pairingKind",
+      ["manual", "native_enrollment"] as const,
+    );
+    const revocation = await this.ctx.repository.getBrowserCompanionRevocation(
+      this.ctx.agentId(),
+      this.ctx.ownerEntityId(),
+      browser,
+      profileId,
+    );
+    if (revocation) {
+      fail(
+        409,
+        "Browser companion enrollment was revoked. Reset this browser profile in Eliza before reconnecting.",
+        "revoked",
+      );
+    }
     const currentCompanion =
       await this.ctx.repository.getBrowserCompanionByProfile(
         this.ctx.agentId(),
@@ -967,7 +989,11 @@ export class BrowserDomain {
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
     const pairingTokenExpiresAt =
-      resolveBrowserBridgeCompanionPairingTokenExpiresAt(nowMs);
+      resolveBrowserBridgeCompanionPairingTokenExpiresAt(
+        nowMs,
+        undefined,
+        pairingKind,
+      );
     const credential = await this.ctx.repository.getBrowserCompanionCredential(
       this.ctx.agentId(),
       companion.id,
@@ -977,37 +1003,46 @@ export class BrowserDomain {
       Boolean(credential.companion.pairingTokenRevokedAt) ||
       isoTimestampExpired(credential.companion.pairingTokenExpiresAt, nowMs);
     if (replaceActiveToken) {
-      await this.ctx.repository.updateBrowserCompanionPairingToken(
-        this.ctx.agentId(),
-        companion.id,
-        pairingTokenHash,
-        pairingTokenExpiresAt,
-        nowIso,
-        nowIso,
-      );
-    } else {
-      const existingPendingPairingTokens = credential.pendingPairingTokens;
-      const pendingPairingTokens = normalizePendingBrowserPairingTokenHashes(
-        [
+      const updated =
+        await this.ctx.repository.updateBrowserCompanionPairingToken({
+          agentId: this.ctx.agentId(),
+          ownerEntityId: this.ctx.ownerEntityId(),
+          companionId: companion.id,
+          browser,
+          profileId,
           pairingTokenHash,
-          ...existingPendingPairingTokens.map((candidate) => candidate.hash),
-        ],
-        credential.pairingTokenHash,
-      ).map((hash) => {
-        if (hash === pairingTokenHash) {
-          return { hash, expiresAt: pairingTokenExpiresAt };
-        }
-        const previous = existingPendingPairingTokens.find(
-          (candidate) => candidate.hash === hash,
+          pairingTokenExpiresAt,
+          pairedAt: nowIso,
+          updatedAt: nowIso,
+        });
+      if (!updated) {
+        fail(
+          409,
+          "Browser companion enrollment was revoked. Reset this browser profile in Eliza before reconnecting.",
+          "revoked",
         );
-        return { hash, expiresAt: previous?.expiresAt ?? null };
-      });
-      await this.ctx.repository.updateBrowserCompanionPendingPairingTokenHashes(
-        this.ctx.agentId(),
-        companion.id,
-        pendingPairingTokens,
-        nowIso,
-      );
+      }
+    } else {
+      const updated =
+        await this.ctx.repository.updateBrowserCompanionPendingPairingTokenHashes(
+          {
+            agentId: this.ctx.agentId(),
+            ownerEntityId: this.ctx.ownerEntityId(),
+            companionId: companion.id,
+            browser,
+            profileId,
+            pairingTokenHash,
+            pairingTokenExpiresAt,
+            updatedAt: nowIso,
+          },
+        );
+      if (!updated) {
+        fail(
+          409,
+          "Browser companion enrollment was revoked. Reset this browser profile in Eliza before reconnecting.",
+          "revoked",
+        );
+      }
     }
     return {
       companion: {
@@ -1045,11 +1080,12 @@ export class BrowserDomain {
       fail(404, "browser companion not found");
     }
     const revokedAt = new Date().toISOString();
-    await this.ctx.repository.revokeBrowserCompanionPairingToken(
-      this.ctx.agentId(),
-      normalizedCompanionId,
+    await this.ctx.repository.revokeBrowserCompanionWithTombstone({
+      agentId: this.ctx.agentId(),
+      ownerEntityId: this.ctx.ownerEntityId(),
+      companion: credential.companion,
       revokedAt,
-    );
+    });
     return {
       companion: {
         ...credential.companion,
@@ -1058,6 +1094,42 @@ export class BrowserDomain {
         updatedAt: revokedAt,
       },
       revokedAt,
+    };
+  }
+
+  async resetBrowserCompanionRevocation(
+    companionId: string,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse> {
+    const normalizedCompanionId = requireNonEmptyString(
+      companionId,
+      "companionId",
+    );
+    const credential = await this.ctx.repository.getBrowserCompanionCredential(
+      this.ctx.agentId(),
+      normalizedCompanionId,
+    );
+    if (!credential) {
+      fail(404, "browser companion not found");
+    }
+    const resetAt = new Date().toISOString();
+    const reset = await this.ctx.repository.resetBrowserCompanionRevocation({
+      agentId: this.ctx.agentId(),
+      ownerEntityId: this.ctx.ownerEntityId(),
+      companion: credential.companion,
+      resetAt,
+    });
+    if (!reset) {
+      fail(409, "browser companion is not revoked");
+    }
+    return {
+      companion: {
+        ...credential.companion,
+        connectionState: "disconnected",
+        pairingTokenExpiresAt: null,
+        pairingTokenRevokedAt: null,
+        updatedAt: resetAt,
+      },
+      resetAt,
     };
   }
 
@@ -1580,8 +1652,8 @@ export class BrowserDomain {
         sessionId: session.id,
         companion,
         expectedActionIndex: session.currentActionIndex,
-        completedActionId,
-        attemptId,
+        completedActionId: completedActionId ?? null,
+        attemptId: attemptId ?? null,
         currentActionIndex,
         resultPatch: lifecycle.result,
         metadataPatch: receiptMetadata,
@@ -1700,8 +1772,8 @@ export class BrowserDomain {
         companion,
         status,
         expectedActionIndex: currentActionIndex,
-        completedActionId,
-        attemptId,
+        completedActionId: completedActionId ?? null,
+        attemptId: attemptId ?? null,
         resultPatch: lifecycle.result,
         updatedAt,
       });

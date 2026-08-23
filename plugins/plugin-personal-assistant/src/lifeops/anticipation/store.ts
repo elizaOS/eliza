@@ -23,6 +23,8 @@ import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
 import { asCacheRuntime } from "../runtime-cache.js";
 
 export const MARKER_RETENTION_HOURS = 24;
+export const MARKER_RING_BOUND = 8;
+export const STATS_RECENT_BOUND = 20;
 
 const STATS_CACHE_KEY = "eliza:lifeops:anticipation:stats:v1";
 
@@ -91,7 +93,7 @@ function normalizeMarkers(value: unknown): ProactiveDispatchMarker[] {
       snippet: typeof entry.snippet === "string" ? entry.snippet : "",
     });
   }
-  return markers;
+  return markers.slice(-MARKER_RING_BOUND);
 }
 
 function nonNegativeCount(value: unknown): number {
@@ -131,6 +133,7 @@ function normalizeStats(value: unknown, now: Date): AnticipationStats {
       });
     }
   }
+  base.recent = base.recent.slice(-STATS_RECENT_BOUND);
   return base;
 }
 
@@ -140,8 +143,19 @@ function liveMarkers(
 ): ProactiveDispatchMarker[] {
   const cutoffMs = now.getTime() - MARKER_RETENTION_HOURS * 3_600_000;
   return markers
-    .filter((marker) => Date.parse(marker.firedAt) >= cutoffMs)
-    .sort((a, b) => Date.parse(a.firedAt) - Date.parse(b.firedAt));
+    .filter((marker) => {
+      const firedMs = Date.parse(marker.firedAt);
+      return Number.isFinite(firedMs) && firedMs >= cutoffMs;
+    })
+    .sort((a, b) => {
+      const aTime = Number.isFinite(Date.parse(a.firedAt))
+        ? Date.parse(a.firedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.firedAt))
+        ? Date.parse(b.firedAt)
+        : 0;
+      return aTime - bTime;
+    });
 }
 
 /**

@@ -51,7 +51,7 @@ export const searchMessagesAction: Action = {
 		{
 			name: "sources",
 			description:
-				"Optional message sources to search, such as email, slack, discord, imessage, signal, whatsapp, telegram, or x.",
+				"Optional message sources to search, such as email, slack, discord, imessage, whatsapp, telegram, or x.",
 			required: false,
 			schema: {
 				type: "array" as const,

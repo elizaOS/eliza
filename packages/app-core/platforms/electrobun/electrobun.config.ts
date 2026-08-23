@@ -4,8 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ElectrobunConfig } from "electrobun/bun";
+import { resolveAppleTeamId } from "./src/native/browser-bridge-mac-signing";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
+const PRODUCTION_CLOUD_API_ORIGIN = "https://api.eliza.app";
+const STAGING_CLOUD_ORIGIN = "https://staging.eliza.app";
+const STAGING_CLOUD_API_ORIGIN = "https://api-staging.eliza.app";
 
 function chromiumFlags(
   flags: Record<string, string | boolean>,
@@ -82,6 +86,17 @@ function linuxCefChromiumFlags(): Record<string, string | true> {
     "disable-accelerated-video-encode": false,
     "disable-gpu-memory-buffer-video-frames": false,
   });
+}
+
+export function resolveLinuxRenderer(
+  env: Record<string, string | undefined> = process.env,
+): "native" | "cef" {
+  const requested = env.ELIZA_ELECTROBUN_LINUX_RENDERER?.trim().toLowerCase();
+  if (!requested || requested === "cef") return "cef";
+  if (requested === "native") return "native";
+  throw new Error(
+    `ELIZA_ELECTROBUN_LINUX_RENDERER must be "native" or "cef", received: ${requested}`,
+  );
 }
 
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
@@ -425,7 +440,16 @@ export function resolveElectrobunCopyMap({
     "assets/appIcon.png": "assets/appIcon.png",
     "assets/appIcon.ico": "assets/appIcon.ico",
     "assets/trayIconTemplate.png": "assets/trayIconTemplate.png",
+    [`build/browser-bridge-native-host${process.platform === "win32" ? ".exe" : ""}`]: `browser-bridge-native-host${process.platform === "win32" ? ".exe" : ""}`,
+    "build/browser-bridge-release.json": "browser-bridge-release.json",
+    "scripts/browser-bridge-pipe-host.ps1": "browser-bridge-pipe-host.ps1",
+    "scripts/browser-bridge-secret.ps1": "browser-bridge-secret.ps1",
   };
+  if (process.platform === "darwin" && resolveAppleTeamId(process.env)) {
+    copy["build/browser-bridge-signing.json"] = "browser-bridge-signing.json";
+    copy["build/browser-bridge.provisionprofile"] =
+      "browser-bridge.provisionprofile";
+  }
 
   if (buildVariant !== "store" && embedRuntime) {
     // The runtime bundle dist is produced by the build pipeline before
@@ -468,6 +492,10 @@ function resolveBrandConfigCopySource({
   const namespace = trimEnv("ELIZA_NAMESPACE");
   const appDescription = trimEnv("ELIZA_APP_DESCRIPTION");
   const cloudOnly = isTruthyEnv(process.env.ELIZA_DESKTOP_CLOUD_ONLY);
+  const cloudEnvironment =
+    trimEnv("VITE_ELIZA_CLOUD_BASE") === STAGING_CLOUD_ORIGIN
+      ? "staging"
+      : "production";
   const hasBrandOverride = Boolean(
     explicitConfigPath ||
       trimEnv("ELIZA_APP_NAME") ||
@@ -500,6 +528,14 @@ function resolveBrandConfigCopySource({
     buildVariant:
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
     ...(cloudOnly ? { cloudOnly: true } : {}),
+    ...(cloudOnly
+      ? {
+          cloudApiBase:
+            cloudEnvironment === "staging"
+              ? STAGING_CLOUD_API_ORIGIN
+              : PRODUCTION_CLOUD_API_ORIGIN,
+        }
+      : {}),
     namespace: namespace || fileConfig.namespace || "elizaos",
     configDirName,
     ...(appDescription
@@ -530,6 +566,21 @@ export function createElectrobunConfig(): ElectrobunConfig {
   const buildVariant: "store" | "direct" =
     process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
   const embedRuntime = shouldEmbedRuntimeBundle(process.env);
+  const linuxRenderer = resolveLinuxRenderer(process.env);
+  const appleTeamId = resolveAppleTeamId(process.env);
+  const browserBridgeAppGroup = appleTeamId
+    ? "group.ai.elizaos.browserbridge"
+    : null;
+  const storeEntitlements = parseEntitlementsPlist(
+    path.join(electrobunDir, "entitlements/mas.entitlements"),
+  );
+  if (browserBridgeAppGroup) {
+    storeEntitlements["com.apple.security.application-groups"] = [
+      browserBridgeAppGroup,
+    ];
+  } else {
+    delete storeEntitlements["com.apple.security.application-groups"];
+  }
   const brandConfigCopySource = resolveBrandConfigCopySource({
     appName,
     appId,
@@ -644,9 +695,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
         // for productbuild).
         entitlements:
           buildVariant === "store"
-            ? parseEntitlementsPlist(
-                path.join(electrobunDir, "entitlements/mas.entitlements"),
-              )
+            ? storeEntitlements
             : {
                 "com.apple.security.cs.allow-jit": true,
                 "com.apple.security.cs.allow-unsigned-executable-memory": true,
@@ -660,6 +709,13 @@ export function createElectrobunConfig(): ElectrobunConfig {
                 "com.apple.security.personal-information.addressbook": true,
                 "com.apple.security.personal-information.calendars": true,
                 "com.apple.security.automation.apple-events": true,
+                ...(browserBridgeAppGroup
+                  ? {
+                      "com.apple.security.application-groups": [
+                        browserBridgeAppGroup,
+                      ],
+                    }
+                  : {}),
               },
       },
       linux: {
@@ -667,11 +723,13 @@ export function createElectrobunConfig(): ElectrobunConfig {
         // failing to composite any pixels, leaving a solid white client area.
         // Bundle Chromium so Linux uses the same renderer that paints the
         // packaged first-run page correctly outside the native GTK webview.
-        bundleCEF: true,
+        bundleCEF: linuxRenderer === "cef",
         bundleWGPU: true,
-        defaultRenderer: "cef",
+        defaultRenderer: linuxRenderer,
         icon: "assets/appIcon.png",
-        chromiumFlags: linuxCefChromiumFlags(),
+        ...(linuxRenderer === "cef"
+          ? { chromiumFlags: linuxCefChromiumFlags() }
+          : {}),
       },
       win: {
         bundleCEF: true,

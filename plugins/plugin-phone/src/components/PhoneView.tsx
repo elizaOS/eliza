@@ -9,9 +9,7 @@
  */
 
 import { Phone } from "@elizaos/capacitor-phone";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -199,71 +197,5 @@ export function PhoneView() {
     error,
   };
 
-  // Expose the recent-call refresh and the dialer call action to the agent
-  // surface. Both reuse the handlers this wrapper already owns (the same ones
-  // the spatial Refresh / Call buttons dispatch through `onAction`), so the
-  // agent can drive them directly on the GUI surface; Call stays disabled
-  // until the dialer holds a callable number, matching the `placeCall()` guard.
-  const canCall = Boolean(normalizeNumber(dialed));
-  const refreshControl = useAgentElement<HTMLButtonElement>({
-    id: "phone-refresh",
-    role: "button",
-    label: "Refresh recent calls",
-    group: "phone",
-    description: "Reload the recent-call log from the device",
-    status: loading ? "active" : "inactive",
-  });
-  const callControl = useAgentElement<HTMLButtonElement>({
-    id: "phone-call",
-    role: "button",
-    label: "Call dialed number",
-    group: "phone",
-    description: "Place a call to the number currently in the dialer",
-    status: canCall ? undefined : "disabled",
-  });
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        height: "100%",
-        minHeight: 0,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          gap: "0.5rem",
-          padding: "0.5rem",
-          flexShrink: 0,
-        }}
-      >
-        <Button
-          ref={refreshControl.ref}
-          {...refreshControl.agentProps}
-          variant="outline"
-          size="sm"
-          onClick={() => void refreshCalls()}
-          disabled={loading}
-        >
-          Refresh
-        </Button>
-        <Button
-          ref={callControl.ref}
-          {...callControl.agentProps}
-          variant="outline"
-          size="sm"
-          onClick={() => void placeCall(dialed)}
-          disabled={!canCall}
-        >
-          Call
-        </Button>
-      </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <PhoneSpatialView snapshot={snapshot} onAction={onAction} />
-      </div>
-    </div>
-  );
+  return <PhoneSpatialView snapshot={snapshot} onAction={onAction} />;
 }

@@ -495,7 +495,12 @@ export function compareGmailMessagePriority(
   if (left.isUnread !== right.isUnread) {
     return right.isUnread ? 1 : -1;
   }
-  return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+  const leftTime = Date.parse(left.receivedAt);
+  const rightTime = Date.parse(right.receivedAt);
+  const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+  const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+  if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+  return left.id.localeCompare(right.id);
 }
 
 export function normalizeGmailDraftTone(
@@ -625,8 +630,17 @@ export function findLinkedMailForCalendarEvent(
       return messageTokens.some((token) => subjectTokens.has(token));
     })
     .sort((left, right) => {
-      const receivedDelta =
-        Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+      const rightTime =
+        typeof right.receivedAt === "string" &&
+        Number.isFinite(Date.parse(right.receivedAt))
+          ? Date.parse(right.receivedAt)
+          : 0;
+      const leftTime =
+        typeof left.receivedAt === "string" &&
+        Number.isFinite(Date.parse(left.receivedAt))
+          ? Date.parse(left.receivedAt)
+          : 0;
+      const receivedDelta = rightTime - leftTime;
       if (receivedDelta !== 0) {
         return receivedDelta;
       }

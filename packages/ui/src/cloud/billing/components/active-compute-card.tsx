@@ -2,7 +2,7 @@
 
 "use client";
 
-import type { Observed } from "@elizaos/cloud-shared/types/account-billing-snapshot";
+import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
 import { BrandCard, Button } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
@@ -89,6 +89,19 @@ function canRetryObservation<T>(observation: Observed<T>): boolean {
   );
 }
 
+function billingIntervalLabel(
+  interval: BillingSnapshotResource["billingInterval"],
+  t: Translator,
+): string {
+  return interval === "hour"
+    ? t("cloud.billing.compute.hourly", { defaultValue: "Hourly" })
+    : t("cloud.billing.compute.daily", { defaultValue: "Daily" });
+}
+
+function billingCursorLabel(value: string | null, emptyLabel: string): string {
+  return value === null ? emptyLabel : observedTimestamp(value);
+}
+
 function ResourceCard({
   resource,
   t,
@@ -108,7 +121,7 @@ function ResourceCard({
     <li className="min-w-0 border border-brand-surface bg-surface p-4">
       <div className="flex min-w-0 items-start gap-3">
         <div className="mt-0.5 shrink-0 border border-border bg-bg-accent p-2 text-muted-strong">
-          <ResourceIcon className="h-4 w-4" aria-hidden="true" />
+          <ResourceIcon className="size-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="break-words font-mono text-sm font-semibold text-txt-strong [overflow-wrap:anywhere]">
@@ -167,6 +180,64 @@ function ResourceCard({
           </dd>
         </div>
       </dl>
+
+      <dl className="mt-3 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.billingPeriod", {
+              defaultValue: "Billing period",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingIntervalLabel(resource.billingInterval, t)}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.lastBilled", {
+              defaultValue: "Last billed",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.lastBilledAt,
+              t("cloud.billing.compute.notReported", {
+                defaultValue: "Not reported",
+              }),
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.nextBilling", {
+              defaultValue: "Next billing",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.nextBillingAt,
+              t("cloud.billing.compute.notScheduled", {
+                defaultValue: "Not scheduled",
+              }),
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.estimatedNextBilling", {
+              defaultValue: "Estimated next billing",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.estimatedNextBillingAt,
+              t("cloud.billing.compute.notEstimated", {
+                defaultValue: "Not estimated",
+              }),
+            )}
+          </dd>
+        </div>
+      </dl>
     </li>
   );
 }
@@ -189,7 +260,7 @@ function RetryButton({
       className="min-h-11 min-w-11 gap-2 font-mono"
     >
       <RefreshCw
-        className={`h-4 w-4 motion-reduce:animate-none ${retrying ? "animate-spin" : ""}`}
+        className={`size-4 motion-reduce:animate-none ${retrying ? "animate-spin" : ""}`}
         aria-hidden="true"
       />
       {retrying
@@ -243,7 +314,7 @@ export function ActiveComputeCardView({
         <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div role="alert" className="flex min-w-0 items-start gap-3">
             <AlertCircle
-              className="mt-0.5 h-5 w-5 shrink-0 text-warn"
+              className="mt-0.5  size-5 shrink-0 text-warn"
               aria-hidden="true"
             />
             <div className="min-w-0">
@@ -340,7 +411,7 @@ export function ActiveComputeCardView({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <Calculator
-                className="h-4 w-4 shrink-0 text-muted-strong"
+                className="size-4 shrink-0 text-muted-strong"
                 aria-hidden="true"
               />
               <h3 className="font-mono text-base uppercase text-txt-strong">
@@ -392,7 +463,7 @@ export function ActiveComputeCardView({
           >
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <Clock3
-                className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+                className="mt-0.5 size-4 shrink-0 text-warn"
                 aria-hidden="true"
               />
               <span>
@@ -460,7 +531,7 @@ export function ActiveComputeCardView({
           <div className="flex flex-col items-start gap-4 border border-brand-surface bg-surface p-4 sm:flex-row sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <AlertCircle
-                className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+                className="mt-0.5 size-4 shrink-0 text-warn"
                 aria-hidden="true"
               />
               <div className="min-w-0">
@@ -489,7 +560,7 @@ export function ActiveComputeCardView({
           <div className="flex flex-col items-start gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <AlertCircle
-                className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+                className="mt-0.5 size-4 shrink-0 text-warn"
                 aria-hidden="true"
               />
               <span>

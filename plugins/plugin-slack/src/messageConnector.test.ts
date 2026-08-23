@@ -6,7 +6,7 @@
  */
 import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { SlackService } from "./service";
+import { compareSlackConnectorTargets, SlackService } from "./service";
 import type { SlackChannel } from "./types";
 
 type MockSlackService = SlackService & {
@@ -215,6 +215,61 @@ describe("Slack message connector adapter", () => {
     expect(
       userTargets.find((target) => target.kind === "user")?.target,
     ).toMatchObject({ source: "slack", entityId: "U234" });
+  });
+
+  it("preserves every matching and listed connector target", async () => {
+    const runtime = createRuntime();
+    const channels = Array.from({ length: 60 }, (_, index) => ({
+      id: `C${index}`,
+      name: `project-${index}`,
+      isChannel: true,
+      isGroup: false,
+      isIm: false,
+      isMpim: false,
+      isPrivate: false,
+      isArchived: false,
+      isGeneral: index === 0,
+      isShared: false,
+      isOrgShared: false,
+      isMember: true,
+      topic: undefined,
+      purpose: undefined,
+      numMembers: 1,
+      created: 1,
+      creator: "U1",
+    })) satisfies SlackChannel[];
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        teamId: "T123",
+        defaultAccountId: "default",
+        accountStates: new Map([
+          [
+            "default",
+            {
+              accountId: "default",
+              teamId: "T123",
+              policy: { isChannelAllowed: () => true },
+            },
+          ],
+        ]),
+        listChannels: vi.fn().mockResolvedValue(channels),
+        client: {
+          users: { list: vi.fn().mockResolvedValue({ members: [] }) },
+        },
+      },
+    );
+
+    const matches = await service.resolveConnectorTargets("project", {
+      runtime,
+    });
+    const rooms = await service.listConnectorRooms({ runtime });
+    const recent = await service.listRecentConnectorTargets({ runtime });
+
+    expect(matches).toHaveLength(60);
+    expect(rooms).toHaveLength(60);
+    expect(recent).toHaveLength(60);
   });
 
   it("routes outbound DMs through the requested account client", async () => {
@@ -439,5 +494,49 @@ describe("Slack message connector adapter", () => {
     );
     expect(fetched).toHaveLength(4);
     expect(searched).toHaveLength(2);
+  });
+});
+
+describe("compareSlackConnectorTargets", () => {
+  const at = (
+    label: string,
+    score: number,
+    channelId: string,
+  ): MessageConnectorTarget =>
+    ({
+      label,
+      score,
+      target: { source: "slack", channelId },
+    }) as unknown as MessageConnectorTarget;
+
+  it("orders the highest score first", () => {
+    const targets = [at("low", 0.1, "C1"), at("high", 0.9, "C2")];
+    targets.sort(compareSlackConnectorTargets);
+    expect(targets.map((t) => t.label)).toEqual(["high", "low"]);
+  });
+
+  it("keeps a total order when a score is not finite", () => {
+    const targets = [at("nan", Number.NaN, "C1"), at("valid", 0.9, "C2")];
+    targets.sort(compareSlackConnectorTargets);
+    expect(targets.map((t) => t.label)).toEqual(["valid", "nan"]);
+
+    expect(
+      compareSlackConnectorTargets(
+        at("nan", Number.NaN, "C1"),
+        at("valid", 0.9, "C2"),
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      compareSlackConnectorTargets(
+        at("valid", 0.9, "C2"),
+        at("nan", Number.NaN, "C1"),
+      ),
+    ).toBeLessThan(0);
+  });
+
+  it("tie-breaks equal scores on label", () => {
+    const targets = [at("z-label", 0.5, "C1"), at("a-label", 0.5, "C2")];
+    targets.sort(compareSlackConnectorTargets);
+    expect(targets.map((t) => t.label)).toEqual(["a-label", "z-label"]);
   });
 });

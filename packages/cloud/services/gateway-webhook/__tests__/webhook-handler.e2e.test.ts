@@ -5,6 +5,7 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "../src/adapters/types";
+import { PlatformDeliveryError } from "../src/adapters/types";
 import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
@@ -89,6 +90,10 @@ function createAdapter(event: ChatEvent): PlatformAdapter & {
         adapter.replies.push(text);
       },
     ),
+    sendReplyWithReceipt: mock(async (config, replyEvent, text) => {
+      await adapter.sendReply(config, replyEvent, text);
+      return { providerMessageIds: [`reply-${replyEvent.messageId}`] };
+    }),
     sendTypingIndicator: mock(async () => {
       adapter.typingCount += 1;
     }),
@@ -256,6 +261,148 @@ describe("gateway webhook handler e2e routing", () => {
     );
     await waitFor(() => adapter.replies.length === 1, "personal Shared reply");
     expect(adapter.replies).toEqual(["same personal Eliza"]);
+    await waitFor(
+      () => [...redis.store.values()].includes("delivered"),
+      "durable delivered state",
+    );
+  });
+
+  test("persists an ambiguous provider failure and refuses an unsafe replay", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM-uncertain-egress" });
+    const adapter = createAdapter(event);
+    adapter.sendReply = mock(async () => {
+      throw new DOMException("provider receipt timed out", "TimeoutError");
+    });
+    let sharedRequests = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        sharedRequests += 1;
+        return Response.json({ success: true, data: { reply: "send once" } });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const first = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+    expect(first.status).toBe(200);
+
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+    await waitFor(
+      () => redis.store.get(dedupKey) === "uncertain",
+      "durable uncertain state",
+    );
+
+    const replay = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+    expect(replay.status).toBe(503);
+    expect(await replay.json()).toEqual({
+      error: "delivery outcome uncertain",
+    });
+    expect(adapter.sendReply).toHaveBeenCalledTimes(1);
+    expect(sharedRequests).toBe(1);
+  });
+
+  test("does not record delivery when a provider returns an empty accepted receipt", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM-empty-receipt" });
+    const adapter = createAdapter(event);
+    const emptyReceipt = mock(async () => ({ providerMessageIds: [] }));
+    adapter.sendReplyWithReceipt = emptyReceipt;
+
+    globalThis.fetch = mock(async () =>
+      Response.json({ success: true, data: { reply: "receipt required" } }),
+    ) as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          requestFor(event),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+    await waitFor(
+      () => redis.store.get(dedupKey) === "uncertain",
+      "empty receipt uncertainty",
+    );
+    expect(emptyReceipt).toHaveBeenCalledTimes(1);
+    expect(adapter.sendReply).not.toHaveBeenCalled();
+  });
+
+  test("reopens a typed failure known to occur before provider egress", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM-pre-egress" });
+    const adapter = createAdapter(event);
+    const preEgressFailure = mock(async () => {
+      throw new PlatformDeliveryError(
+        "credentials unavailable",
+        "failed",
+        "DELIVERY_CREDENTIALS_MISSING",
+        false,
+      );
+    });
+    adapter.sendReplyWithReceipt = preEgressFailure;
+    let sharedRequests = 0;
+    globalThis.fetch = mock(async () => {
+      sharedRequests += 1;
+      return Response.json({
+        success: true,
+        data: { reply: "try after repair" },
+      });
+    }) as typeof fetch;
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+
+    expect(
+      (await handleWebhook(requestFor(event), adapter, deps, "eliza-app"))
+        .status,
+    ).toBe(200);
+    await waitFor(() => !redis.store.has(dedupKey), "pre-egress claim release");
+    expect(
+      (await handleWebhook(requestFor(event), adapter, deps, "eliza-app"))
+        .status,
+    ).toBe(200);
+    await waitFor(
+      () => preEgressFailure.mock.calls.length === 2,
+      "safe replay",
+    );
+    expect(sharedRequests).toBe(2);
   });
 
   test("routes an unresolved Blooio iMessage to the same phone Shared path", async () => {
@@ -280,6 +427,10 @@ describe("gateway webhook handler e2e routing", () => {
       sendTypingIndicator: mock(async () => undefined),
       sendReply: mock(async (_config, _event, reply) => {
         replies.push(reply);
+      }),
+      sendReplyWithReceipt: mock(async (_config, _event, reply) => {
+        replies.push(reply);
+        return { providerMessageIds: ["blooio-reply-1"] };
       }),
     };
     let sharedBody: Record<string, unknown> | null = null;
@@ -329,7 +480,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(replies).toEqual(["hello from personal Eliza"]);
   });
 
-  test("preserves a Blooio group thread and records provider egress before reply classification", async () => {
+  test("revalidates and records a Blooio Dedicated group reply", async () => {
     process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
     const redis = new MemoryRedis();
     const event: ChatEvent = {
@@ -357,21 +508,57 @@ describe("gateway webhook handler e2e routing", () => {
       sendReplyWithReceipt,
     };
     let turnBody: Record<string, unknown> | null = null;
+    let authorizationBody: Record<string, unknown> | null = null;
     let receiptBody: Record<string, unknown> | null = null;
+    const authority = {
+      bindingId: "00000000-0000-4000-8000-000000000030",
+      ownerUserId: "00000000-0000-4000-8000-000000000002",
+      personalAgentId: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+      version: 7,
+    };
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
       if (
         request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
       ) {
         const body = (await request.json()) as Record<string, unknown>;
+        if (body.eventType === "delivery_authorization") {
+          authorizationBody = body;
+          return Response.json({
+            success: true,
+            data: {
+              code: "group_delivery_authorization",
+              authorized: true,
+              leaseToken: body.leaseToken,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          });
+        }
+        if (body.eventType === "delivery_commit") {
+          return Response.json({
+            success: true,
+            data: { code: "group_delivery_committed", committed: true },
+          });
+        }
         if (body.eventType === "delivery_receipt") {
           receiptBody = body;
-          return Response.json({ success: true, data: { inserted: 1 } });
+          return Response.json({
+            success: true,
+            data: {
+              code: "group_delivery_receipt_recorded",
+              recorded: true,
+              inserted: 1,
+            },
+          });
         }
         turnBody = body;
         return Response.json({
           success: true,
-          data: { reply: "group reply" },
+          data: {
+            identity: { runtime: "dedicated" },
+            reply: "group reply",
+            groupDelivery: { kind: "binding", authority },
+          },
         });
       }
       throw new Error(`Unexpected fetch: ${request.url}`);
@@ -419,7 +606,328 @@ describe("gateway webhook handler e2e routing", () => {
       chatId: "chat_group_123",
       sourceMessageId: "blooio:eliza-app:blooio-group-message-1",
       providerMessageIds: ["provider-eliza-reply-1"],
+      authority,
+      leaseToken: expect.any(String),
     });
+    expect(authorizationBody).toEqual({
+      eventType: "delivery_authorization",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+15550000001",
+      chatId: "chat_group_123",
+      sourceMessageId: "blooio:eliza-app:blooio-group-message-1",
+      leaseToken: expect.any(String),
+      invocation: "reply",
+      authority,
+    });
+  });
+
+  test.each([
+    "group_admin_required",
+    "group_claim_invalid",
+    "group_claim_expired",
+    "group_claim_already_used",
+    "group_claim_already_bound",
+    "group_binding_suspended",
+    "group_not_bound",
+    "group_binding_changed",
+    "group_binding_revoked",
+  ])(
+    "delivers the explicit %s control reply without inference authority",
+    async (code) => {
+      process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+      const redis = new MemoryRedis();
+      const event: ChatEvent = {
+        platform: "blooio",
+        messageId: `blooio-control-${code}`,
+        chatId: "chat_group_123",
+        chatType: "group",
+        senderId: "+15551234567",
+        text: "Eliza control",
+        rawPayload: {},
+      };
+      const sendReplyWithReceipt = mock(async () => ({
+        providerMessageIds: [`provider-${code}`],
+      }));
+      const adapter: PlatformAdapter = {
+        platform: "blooio",
+        verifyWebhook: mock(async () => true),
+        extractEvent: mock(async () => event),
+        sendTypingIndicator: mock(async () => undefined),
+        sendReply: mock(async () => undefined),
+        sendReplyWithReceipt,
+      };
+      let cloudRequests = 0;
+      globalThis.fetch = mock(async () => {
+        cloudRequests += 1;
+        return Response.json({
+          success: true,
+          data: {
+            code,
+            reply: `control reply for ${code}`,
+            groupDelivery: { kind: "control" },
+          },
+        });
+      }) as typeof fetch;
+
+      expect(
+        (
+          await handleWebhook(
+            new Request("https://gateway.example/webhook/eliza-app/blooio", {
+              method: "POST",
+              body: "{}",
+            }),
+            adapter,
+            {
+              redis,
+              cloudBaseUrl: "https://api.elizacloud.ai",
+              getAuthHeader: () => ({
+                Authorization: "Bearer internal-secret",
+              }),
+            },
+            "eliza-app",
+          )
+        ).status,
+      ).toBe(200);
+      await waitFor(
+        () => sendReplyWithReceipt.mock.calls.length === 1,
+        `${code} control delivery`,
+      );
+      expect(cloudRequests).toBe(1);
+    },
+  );
+
+  test.each([
+    "revoke",
+    "membership removal",
+    "ambient off",
+    "lease expiry and reacquire before egress",
+  ])(
+    "suppresses provider egress when %s invalidates an in-flight group turn",
+    async (_invalidation) => {
+      process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+      const redis = new MemoryRedis();
+      const event: ChatEvent = {
+        platform: "blooio",
+        messageId: "blooio-group-race-1",
+        chatId: "chat_group_123",
+        chatType: "group",
+        senderId: "+15551234567",
+        text: "ambient thought",
+        rawPayload: {},
+      };
+      const sendReplyWithReceipt = mock(async () => ({
+        providerMessageIds: ["must-not-send"],
+      }));
+      const adapter: PlatformAdapter = {
+        platform: "blooio",
+        verifyWebhook: mock(async () => true),
+        extractEvent: mock(async () => event),
+        sendTypingIndicator: mock(async () => undefined),
+        sendReply: mock(async () => undefined),
+        sendReplyWithReceipt,
+      };
+      let authorizationChecks = 0;
+      let commitChecks = 0;
+      globalThis.fetch = mock(async (input, init) => {
+        const request = new Request(input, init);
+        const body = (await request.json()) as Record<string, unknown>;
+        if (body.eventType === "delivery_authorization") {
+          authorizationChecks += 1;
+          return Response.json({
+            success: true,
+            data: {
+              code: "group_delivery_authorization",
+              authorized: true,
+              leaseToken: body.leaseToken,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          });
+        }
+        if (body.eventType === "delivery_commit") {
+          commitChecks += 1;
+          return Response.json({
+            success: true,
+            data: { code: "group_delivery_committed", committed: false },
+          });
+        }
+        return Response.json({
+          success: true,
+          data: {
+            reply: "stale reply",
+            groupDelivery: {
+              kind: "binding",
+              authority: {
+                bindingId: "00000000-0000-4000-8000-000000000030",
+                ownerUserId: "00000000-0000-4000-8000-000000000002",
+                personalAgentId:
+                  "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+                version: 7,
+              },
+            },
+          },
+        });
+      }) as typeof fetch;
+
+      expect(
+        (
+          await handleWebhook(
+            new Request("https://gateway.example/webhook/eliza-app/blooio", {
+              method: "POST",
+              body: "{}",
+            }),
+            adapter,
+            {
+              redis,
+              cloudBaseUrl: "https://api.elizacloud.ai",
+              getAuthHeader: () => ({
+                Authorization: "Bearer internal-secret",
+              }),
+            },
+            "eliza-app",
+          )
+        ).status,
+      ).toBe(200);
+      await waitFor(
+        () => authorizationChecks === 1 && commitChecks === 1,
+        "stale group turn completion",
+      );
+      expect(sendReplyWithReceipt).not.toHaveBeenCalled();
+      expect(commitChecks).toBe(1);
+    },
+  );
+
+  test("does not resend after provider success when the exact receipt response is lost", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "blooio",
+      messageId: "blooio-group-zero-receipt",
+      chatId: "chat_group_123",
+      chatType: "group",
+      senderId: "+15551234567",
+      text: "hello",
+      rawPayload: {},
+    };
+    const sendReplyWithReceipt = mock(async () => ({
+      providerMessageIds: ["provider-reply-1"],
+    }));
+    const adapter: PlatformAdapter = {
+      platform: "blooio",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply: mock(async () => undefined),
+      sendReplyWithReceipt,
+    };
+    let committed = false;
+    let receiptPersisted = false;
+    let authorizationChecks = 0;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      const body = (await request.json()) as Record<string, unknown>;
+      if (body.eventType === "delivery_authorization") {
+        authorizationChecks += 1;
+        return Response.json({
+          success: true,
+          data:
+            committed || receiptPersisted
+              ? {
+                  code: "group_delivery_authorization",
+                  authorized: false,
+                  leaseToken: null,
+                  expiresAt: null,
+                }
+              : {
+                  code: "group_delivery_authorization",
+                  authorized: true,
+                  leaseToken: body.leaseToken,
+                  expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                },
+        });
+      }
+      if (body.eventType === "delivery_commit") {
+        committed = true;
+        return Response.json({
+          success: true,
+          data: { code: "group_delivery_committed", committed: true },
+        });
+      }
+      if (body.eventType === "delivery_receipt") {
+        receiptPersisted = true;
+        committed = false;
+        return Response.json(
+          { success: false, code: "response_lost_after_commit" },
+          { status: 503 },
+        );
+      }
+      return Response.json({
+        success: true,
+        data: {
+          reply: "reply",
+          groupDelivery: {
+            kind: "binding",
+            authority: {
+              bindingId: "00000000-0000-4000-8000-000000000030",
+              ownerUserId: "00000000-0000-4000-8000-000000000002",
+              personalAgentId: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+              version: 7,
+            },
+          },
+        },
+      });
+    }) as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/blooio", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(
+      () => sendReplyWithReceipt.mock.calls.length === 1,
+      "provider receipt send",
+    );
+    await waitFor(
+      () =>
+        !redis.store.has(
+          "webhook:blooio:+15550000001:message:blooio-group-zero-receipt",
+        ),
+      "recoverable receipt retry reopening",
+    );
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/blooio", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(
+      () => authorizationChecks === 2,
+      "committed delivery retry fence",
+    );
+    expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
   });
 
   test("forwards Telegram membership removal without model or provider egress", async () => {
@@ -513,6 +1021,10 @@ describe("gateway webhook handler e2e routing", () => {
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-1"] };
+      }),
     };
     class EgressContendedRedis extends MemoryRedis {
       override async set(
@@ -574,6 +1086,10 @@ describe("gateway webhook handler e2e routing", () => {
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-retry-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     redis.store.set(
@@ -636,6 +1152,10 @@ describe("gateway webhook handler e2e routing", () => {
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-personal-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     const completionLog = spyOn(logger, "info").mockImplementation(
@@ -749,13 +1269,18 @@ describe("gateway webhook handler e2e routing", () => {
       providerSentAtMs: Date.now() - 1_000,
       rawPayload: {},
     };
+    const sendReply = mock(async () => undefined);
     const adapter: PlatformAdapter = {
       platform: "telegram",
       getDedupeScope: () => "scope",
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
-      sendReply: mock(async () => undefined),
+      sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-trace-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     const infoLog = spyOn(logger, "info").mockImplementation(() => undefined);
@@ -877,6 +1402,10 @@ describe("gateway webhook handler e2e routing", () => {
       resolveVoiceNote,
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-voice-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     let sharedBody: Record<string, unknown> | null = null;

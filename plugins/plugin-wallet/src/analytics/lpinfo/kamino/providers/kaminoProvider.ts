@@ -321,7 +321,22 @@ async function getAvailableKaminoReserves(
 
     const topLendingReserves = reserves
       .filter((r) => r.supplyApy > 0)
-      .sort((a, b) => (b.supplyApy || 0) - (a.supplyApy || 0));
+      .sort((a, b) => {
+        const bApy =
+          typeof b.supplyApy === "number" && Number.isFinite(b.supplyApy)
+            ? b.supplyApy
+            : 0;
+        const aApy =
+          typeof a.supplyApy === "number" && Number.isFinite(a.supplyApy)
+            ? a.supplyApy
+            : 0;
+        return (
+          bApy - aApy ||
+          (a.marketName || a.market || "").localeCompare(
+            b.marketName || b.market || "",
+          )
+        );
+      });
 
     if (topLendingReserves.length > 0) {
       reservesInfo += "💰 TOP LENDING OPPORTUNITIES:\n\n";

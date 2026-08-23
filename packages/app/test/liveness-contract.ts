@@ -29,6 +29,7 @@ export {
   assertLiveChallengeReply,
   assertLiveReply,
   buildLivenessChallenge,
+  describeAnchoredLiveTurnState,
   extractLivenessChallengeToken,
   findAnchoredLiveTurn,
   isLiveReply,
@@ -119,7 +120,7 @@ export async function readLivenessThreadLines(
   );
 }
 
-function chatComposer(page: Page): Locator {
+export function chatComposer(page: Page): Locator {
   return page.locator(CHAT_COMPOSER_SELECTOR).first();
 }
 

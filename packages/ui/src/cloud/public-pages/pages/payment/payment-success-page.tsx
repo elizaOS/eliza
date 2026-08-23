@@ -55,8 +55,8 @@ export default function PaymentSuccessPage() {
     <div className="theme-cloud flex min-h-[100dvh] w-full items-center justify-center bg-bg">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="relative">
-          <CheckCircle className="h-12 w-12 text-status-success" />
-          <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-muted" />
+          <CheckCircle className="size-12 text-status-success" />
+          <Loader2 className="absolute -bottom-1 -right-1  size-5 animate-spin text-muted" />
         </div>
         <div className="space-y-2">
           <h1 className="text-xl text-txt">

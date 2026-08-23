@@ -11,6 +11,7 @@ import {
   SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
+import { parseChatTerminalFailure } from "@elizaos/shared/contracts";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
@@ -60,6 +61,7 @@ import type {
   AccountConnectRequest,
   ChatActionResultSummary,
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatTokenUsage,
   ChatToolCallEvent,
   ChatTurnStatus,
@@ -78,7 +80,9 @@ import {
   isIosInProcessLocalAgentBase,
 } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { remoteRelayTransportForUrl } from "./remote-relay-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
+import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -124,6 +128,7 @@ type StreamChatEvent = {
   thought?: string;
   noResponseReason?: string;
   failureKind?: ChatFailureKind;
+  terminalFailure?: ChatTerminalFailure;
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   actionResults?: ChatActionResultSummary[];
@@ -254,6 +259,7 @@ type StreamChatState = {
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
   doneFailureKind: ChatFailureKind | undefined;
+  doneTerminalFailure: ChatTerminalFailure | undefined;
   doneAccountConnect: AccountConnectRequest | undefined;
   doneLocalInference: LocalInferenceChatMetadata | undefined;
   doneActionResults: ChatActionResultSummary[] | undefined;
@@ -434,6 +440,7 @@ function applyStreamChatDoneEvent(
   if (typeof parsed.failureKind === "string") {
     state.doneFailureKind = parsed.failureKind;
   }
+  state.doneTerminalFailure = parseChatTerminalFailure(parsed.terminalFailure);
   if (parsed.accountConnect && typeof parsed.accountConnect === "object") {
     state.doneAccountConnect = parsed.accountConnect;
   }
@@ -1791,6 +1798,8 @@ export class ElizaClient {
       (await androidNativeAgentTransportForUrl(requestUrl)) ??
       (await iosInProcessAgentTransportForUrl(requestUrl)) ??
       (await desktopLocalAgentTransportForUrl(requestUrl)) ??
+      remoteRelayTransportForUrl(requestUrl) ??
+      sshRuntimeTransportForUrl(requestUrl) ??
       desktopHttpTransportForUrl(requestUrl) ??
       nativeCloudHttpTransportForUrl(requestUrl) ??
       this.requestTransport
@@ -2643,6 +2652,7 @@ export class ElizaClient {
     noResponseReason?: "ignored";
     usage?: ChatTokenUsage;
     failureKind?: ChatFailureKind;
+    terminalFailure?: ChatTerminalFailure;
     accountConnect?: AccountConnectRequest;
     localInference?: LocalInferenceChatMetadata;
     actionResults?: ChatActionResultSummary[];
@@ -2717,6 +2727,7 @@ export class ElizaClient {
       doneNoResponseReason: null,
       doneUsage: undefined,
       doneFailureKind: undefined,
+      doneTerminalFailure: undefined,
       doneAccountConnect: undefined,
       doneLocalInference: undefined,
       doneActionResults: undefined,
@@ -2863,6 +2874,9 @@ export class ElizaClient {
       ...(streamState.doneUsage ? { usage: streamState.doneUsage } : {}),
       ...(streamState.doneFailureKind
         ? { failureKind: streamState.doneFailureKind }
+        : {}),
+      ...(streamState.doneTerminalFailure
+        ? { terminalFailure: streamState.doneTerminalFailure }
         : {}),
       ...(streamState.doneAccountConnect
         ? { accountConnect: streamState.doneAccountConnect }

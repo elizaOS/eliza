@@ -114,7 +114,6 @@ const VIEWLESS_TEXT_CONNECTOR_SOURCES = new Set([
 	"telegram",
 	"matrix",
 	"slack",
-	"signal",
 	"whatsapp",
 	"twitter",
 	"x",
@@ -920,7 +919,9 @@ function capabilityCandidates(
 	return views
 		.filter((view) => !viewType || !view.viewType || view.viewType === viewType)
 		.flatMap((view) =>
-			(view.capabilities ?? []).map((capability) => ({ view, capability })),
+			(view.capabilities ?? [])
+				.filter((capability) => capability.authority !== "human")
+				.map((capability) => ({ view, capability })),
 		);
 }
 
@@ -1222,7 +1223,9 @@ function correctCapabilityOperationFamily(
 	}
 
 	const familyMatches = (view.capabilities ?? []).filter(
-		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
+		(candidate) =>
+			candidate.authority !== "human" &&
+			operationFamilyForCapability(candidate) === requestedFamily,
 	);
 	if (familyMatches.length === 1 && familyMatches[0])
 		return { kind: "capability", capability: familyMatches[0] };
@@ -3209,10 +3212,26 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							normalizeCapabilityKey(capability),
 						);
 						if (!resolvedCapability && resolvedView) {
+							const humanOnlyCapability = (
+								resolvedView.capabilities ?? []
+							).find(
+								(candidate) =>
+									candidate.authority === "human" &&
+									normalizeCapabilityKey(candidate.id) ===
+										normalizeCapabilityKey(capability),
+							);
+							if (humanOnlyCapability) {
+								return {
+									success: false,
+									text: `Capability "${humanOnlyCapability.id}" on view "${resolvedView.id}" requires direct human interaction.`,
+									transcriptVisibility: "internal",
+								};
+							}
 							const matches = (resolvedView.capabilities ?? []).filter(
 								(candidate) =>
+									candidate.authority !== "human" &&
 									normalizeCapabilityKey(candidate.id) ===
-									normalizeCapabilityKey(capability),
+										normalizeCapabilityKey(capability),
 							);
 							if (matches.length === 1 && matches[0]) {
 								resolvedCapability = {

@@ -149,7 +149,7 @@ export function SlotAssignments({
                   {label}
                   {selectedRuntimeClass ? (
                     <span
-                      className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] font-normal leading-none text-muted-foreground"
+                      className="rounded-full border border-border/60 px-1.5 py-0.5 text-2xs font-normal leading-none text-muted-foreground"
                       title={runtimeClassDescription(selectedRuntimeClass)}
                     >
                       {runtimeClassBadge(selectedRuntimeClass)}

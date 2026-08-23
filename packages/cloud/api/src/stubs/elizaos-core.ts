@@ -495,6 +495,52 @@ export function asUUID(value: string): string {
   return value;
 }
 
+/**
+ * Worker-side mirror of core's owner-entity derivation so shared LifeOps
+ * normalization stays bundle-resolvable: the configured canonical owner
+ * (`ELIZA_ADMIN_ENTITY_ID`, then the first `ELIZA_OWNER_CONTACTS_JSON` entity)
+ * when it is a UUID, otherwise the agent-id seed. Must match
+ * `resolveOwnerEntityIdOrDefault` in `packages/core/src/roles.ts`.
+ */
+export function deterministicOwnerEntityId(agentId: string): string {
+  return stringToUuid(`${agentId}-admin-entity`);
+}
+
+export function resolveOwnerEntityIdOrDefault(runtime: {
+  agentId: string;
+  getSetting?: (key: string) => unknown;
+}): string {
+  const read = (key: string): string | undefined => {
+    const value = runtime.getSetting?.(key);
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  const candidates: string[] = [];
+  const configured = read("ELIZA_ADMIN_ENTITY_ID");
+  if (configured) candidates.push(configured);
+  const contactsRaw = read("ELIZA_OWNER_CONTACTS_JSON");
+  if (contactsRaw) {
+    const parsed = JSON.parse(contactsRaw) as Record<
+      string,
+      { entityId?: unknown } | null
+    >;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const entry of Object.values(parsed)) {
+        if (
+          entry &&
+          typeof entry.entityId === "string" &&
+          entry.entityId.trim()
+        ) {
+          candidates.push(entry.entityId.trim());
+        }
+      }
+    }
+  }
+  const owner = candidates[0];
+  return owner && UUID_RE.test(owner)
+    ? owner
+    : deterministicOwnerEntityId(runtime.agentId);
+}
+
 export function createUniqueUuid(
   runtime: { agentId?: string } | null | undefined,
   baseUserId: string,
@@ -1027,7 +1073,6 @@ export function sendJsonError(
 const CONNECTOR_SOURCE_ALIASES: Record<string, readonly string[]> = {
   discord: ["discord", "discord-local"],
   imessage: ["imessage"],
-  signal: ["signal"],
   slack: ["slack"],
   sms: ["sms"],
   telegram: ["telegram", "telegram-account", "telegramaccount"],

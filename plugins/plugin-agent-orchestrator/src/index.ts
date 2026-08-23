@@ -2046,7 +2046,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const label =
           typeof meta.label === "string" && meta.label.trim().length > 0
             ? meta.label
-            : `sub-agent ${sessionId.slice(0, 8)}`;
+            : `sub-agent ${sessionId}`;
         const isTerminalEvent =
           evName === "stopped" ||
           evName === "error" ||
@@ -2435,6 +2435,14 @@ export { AcpService } from "./services/acp-service.js";
 // Terminal-output normalizer for chat surfaces; consumed by live smoke harnesses.
 export { cleanForChat } from "./services/ansi-utils.js";
 export {
+  type ChildDeliveryStatus,
+  type ChildTerminalArtifactRef,
+  type ChildTerminalResultEnvelope,
+  type ChildTerminalStatus,
+  type ChildVerificationStatus,
+  deriveChildTerminalResult,
+} from "./services/child-terminal-result.js";
+export {
   COMPLETION_ENVELOPE_INSTRUCTION,
   type CompletionEnvelope,
   envelopeCorrection,
@@ -2460,6 +2468,26 @@ export {
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
 export { SubAgentRouter } from "./services/sub-agent-router.js";
+export {
+  assertSubscriptionCodingAdapterReady,
+  classifySubscriptionRuntimeFailure,
+  isSubscriptionCodingAdapter,
+  probeSubscriptionCodingAdapter,
+  SUBSCRIPTION_CODING_ADAPTER_IDS,
+  SUBSCRIPTION_CODING_ADAPTERS,
+  type SubscriptionAdapterProbeStatus,
+  type SubscriptionBillingSource,
+  type SubscriptionCodingAdapterDescriptor,
+  SubscriptionCodingAdapterError,
+  type SubscriptionCodingAdapterErrorCode,
+  type SubscriptionCodingAdapterId,
+  type SubscriptionCodingAdapterProbe,
+  type SubscriptionCodingAdapterProbeOptions,
+  type SubscriptionExecutionMode,
+  type SubscriptionLoginCommand,
+  stripSubscriptionApiEnvironment,
+  subscriptionCodingAdapterCommand,
+} from "./services/subscription-coding-adapters.js";
 // SWARM_COORDINATOR adapter — discoverable by the server's coordinator-bridge
 // wiring and plugin-app-control's verification-room-bridge.
 export {

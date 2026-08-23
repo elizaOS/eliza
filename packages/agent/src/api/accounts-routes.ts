@@ -70,9 +70,15 @@ import {
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
+  CODING_PROVIDER_DESCRIPTORS,
+  codingAgentSpawnCapabilityForProvider,
+  codingProviderCredentialPathForProvider,
+  codingProviderDescriptorForProvider,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
+  type ProviderRuntimeCapability,
+  type ProviderRuntimeEligibility,
   type ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
 import * as zod from "zod";
@@ -292,11 +298,25 @@ interface PoolFacade {
 
 let cachedPool: PoolFacade | null = null;
 
-async function getPool(): Promise<PoolFacade> {
-  if (!cachedPool) {
-    cachedPool = getAgentHostBridge().getDefaultAccountPool() as PoolFacade;
-  }
+async function getPool(): Promise<PoolFacade | null> {
+  if (cachedPool) return cachedPool;
+  const pool = getAgentHostBridge().getDefaultAccountPool();
+  if (pool) cachedPool = pool as PoolFacade;
   return cachedPool;
+}
+
+async function requirePool(
+  ctx: Pick<AccountsRouteContext, "error" | "res">,
+): Promise<PoolFacade | null> {
+  const pool = await getPool();
+  if (!pool) {
+    ctx.error(
+      ctx.res,
+      "Account service is not ready; retry after runtime startup completes",
+      503,
+    );
+  }
+  return pool;
 }
 
 function brokerAccountKey(
@@ -320,126 +340,99 @@ export function _resetAccountsRoutesPoolCache(): void {
 
 // ─── Provider id mapping ────────────────────────────────────────────
 
-const SUPPORTED_PROVIDER_IDS = [
-  "anthropic-subscription",
-  "openai-codex",
-  "gemini-cli",
-  "zai-coding",
-  "kimi-coding",
-  "deepseek-coding",
-  "anthropic-api",
-  "openai-api",
-  "deepseek-api",
-  "zai-api",
-  "moonshot-api",
-  "cerebras-api",
-] as const satisfies readonly LinkedAccountProviderId[];
+const SUPPORTED_PROVIDER_IDS = Object.keys(
+  CODING_PROVIDER_DESCRIPTORS,
+) as LinkedAccountProviderId[];
 
-const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
-  "anthropic-api",
-  "openai-api",
-  "deepseek-api",
-  "zai-api",
-  "moonshot-api",
-  "cerebras-api",
-]);
-
-type ProviderRuntimeCapability = {
-  available: boolean;
-  defaultModel?: string;
-  credentialPath?: "account-pool" | "direct-api" | "external-cli" | "none";
-  unavailableReason?: string;
-};
-
-type ProviderRuntimeEligibility = {
-  chat: ProviderRuntimeCapability;
-  codingAgent: ProviderRuntimeCapability;
-};
+const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>(
+  SUPPORTED_PROVIDER_IDS.filter(
+    (providerId) =>
+      CODING_PROVIDER_DESCRIPTORS[providerId].accountKind === "api-key",
+  ),
+);
 
 const ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON =
   "Claude subscription OAuth credentials are scoped to Claude Code CLI/coding-agent use. Fable chat must use a direct Anthropic API/app-owned provider path; the shared external Anthropic proxy is a dev fallback only.";
 
+function codingAgentCapabilityForProvider(
+  providerId: LinkedAccountProviderId,
+  credentialPath: Exclude<
+    NonNullable<ProviderRuntimeCapability["credentialPath"]>,
+    "none"
+  >,
+  defaultModel?: string,
+): ProviderRuntimeCapability {
+  const spawn = codingAgentSpawnCapabilityForProvider(providerId);
+  if (!spawn.available) {
+    return {
+      available: false,
+      credentialPath: "none",
+      unavailableReason: spawn.unavailableReason,
+    };
+  }
+  return {
+    available: true,
+    backend: spawn.backend,
+    credentialPath,
+    ...(defaultModel ? { defaultModel } : {}),
+  };
+}
+
 function runtimeEligibilityForProvider(
   providerId: LinkedAccountProviderId,
 ): ProviderRuntimeEligibility {
-  switch (providerId) {
-    case "anthropic-subscription":
-      return {
-        chat: {
-          available: false,
-          defaultModel: "claude-fable-5",
-          credentialPath: "none",
-          unavailableReason: ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON,
-        },
-        codingAgent: {
-          available: true,
-          defaultModel: "claude-fable-5",
-          credentialPath: "account-pool",
-        },
-      };
-    case "openai-codex":
-      return {
-        chat: {
-          available: true,
-          defaultModel: "gpt-5.6-sol",
-          credentialPath: "account-pool",
-        },
-        codingAgent: {
-          available: true,
-          defaultModel: "gpt-5.6-terra",
-          credentialPath: "account-pool",
-        },
-      };
-    case "anthropic-api":
-      return {
-        chat: {
-          available: true,
-          defaultModel: "claude-fable-5",
-          credentialPath: "direct-api",
-        },
-        codingAgent: {
-          available: true,
-          defaultModel: "claude-fable-5",
-          credentialPath: "direct-api",
-        },
-      };
-    case "gemini-cli":
-      return {
-        chat: {
-          available: false,
-          credentialPath: "none",
-          unavailableReason:
-            "Gemini subscription auth stays inside Gemini CLI and is not a runtime chat provider.",
-        },
-        codingAgent: { available: true, credentialPath: "external-cli" },
-      };
-    default: {
-      const direct = DIRECT_PROVIDER_IDS.has(providerId);
-      const codingPlan = isCodingPlanKeySubscriptionProvider(providerId);
-      return {
-        chat: {
-          available: direct,
-          credentialPath: direct ? "direct-api" : "none",
-          ...(direct
-            ? {}
-            : {
-                unavailableReason:
-                  "This provider is not registered as a runtime chat provider.",
-              }),
-        },
-        codingAgent: {
-          available: direct || codingPlan,
-          credentialPath: direct ? "direct-api" : "account-pool",
-          ...(!direct && !codingPlan
-            ? {
-                unavailableReason:
-                  "This provider is not registered as a coding-agent credential source.",
-              }
-            : {}),
-        },
-      };
-    }
+  const descriptor = codingProviderDescriptorForProvider(providerId);
+  if (!descriptor) {
+    throw new ElizaError(
+      "Linked account provider has no capability descriptor",
+      {
+        code: "ACCOUNT_PROVIDER_DESCRIPTOR_MISSING",
+        context: { providerId },
+        severity: "fatal",
+      },
+    );
   }
+  const credentialPath = codingProviderCredentialPathForProvider(providerId);
+  if (!credentialPath) {
+    throw new ElizaError("Linked account provider has no credential path", {
+      code: "ACCOUNT_PROVIDER_CREDENTIAL_PATH_MISSING",
+      context: { providerId },
+      severity: "fatal",
+    });
+  }
+  const chatDefaultModel =
+    providerId === "anthropic-subscription" || providerId === "anthropic-api"
+      ? "claude-fable-5"
+      : providerId === "openai-codex"
+        ? "gpt-5.6-sol"
+        : undefined;
+  const codingDefaultModel =
+    providerId === "anthropic-subscription" || providerId === "anthropic-api"
+      ? "claude-fable-5"
+      : providerId === "openai-codex"
+        ? "gpt-5.6-terra"
+        : undefined;
+  const chatUnavailableReason =
+    providerId === "anthropic-subscription"
+      ? ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON
+      : descriptor.authMode === "external-cli"
+        ? "This provider's credentials stay inside its external CLI and are not available to runtime chat."
+        : "This provider is not registered as a runtime chat provider.";
+  return {
+    chat: {
+      available: descriptor.inferenceSupport,
+      credentialPath: descriptor.inferenceSupport ? credentialPath : "none",
+      ...(chatDefaultModel ? { defaultModel: chatDefaultModel } : {}),
+      ...(descriptor.inferenceSupport
+        ? {}
+        : { unavailableReason: chatUnavailableReason }),
+    },
+    codingAgent: codingAgentCapabilityForProvider(
+      providerId,
+      credentialPath,
+      codingDefaultModel,
+    ),
+  };
 }
 
 function asSubscriptionProvider(
@@ -918,14 +911,23 @@ async function handleListAllAccounts(
   ctx: AccountsRouteContext,
 ): Promise<boolean> {
   const { res, json } = ctx;
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   await pool.sweepExpired?.();
   const broker = brokerSnapshot();
   const providers = await Promise.all(
     SUPPORTED_PROVIDER_IDS.map(async (providerId) => {
-      const linkedConfigs = pool
-        .list(providerId)
-        .sort((a, b) => a.priority - b.priority);
+      const linkedConfigs = pool.list(providerId).sort((a, b) => {
+        const aPriority =
+          typeof a.priority === "number" && Number.isFinite(a.priority)
+            ? a.priority
+            : 0;
+        const bPriority =
+          typeof b.priority === "number" && Number.isFinite(b.priority)
+            ? b.priority
+            : 0;
+        return aPriority - bPriority || a.id.localeCompare(b.id);
+      });
       const accountProvider = asAccountCredentialProvider(providerId);
       const onDiskAccounts = accountProvider
         ? (await listAccounts(accountProvider)).map((r) => r.id)
@@ -1019,7 +1021,8 @@ async function handleCreateApiKeyAccount(
   // lands, the pool's auto-assignment in `loadAllAccounts` would slot
   // the new account at the next default index, which would offset
   // `nextPriorityFromPool` by one.
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const replaceAccountId = parsed.data.replaceAccountId;
   const replacementTarget = replaceAccountId
     ? pool.get(replaceAccountId, providerId)
@@ -1183,7 +1186,8 @@ async function handleOAuthRoutes(
     // the post-save hook is monotonic regardless of concurrency since
     // the on-disk credential file appears strictly before the hook
     // fires.
-    const pool = await getPool();
+    const pool = await requirePool(ctx);
+    if (!pool) return true;
     const replaceAccountId = parsed.data.replaceAccountId;
     const replacementTarget = replaceAccountId
       ? pool.get(replaceAccountId, providerId)
@@ -1441,7 +1445,8 @@ async function handlePatchAccount(
   }
   assertCanonicalAccountId(accountId);
   const storagePolicy = accountStoragePolicy();
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const existing = pool.get(accountId, providerId);
   if (!existing || existing.providerId !== providerId) {
     error(res, "Account not found", 404);
@@ -1497,12 +1502,13 @@ async function handleDeleteAccount(
 ): Promise<boolean> {
   const { res, json } = ctx;
   assertCanonicalAccountId(accountId);
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const storagePolicy = accountStoragePolicy();
   const accountProvider = asAccountCredentialProvider(providerId);
   if (accountProvider) {
     deleteAccount(accountProvider, accountId, storagePolicy);
   }
-  const pool = await getPool();
   await pool.deleteMetadata(providerId, accountId);
   json(res, { deleted: true });
   return true;
@@ -1528,7 +1534,8 @@ async function handleTestAccount(
     json(res, { ok: false, error: "No credential available" });
     return true;
   }
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const linked = pool.get(accountId, providerId);
   const codexAccountId =
     linked?.providerId === "openai-codex" ? linked.organizationId : undefined;
@@ -1580,7 +1587,8 @@ async function handleRefreshUsage(
     error(res, `Usage refresh not supported for ${providerId}`, 501);
     return true;
   }
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const linked = pool.get(accountId, providerId);
   if (!linked || linked.providerId !== providerId) {
     error(res, "Account not found", 404);

@@ -456,7 +456,7 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
-            "Send a Signal message to Priya saying thanks for the review.",
+            "Send a WhatsApp message to Priya saying thanks for the review.",
           );
           expectAnySelectedAction(h, ["MESSAGE", "MESSAGE"]);
         });
@@ -470,7 +470,7 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
-            "Draft a Signal message to Priya saying thanks for the review.",
+            "Draft a WhatsApp message to Priya saying thanks for the review.",
           );
           expectAnySelectedAction(h, ["MESSAGE", "MESSAGE"]);
         });

@@ -63,7 +63,7 @@ export function CollapsibleSidebarSection({
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           data-testid={`${testIdPrefix}-toggle-${sectionKey}`}
-          className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-medium text-muted transition-colors hover:text-txt"
+          className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-xs leading-none font-medium text-muted transition-colors hover:text-txt"
         >
           {icon ? (
             <span className="inline-flex shrink-0 items-center justify-center text-muted">
@@ -78,7 +78,7 @@ export function CollapsibleSidebarSection({
           ) : null}
           <Chevron
             aria-hidden
-            className={`ml-0.5 h-3 w-3 shrink-0 text-muted${hoverHideClass}`}
+            className={`ml-0.5 size-3 shrink-0 text-muted${hoverHideClass}`}
           />
         </Button>
         {onAdd ? (
@@ -89,9 +89,9 @@ export function CollapsibleSidebarSection({
             aria-label={addLabel ?? "Add"}
             title={addLabel}
             data-testid={`${testIdPrefix}-add-${sectionKey}`}
-            className={`h-6 w-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt${hoverHideClass}`}
+            className={`size-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt${hoverHideClass}`}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
+            <Plus className="size-3.5" aria-hidden />
           </Button>
         ) : null}
       </div>

@@ -1,7 +1,7 @@
 /** Verifies agent detail rendering rejects malformed API timestamps and avoids duplicate dates. */
 // @vitest-environment jsdom
 
-import type { AgentDetailDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { NormalizedAgentDetailDto } from "@elizaos/cloud-sdk";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,11 +25,11 @@ vi.mock("../lib/use-document-title", () => ({
 }));
 
 const agentState: {
-  data: AgentDetailDto | undefined;
+  data: NormalizedAgentDetailDto | undefined;
   isLoading: boolean;
   error: Error | null;
 } = {
-  data: {} as AgentDetailDto,
+  data: {} as NormalizedAgentDetailDto,
   isLoading: false,
   error: null,
 };
@@ -42,14 +42,14 @@ vi.mock("./components/agent-actions", () => ({
   ElizaAgentActions: () => <div>Lifecycle actions</div>,
 }));
 vi.mock("./components/eliza-connect-button", () => ({
-  ElizaConnectButton: () => null,
+  ElizaConnectButton: () => <button type="button">Open Web UI</button>,
 }));
 
 import { PageHeaderProvider } from "../../cloud-ui/components/layout";
 import { ApiError } from "../lib/api-client";
 import AgentDetailPage from "./AgentDetailPage";
 
-const baseAgent: AgentDetailDto = {
+const baseAgent: NormalizedAgentDetailDto = {
   id: "test-agent-1",
   agentName: "Timestamp Test Agent",
   status: "running",
@@ -66,6 +66,7 @@ const baseAgent: AgentDetailDto = {
   dockerImage: null,
   executionTier: "shared",
   webUiUrl: null,
+  activeJob: null,
   bridgeUrl: null,
   errorCount: 0,
   walletAddress: null,
@@ -74,7 +75,7 @@ const baseAgent: AgentDetailDto = {
   adminDetails: null,
 };
 
-function renderPage(agent: AgentDetailDto | undefined) {
+function renderPage(agent: NormalizedAgentDetailDto | undefined) {
   agentState.data = agent;
   return render(
     <MemoryRouter initialEntries={["/dashboard/agents/test-agent-1"]}>
@@ -141,6 +142,7 @@ describe("AgentDetailPage product detail", () => {
     expect(screen.getAllByText("running")).toHaveLength(1);
     expect(screen.getByText("Free")).toBeTruthy();
     expect(screen.getByText("Lifecycle actions")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Web UI" })).toBeNull();
     for (const rejected of [
       "Sandbox",
       "Managed runtime",
@@ -172,6 +174,7 @@ describe("AgentDetailPage product detail", () => {
 
     expect(screen.getByText("Dedicated Agent")).toBeTruthy();
     expect(screen.getByText("$0.01/hr")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Web UI" })).toBeTruthy();
     expect(screen.queryByText("Shared Agent")).toBeNull();
     expect(screen.queryByText("Free")).toBeNull();
   });

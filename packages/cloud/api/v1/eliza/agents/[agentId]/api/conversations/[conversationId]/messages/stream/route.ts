@@ -32,6 +32,7 @@ import {
 } from "@/lib/services/shared-runtime/shared-turn-observability";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { proxyLocalDedicatedOrNext } from "../../../../_local-dedicated-proxy";
 
 /**
  * /api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream
@@ -57,6 +58,8 @@ const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 const VOICE_USER_HEADER = "X-Eliza-User-Id";
 
 const app = new Hono<AppEnv>();
+
+app.use("*", proxyLocalDedicatedOrNext);
 
 function nowMs(): number {
   return performance.now();

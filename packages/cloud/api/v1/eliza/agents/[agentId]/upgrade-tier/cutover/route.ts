@@ -28,7 +28,9 @@ import {
   coordinateSharedCutoverSeal,
 } from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
+  dedicatedAgentTransportToken,
   personalDedicatedAgentApiBase,
+  personalDedicatedClientApiBase,
   personalSharedAgentId,
 } from "@/lib/services/shared-runtime/personal-shared-agent";
 import {
@@ -133,16 +135,15 @@ async function readJsonResponse(response: Response): Promise<unknown> {
 async function postDedicatedImport(
   url: string,
   body: Record<string, unknown>,
-  authorization: string | undefined,
-  apiKey: string | undefined,
+  agentToken: string,
 ): Promise<{ response: Response; receipt: Record<string, unknown> | null }> {
   const response = await fetch(url, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...(authorization ? { Authorization: authorization } : {}),
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
+      Authorization: `Bearer ${agentToken}`,
+      "X-API-Key": agentToken,
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20_000),
@@ -301,8 +302,6 @@ app.post("/", async (c) => {
     }
     const sealToken = `personal-cutover:${sourceAgentId}:${parsed.data.dedicatedAgentId}`;
     const reminderReservationToken = `${sealToken}:reminders:${crypto.randomUUID()}`;
-    const authorization = c.req.header("authorization");
-    const apiKey = c.req.header("x-api-key");
     const active = await findActivePersonalDedicatedTarget(
       user.organization_id,
       sourceAgentId,
@@ -330,6 +329,18 @@ app.post("/", async (c) => {
         marker.sharedTodoDigest === activeTodoSnapshot.digest &&
         activeBase
       ) {
+        const activeToken = dedicatedAgentTransportToken(active);
+        if (!activeToken) {
+          return json(
+            {
+              success: false,
+              code: "dedicated_transport_unavailable",
+              error:
+                "Dedicated authentication is still being prepared. Shared remains active.",
+            },
+            503,
+          );
+        }
         try {
           await invalidateUserDeliveryProjections(c.env, user);
           await coordinateSharedCutoverCommit(
@@ -354,8 +365,7 @@ app.post("/", async (c) => {
               cutoverToken: sealToken,
               activateScheduledTasks: true,
             },
-            authorization,
-            apiKey,
+            activeToken,
           );
           if (
             !activation.response.ok ||
@@ -384,7 +394,12 @@ app.post("/", async (c) => {
               personalElizaId: sourceAgentId,
               activeAgentId: active.id,
               runtime: "dedicated" as const,
-              apiBase: activeBase,
+              apiBase:
+                personalDedicatedClientApiBase(
+                  active,
+                  c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+                  new URL(c.req.url).origin,
+                ) ?? activeBase,
               importedMessages: marker.sharedMessageCount,
               importedScheduledTasks: marker.sharedScheduledTaskCount,
               importedTodos: marker.sharedTodoCount,
@@ -431,6 +446,18 @@ app.post("/", async (c) => {
             "Dedicated has no reachable endpoint yet. Shared remains active.",
         },
         409,
+      );
+    }
+    const targetToken = dedicatedAgentTransportToken(target);
+    if (!targetToken) {
+      return json(
+        {
+          success: false,
+          code: "dedicated_transport_unavailable",
+          error:
+            "Dedicated authentication is still being prepared. Shared remains active.",
+        },
+        503,
       );
     }
     const history = await coordinateSharedCutoverSeal(
@@ -503,8 +530,7 @@ app.post("/", async (c) => {
             todoSnapshot,
             cutoverToken: sealToken,
           },
-          authorization,
-          apiKey,
+          targetToken,
         );
         if (!imported.response.ok) {
           return json(
@@ -597,8 +623,7 @@ app.post("/", async (c) => {
           cutoverToken: sealToken,
           activateScheduledTasks: true,
         },
-        authorization,
-        apiKey,
+        targetToken,
       );
       if (
         !activation.response.ok ||
@@ -633,7 +658,12 @@ app.post("/", async (c) => {
           personalElizaId: sourceAgentId,
           activeAgentId: activeTarget.id,
           runtime: "dedicated" as const,
-          apiBase: base,
+          apiBase:
+            personalDedicatedClientApiBase(
+              activeTarget,
+              c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+              new URL(c.req.url).origin,
+            ) ?? base,
           importedMessages: history.length,
           importedScheduledTasks: scheduledTasks.length,
           importedTodos: todoSnapshot.todos.length,

@@ -7,9 +7,32 @@ import {
   resolveTwilioSmsCostPerSegment,
 } from "../billing";
 import { logger } from "../logger";
-import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
+import { boundedGatewayFetch } from "./bounded-fetch";
+import {
+  type ChatEvent,
+  type PlatformAdapter,
+  PlatformDeliveryError,
+  type WebhookConfig,
+} from "./types";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
+
+export const TWILIO_GATEWAY_REQUEST_TIMEOUT_MS = 30_000;
+const TWILIO_GATEWAY_RESPONSE_MAX_BYTES = 64 * 1024;
+
+export function twilioGatewayFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TWILIO_GATEWAY_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedGatewayFetch(
+    fetch,
+    input,
+    init,
+    timeoutMs,
+    TWILIO_GATEWAY_RESPONSE_MAX_BYTES,
+  );
+}
 
 function resolveSmsCostPerSegment(): number {
   const raw = process.env.TWILIO_SMS_COST_PER_SEGMENT_USD;
@@ -82,6 +105,89 @@ function extractMediaUrls(event: TwilioEvent): string[] {
     }
   }
   return urls;
+}
+
+async function sendTwilioReply(
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+): Promise<string[]> {
+  if (!config.accountSid || !config.authToken || !config.phoneNumber) {
+    throw new PlatformDeliveryError(
+      "Missing Twilio credentials for reply",
+      "failed",
+      "DELIVERY_CREDENTIALS_MISSING",
+      false,
+    );
+  }
+  const url = `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`;
+  const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString(
+    "base64",
+  );
+  const body = new URLSearchParams({
+    To: replyAddress(event.senderId, config.phoneNumber),
+    From: config.phoneNumber,
+    Body: text,
+  });
+  const response = await twilioGatewayFetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: body.toString(),
+  });
+  if (!response.ok) {
+    throw new PlatformDeliveryError(
+      `Twilio rejected delivery (${response.status})`,
+      response.status >= 500 ? "uncertain" : "failed",
+      "DELIVERY_PROVIDER_REJECTED",
+      response.status === 429,
+      response.status,
+    );
+  }
+  let receipt: unknown;
+  try {
+    receipt = await response.json();
+  } catch (cause) {
+    // error-policy:J2 preserve the provider parse failure while adding a
+    // stable delivery classification for the gateway boundary.
+    throw new PlatformDeliveryError(
+      "Twilio accepted delivery without a valid receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+      undefined,
+      { cause },
+    );
+  }
+  const sid =
+    receipt &&
+    typeof receipt === "object" &&
+    typeof (receipt as { sid?: unknown }).sid === "string"
+      ? (receipt as { sid: string }).sid.trim()
+      : "";
+  if (!sid) {
+    throw new PlatformDeliveryError(
+      "Twilio accepted delivery without a message receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
+  }
+
+  const breakdown = calculateTwilioSmsBilling(text, resolveSmsCostPerSegment());
+  logger.info("[TwilioAdapter] Outbound SMS cost recorded", {
+    platform: "twilio",
+    messageId: event.messageId,
+    recipient: event.senderId,
+    segments: breakdown.segments,
+    rawCost: breakdown.rawCost,
+    markup: breakdown.markup,
+    billedCost: breakdown.billedCost,
+    markupRate: breakdown.markupRate,
+  });
+  return [sid];
 }
 
 async function verifySignature(
@@ -218,52 +324,11 @@ export const twilioAdapter: PlatformAdapter = {
     event: ChatEvent,
     text: string,
   ): Promise<void> {
-    if (!config.accountSid || !config.authToken || !config.phoneNumber) {
-      throw new Error("Missing Twilio credentials for reply");
-    }
+    await sendTwilioReply(config, event, text);
+  },
 
-    const url = `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`;
-    const auth = Buffer.from(
-      `${config.accountSid}:${config.authToken}`,
-    ).toString("base64");
-
-    const body = new URLSearchParams({
-      To: replyAddress(event.senderId, config.phoneNumber),
-      From: config.phoneNumber,
-      Body: text,
-    });
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Twilio send error (${response.status}): ${errorText}`);
-    }
-
-    // Record the passthrough cost with the platform markup so downstream
-    // billing persisters can read a single structured line and insert the
-    // usage record. This is the integration point T9d unblocks.
-    const breakdown = calculateTwilioSmsBilling(
-      text,
-      resolveSmsCostPerSegment(),
-    );
-    logger.info("[TwilioAdapter] Outbound SMS cost recorded", {
-      platform: "twilio",
-      messageId: event.messageId,
-      recipient: event.senderId,
-      segments: breakdown.segments,
-      rawCost: breakdown.rawCost,
-      markup: breakdown.markup,
-      billedCost: breakdown.billedCost,
-      markupRate: breakdown.markupRate,
-    });
+  async sendReplyWithReceipt(config, event, text) {
+    return { providerMessageIds: await sendTwilioReply(config, event, text) };
   },
 
   async sendTypingIndicator(): Promise<void> {

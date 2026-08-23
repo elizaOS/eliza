@@ -80,8 +80,9 @@ final class BionicDecodeLoop {
 
     /**
      * Drive one turn while enforcing caller-supplied textual stop sequences.
-     * A suffix up to the longest marker is withheld from the streaming sink so
-     * markers split across native decode steps never leak to the consumer.
+     * Only a trailing prefix of a stop marker is withheld from the streaming
+     * sink, so markers split across native decode steps never leak while
+     * unrelated text is emitted immediately.
      */
     static Result run(StepFn step, int maxTokens, int stepTokens,
                       List<String> stopSequences, TokenSink sink) throws Exception {
@@ -92,7 +93,6 @@ final class BionicDecodeLoop {
 
         final StringBuilder sb = new StringBuilder();
         final StringBuilder pending = new StringBuilder();
-        final int longestStop = longestStopLength(stopSequences);
         boolean stopped = false;
         int produced = 0;
         while (produced < cap) {
@@ -107,8 +107,8 @@ final class BionicDecodeLoop {
                     pending.setLength(0);
                     stopped = true;
                 } else {
-                    final int safeLength = Math.max(0, pending.length()
-                        - Math.max(0, longestStop - 1));
+                    final int safeLength = pending.length()
+                        - longestPendingStopPrefix(pending, stopSequences);
                     if (safeLength > 0) {
                         commit(pending.substring(0, safeLength), sb, sink);
                         pending.delete(0, safeLength);
@@ -133,12 +133,26 @@ final class BionicDecodeLoop {
         if (sink != null) sink.emit(text);
     }
 
-    private static int longestStopLength(List<String> stopSequences) {
+    private static int longestPendingStopPrefix(
+            CharSequence text, List<String> stopSequences) {
+        if (text.length() == 0 || stopSequences == null || stopSequences.isEmpty()) return 0;
         int longest = 0;
-        if (stopSequences == null) return longest;
         for (String stop : stopSequences) {
-            if (stop != null && !stop.isEmpty()) {
-                longest = Math.max(longest, stop.length());
+            if (stop == null || stop.isEmpty()) continue;
+            final int candidateMax = Math.min(text.length(), stop.length());
+            for (int length = candidateMax; length > longest; length--) {
+                final int suffixStart = text.length() - length;
+                boolean matches = true;
+                for (int i = 0; i < length; i++) {
+                    if (text.charAt(suffixStart + i) != stop.charAt(i)) {
+                        matches = false;
+                        break;
+                    }
+                }
+                if (matches) {
+                    longest = length;
+                    break;
+                }
             }
         }
         return longest;

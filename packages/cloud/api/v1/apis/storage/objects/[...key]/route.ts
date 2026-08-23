@@ -15,6 +15,9 @@
  * Auth: requireUserOrApiKeyWithOrg.
  * Quota: declared bytes are reserved atomically before R2 consumes the stream;
  * object size itself is governed by R2 and the ingress plan, not Worker heap.
+ * Length headers (`X-Content-Length`, `Content-Length`) must be plain safe
+ * decimals; untrusted values are refused and the unread body is cancelled
+ * before the stream is handed to R2.
  * Pricing: PUT, GET, and HEAD use durable server-priced receipts. Read retries
  * recover the exact immutable provider generation before any provider access.
  */
@@ -41,6 +44,10 @@ import {
 } from "@/lib/services/storage/native-storage-read";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import {
+  cancelBestEffort,
+  parseTrustworthyDecimalInteger,
+} from "./put-body-budget";
 
 const STORAGE_SERVICE_ID = "storage";
 const MAX_OBJECT_KEY_LENGTH = 1024;
@@ -93,6 +100,27 @@ function validatePrivateObjectKey(
   return validateUserKey(c.req.header("X-Storage-Object-Key"));
 }
 
+function reportRejectedPutCancelFailure(label: string, error: unknown): void {
+  // error-policy:J6 best-effort teardown for an upload already rejected.
+  logger.warn("[storage proxy] failed to cancel rejected PUT body", {
+    errorType: error instanceof Error ? error.name : "unknown",
+    label,
+  });
+}
+
+function rejectPutAndCancelBody(
+  c: Context<AppEnv>,
+  error: string,
+  status: 400 | 411,
+  label: string,
+): Response {
+  const body = c.req.raw.body;
+  if (body) {
+    cancelBestEffort(body, label, reportRejectedPutCancelFailure);
+  }
+  return c.json({ error }, status);
+}
+
 app.put("/*", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -110,26 +138,36 @@ app.put("/*", async (c) => {
       return c.json({ error: validated.error }, 400);
     }
 
-    const declaredLength = c.req.header("x-content-length");
-    const bytes = declaredLength ? Number(declaredLength) : Number.NaN;
-    if (!Number.isSafeInteger(bytes) || bytes <= 0) {
-      return c.json(
-        { error: "A positive X-Content-Length header is required" },
+    const bytes = parseTrustworthyDecimalInteger(
+      c.req.header("x-content-length"),
+    );
+    if (bytes === null || bytes <= 0) {
+      return rejectPutAndCancelBody(
+        c,
+        "A positive X-Content-Length header is required",
         411,
+        "x-content-length",
       );
     }
     const transportLength = c.req.header("content-length");
-    if (transportLength !== undefined && Number(transportLength) !== bytes) {
-      return c.json(
-        { error: "Content-Length does not match X-Content-Length" },
-        400,
-      );
+    if (transportLength !== undefined) {
+      const transportBytes = parseTrustworthyDecimalInteger(transportLength);
+      if (transportBytes === null || transportBytes !== bytes) {
+        return rejectPutAndCancelBody(
+          c,
+          "Content-Length does not match X-Content-Length",
+          400,
+          "content-length-mismatch",
+        );
+      }
     }
     const contentSha256 = c.req.header("x-content-sha256")?.toLowerCase();
     if (!contentSha256 || !/^[0-9a-f]{64}$/.test(contentSha256)) {
-      return c.json(
-        { error: "A hexadecimal X-Content-SHA256 header is required" },
+      return rejectPutAndCancelBody(
+        c,
+        "A hexadecimal X-Content-SHA256 header is required",
         400,
+        "content-sha256",
       );
     }
     const body = c.req.raw.body;

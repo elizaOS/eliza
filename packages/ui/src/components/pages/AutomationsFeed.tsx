@@ -97,11 +97,11 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
     },
   };
 const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
-  all: <Layers className="h-3.5 w-3.5" aria-hidden />,
-  prompts: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
-  workflows: <Workflow className="h-3.5 w-3.5" aria-hidden />,
-  active: <Play className="h-3.5 w-3.5" aria-hidden />,
-  inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
+  all: <Layers className="size-3.5" aria-hidden />,
+  prompts: <CheckCircle2 className="size-3.5" aria-hidden />,
+  workflows: <Workflow className="size-3.5" aria-hidden />,
+  active: <Play className="size-3.5" aria-hidden />,
+  inactive: <CircleSlash className="size-3.5" aria-hidden />,
 };
 const NEW_AUTOMATION_LINK_ID = "__new__";
 
@@ -666,19 +666,19 @@ export function AutomationsFeed({
                   defaultValue: "Add automation",
                 })}
                 aria-expanded={createOpen}
-                className="h-9 w-9 rounded-md text-muted-strong hover:bg-bg-hover hover:text-txt"
+                className="size-9 rounded-md text-muted-strong hover:bg-bg-hover hover:text-txt"
                 onClick={() => setCreateOpen((current) => !current)}
                 {...newAutomationAction.agentProps}
               >
                 {createOpen ? (
-                  <X className="h-4 w-4" aria-hidden />
+                  <X className="size-4" aria-hidden />
                 ) : (
-                  <Plus className="h-4 w-4" aria-hidden />
+                  <Plus className="size-4" aria-hidden />
                 )}
               </Button>
               {createOpen ? (
                 <div
-                  className="absolute right-0 top-11 z-30 flex gap-1 rounded-xl border border-border/60 bg-card p-1.5 shadow-xl"
+                  className="absolute right-0 top-11 z-30 flex gap-1 rounded-xl border border-border/60 bg-card p-1.5"
                   data-testid="automation-create-menu"
                 >
                   <Button
@@ -693,7 +693,7 @@ export function AutomationsFeed({
                     }
                     {...newWorkflowAction.agentProps}
                   >
-                    <Workflow className="h-4 w-4 text-accent-muted dark:text-accent" />
+                    <Workflow className="size-4 text-accent-muted dark:text-accent" />
                   </Button>
                   <Button
                     ref={newPromptAction.ref}
@@ -705,7 +705,7 @@ export function AutomationsFeed({
                     onClick={() => setEditor({ kind: "task", taskId: null })}
                     {...newPromptAction.agentProps}
                   >
-                    <CheckCircle2 className="h-4 w-4" />
+                    <CheckCircle2 className="size-4" />
                   </Button>
                 </div>
               ) : null}
@@ -897,7 +897,7 @@ function WorkflowServiceIssuePanel({
           : "rounded-sm"
       }`}
     >
-      <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+      <AlertTriangle className="size-5 shrink-0" aria-hidden />
       <div className={full ? "max-w-lg" : "min-w-0 flex-1"}>
         <p className="font-medium">{issue.title}</p>
         <p className="mt-1 text-xs opacity-90">{issue.message}</p>
@@ -908,7 +908,7 @@ function WorkflowServiceIssuePanel({
           className="shrink-0"
           onClick={() => onUpgrade(upgradeAgentId)}
         >
-          <Rocket className="h-4 w-4" aria-hidden />
+          <Rocket className="size-4" aria-hidden />
           Upgrade to Dedicated
         </Button>
       ) : (
@@ -1054,7 +1054,7 @@ function FeedRowItem({
         className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 whitespace-normal rounded-none p-0 text-left font-normal hover:bg-transparent"
         {...openAction.agentProps}
       >
-        <Icon className={`h-4 w-4 shrink-0 ${iconToneClass}`} aria-hidden />
+        <Icon className={`size-4 shrink-0 ${iconToneClass}`} aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-medium text-txt">
@@ -1074,14 +1074,14 @@ function FeedRowItem({
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-strong">
             {row.schedule && (
               <RowChip
-                icon={<CalendarClock className="h-3 w-3" />}
+                icon={<CalendarClock className="size-3" />}
                 label={row.schedule}
                 tone="accent"
               />
             )}
             {lastRunLabel && row.lastRunStatus && (
               <RowChip
-                icon={<History className="h-3 w-3" />}
+                icon={<History className="size-3" />}
                 label={lastRunLabel}
                 tone={
                   row.lastRunStatus === "error"
@@ -1094,14 +1094,14 @@ function FeedRowItem({
             )}
             {row.executionFetchError && (
               <RowChip
-                icon={<AlertTriangle className="h-3 w-3" />}
+                icon={<AlertTriangle className="size-3" />}
                 label={`Run history unavailable: ${row.executionFetchError}`}
                 tone="danger"
               />
             )}
             {!row.schedule && row.lastUpdated && (
               <RowChip
-                icon={<Clock className="h-3 w-3" />}
+                icon={<Clock className="size-3" />}
                 label={new Date(row.lastUpdated).toLocaleString(undefined, {
                   month: "short",
                   day: "numeric",
@@ -1125,13 +1125,13 @@ function FeedRowItem({
           onClick={onRunNow}
           variant="ghost"
           size="icon-sm"
-          className="h-7 w-7 rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
+          className="size-7 rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
           {...runAction.agentProps}
         >
           {isRunning ? (
             <Spinner size={14} aria-hidden />
           ) : (
-            <PlayCircle className="h-3.5 w-3.5" aria-hidden />
+            <PlayCircle className="size-3.5" aria-hidden />
           )}
         </Button>
       )}
@@ -1286,7 +1286,7 @@ function WorkflowEditorLoader({
   if (fetchState.status !== "success") {
     return (
       <div className="flex h-full items-center justify-center p-8">
-        <Spinner className="h-5 w-5" />
+        <Spinner className="size-5" />
       </div>
     );
   }

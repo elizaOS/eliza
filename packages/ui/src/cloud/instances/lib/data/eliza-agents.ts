@@ -5,10 +5,10 @@
 import type {
   AgentDatabaseStatus,
   AgentExecutionTier,
-  AgentListItemDto,
-  AgentResponse,
   AgentSandboxStatus,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
+  NormalizedAgentListItemDto,
+  NormalizedAgentResponse,
+} from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../lib/api-client";
 import {
@@ -16,7 +16,13 @@ import {
   useAuthenticatedQueryGate,
 } from "../../../lib/auth-query";
 
-export type AgentListItem = AgentListItemDto;
+export type AgentListItem = NormalizedAgentListItemDto;
+
+export type PersonalElizaIdentity = {
+  id: string;
+  displayName: string;
+  runtime: "shared" | "dedicated";
+};
 
 const AGENT_STATUSES = [
   "pending",
@@ -71,7 +77,31 @@ function isNullableIsoDate(value: unknown): value is string | null {
   return value === null || isIsoDate(value);
 }
 
-function parseAgentListItem(value: unknown): AgentListItemDto {
+function parseActiveJob(
+  value: unknown,
+): NormalizedAgentListItemDto["activeJob"] {
+  if (value === null) return null;
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.type !== "string" ||
+    (value.status !== "pending" && value.status !== "in_progress") ||
+    !Number.isInteger(value.attempts) ||
+    !Number.isInteger(value.maxAttempts) ||
+    !isNullableIsoDate(value.estimatedCompletionAt) ||
+    !isIsoDate(value.scheduledFor) ||
+    !isNullableIsoDate(value.startedAt) ||
+    !isIsoDate(value.createdAt) ||
+    !isIsoDate(value.updatedAt)
+  ) {
+    throw new Error("Agents response contained an invalid active job");
+  }
+  return value as unknown as NonNullable<
+    NormalizedAgentListItemDto["activeJob"]
+  >;
+}
+
+function parseAgentListItem(value: unknown): NormalizedAgentListItemDto {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
@@ -90,7 +120,8 @@ function parseAgentListItem(value: unknown): AgentListItemDto {
     !isNullableString(value.token_ticker) ||
     !isNullableString(value.dockerImage) ||
     !isEnumValue(EXECUTION_TIERS, value.executionTier) ||
-    !isNullableString(value.webUiUrl)
+    !isNullableString(value.webUiUrl) ||
+    !("activeJob" in value)
   ) {
     throw new Error("Agents response contained an invalid agent record");
   }
@@ -112,11 +143,14 @@ function parseAgentListItem(value: unknown): AgentListItemDto {
     dockerImage: value.dockerImage,
     executionTier: value.executionTier,
     webUiUrl: value.webUiUrl,
+    activeJob: parseActiveJob(value.activeJob),
   };
 }
 
 /** Validate the untrusted list envelope once for every agents-list consumer. */
-export function parseAgentsResponse(payload: unknown): AgentListItemDto[] {
+export function parseAgentsResponse(
+  payload: unknown,
+): NormalizedAgentListItemDto[] {
   if (
     !isRecord(payload) ||
     payload.success !== true ||
@@ -147,13 +181,41 @@ export function useAgents() {
   });
 }
 
+/** The rowless account-native Eliza is authoritative even with zero sandbox rows. */
+export function usePersonalElizaIdentity() {
+  const gate = useAuthenticatedQueryGate();
+  return useQuery({
+    queryKey: authenticatedQueryKey(["agent", "personal-identity"], gate),
+    enabled: gate.enabled,
+    queryFn: async () => {
+      const response = await api<{
+        success?: boolean;
+        data?: { identity?: Partial<PersonalElizaIdentity> };
+      }>("/api/v1/eliza/personal");
+      const identity = response.data?.identity;
+      if (
+        response.success !== true ||
+        typeof identity?.id !== "string" ||
+        !identity.id.startsWith("personal:") ||
+        typeof identity.displayName !== "string" ||
+        (identity.runtime !== "shared" && identity.runtime !== "dedicated")
+      ) {
+        throw new Error("Personal Eliza response was invalid");
+      }
+      return identity as PersonalElizaIdentity;
+    },
+  });
+}
+
 /** GET /api/v1/eliza/agents/[agentId] — single agent detail. */
 export function useAgent(agentId: string | undefined) {
   const gate = useAuthenticatedQueryGate(Boolean(agentId));
   return useQuery({
     queryKey: authenticatedQueryKey(["agent", "agent", agentId], gate),
     queryFn: async () => {
-      const res = await api<AgentResponse>(`/api/v1/eliza/agents/${agentId}`);
+      const res = await api<NormalizedAgentResponse>(
+        `/api/v1/eliza/agents/${agentId}`,
+      );
       return res.data;
     },
     enabled: gate.enabled,

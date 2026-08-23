@@ -290,10 +290,14 @@ describe("EvaluatorService", () => {
 				error: "Evaluator output section did not validate",
 			}),
 		]);
+		// The log payload carries a bounded PREVIEW of the section, not the
+		// section itself — a diagnostic surface, never model-facing context, so
+		// CLAUDE.md's prompt-integrity rule permits the bound and requires the
+		// field to name itself a preview.
 		expect(warnSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				evaluator: "circular",
-				rawSection: expect.any(String),
+				rawSectionPreview: expect.any(String),
 			}),
 			"Evaluator output section did not validate",
 		);

@@ -6,6 +6,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { discordChannelsRepository } from "../../../db/repositories/discord-channels";
 import { discordGuildsRepository } from "../../../db/repositories/discord-guilds";
 import { discordFetch } from "../../utils/discord-api";
@@ -182,7 +183,7 @@ class DiscordAutomationService {
         const errorText = await tokenResponse.text();
         logger.warn("[Discord] Token exchange failed", {
           status: tokenResponse.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return null;
       }
@@ -416,7 +417,7 @@ class DiscordAutomationService {
         logger.warn("[Discord] Failed to set bot nickname", {
           guildId,
           status: response.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return false;
       }
@@ -515,7 +516,7 @@ class DiscordAutomationService {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(
-        `[Discord] Failed to fetch channels for guild ${guildId} (status ${response.status}): ${error.slice(0, 200)}`,
+        `[Discord] Failed to fetch channels for guild ${guildId} (status ${response.status}): ${truncateWellFormed(toWellFormedUnicode(error), 200)}`,
       );
     }
 

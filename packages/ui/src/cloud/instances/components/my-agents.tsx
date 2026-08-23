@@ -4,7 +4,7 @@
  * The My Agents surface: lists the user's cloud agent instances with sort/view
  * controls and the create entry point.
  */
-import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { logger } from "@elizaos/logger";
 import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui/cloud-ui";
 import {
   ArrowRight,
@@ -111,7 +111,7 @@ function AgentConsoleOverview({
       <div className="border border-white/10 bg-black p-5">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="max-w-2xl space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            <p className="text-xs-tight font-semibold uppercase tracking-[0.2em] text-muted">
               {t("cloud.myAgents.agentConsole", {
                 defaultValue: "Agent console",
               })}
@@ -140,7 +140,7 @@ function AgentConsoleOverview({
               to={chatPath}
               className="inline-flex h-10 items-center justify-center gap-2 bg-txt px-4 text-sm font-medium text-bg transition-colors hover:bg-txt/90"
             >
-              <MessageCircle className="h-4 w-4" />
+              <MessageCircle className="size-4" />
               {primaryAgent
                 ? t("cloud.myAgents.openAgentChat", {
                     defaultValue: "Open agent chat",
@@ -155,7 +155,7 @@ function AgentConsoleOverview({
               onClick={onCreateNew}
               className="inline-flex h-10 items-center justify-center gap-2 border border-white/10 bg-black px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
             >
-              <Server className="h-4 w-4" />
+              <Server className="size-4" />
               {t("cloud.myAgents.runtimeAdmin", {
                 defaultValue: "Runtime admin",
               })}
@@ -165,7 +165,7 @@ function AgentConsoleOverview({
 
         <div className="mt-5 grid gap-px border border-white/10 bg-white/5 sm:grid-cols-3">
           <div className="bg-black p-4">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+            <p className="text-xs-tight uppercase tracking-[0.2em] text-white/35">
               {t("cloud.myAgents.ownedAgents", {
                 defaultValue: "Owned agents",
               })}
@@ -175,7 +175,7 @@ function AgentConsoleOverview({
             </p>
           </div>
           <div className="bg-black p-4">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+            <p className="text-xs-tight uppercase tracking-[0.2em] text-white/35">
               {t("cloud.myAgents.running", { defaultValue: "Running" })}
             </p>
             <p className="mt-1 text-2xl font-semibold text-white tabular-nums">
@@ -183,7 +183,7 @@ function AgentConsoleOverview({
             </p>
           </div>
           <div className="bg-black p-4">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+            <p className="text-xs-tight uppercase tracking-[0.2em] text-white/35">
               {t("cloud.myAgents.chatTarget", { defaultValue: "Chat target" })}
             </p>
             <p className="mt-1 truncate text-sm font-medium text-white">
@@ -203,8 +203,8 @@ function AgentConsoleOverview({
             "group flex items-start gap-3 bg-black p-4 transition-colors hover:bg-white/5";
           const sectionInner = (
             <>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-muted">
-                <Icon className="h-4 w-4" />
+              <span className="flex size-9 shrink-0 items-center justify-center border border-white/10 bg-black text-muted">
+                <Icon className="size-4" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-3">
@@ -213,7 +213,7 @@ function AgentConsoleOverview({
                       defaultValue: section.defaultTitle,
                     })}
                   </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-white" />
+                  <ArrowRight className="size-4 shrink-0 text-white/30 transition-colors group-hover:text-white" />
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-white/55">
                   {t(section.descriptionKey, {
@@ -319,7 +319,7 @@ export function MyAgentsClient() {
 
       setCharacters([...ownedAgents, ...savedAgents]);
     } catch (error) {
-      logger.error("[MyAgents] Failed to fetch characters:", error);
+      logger.error({ error }, "[MyAgents] Failed to fetch characters");
       toast.error("Failed to load your agents");
     } finally {
       setIsLoading(false);
@@ -377,7 +377,10 @@ export function MyAgentsClient() {
         }
       })
       .catch((error) => {
-        logger.error("[MyAgents] Failed to claim affiliate characters:", error);
+        logger.error(
+          { error },
+          "[MyAgents] Failed to claim affiliate characters",
+        );
       });
   }, [fetchCharacters, t]);
 
@@ -454,7 +457,7 @@ export function MyAgentsClient() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
       </div>
     );
   }

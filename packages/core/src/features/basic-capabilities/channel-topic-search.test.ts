@@ -47,7 +47,7 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 			{ parameters: { query: "stripe" } },
 		);
-		expect(searchTopics).toHaveBeenCalledWith("stripe", 11);
+		expect(searchTopics).toHaveBeenCalledWith("stripe");
 		expect(res.values?.success).toBe(true);
 		expect(res.values?.matchCount).toBe(1);
 		expect(res.text).toContain("room-a");
@@ -61,7 +61,7 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 			undefined,
 		);
-		expect(searchTopics).toHaveBeenCalledWith("billing", 11);
+		expect(searchTopics).toHaveBeenCalledWith("billing");
 	});
 
 	it("unwraps a hardened message and never echoes the security envelope", async () => {
@@ -82,7 +82,7 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 		);
 		// Matching runs on the user's words, not the envelope.
-		expect(searchTopics).toHaveBeenCalledWith("billing dashboards", 11);
+		expect(searchTopics).toHaveBeenCalledWith("billing dashboards");
 		expect(res.text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
 		expect(res.text).not.toContain("SECURITY NOTICE");
 		expect(res.text).toContain('"billing dashboards"');
@@ -106,13 +106,13 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 		expect(query.length).toBeLessThanOrEqual(121);
 	});
 
-	it("distinguishes an exact fit from measured overflow", async () => {
+	it("returns every matching room without hidden overflow", async () => {
 		const hits = Array.from({ length: 11 }, (_, index) => ({
 			roomId: `room-${index}`,
 			matchedTopics: ["billing"],
 			topics: ["billing"],
 		}));
-		const overflow = await channelTopicSearchAction.handler(
+		const result = await channelTopicSearchAction.handler(
 			runtimeWith({
 				searchTopics: () => hits,
 				getTopicsForAllRooms: () => ({ "room-0": ["billing"] }),
@@ -121,18 +121,9 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 			{ parameters: { query: "billing" } },
 		);
-		expect(overflow.values?.hasMore).toBe(true);
-		expect((overflow.data as { hits: unknown[] }).hits).toHaveLength(10);
-		expect(overflow.text).toContain("More matches exist");
-
-		const exact = await channelTopicSearchAction.handler(
-			runtimeWith({ searchTopics: () => hits.slice(0, 10) }),
-			{ content: { text: "" } } as never,
-			undefined,
-			{ parameters: { query: "billing" } },
-		);
-		expect(exact.values?.hasMore).toBe(false);
-		expect(exact.text).not.toContain("More matches exist");
+		expect(result.values?.hasMore).toBe(false);
+		expect((result.data as { hits: unknown[] }).hits).toHaveLength(11);
+		expect(result.text).toContain("room-10");
 	});
 });
 

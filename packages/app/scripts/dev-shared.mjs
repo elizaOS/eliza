@@ -21,7 +21,9 @@ const appDir = path.resolve(here, "..");
 const worktree = normalizeWorktreePath(path.resolve(appDir, "../.."));
 const registryPath = defaultRegistryPath();
 
-const entry = await reservePortsForWorktree(worktree, { registryPath });
+const { entry, reused } = await reservePortsForWorktree(worktree, {
+  registryPath,
+});
 const env = {
   ...process.env,
   ELIZA_UI_PORT: String(entry.uiPort),
@@ -35,40 +37,48 @@ console.log(
     `[dev:shared] registry=${registryPath}`,
 );
 
-const viteCommand = resolveViteCommand({ appDir });
-const child = spawn(viteCommand.command, viteCommand.args, {
-  cwd: appDir,
-  env,
-  stdio: "inherit",
-});
+if (reused) {
+  console.log("[dev:shared] reusing existing server; Vite was not started");
+} else {
+  const viteCommand = resolveViteCommand({ appDir });
+  const child = spawn(viteCommand.command, viteCommand.args, {
+    cwd: appDir,
+    env,
+    stdio: "inherit",
+  });
 
-await updateRegistryEntry(
-  worktree,
-  {
-    pid: child.pid,
-    startedAt: new Date().toISOString(),
-    uiPort: entry.uiPort,
-    apiPort: entry.apiPort,
-    packageDir: appDir,
-  },
-  { registryPath },
-);
-
-function forward(signal) {
-  if (!child.killed) child.kill(signal);
-}
-process.once("SIGINT", () => forward("SIGINT"));
-process.once("SIGTERM", () => forward("SIGTERM"));
-
-child.on("exit", async (code, signal) => {
-  await updateRegistryEntry(
+  const registered = await updateRegistryEntry(
     worktree,
-    { pid: null, stoppedAt: new Date().toISOString() },
-    { registryPath },
+    {
+      pid: child.pid,
+      startedAt: new Date().toISOString(),
+      uiPort: entry.uiPort,
+      apiPort: entry.apiPort,
+      packageDir: appDir,
+    },
+    { registryPath, expectedReservationId: entry.reservationId },
   );
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
+  if (!registered) {
+    child.kill();
+    throw new Error("Lost the dev server reservation before Vite launched");
   }
-  process.exit(code ?? 0);
-});
+
+  function forward(signal) {
+    if (!child.killed) child.kill(signal);
+  }
+  process.once("SIGINT", () => forward("SIGINT"));
+  process.once("SIGTERM", () => forward("SIGTERM"));
+
+  child.on("exit", async (code, signal) => {
+    await updateRegistryEntry(
+      worktree,
+      { pid: null, stoppedAt: new Date().toISOString() },
+      { registryPath, expectedReservationId: entry.reservationId },
+    );
+    if (signal) {
+      process.kill(process.pid, signal);
+      return;
+    }
+    process.exit(code ?? 0);
+  });
+}

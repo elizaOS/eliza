@@ -226,11 +226,28 @@ export class MemoryService extends Service {
 		}
 
 		const extractionInterval = runtime.getSetting("MEMORY_EXTRACTION_INTERVAL");
-		if (extractionInterval) {
-			this.memoryConfig.longTermExtractionInterval = Number.parseInt(
-				String(extractionInterval),
-				10,
-			);
+		if (
+			extractionInterval !== undefined &&
+			extractionInterval !== null &&
+			extractionInterval !== ""
+		) {
+			// This value is a DIVISOR in shouldRunExtraction:
+			//   Math.floor(currentMessageCount / interval) * interval
+			// `Number.parseInt` truncates, so "0.5" became 0 and the checkpoint
+			// became NaN — and every comparison against NaN is false, so
+			// extraction silently never ran again. A negative value is the
+			// mirror failure: the checkpoint always exceeds the last one, so it
+			// runs on every message. Only a positive whole number is usable;
+			// anything else keeps the documented default.
+			const raw = String(extractionInterval).trim();
+			const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+			if (Number.isSafeInteger(parsed) && parsed > 0) {
+				this.memoryConfig.longTermExtractionInterval = parsed;
+			} else {
+				logger.warn(
+					`[MemoryService] ignoring MEMORY_EXTRACTION_INTERVAL=${JSON.stringify(String(extractionInterval))}; expected a positive whole number, keeping ${this.memoryConfig.longTermExtractionInterval}`,
+				);
+			}
 		}
 
 		const configuredModelType = resolveConfiguredTextGenerationModelType(
@@ -354,6 +371,10 @@ export class MemoryService extends Service {
 		}
 
 		const checkpoint = await this.runtime.getCache<number>(key);
+		const concurrentlyWritten = this.lastExtractionCheckpoints.get(key);
+		if (concurrentlyWritten !== undefined) {
+			return concurrentlyWritten;
+		}
 		const messageCount = checkpoint ?? 0;
 		this.lastExtractionCheckpoints.set(key, messageCount);
 		this.capSessionMap(this.lastExtractionCheckpoints);
@@ -581,7 +602,11 @@ export class MemoryService extends Service {
 				if (similarity < matchThreshold) continue;
 				if (scored.length < limit) {
 					scored.push({ memory, similarity });
-					scored.sort((a, b) => b.similarity - a.similarity);
+					scored.sort((a, b) => {
+						const aSim = Number.isFinite(a.similarity) ? a.similarity : 0;
+						const bSim = Number.isFinite(b.similarity) ? b.similarity : 0;
+						return bSim - aSim;
+					});
 					continue;
 				}
 				if (similarity <= scored[scored.length - 1]?.similarity) continue;

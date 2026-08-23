@@ -39,7 +39,7 @@ export function SectionHeader({
           align === "right" && "justify-end",
         )}
       >
-        <span className="inline-block w-2 h-2 bg-accent" />
+        <span className="inline-block size-2 bg-accent" />
         <p
           className={cn(
             "text-xl uppercase tracking-wider font-normal text-txt leading-[26px]",
@@ -85,7 +85,7 @@ export function SectionLabel({
 }) {
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <span className="inline-block w-2 h-2 bg-accent" />
+      <span className="inline-block size-2  bg-accent" />
       <span className="text-xl uppercase font-normal text-txt leading-[26px]">
         {children}
       </span>

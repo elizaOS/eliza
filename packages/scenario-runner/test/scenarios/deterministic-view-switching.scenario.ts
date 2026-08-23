@@ -73,9 +73,30 @@ function expectShowTurn(
   execution: ScenarioTurnExecution,
   view: BuiltinView,
 ): string | undefined {
-  const expectedText = `Opened ${view.navigationLabel ?? view.label}.`;
-  if (execution.responseText !== expectedText) {
-    return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
+  // VIEWS marks its navigation receipt `transcriptVisibility: "internal"`, so
+  // the runtime never delivers it and `responseText` is not where it lives.
+  // Read it from the action result the runner reports verbatim.
+  const result = toRecord(execution.responseBody);
+  if (result.transcriptVisibility !== "internal") {
+    return `expected an internal-visibility VIEWS result, saw transcriptVisibility=${JSON.stringify(result.transcriptVisibility)}`;
+  }
+  let effect: Record<string, unknown>;
+  try {
+    effect = toRecord(JSON.parse(String(result.text ?? "")));
+  } catch {
+    return `expected a JSON view-navigation effect, saw ${JSON.stringify(result.text)}`;
+  }
+  const expectedEffect = {
+    effect: "view_navigation",
+    status: "accepted",
+    viewId: view.id,
+    label: view.navigationLabel ?? view.label,
+    path: view.path,
+  };
+  for (const [key, expected] of Object.entries(expectedEffect)) {
+    if (effect[key] !== expected) {
+      return `expected navigation effect ${key}=${JSON.stringify(expected)}, saw ${JSON.stringify(effect[key])}`;
+    }
   }
   const action = execution.actionsCalled.find(
     (candidate) => candidate.actionName === "VIEWS",
@@ -159,7 +180,6 @@ export default scenario({
     text: `Open the ${view.label} view`,
     actionName: "VIEWS",
     options: { action: "show", view: view.id, viewType: "gui" },
-    responseIncludesAny: [`Opened ${view.navigationLabel ?? view.label}`],
     assertTurn: (execution: ScenarioTurnExecution) =>
       expectShowTurn(execution, view),
   })),

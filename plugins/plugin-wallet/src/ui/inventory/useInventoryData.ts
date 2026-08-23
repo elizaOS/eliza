@@ -241,9 +241,13 @@ export function useInventoryData({
     const asc = inventorySortDirection === "asc";
     if (inventorySort === "value") {
       sorted.sort((a, b) => {
-        const diff = a.valueUsd - b.valueUsd;
+        const aVal = Number.isFinite(a.valueUsd) ? a.valueUsd : 0;
+        const bVal = Number.isFinite(b.valueUsd) ? b.valueUsd : 0;
+        const diff = aVal - bVal;
         if (diff !== 0) return asc ? diff : -diff;
-        const diff2 = a.balanceRaw - b.balanceRaw;
+        const aRaw = Number.isFinite(a.balanceRaw) ? a.balanceRaw : 0;
+        const bRaw = Number.isFinite(b.balanceRaw) ? b.balanceRaw : 0;
+        const diff2 = aRaw - bRaw;
         return asc ? diff2 : -diff2;
       });
     } else if (inventorySort === "chain") {

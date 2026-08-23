@@ -660,6 +660,12 @@ export type UpdateConfig = {
   checkOnStart?: boolean;
   lastCheckAt?: string;
   lastCheckVersion?: string;
+  /**
+   * Release channel `lastCheckVersion` was fetched for. A cached version is
+   * only valid for its own channel, and the channel can change without a
+   * config write (ELIZA_UPDATE_CHANNEL).
+   */
+  lastCheckChannel?: ReleaseChannel;
   /** Seconds between automatic checks. Default: 14400 (4 hours). */
   checkIntervalSeconds?: number;
 };

@@ -26,6 +26,7 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import { dismissPermissionPrimingIfShown } from "./packaged-ui-actions";
 
 const SURFACE = '[data-testid="home-launcher-surface"]';
 const PROBE = '[data-testid="home-launcher-page-probe"]';
@@ -189,6 +190,7 @@ test("packaged desktop launcher: store flips the rail (data-page + AX probe) non
     // Mount the HomeLauncherSurface in the full shell; the launcher half lives
     // on the canonical /views route.
     const activeHarness = harness;
+    await dismissPermissionPrimingIfShown(activeHarness);
     await mountLauncherSurface(activeHarness);
     await expect
       .poll(async () => (await readSurface(activeHarness)).mounted, {

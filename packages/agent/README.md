@@ -26,6 +26,72 @@ See `package.json` for `build`, `lint`, and other scripts.
 unsuccessful `TaskResult` with a stable `errorCode`; it never falls back to
 ordinary `TEXT_LARGE` synthesis and labels that output as research.
 
+## Message-interaction session persistence
+
+`FileMessageInteractionSessionStore` is the durable single-host adapter for
+core's message-interaction session authority. It serializes independent local
+processes, writes a 0600 regular file through same-filesystem fsync and atomic
+rename, fails fast on corruption and symlinks, qualifies Linux lock owners by
+boot/process generation, and generation-fences stale takeover and release with
+an atomically published transition marker. A complete owner inode is fsynced
+before no-replace hardlink publication; malformed owners have a bounded
+recovery ceiling, while a live PID that cannot be generation-qualified fails
+closed. An abandoned transition marker also fails closed because portable
+filesystems cannot conditionally unlink a pathname generation; an operator may
+remove it only after stopping every store user and verifying that no host
+process owns the store. Operations report
+`INTERACTION_STORE_RECOVERY_REQUIRED` and do not mutate state while that marker
+remains; this state has no bounded automatic recovery. The marker path is
+reported in `error.context.markerPath`; with the default filename it is
+`<stateDirectory>/message-interaction-sessions.v1.json.lock.transition`.
+Recovery requires stopping every process that uses the store, verifying that
+none owns the adjacent `.lock` owner file, removing that exact `.transition`
+path, fsyncing the state directory, and only then restarting store users. Its
+boundary is one machine and one state directory. Multi-host deployments must
+supply a transactional database implementation of
+`MessageInteractionSessionStore` and use the session replay key as the effect or
+outbox idempotency key.
+
+Transition cleanup reports machine-distinct retry outcomes. A failure during
+pre-operation stale recovery is
+`INTERACTION_STORE_RECOVERY_CLEANUP_FAILED` with `committed: false`; a failure
+after the durable transaction commit is
+`INTERACTION_STORE_COMMITTED_CLEANUP_FAILED` with `committed: true`, so callers
+must not retry the mutation. Every other release failure after the durable write
+is `INTERACTION_STORE_COMMITTED_RELEASE_FAILED` with the same no-retry contract;
+combined operation/release failures retain the release code and recovery
+context. If publication sees a transition marker after linking its complete
+owner, no transaction starts. Offline recovery must additionally verify the
+reported owner token/inode, remove both the exact marker and owner paths, fsync
+the parent directory, and restart. Owner-candidate cleanup failure is likewise
+typed as pre-mutation (`INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED`,
+`committed: false`) whether or not the candidate was published; a published
+owner is safely detached when possible and `context.published` records which
+case occurred.
+After the state temp is renamed, a parent-directory sync failure reports
+`INTERACTION_STORE_COMMIT_AMBIGUOUS` with `committed: "unknown"`; a close
+failure after successful sync uses the same code with `committed: true`.
+Both are non-retryable and require reading the reported state file to reconcile
+the persisted session outcome. If lock unlink and transition cleanup both fail,
+the committed cleanup error retains the unlink cause, cleanup error, marker,
+lock identity/token, and exact offline recovery authority.
+
+The file authority durably commits an effect before dispatch. If the process
+dies after that commit but before retaining the receipt, the session remains
+`committed` for operator reconciliation; it is never lease-transferred,
+automatically retried, or revoked as if cancellation succeeded. The store lists
+ambiguous commits and accepts only a verified receipt to reconcile them without
+re-execution. Completed receipts are retained for seven days and unreconciled
+commits for thirty days by default, after which bounded collection prevents
+permanent capacity exhaustion.
+
+The bundled `eliza` plugin registers `MessageInteractionHostService` as the one
+runtime authority connectors resolve through `MESSAGE_INTERACTION_HOST_SERVICE`.
+Connectors submit capability profiles and trusted render bindings to `prepare`,
+then send authenticated inbound provider receipts to `consume`. Only host-owned
+effect handlers execute retained operations; completed receipts preserve the
+provider event, canonical inbound event, audit id, and app-state proof for replay.
+
 ## Approval-bound plugin installation
 
 `installPlugin` always installs the canonical npm package declared by the

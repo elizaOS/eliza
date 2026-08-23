@@ -22,7 +22,7 @@ declare global {
 function Fixture() {
   return (
     <CloudI18nProvider initialLang="en">
-      <div className="min-h-screen bg-bg font-body text-txt">
+      <div className="min-h-dvh bg-bg font-body text-txt">
         <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
           <div>
             <h1 className="text-lg font-semibold text-txt">w3-hosting-e2e</h1>

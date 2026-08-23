@@ -117,10 +117,10 @@ export function renderOverlayMessageBody(
           WALLPAPER_FLOAT_SHADOW,
         )}
       >
-        <div className="mb-1 text-[14px] font-medium">
+        <div className="mb-1 text-sm font-medium">
           Connect a provider to chat
         </div>
-        <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
+        <div className="mb-2.5 whitespace-pre-wrap text-sm-tight leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
           {message.text}
         </div>
         <Button
@@ -128,7 +128,7 @@ export function renderOverlayMessageBody(
           size="sm"
           data-testid="chat-no-provider-settings"
           onClick={() => onOpenSettings?.()}
-          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-txt transition-colors hover:bg-bg-hover"
+          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-sm-tight font-medium text-txt transition-colors hover:bg-bg-hover"
         >
           Open Settings
         </Button>
@@ -147,8 +147,8 @@ export function renderOverlayMessageBody(
           WALLPAPER_FLOAT_SHADOW,
         )}
       >
-        <div className="mb-1 text-[14px] font-medium">Out of credits</div>
-        <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
+        <div className="mb-1 text-sm font-medium">Out of credits</div>
+        <div className="mb-2.5 whitespace-pre-wrap text-sm-tight leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
           {message.text}
         </div>
         <Button
@@ -156,7 +156,7 @@ export function renderOverlayMessageBody(
           size="sm"
           data-testid="chat-insufficient-credits-add"
           onClick={() => onOpenSettings?.()}
-          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-txt transition-colors hover:bg-bg-hover"
+          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-sm-tight font-medium text-txt transition-colors hover:bg-bg-hover"
         >
           Add credits
         </Button>
@@ -207,6 +207,7 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.source ? { source: m.source } : {}),
     ...(m.interrupted ? { interrupted: true } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
+    ...(m.terminalFailure ? { terminalFailure: m.terminalFailure } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
   };

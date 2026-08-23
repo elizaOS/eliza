@@ -4,7 +4,7 @@
  * an in-process keyed queue over the cache-backed store.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
@@ -28,23 +28,209 @@ import { type ElizaAppProvisioningStatus, getElizaAppProvisioningStatus } from "
 import { elizaAppUserService } from "./user-service";
 
 const ONBOARDING_REQUEST_TIMEOUT_MS = 10_000;
+// Coordinator replies are small JSON control documents. One MiB leaves room
+// for retained session history while keeping a single internal hop within a
+// fixed Worker-memory budget; larger histories must be bounded or paginated.
+const ONBOARDING_RESPONSE_MAX_BYTES = 1024 * 1024;
+const REBUFFERED_RESPONSE_HEADERS = [
+  "content-encoding",
+  "content-length",
+  "trailer",
+  "transfer-encoding",
+] as const;
+
+function onboardingAbortError(message: string, name: "AbortError" | "TimeoutError"): DOMException {
+  return new DOMException(message, name);
+}
+
+async function bufferOnboardingResponse(
+  response: Response,
+  signal: AbortSignal,
+  throwIfAbortedOrExpired: () => void,
+): Promise<Response> {
+  throwIfAbortedOrExpired();
+  const rawContentLength = response.headers.get("content-length");
+  if (rawContentLength !== null && /^\d+$/.test(rawContentLength)) {
+    const declaredLength = Number(rawContentLength);
+    if (!Number.isSafeInteger(declaredLength) || declaredLength > ONBOARDING_RESPONSE_MAX_BYTES) {
+      const error = new ElizaError("Onboarding hop response exceeds the byte limit", {
+        code: "ONBOARDING_RESPONSE_TOO_LARGE",
+        context: { maxBytes: ONBOARDING_RESPONSE_MAX_BYTES, receivedBytes: declaredLength },
+      });
+      try {
+        await response.body?.cancel(error);
+      } catch (cause) {
+        // error-policy:J6 The response is rejected; cancellation only releases transport.
+        logger.debug("[onboarding-chat] Failed to cancel declared-oversize response body", {
+          cause,
+        });
+      }
+      throw error;
+    }
+  }
+  if (!response.body) {
+    throwIfAbortedOrExpired();
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  // Copy every view immediately so a one-byte chunk cannot retain a large
+  // transport-owned backing buffer or grow an unbounded chunk-object list.
+  const body = new Uint8Array(ONBOARDING_RESPONSE_MAX_BYTES);
+  let receivedBytes = 0;
+  const cancelBody = (): void => {
+    // error-policy:J6 The request already failed; cancellation only releases the response stream.
+    reader.cancel(signal.reason).catch((cause: unknown) => {
+      logger.debug("[onboarding-chat] Failed to cancel aborted onboarding response body", {
+        cause,
+      });
+    });
+  };
+  signal.addEventListener("abort", cancelBody, { once: true });
+  try {
+    while (true) {
+      // An immediately-ready stream can starve the timer queue with an
+      // unbounded microtask chain, especially when chunks are empty. Enforce
+      // the monotonic wall-clock deadline inside the read loop as well.
+      throwIfAbortedOrExpired();
+      const next = await reader.read();
+      throwIfAbortedOrExpired();
+      if (next.done) break;
+      // Empty fragments do not contribute to the bounded payload. Retaining
+      // them would let a hostile stream grow the chunk-object inventory without
+      // consuming any of the byte budget.
+      if (next.value.byteLength === 0) continue;
+      const nextReceivedBytes = receivedBytes + next.value.byteLength;
+      if (nextReceivedBytes > ONBOARDING_RESPONSE_MAX_BYTES) {
+        const error = new ElizaError("Onboarding hop response exceeds the byte limit", {
+          code: "ONBOARDING_RESPONSE_TOO_LARGE",
+          context: {
+            maxBytes: ONBOARDING_RESPONSE_MAX_BYTES,
+            receivedBytes: nextReceivedBytes,
+          },
+        });
+        try {
+          await reader.cancel(error);
+        } catch (cause) {
+          // error-policy:J6 The bounded read already failed; cancellation only releases the stream.
+          logger.debug("[onboarding-chat] Failed to cancel oversized onboarding response body", {
+            cause,
+          });
+        }
+        throw error;
+      }
+      body.set(next.value, receivedBytes);
+      receivedBytes = nextReceivedBytes;
+    }
+  } catch (error) {
+    let rejection = error;
+    try {
+      throwIfAbortedOrExpired();
+    } catch (abortOrDeadlineReason) {
+      // The composed signal is the authoritative cancellation boundary. A
+      // transport is allowed to reject its reader/cancel hooks with a different
+      // error, but callers must still observe the exact signal reason.
+      rejection = abortOrDeadlineReason;
+    }
+    try {
+      await reader.cancel(rejection);
+    } catch (cause) {
+      // error-policy:J6 The bounded read already failed; cancellation only releases the stream.
+      logger.debug("[onboarding-chat] Failed to cancel rejected onboarding response body", {
+        cause,
+      });
+    }
+    throw rejection;
+  } finally {
+    signal.removeEventListener("abort", cancelBody);
+    try {
+      reader.releaseLock();
+    } catch (cause) {
+      // error-policy:J6 Stream lock release is best-effort transport teardown.
+      logger.debug("[onboarding-chat] Failed to release onboarding response body lock", { cause });
+    }
+  }
+
+  throwIfAbortedOrExpired();
+  const headers = new Headers(response.headers);
+  for (const header of REBUFFERED_RESPONSE_HEADERS) headers.delete(header);
+  const bufferedBody = receivedBytes === body.byteLength ? body : body.slice(0, receivedBytes);
+  return new Response(bufferedBody, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 /**
  * Bound every onboarding coordinator / agent API hop so a hung or overloaded
- * Durable Object or agent cannot pin the onboarding worker indefinitely. A
- * caller-provided abort signal wins.
+ * Durable Object or agent cannot pin the onboarding worker indefinitely. The
+ * clearable deadline covers headers and a bounded, fully buffered body read,
+ * and composes with caller cancellation. The returned response preserves
+ * semantic headers but drops transport/representation headers invalidated by
+ * Fetch decoding and rebuffering.
  */
-export function onboardingFetch(
+export async function onboardingFetch(
   stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
   input: string | URL,
   init?: RequestInit,
   timeoutMs: number = ONBOARDING_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return stub.fetch(input, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw new ElizaError("Onboarding hop timeout must be a positive timer-safe integer", {
+      code: "INVALID_ONBOARDING_TIMEOUT",
+      context: { timeoutMs },
+    });
+  }
+
+  const controller = new AbortController();
+  const deadlineAt = performance.now() + timeoutMs;
+  const timeoutError = onboardingAbortError(
+    "The onboarding request deadline expired.",
+    "TimeoutError",
+  );
+  let rejectAbort!: (reason: unknown) => void;
+  const abortPromise = new Promise<never>((_resolve, reject) => {
+    rejectAbort = reject;
   });
+  const abort = (reason: unknown): void => {
+    if (controller.signal.aborted) return;
+    controller.abort(reason);
+    rejectAbort(reason);
+  };
+  const onCallerAbort = (): void => {
+    if (!init?.signal) return;
+    abort(init.signal.reason);
+  };
+  init?.signal?.addEventListener("abort", onCallerAbort, { once: true });
+  if (init?.signal?.aborted) onCallerAbort();
+  const timeout = setTimeout(() => abort(timeoutError), timeoutMs);
+  const throwIfAbortedOrExpired = (): void => {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if (performance.now() >= deadlineAt) {
+      abort(timeoutError);
+      throw timeoutError;
+    }
+  };
+
+  try {
+    if (controller.signal.aborted) return await abortPromise;
+    throwIfAbortedOrExpired();
+    const response = await Promise.race([
+      stub.fetch(input, { ...init, signal: controller.signal }),
+      abortPromise,
+    ]);
+    throwIfAbortedOrExpired();
+    const buffered = await Promise.race([
+      bufferOnboardingResponse(response, controller.signal, throwIfAbortedOrExpired),
+      abortPromise,
+    ]);
+    throwIfAbortedOrExpired();
+    return buffered;
+  } finally {
+    clearTimeout(timeout);
+    init?.signal?.removeEventListener("abort", onCallerAbort);
+  }
 }
 
 export type OnboardingChatRole = "user" | "assistant";
@@ -1361,7 +1547,9 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
         });
         return "";
       });
-      throw new Error(`memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`);
+      throw new Error(
+        `memory copy failed (${rememberResponse.status}) ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
+      );
     }
 
     return {

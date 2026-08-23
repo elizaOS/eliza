@@ -1197,7 +1197,10 @@ type TaggedMemory = Memory & { _table: string };
 
 /** Ordering key — `Memory.createdAt` is optional; rows without one sort oldest. */
 function memoryCreatedAt(memory: { createdAt?: number }): number {
-	return memory.createdAt ?? 0;
+	return typeof memory.createdAt === "number" &&
+		Number.isFinite(memory.createdAt)
+		? memory.createdAt
+		: 0;
 }
 
 /** Newest-first comparator shared by the browse/feed list routes. */
@@ -2596,10 +2599,20 @@ function resolveAssignedModel(slot: string): InstalledModelEntry | null {
 	}
 	return (
 		installed.sort((left, right) => {
-			const leftUsed = left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0;
-			const rightUsed = right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0;
+			const leftTime = left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0;
+			const rightTime = right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0;
+			const leftUsed = Number.isFinite(leftTime) ? leftTime : 0;
+			const rightUsed = Number.isFinite(rightTime) ? rightTime : 0;
 			if (rightUsed !== leftUsed) return rightUsed - leftUsed;
-			return (right.sizeBytes ?? 0) - (left.sizeBytes ?? 0);
+			const rightBytes =
+				typeof right.sizeBytes === "number" && Number.isFinite(right.sizeBytes)
+					? right.sizeBytes
+					: 0;
+			const leftBytes =
+				typeof left.sizeBytes === "number" && Number.isFinite(left.sizeBytes)
+					? left.sizeBytes
+					: 0;
+			return rightBytes - leftBytes;
 		})[0] ?? null
 	);
 }
@@ -4583,10 +4596,15 @@ export async function handleDirectCoreRoute(
 
 	if (method === "GET" && pathname === "/api/conversations") {
 		return jsonResponse(200, {
-			conversations: Array.from(backend.conversations.values()).sort(
-				(a, b) =>
-					new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-			),
+			conversations: Array.from(backend.conversations.values()).sort((a, b) => {
+				const bTime = Number.isFinite(new Date(b.updatedAt).getTime())
+					? new Date(b.updatedAt).getTime()
+					: 0;
+				const aTime = Number.isFinite(new Date(a.updatedAt).getTime())
+					? new Date(a.updatedAt).getTime()
+					: 0;
+				return bTime - aTime;
+			}),
 		});
 	}
 

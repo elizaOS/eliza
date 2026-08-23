@@ -121,12 +121,12 @@ export function ConnectorAccountAuditList({
           title={t("connectoraudit.refreshAria", {
             defaultValue: "Refresh connector audit events",
           })}
-          className="h-8 w-8 p-0"
+          className="size-8 p-0"
         >
           {loading ? (
-            <Spinner className="h-3.5 w-3.5" />
+            <Spinner className="size-3.5" />
           ) : (
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            <RefreshCw className="size-3.5" aria-hidden />
           )}
         </Button>
       </div>
@@ -174,7 +174,7 @@ export function ConnectorAccountAuditList({
                   </span>
                 ) : null}
               </div>
-              <pre className="max-h-24 overflow-auto rounded-sm border border-border/30 bg-bg/35 p-2 text-[11px] leading-relaxed text-muted">
+              <pre className="max-h-24 overflow-auto rounded-sm border border-border/30 bg-bg/35 p-2 text-xs-tight leading-relaxed text-muted">
                 {metadataPreview(event.metadata)}
               </pre>
             </div>

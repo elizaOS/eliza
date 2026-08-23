@@ -137,6 +137,13 @@ function entityText(
   return text.slice(entity.offset, entity.offset + entity.length);
 }
 
+const TELEGRAM_COMMAND_TEXT_PREFIX =
+  /^\/[a-z0-9_]{1,32}(?:@([a-z0-9_]{5,32}))?(?=$|\s)/i;
+
+function telegramCommandTarget(value: string): string | null {
+  return value.match(/@([a-z0-9_]{5,32})$/i)?.[1] ?? null;
+}
+
 /**
  * Default group policy: respond only to a command delivered to the bot, an
  * explicit @mention of this bot, or a reply to one of its messages. Ambient
@@ -149,14 +156,8 @@ export function classifyTelegramGroupInvocation(
 ): TelegramConnectorEvent["groupInvocation"] | null {
   const botUsername = normalizedTelegramUsername(policy.botUsername);
   if (!botUsername) return null;
-  if (
-    message.reply_to_message?.from?.is_bot &&
-    normalizedTelegramUsername(message.reply_to_message.from.username ?? "") ===
-      botUsername
-  ) {
-    return "reply";
-  }
   const entities = message.text ? message.entities : message.caption_entities;
+  const validEntities: Array<{ type: string; value: string }> = [];
   for (const entity of entities ?? []) {
     if (
       !Number.isInteger(entity.offset) ||
@@ -167,20 +168,47 @@ export function classifyTelegramGroupInvocation(
     ) {
       continue;
     }
-    const value = entityText(text, entity);
+    validEntities.push({ type: entity.type, value: entityText(text, entity) });
+  }
+
+  const textCommandMatch = text.trim().match(TELEGRAM_COMMAND_TEXT_PREFIX);
+  const textCommandTarget = textCommandMatch?.[1];
+  if (
+    textCommandTarget &&
+    normalizedTelegramUsername(textCommandTarget) !== botUsername
+  ) {
+    return null;
+  }
+  for (const entity of validEntities) {
+    if (entity.type !== "bot_command") continue;
+    const target = telegramCommandTarget(entity.value);
+    if (target && normalizedTelegramUsername(target) !== botUsername) {
+      return null;
+    }
+  }
+
+  if (
+    message.reply_to_message?.from?.is_bot &&
+    normalizedTelegramUsername(message.reply_to_message.from.username ?? "") ===
+      botUsername
+  ) {
+    return "reply";
+  }
+  for (const entity of validEntities) {
     if (
       entity.type === "mention" &&
-      normalizedTelegramUsername(value) === botUsername
+      normalizedTelegramUsername(entity.value) === botUsername
     ) {
       return "mention";
     }
     if (entity.type === "bot_command") {
-      const target = value.match(/@([a-z0-9_]{5,32})$/i)?.[1];
+      const target = telegramCommandTarget(entity.value);
       if (!target || normalizedTelegramUsername(target) === botUsername) {
         return "command";
       }
     }
   }
+  if (textCommandMatch) return "command";
   return policy.allowAmbient ? "ambient" : null;
 }
 

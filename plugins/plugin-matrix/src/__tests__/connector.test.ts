@@ -57,6 +57,30 @@ describe("Matrix plugin connector-source declaration", () => {
 });
 
 describe("Matrix message connector", () => {
+  it("preserves every matching, recent, and roomless-read joined room", async () => {
+    const service = Object.create(MatrixService.prototype) as MatrixService;
+    const rooms = Array.from({ length: 12 }, (_, index) => ({
+      roomId: `!project-${index}:matrix.org`,
+      name: `Project ${index}`,
+    }));
+    vi.spyOn(service, "getJoinedRooms").mockResolvedValue(rooms);
+    const getRoomMessages = vi
+      .spyOn(service, "getRoomMessages")
+      .mockImplementation(async (roomId) => [memory(roomId, roomId, 1)]);
+    const { runtime, registration } = registerAndGetConnector(service);
+
+    const matches = await registration.resolveTargets?.("project", { runtime });
+    const recent = await registration.listRecentTargets?.({ runtime });
+    const messages = await registration.fetchMessages?.(
+      { runtime } as QueryContext,
+      { limit: 50 } as ReadParams
+    );
+
+    expect(matches).toHaveLength(12);
+    expect(recent).toHaveLength(12);
+    expect(getRoomMessages).toHaveBeenCalledTimes(12);
+    expect(messages).toHaveLength(12);
+  });
   it("registers connector metadata and routes sends through Matrix rooms", async () => {
     const runtime = {
       registerMessageConnector: vi.fn(),
@@ -328,5 +352,30 @@ describe("Matrix connector account roles (agent vs personal)", () => {
     expect(personal?.role).toBe("OWNER");
     expect(personal?.accessGate).toBe("owner_binding");
     expect(personal?.purpose).toContain("reading");
+  });
+
+  it("sorts resolved targets safely when matching rooms", async () => {
+    const service = {
+      getJoinedRooms: vi.fn(async () => [
+        {
+          roomId: "!room1:hs.example",
+          name: "General",
+          canonicalAlias: "#general:hs.example",
+          joinedMemberCount: 10,
+        },
+        {
+          roomId: "!room2:hs.example",
+          name: "Random",
+          canonicalAlias: "#random:hs.example",
+          joinedMemberCount: 5,
+        },
+      ]),
+    } as unknown as MatrixService;
+
+    const { registration } = registerAndGetConnector(service);
+    const targets = await registration.resolveTargets("general");
+    expect(targets).toHaveLength(1);
+    expect(targets[0]?.target.channelId).toBe("!room1:hs.example");
+    expect(targets[0]?.score).toBeGreaterThan(0);
   });
 });

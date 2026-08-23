@@ -33,8 +33,7 @@ import type {
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-  resolveCanonicalOwnerId,
-  stringToUuid,
+  resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
@@ -84,18 +83,11 @@ function requestBaseUrl(req: http.IncomingMessage): string {
 }
 
 function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
-  const ownerId = runtime ? resolveCanonicalOwnerId(runtime) : null;
-  if (typeof ownerId === "string" && ownerId.trim()) {
-    return ownerId as UUID;
+  if (!runtime) {
+    return null;
   }
-  if (
-    runtime &&
-    typeof runtime.agentId === "string" &&
-    runtime.agentId.trim()
-  ) {
-    return stringToUuid(`${runtime.agentId}-admin-entity`) as UUID;
-  }
-  return null;
+  // Same derivation as the chat write surface and LifeOps service scope.
+  return resolveOwnerEntityIdOrDefault(runtime);
 }
 
 function runtimeAuthDb(runtime: AgentRuntime): unknown {
@@ -302,10 +294,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   // Telegram
   { type: "GET", path: "/api/lifeops/connectors/telegram/status" },
   { type: "POST", path: "/api/lifeops/connectors/telegram/verify" },
-  // Signal
-  { type: "GET", path: "/api/lifeops/connectors/signal/status" },
-  { type: "GET", path: "/api/lifeops/connectors/signal/messages" },
-  { type: "POST", path: "/api/lifeops/connectors/signal/send" },
   // Discord
   { type: "GET", path: "/api/lifeops/connectors/discord/status" },
   { type: "POST", path: "/api/lifeops/connectors/discord/send" },
@@ -351,7 +339,22 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/money/recurring" },
   { type: "POST", path: "/api/lifeops/money/plaid/link-token" },
   { type: "POST", path: "/api/lifeops/money/plaid/complete" },
+  { type: "POST", path: "/api/lifeops/money/plaid/update-link-token" },
+  { type: "POST", path: "/api/lifeops/money/plaid/update-complete" },
+  { type: "POST", path: "/api/lifeops/money/plaid/disconnect" },
   { type: "POST", path: "/api/lifeops/money/plaid/sync" },
+  {
+    type: "POST",
+    name: "lifeops.money.plaid.webhook",
+    publicReason:
+      "Plaid delivers Item/transaction webhooks directly to the callback URL registered at link time; Plaid cannot hold the local gate token.",
+    publicWrite:
+      "Authenticated out-of-band by the Plaid-Verification ES256 JWT: signature against Plaid's JWK (kid lookup through Eliza Cloud), exact raw-body SHA-256 pinning, and a bounded iat freshness window — all verified before any lookup or state change.",
+    // `path` sits directly above `public` so the public-route audit ledger
+    // attributes this declaration to the webhook path, not a neighbouring route.
+    path: "/api/lifeops/money/plaid/webhook",
+    public: true,
+  },
   { type: "POST", path: "/api/lifeops/money/paypal/authorize-url" },
   { type: "POST", path: "/api/lifeops/money/paypal/complete" },
   { type: "POST", path: "/api/lifeops/money/paypal/sync" },

@@ -240,10 +240,19 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Misty Forest", "Desert Dusk"],
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
-  // The hermetic audit runs a local agent topology. Direct Cloud navigation is
-  // deliberately unavailable there and returns to the normal launcher; Cloud
-  // routes are exercised separately with a managed-agent runtime fixture.
-  "plugin-cloud-gui": expected(LAUNCHER_FALLBACK),
+  // The hermetic audit serves the production plugin bundle with a disconnected
+  // Cloud status, so the designed signed-out state is the stable semantic
+  // contract. The real /cloud management route is intentionally bypassed.
+  "plugin-cloud-gui": expected({
+    requireAll: ["Eliza Cloud"],
+    requireAny: [
+      "credits",
+      "hosted agents",
+      "API keys",
+      "billing",
+      "Connect in Settings",
+    ],
+  }),
   "plugin-contacts-gui": expected({
     requireAny: ["address book", "phone, or email", "search"],
   }),

@@ -59,7 +59,7 @@ export interface HomePillProps {
   onPreviewHoverChange?: (hovered: boolean) => void;
   /** True once the native host has acknowledged its wider shallow frame. Hover
    *  and listening lanes stay compact until then so WKWebView cannot clip them
-   *  into the resting 96px window. Web callers leave this unset. */
+   *  into the resting 64px window. Web callers leave this unset. */
   previewHostReady?: boolean;
   /** Whether hovering may render HomePill's lightweight visual preview. Hosts
    *  that mount the real ChatOverlay input detent must disable this duplicate. */
@@ -108,10 +108,10 @@ const PROCESS_DOTS = [
 /**
  * Persistent Flow-style handle at the bottom-center of the viewport.
  *
- * The visible affordance is deliberately only a short capsule; the larger
- * transparent button preserves a comfortable pointer target. Status is exposed
- * through ARIA instead of permanent text so the launcher stays out of the
- * user's way until it is invoked.
+ * The complete 64×44 resting target is visibly painted. This is required for
+ * detached native hosts: an invisible enlargement would intercept clicks in
+ * nearby applications even though no launcher pixel was visible there. Status
+ * is exposed through ARIA instead of permanent text.
  *
  * Each shell phase reads distinctly at a glance (the capsule is the only
  * always-visible surface, so it carries all ambient status):
@@ -340,9 +340,22 @@ export function HomePill({
       onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
-        "group pointer-events-auto relative mb-2 flex items-center justify-center rounded-full bg-transparent p-0",
-        composerSized ? "h-16 w-[36rem]" : "h-8 w-16",
-        "transition-[width,height,transform] duration-200 hover:bg-transparent motion-reduce:transition-none",
+        // The resting launcher is deliberately transparent: only the white
+        // handle (shell-home-pill-mark) paints, so the pill reads as a
+        // floating handle over the desktop. The button still fills the 64x44
+        // native window, so the #21876 hit-bounds contract (native bounds ==
+        // interactive surface) is preserved without an opaque backdrop.
+        // When a run must prove the window itself composited (packaged pixel
+        // proofs, manual QA on hard-to-read wallpapers), temporarily swap in a
+        // painted surface — e.g. "border border-white/20 bg-[#181a20]/95"
+        // plus a frosted blur utility — instead of asserting on transparent
+        // pixels. The shipped default stays transparent, and a permanent blur
+        // here would fail the battery gate (see the blur allowlist test in
+        // packages/ui/src).
+        "group pointer-events-auto relative flex items-center justify-center rounded-full bg-transparent p-0 shadow-none",
+        composerSized ? "h-16 w-[36rem]" : "h-11 w-16",
+        "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
+        "hover:bg-transparent",
         needsAuth ? "active:scale-[0.96]" : "active:scale-95",
         "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
@@ -447,7 +460,7 @@ export function HomePill({
             <span
               key={dot.id}
               data-testid="shell-home-pill-process-dot"
-              className="home-pill-process-dot h-[5px] w-[5px] rounded-full bg-white/90 motion-reduce:animate-none"
+              className="home-pill-process-dot size-[5px] rounded-full bg-white/90 motion-reduce:animate-none"
               style={{ animationDelay: `${dot.delayMs}ms` }}
             />
           ))}

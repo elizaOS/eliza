@@ -42,6 +42,8 @@ export type FetchLike = (
 	init?: RequestInit,
 ) => Promise<Response>;
 
+export const DEFAULT_MEDIA_FETCH_TIMEOUT_MS = 10_000;
+
 export type FetchMediaOptions = {
 	url: string;
 	fetchImpl?: FetchLike;
@@ -49,6 +51,8 @@ export type FetchMediaOptions = {
 	maxBytes?: number;
 	maxRedirects?: number;
 	timeoutMs?: number;
+	/** Caller abort signal — composed with the timeout deadline via AbortSignal.any. */
+	signal?: AbortSignal;
 	/** Require the declared response MIME type to start with this prefix. */
 	requiredContentTypePrefix?: string;
 	/** Reject Content-Encoding other than identity when callers need raw media bytes. */
@@ -165,12 +169,18 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 	finalUrl: string;
 	release: () => Promise<void>;
 }> {
+	const timeoutMs = options.timeoutMs ?? DEFAULT_MEDIA_FETCH_TIMEOUT_MS;
+	const timeoutSignal = AbortSignal.timeout(timeoutMs);
+	const compositeSignal = options.signal
+		? AbortSignal.any([options.signal, timeoutSignal])
+		: timeoutSignal;
 	try {
 		return await fetchWithSsrfGuard({
 			url: options.url,
 			fetchImpl: options.fetchImpl,
 			maxRedirects: options.maxRedirects,
-			timeoutMs: options.timeoutMs,
+			timeoutMs: undefined,
+			signal: compositeSignal,
 			policy: options.ssrfPolicy,
 			lookupFn: options.lookupFn,
 			pinnedFetchImpl: options.pinnedFetchImpl,

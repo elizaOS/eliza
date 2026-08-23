@@ -44,7 +44,10 @@ interface Workflow {
 }
 
 interface WorkflowDispatch {
-  inputs?: Record<string, { default?: boolean; type?: string }>;
+  inputs?: Record<
+    string,
+    { default?: boolean; description?: string; type?: string }
+  >;
 }
 
 const workflow = Bun.YAML.parse(
@@ -136,7 +139,9 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
     expect(spec).toContain(
       "const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim())",
     );
-    expect(spec).toContain("test.skip(\n    !HAS_CLOUD_KEY,");
+    expect(spec).toContain(
+      "test.skip(\n    !HAS_CLOUD_KEY && !REQUIRE_NAMED_WARMING,",
+    );
   });
 
   test("hands the job credential to the browser without retaining secret-bearing traces", () => {
@@ -206,6 +211,31 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(stagingJob?.if).toContain("inputs.run_cloud_staging");
   });
 
+  test("can isolate explicitly requested live lanes without changing defaults", () => {
+    const dispatch = workflow.on?.workflow_dispatch as
+      | WorkflowDispatch
+      | undefined;
+    expect(dispatch?.inputs?.run_only_requested).toEqual({
+      description:
+        "Skip the default local/walkthrough/desktop lanes and run only explicitly selected opt-in lanes.",
+      type: "boolean",
+      default: false,
+    });
+
+    for (const jobName of [
+      "app-live-chat",
+      "walkthrough-live",
+      "desktop-packaged",
+    ]) {
+      expect(workflow.jobs?.[jobName]?.if).toBe(
+        "$" +
+          "{{ github.event_name != 'workflow_dispatch' || !inputs.run_only_requested }}",
+      );
+    }
+    expect(stagingJob?.if).not.toContain("run_only_requested");
+    expect(cloudJob?.if).not.toContain("run_only_requested");
+  });
+
   test("fails closed before setup on a missing credential or a wrong origin", () => {
     const steps = stagingJob?.steps ?? [];
     const guardIndex = steps.findIndex(
@@ -268,7 +298,7 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(spec).toContain("renderer-source");
   });
 
-  test("uploads only the staging closed receipt, never credentialed Playwright output", () => {
+  test("uploads only allowlisted closed staging artifacts", () => {
     expect(cloudJob?.env?.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV).toBe("production");
     const prodUploads = cloudJob?.steps?.filter((step) =>
       step.uses?.startsWith("actions/upload-artifact"),
@@ -278,6 +308,18 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     );
     expect(prodUploads).toEqual([]);
     expect(stagingUpload?.with?.name).toBe("app-live-e2e-cloud-staging");
+    const uploadedPaths = stagingUpload?.with?.path
+      ?.split("\n")
+      .map((path) => path.trim())
+      .filter(Boolean);
+    expect(uploadedPaths).toEqual([
+      "artifacts/app-live-e2e/cloud-staging-receipt.json",
+      "packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json",
+      "packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json",
+    ]);
+    expect(stagingUpload?.with?.path).not.toMatch(
+      /playwright-report|trace|screenshot|video/i,
+    );
   });
 
   test("uploads a mandatory exact-SHA, secret-free receipt for every executed smoke", () => {
@@ -386,10 +428,12 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
       /ELIZAOS_CLOUD_API_KEY|authorization|bearer/i,
     );
     expect(upload.if).toBe(receipt.if);
-    expect(upload.with?.path).toBe(
+    expect(upload.with?.path).toContain(
       "artifacts/app-live-e2e/cloud-staging-receipt.json",
     );
-    expect(upload.with?.path).not.toMatch(/playwright-report|test-results/);
+    expect(upload.with?.path).not.toMatch(
+      /playwright-report|test-results\/\*\*\/\*|trace|screenshot|video/i,
+    );
     expect(upload.with?.["if-no-files-found"]).toBe("error");
   });
 

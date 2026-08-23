@@ -21,7 +21,6 @@ export const VOICE_IMPRINT_SOURCE_KINDS = [
   "local_mic",
   "discord",
   "telegram",
-  "signal",
   "whatsapp",
   "phone",
   "browser",

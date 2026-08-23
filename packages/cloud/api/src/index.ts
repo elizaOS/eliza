@@ -51,6 +51,7 @@ export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 export {
   isThinStewardEmailAuthPath,
+  isThinStewardPasskeyLoginOptionsPath,
   isThinStewardPath,
   isThinStewardPublicPath,
 } from "./steward/public-paths";
@@ -65,7 +66,7 @@ export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordina
 const fullAppPromises = new Map<string | null, Promise<Hono<AppEnv>>>();
 const knownRouteShards = new Set(KNOWN_ROUTE_SHARD_KEYS);
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
-/** Lazy thin shell for login-critical Steward GETs (#18049). */
+/** Lazy thin shell for login-critical Steward pre-auth requests (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy thin shell for the CLI-session login hot path (#22948). */
 let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;
@@ -620,12 +621,17 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
     hasExactStagingSessionUuidList(
       env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
     );
+  const e2eRunReceipt =
+    env.NODE_ENV === "test" && env.CLOUD_E2E === "1"
+      ? env.CLOUD_E2E_RUN_RECEIPT?.trim() || null
+      : null;
   return Response.json(
     {
       status: "ok",
       timestamp: Date.now(),
       region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
       commit: env.ELIZA_DEPLOY_COMMIT ?? null,
+      ...(e2eRunReceipt ? { e2eRunReceipt } : {}),
       // Self-identify which deployment env answered. Production and staging
       // share the eliza.app zone. Staging claims its
       // exact control-plane names and `*.cloud-staging.eliza.app` before the

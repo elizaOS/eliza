@@ -15,6 +15,46 @@ describe("managed Eliza environment", () => {
     delete process.env.ELIZA_CLOUD_API_BASE_URL;
     delete process.env.NEXT_PUBLIC_API_URL;
     delete process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN;
+    delete process.env.ELIZA_LOCAL_DOCKER_PROVIDER;
+    delete process.env.ELIZAOS_CLOUD_ENABLED;
+  });
+
+  test("allows only the explicit local Docker lane to pin direct inference", async () => {
+    process.env.ELIZA_LOCAL_DOCKER_PROVIDER = "1";
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const local = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: { ELIZAOS_CLOUD_ENABLED: "false" },
+    });
+    expect(local.environmentVars.ELIZAOS_CLOUD_ENABLED).toBe("false");
+    expect(local.environmentVars.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+
+    delete process.env.ELIZA_LOCAL_DOCKER_PROVIDER;
+    const managed = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-2",
+      existingEnv: { ELIZAOS_CLOUD_ENABLED: "false" },
+    });
+    expect(managed.environmentVars.ELIZAOS_CLOUD_ENABLED).toBe("true");
+    expect(managed.environmentVars.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+  });
+
+  test("honors the explicit local Docker worker direct-inference flag", async () => {
+    process.env.ELIZA_LOCAL_DOCKER_PROVIDER = "1";
+    process.env.ELIZAOS_CLOUD_ENABLED = "false";
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const local = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-worker-override",
+    });
+    expect(local.environmentVars.ELIZAOS_CLOUD_ENABLED).toBe("false");
+    expect(local.environmentVars.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
   });
 
   test("sets public base url to the managed agent subdomain when missing", async () => {

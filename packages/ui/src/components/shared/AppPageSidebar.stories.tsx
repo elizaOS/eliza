@@ -7,7 +7,7 @@ const navItems = ["Overview", "Activity", "Members", "Settings"];
 
 function NavList() {
   return (
-    <nav className="flex flex-col gap-1 px-2 py-2 text-sm">
+    <nav className="flex flex-col gap-1 p-2 text-sm">
       {navItems.map((label) => (
         <button
           key={label}
@@ -62,7 +62,7 @@ export const WithHeaderAndAction: Story = {
   args: {
     collapsible: true,
     header: (
-      <div className="px-2 py-2 text-xs font-medium uppercase tracking-wide text-muted">
+      <div className="p-2 text-xs font-medium uppercase tracking-wide text-muted">
         Workspace
       </div>
     ),

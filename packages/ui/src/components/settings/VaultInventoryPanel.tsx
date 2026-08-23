@@ -19,7 +19,7 @@
  * the Vault modal via `onJumpToRouting`.
  *
  * Hard rule: revealed values never persist in component state past the
- * 10-second auto-hide window.
+ * 10-second auto-hide window or while the app is backgrounded.
  */
 
 import {
@@ -123,6 +123,12 @@ const CATEGORY_INPUT_OPTIONS: Array<{
     defaultLabel: "System",
   },
 ];
+
+// The first native Keychain operation in a newly signed or freshly installed
+// app can take longer than the generic API budget while macOS initializes the
+// credential-store process. Keep the request alive long enough to avoid an
+// ambiguous "failed" UI after the secure write has actually committed.
+const VAULT_NATIVE_OPERATION_TIMEOUT_MS = 30_000;
 
 // ── Public component ───────────────────────────────────────────────
 
@@ -276,7 +282,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           className="space-y-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
         >
           <div className="flex items-center gap-2 font-medium text-warning">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
             {securityFindings.length} connector credential
             {securityFindings.length === 1 ? "" : "s"} still outside encrypted
             Vault storage
@@ -285,7 +291,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
             {securityFindings.map((finding) => (
               <li key={finding.id} className="flex items-start gap-2">
                 <span
-                  className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-warning"
+                  className="mt-1  size-1.5 shrink-0 rounded-full bg-warning"
                   aria-hidden
                 />
                 <span>
@@ -315,7 +321,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
             defaultValue: "Add secret",
           })}
         >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
+          <Plus className="size-3.5" aria-hidden />
           {t("vaultinventory.addSecret", { defaultValue: "Add secret" })}
         </Button>
       </div>
@@ -342,12 +348,12 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
 
       {entries === null ? (
         <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading…
+          <Loader2 className="size-3.5 animate-spin" aria-hidden /> Loading…
         </div>
       ) : entries.length === 0 ? (
         <p
           data-testid="vault-inventory-empty"
-          className="px-3 py-3 text-center text-xs text-muted"
+          className="p-3 text-center text-xs text-muted"
         >
           No secrets yet.
         </p>
@@ -442,6 +448,8 @@ const EntryRow = memo(function EntryRow({
   } | null>(null);
   const [revealError, setRevealError] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const { ref: revealRef, agentProps: revealAgentProps } =
@@ -482,53 +490,108 @@ const EntryRow = memo(function EntryRow({
   // Auto-hide the revealed value after 10 seconds.
   useEffect(() => {
     if (!revealed) return;
-    const id = setTimeout(() => setRevealed(null), 10_000);
-    return () => clearTimeout(id);
+    const hideRevealedValue = () => setRevealed(null);
+    const hideWhenBackgrounded = () => {
+      if (document.visibilityState === "hidden") hideRevealedValue();
+    };
+    const id = setTimeout(hideRevealedValue, 10_000);
+    window.addEventListener("blur", hideRevealedValue);
+    document.addEventListener("visibilitychange", hideWhenBackgrounded);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener("blur", hideRevealedValue);
+      document.removeEventListener("visibilitychange", hideWhenBackgrounded);
+    };
   }, [revealed]);
 
   const reveal = useCallback(async () => {
     setRevealing(true);
     setRevealError(null);
-    const res = await client.rawRequest(
-      `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
-      undefined,
-      { allowNonOk: true },
-    );
-    if (!res.ok) {
-      setRevealError(`HTTP ${res.status}`);
+    try {
+      const res = await client.rawRequest(
+        `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
+        undefined,
+        {
+          allowNonOk: true,
+          timeoutMs: VAULT_NATIVE_OPERATION_TIMEOUT_MS,
+        },
+      );
+      if (!res.ok) {
+        setRevealError(
+          `Reveal failed (HTTP ${res.status}). Unlock the system credential store and try again.`,
+        );
+        return;
+      }
+      const body: unknown = await res.json();
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        typeof (body as { value?: unknown }).value !== "string" ||
+        typeof (body as { source?: unknown }).source !== "string"
+      ) {
+        throw new Error("invalid reveal response");
+      }
+      setRevealed(
+        body as { value: string; source: string; profileId?: string },
+      );
+    } catch {
+      // error-policy:J1 the row exposes a redacted recovery message; transport
+      // and native errors can contain sensitive identifiers and stay out of UI.
+      setRevealError(
+        "Reveal failed. Unlock the system credential store and try again.",
+      );
+    } finally {
       setRevealing(false);
-      return;
     }
-    const body = (await res.json()) as {
-      value: string;
-      source: string;
-      profileId?: string;
-    };
-    setRevealed(body);
-    setRevealing(false);
   }, [entry.key]);
 
   const hide = useCallback(() => setRevealed(null), []);
 
   const copy = useCallback(async () => {
     if (!revealed) return;
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        throw new Error("clipboard unavailable");
+      }
       await navigator.clipboard.writeText(revealed.value);
+    } catch {
+      // error-policy:J1 clipboard failures are recoverable and the message is
+      // deliberately value-free; the user can retry while reveal is active.
+      setRevealError("Copy failed. Check clipboard permission and try again.");
     }
   }, [revealed]);
 
   const onDelete = useCallback(async () => {
-    const confirmed = window.confirm(
-      `Delete "${entry.label}"? This drops the value, every profile, and the metadata.`,
-    );
-    if (!confirmed) return;
-    const res = await client.rawRequest(
-      `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
-      { method: "DELETE" },
-      { allowNonOk: true },
-    );
-    if (res.ok) onChanged();
-  }, [entry.key, entry.label, onChanged]);
+    setDeleting(true);
+    setRevealError(null);
+    try {
+      const res = await client.rawRequest(
+        `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
+        { method: "DELETE" },
+        {
+          allowNonOk: true,
+          timeoutMs: VAULT_NATIVE_OPERATION_TIMEOUT_MS,
+        },
+      );
+      if (!res.ok) {
+        setRevealError(
+          `Delete failed (HTTP ${res.status}). Refresh the Vault to confirm whether the credential remains, then unlock secure storage and retry if needed.`,
+        );
+        return;
+      }
+      setRevealed(null);
+      setConfirmingDelete(false);
+      onChanged();
+    } catch {
+      // error-policy:J1 deletion failures retain the row and surface a
+      // redacted, retryable state instead of claiming the credential is gone.
+      setRevealError(
+        "Delete could not be confirmed. Refresh the Vault to check whether the credential remains, then unlock secure storage and retry if needed.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }, [entry.key, onChanged]);
 
   const profileCount = entry.profiles?.length ?? 0;
 
@@ -538,18 +601,18 @@ const EntryRow = memo(function EntryRow({
       data-testid={`vault-entry-row-${entry.key}`}
       className="rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted"
+          className="size-6 shrink-0 rounded-sm p-0 text-muted"
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+            <ChevronDown className="size-3.5" aria-hidden />
           ) : (
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+            <ChevronRight className="size-3.5" aria-hidden />
           )}
         </Button>
         <div className="min-w-0 flex-1">
@@ -576,11 +639,11 @@ const EntryRow = memo(function EntryRow({
             aria-label={`Reveal ${entry.label}`}
           >
             {revealing ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
             ) : (
-              <Eye className="h-3.5 w-3.5" aria-hidden />
+              <Eye className="size-3.5" aria-hidden />
             )}
-            Reveal
+            <span className="hidden sm:inline">Reveal</span>
           </Button>
         ) : (
           <Button
@@ -592,8 +655,8 @@ const EntryRow = memo(function EntryRow({
             onClick={hide}
             aria-label={`Hide ${entry.label}`}
           >
-            <EyeOff className="h-3.5 w-3.5" aria-hidden />
-            Hide
+            <EyeOff className="size-3.5" aria-hidden />
+            <span className="hidden sm:inline">Hide</span>
           </Button>
         )}
         <Button
@@ -601,17 +664,81 @@ const EntryRow = memo(function EntryRow({
           {...deleteAgentProps}
           variant="ghost"
           size="sm"
-          className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-          onClick={() => void onDelete()}
+          className="size-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+          onClick={() => {
+            setRevealed(null);
+            setRevealError(null);
+            setConfirmingDelete(true);
+          }}
+          disabled={deleting}
           aria-label={`Delete ${entry.label}`}
         >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          {deleting ? (
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Trash2 className="size-3.5" aria-hidden />
+          )}
         </Button>
       </div>
 
-      {revealed && (
+      {confirmingDelete && (
         <div
+          role="alertdialog"
+          aria-labelledby={`vault-delete-title-${entry.key}`}
+          aria-describedby={`vault-delete-description-${entry.key}`}
+          className="mt-1.5 rounded-sm border border-danger/40 bg-danger/5 p-2"
+        >
+          <p
+            id={`vault-delete-title-${entry.key}`}
+            className="text-xs font-medium text-txt"
+          >
+            Delete {entry.label}?
+          </p>
+          <p
+            id={`vault-delete-description-${entry.key}`}
+            className="mt-0.5 text-2xs text-muted"
+          >
+            This permanently removes the value, every profile, and its metadata
+            from this Vault.
+          </p>
+          <div className="mt-2 flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-sm px-2 text-xs"
+              onClick={() => setConfirmingDelete(false)}
+              disabled={deleting}
+              aria-label={`Cancel deleting ${entry.label}`}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="h-7 rounded-sm px-2 text-xs"
+              onClick={() => void onDelete()}
+              disabled={deleting}
+              aria-label={`Permanently delete ${entry.label}`}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden />
+                  Deleting…
+                </>
+              ) : (
+                "Delete permanently"
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {revealed && (
+        <fieldset
           data-testid={`vault-revealed-${entry.key}`}
+          aria-label={`Temporarily revealed value for ${entry.label}`}
           className="mt-1.5 flex items-center gap-2 rounded-sm border border-border/50 bg-bg/40 p-2"
         >
           <code className="flex-1 truncate font-mono text-2xs text-txt">
@@ -629,14 +756,19 @@ const EntryRow = memo(function EntryRow({
             onClick={() => void copy()}
             aria-label={t("vaultinventory.copy", { defaultValue: "Copy" })}
           >
-            <Copy className="h-3 w-3" aria-hidden />{" "}
+            <Copy className="size-3" aria-hidden />{" "}
             {t("vaultinventory.copy", { defaultValue: "Copy" })}
           </Button>
-        </div>
+          <span className="sr-only">
+            This value hides after ten seconds or when the app loses focus.
+          </span>
+        </fieldset>
       )}
 
       {revealError && (
-        <p className="mt-1 text-2xs text-danger">{revealError}</p>
+        <p className="mt-1 text-2xs text-danger" role="alert">
+          {revealError}
+        </p>
       )}
 
       {expanded && (
@@ -672,6 +804,10 @@ function ProfilesPanel({
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
+  const [pendingProfileDelete, setPendingProfileDelete] = useState<
+    string | null
+  >(null);
+  const [deletingProfile, setDeletingProfile] = useState<string | null>(null);
 
   const profiles = entry.profiles ?? [];
   const hasProfiles = profiles.length > 0;
@@ -756,7 +892,10 @@ function ProfilesPanel({
             value: newValue,
           }),
         },
-        { allowNonOk: true },
+        {
+          allowNonOk: true,
+          timeoutMs: VAULT_NATIVE_OPERATION_TIMEOUT_MS,
+        },
       );
       setSubmitting(false);
       if (!res.ok) {
@@ -781,7 +920,10 @@ function ProfilesPanel({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ profileId }),
         },
-        { allowNonOk: true },
+        {
+          allowNonOk: true,
+          timeoutMs: VAULT_NATIVE_OPERATION_TIMEOUT_MS,
+        },
       );
       if (res.ok) onChanged();
     },
@@ -790,14 +932,32 @@ function ProfilesPanel({
 
   const onDelete = useCallback(
     async (profileId: string) => {
-      const confirmed = window.confirm(`Delete profile "${profileId}"?`);
-      if (!confirmed) return;
-      const res = await client.rawRequest(
-        `/api/secrets/inventory/${encodeURIComponent(entry.key)}/profiles/${encodeURIComponent(profileId)}`,
-        { method: "DELETE" },
-        { allowNonOk: true },
-      );
-      if (res.ok) onChanged();
+      setDeletingProfile(profileId);
+      setErr(null);
+      try {
+        const res = await client.rawRequest(
+          `/api/secrets/inventory/${encodeURIComponent(entry.key)}/profiles/${encodeURIComponent(profileId)}`,
+          { method: "DELETE" },
+          {
+            allowNonOk: true,
+            timeoutMs: VAULT_NATIVE_OPERATION_TIMEOUT_MS,
+          },
+        );
+        if (!res.ok) {
+          setErr(
+            `Profile delete failed (HTTP ${res.status}). Refresh the Vault to confirm whether the profile remains, then unlock secure storage and retry if needed.`,
+          );
+          return;
+        }
+        setPendingProfileDelete(null);
+        onChanged();
+      } catch {
+        setErr(
+          "Profile deletion could not be confirmed. Refresh the Vault to check whether the profile remains, then unlock secure storage and retry if needed.",
+        );
+      } finally {
+        setDeletingProfile(null);
+      }
     },
     [entry.key, onChanged],
   );
@@ -812,7 +972,10 @@ function ProfilesPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ key: entry.key }),
       },
-      { allowNonOk: true },
+      {
+        allowNonOk: true,
+        timeoutMs: VAULT_NATIVE_OPERATION_TIMEOUT_MS,
+      },
     );
     setMigrating(false);
     if (!res.ok) {
@@ -848,7 +1011,7 @@ function ProfilesPanel({
               {t("vaultinventory.profiles.routingRules", {
                 defaultValue: "Routing rules for this profile",
               })}
-              <ArrowRight className="h-3 w-3" aria-hidden />
+              <ArrowRight className="size-3" aria-hidden />
             </Button>
           )}
           {hasProfiles ? (
@@ -863,7 +1026,7 @@ function ProfilesPanel({
                 defaultValue: "Add profile",
               })}
             >
-              <Plus className="h-3 w-3" aria-hidden />{" "}
+              <Plus className="size-3" aria-hidden />{" "}
               {t("vaultinventory.profiles.addProfile", {
                 defaultValue: "Add profile",
               })}
@@ -882,9 +1045,9 @@ function ProfilesPanel({
               })}
             >
               {migrating ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                <Loader2 className="size-3 animate-spin" aria-hidden />
               ) : (
-                <Plus className="h-3 w-3" aria-hidden />
+                <Plus className="size-3" aria-hidden />
               )}
               {t("vaultinventory.profiles.enable", {
                 defaultValue: "Enable profiles",
@@ -910,8 +1073,15 @@ function ProfilesPanel({
               profileLabel={p.label}
               active={entry.activeProfile === p.id}
               highlight={highlightProfileId === p.id}
+              confirmingDelete={pendingProfileDelete === p.id}
+              deleting={deletingProfile === p.id}
               onActivate={() => void onActivate(p.id)}
-              onDelete={() => void onDelete(p.id)}
+              onRequestDelete={() => {
+                setErr(null);
+                setPendingProfileDelete(p.id);
+              }}
+              onCancelDelete={() => setPendingProfileDelete(null)}
+              onConfirmDelete={() => void onDelete(p.id)}
             />
           ))}
         </ul>
@@ -1025,8 +1195,12 @@ interface ProfileRowProps {
   profileLabel: string;
   active: boolean;
   highlight: boolean;
+  confirmingDelete: boolean;
+  deleting: boolean;
   onActivate: () => void;
-  onDelete: () => void;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
 }
 
 const ProfileRow = memo(
@@ -1036,8 +1210,12 @@ const ProfileRow = memo(
     profileLabel,
     active,
     highlight,
+    confirmingDelete,
+    deleting,
     onActivate,
-    onDelete,
+    onRequestDelete,
+    onCancelDelete,
+    onConfirmDelete,
   }: ProfileRowProps) {
     const { t } = useTranslation();
     const { ref: activateRef, agentProps: activateAgentProps } =
@@ -1055,52 +1233,92 @@ const ProfileRow = memo(
         role: "button",
         label: `Delete profile ${profileLabel}`,
         group: "vault-profiles",
-        onActivate: onDelete,
+        onActivate: onRequestDelete,
       });
     return (
-      <li
-        className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? " " : ""}`}
-      >
-        <Input
-          ref={activateRef}
-          {...activateAgentProps}
-          type="radio"
-          name={`active-${entryKey}`}
-          checked={active}
-          onChange={onActivate}
-          className="h-3 w-3 cursor-pointer border-border p-0 accent-accent"
-          aria-current={active ? "true" : undefined}
-          aria-label={t("vaultinventory.profiles.makeActive", {
-            label: profileLabel,
-            defaultValue: "Make {{label}} active",
-          })}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-txt">{profileLabel}</p>
-          <p className="truncate font-mono text-2xs text-muted">{profileId}</p>
-        </div>
-        {active && (
-          <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-            <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
-            {t("vaultinventory.profiles.active", {
-              defaultValue: "Active",
+      <li className={`rounded-sm px-1.5 py-1 text-xs ${highlight ? " " : ""}`}>
+        <div className="flex items-center gap-2">
+          <Input
+            ref={activateRef}
+            {...activateAgentProps}
+            type="radio"
+            name={`active-${entryKey}`}
+            checked={active}
+            onChange={onActivate}
+            className="size-3 cursor-pointer border-border p-0 accent-accent"
+            aria-current={active ? "true" : undefined}
+            aria-label={t("vaultinventory.profiles.makeActive", {
+              label: profileLabel,
+              defaultValue: "Make {{label}} active",
             })}
-          </span>
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium text-txt">{profileLabel}</p>
+            <p className="truncate font-mono text-2xs text-muted">
+              {profileId}
+            </p>
+          </div>
+          {active && (
+            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+              <CheckCircle2 className="size-3" aria-hidden />{" "}
+              {t("vaultinventory.profiles.active", {
+                defaultValue: "Active",
+              })}
+            </span>
+          )}
+          <Button
+            ref={deleteRef}
+            {...deleteAgentProps}
+            variant="ghost"
+            size="sm"
+            className="size-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+            aria-label={t("vaultinventory.profiles.deleteProfile", {
+              label: profileLabel,
+              defaultValue: "Delete profile {{label}}",
+            })}
+            onClick={onRequestDelete}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 className="size-3 animate-spin" aria-hidden />
+            ) : (
+              <Trash2 className="size-3" aria-hidden />
+            )}
+          </Button>
+        </div>
+        {confirmingDelete && (
+          <div
+            role="alertdialog"
+            aria-label={`Delete profile ${profileLabel}?`}
+            className="mt-1.5 rounded-sm border border-danger/40 bg-danger/5 p-2"
+          >
+            <p className="text-2xs text-muted">
+              Permanently delete this profile and its stored value?
+            </p>
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 rounded-sm px-2 text-2xs"
+                onClick={onCancelDelete}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="h-6 rounded-sm px-2 text-2xs"
+                onClick={onConfirmDelete}
+                disabled={deleting}
+              >
+                Delete permanently
+              </Button>
+            </div>
+          </div>
         )}
-        <Button
-          ref={deleteRef}
-          {...deleteAgentProps}
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-          aria-label={t("vaultinventory.profiles.deleteProfile", {
-            label: profileLabel,
-            defaultValue: "Delete profile {{label}}",
-          })}
-          onClick={onDelete}
-        >
-          <Trash2 className="h-3 w-3" aria-hidden />
-        </Button>
       </li>
     );
   },
@@ -1111,7 +1329,9 @@ const ProfileRow = memo(
     prev.profileId === next.profileId &&
     prev.profileLabel === next.profileLabel &&
     prev.active === next.active &&
-    prev.highlight === next.highlight,
+    prev.highlight === next.highlight &&
+    prev.confirmingDelete === next.confirmingDelete &&
+    prev.deleting === next.deleting,
 );
 
 // ── Add-secret form ────────────────────────────────────────────────
@@ -1203,26 +1423,38 @@ function AddSecretForm({
       if (!key.trim() || !value) return;
       setSubmitting(true);
       setErr(null);
-      const res = await client.rawRequest(
-        `/api/secrets/inventory/${encodeURIComponent(key.trim())}`,
-        {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            value,
-            ...(label.trim() ? { label: label.trim() } : {}),
-            ...(providerId.trim() ? { providerId: providerId.trim() } : {}),
-            category,
-          }),
-        },
-        { allowNonOk: true },
-      );
-      setSubmitting(false);
-      if (!res.ok) {
-        setErr(`HTTP ${res.status}`);
-        return;
+      try {
+        const res = await client.rawRequest(
+          `/api/secrets/inventory/${encodeURIComponent(key.trim())}`,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              value,
+              ...(label.trim() ? { label: label.trim() } : {}),
+              ...(providerId.trim() ? { providerId: providerId.trim() } : {}),
+              category,
+            }),
+          },
+          {
+            allowNonOk: true,
+            timeoutMs: VAULT_NATIVE_OPERATION_TIMEOUT_MS,
+          },
+        );
+        if (!res.ok) {
+          setErr(`Secret save failed (HTTP ${res.status}).`);
+          return;
+        }
+        onSaved();
+      } catch {
+        // error-policy:J1 retain the entered value only inside this password
+        // field for retry; native/transport details remain redacted.
+        setErr(
+          "Secret save could not be confirmed. Refresh the Vault before retrying to avoid replacing a value that may already be stored.",
+        );
+      } finally {
+        setSubmitting(false);
       }
-      onSaved();
     },
     [category, key, label, providerId, value, onSaved],
   );

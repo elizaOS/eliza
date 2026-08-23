@@ -157,7 +157,7 @@ export function ConfigField({
       ) : null}
       {renderProps.isSet && layout === "stacked" ? (
         <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-ok">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ok" />
+          <span className="inline-block size-1.5 rounded-full bg-ok" />
           {t("config-field.Configured")}
         </span>
       ) : null}
@@ -262,7 +262,7 @@ export function ConfigField({
                   data-testid={`config-field-edit-${renderProps.key}`}
                 >
                   <span className="min-w-0 truncate">{chipLabel}</span>
-                  <Pencil className="h-3 w-3 shrink-0 text-muted" aria-hidden />
+                  <Pencil className="size-3 shrink-0 text-muted" aria-hidden />
                 </button>
 
                 <Dialog

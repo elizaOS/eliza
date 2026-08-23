@@ -94,15 +94,15 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_BASE_URL` | No | `https://api.anthropic.com/v1` | Node API base URL |
 | `ANTHROPIC_BROWSER_BASE_URL` | No | — | Browser proxy base URL (no API key in browser) |
 | `ANTHROPIC_EXPERIMENTAL_TELEMETRY` | No | `false` | Enable Vercel AI SDK telemetry |
-| `ANTHROPIC_COT_BUDGET` | No | `0` | Chain-of-thought token budget (both sizes) |
-| `ANTHROPIC_COT_BUDGET_SMALL` | No | — | CoT budget for small-size models |
-| `ANTHROPIC_COT_BUDGET_LARGE` | No | — | CoT budget for large-size models |
+| `ANTHROPIC_COT_BUDGET` | No | `0` | Exact non-negative safe decimal integer; `0` disables chain-of-thought for both sizes. Invalid explicit values fail before dispatch. |
+| `ANTHROPIC_COT_BUDGET_SMALL` | No | — | Exact non-negative safe decimal integer for small-size models; invalid explicit values fail before dispatch. |
+| `ANTHROPIC_COT_BUDGET_LARGE` | No | — | Exact non-negative safe decimal integer for large-size models; invalid explicit values fail before dispatch. |
 | `ANTHROPIC_EFFORT` | No | — | Reasoning effort (`low`\|`medium`\|`high`\|`xhigh`\|`max`) sent as adaptive thinking + `output_config.effort`; wins over the CoT budget. xhigh/max clamp to high below opus 4.7/fable-5; haiku ignores it (model rejects the parameter) |
 | `ANTHROPIC_EFFORT_SMALL` | No | — | Effort for small-size models (what `POST /api/models/config` persists) |
 | `ANTHROPIC_EFFORT_LARGE` | No | — | Effort for large-size models |
 | `ANTHROPIC_PROMPT_CACHE_TTL` | No | `5m` | Prompt cache TTL: `"5m"` or `"1h"` |
 | `ANTHROPIC_TEMPERATURE_LOCKED_MODELS` | No | — | Comma-separated model ids that only accept `temperature=1`, applied on top of the built-in `opus-4` name check |
-| `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Output-token cap override: a bare number and/or comma-separated `model-id:tokens` pairs; unlisted models keep the built-in caps |
+| `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Positive safe decimal integer, or comma-separated `model-id:tokens` pairs. Every entry is validated before any is selected, so a malformed entry fails before dispatch regardless of its position in the list. The first entry matching the requested model wins, the last bare number is the fallback, and unlisted models keep built-in caps. |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_OAUTH_TOKEN` | No | — | OAuth bearer token for `ANTHROPIC_AUTH_MODE=oauth` |
 | `ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID` | No | `default` | Account ID for app-managed subscription credentials |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Override credential store directory (macOS keychain also checked) |
@@ -125,7 +125,7 @@ Follow the pattern in `utils/config.ts`: `getRawSetting(runtime, "ANTHROPIC_X_MO
 - **Three auth modes** (`utils/config.ts` `getAuthMode`): `apikey` (default), `oauth`, `cli`. CLI mode (`ANTHROPIC_AUTH_MODE=claude-cli`) spawns `claude -p` via Bun's `Bun.spawn` — fails on Node-only runtimes and does not support `messages`, `tools`, `toolChoice`, or `responseSchema`.
 - **Opus 4.x temperature:** `temperature` is forced to `1` for any model whose name contains `opus-4` — the Anthropic API returns 400 otherwise (`models/text.ts` `resolveTextParams`). New model ids with the same constraint can be listed in `ANTHROPIC_TEMPERATURE_LOCKED_MODELS`.
 - **topP + temperature mutual exclusion:** Anthropic's API rejects requests with both set. The plugin warns and drops `topP` when both are supplied.
-- **maxTokens cap:** Opus 4 = 32k, all others = 64k. Values above these are silently capped before the API call. `ANTHROPIC_MAX_OUTPUT_TOKENS` overrides the cap per model id (or globally with a bare number).
+- **maxTokens boundary:** current Fable 5, Opus 5 / 4.6–4.8, and Sonnet 5 / 4.6 models use 128k; Haiku 4.5 and generic models use 64k; older Opus 4 models retain the 32k fallback. `ANTHROPIC_MAX_OUTPUT_TOKENS` overrides the limit per model id (or globally with a bare number). Explicit requests above the resolved limit reject before dispatch; omitted budgets use the full resolved limit because Anthropic requires `max_tokens` on the wire.
 - **Prompt caching:** `cache_control: ephemeral` is emitted by default on system prompts, stable `promptSegments`, the LAST tool in the tools array, and the kept-trajectory tail (final assistant/tool turn) on the native-messages path. TTL is `5m` unless `ANTHROPIC_PROMPT_CACHE_TTL=1h`; per-segment overrides ride on `PromptSegment.ttl`. The 4-breakpoint API budget is spent system -> tools -> trajectory/segments (`models/text.ts` `buildSegmentCacheControls`); opt out per call with `anthropic.cacheTools: false` / `anthropic.cacheTrajectory: false` in `providerOptions`.
 - **Cache visibility:** every call logs a structured `[Anthropic] prompt cache hit|write|none` line (read/write token counts) via `emitModelUsageEvent` (`utils/events.ts`) at debug level.
 - **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated Claude tests without changing every Anthropic text call.

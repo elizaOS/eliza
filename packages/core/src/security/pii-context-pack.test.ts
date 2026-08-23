@@ -131,7 +131,7 @@ describe("assembleContextPack", () => {
 		expect(pack.contextPack).not.toContain(pseudonym);
 	});
 
-	test("fragments are ranked by measured score and bounded; pack text is capped", async () => {
+	test("preserves every fragment exactly in source order despite compatibility cap hints", async () => {
 		const map = makeMap();
 		const fragments: PiiContextFragment[] = [
 			{ text: "low relevance", origin: "memory", score: 0.1 },
@@ -150,9 +150,12 @@ describe("assembleContextPack", () => {
 				maxFragments: 2,
 			},
 		);
+		expect(pack.contextPack).toContain("low relevance");
 		expect(pack.contextPack).toContain("high relevance");
 		expect(pack.contextPack).toContain("mid relevance");
-		expect(pack.contextPack).not.toContain("low relevance");
+		expect(pack.contextPack.indexOf("low relevance")).toBeLessThan(
+			pack.contextPack.indexOf("high relevance"),
+		);
 
 		const capped = await assembleContextPack(
 			{ searchDocuments: async () => fragments },
@@ -164,34 +167,31 @@ describe("assembleContextPack", () => {
 				maxChars: 32,
 			},
 		);
-		expect(capped.contextPack.length).toBeLessThanOrEqual(32);
+		expect(capped.contextPack).toContain("low relevance");
+		expect(capped.contextPack).toContain("high relevance");
+		expect(capped.contextPack).toContain("mid relevance");
 	});
 
-	test("absent sources are audited; empty candidates make zero source calls", async () => {
+	test("rejects blank candidates explicitly instead of silently discarding them", async () => {
 		const map = makeMap();
 		const resolveEntity = vi.fn(async () => [] as PiiResolvedEntity[]);
 		const searchDocuments = vi.fn(async () => [] as PiiContextFragment[]);
-		const pack = await assembleContextPack(
-			{ resolveEntity, searchDocuments },
-			{
-				chunk: "no candidates here",
-				candidates: [
-					{ surfaceForm: "", kind: "person" },
-					{ surfaceForm: "   ", kind: "person" },
-				],
-				map,
-				rulesetVersion: RULESET,
-			},
-		);
-		expect(pack.candidateSpans).toEqual([]);
-		expect(pack.sourcesQueried).toEqual(["entities", "documents"]);
+		await expect(
+			assembleContextPack(
+				{ resolveEntity, searchDocuments },
+				{
+					chunk: "no candidates here",
+					candidates: [{ surfaceForm: "   ", kind: "person" }],
+					map,
+					rulesetVersion: RULESET,
+				},
+			),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_INVALID_CANDIDATE" });
 		expect(resolveEntity).not.toHaveBeenCalled();
 		expect(searchDocuments).not.toHaveBeenCalled();
-		expect(pack.contextPack).toBe("");
-		expect(pack.assignments).toEqual([]);
 	});
 
-	test("duplicate surface forms are deduped into one candidate span", async () => {
+	test("preserves repeated and whitespace-significant candidate surface forms", async () => {
 		const map = makeMap();
 		const searchDocuments = vi.fn(async () => [] as PiiContextFragment[]);
 		const pack = await assembleContextPack(
@@ -201,13 +201,36 @@ describe("assembleContextPack", () => {
 				candidates: [
 					{ surfaceForm: "John Smith", kind: "person" },
 					{ surfaceForm: "John Smith", kind: "person" },
+					{ surfaceForm: " John Smith ", kind: "person" },
 				],
 				map,
 				rulesetVersion: RULESET,
 			},
 		);
-		expect(pack.candidateSpans).toEqual(["John Smith"]);
-		expect(searchDocuments).toHaveBeenCalledTimes(1);
+		expect(pack.candidateSpans).toEqual([
+			"John Smith",
+			"John Smith",
+			" John Smith ",
+		]);
+		expect(searchDocuments.mock.calls).toEqual([
+			["John Smith"],
+			["John Smith"],
+			[" John Smith "],
+		]);
+	});
+
+	test("rejects malformed Unicode instead of rewriting model context", async () => {
+		await expect(
+			assembleContextPack(
+				{},
+				{
+					chunk: "candidate",
+					candidates: [{ surfaceForm: "bad\ud800value", kind: "person" }],
+					map: makeMap(),
+					rulesetVersion: RULESET,
+				},
+			),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_MALFORMED_UNICODE" });
 	});
 
 	test("a wired source that throws propagates (fail-closed, rails retry)", async () => {
@@ -276,7 +299,7 @@ describe("entityResolverFromStore (EntityStore.resolve seam)", () => {
 		});
 	});
 
-	test("caps the number of candidates", async () => {
+	test("ignores the compatibility cap hint and returns every candidate", async () => {
 		const resolve = vi.fn(async () =>
 			Array.from({ length: 10 }, (_, i) => ({
 				...storeCandidate,
@@ -285,7 +308,7 @@ describe("entityResolverFromStore (EntityStore.resolve seam)", () => {
 		);
 		const resolver = entityResolverFromStore({ resolve }, { maxCandidates: 2 });
 		const resolved = await resolver({ surfaceForm: "Initech", kind: "org" });
-		expect(resolved).toHaveLength(2);
+		expect(resolved).toHaveLength(10);
 	});
 });
 
@@ -296,30 +319,40 @@ describe("sourcesFromRuntime", () => {
 	}
 
 	function makeRuntime(config: FakeRuntimeConfig = {}) {
-		const searchMessages = vi.fn(
-			async (): Promise<MessageSearchHit[]> => [
-				{
-					memory: {
-						id: "m1" as UUID,
-						entityId: AGENT_ID,
-						roomId: AGENT_ID,
-						content: { text: "found message" },
-					} as Memory,
-					ftsRank: 3.2,
-					trigramSimilarity: 0.7,
-				},
-			],
-		);
-		const searchMemories = vi.fn(
-			async (): Promise<Memory[]> => [
-				{
-					id: "mem1" as UUID,
+		const messageHits: MessageSearchHit[] = [
+			{
+				memory: {
+					id: "m1" as UUID,
 					entityId: AGENT_ID,
 					roomId: AGENT_ID,
-					content: { text: "found memory" },
-					similarity: 0.8,
+					content: { text: "found message" },
 				} as Memory,
-			],
+				ftsRank: 3.2,
+				trigramSimilarity: 0.7,
+			},
+		];
+		const searchMessages = vi.fn(
+			async (params: { limit?: number; offset?: number }) =>
+				messageHits.slice(
+					params.offset ?? 0,
+					(params.offset ?? 0) + (params.limit ?? 20),
+				),
+		);
+		const memoryHits: Memory[] = [
+			{
+				id: "mem1" as UUID,
+				entityId: AGENT_ID,
+				roomId: AGENT_ID,
+				content: { text: "found memory" },
+				similarity: 0.8,
+			} as Memory,
+		];
+		const searchMemories = vi.fn(
+			async (params: { count?: number; offset?: number }): Promise<Memory[]> =>
+				memoryHits.slice(
+					params.offset ?? 0,
+					(params.offset ?? 0) + (params.count ?? 10),
+				),
 		);
 		const searchDocuments = vi.fn(async (message: Memory) => {
 			void message;
@@ -418,6 +451,99 @@ describe("sourcesFromRuntime", () => {
 		expect(fragments).toEqual([
 			{ text: "found message", origin: "message", ref: "m1", score: 0.7 },
 		]);
+	});
+
+	test("assembles the first, middle, and last memory beyond the legacy source limit", async () => {
+		const memories = Array.from({ length: 130 }, (_, index) => ({
+			id: `mem-${index}` as UUID,
+			entityId: AGENT_ID,
+			roomId: AGENT_ID,
+			content: { text: `memory evidence ${index}` },
+			similarity: 1 - index / 1_000,
+		})) as Memory[];
+		const searchMemories = vi.fn(
+			async (params: { count?: number; offset?: number }) => {
+				const offset = params.offset ?? 0;
+				return memories.slice(offset, offset + (params.count ?? 10));
+			},
+		);
+		const runtime = {
+			agentId: AGENT_ID,
+			getModel: () => vi.fn(),
+			useModel: vi.fn(async () => [0.1, 0.2]),
+			searchMemories,
+			getService: () => null,
+			adapter: { searchMessages: vi.fn() },
+		} as unknown as IAgentRuntime;
+		const sources = sourcesFromRuntime(runtime, { limit: 1 });
+
+		const pack = await assembleContextPack(sources, {
+			chunk: "John Smith",
+			candidates: [{ surfaceForm: "John Smith", kind: "person" }],
+			map: makeMap(),
+			rulesetVersion: RULESET,
+		});
+
+		expect(pack.contextPack).toContain("memory evidence 0");
+		expect(pack.contextPack).toContain("memory evidence 65");
+		expect(pack.contextPack).toContain("memory evidence 129");
+		expect(searchMemories).toHaveBeenCalledWith(
+			expect.objectContaining({ count: 64, offset: 0 }),
+		);
+		expect(searchMemories).toHaveBeenCalledWith(
+			expect.objectContaining({ count: 256, offset: 0 }),
+		);
+	});
+
+	test("rejects a source that ignores continuation offsets", async () => {
+		const hit = {
+			id: "mem-stalled" as UUID,
+			entityId: AGENT_ID,
+			roomId: AGENT_ID,
+			content: { text: "stalled" },
+		} as Memory;
+		const runtime = {
+			agentId: AGENT_ID,
+			getModel: () => vi.fn(),
+			useModel: vi.fn(async () => [0.1]),
+			searchMemories: vi.fn(async () => [hit]),
+			getService: () => null,
+			adapter: { searchMessages: vi.fn() },
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			sourcesFromRuntime(runtime).searchMemories?.("John"),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_SOURCE_INCOMPLETE" });
+	});
+
+	test("rejects a source that changes between complete traversals", async () => {
+		let prefixReads = 0;
+		const searchMemories = vi.fn(
+			async (params: { offset?: number }): Promise<Memory[]> => {
+				if ((params.offset ?? 0) > 0) return [];
+				prefixReads += 1;
+				return [
+					{
+						id: `mem-${prefixReads}` as UUID,
+						entityId: AGENT_ID,
+						roomId: AGENT_ID,
+						content: { text: `version ${prefixReads}` },
+					} as Memory,
+				];
+			},
+		);
+		const runtime = {
+			agentId: AGENT_ID,
+			getModel: () => vi.fn(),
+			useModel: vi.fn(async () => [0.1]),
+			searchMemories,
+			getService: () => null,
+			adapter: { searchMessages: vi.fn() },
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			sourcesFromRuntime(runtime).searchMemories?.("John"),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_SOURCE_UNSTABLE" });
 	});
 });
 

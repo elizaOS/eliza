@@ -25,6 +25,7 @@ import {
   type ApprovalPreset,
   SessionCapError,
   type SessionInfo,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
@@ -629,7 +630,15 @@ export async function handleAgentRoutes(
         ? (agentType as string).toLowerCase()
         : String((await ctx.acpService.resolveAgentType?.({})) ?? "codex");
 
-      const callerMetadata = (metadata as Record<string, unknown>) ?? {};
+      const untrustedCallerMetadata =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : {};
+      const {
+        [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+          _ignoredAuthorization,
+        ...callerMetadata
+      } = untrustedCallerMetadata;
       const taskRoomId =
         typeof callerMetadata.taskRoomId === "string"
           ? callerMetadata.taskRoomId

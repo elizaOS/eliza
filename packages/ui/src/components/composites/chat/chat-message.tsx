@@ -39,6 +39,7 @@ import {
 } from "../../../gestures";
 import { cn } from "../../../lib/utils";
 import { findChoiceRegions } from "../../chat/message-choice-parser";
+import { findConnectorCardRegions } from "../../chat/message-connector-parser";
 import { findFollowupsRegions } from "../../chat/message-followups-parser";
 import { findFormRegions } from "../../chat/message-form-parser";
 import { RelativeTime } from "../../shell/RelativeTime";
@@ -313,7 +314,7 @@ function ReactionEmoji({ emoji }: { emoji: string }) {
   if (rendered) {
     return rendered;
   }
-  return <span className="text-[15px] leading-none">{emoji}</span>;
+  return <span className="text-chat-body leading-none">{emoji}</span>;
 }
 
 function ReactionStrip({
@@ -368,7 +369,8 @@ function isNestedInteractiveTarget(
 
 /**
  * True when an assistant turn's content carries an inline interactive widget
- * (a `[CHOICE:…]` / `[FORM:…]` / `[FOLLOWUPS:…]` block — e.g. every first-run
+ * (a `[CHOICE:…]` / `[FORM:…]` / `[FOLLOWUPS:…]` / `[CONNECTOR:…]` block —
+ * e.g. every first-run
  * onboarding turn). Such a glass bubble must NOT be wrapped in the
  * tap-to-reveal `role="button"` container: WebKit exposes an ARIA button as an
  * ATOMIC AX leaf (its aria-label becomes the node's name and all descendants
@@ -380,7 +382,8 @@ function messageHasInteractiveWidget(content: string): boolean {
   return (
     findChoiceRegions(content).length > 0 ||
     findFormRegions(content).length > 0 ||
-    findFollowupsRegions(content).length > 0
+    findFollowupsRegions(content).length > 0 ||
+    findConnectorCardRegions(content).length > 0
   );
 }
 
@@ -462,6 +465,7 @@ function arePropsEqual(
     a.reactions === b.reactions &&
     a.voiceSpeaker === b.voiceSpeaker &&
     a.failureKind === b.failureKind &&
+    a.terminalFailure === b.terminalFailure &&
     a.attachments === b.attachments &&
     // Inline tool-call rows: a mode:"tool" stream update replaces `toolEvents`
     // by reference while every other compared field stays identical, so without
@@ -829,9 +833,9 @@ export const ChatMessage = memo(function ChatMessage({
               handleCancelEditing();
             }}
             disabled={savingEdit}
-            className="keyboard-focus-emphasis h-7 w-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
           </Button>
           <Button
             variant="ghost"
@@ -848,15 +852,15 @@ export const ChatMessage = memo(function ChatMessage({
               void handleSaveEdit();
             }}
             disabled={editSaveDisabled}
-            className="keyboard-focus-emphasis h-7 w-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
           >
             {savingEdit ? (
               <LoaderCircle
                 aria-hidden="true"
-                className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                className="size-3.5 animate-spin motion-reduce:animate-none"
               />
             ) : (
-              <Check className="h-3.5 w-3.5" />
+              <Check className="size-3.5" />
             )}
           </Button>
         </>
@@ -878,7 +882,7 @@ export const ChatMessage = memo(function ChatMessage({
             className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
           >
             {savingEdit
-              ? (labels.saving ?? "Saving...")
+              ? (labels.saving ?? "Saving…")
               : (labels.saveAndResend ?? "Save and resend")}
           </Button>
         </>
@@ -906,10 +910,9 @@ export const ChatMessage = memo(function ChatMessage({
         className={cn(
           "field-sizing-content min-h-0 max-h-40 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent p-0 shadow-none outline-none transition-opacity duration-200 disabled:cursor-default",
           glass
-            ? "text-[14px] leading-relaxed text-white caret-white"
-            : "text-[15px] leading-[1.7] text-txt-strong caret-txt-strong",
+            ? "font-chat text-chat-body text-white caret-white"
+            : "font-chat text-chat-body text-txt-strong caret-txt-strong",
         )}
-        style={{ fontFamily: "var(--font-chat)" }}
         disabled={savingEdit}
       />
       {glass ? null : inlineEditControls}
@@ -971,7 +974,7 @@ export const ChatMessage = memo(function ChatMessage({
           ts={message.timestamp}
           short
           data-testid="thread-line-timestamp"
-          className="inline-block min-w-[3ch] whitespace-nowrap text-left text-[11px] tabular-nums text-white/45"
+          className="inline-block min-w-[3ch] whitespace-nowrap text-left text-xs-tight tabular-nums text-white/45"
         />
       ) : null;
     const trailingAccessory =
@@ -998,7 +1001,9 @@ export const ChatMessage = memo(function ChatMessage({
       isAssistant &&
       !!onRetry &&
       !!message.failureKind &&
-      isRetryableChatFailureKind(message.failureKind);
+      (message.terminalFailure
+        ? message.terminalFailure.transient
+        : isRetryableChatFailureKind(message.failureKind));
 
     const toggleRevealed = () => {
       if (!hasActions || isEditing) return;
@@ -1030,8 +1035,8 @@ export const ChatMessage = memo(function ChatMessage({
             // ("Do it") + dismiss. stopPropagation keeps these taps from
             // toggling the bubble's click-to-reveal action row.
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[rgb(255,148,84)]">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-[rgb(255,148,84)]">
+                <Sparkles className="size-3.5" aria-hidden="true" />
                 Suggestion
               </span>
               <div className="flex items-center gap-1">
@@ -1046,7 +1051,7 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onAcceptSuggestion(message);
                     }}
-                    className="h-auto rounded-full bg-white/10 px-2.5 py-0.5 text-[12px] font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
+                    className="h-auto rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
                   >
                     Do it
                   </Button>
@@ -1062,9 +1067,9 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onDismissSuggestion(message.id);
                     }}
-                    className="h-6 w-6 rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
+                    className="size-6 rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
                   >
-                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    <X className="size-3.5" aria-hidden="true" />
                   </Button>
                 ) : null}
               </div>
@@ -1074,7 +1079,7 @@ export const ChatMessage = memo(function ChatMessage({
             data-chat-selectable="true"
             className={cn(
               isFirstRun &&
-                "flex w-full flex-col gap-4 whitespace-normal text-[17px] leading-relaxed text-white",
+                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead text-white",
             )}
           >
             {renderContent?.(message, renderContext) ??
@@ -1242,8 +1247,12 @@ export const ChatMessage = memo(function ChatMessage({
                 <motion.div
                   key={accessoryMode}
                   className="flex"
-                  initial={reduceMotion ? false : { opacity: 0, y: 2 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={
+                    reduceMotion
+                      ? false
+                      : { opacity: 0, transform: "translateY(2px)" }
+                  }
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
                   transition={{
                     duration: reduceMotion ? 0.08 : 0.14,
                     ease: GLASS_EASE,
@@ -1284,9 +1293,9 @@ export const ChatMessage = memo(function ChatMessage({
                 e.stopPropagation();
                 onRetry?.(message.id);
               }}
-              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm-tight font-medium text-white/80 transition-colors hover:bg-white/20"
             >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+              <RotateCcw className="size-3.5" aria-hidden />
               Retry
             </Button>
           ) : null}
@@ -1402,25 +1411,24 @@ export const ChatMessage = memo(function ChatMessage({
           tone={isUser ? "user" : "assistant"}
           source={normalizedSource}
           className={cn(
-            "relative group py-1 text-[15px] leading-[1.7] whitespace-pre-wrap break-words",
+            "relative group py-1 font-chat text-chat-body whitespace-pre-wrap break-words",
             // Suggestion treatment: subtle accent tint + dashed accent border so
             // a proactive offer reads as a suggestion, not a normal reply.
             isSuggestion &&
               "border border-dashed border-accent/45 bg-accent/[0.06]",
           )}
-          style={{
-            fontFamily: "var(--font-chat)",
-            ...(isEditing && editBubbleWidth
+          style={
+            isEditing && editBubbleWidth
               ? { width: editBubbleWidth, maxWidth: "100%" }
-              : {}),
-          }}
+              : undefined
+          }
           data-chat-message-bubble="true"
           data-proactive-suggestion={isSuggestion ? "true" : undefined}
         >
           {isSuggestion && !isEditing ? (
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1 text-xs-tight font-medium text-accent/85">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                <Sparkles className="size-3.5" aria-hidden="true" />
                 {labels.suggestion ?? "Suggestion"}
               </span>
               <div className="flex items-center gap-1">
@@ -1441,11 +1449,11 @@ export const ChatMessage = memo(function ChatMessage({
                     variant="surface"
                     size="icon"
                     onClick={() => onDismissSuggestion(message.id)}
-                    className="h-6 w-6 rounded-sm text-muted"
+                    className="size-6 rounded-sm text-muted"
                     title={labels.dismiss ?? "Dismiss suggestion"}
                     aria-label={labels.dismiss ?? "Dismiss suggestion"}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="size-3.5" />
                   </Button>
                 ) : null}
               </div>

@@ -264,14 +264,14 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
             {...back.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
+            className="size-9 shrink-0 text-muted hover:text-txt"
             onClick={mode === "list" ? exitToApps : handleBackToList}
             aria-label={backLabel}
           >
             {mode === "list" ? (
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="size-4" />
             ) : (
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="size-4" />
             )}
           </Button>
           <h1 className="truncate text-base font-semibold text-txt">
@@ -289,12 +289,12 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
             {...newEl.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 text-muted hover:text-txt"
+            className="size-9 text-muted hover:text-txt"
             onClick={handleOpenNew}
             aria-label={newLabel}
             data-testid="contacts-new"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="size-4" />
           </Button>
         )}
       </header>
@@ -388,7 +388,7 @@ function ContactList({
     return (
       <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-4 py-16 text-center">
         <span
-          className="flex h-16 w-16 items-center justify-center"
+          className="flex size-16 items-center justify-center"
           style={{ background: "var(--accent-subtle)" }}
         >
           <AddressBookMotif />
@@ -498,7 +498,7 @@ function ImportVCardButton({ onImport, t }: { onImport: () => void; t: TFn }) {
       onClick={onImport}
       className="mt-2"
     >
-      <Upload className="mr-2 h-4 w-4" />
+      <Upload className="mr-2 size-4" />
       {label}
     </Button>
   );
@@ -546,7 +546,7 @@ function ContactListItem({
             </span>
             {contact.starred && (
               <Star
-                className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]"
+                className="size-3.5 shrink-0 text-[var(--accent)]"
                 fill="currentColor"
                 aria-label={t("contacts.starred", {
                   defaultValue: "Starred",
@@ -579,7 +579,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
           </h2>
           {contact.starred && (
             <div className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent)]">
-              <Star className="h-3 w-3" fill="currentColor" />
+              <Star className="size-3" fill="currentColor" />
               {t("contacts.starred", { defaultValue: "Starred" })}
             </div>
           )}
@@ -605,7 +605,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
             href={`mailto:${value}`}
             className="flex items-center gap-2 text-sm text-txt hover:underline"
           >
-            <Mail className="h-4 w-4 text-muted" />
+            <Mail className="size-4 text-muted" />
             <span className="break-all">{value}</span>
           </a>
         )}
@@ -654,31 +654,31 @@ function ContactPhoneRow({
   });
   return (
     <div className="flex items-center gap-2">
-      <Phone className="h-4 w-4 shrink-0 text-muted" />
+      <Phone className="size-4 shrink-0 text-muted" />
       <span className="min-w-0 flex-1 break-all text-sm text-txt">{value}</span>
       <Button
         ref={callEl.ref}
         {...callEl.agentProps}
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        className="size-8 shrink-0 rounded-lg text-muted hover:text-txt"
         onClick={() => navigateToPhoneWithNumber(value)}
         aria-label={`${callLabel} ${value}`}
         data-testid="contacts-detail-call"
       >
-        <Phone className="h-4 w-4" />
+        <Phone className="size-4" />
       </Button>
       <Button
         ref={textEl.ref}
         {...textEl.agentProps}
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        className="size-8 shrink-0 rounded-lg text-muted hover:text-txt"
         onClick={() => navigateToMessagesWithNumber(value)}
         aria-label={`${textLabel} ${value}`}
         data-testid="contacts-detail-text"
       >
-        <MessageSquareText className="h-4 w-4" />
+        <MessageSquareText className="size-4" />
       </Button>
     </div>
   );

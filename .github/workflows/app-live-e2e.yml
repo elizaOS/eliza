@@ -31,6 +31,10 @@ on:
         description: "Also run the production Cloud login+personal-identity+chat lane. Keep false for staging-only evidence."
         type: boolean
         default: false
+      run_only_requested:
+        description: "Skip the default local/walkthrough/desktop lanes and run only explicitly selected opt-in lanes."
+        type: boolean
+        default: false
 
 concurrency:
   group: app-live-e2e-${{ github.ref }}
@@ -74,6 +78,7 @@ jobs:
   # agent from the UI.
   app-live-chat:
     name: app live chat (real local runtime)
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.run_only_requested }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
@@ -158,6 +163,7 @@ jobs:
   # writes WALKTHROUGH_VERDICTS.md (the PR mock lane is keyless and can't).
   walkthrough-live:
     name: full walkthrough (real backend + model + vision verdicts)
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.run_only_requested }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
@@ -519,7 +525,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-cloud-staging
-          path: artifacts/app-live-e2e/cloud-staging-receipt.json
+          path: |
+            artifacts/app-live-e2e/cloud-staging-receipt.json
+            packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json
+            packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json
           if-no-files-found: error
           retention-days: 7
 
@@ -589,6 +598,7 @@ jobs:
   # still validate, so the renderer step is best-effort.
   desktop-packaged:
     name: desktop packaged (build + boot + renderer)
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.run_only_requested }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:

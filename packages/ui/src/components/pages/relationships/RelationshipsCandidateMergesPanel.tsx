@@ -104,7 +104,7 @@ export function RelationshipsCandidateMergesPanel({
       aria-label={t("relationshipsmerges.sectionLabel", {
         defaultValue: "Identity merges",
       })}
-      className="px-3 py-3"
+      className="p-3"
     >
       <div className="mb-2 flex justify-end">
         <MetaPill
@@ -116,7 +116,7 @@ export function RelationshipsCandidateMergesPanel({
             defaultValue: "Identity merges",
           })}
         >
-          <Fingerprint className="mr-1 h-3 w-3" />
+          <Fingerprint className="mr-1 size-3" />
           {candidates.length}
         </MetaPill>
       </div>
@@ -141,7 +141,7 @@ export function RelationshipsCandidateMergesPanel({
                     })}
                     className="inline-flex items-center gap-1"
                   >
-                    <Gauge className="h-3 w-3" />
+                    <Gauge className="size-3" />
                     {Math.round(candidate.confidence * 100)}%
                   </span>
                 </MetaPill>
@@ -153,7 +153,7 @@ export function RelationshipsCandidateMergesPanel({
                     })}
                     className="inline-flex items-center gap-1"
                   >
-                    <FileText className="h-3 w-3" />
+                    <FileText className="size-3" />
                     {evidenceCount}
                   </span>
                 </MetaPill>
@@ -165,7 +165,7 @@ export function RelationshipsCandidateMergesPanel({
                     })}
                     className="inline-flex items-center gap-1"
                   >
-                    <CalendarClock className="h-3 w-3" />
+                    <CalendarClock className="size-3" />
                     {formatDateTime(candidate.proposedAt, {
                       fallback: "No date",
                     })}
@@ -196,7 +196,7 @@ export function RelationshipsCandidateMergesPanel({
                     void resolveCandidate(candidate, "accept");
                   }}
                 >
-                  <Check className="h-3 w-3" />
+                  <Check className="size-3" />
                   {isPending
                     ? t("relationshipsmerges.working", {
                         defaultValue: "Working…",
@@ -215,7 +215,7 @@ export function RelationshipsCandidateMergesPanel({
                     void resolveCandidate(candidate, "reject");
                   }}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="size-3" />
                   {t("relationshipsmerges.reject", { defaultValue: "Reject" })}
                 </Button>
               </div>

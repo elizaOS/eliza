@@ -12,7 +12,17 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/core";
+import {
+  pendingPostDeliveryTaskCount,
+  stringToUuid,
+  trackPostDeliveryTask,
+} from "@elizaos/core";
+import {
+  createDeterministicModelFixtureRegistry,
+  type DeterministicModelFixtureRegistry,
+} from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
+import type { ScenarioContext } from "../schema/index.d.ts";
 import { runScenario } from "./executor";
 
 function createRuntime(
@@ -21,10 +31,16 @@ function createRuntime(
 ): AgentRuntime {
   return {
     actions,
+    agentId: "00000000-0000-4000-8000-000000000001",
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
+    getEntityById: vi.fn(async () => null),
+    createEntity: vi.fn(async () => true),
+    getRelationships: vi.fn(async () => []),
+    createRelationship: vi.fn(async () => true),
     getService: vi.fn(() => null),
+    reportError: vi.fn(),
     setSetting: vi.fn(),
     logger: {
       debug: vi.fn(),
@@ -36,7 +52,495 @@ function createRuntime(
   } as unknown as AgentRuntime;
 }
 
+describe("scenario executor multi-world topology", () => {
+  it("resolves two worlds and two accounts to one explicit canonical entity", async () => {
+    const connections: Array<Parameters<AgentRuntime["ensureConnection"]>[0]> =
+      [];
+    const ensureConnection = vi.fn(
+      async (connection: Parameters<AgentRuntime["ensureConnection"]>[0]) => {
+        connections.push(connection);
+      },
+    );
+    const runtime = createRuntime([], { ensureConnection });
+    let seedContext: ScenarioContext | undefined;
+
+    const report = await runScenario(
+      {
+        id: "multi-world-linked-owner",
+        title: "Multi-world linked owner",
+        domain: "executor",
+        rooms: [
+          {
+            id: "discord-home",
+            world: "discord-guild-42",
+            account: "discord:owner-123",
+            entity: "owner",
+            source: "discord",
+            title: "Owner on Discord",
+          },
+          {
+            id: "telegram-home",
+            world: "telegram-space-99",
+            account: "telegram:owner-456",
+            entity: "owner",
+            source: "telegram",
+            title: "Owner on Telegram",
+          },
+        ],
+        seed: [
+          {
+            type: "custom",
+            name: "capture resolved topology",
+            apply(ctx) {
+              seedContext = ctx;
+            },
+          },
+        ],
+        turns: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(ensureConnection).toHaveBeenCalledTimes(2);
+    const discordConnection = connections[0];
+    const telegramConnection = connections[1];
+    const expectedEntityId = stringToUuid(
+      "scenario-entity:multi-world-linked-owner:owner",
+    );
+    const discordAccountEntityId = stringToUuid(
+      "scenario-account:multi-world-linked-owner:discord:owner-123",
+    );
+    const telegramAccountEntityId = stringToUuid(
+      "scenario-account:multi-world-linked-owner:telegram:owner-456",
+    );
+    expect(discordConnection?.entityId).toBe(discordAccountEntityId);
+    expect(telegramConnection?.entityId).toBe(telegramAccountEntityId);
+    expect(discordConnection?.entityId).not.toBe(telegramConnection?.entityId);
+    expect(discordConnection?.worldId).toBe(
+      stringToUuid("scenario-world:multi-world-linked-owner:discord-guild-42"),
+    );
+    expect(telegramConnection?.worldId).toBe(
+      stringToUuid("scenario-world:multi-world-linked-owner:telegram-space-99"),
+    );
+    expect(discordConnection?.worldId).not.toBe(telegramConnection?.worldId);
+
+    expect(seedContext?.roomIds).toEqual({
+      "discord-home": stringToUuid(
+        "scenario-room:multi-world-linked-owner:discord-home",
+      ),
+      "telegram-home": stringToUuid(
+        "scenario-room:multi-world-linked-owner:telegram-home",
+      ),
+    });
+    expect(seedContext?.worldIds).toEqual({
+      "discord-guild-42": discordConnection?.worldId,
+      "telegram-space-99": telegramConnection?.worldId,
+    });
+    expect(seedContext?.entityIds).toEqual({ owner: expectedEntityId });
+    expect(seedContext?.accountEntityIds).toEqual({
+      "discord:owner-123": discordAccountEntityId,
+      "telegram:owner-456": telegramAccountEntityId,
+    });
+    expect(seedContext?.roomEntityIds).toEqual({
+      "discord-home": discordAccountEntityId,
+      "telegram-home": telegramAccountEntityId,
+    });
+    expect(seedContext?.roomWorldIds).toEqual({
+      "discord-home": discordConnection?.worldId,
+      "telegram-home": telegramConnection?.worldId,
+    });
+  });
+
+  it("fails when the confirmed identity-link graph cannot be persisted", async () => {
+    const runtime = createRuntime([], {
+      createRelationship: vi.fn(async () => false),
+    });
+
+    const report = await runScenario(
+      {
+        id: "identity-link-write-failure",
+        title: "Identity link write failure",
+        domain: "executor",
+        rooms: [
+          {
+            id: "owner-dm",
+            account: "discord:owner-123",
+            entity: "owner",
+            source: "discord",
+          },
+        ],
+        turns: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toBe("Failed to create scenario identity link");
+  });
+
+  it("fails instead of running an explicitly targeted turn in the default room", async () => {
+    const handler = vi.fn(async () => ({ success: true, text: "ran" }));
+    const runtime = createRuntime([
+      {
+        name: "ROOM_PROBE",
+        description: "Records whether a mistargeted scenario action ran.",
+        validate: async () => true,
+        handler,
+      },
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "unknown-turn-room",
+        title: "Unknown turn room",
+        domain: "executor",
+        rooms: [
+          {
+            id: "owner-dm",
+            account: "discord:owner-123",
+            source: "discord",
+          },
+        ],
+        turns: [
+          {
+            kind: "action",
+            name: "mistyped destination",
+            room: "owner-dm-typo",
+            actionName: "ROOM_PROBE",
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toBe("Scenario turn references an unknown room");
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
 describe("scenario executor wait turns", () => {
+  it("fails strict final validation when a caught model mismatch remains", async () => {
+    const registry = createDeterministicModelFixtureRegistry();
+    const runtime = {
+      ...createRuntime([]),
+      scenarioModelFixtures: registry,
+      assertScenarioModelFixturesConsumed: () => registry.assertConsumed(),
+      getScenarioModelFixtureDiagnostics: () => registry.diagnostics(),
+    } as unknown as AgentRuntime & {
+      scenarioModelFixtures: DeterministicModelFixtureRegistry;
+    };
+
+    const report = await runScenario(
+      {
+        id: "strict-caught-model-mismatch",
+        title: "Caught strict model mismatch",
+        domain: "executor",
+        modelFixtures: { mode: "fixtures", fixtures: [] },
+        turns: [
+          {
+            kind: "wait",
+            name: "background boundary catches mismatch",
+            durationMs: 0,
+            assertTurn() {
+              void trackPostDeliveryTask(
+                runtime,
+                "late-strict-model-mismatch",
+                async () => {
+                  await new Promise((resolve) => setTimeout(resolve, 550));
+                  try {
+                    registry.resolve({
+                      modelType: "TEXT_SMALL",
+                      latestUserText: "private user message",
+                      toolNames: [],
+                      params: { prompt: "private rendered prompt" },
+                    });
+                  } catch {
+                    // error-policy:J7 Simulates a production diagnostic boundary
+                    // retaining the failure without killing its background loop.
+                  }
+                },
+                { kind: "diagnostic" },
+              );
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.failedAssertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "modelFixtures",
+          detail: expect.stringContaining(
+            "deterministic model calls were unexpected",
+          ),
+        }),
+      ]),
+    );
+    expect(report.modelFixtureDiagnostics?.unexpectedCalls).toHaveLength(1);
+    expect(JSON.stringify(report.modelFixtureDiagnostics)).not.toContain(
+      "private user message",
+    );
+    expect(JSON.stringify(report.modelFixtureDiagnostics)).not.toContain(
+      "private rendered prompt",
+    );
+  });
+
+  it("bounds a never-settling tracked model task and refuses runtime reuse", async () => {
+    const registry = createDeterministicModelFixtureRegistry();
+    const runtime = {
+      ...createRuntime([]),
+      scenarioModelFixtures: registry,
+      assertScenarioModelFixturesConsumed: () => registry.assertConsumed(),
+      getScenarioModelFixtureDiagnostics: () => registry.diagnostics(),
+    } as unknown as AgentRuntime & {
+      scenarioModelFixtures: DeterministicModelFixtureRegistry;
+    };
+
+    let releaseBlockedProvider!: () => void;
+    let blockedProviderTask!: Promise<void>;
+    const scenarioAbort = new AbortController();
+    const privateAbortReason = "private scenario abort reason must not escape";
+    const startedAt = Date.now();
+    const first = await runScenario(
+      {
+        id: "strict-never-settling-model-task",
+        title: "Never-settling tracked model task",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The regression directly controls tracked work.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "provider remains pending",
+            durationMs: 0,
+            assertTurn() {
+              blockedProviderTask = trackPostDeliveryTask(
+                runtime,
+                "never-settling-model-provider",
+                async () =>
+                  new Promise<void>((resolve) => {
+                    releaseBlockedProvider = resolve;
+                  }),
+                { kind: "diagnostic" },
+              );
+              scenarioAbort.abort(new Error(privateAbortReason));
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+        postDeliveryTimeoutMs: 20,
+        abortSignal: scenarioAbort.signal,
+      },
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(first.status).toBe("failed");
+    expect(first.failedAssertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "postDeliveryTasks",
+          detail: expect.stringContaining("runtime quarantined"),
+        }),
+      ]),
+    );
+    expect(first.modelFixtureDiagnostics?.scope?.scenarioId).toBe(
+      "strict-never-settling-model-task",
+    );
+    expect(JSON.stringify(first)).not.toContain(privateAbortReason);
+    expect(pendingPostDeliveryTaskCount(runtime)).toBe(1);
+
+    let secondScenarioExecuted = false;
+    const second = await runScenario(
+      {
+        id: "strict-after-quarantine",
+        title: "Runtime reuse is refused",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The quarantined runtime must fail before any turn executes.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "must not execute",
+            durationMs: 0,
+            assertTurn() {
+              secondScenarioExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(second.status).toBe("failed");
+    expect(second.failedAssertions).toEqual([
+      expect.objectContaining({ label: "runtimeIsolation" }),
+    ]);
+    expect(secondScenarioExecuted).toBe(false);
+    expect(registry.diagnostics().scope?.scenarioId).toBe(
+      "strict-never-settling-model-task",
+    );
+    expect(JSON.stringify(second)).not.toContain(privateAbortReason);
+    releaseBlockedProvider();
+    await blockedProviderTask;
+    expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+  });
+
+  it("reuses an idle runtime after a pre-aborted post-delivery wait", async () => {
+    const runtime = createRuntime([]);
+    const preAborted = new AbortController();
+    preAborted.abort(new Error("caller stopped waiting"));
+    let firstExecuted = false;
+    const first = await runScenario(
+      {
+        id: "idle-pre-aborted-drain",
+        title: "Idle pre-aborted drain",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The scenario creates no post-delivery work.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "idle turn",
+            durationMs: 0,
+            assertTurn() {
+              firstExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+        abortSignal: preAborted.signal,
+      },
+    );
+
+    expect(first.status).toBe("passed");
+    expect(firstExecuted).toBe(true);
+
+    let secondExecuted = false;
+    const second = await runScenario(
+      {
+        id: "reuse-after-idle-pre-abort",
+        title: "Runtime reuse after idle pre-abort",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The idle abort must not quarantine the shared runtime.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "reuse turn",
+            durationMs: 0,
+            assertTurn() {
+              secondExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(second.status).toBe("passed");
+    expect(secondExecuted).toBe(true);
+  });
+
+  it("rejects an invalid post-delivery deadline before executing the scenario", async () => {
+    const runtime = createRuntime([]);
+    let executed = false;
+    const scenario = {
+      id: "invalid-post-delivery-timeout",
+      title: "Invalid post-delivery timeout",
+      domain: "executor",
+      modelFixtures: {
+        mode: "model-free" as const,
+        reason: "The option preflight must run before this direct wait turn.",
+      },
+      turns: [
+        {
+          kind: "wait" as const,
+          name: "must not execute",
+          durationMs: 0,
+          assertTurn() {
+            executed = true;
+            return undefined;
+          },
+        },
+      ],
+    };
+
+    const invalid = await runScenario(scenario, runtime, {
+      minJudgeScore: 0.8,
+      providerName: "deterministic-fixture-model",
+      turnTimeoutMs: 1_000,
+      postDeliveryTimeoutMs: 0,
+    });
+
+    expect(invalid.status).toBe("failed");
+    expect(invalid.failedAssertions).toEqual([
+      expect.objectContaining({ label: "executorOptions" }),
+    ]);
+    expect(executed).toBe(false);
+
+    const valid = await runScenario(scenario, runtime, {
+      minJudgeScore: 0.8,
+      providerName: "deterministic-fixture-model",
+      turnTimeoutMs: 1_000,
+      postDeliveryTimeoutMs: 20,
+    });
+    expect(valid.status).toBe("passed");
+    expect(executed).toBe(true);
+  });
+
   it("waits for the requested duration without sending a message", async () => {
     const handleMessage = vi.fn();
     const runtime = {

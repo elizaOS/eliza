@@ -1314,6 +1314,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		unique?: boolean;
 		tableName: string;
 		query?: string;
@@ -1618,6 +1619,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		/** Required. Only tasks with agentId in this array are returned. Single agent = [id]. WHY: multi-tenant safety; schema indexes by agent_id; daemon batches one getTasks(agentIds) for many agents. */

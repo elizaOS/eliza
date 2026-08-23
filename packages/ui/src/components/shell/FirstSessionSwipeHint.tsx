@@ -176,9 +176,9 @@ export function FirstSessionSwipeHint({
         )}
       >
         <span className="swipe-hint-chevrons flex items-center">
-          <ChevronLeft className="-mr-2 h-4 w-4 opacity-40" aria-hidden />
-          <ChevronLeft className="-mr-2 h-4 w-4 opacity-70" aria-hidden />
-          <ChevronLeft className="h-4 w-4" aria-hidden />
+          <ChevronLeft className="-mr-2 size-4 opacity-40" aria-hidden />
+          <ChevronLeft className="-mr-2  size-4 opacity-70" aria-hidden />
+          <ChevronLeft className="size-4" aria-hidden />
         </span>
         <span
           className={cn(

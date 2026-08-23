@@ -10,6 +10,10 @@ import type {
   LinkedAccountProviderId,
 } from "@elizaos/shared";
 import {
+  codingProviderSubscriptionAuthMode,
+  isCodingSubscriptionProvider,
+} from "@elizaos/shared";
+import {
   type FormEvent,
   useCallback,
   useEffect,
@@ -75,7 +79,7 @@ interface SseFlowState {
 
 type SubscriptionAddMode =
   | "oauth"
-  | "api-key"
+  | "coding-plan-key"
   | "external-cli"
   | "unavailable"
   | "none";
@@ -90,21 +94,11 @@ export {
   getAccountProviderOption,
 } from "./account-provider-options";
 
-const SUBSCRIPTION_ADD_MODE_BY_PROVIDER: Partial<
-  Record<LinkedAccountProviderId, SubscriptionAddMode>
-> = {
-  "anthropic-subscription": "oauth",
-  "openai-codex": "oauth",
-  "gemini-cli": "external-cli",
-  "zai-coding": "api-key",
-  "kimi-coding": "api-key",
-  "deepseek-coding": "unavailable",
-};
-
 function getSubscriptionAddMode(
   providerId: LinkedAccountProviderId,
 ): SubscriptionAddMode {
-  return SUBSCRIPTION_ADD_MODE_BY_PROVIDER[providerId] ?? "none";
+  if (!isCodingSubscriptionProvider(providerId)) return "none";
+  return codingProviderSubscriptionAuthMode(providerId);
 }
 
 function initialStepForProvider(
@@ -119,7 +113,7 @@ function initialStepForProvider(
 function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
   if (providerId === "anthropic-subscription") return "Claude account";
   if (providerId === "openai-codex") return "Codex account";
-  if (getSubscriptionAddMode(providerId) === "api-key") {
+  if (getSubscriptionAddMode(providerId) === "coding-plan-key") {
     return "Coding plan account";
   }
   return "API account";
@@ -148,7 +142,7 @@ function providerDisplayName(
       });
     case "kimi-coding":
       return t("accounts.provider.kimiCoding", {
-        defaultValue: "Kimi Code",
+        defaultValue: "Kimi Coding Endpoint Key",
       });
     case "deepseek-coding":
       return t("accounts.provider.deepseekCoding", {
@@ -698,7 +692,7 @@ export function AddAccountDialog({
             defaultValue:
               "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
           })
-        : subscriptionAddMode === "api-key"
+        : subscriptionAddMode === "coding-plan-key"
           ? t("accounts.add.codingPlanDescription", {
               defaultValue:
                 "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
@@ -719,7 +713,7 @@ export function AddAccountDialog({
                 });
 
   const apiKeyLabel =
-    subscriptionAddMode === "api-key"
+    subscriptionAddMode === "coding-plan-key"
       ? t("accounts.add.codingPlanKey", {
           defaultValue: "Coding-plan key",
         })
@@ -861,7 +855,7 @@ export function AddAccountDialog({
 
         {step === "oauth-starting" ? (
           <div className="flex items-center gap-3 py-6 text-sm text-muted">
-            <Spinner className="h-4 w-4" />
+            <Spinner className="size-4" />
             {t("accounts.add.oauth.starting", {
               defaultValue: "Starting login flow…",
             })}
@@ -909,14 +903,14 @@ export function AddAccountDialog({
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted">
-                  <Spinner className="h-3.5 w-3.5" />
+                  <Spinner className="size-3.5" />
                   <span>Waiting for approval in your browser…</span>
                 </div>
               </div>
             ) : (
               // Localhost callback flow: a real browser window was opened.
               <div className="flex items-center gap-3">
-                <Spinner className="h-4 w-4" />
+                <Spinner className="size-4" />
                 <span>
                   {t("accounts.add.oauth.waiting", {
                     defaultValue:
@@ -1018,7 +1012,7 @@ export function AddAccountDialog({
               className="h-9"
             >
               {step === "apikey-submitting" ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : credentialRepairAccount ? (
                 t("accounts.replaceCredential.save", {
                   defaultValue: "Save replacement",

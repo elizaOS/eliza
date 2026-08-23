@@ -131,7 +131,7 @@ export function HomeWidgetCard({
       />
       <span
         className={cn(
-          "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border [&>svg]:h-[18px] [&>svg]:w-[18px]",
+          "relative inline-flex size-9 shrink-0 items-center justify-center rounded-xl border [&>svg]:h-[18px] [&>svg]:w-[18px]",
           TONE_CHIP_CLASS[tone],
         )}
       >
@@ -142,7 +142,7 @@ export function HomeWidgetCard({
           read as a real dashboard), with the single high-priority datum below
           it. When a widget supplies no datum, the label carries the row alone. */}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-xs-tight font-medium uppercase tracking-[0.08em] text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)]">
+        <span className="truncate text-xs-tight font-medium uppercase tracking-wider text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)]">
           {label}
         </span>
         {value != null ? (

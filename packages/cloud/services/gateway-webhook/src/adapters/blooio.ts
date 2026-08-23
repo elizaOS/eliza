@@ -5,19 +5,71 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
-import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
+import { boundedGatewayFetch } from "./bounded-fetch";
+import {
+  type ChatEvent,
+  type PlatformAdapter,
+  PlatformDeliveryError,
+  type WebhookConfig,
+} from "./types";
+
+export const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+const BLOOIO_RESPONSE_MAX_BYTES = 64 * 1024;
 
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
 const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
 
-export class BlooioApiResponseError extends Error {
+/**
+ * The single bounded transport for every Blooio API hop — sends, read
+ * receipts, and typing state alike — so a hung or unbounded gateway response
+ * cannot pin the adapter. A caller-provided abort signal is composed with the
+ * owned deadline (whichever fires first cancels), never substituted for it,
+ * and the response body is read under the same deadline and byte ceiling.
+ */
+export function blooioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLOOIO_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedGatewayFetch(
+    fetch,
+    input,
+    init,
+    timeoutMs,
+    BLOOIO_RESPONSE_MAX_BYTES,
+  );
+}
+
+export class BlooioApiResponseError extends PlatformDeliveryError {
+  override readonly name: string = "BlooioApiResponseError";
+
   constructor(
     readonly status: number,
     message: string,
   ) {
-    super(message);
-    this.name = "BlooioApiResponseError";
+    super(
+      message,
+      status >= 500 ? "uncertain" : "failed",
+      "DELIVERY_PROVIDER_REJECTED",
+      status === 429,
+      status,
+    );
+  }
+}
+
+export class BlooioConfigurationError extends PlatformDeliveryError {
+  override readonly name: string = "BlooioConfigurationError";
+
+  constructor(chatId: string) {
+    super(
+      "Missing fromNumber for Blooio legacy group reply",
+      "failed",
+      "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING",
+      false,
+      undefined,
+      { context: { setting: "fromNumber", chatId } },
+    );
   }
 }
 
@@ -75,9 +127,27 @@ const BlooioV4WebhookEnvelopeSchema = z.object({
 
 type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema>;
 
+function normalizedIdentifier(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
   const v2 = BlooioV2WebhookEventSchema.safeParse(data);
-  if (v2.success) return v2.data;
+  if (v2.success) {
+    const chatId = normalizedIdentifier(v2.data.chat_id);
+    return {
+      ...v2.data,
+      sender:
+        normalizedIdentifier(v2.data.sender) ??
+        normalizedIdentifier(v2.data.external_id),
+      chat_id: chatId,
+      channel_id:
+        normalizedIdentifier(v2.data.channel_id) ??
+        normalizedIdentifier(v2.data.internal_id),
+      is_group: v2.data.is_group ?? (chatId ? /^grp_/i.test(chatId) : null),
+    };
+  }
 
   const v4 = BlooioV4WebhookEnvelopeSchema.safeParse(data);
   if (!v4.success) return null;
@@ -115,14 +185,18 @@ function providerSentAtMs(event: BlooioWebhookEvent): number | undefined {
   return Number.isSafeInteger(milliseconds) ? milliseconds : undefined;
 }
 
-const ALLOWED_MEDIA_DOMAINS = [
+// Runtime-local copy of the canonical allowlist in
+// `@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist` (this
+// service must not depend on cloud-shared at runtime); the adapter parity test
+// pins the two to each other.
+export const ALLOWED_MEDIA_DOMAINS = [
   "blooio.com",
   "backend.blooio.com",
   "api.blooio.com",
   "media.blooio.com",
 ];
 
-function isValidMediaUrl(url: string): boolean {
+export function isValidMediaUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;
@@ -148,7 +222,14 @@ async function sendBlooioMessage(
   event: ChatEvent,
   text: string,
 ): Promise<string[]> {
-  if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
+  if (!config.apiKey) {
+    throw new PlatformDeliveryError(
+      "Missing apiKey for Blooio reply",
+      "failed",
+      "DELIVERY_CREDENTIALS_MISSING",
+      false,
+    );
+  }
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${config.apiKey}`,
@@ -158,23 +239,38 @@ async function sendBlooioMessage(
     "Idempotency-Key": `gw-reply-${event.messageId}`,
   };
 
-  // A provider chat id is the only safe reply target for a group and is also
-  // the strongest thread-affinity signal for a v4 one-to-one delivery. The
-  // chat already owns its channel and participants, so v4 explicitly forbids
-  // supplying `from` or `to` on this endpoint.
-  const hasProviderChatId =
-    event.chatId !== event.senderId || /^chat_/i.test(event.chatId);
-  const url = hasProviderChatId
+  // Chat ids encode the provider API generation. Current `chat_*` resources
+  // own their participants in v4; legacy `grp_*` resources remain on the v2
+  // chat API and require the configured account sender field.
+  const isV4Chat = /^chat_/i.test(event.chatId);
+  const isLegacyV2Group = /^grp_/i.test(event.chatId);
+  if (isLegacyV2Group) {
+    if (!config.fromNumber) {
+      throw new BlooioConfigurationError(event.chatId);
+    }
+  }
+  const url = isV4Chat
     ? `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/messages`
-    : BLOOIO_V4_MESSAGES_URL;
+    : isLegacyV2Group
+      ? `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/messages`
+      : BLOOIO_V4_MESSAGES_URL;
   const from = event.channelId ?? config.fromNumber;
-  const body: { text: string; to?: string; from?: string } = { text };
-  if (!hasProviderChatId) {
+  const body: {
+    text: string;
+    to?: string;
+    from?: string;
+    from_number?: string;
+  } = { text };
+  if (isLegacyV2Group) {
+    // Blooio v2 selects an explicit account sender through the JSON field;
+    // X-From-Number is used by read receipts but is not a send-message header.
+    body.from_number = config.fromNumber;
+  } else if (!isV4Chat) {
     body.to = event.senderId;
     if (from) body.from = from;
   }
 
-  const response = await fetch(url, {
+  const response = await blooioFetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -183,11 +279,16 @@ async function sendBlooioMessage(
   if (!response.ok) {
     throw new BlooioApiResponseError(
       response.status,
-      `Blooio send error (${response.status}): ${responseText}`,
+      `Blooio rejected delivery (${response.status})`,
     );
   }
   if (!responseText) {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   let result: unknown;
   try {
@@ -195,10 +296,20 @@ async function sendBlooioMessage(
   } catch {
     // error-policy:J3 accepted provider responses must still expose a durable
     // message receipt before the scheduler records the occurrence as fired.
-    throw new Error("Blooio accepted delivery without a valid JSON receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a valid JSON receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   if (!result || typeof result !== "object") {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   const record = result as Record<string, unknown>;
   const id =
@@ -208,7 +319,12 @@ async function sendBlooioMessage(
         ? record.message_id
         : undefined;
   if (!id?.trim()) {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   return [id.trim()];
 }
@@ -234,7 +350,16 @@ async function verifySignature(
     const signaturePart = parts.find((p) => p.startsWith("v1="));
     if (!timestampPart || !signaturePart) return false;
 
-    const timestamp = parseInt(timestampPart.substring(2), 10);
+    // Validate the timestamp before comparing it. `parseInt` returns NaN for a
+    // malformed `t=` value, and every comparison against NaN is false — so the
+    // replay-window check below would not reject, it would silently fall
+    // through. `parseInt` also accepts a numeric prefix ("1234567890abc"), which
+    // is not the value the sender signed.
+    const rawTimestamp = timestampPart.substring(2);
+    const timestamp = /^\d+$/.test(rawTimestamp)
+      ? Number(rawTimestamp)
+      : Number.NaN;
+    if (!Number.isSafeInteger(timestamp)) return false;
     const expectedSignature = signaturePart.substring(3);
 
     const now = Math.floor(Date.now() / 1000);
@@ -391,8 +516,8 @@ export const blooioAdapter: PlatformAdapter = {
       if (/^chat_/i.test(event.chatId)) {
         const chatBase = `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}`;
         const [read, typing] = await Promise.all([
-          fetch(`${chatBase}/read`, { method: "POST", headers }),
-          fetch(`${chatBase}/typing`, {
+          blooioFetch(`${chatBase}/read`, { method: "POST", headers }),
+          blooioFetch(`${chatBase}/typing`, {
             method: "POST",
             headers,
             body: JSON.stringify({ state: "started" }),
@@ -407,7 +532,7 @@ export const blooioAdapter: PlatformAdapter = {
       } else {
         const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/read`;
         if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
-        const response = await fetch(url, { method: "POST", headers });
+        const response = await blooioFetch(url, { method: "POST", headers });
         if (!response.ok) {
           throw new BlooioApiResponseError(
             response.status,
@@ -428,7 +553,7 @@ export const blooioAdapter: PlatformAdapter = {
   async stopTypingIndicator(config, event): Promise<void> {
     if (!config.apiKey || !/^chat_/i.test(event.chatId)) return;
     try {
-      const response = await fetch(
+      const response = await blooioFetch(
         `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/typing`,
         {
           method: "DELETE",

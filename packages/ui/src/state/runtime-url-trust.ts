@@ -21,7 +21,10 @@ import {
 
 function isLoopbackHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
-  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+  // RFC 1122 reserves the entire 127.0.0.0/8 block for IPv4 loopback, not
+  // only 127.0.0.1. Packaged external-runtime tests bind an alternate address
+  // in that block so they exercise the HTTP path without exposing a fixture.
+  return /^127(?:\.\d{1,3}){3}$/.test(h) || h === "localhost" || h === "::1";
 }
 
 export function isTrustedRestoreApiBaseUrl(
@@ -131,7 +134,18 @@ export function isTrustedCloudApiBaseUrl(
 
   const normalizedPath = url.pathname.replace(/\/+$/, "");
   if (isCloudPairLoopbackOrigin(url.origin)) {
-    return normalizedPath === "";
+    if (normalizedPath === "") return true;
+    // Local Cloud development serves the same account-scoped Shared adapter
+    // shape as production, but from a loopback Worker. Keep this exception
+    // bound to an explicitly expected agent identity: arbitrary loopback paths
+    // remain untrusted and a persisted record cannot switch organizations by
+    // changing only its path.
+    const match = /^\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge|\/api)?$/.exec(
+      normalizedPath,
+    );
+    if (!match || expected === null) return false;
+    const candidate = decodedPathAgentId(match[1]);
+    return candidate !== null && agentIdMatches(candidate, expected);
   }
   if (url.protocol !== "https:" || url.port) return false;
 
@@ -140,7 +154,7 @@ export function isTrustedCloudApiBaseUrl(
     if (normalizedPath === "" || normalizedPath === "/api/v1/eliza/agents") {
       return expected === null;
     }
-    const match = /^\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge)?$/.exec(
+    const match = /^\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge|\/api)?$/.exec(
       normalizedPath,
     );
     if (!match) return false;

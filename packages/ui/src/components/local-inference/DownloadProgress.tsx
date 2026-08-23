@@ -31,8 +31,8 @@ export function DownloadProgress({ job }: DownloadProgressProps) {
         aria-valuemax={100}
       >
         <div
-          className="h-full bg-primary transition-[width] duration-300"
-          style={{ width: `${pct}%` }}
+          className="h-full w-full origin-left bg-primary transition-transform duration-300"
+          style={{ transform: `scaleX(${pct / 100})` }}
         />
       </div>
       <div className="mt-1 flex justify-between text-xs text-muted-foreground">

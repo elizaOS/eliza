@@ -1,5 +1,6 @@
 /** Exercises index behavior with deterministic cloud-shared lib fixtures. */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
 // Load SQL metadata projections before this suite installs process-global
 // schema doubles, so later batched PGlite suites retain the real columns.
@@ -20,6 +21,7 @@ const loggerInfo = mock();
 const loggerDebug = mock();
 const loggerWarn = mock();
 const loggerError = mock();
+const originalFetch = globalThis.fetch;
 
 const insertBuilder = {
   values: insertValues,
@@ -126,6 +128,10 @@ mock.module("../../utils/logger", () => ({
 const { messageRouterService } = await import("./index");
 
 describe("MessageRouterService contact recording", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   beforeEach(() => {
     blooioApiRequest.mockReset();
     secretsGet.mockReset();
@@ -166,7 +172,11 @@ describe("MessageRouterService contact recording", () => {
       contactDisplayName: "Friend",
     });
 
-    expect(delivery).toBe(true);
+    expect(delivery).toEqual({
+      status: "delivered",
+      provider: "blooio",
+      providerMessageIds: ["sent-message"],
+    });
     expect(blooioApiRequest).toHaveBeenCalledWith(
       "blooio-api-key",
       "POST",
@@ -223,7 +233,7 @@ describe("MessageRouterService contact recording", () => {
       body: "hello friend",
     });
 
-    expect(delivery).toBe(true);
+    expect(delivery.status).toBe("delivered");
     expect(dbWrite.insert).not.toHaveBeenCalled();
   });
 
@@ -242,8 +252,164 @@ describe("MessageRouterService contact recording", () => {
       agentUserId: "agent-user",
     });
 
-    expect(delivery).toBe(false);
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_TRANSPORT_UNCERTAIN",
+      retryable: false,
+    });
     expect(dbWrite.insert).not.toHaveBeenCalled();
+  });
+
+  test("marks a successful provider response without a receipt uncertain", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockResolvedValue({});
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_RECEIPT_INVALID",
+      retryable: false,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+    expect(dbWrite.insert).not.toHaveBeenCalled();
+  });
+
+  test("never retries after a provider deadline with ambiguous acceptance", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new DOMException("Provider request deadline expired", "TimeoutError"),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_TIMEOUT",
+      retryable: false,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves an oversized accepted response as uncertain without retry", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new ElizaError("REST response exceeds its bounded-body contract", {
+        code: "CLOUD_REST_RESPONSE_TOO_LARGE",
+        context: { maxResponseBytes: 4 * 1024 * 1024 },
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_RESPONSE_TOO_LARGE",
+      retryable: false,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("treats a provider 5xx after dispatch as uncertain without retry", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new ElizaError("Blooio rejected the provider request", {
+        code: "PROVIDER_REQUEST_REJECTED",
+        context: { provider: "blooio", status: 503, retryable: true },
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+      retryable: false,
+      providerStatus: 503,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves an explicit rate-limit rejection as safely retryable", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new ElizaError("Blooio rejected the provider request", {
+        code: "PROVIDER_REQUEST_REJECTED",
+        context: { provider: "blooio", status: 429, retryable: true },
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "failed",
+      provider: "blooio",
+      code: "DELIVERY_PROVIDER_REJECTED",
+      retryable: true,
+      providerStatus: 429,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves a Twilio 500 as uncertain with its provider status", async () => {
+    secretsGet.mockResolvedValueOnce("twilio-account-sid");
+    secretsGet.mockResolvedValueOnce("twilio-auth-token");
+    const fetchMock = mock(
+      async () => new Response("accepted before upstream error", { status: 500 }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "twilio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "twilio",
+      code: "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+      retryable: false,
+      providerStatus: 500,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test("fails closed for an unsupported runtime provider", async () => {
@@ -256,7 +422,12 @@ describe("MessageRouterService contact recording", () => {
       body: "hello friend",
     });
 
-    expect(delivery).toBe(false);
+    expect(delivery).toEqual({
+      status: "failed",
+      provider: "unknown",
+      code: "DELIVERY_PROVIDER_UNSUPPORTED",
+      retryable: false,
+    });
     expect(blooioApiRequest).not.toHaveBeenCalled();
     expect(JSON.stringify(loggerError.mock.calls)).not.toContain(sentinelProvider);
   });
@@ -281,7 +452,7 @@ describe("MessageRouterService contact recording", () => {
       agentUserId: "agent-user",
     });
 
-    expect(delivery).toBe(true);
+    expect(delivery.status).toBe("delivered");
     expect(blooioApiRequest).toHaveBeenCalledTimes(1);
     expect(dbWrite.insert).toHaveBeenCalledTimes(1);
     expect(loggerError).toHaveBeenCalledWith(
@@ -306,7 +477,7 @@ describe("MessageRouterService contact recording", () => {
       agentUserId: "agent-user",
     });
 
-    expect(delivery).toBe(true);
+    expect(delivery.status).toBe("delivered");
     expect(blooioApiRequest).toHaveBeenCalledTimes(1);
     expect(dbWrite.insert).toHaveBeenCalledTimes(1);
   });

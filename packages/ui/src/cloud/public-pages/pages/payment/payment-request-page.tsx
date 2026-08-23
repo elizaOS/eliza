@@ -311,7 +311,7 @@ export default function PaymentRequestPage() {
   if (isLoading) {
     return (
       <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-muted" />
+        <Loader2 className="size-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -321,7 +321,7 @@ export default function PaymentRequestPage() {
       <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4 text-txt">
         <div className="w-full max-w-sm border border-destructive/30 bg-destructive-subtle p-5">
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-destructive" />
+            <AlertCircle className="size-6 text-destructive" />
             <div>
               <h1 className="text-base font-semibold">
                 {t("cloud.paymentRequest.unavailableTitle", {
@@ -386,8 +386,8 @@ export default function PaymentRequestPage() {
       >
         <section className="w-full border border-border bg-surface p-5 sm:p-7">
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center border border-accent/30 bg-accent-subtle">
-              <CreditCard className="h-7 w-7 text-accent" />
+            <div className="flex size-16 items-center justify-center border border-accent/30 bg-accent-subtle">
+              <CreditCard className="size-7 text-accent" />
             </div>
             <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">
               {formatAmount(
@@ -432,7 +432,7 @@ export default function PaymentRequestPage() {
 
           {displayedError && (
             <div className="mt-7 flex items-center gap-3 border border-destructive/30 bg-destructive-subtle p-3 text-sm text-txt">
-              <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+              <AlertCircle className="size-5 shrink-0 text-destructive" />
               <span>{errorMessage(displayedError, t)}</span>
             </div>
           )}
@@ -443,12 +443,12 @@ export default function PaymentRequestPage() {
               type="button"
               disabled={!canPay || isPaying}
               onClick={beginCheckout}
-              className="flex w-full items-center justify-center gap-3 px-4 py-4 transition disabled:pointer-events-none disabled:opacity-30"
+              className="flex w-full items-center justify-center gap-3 p-4 transition disabled:pointer-events-none disabled:opacity-30"
             >
               {isPaying ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="size-5 animate-spin" />
               ) : (
-                <CreditCard className="h-5 w-5" />
+                <CreditCard className="size-5" />
               )}
               <span className="text-sm font-medium">
                 {isPaid

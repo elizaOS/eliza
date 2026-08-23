@@ -20,6 +20,32 @@ function tokenMatches(expected: string, provided: string): boolean {
   );
 }
 
+function isBrowserCompanionOwnerMutation(
+  method: string,
+  pathname: string,
+): boolean {
+  return (
+    method === "POST" &&
+    (pathname === "/api/browser-bridge/companions/pair" ||
+      /^\/api\/browser-bridge\/companions\/[^/]+\/(?:revoke|reset-revocation)$/.test(
+        pathname,
+      ))
+  );
+}
+
+function hasBrowserCompanionOwnerSessionCookie(
+  req: http.IncomingMessage,
+): boolean {
+  const cookie =
+    typeof req.headers.cookie === "string" ? req.headers.cookie : "";
+  return /(?:^|;\s*)eliza_session=[^;]+/.test(cookie);
+}
+
+function hasBrowserCompanionCsrfHeader(req: http.IncomingMessage): boolean {
+  const csrf = req.headers["x-eliza-csrf"];
+  return typeof csrf === "string" && csrf.trim().length > 0;
+}
+
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
  * Restore's request-body cap IS the v1 restorable ceiling: anything retained
@@ -68,7 +94,10 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
-import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
+import {
+  AgentBackupClientDisconnectedError,
+  writeAgentBackupJsonResponse,
+} from "./backup-json-response.ts";
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
@@ -472,7 +501,6 @@ import {
   registerBuiltinViews,
   tryHandleHonoRuntimeRoute,
   tryHandleLifeOpsInboxFallbackLazy,
-  tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
 import {
@@ -840,7 +868,11 @@ async function handleBuiltinOptionalRoutes(
     if (method === "POST") {
       await readBody(req).catch(() => undefined);
     }
-    json(res, absentPluginStub.buildBody(req));
+    json(
+      res,
+      absentPluginStub.buildBody(req),
+      absentPluginStub.statusCode ?? 200,
+    );
     return true;
   }
 
@@ -1797,6 +1829,26 @@ async function handleRequest(
     return;
   }
 
+  if (isBrowserCompanionOwnerMutation(method, pathname)) {
+    if (!hasBrowserCompanionOwnerSessionCookie(req)) {
+      json(res, { error: "Owner session required" }, 401);
+      return;
+    }
+    if (!hasBrowserCompanionCsrfHeader(req)) {
+      json(res, { error: "CSRF token required" }, 403);
+      return;
+    }
+    const ownerAuthorization = await resolveHostSessionAuthorization();
+    if (!ownerAuthorization.ok) {
+      json(res, { error: "Invalid owner session or CSRF token" }, 401);
+      return;
+    }
+    if (ownerAuthorization.role !== "OWNER") {
+      json(res, { error: "Owner role required" }, 403);
+      return;
+    }
+  }
+
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -1904,6 +1956,20 @@ async function handleRequest(
       await writeAgentBackupJsonResponse(res, snapshot);
     } catch (err) {
       const message = formatError(err);
+      if (
+        err instanceof AgentBackupClientDisconnectedError ||
+        message === "Agent backup response stream failed"
+      ) {
+        // The download transport died mid-stream (client abort or socket
+        // error). The response is already committed and the socket is gone;
+        // treat it like the v2 capture boundary's 499/ephemeral path rather
+        // than logging a server fault.
+        logger.warn(
+          { err: message },
+          "[agent-backup] Snapshot download aborted",
+        );
+        return;
+      }
       if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
         // Transient teardown race (PGlite closing) — 503 so the caller retries
         // or defers instead of tripping the fail-closed restart gate on a 500
@@ -2550,11 +2616,6 @@ async function handleRequest(
             applyWhatsAppQrOverride: (...args: unknown[]) => void;
           }>("whatsapp")
         ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -3447,18 +3508,6 @@ async function handleRequest(
   }
 
   if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
-    return;
-  }
-
-  // ── Music player compatibility fallback ─────────────────────────────────
-  if (
-    await tryHandleMusicPlayerStatusFallbackLazy({
-      pathname,
-      method,
-      runtime: state.runtime,
-      res,
-    })
-  ) {
     return;
   }
 
@@ -4768,7 +4817,7 @@ export async function startApiServer(opts?: {
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins
-  // (Signal, WhatsApp) can broadcast pairing events via the service.
+  // Pairing connectors such as WhatsApp can broadcast events via the service.
   if (state.runtime) {
     try {
       const setupSvc = state.runtime.getService("connector-setup") as {
@@ -5079,14 +5128,6 @@ export async function startApiServer(opts?: {
       dispose: async () => {
         const sessions = [...(state.whatsappPairingSessions?.values() ?? [])];
         state.whatsappPairingSessions?.clear();
-        await Promise.all(sessions.map((session) => session.stop()));
-      },
-    },
-    {
-      name: "Signal pairing sessions",
-      dispose: async () => {
-        const sessions = [...(state.signalPairingSessions?.values() ?? [])];
-        state.signalPairingSessions?.clear();
         await Promise.all(sessions.map((session) => session.stop()));
       },
     },

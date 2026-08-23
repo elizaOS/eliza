@@ -281,7 +281,7 @@ export function CalendarSourceManager({
         onClick={() => setOpen((current) => !current)}
         {...manageAgentProps}
       >
-        <Settings2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <Settings2 className="size-3.5 shrink-0" aria-hidden />
         <span className="flex-1">
           {t("calendarSources.manage", {
             defaultValue: "Manage calendar sources",
@@ -296,7 +296,7 @@ export function CalendarSourceManager({
           </span>
         ) : null}
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+          className={`size-3.5 shrink-0 transition-transform ${
             open ? "rotate-180" : ""
           }`}
           aria-hidden
@@ -511,9 +511,7 @@ export function CalendarSourceManager({
               onClick={() => void state.refresh()}
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 ${
-                  state.refreshing ? "animate-spin" : ""
-                }`}
+                className={`size-3.5 ${state.refreshing ? "animate-spin" : ""}`}
                 aria-hidden
               />
               {state.refreshing

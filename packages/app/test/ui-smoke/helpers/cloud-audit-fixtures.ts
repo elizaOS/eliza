@@ -50,6 +50,43 @@ export async function seedStewardToken(page: Page): Promise<void> {
 
 const NOW_ISO = new Date().toISOString();
 const FUTURE_ISO = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+const BILLING_CONTAINER_NEXT_ISO = "2026-08-22T11:20:30.000Z";
+const BILLING_SANDBOX_LAST_ISO = "2026-08-20T08:07:06.000Z";
+const BILLING_SANDBOX_ESTIMATED_NEXT_ISO = "2026-08-23T12:34:56.000Z";
+
+/**
+ * Exact, per-resource assertions for the production-shaped billing audit.
+ *
+ * These values are deliberately counterfactual: the container is hourly and
+ * the sandbox is daily, and each card has a different mix of reported and
+ * null cursors. This prevents the visual gate from passing if the client
+ * infers billing authority from resource type or swaps cursor fields.
+ */
+export const BILLING_AUDIT_RESOURCE_EXPECTATIONS = [
+  {
+    name: "Smoke API container",
+    identity: "Container · container-smoke-api",
+    fields: [
+      { label: "Billing period", value: "Hourly" },
+      { label: "Last billed", value: "Not reported" },
+      { label: "Next billing", value: "2026-08-22 11:20:30 UTC" },
+      { label: "Estimated next billing", value: "Not estimated" },
+    ],
+  },
+  {
+    name: "Smoke research agent",
+    identity: "Agent sandbox · sandbox-smoke-research",
+    fields: [
+      { label: "Billing period", value: "Daily" },
+      { label: "Last billed", value: "2026-08-20 08:07:06 UTC" },
+      { label: "Next billing", value: "Not scheduled" },
+      {
+        label: "Estimated next billing",
+        value: "2026-08-23 12:34:56 UTC",
+      },
+    ],
+  },
+] as const;
 /** ApplicationDetailPage requires a valid UUID id (redirects otherwise). */
 export const SMOKE_APP_UUID = "6f9619ff-8b86-4d01-b42d-00c04fc964ff";
 
@@ -301,7 +338,30 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/apps/overlay-presence"),
     body: { ok: true, app: null, present: false },
   },
+  // The managed-agent shell boots these agent-scoped resources in parallel
+  // with Cloud routes. Stub their empty canonical states so aesthetic audits
+  // never escape to the synthetic *.cloud.eliza.app origin and fail on CORS.
+  { match: path_("/api/apps"), body: [] },
+  { match: path_("/api/catalog/apps"), body: [] },
+  { match: path_("/api/views"), body: { views: [] } },
+  {
+    match: path_("/api/browser-workspace"),
+    body: { mode: "web", tabs: [] },
+  },
   // instances/ — canonical agent-list DTO plus detail.
+  {
+    match: path_("/api/v1/eliza/personal"),
+    body: {
+      success: true,
+      data: {
+        identity: {
+          id: "personal:00000000-0000-5000-8000-000000000001",
+          displayName: "Eliza",
+          runtime: "dedicated",
+        },
+      },
+    },
+  },
   {
     match: path_("/api/v1/eliza/agents"),
     body: {
@@ -323,7 +383,8 @@ const STUB_RULES: StubRule[] = [
           token_ticker: null,
           dockerImage: null,
           executionTier: "dedicated-lazy",
-          webUiUrl: null,
+          webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
+          activeJob: null,
         },
       ],
     },
@@ -338,7 +399,7 @@ const STUB_RULES: StubRule[] = [
         status: "running",
         executionTier: "dedicated-lazy",
         databaseStatus: "ready",
-        webUiUrl: null,
+        webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
         bridgeUrl: null,
         errorMessage: null,
         createdAt: NOW_ISO,
@@ -373,6 +434,15 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/sessions"), body: { sessions: [] } },
   { match: path_("/api/v1/me/mfa"), body: { enrolled: false } },
   { match: path_("/api/v1/me/plugin-grants"), body: { grants: [] } },
+  {
+    match: path_("/api/v1/me/account-deletion"),
+    body: {
+      state: "lifecycle_unavailable",
+      request: null,
+      code: "LIFECYCLE_RESERVATION_REQUIRED",
+      message: "Lifecycle reservation required",
+    },
+  },
   { match: prefix("/api/v1/security/audit"), body: { events: [] } },
   // organization/ — members/invites/credentials (owner role).
   {
@@ -431,6 +501,10 @@ const STUB_RULES: StubRule[] = [
                   name: "Smoke API container",
                   status: "running",
                   billingStatus: "active",
+                  billingInterval: "hour",
+                  lastBilledAt: null,
+                  nextBillingAt: BILLING_CONTAINER_NEXT_ISO,
+                  estimatedNextBillingAt: null,
                   ratePerHour: {
                     status: "available",
                     source: "compute-billing-rate-segments",
@@ -458,6 +532,10 @@ const STUB_RULES: StubRule[] = [
                   name: "Smoke research agent",
                   status: "running",
                   billingStatus: "active",
+                  billingInterval: "day",
+                  lastBilledAt: BILLING_SANDBOX_LAST_ISO,
+                  nextBillingAt: null,
+                  estimatedNextBillingAt: BILLING_SANDBOX_ESTIMATED_NEXT_ISO,
                   ratePerHour: {
                     status: "available",
                     source: "compute-billing-rate-segments",

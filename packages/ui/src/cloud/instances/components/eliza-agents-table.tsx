@@ -4,12 +4,14 @@
  */
 "use client";
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
-import { formatHourlyRate } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
 import type {
-  AgentListItemDto,
   AgentSandboxStatus,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
+  NormalizedAgentListItemDto,
+} from "@elizaos/cloud-sdk";
+import {
+  AGENT_PRICING,
+  formatHourlyRate,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -134,10 +136,10 @@ export function retireExpiredTombstones(
 }
 
 export function mergeAgentList(
-  prev: AgentListItemDto[],
-  apiAgents: AgentListItemDto[],
+  prev: NormalizedAgentListItemDto[],
+  apiAgents: NormalizedAgentListItemDto[],
   tombstoned: ReadonlySet<string>,
-): AgentListItemDto[] {
+): NormalizedAgentListItemDto[] {
   const apiById = new Map(apiAgents.map((a) => [a.id, a]));
   const updated = prev
     .filter((sb) => !tombstoned.has(sb.id))
@@ -159,12 +161,12 @@ export function mergeAgentList(
  * that should remove the local row, not resurrect it by clearing the tombstone
  * too early.
  */
-function isDockerBacked(agent: AgentListItemDto): boolean {
+function isDockerBacked(agent: NormalizedAgentListItemDto): boolean {
   return agent.executionTier === "custom" || Boolean(agent.dockerImage);
 }
 
 function getRuntimeKind(
-  agent: AgentListItemDto,
+  agent: NormalizedAgentListItemDto,
 ): "managed" | "shared" | "sandbox" | "notProvisioned" {
   if (isDockerBacked(agent)) return "managed";
   if (agent.executionTier === "shared") return "shared";
@@ -194,7 +196,7 @@ function getRuntimeKind(
  * them from drifting and computes `runtimeKind` a single time.
  */
 interface AgentRowViewModel {
-  agent: AgentListItemDto;
+  agent: NormalizedAgentListItemDto;
   isDocker: boolean;
   trackedJob: TrackedJob | undefined;
   isProvisioningActive: boolean;
@@ -207,12 +209,13 @@ interface AgentRowViewModel {
   canSleep: boolean;
   /** Reactivate (wake): offered exactly for the sleeping (deactivated) state. */
   canWake: boolean;
+  /** The authenticated pairing endpoint owns final Web UI reachability. */
   hasStandaloneWebUi: boolean;
   runtimeKind: ReturnType<typeof getRuntimeKind>;
 }
 
 export function deriveAgentRow(
-  agent: AgentListItemDto,
+  agent: NormalizedAgentListItemDto,
   poller: Pick<ReturnType<typeof useJobPoller>, "getStatus" | "isActive">,
   actionInProgress: string | null,
 ): AgentRowViewModel {
@@ -235,16 +238,14 @@ export function deriveAgentRow(
       displayStatus === "running" && agent.executionTier !== "shared" && !busy,
     canWake: displayStatus === "sleeping" && !busy,
     hasStandaloneWebUi:
-      displayStatus === "running" &&
-      agent.executionTier !== "shared" &&
-      Boolean(agent.webUiUrl),
+      displayStatus === "running" && agent.executionTier !== "shared",
     runtimeKind: getRuntimeKind(agent),
   };
 }
 
 /** Shared is the user's persistent Eliza; Dedicated keeps its chosen name. */
 function getAgentDisplayName(
-  agent: AgentListItemDto,
+  agent: NormalizedAgentListItemDto,
   sharedAgentName: string,
   unnamedAgent: string,
 ) {
@@ -312,7 +313,7 @@ function StatusCell({
       </div>
       {isProvisioning && trackedJob && (
         <span className="text-2xs text-muted flex items-center gap-1 pl-0.5">
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+          <Loader2 className="size-2.5 animate-spin" />
           {t("cloud.elizaAgentsTable.jobLabel", {
             jobId: trackedJob.jobId.slice(0, 8),
             defaultValue: "Job {{jobId}}",
@@ -330,7 +331,11 @@ function StatusCell({
   );
 }
 
-export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
+export function ElizaAgentsTable({
+  agents,
+}: {
+  agents: NormalizedAgentListItemDto[];
+}) {
   const t = useT();
   const queryClient = useQueryClient();
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
@@ -343,7 +348,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
     new Set(),
   );
 
-  const [localAgents, setLocalAgents] = useState<AgentListItemDto[]>(agents);
+  const [localAgents, setLocalAgents] =
+    useState<NormalizedAgentListItemDto[]>(agents);
   const initialAgentIdsRef = useRef(
     [...agents.map((agent) => agent.id)].sort().join(","),
   );
@@ -358,7 +364,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
   // TOMBSTONE_GRACE_MS) instead of hiding a still-billed agent forever.
   const deletedIdsRef = useRef(new Map<string, number>());
   const withoutDeleted = useCallback(
-    (rows: AgentListItemDto[]) =>
+    (rows: NormalizedAgentListItemDto[]) =>
       rows.filter((agent) => !deletedIdsRef.current.has(agent.id)),
     [],
   );
@@ -431,27 +437,30 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
     }
   }, [agents, localAgents, reconcileTick, withoutDeleted]);
 
-  const mergeApiData = useCallback((apiAgents: AgentListItemDto[]) => {
-    // Retire tombstones by TIME ONLY — one clock for every retirement path.
-    // Retiring by *absence* here (drop the tombstone the moment this poll stops
-    // returning the agent) races the reconcile effect: on a real delete the fast
-    // poll drops the row first, this clears the tombstone, and then the effect's
-    // missing-add re-adds the agent from react-query's laggier list that still
-    // holds it — resurrecting a just-deleted row. Letting the tombstone live its
-    // full grace window means both eventually-consistent reads converge to
-    // "gone" before it expires, so nothing is left to re-add. Snapshot the set
-    // before the updater: StrictMode double-invokes updaters, and an in-updater
-    // mutation of the shared set would diverge between invocations.
-    retireExpiredTombstones(
-      deletedIdsRef.current,
-      Date.now(),
-      TOMBSTONE_GRACE_MS,
-    );
-    const tombstoned: ReadonlySet<string> = new Set(
-      deletedIdsRef.current.keys(),
-    );
-    setLocalAgents((prev) => mergeAgentList(prev, apiAgents, tombstoned));
-  }, []);
+  const mergeApiData = useCallback(
+    (apiAgents: NormalizedAgentListItemDto[]) => {
+      // Retire tombstones by TIME ONLY — one clock for every retirement path.
+      // Retiring by *absence* here (drop the tombstone the moment this poll stops
+      // returning the agent) races the reconcile effect: on a real delete the fast
+      // poll drops the row first, this clears the tombstone, and then the effect's
+      // missing-add re-adds the agent from react-query's laggier list that still
+      // holds it — resurrecting a just-deleted row. Letting the tombstone live its
+      // full grace window means both eventually-consistent reads converge to
+      // "gone" before it expires, so nothing is left to re-add. Snapshot the set
+      // before the updater: StrictMode double-invokes updaters, and an in-updater
+      // mutation of the shared set would diverge between invocations.
+      retireExpiredTombstones(
+        deletedIdsRef.current,
+        Date.now(),
+        TOMBSTONE_GRACE_MS,
+      );
+      const tombstoned: ReadonlySet<string> = new Set(
+        deletedIdsRef.current.keys(),
+      );
+      setLocalAgents((prev) => mergeAgentList(prev, apiAgents, tombstoned));
+    },
+    [],
+  );
 
   const refreshData = useCallback(async () => {
     try {
@@ -504,6 +513,20 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
       void refreshData();
     },
   });
+
+  useEffect(() => {
+    for (const agent of localAgents) {
+      const job = agent.activeJob;
+      if (!job) continue;
+      poller.track(agent.id, job.id, {
+        status: job.status,
+        startedAt: Date.parse(job.startedAt ?? job.createdAt),
+        attempts: job.attempts,
+        maxAttempts: job.maxAttempts,
+        estimatedCompletionAt: job.estimatedCompletionAt,
+      });
+    }
+  }, [localAgents, poller.track]);
 
   useSandboxListPoll(
     localAgents.map((agent) => ({
@@ -833,7 +856,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
           const restored = failed
             .map((id) => rowById.get(id))
             .filter(
-              (agent): agent is AgentListItemDto =>
+              (agent): agent is NormalizedAgentListItemDto =>
                 agent !== undefined && !present.has(agent.id),
             );
           return [...prev, ...restored];
@@ -893,7 +916,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
               target="_blank"
               rel="noreferrer"
             >
-              <ExternalLink className="h-4 w-4" />
+              <ExternalLink className="size-4" />
               {t("cloud.elizaAgentsTable.openElizaApp", {
                 defaultValue: "Open Eliza app",
               })}
@@ -949,31 +972,18 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
             }),
           }}
         />
-        {/* Search and primary navigation for the visible agent set. */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-            <Input
-              placeholder={t("cloud.elizaAgentsTable.searchAgents", {
-                defaultValue: "Search agents…",
-              })}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 border-border bg-card text-txt placeholder:text-muted"
-            />
-          </div>
-          <Button asChild size="sm" className="h-9">
-            <a
-              href={ELIZA_APP_AGENT_CREATE_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink className="h-4 w-4" />
-              {t("cloud.elizaAgentsTable.openElizaApp", {
-                defaultValue: "Open Eliza app",
-              })}
-            </a>
-          </Button>
+        {/* Search the authoritative agent set. Each runnable row owns its one
+            launch affordance: Open Web UI. */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <Input
+            placeholder={t("cloud.elizaAgentsTable.searchAgents", {
+              defaultValue: "Search agents…",
+            })}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 border-border bg-card pl-9 text-txt placeholder:text-muted"
+          />
         </div>
 
         {searchQuery && (
@@ -1014,7 +1024,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                     {t("cloud.elizaAgentsTable.colAgent", {
                       defaultValue: "Agent",
                     })}
-                    <ArrowUpDown className="h-3 w-3" />
+                    <ArrowUpDown className="size-3" />
                   </Button>
                 </TableHead>
                 <TableHead>
@@ -1027,7 +1037,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                     {t("cloud.elizaAgentsTable.colStatus", {
                       defaultValue: "Status",
                     })}
-                    <ArrowUpDown className="h-3 w-3" />
+                    <ArrowUpDown className="size-3" />
                   </Button>
                 </TableHead>
                 <TableHead className="text-xs-tight font-medium uppercase tracking-widest text-muted">
@@ -1047,7 +1057,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
                     <div className="flex flex-col items-center justify-center gap-1 text-muted">
-                      <Search className="h-5 w-5 mb-1" />
+                      <Search className="size-5 mb-1" />
                       <p className="text-sm">
                         {t("cloud.elizaAgentsTable.noMatch", {
                           defaultValue: "No agents match your filters",
@@ -1092,10 +1102,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <a
-                              href={`/cloud/agents/${sb.id}`}
-                              className="font-medium text-txt-strong hover:text-accent transition-colors"
-                            >
+                            <span className="font-medium text-txt-strong">
                               {getAgentDisplayName(
                                 sb,
                                 t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1105,7 +1112,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   defaultValue: "Unnamed Agent",
                                 }),
                               )}
-                            </a>
+                            </span>
                             <AgentCostBadge
                               status={displayStatus}
                               executionTier={sb.executionTier}
@@ -1131,49 +1138,18 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             onClick={() => openWebUIWithPairing(sb.id)}
                             className="inline-flex items-center gap-1 text-xs text-muted-strong hover:text-txt-strong transition-colors bg-transparent border-0 p-0"
                           >
-                            <ExternalLink className="h-3 w-3" />
-                            {t("cloud.elizaAgentsTable.open", {
-                              defaultValue: "Open",
+                            <ExternalLink className="size-3" />
+                            {t("cloud.elizaAgentsTable.openWebUi", {
+                              defaultValue: "Open Web UI",
                             })}
                           </Button>
                         ) : (
-                          <span className="text-xs text-muted">
-                            {displayStatus === "running" &&
-                            sb.executionTier !== "shared"
-                              ? t("cloud.elizaAgentsTable.unavailable", {
-                                  defaultValue: "Unavailable",
-                                })
-                              : "—"}
-                          </span>
+                          <span className="text-xs text-muted">—</span>
                         )}
                       </TableCell>
 
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-0.5">
-                          {hasStandaloneWebUi && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  type="button"
-                                  aria-label={t(
-                                    "cloud.elizaAgentsTable.openWebUi",
-                                    { defaultValue: "Open Web UI" },
-                                  )}
-                                  onClick={() => openWebUIWithPairing(sb.id)}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors"
-                                >
-                                  <ExternalLink className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-card border-border">
-                                {t("cloud.elizaAgentsTable.openWebUi", {
-                                  defaultValue: "Open Web UI",
-                                })}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-
                           {canStart && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -1188,7 +1164,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                                 >
-                                  <Play className="h-4 w-4" />
+                                  <Play className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1213,7 +1189,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                                 >
-                                  <Pause className="h-4 w-4" />
+                                  <Pause className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1238,7 +1214,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                                 >
-                                  <Sun className="h-4 w-4" />
+                                  <Sun className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1265,7 +1241,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                                 >
-                                  <Moon className="h-4 w-4" />
+                                  <Moon className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1290,7 +1266,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   disabled={isDeleting || busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Trash2 className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1314,7 +1290,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
         <DashboardDataListMobile>
           {filtered.length === 0 ? (
             <div className="border border-border bg-card p-6 text-center">
-              <Search className="h-5 w-5 mx-auto mb-2 text-muted" />
+              <Search className="size-5 mx-auto mb-2 text-muted" />
               <p className="text-sm text-muted">
                 {t("cloud.elizaAgentsTable.noMatch", {
                   defaultValue: "No agents match your filters",
@@ -1341,10 +1317,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <a
-                        href={`/cloud/agents/${sb.id}`}
-                        className="font-medium text-txt-strong hover:text-accent transition-colors block truncate"
-                      >
+                      <span className="block truncate font-medium text-txt-strong">
                         {getAgentDisplayName(
                           sb,
                           t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1354,7 +1327,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             defaultValue: "Unnamed Agent",
                           }),
                         )}
-                      </a>
+                      </span>
                       <AgentCostBadge
                         status={displayStatus}
                         executionTier={sb.executionTier}
@@ -1382,9 +1355,9 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           onClick={() => openWebUIWithPairing(sb.id)}
                           className="flex min-h-touch items-center justify-center gap-1.5 px-3 py-2 text-xs text-accent rounded-md hover:bg-bg-hover transition-colors"
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          {t("cloud.elizaAgentsTable.webUi", {
-                            defaultValue: "Web UI",
+                          <ExternalLink className="size-3.5" />
+                          {t("cloud.elizaAgentsTable.openWebUi", {
+                            defaultValue: "Open Web UI",
                           })}
                         </Button>
                       )}
@@ -1400,7 +1373,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                         >
-                          <Play className="h-3.5 w-3.5" />
+                          <Play className="size-3.5" />
                         </Button>
                       )}
 
@@ -1415,7 +1388,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-accent hover:bg-bg-hover transition-colors disabled:opacity-30"
                         >
-                          <Pause className="h-3.5 w-3.5" />
+                          <Pause className="size-3.5" />
                         </Button>
                       )}
 
@@ -1433,7 +1406,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                         >
-                          <Sun className="h-3.5 w-3.5" />
+                          <Sun className="size-3.5" />
                         </Button>
                       )}
 
@@ -1451,7 +1424,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                         >
-                          <Moon className="h-3.5 w-3.5" />
+                          <Moon className="size-3.5" />
                         </Button>
                       )}
 
@@ -1466,7 +1439,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           disabled={isDeleting || busy}
                           className="min-h-touch rounded-md px-3 text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="size-3.5" />
                         </Button>
                       )}
                     </div>
@@ -1584,7 +1557,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                 void handleSleep(id);
               }}
             >
-              <Moon className="h-4 w-4" />
+              <Moon className="size-4" />
               {t("cloud.containers.agentActions.deactivateConfirm", {
                 defaultValue: "Yes, deactivate",
               })}

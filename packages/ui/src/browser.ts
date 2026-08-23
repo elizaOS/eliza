@@ -157,7 +157,6 @@ export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility.ts
 export { COMMON_SHORTCUTS } from "./hooks/useKeyboardShortcuts.ts";
 export * from "./hooks/useMediaQuery.ts";
 export * from "./hooks/useRenderGuard.ts";
-export * from "./hooks/useSignalPairing.ts";
 export { useTimeout } from "./hooks/useTimeout.ts";
 export * from "./hooks/useVoiceChat.ts";
 export * from "./hooks/useWhatsAppPairing.ts";

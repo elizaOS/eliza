@@ -49,11 +49,11 @@ export function PagePanelFeatureEmpty({
         <div
           className={cn(
             // Borderless icon plate (#10710): tint alone carries the shape.
-            "mx-auto flex h-14 w-14 items-center justify-center rounded-sm",
+            "mx-auto flex size-14 items-center justify-center rounded-sm",
             iconTone,
           )}
         >
-          <Icon className="h-7 w-7" />
+          <Icon className="size-7" />
         </div>
         <h2 className="mt-4 text-balance text-base font-semibold text-txt">
           {title}
@@ -73,7 +73,7 @@ export function PagePanelFeatureEmpty({
                   className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted"
                 >
                   <FeatureIcon
-                    className={cn("h-4 w-4", item.tone ?? "text-muted")}
+                    className={cn("size-4", item.tone ?? "text-muted")}
                   />
                   <span>{item.label}</span>
                 </div>

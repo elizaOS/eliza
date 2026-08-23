@@ -22,15 +22,23 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   createMessageMemory,
+  drainPostDeliveryTasks,
   ElizaError,
+  invalidateRelatedEntityIds,
   logger,
   MemoryType,
+  PrincipalService,
+  postDeliveryTaskQuarantineReason,
+  revalidateOwnerExclusiveDisclosure,
   stringToUuid,
+  validateUuid,
 } from "@elizaos/core";
 import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
+import { computeIdentityRequestDigest } from "@elizaos/plugin-sql";
 import {
   type CapturedAction,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
@@ -62,9 +70,11 @@ import {
   assertProviderQualifiedPluginPackages,
   loadScenarioRequiredPlugin,
   pluginPackageIsRegistered,
+  resolveRequiredFixturePlugins,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 import { waitForScenarioRequiredServices } from "./required-services.ts";
+import { enterScenarioActionScope } from "./scenario-action-scope.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -73,6 +83,27 @@ import type {
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
 import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
+
+const EXECUTOR_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every executor hop (lifeops API + Google mock) so a hung service
+ * cannot pin a scenario run. A caller-provided abort signal is composed with
+ * the timeout (either cancelling aborts), not substituted for it.
+ */
+export function executorFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = EXECUTOR_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal,
+  });
+}
 
 export interface ExecutorOptions {
   providerName: string;
@@ -85,6 +116,22 @@ export interface ExecutorOptions {
   attemptId?: string;
   /** Optional bridge to the canonical synthetic-world namespace (#22898). */
   worldId?: string;
+  /** Maximum time to reach post-delivery quiescence before quarantining the runtime. */
+  postDeliveryTimeoutMs?: number;
+  /**
+   * Every plugin package declared by *any* scenario sharing this runtime. The
+   * CLI registers that union before the first scenario runs, so the executor
+   * needs it to hide a peer's actions and keep each scenario's tool surface
+   * independent of batch composition. Omit it for a single-scenario runtime.
+   */
+  batchPluginPackages?: readonly string[];
+  /**
+   * Action names present only because a scenario declared the contributing
+   * package, from `createScenarioRuntime`. Without it every peer-declared
+   * package's actions are hidden, including baseline ones an undeclaring
+   * scenario legitimately drives.
+   */
+  scenarioDeclaredActionNames?: readonly string[];
 }
 
 /**
@@ -161,11 +208,18 @@ export function providerQualifiedScenarioProblems(
   scenario: ScenarioDefinition,
 ): string[] {
   const problems: string[] = [];
-  const requiredPlugins = resolveRequiredPluginPackages(scenario);
+  let requiredPlugins: string[] = [];
+  const requiredFixturePlugins = resolveRequiredFixturePlugins(scenario);
   try {
+    requiredPlugins = resolveRequiredPluginPackages(scenario);
     assertProviderQualifiedPluginPackages(requiredPlugins);
   } catch (error) {
     problems.push(error instanceof Error ? error.message : String(error));
+  }
+  if (requiredFixturePlugins.length > 0) {
+    problems.push(
+      `provider-qualified scenarios cannot declare seed fixture plugins: ${requiredFixturePlugins.join(", ")}`,
+    );
   }
   if ((scenario.seed?.length ?? 0) > 0) {
     problems.push(
@@ -241,6 +295,7 @@ export function providerQualifiedScenarioProblems(
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+const DEFAULT_POST_DELIVERY_TIMEOUT_MS = 10_000;
 
 type TurnMatcher = string | RegExp;
 
@@ -346,13 +401,77 @@ function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
 
 type ScenarioRoomDefinition = {
   id: string;
+  logicalWorldId: string;
+  logicalEntityId: string;
+  accountId: string;
   roomId: UUID;
+  canonicalEntityId: UUID;
   userId: UUID;
   worldId: UUID;
   source: string;
   channelType: ChannelType;
   userName: string;
 };
+
+async function attestScenarioTurnAudience(
+  runtime: AgentRuntime,
+  message: Memory,
+  room: ScenarioRoomDefinition,
+): Promise<void> {
+  // Lightweight executor unit harnesses intentionally omit persistence APIs.
+  if (typeof runtime.getRoom !== "function") return;
+  // Reassert the authored connector topology at ingress. The generic scenario
+  // harness can materialize the active room with its own `test` source before
+  // a turn; a real connector supplies this metadata on every delivery. Without
+  // this upsert, later world discovery observes the harness transport instead
+  // of the Discord/Telegram/X identity the scenario is exercising.
+  await restoreScenarioConnectorTopology(runtime, room);
+  await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+  if (room.channelType !== ChannelType.DM) return;
+  // Owner-exclusive disclosure is an invariant of the OWNER's DM only. A room
+  // authored as a different principal — a guest, a second account, the
+  // counterparty of an owner-only wall — is *supposed* to be denied
+  // (`owner_mismatch`); that denial is the behaviour under test, not a harness
+  // fault, and raising on it would make a non-owner DM unmodellable. The owner
+  // identity is read back from the same setting the roles system resolves
+  // against, so this can never disagree with who the runtime calls the owner.
+  const configuredOwnerEntityId = validateUuid(
+    runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"),
+  );
+  if (
+    configuredOwnerEntityId !== null &&
+    room.canonicalEntityId !== configuredOwnerEntityId
+  ) {
+    return;
+  }
+  const decision = await revalidateOwnerExclusiveDisclosure(runtime, message);
+  if (!decision.allowed) {
+    throw new ElizaError("Scenario connector DM failed audience attestation", {
+      code: "SCENARIO_CONNECTOR_AUDIENCE_INVALID",
+      context: {
+        roomId: room.roomId,
+        accountId: room.accountId,
+        reason: decision.reason,
+      },
+    });
+  }
+}
+
+async function restoreScenarioConnectorTopology(
+  runtime: AgentRuntime,
+  room: ScenarioRoomDefinition,
+): Promise<void> {
+  await runtime.ensureConnection({
+    entityId: room.userId,
+    roomId: room.roomId,
+    worldId: room.worldId,
+    worldName: room.logicalWorldId,
+    userName: room.userName,
+    source: room.source,
+    channelId: room.roomId,
+    type: room.channelType,
+  });
+}
 
 // Mirrors the subset of the real (display-dependent) ComputerUseService that
 // scenario providers/actions read through `getService("computeruse")`: the
@@ -667,6 +786,36 @@ function withTimeout<T>(
   });
 }
 
+async function drainScenarioPostDeliveryTasks(
+  runtime: AgentRuntime,
+  opts: ExecutorOptions,
+): Promise<string | undefined> {
+  const timeoutMs =
+    opts.postDeliveryTimeoutMs ?? DEFAULT_POST_DELIVERY_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(
+      new Error(`post-delivery drain timed out after ${timeoutMs}ms`),
+    );
+  }, timeoutMs);
+  const abortFromCaller = () => {
+    controller.abort(
+      opts.abortSignal?.reason ?? new Error("scenario execution was aborted"),
+    );
+  };
+  opts.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  if (opts.abortSignal?.aborted) abortFromCaller();
+  try {
+    await drainPostDeliveryTasks(runtime, { signal: controller.signal });
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  } finally {
+    clearTimeout(timeout);
+    opts.abortSignal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 function normalizeChannelType(value: unknown): ChannelType {
   if (typeof value !== "string") {
     return ChannelType.DM;
@@ -679,7 +828,7 @@ function normalizeChannelType(value: unknown): ChannelType {
 function resolveScenarioRooms(
   scenario: ScenarioDefinition,
 ): ScenarioRoomDefinition[] {
-  const worldId = stringToUuid(`scenario-runner-world:${scenario.id}`);
+  const defaultWorldId = stringToUuid(`scenario-runner-world:${scenario.id}`);
   const maybeRooms = (scenario as { rooms?: unknown }).rooms;
   const rooms = Array.isArray(maybeRooms) ? maybeRooms : [];
   const resolved = rooms
@@ -696,6 +845,16 @@ function resolveScenarioRooms(
         typeof raw.account === "string" && raw.account.trim().length > 0
           ? raw.account.trim()
           : `scenario-user:${scenario.id}:${id}`;
+      const logicalEntityId =
+        typeof raw.entity === "string" && raw.entity.trim().length > 0
+          ? raw.entity.trim()
+          : account;
+      const explicitEntity =
+        typeof raw.entity === "string" && raw.entity.trim().length > 0;
+      const logicalWorldId =
+        typeof raw.world === "string" && raw.world.trim().length > 0
+          ? raw.world.trim()
+          : "default";
       const userName =
         typeof raw.title === "string" && raw.title.trim().length > 0
           ? raw.title.trim()
@@ -703,9 +862,18 @@ function resolveScenarioRooms(
 
       return {
         id,
+        logicalWorldId,
+        logicalEntityId,
+        accountId: account,
         roomId: stringToUuid(`scenario-room:${scenario.id}:${id}`),
-        userId: stringToUuid(`scenario-account:${account}`),
-        worldId,
+        userId: stringToUuid(`scenario-account:${scenario.id}:${account}`),
+        canonicalEntityId: explicitEntity
+          ? stringToUuid(`scenario-entity:${scenario.id}:${logicalEntityId}`)
+          : stringToUuid(`scenario-account:${scenario.id}:${account}`),
+        worldId:
+          logicalWorldId === "default"
+            ? defaultWorldId
+            : stringToUuid(`scenario-world:${scenario.id}:${logicalWorldId}`),
         source:
           typeof raw.source === "string" && raw.source.trim().length > 0
             ? raw.source.trim()
@@ -723,9 +891,13 @@ function resolveScenarioRooms(
   return [
     {
       id: "main",
+      logicalWorldId: "default",
+      logicalEntityId: `${scenario.id}:main`,
+      accountId: `${scenario.id}:main`,
       roomId: stringToUuid(`scenario-room:${scenario.id}:main`),
       userId: stringToUuid(`scenario-account:${scenario.id}:main`),
-      worldId,
+      canonicalEntityId: stringToUuid(`scenario-account:${scenario.id}:main`),
+      worldId: defaultWorldId,
       source: "scenario-runner",
       channelType: ChannelType.DM,
       userName: "ScenarioUser",
@@ -745,7 +917,156 @@ function resolveTurnRoom(
   if (!requestedRoom) {
     return defaultRoom;
   }
-  return rooms.find((room) => room.id === requestedRoom) ?? defaultRoom;
+  const resolved = rooms.find((room) => room.id === requestedRoom);
+  if (!resolved) {
+    throw new ElizaError("Scenario turn references an unknown room", {
+      code: "SCENARIO_TURN_ROOM_NOT_FOUND",
+      context: {
+        turn: turn.name,
+        requestedRoom,
+        availableRooms: rooms.map((room) => room.id),
+      },
+    });
+  }
+  return resolved;
+}
+
+/**
+ * Materialize authored connector accounts as distinct principals, then link
+ * accounts sharing `rooms[].entity` through both the relationship graph and
+ * the canonical SQL principal authority. Scenario assertions therefore cover
+ * the same reversible identity redirects used by production data access.
+ */
+async function establishScenarioIdentityTopology(
+  runtime: AgentRuntime,
+  scenarioId: string,
+  rooms: readonly ScenarioRoomDefinition[],
+): Promise<void> {
+  const byCanonical = new Map<UUID, ScenarioRoomDefinition[]>();
+  for (const room of rooms) {
+    const group = byCanonical.get(room.canonicalEntityId) ?? [];
+    group.push(room);
+    byCanonical.set(room.canonicalEntityId, group);
+  }
+
+  for (const [canonicalEntityId, group] of byCanonical) {
+    const sourcePrincipalIds = Array.from(
+      new Set(group.map((room) => room.userId)),
+    ).filter((entityId) => entityId !== canonicalEntityId);
+    if (sourcePrincipalIds.length === 0) continue;
+
+    if (!(await runtime.getEntityById(canonicalEntityId))) {
+      const created = await runtime.createEntity({
+        id: canonicalEntityId,
+        agentId: runtime.agentId,
+        names: [group[0]?.logicalEntityId ?? "Scenario owner"],
+        metadata: { scenarioId, canonicalIdentity: true },
+      });
+      if (!created) {
+        throw new ElizaError("Failed to create scenario canonical identity", {
+          code: "SCENARIO_CANONICAL_IDENTITY_CREATE_FAILED",
+          context: { scenarioId, canonicalEntityId },
+        });
+      }
+    }
+
+    const existingRelationships = await runtime.getRelationships({
+      entityIds: [canonicalEntityId, ...sourcePrincipalIds],
+      tags: ["identity_link"],
+    });
+    for (const sourcePrincipalId of sourcePrincipalIds) {
+      const exists = existingRelationships.some((relationship) => {
+        const samePair =
+          (relationship.sourceEntityId === canonicalEntityId &&
+            relationship.targetEntityId === sourcePrincipalId) ||
+          (relationship.sourceEntityId === sourcePrincipalId &&
+            relationship.targetEntityId === canonicalEntityId);
+        return (
+          samePair &&
+          relationship.tags?.includes("identity_link") &&
+          (relationship.metadata as { status?: unknown } | undefined)
+            ?.status === "confirmed"
+        );
+      });
+      if (!exists) {
+        const created = await runtime.createRelationship({
+          sourceEntityId: canonicalEntityId,
+          targetEntityId: sourcePrincipalId,
+          tags: ["identity_link"],
+          metadata: {
+            status: "confirmed",
+            source: "scenario-runner",
+            scenarioId,
+          },
+        });
+        if (!created) {
+          throw new ElizaError("Failed to create scenario identity link", {
+            code: "SCENARIO_IDENTITY_LINK_CREATE_FAILED",
+            context: {
+              scenarioId,
+              canonicalEntityId,
+              sourcePrincipalId,
+            },
+          });
+        }
+      }
+    }
+
+    const authority = runtime.getService<PrincipalService>(
+      PrincipalService.serviceType,
+    );
+    if (!authority) continue;
+
+    const unresolved: UUID[] = [];
+    let generation = 0;
+    for (const sourcePrincipalId of sourcePrincipalIds) {
+      const resolution = await authority.resolveCanonicalPrincipal(
+        runtime.agentId,
+        sourcePrincipalId,
+      );
+      generation = resolution.generation;
+      if (resolution.canonicalPrincipalId !== canonicalEntityId) {
+        unresolved.push(sourcePrincipalId);
+      }
+    }
+    if (unresolved.length === 0) continue;
+
+    const proposalKey = `scenario:${scenarioId}:identity:${canonicalEntityId}`;
+    const proposalValue = {
+      agentId: runtime.agentId,
+      canonicalPrincipalId: canonicalEntityId,
+      sourcePrincipalIds: unresolved.sort(),
+      actorPrincipalId: canonicalEntityId,
+      reason: "verified connector accounts authored as one scenario entity",
+      idempotencyKey: proposalKey,
+    };
+    const plan = await authority.proposeMerge({
+      ...proposalValue,
+      requestDigest: computeIdentityRequestDigest(
+        "propose-merge",
+        proposalValue,
+      ),
+    });
+    const confirmation = await authority.confirmMerge({
+      agentId: runtime.agentId,
+      planId: plan.id,
+      expectedGeneration: generation,
+      actorPrincipalId: canonicalEntityId,
+    });
+    const commitValue = {
+      agentId: runtime.agentId,
+      planId: plan.id,
+      confirmationId: confirmation.id,
+      expectedGeneration: generation,
+      actorPrincipalId: canonicalEntityId,
+      idempotencyKey: `${proposalKey}:commit`,
+    };
+    await authority.commitMerge({
+      ...commitValue,
+      requestDigest: computeIdentityRequestDigest("commit-merge", commitValue),
+    });
+    invalidateRelatedEntityIds(runtime);
+  }
 }
 
 function getDefaultScenarioRoom(
@@ -1139,7 +1460,7 @@ async function lookupDefinitionIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(
+  const response = await executorFetch(
     `${args.apiServer.baseUrl}/api/lifeops/definitions`,
   );
   const body = await response.json();
@@ -1172,7 +1493,7 @@ async function lookupOccurrenceIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(
+  const response = await executorFetch(
     `${args.apiServer.baseUrl}/api/lifeops/overview`,
   );
   const body = await response.json();
@@ -1451,7 +1772,7 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   if (!isLoopbackUrl(baseUrl)) {
     return "gmailDeleteDrafts cleanup requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
-  const response = await fetch(`${baseUrl}/gmail/v1/users/me/drafts`);
+  const response = await executorFetch(`${baseUrl}/gmail/v1/users/me/drafts`);
   if (!response.ok) {
     return `gmailDeleteDrafts list failed with HTTP ${response.status}`;
   }
@@ -1465,7 +1786,7 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
     if (typeof id !== "string" || id.length === 0) {
       continue;
     }
-    const deleteResponse = await fetch(
+    const deleteResponse = await executorFetch(
       `${baseUrl}/gmail/v1/users/me/drafts/${encodeURIComponent(id)}`,
       { method: "DELETE" },
     );
@@ -1594,6 +1915,11 @@ async function executeMessageTurn(
     scenarioId,
     ...(runId ? { batchId: runId } : {}),
   };
+  // Connector simulations have already authenticated the authored account.
+  // Mint the same process-local audience proof a real connector ingress does;
+  // otherwise the generic API sanitizer correctly treats the turn as external
+  // and every owner-private provider/action fails closed for the wrong reason.
+  await attestScenarioTurnAudience(runtime, message, room);
 
   const messageService = (
     runtime as {
@@ -1649,6 +1975,10 @@ async function executeMessageTurn(
 
   // Let completed events settle.
   await new Promise((r) => setTimeout(r, 500));
+  // MessageService's generic harness ingress can upsert the active room with
+  // its transport source. Restore the authored connector metadata just as the
+  // next real connector delivery would before later discovery assertions.
+  await restoreScenarioConnectorTopology(runtime, room);
 
   return { responseText, durationMs: Date.now() - startedAt, syntheticFailure };
 }
@@ -1659,6 +1989,7 @@ async function executeActionTurn(
   room: ScenarioRoomDefinition,
   currentNow: Date,
   turnTimeoutMs: number,
+  hiddenActionNames: readonly string[] = [],
 ): Promise<{
   validation: NonNullable<ScenarioTurnExecution["validation"]>;
   responseText: string;
@@ -1683,6 +2014,15 @@ async function executeActionTurn(
     (candidate: Action) => candidate.name === actionName,
   );
   if (!action) {
+    // Distinguish "this action does not exist" from "per-scenario action
+    // scoping hid it because only a batch peer declared the owning package".
+    // The second reads as a missing action but is a declaration gap, and
+    // saying so is the difference between a one-line fix and an afternoon.
+    if (hiddenActionNames.includes(actionName)) {
+      throw new Error(
+        `[executor] action turn '${turn.name}' requested '${actionName}', which is hidden from this scenario because only another scenario in this run declared the plugin that provides it; add that package to this scenario's requires.plugins`,
+      );
+    }
     throw new Error(
       `[executor] action turn '${turn.name}' requested unknown action '${actionName}'`,
     );
@@ -1715,6 +2055,7 @@ async function executeActionTurn(
     turn.options !== null && typeof turn.options === "object"
       ? (turn.options as Record<string, unknown>)
       : {};
+  await attestScenarioTurnAudience(runtime, message, room);
   const startedAt = Date.now();
   let responseText = "";
   const callback = async (content: { text?: string }): Promise<Memory[]> => {
@@ -1776,11 +2117,37 @@ async function executeActionTurn(
   ) {
     responseText = actionResult.userFacingText;
   }
-  if (!responseText && typeof actionResult?.text === "string") {
+  // `responseText` is the report's claim about what the user saw, so it must
+  // not carry a machine receipt the runtime would never deliver. Core marks a
+  // reply that merely restates an internal action result
+  // `transcriptVisibility: "internal"` (`resolveActionResultTranscriptVisibility`)
+  // and drops it before egress (`message.ts`), so an internal receipt is
+  // exactly the text a user does not see. Mirror that instead of inventing a
+  // rule: skip the receipt, prefer any explicitly user-facing prose, and fall
+  // back to the action's own vetted `modelReplyFallback` — the prose the
+  // runtime delivers when no model reply is synthesized, which is always the
+  // case on an action turn because it invokes the handler directly. When the
+  // action offers neither, the turn genuinely has no user-visible reply and
+  // `responseText` stays empty. The receipt itself is never discarded: the
+  // complete ActionResult remains on `responseBody` for assertions that mean
+  // to check it.
+  const receiptIsInternal = actionResult?.transcriptVisibility === "internal";
+  if (
+    !responseText &&
+    !receiptIsInternal &&
+    typeof actionResult?.text === "string"
+  ) {
     responseText = actionResult.text;
   }
   if (!responseText && typeof actionResult?.userFacingText === "string") {
     responseText = actionResult.userFacingText;
+  }
+  if (
+    !responseText &&
+    receiptIsInternal &&
+    typeof actionResult?.modelReplyFallback === "string"
+  ) {
+    responseText = actionResult.modelReplyFallback;
   }
   return {
     validation: {
@@ -1799,6 +2166,7 @@ async function executeApiTurn(args: {
   apiServer: ScenarioApiServer;
   variables: ScenarioVariableState;
   turnTimeoutMs: number;
+  abortSignal?: AbortSignal;
 }): Promise<{
   apiStatus: number;
   apiBody: unknown;
@@ -1838,53 +2206,77 @@ async function executeApiTurn(args: {
     typeof args.turn.timeoutMs === "number"
       ? args.turn.timeoutMs
       : args.turnTimeoutMs;
-  const response = await withTimeout(
-    fetch(`${args.apiServer.baseUrl}${path}`, {
+  // #24531: the deadline must abort the underlying request, not merely race a
+  // rejection against a fetch that keeps its socket alive. Compose the turn
+  // deadline with the caller's cancellation signal into one controller whose
+  // abort reason names the violated boundary, then keep body consumption on
+  // the same signal so a stalled body cannot outlive the failed turn.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(
+      new Error(`api(${args.turn.name}) timed out after ${timeoutMs}ms`),
+    );
+  }, timeoutMs);
+  const abortFromCaller = () => {
+    controller.abort(
+      args.abortSignal?.reason ?? new Error("scenario execution was aborted"),
+    );
+  };
+  args.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  if (args.abortSignal?.aborted) abortFromCaller();
+  let response: Response;
+  try {
+    response = await fetch(`${args.apiServer.baseUrl}${path}`, {
       method,
       headers:
         body === undefined ? undefined : { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
-    }),
-    timeoutMs,
-    `api(${args.turn.name})`,
-  );
-  const responseText = await response.text();
-  let responseBody: unknown = responseText;
-  const contentType = response.headers.get("content-type") ?? "";
-  if (responseText.length > 0 && contentType.includes("application/json")) {
-    try {
-      responseBody = JSON.parse(responseText);
-    } catch {
-      responseBody = responseText;
+      signal: controller.signal,
+    });
+    const responseText = await response.text();
+    let responseBody: unknown = responseText;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (responseText.length > 0 && contentType.includes("application/json")) {
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        // error-policy:J3 A body that claims JSON but does not parse is kept
+        // as its raw text form; downstream template resolution treats the
+        // value as opaque text rather than a fabricated parsed object.
+        responseBody = responseText;
+      }
     }
-  }
-  indexResponseIdentifiers(responseBody, args.variables);
-  captureResponseFields(args.turn, responseBody, args.variables);
-  const explicitRedactions = Array.isArray(args.turn.redactResponseFields)
-    ? args.turn.redactResponseFields.filter(
-        (field): field is string => typeof field === "string",
-      )
-    : [];
-  const reportResponseBody = redactForScenarioReport(
-    responseBody,
-    explicitRedactions,
-  );
+    indexResponseIdentifiers(responseBody, args.variables);
+    captureResponseFields(args.turn, responseBody, args.variables);
+    const explicitRedactions = Array.isArray(args.turn.redactResponseFields)
+      ? args.turn.redactResponseFields.filter(
+          (field): field is string => typeof field === "string",
+        )
+      : [];
+    const reportResponseBody = redactForScenarioReport(
+      responseBody,
+      explicitRedactions,
+    );
 
-  return {
-    apiStatus: response.status,
-    apiBody: responseBody,
-    statusCode: response.status,
-    responseBody,
-    responseText:
-      typeof responseBody === "string"
-        ? responseBody
-        : JSON.stringify(responseBody ?? ""),
-    reportResponseText:
-      typeof reportResponseBody === "string"
-        ? reportResponseBody
-        : JSON.stringify(reportResponseBody ?? ""),
-    durationMs: Date.now() - startedAt,
-  };
+    return {
+      apiStatus: response.status,
+      apiBody: responseBody,
+      statusCode: response.status,
+      responseBody,
+      responseText:
+        typeof responseBody === "string"
+          ? responseBody
+          : JSON.stringify(responseBody ?? ""),
+      reportResponseText:
+        typeof reportResponseBody === "string"
+          ? reportResponseBody
+          : JSON.stringify(reportResponseBody ?? ""),
+      durationMs: Date.now() - startedAt,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+    args.abortSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }
 
 async function executeTickTurn(args: {
@@ -2388,6 +2780,31 @@ export async function runScenario(
           },
   };
   if (
+    opts.postDeliveryTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(opts.postDeliveryTimeoutMs) ||
+      opts.postDeliveryTimeoutMs <= 0)
+  ) {
+    report.status = "failed";
+    report.error = `invalid postDeliveryTimeoutMs: ${String(opts.postDeliveryTimeoutMs)}`;
+    report.failedAssertions.push({
+      label: "executorOptions",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  const quarantineReason = postDeliveryTaskQuarantineReason(runtime);
+  if (quarantineReason) {
+    report.status = "failed";
+    report.error = `runtime is quarantined after incomplete post-delivery work: ${quarantineReason}`;
+    report.failedAssertions.push({
+      label: "runtimeIsolation",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  if (
     scenario.executionProfile !== undefined &&
     scenario.executionProfile !== executionProfile
   ) {
@@ -2446,7 +2863,23 @@ export async function runScenario(
   // plain-text memory seeds write durable facts attributed to this room +
   // entity so the core FACTS provider can surface them during turns.
   ctx.primaryRoomId = primaryRoom.roomId;
-  ctx.primaryUserId = primaryRoom.userId;
+  ctx.primaryUserId = primaryRoom.canonicalEntityId;
+  ctx.roomIds = Object.fromEntries(rooms.map((room) => [room.id, room.roomId]));
+  ctx.worldIds = Object.fromEntries(
+    rooms.map((room) => [room.logicalWorldId, room.worldId]),
+  );
+  ctx.entityIds = Object.fromEntries(
+    rooms.map((room) => [room.logicalEntityId, room.canonicalEntityId]),
+  );
+  ctx.accountEntityIds = Object.fromEntries(
+    rooms.map((room) => [room.accountId, room.userId]),
+  );
+  ctx.roomWorldIds = Object.fromEntries(
+    rooms.map((room) => [room.id, room.worldId]),
+  );
+  ctx.roomEntityIds = Object.fromEntries(
+    rooms.map((room) => [room.id, room.userId]),
+  );
   const variables: ScenarioVariableState = {
     baseNow: new Date(startedAt),
     capturesByName: new Map<string, unknown>(),
@@ -2456,8 +2889,20 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
-  let fixtureConsumptionChecked = false;
-
+  // Scope the shared runtime's action list to this scenario before anything can
+  // observe it. Restoring in `finally` also drops actions the seed registers, so
+  // neither a peer's plugin nor this scenario's own leaks across the batch.
+  const actionScope = enterScenarioActionScope(
+    runtime,
+    scenario,
+    opts.batchPluginPackages ?? [],
+    opts.scenarioDeclaredActionNames,
+  );
+  if (actionScope.hiddenActionNames.length > 0) {
+    logger.info(
+      `[scenario-runner] ${scenario.id}: hiding ${actionScope.hiddenActionNames.length} action(s) declared only by batch peers: ${actionScope.hiddenActionNames.join(", ")}`,
+    );
+  }
   try {
     beginScenarioModelFixtureAttempt(
       runtime,
@@ -2467,7 +2912,37 @@ export async function runScenario(
     );
     await resetSharedSchedulingState(runtime);
 
-    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
+    runtime.setSetting(
+      "ELIZA_ADMIN_ENTITY_ID",
+      primaryRoom.canonicalEntityId,
+      false,
+    );
+    // Owner contacts are the owner's *linked* connector accounts — the
+    // per-platform principals that resolve back to the same canonical entity as
+    // the primary room (#24842's linked-identity model). Publishing every room
+    // here instead would make every configured entity a canonical owner
+    // (roles.ts `getConfiguredOwnerEntityIds` unions the contacts with
+    // ELIZA_ADMIN_ENTITY_ID and grants OWNER to the whole set), so a scenario's
+    // deliberately non-owner room — a guest, a second account, any owner-only
+    // wall's counterparty — would silently resolve as OWNER and every
+    // owner-only refusal in the corpus would pass vacuously.
+    runtime.setSetting(
+      "ELIZA_OWNER_CONTACTS_JSON",
+      JSON.stringify(
+        Object.fromEntries(
+          rooms
+            .filter(
+              (room) =>
+                room.canonicalEntityId === primaryRoom.canonicalEntityId,
+            )
+            .map((room) => [
+              room.accountId,
+              { entityId: room.userId, source: room.source },
+            ]),
+        ),
+      ),
+      false,
+    );
     (
       runtime as {
         getService: AgentRuntime["getService"];
@@ -2494,6 +2969,7 @@ export async function runScenario(
         type: room.channelType,
       });
     }
+    await establishScenarioIdentityTopology(runtime, scenario.id, rooms);
 
     const seedResult = await runCustomSeeds(scenario, runtime, ctx, logicalNow);
     logicalNow = seedResult.now;
@@ -2506,16 +2982,16 @@ export async function runScenario(
       return report;
     }
 
-    // Seeds may register fixture plugins, so check declared plugin requirements
-    // after seeding and try to load package-named requirements that are present.
-    const requiredPlugins = resolveRequiredPluginPackages(scenario);
+    // Seeds may register fixture plugins, so verify both requirement classes
+    // after seeding while importing only the explicitly declared packages.
+    const requiredPluginPackages = resolveRequiredPluginPackages(scenario);
+    const requiredFixturePlugins = resolveRequiredFixturePlugins(scenario);
     // Track packages we successfully auto-loaded: a plugin's internal
     // `plugin.name` often differs from its package name (e.g. "plugin-health",
     // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
     // it as missing and skip a scenario whose required plugin is in fact loaded.
     const autoLoaded = new Set<string>();
-    for (const pkg of requiredPlugins) {
-      if (!pkg.startsWith("@")) continue;
+    for (const pkg of requiredPluginPackages) {
       if (pluginPackageIsRegistered(runtime, pkg)) continue;
       try {
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
@@ -2532,9 +3008,16 @@ export async function runScenario(
         });
       }
     }
-    const missing = requiredPlugins.filter(
-      (p) => !pluginPackageIsRegistered(runtime, p) && !autoLoaded.has(p),
-    );
+    const missing = [
+      ...requiredPluginPackages.filter(
+        (plugin) =>
+          !pluginPackageIsRegistered(runtime, plugin) &&
+          !autoLoaded.has(plugin),
+      ),
+      ...requiredFixturePlugins.filter(
+        (plugin) => !pluginPackageIsRegistered(runtime, plugin),
+      ),
+    ];
     if (missing.length > 0) {
       report.status = "skipped";
       report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;
@@ -2589,6 +3072,7 @@ export async function runScenario(
                   apiServer: activeApiServer,
                   variables,
                   turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                  abortSignal: opts.abortSignal,
                 })),
               }
             : kind === "tick"
@@ -2612,6 +3096,7 @@ export async function runScenario(
                       resolveTurnRoom(turn, rooms),
                       logicalNow,
                       opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                      actionScope.hiddenActionNames,
                     )),
                   }
                 : kind === "wait"
@@ -2758,35 +3243,26 @@ export async function runScenario(
         }
       }
     }
-
-    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-    fixtureConsumptionChecked = true;
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
-    if (fixtureFailure) {
-      report.status = "failed";
-      report.failedAssertions.push({
-        label: "modelFixtures",
-        detail: fixtureFailure,
-      });
-    }
   } catch (err) {
     report.status = "failed";
     report.error = err instanceof Error ? err.message : String(err);
     logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
   } finally {
-    if (!fixtureConsumptionChecked) {
-      const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-      if (fixtureFailure) {
-        report.status = "failed";
-        report.failedAssertions.push({
-          label: "modelFixtures",
-          detail: fixtureFailure,
-        });
-      }
+    // Tracked post-delivery work can enter the model after the last turn has
+    // returned. Drain it while scenario isolation is still active, then run
+    // cleanup and drain once more so cleanup-spawned work cannot escape the
+    // authoritative fixture assertion.
+    const preCleanupDrainFailure = await drainScenarioPostDeliveryTasks(
+      runtime,
+      opts,
+    );
+    if (preCleanupDrainFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "postDeliveryTasks",
+        detail: preCleanupDrainFailure,
+      });
     }
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
     const cleanupFailures = await runScenarioCleanups(scenario, runtime, ctx);
     if (cleanupFailures.length > 0) {
       report.status = "failed";
@@ -2794,6 +3270,27 @@ export async function runScenario(
         report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
+    const postCleanupDrainFailure = await drainScenarioPostDeliveryTasks(
+      runtime,
+      opts,
+    );
+    if (postCleanupDrainFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "postDeliveryTasks",
+        detail: postCleanupDrainFailure,
+      });
+    }
+    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+    if (fixtureFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "modelFixtures",
+        detail: fixtureFailure,
+      });
+    }
+    report.modelFixtureDiagnostics =
+      captureScenarioModelFixtureDiagnostics(runtime);
     (
       runtime as {
         getService: AgentRuntime["getService"];
@@ -2803,6 +3300,7 @@ export async function runScenario(
     if (apiServer) {
       await apiServer.close();
     }
+    actionScope.restore();
     report.durationMs = Date.now() - startedAt;
   }
 

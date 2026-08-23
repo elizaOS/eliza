@@ -1,11 +1,13 @@
 /**
  * Small presentational primitives shared across the Release Center sections: a
  * `StatusPill` mapping a neutral/good/warning tone onto the `StatusBadge`
- * variants, and a `DefinitionRow` (label + value with an "Unavailable"
- * fallback).
+ * variants, and semantic definition-list primitives. `DefinitionList` owns
+ * the quiet row separators so metadata is not boxed into nested cards.
  */
 
+import type { ReactNode } from "react";
 import { useAppSelector } from "../../state";
+import { cn } from "../../utils";
 import { StatusBadge, type StatusVariant } from "../ui/status-badge";
 
 const PILL_TONE_MAP: Record<string, StatusVariant> = {
@@ -30,6 +32,18 @@ export function StatusPill({
   );
 }
 
+export function DefinitionList({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <dl className={cn("divide-y divide-border/60", className)}>{children}</dl>
+  );
+}
+
 export function DefinitionRow({
   emptyFallback,
   label,
@@ -41,13 +55,13 @@ export function DefinitionRow({
 }) {
   const t = useAppSelector((s) => s.t);
   return (
-    <div className="flex items-start justify-between gap-4 py-2">
-      <div className="text-xs text-muted">{label}</div>
-      <div className="text-right text-xs text-txt break-all">
+    <div className="grid grid-cols-[minmax(8rem,1fr)_minmax(0,2fr)] items-start gap-4 py-2.5">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-xs text-txt">
         {value ??
           emptyFallback ??
           t("common.unavailable", { defaultValue: "Unavailable" })}
-      </div>
+      </dd>
     </div>
   );
 }

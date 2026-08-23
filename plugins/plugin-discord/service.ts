@@ -42,6 +42,8 @@ import {
 	stringToUuid,
 	type TargetInfo,
 	type ThreadHandle,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	type UUID,
 	type World,
 } from "@elizaos/core";
@@ -906,8 +908,8 @@ export class DiscordService extends Service implements IDiscordService {
 		);
 	}
 
-	private createDiscordJsClient(): DiscordJsClient {
-		return new DiscordJsClient({
+	private createDiscordJsClient(accountId: string): DiscordJsClient {
+		const client = new DiscordJsClient({
 			intents: [
 				GatewayIntentBits.Guilds,
 				GatewayIntentBits.GuildMembers,
@@ -927,6 +929,27 @@ export class DiscordService extends Service implements IDiscordService {
 				Partials.Reaction,
 			],
 		});
+		// discord.js builds its Client with `captureRejections: true`
+		// (BaseClient.js) and installs no Symbol.for("nodejs.rejection")
+		// handler, so a rejected async gateway listener is routed into
+		// `client.emit("error", ...)`. EventEmitter THROWS when "error" is
+		// emitted with no listener, and that throw lands on a process.nextTick
+		// stack that no call-stack try/catch can reach — an uncaughtException,
+		// which the agent crash guard turns into a whole-process restart.
+		//
+		// The per-attempt `once(Events.Error)` in attemptDiscordLogin is consumed
+		// by the FIRST such rejection, leaving the client error-listener-less
+		// from the second one on. This durable listener is what guarantees the
+		// client always has one. It owns the logging; the `once` keeps only the
+		// login-retry decision, so a single error still produces one line.
+		client.on(Events.Error, (error: unknown) => {
+			this.runtime.logger.error(
+				`Discord client error for account ${accountId}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		});
+		return client;
 	}
 
 	private syncLegacyDefaultAliases(
@@ -1135,7 +1158,10 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		const voiceChannel = channel as BaseGuildVoiceChannel;
-		const normalizedStatus = status.trim().slice(0, 500);
+		const normalizedStatus = truncateWellFormed(
+			toWellFormedUnicode(status.trim()),
+			500,
+		);
 		await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
 			body: {
 				status: normalizedStatus || null,
@@ -1389,7 +1415,7 @@ export class DiscordService extends Service implements IDiscordService {
 		const state: DiscordAccountClientState = {
 			accountId,
 			account: { ...account, accountId },
-			client: this.createDiscordJsClient(),
+			client: this.createDiscordJsClient(accountId),
 			settings,
 			allowedChannelIds: settings.allowedChannelIds,
 			listenChannelIds: this.resolveListenChannelIdsForAccount(account),
@@ -1466,7 +1492,7 @@ export class DiscordService extends Service implements IDiscordService {
 			return;
 		}
 		if (!state.client) {
-			state.client = this.createDiscordJsClient();
+			state.client = this.createDiscordJsClient(state.accountId);
 		}
 		const client = state.client;
 		// Rebind message/reaction/guild listeners onto this (possibly fresh)
@@ -1610,12 +1636,9 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 			scheduleRetry(closeEvent);
 		});
+		// Logging lives on the durable listener attached at client creation; this
+		// one only carries the login-retry decision for the current attempt.
 		client.once(Events.Error, (error: unknown) => {
-			this.runtime.logger.error(
-				`Discord client error for account ${state.accountId}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
 			scheduleRetry(error);
 		});
 		client.login(token).catch((error: unknown) => {
@@ -2048,10 +2071,12 @@ export class DiscordService extends Service implements IDiscordService {
 									agentId: runtime.agentId,
 									channelId: targetChannel.id,
 									accountId,
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: truncateWellFormed(
+										toWellFormedUnicode(
+											textContent.replace(/\s+/g, " ").trim(),
+										),
+										200,
+									),
 								},
 								"Suppressing duplicate Discord connector delivery",
 							);

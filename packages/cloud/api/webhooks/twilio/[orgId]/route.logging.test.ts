@@ -14,7 +14,11 @@ const loggerInfo = mock();
 const loggerWarn = mock();
 const loggerError = mock();
 const loggerDebug = mock();
-const sendMessage = mock(async () => true);
+const sendMessage = mock(async () => ({
+  status: "delivered" as const,
+  provider: "twilio" as const,
+  providerMessageIds: ["SM_reply"],
+}));
 const markAsProcessed = mock(async () => undefined);
 const usageCreate = mock(async (_record: unknown) => {
   throw new Error(sentinelProviderBody);
@@ -100,7 +104,11 @@ const app = new Hono().route("/:orgId", route);
 describe("Twilio webhook privacy", () => {
   beforeEach(() => {
     sendMessage.mockReset();
-    sendMessage.mockResolvedValue(true);
+    sendMessage.mockResolvedValue({
+      status: "delivered",
+      provider: "twilio",
+      providerMessageIds: ["SM_reply"],
+    });
     markAsProcessed.mockClear();
     usageCreate.mockClear();
     loggerInfo.mockClear();

@@ -303,7 +303,7 @@ export interface ScenarioReport {
   providerName: string | null;
   /** Sanitized strict-fixture call and consumption ledger for this attempt. */
   modelFixtureDiagnostics?: DeterministicModelDiagnostics;
-  /** Strict-manifest adoption marker used to ratchet away the legacy resolver. */
+  /** Strict-manifest adoption marker used to guard away the legacy resolver. */
   modelFixtureMode?: ScenarioModelFixtureMode;
   /**
    * Execution trust boundary used for this scenario. Optional only while

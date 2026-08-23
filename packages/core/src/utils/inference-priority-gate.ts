@@ -35,11 +35,12 @@
  * same agent process and share the {@link getInferencePriorityGate} singleton.
  *
  * The device-class background budget (#11760 probe seam) lives here too:
- * {@link resolveBackgroundInferenceBudget} caps a background job's generated
- * output and queue wait by RAM class. Input is never clipped; callers receive
- * an explicit provider/model error when a complete prompt cannot be accepted.
+ * {@link resolveBackgroundInferenceBudget} declares the largest requested
+ * output and queue wait supported by each RAM class. Input and output requests
+ * are never clipped; unsupported requests fail before dispatch.
  */
 
+import { ElizaError } from "../errors";
 import type { LocalInferencePriority } from "../types/model";
 
 /**
@@ -100,22 +101,56 @@ export function resolveBackgroundInferenceBudget(
 }
 
 /**
- * Apply the background budget to a generate request. Interactive requests are
- * NEVER clamped — this is for background-priority jobs only. Returns the
- * clamped fields plus a human-readable list of what changed (for the log line
- * at the call site).
+ * Validate a background generation request against the device budget. The
+ * legacy function name and `clamped` result field remain source-compatible,
+ * but accepted requests are returned byte-for-byte with no adjustments.
+ * Explicit unsupported output ceilings reject before provider dispatch. An
+ * omitted ceiling selects the device-class maximum because no smaller output
+ * was requested; it must not turn an otherwise valid background call into a
+ * failure merely because the public generation contract leaves maxTokens
+ * optional.
  */
 export function applyBackgroundInferenceBudget(
 	args: { prompt: string; maxTokens: number | undefined },
 	budget: BackgroundInferenceBudget,
 ): { prompt: string; maxTokens: number; clamped: string[] } {
-	const clamped: string[] = [];
-	let maxTokens = args.maxTokens ?? budget.maxTokens;
-	if (maxTokens > budget.maxTokens) {
-		clamped.push(`maxTokens ${maxTokens}→${budget.maxTokens}`);
-		maxTokens = budget.maxTokens;
+	if (
+		!Number.isSafeInteger(budget.maxTokens) ||
+		budget.maxTokens <= 0 ||
+		!Number.isSafeInteger(budget.lockWaitMs) ||
+		budget.lockWaitMs <= 0
+	) {
+		throw new ElizaError("Background inference budget is invalid", {
+			code: "INFERENCE_BACKGROUND_BUDGET_INVALID",
+			context: {
+				maxTokens: budget.maxTokens,
+				lockWaitMs: budget.lockWaitMs,
+			},
+		});
 	}
-	return { prompt: args.prompt, maxTokens, clamped };
+	const requestedMaxTokens = args.maxTokens ?? budget.maxTokens;
+	if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
+		throw new ElizaError("Background inference output ceiling is invalid", {
+			code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_INVALID",
+			context: {
+				requestedMaxTokens,
+				supportedMaxTokens: budget.maxTokens,
+			},
+		});
+	}
+	if (requestedMaxTokens > budget.maxTokens) {
+		throw new ElizaError(
+			"Background inference output request exceeds the device-class budget",
+			{
+				code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
+				context: {
+					requestedMaxTokens,
+					supportedMaxTokens: budget.maxTokens,
+				},
+			},
+		);
+	}
+	return { prompt: args.prompt, maxTokens: requestedMaxTokens, clamped: [] };
 }
 
 /**

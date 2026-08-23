@@ -24,6 +24,7 @@ const removedCompactionModules = [
 ];
 
 const removedPromptCapCloneTests = [
+	"packages/agent/src/runtime/trajectory-internals.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/actions/role.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/experience/evaluators/experience-items.surrogate.test.ts",
@@ -39,17 +40,54 @@ const removedPromptCapCloneTests = [
 	"packages/core/src/services/trajectory-json.surrogate.test.ts",
 ];
 
+const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
+	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
+		/assertComputerUseTrajectoryText\("errorMessage",\s*payload\.errorMessage\)/,
+		/buildComputerUseAgentStepTrajectoryPayload\(event\)/,
+	],
+	"plugins/plugin-computeruse/src/actions/use-computer-agent.ts": [
+		/assertComputerUseTrajectoryText\("goal",\s*goal\)/,
+		/assertComputerUseTrajectoryText\([\s\S]{0,80}"rationale"/,
+		/buildComputerUseAgentStepTrajectoryPayload\(\{/,
+	],
+};
+
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
+	"packages/cloud/shared/src/db/schemas/conversations.ts": [
+		/maxTokens:\s*2000/,
+	],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
+		/DEFAULT_EVALUATOR_MAX_TOKENS/,
+		/maxTokens\s*:/,
+		/retryMaxTokens/,
+	],
+	"packages/core/src/runtime/message-handler.ts": [
+		/normalizeStringHints/,
+		/candidateActionNames[\s\S]{0,100}\b12\b/,
+		/intents[\s\S]{0,100}\b8\b/,
+	],
+	"packages/core/src/security/pii-context-pack.ts": [
+		/DEFAULT_MAX_FRAGMENTS/,
+		/fragments\.slice\(/,
+		/resolved\.slice\(/,
+		/toWellFormedUnicode\(contextPack\)/,
+		/options\.limit\s*\?\?/,
+		/count:\s*options\.limit/,
+	],
+	"packages/core/src/features/documents/service.ts": [
+		/limit:\s*(?:20|40|1_000)[,\n]/,
 	],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
 		/projectStepForFinalSynthesis/,
+		/DEFAULT_(?:CODING_)?PLANNER_MAX_TOKENS/,
+		/maxTokens:\s*\d+/,
 	],
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
@@ -61,6 +99,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
+		/CODING_DIRECT_ACTIONS/,
 	],
 	"packages/core/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,
@@ -91,10 +130,30 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/truncateWellFormed/,
 		/text\s*=\s*text\.slice\(/,
 	],
+	"packages/core/src/features/autonomy/action.ts": [
+		/targetRoomId\.slice\(0,\s*8\)/,
+		/targetRoomId\.(?:slice|substring)\(/,
+	],
+	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
+	"packages/core/src/generated/action-docs.ts": [/"c0a8012e"/],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,
 		/capBytes\?:/,
+	],
+	"packages/agent/src/providers/media-provider.ts": [
+		/max_tokens:\s*options\.maxTokens\s*\?\?\s*1024/,
+		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
+		/num_predict:\s*this\.maxTokens/,
+	],
+	"packages/core/src/runtime/action-retrieval.ts": [
+		/results\.slice\(0,\s*limit\)/,
+		/COMPRESS_MODE_TOP_K_CAP/,
+	],
+	"packages/core/src/runtime/action-tiering.ts": [
+		/tierAParents\.splice\(/,
+		/tierBParents\.splice\(/,
+		/children[^\n]*\.slice\(0,/,
 	],
 	"plugins/plugin-coding-tools/src/actions/summaries.ts": [
 		/compactSummaryText/,
@@ -103,6 +162,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-coding-tools/src/shell/services/shellService.ts": [
 		/maxHistoryPerConversation/,
 		/history\.shift\(\)/,
+	],
+	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
+		/MAX_ERROR_MSG/,
+		/errorMessage\s*=\s*[^;]*\.slice\(/,
+	],
+	"plugins/plugin-computeruse/src/trajectory-text.ts": [
+		/\.slice\(/,
+		/\.substring\(/,
+		/toWellFormedUnicode/,
+		/truncateWellFormed/,
+		/max(?:Chars|Tokens|Items)/i,
 	],
 	"plugins/plugin-cli-inference/src/prompt-flatten.ts": [
 		/MAX_TOOL_PAYLOAD_(?:DEPTH|NODES|CHARS)/,
@@ -135,6 +205,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-agent-orchestrator/src/services/model-gateway-lease.ts": [
 		/truncateWellFormed/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/skill-recommender.ts": [
+		/recommendations\.slice\(/,
+		/\.slice\(0,\s*max\)/,
+		/description\.replace\(\/\\s\+\/g/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/trajectory-feedback.ts": [
+		/ordered\.slice\(/,
+		/\.catch\(\(\)\s*=>\s*null\)/,
+		/insights\.push\(match\[1\]\.trim\(\)\)/,
+		/\{20,200\}/,
 	],
 	"plugins/plugin-agent-orchestrator/src/services/acp-service.ts": [
 		/wellFormed\.length\s*>\s*500/,
@@ -213,6 +294,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-x/src/lifeops-message-adapter.ts": [
 		/draft\.body\.(?:slice|substring)\(/,
 	],
+	"plugins/plugin-x/src/discovery.ts": [
+		/\bmaxTokens\s*:/,
+		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
+	],
 	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
@@ -225,6 +310,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-elizacloud/src/cloud/bridge-client.ts": [
 		/(?:text|errorText)\.slice\(/,
 	],
+	"plugins/plugin-elizacloud/src/models/text.ts": [
+		/max_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/max_output_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/(?:max_tokens|max_output_tokens)\s*[:=]\s*8192/,
+	],
+	"plugins/plugin-elizacloud/src/models/image.ts": [
+		/IMAGE_DESCRIPTION_MAX_TOKENS[^\n]*["']8192["']/,
+		/max_tokens\s*:\s*maxTokens/,
+	],
 	"packages/core/src/runtime/limits.ts": [
 		/compactionEnabled/,
 		/compactionKeepSteps/,
@@ -232,7 +326,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
 		/EVIDENCE_TEXT_CHAR_CAP/,
 	],
-	"packages/agent/src/api/chat-routes.ts": [/\.slice\(-50\)/],
+	"packages/agent/src/api/chat-routes.ts": [
+		/\.slice\(-50\)/,
+		/maxTokens:\s*260/,
+	],
+	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
 		/MAX_CONTEXT_CHARS/,
@@ -259,6 +357,16 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
 	],
+	"packages/agent/src/runtime/trajectory-internals.ts": [
+		/maxTokens:\s*512/,
+		/truncateField/,
+		/truncateRecord/,
+		/\[\^\\n\]\{1,1024\}/,
+		/\[\^"\]\{1,1024\}/,
+		/\[\^"\]\{20,200\}/,
+		/insights\.push\([^)]*\.trim\(\)\)/,
+		/(?:return|const\s+safeResponse\s*=)[^;\n]*toWellFormedUnicode\((?:response|script|value)\)/,
+	],
 	"packages/scenario-runner/src/executor.ts": [
 		/serialized\.slice\(/,
 		/stringifyForJudge\([^,\n]+,\s*\d/,
@@ -266,10 +374,26 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/app-core/src/services/account-pool-broker.ts": [
 		/trimmed\.slice\(0,\s*128\)/,
 	],
+	"packages/app-core/test/helpers/trajectory-harness.ts": [
+		/truncateText/,
+		/safeStringify/,
+		/formatMarkdownPayload/,
+		/v\.text\.slice\(/,
+		/state\.text\.slice\(/,
+	],
 	"plugins/plugin-computeruse/src/platform/browser.ts": [
 		/html\.slice\(0,\s*5000\)/,
 		/result\.length\s*>=\s*50/,
 		/textContent\.trim\(\)\.slice\(/,
+	],
+	"plugins/plugin-computeruse/src/actor/brain.ts": [
+		/BRAIN_MAX_ROIS/,
+		/Cap ROIs to/,
+		/roi\s*=\s*[^;]*\.slice\(0,/,
+	],
+	"plugins/plugin-computeruse/src/actor/cascade.ts": [
+		/BRAIN_MAX_ROIS/,
+		/brainOut\.roi\.slice\(0,/,
 	],
 	"packages/browser-bridge-extension/src/page-extract.ts": [
 		/normalizeText\([^\n]+,\s*\d/,
@@ -434,6 +558,22 @@ describe("prompt integrity policy", () => {
 		}
 	});
 
+	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
+		for (const [relativePath, requiredPatterns] of Object.entries(
+			computerUseTrajectoryBoundaryCalls,
+		)) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			for (const pattern of requiredPatterns) {
+				expect(source, `${relativePath} must match ${pattern}`).toMatch(
+					pattern,
+				);
+			}
+		}
+	});
+
 	it("does not ask training tokenizers to truncate complete inputs", () => {
 		const trainingScripts = resolve(
 			repositoryRoot,
@@ -443,5 +583,14 @@ describe("prompt integrity policy", () => {
 			const source = readFileSync(sourcePath, "utf8");
 			expect(source, sourcePath).not.toMatch(/truncation\s*=\s*True/);
 		}
+	});
+
+	it("keeps X discovery drafts on the provider-maximum output contract", () => {
+		const source = readFileSync(
+			resolve(repositoryRoot, "plugins/plugin-x/src/discovery.ts"),
+			"utf8",
+		);
+		expect(source.match(/omitMaxTokens:\s*true/g)).toHaveLength(2);
+		expect(source).toMatch(/X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED/);
 	});
 });

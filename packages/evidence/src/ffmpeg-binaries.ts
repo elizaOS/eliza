@@ -197,6 +197,12 @@ export async function withInstallLock<T>(
   }
 }
 
+function truncateWellFormed(text: string, maxChars: number): string {
+  const wellFormed =
+    typeof text.toWellFormed === "function" ? text.toWellFormed() : text;
+  return Array.from(wellFormed).slice(0, maxChars).join("");
+}
+
 function installFfmpegStaticOnce(
   candidate: string,
 ): Promise<{ installed: true } | { installed: false; reason: string }> {
@@ -237,7 +243,7 @@ function installFfmpegStaticOnce(
       const message = error instanceof Error ? error.message : String(error);
       return {
         installed: false,
-        reason: `ffmpeg-static install failed: ${message.slice(0, 160)}`,
+        reason: `ffmpeg-static install failed: ${truncateWellFormed(message, 160)}`,
       };
     }
   })();

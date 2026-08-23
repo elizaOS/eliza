@@ -35,17 +35,31 @@ afterAll(async () => {
 });
 
 describe("WhatsApp inbound claims on PGLite", () => {
+	it("allows the same provider message id to be claimed independently in two chats", async () => {
+		const externalMessageId = `wamid.cross-chat.${crypto.randomUUID()}`;
+		const firstId = createInboundClaimId(runtime, "default", "chat-a", externalMessageId);
+		const secondId = createInboundClaimId(runtime, "default", "chat-b", externalMessageId);
+
+		expect(firstId).not.toBe(secondId);
+		const [first, second] = await Promise.all([
+			tryClaim(runtime, firstId, "default", "chat-a", externalMessageId),
+			tryClaim(runtime, secondId, "default", "chat-b", externalMessageId),
+		]);
+		expect(first).toMatchObject({ won: true, state: { chatId: "chat-a" } });
+		expect(second).toMatchObject({ won: true, state: { chatId: "chat-b" } });
+	});
+
 	it("elects one winner and preserves a distinct inbound message row", async () => {
 		const externalMessageId = `wamid.race.${crypto.randomUUID()}`;
-		const claimId = createInboundClaimId(runtime, "default", externalMessageId);
+		const claimId = createInboundClaimId(runtime, "default", "chat", externalMessageId);
 		const inboundMessageId = createUniqueUuid(
 			runtime,
 			`whatsapp:chat:${externalMessageId}`,
 		) as UUID;
 
 		const contenders = await Promise.all([
-			tryClaim(runtime, claimId, "default", externalMessageId),
-			tryClaim(runtime, claimId, "default", externalMessageId),
+			tryClaim(runtime, claimId, "default", "chat", externalMessageId),
+			tryClaim(runtime, claimId, "default", "chat", externalMessageId),
 		]);
 		expect(contenders.filter((result) => result.won)).toHaveLength(1);
 
@@ -89,8 +103,8 @@ describe("WhatsApp inbound claims on PGLite", () => {
 
 	it("atomically fences a stale owner and rejects its terminal write", async () => {
 		const externalMessageId = `wamid.stale.${crypto.randomUUID()}`;
-		const claimId = createInboundClaimId(runtime, "default", externalMessageId);
-		const initial = await tryClaim(runtime, claimId, "default", externalMessageId);
+		const claimId = createInboundClaimId(runtime, "default", "chat", externalMessageId);
+		const initial = await tryClaim(runtime, claimId, "default", "chat", externalMessageId);
 		expect(initial.won).toBe(true);
 		if (!initial.state) throw new Error("Initial PGLite claim has no state");
 
@@ -109,8 +123,8 @@ describe("WhatsApp inbound claims on PGLite", () => {
 		});
 
 		const successors = await Promise.all([
-			tryClaim(runtime, claimId, "default", externalMessageId),
-			tryClaim(runtime, claimId, "default", externalMessageId),
+			tryClaim(runtime, claimId, "default", "chat", externalMessageId),
+			tryClaim(runtime, claimId, "default", "chat", externalMessageId),
 		]);
 		expect(successors.filter((result) => result.won)).toHaveLength(1);
 		const successor = successors.find((result) => result.won)?.state;

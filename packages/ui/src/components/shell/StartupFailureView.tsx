@@ -100,11 +100,11 @@ export function StartupFailureView({
           <div className="flex flex-col gap-4">
             <span
               aria-label={reasonLabel}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-destructive/35 bg-destructive/12 text-destructive"
+              className="inline-flex size-9 items-center justify-center rounded-sm border border-destructive/35 bg-destructive/12 text-destructive"
               role="img"
               title={reasonLabel}
             >
-              <AlertCircle className="h-5 w-5" aria-hidden />
+              <AlertCircle className="size-5" aria-hidden />
             </span>
             <h1 className="text-xl font-semibold leading-tight text-destructive">
               {reasonLabel}

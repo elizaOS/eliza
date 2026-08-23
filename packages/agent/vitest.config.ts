@@ -176,6 +176,16 @@ export default defineConfig({
         ),
       },
       {
+        // Keep this ahead of the prefix-matching `@elizaos/plugin-elizacloud`
+        // alias (index.ts). Without it, `import(".../host-routes")` resolves
+        // to `src/index.ts/host-routes` (ENOTDIR).
+        find: /^@elizaos\/plugin-elizacloud\/host-routes$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-elizacloud/src/host-routes.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-openai\/endpoint-config$/,
         replacement: path.join(
           monorepoRoot,

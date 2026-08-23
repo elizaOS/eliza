@@ -9,14 +9,13 @@
  *   - The retry uses the *strict* prompt variant; on a second failure a
  *     `BrainParseError` surfaces so the cascade can return a structured
  *     error result instead of crashing.
- *   - ROI extraction is preserved through enforcement of the cap.
+ *   - Every valid ROI from the model is preserved.
  *   - The model receives a `data:image/png;base64,...` URL (no resizing
  *     happens client-side — adapters do that downstream).
  */
 
 import { describe, expect, it } from "vitest";
 import {
-  BRAIN_MAX_ROIS,
   Brain,
   BrainParseError,
   brainPromptFor,
@@ -179,9 +178,9 @@ describe("brainPromptFor", () => {
     expect(b).toContain("MUST emit ONLY a JSON");
   });
 
-  it("documents the ROI cap in the prompt", () => {
+  it("does not ask the model to discard ROIs", () => {
     const p = brainPromptFor("{}", "g", false);
-    expect(p).toContain(`Cap ROIs to ${BRAIN_MAX_ROIS}`);
+    expect(p).not.toMatch(/cap rois|maximum rois|first two rois/i);
   });
 });
 
@@ -264,8 +263,8 @@ describe("Brain.observeAndPlan", () => {
     ).rejects.toBeInstanceOf(BrainParseError);
   });
 
-  it("enforces the ROI cap", async () => {
-    const tooMany = Array.from({ length: BRAIN_MAX_ROIS + 3 }, (_, i) => ({
+  it("preserves every valid ROI", async () => {
+    const completeRois = Array.from({ length: 7 }, (_, i) => ({
       displayId: 0,
       bbox: [i, i, 1, 1] as [number, number, number, number],
       reason: `r${i}`,
@@ -275,7 +274,7 @@ describe("Brain.observeAndPlan", () => {
         JSON.stringify({
           scene_summary: "S",
           target_display_id: 0,
-          roi: tooMany,
+          roi: completeRois,
           proposed_action: { kind: "wait", rationale: "" },
         }),
     });
@@ -284,7 +283,7 @@ describe("Brain.observeAndPlan", () => {
       goal: "g",
       captures: captures(),
     });
-    expect(out.roi.length).toBe(BRAIN_MAX_ROIS);
+    expect(out.roi).toEqual(completeRois);
   });
 
   it("accepts an ImageDescriptionResult with `description` payload", async () => {

@@ -193,6 +193,7 @@ const VISIBLE_SECTIONS = [
   "connectors",
   "appearance",
   "advanced",
+  "secrets",
   "permissions",
   "cloud-overview",
 ];
@@ -205,7 +206,6 @@ const HIDDEN_SECTIONS = [
   "background",
   "runtime",
   "wallet-rpc",
-  "secrets",
   "app-permissions",
 ];
 

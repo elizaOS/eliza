@@ -11,7 +11,6 @@ export type LifeOpsPresenceActiveProvider =
   | "google"
   | "github"
   | "bluebubbles"
-  | "signal"
   | "whatsapp"
   | "browser-workspace"
   | "x-twitter"
@@ -87,7 +86,6 @@ export const LIFEOPS_PRESENCE_ACTIVE_SUPPORTED_PROVIDERS = [
   "google",
   "github",
   "bluebubbles",
-  "signal",
   "whatsapp",
   "browser-workspace",
   "x-twitter",
@@ -467,7 +465,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       useCases: ["common", "organizational", "edge"],
       userRequest:
         "Clean up duplicate contacts, figure out which Alice is the project Alice, and remember preferred channels only when there is evidence.",
-      providers: ["bluebubbles", "signal", "lifeops-local"],
+      providers: ["bluebubbles", "lifeops-local"],
       mockRecords: [
         {
           id: "contact-alice-nguyen-work",
@@ -478,7 +476,6 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
             name: "Alice Nguyen",
             email: "alice.nguyen@example.test",
             phone: "+15551112222",
-            signalNumber: "+15551110001",
             projectHints: ["Atlas", "launch checklist"],
           },
         },
@@ -501,7 +498,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
           title: "iMessage evidence for project Alice",
           payload: {
             path: "/api/v1/message",
-            text: "Atlas checklist is in the launch doc. Signal is fine if email gets buried.",
+            text: "Atlas checklist is in the launch doc. Text me if email gets buried.",
             contact: "Alice Nguyen",
           },
         },
@@ -519,20 +516,6 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
           expectedStatus: 200,
           expectedLedgerAction: "message.search",
           responseShape: ["data[].guid", "data[].text", "data[].chatGuid"],
-        },
-        {
-          name: "Send disambiguation prompt over Signal only after ambiguity remains",
-          provider: "signal",
-          method: "POST",
-          path: "/v2/send",
-          requestBody: {
-            message: "Quick check: is this the Atlas Alice or personal Alice?",
-            number: "+15550000000",
-            recipients: ["+15551110001"],
-          },
-          expectedStatus: 200,
-          expectedLedgerAction: "send",
-          responseShape: ["timestamp"],
         },
       ],
       expectedWorkflow: [
@@ -649,7 +632,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       ],
       userRequest:
         "Get the signed vendor packet from Gmail, summarize the blocking issue from GitHub, send the update to Priya by iMessage, and keep checking until the packet arrives.",
-      providers: ["google", "github", "bluebubbles", "signal", "lifeops-local"],
+      providers: ["google", "github", "bluebubbles", "lifeops-local"],
       mockRecords: [
         {
           id: "email-vendor-inbound",
@@ -783,20 +766,6 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
           expectedStatus: 200,
           expectedLedgerAction: "message.text",
           responseShape: ["data.guid", "data.text", "data.dateCreated"],
-        },
-        {
-          name: "Fallback send by Signal if iMessage is unavailable",
-          provider: "signal",
-          method: "POST",
-          path: "/v2/send",
-          requestBody: {
-            message: "Vendor packet is still missing; I will keep watching.",
-            number: "+15550000000",
-            recipients: ["+15551110003"],
-          },
-          expectedStatus: 200,
-          expectedLedgerAction: "send",
-          responseShape: ["timestamp"],
         },
       ],
       expectedWorkflow: [

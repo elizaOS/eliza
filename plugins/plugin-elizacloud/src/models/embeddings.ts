@@ -1,5 +1,9 @@
+/**
+ * Registers Cloud embedding handlers and validates dimension configuration before dispatch.
+ */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
+  ElizaError,
   logger,
   ModelType,
   timeInferenceSpan,
@@ -93,15 +97,28 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
     "text-embedding-3-small"
   );
-  const embeddingDimension = Number.parseInt(
-    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536",
-    10
+  // Prefix parsing would turn a malformed setting into a valid but unintended dimension.
+  const rawDimension =
+    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536";
+  const trimmedDimension = rawDimension.trim();
+  const embeddingDimension = (
+    /^\d+$/.test(trimmedDimension) ? Number(trimmedDimension) : Number.NaN
   ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
   if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
-    const errorMsg = `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(", ")}`;
-    logger.error(errorMsg);
-    throw new Error(errorMsg);
+    const allowedDimensions = Object.values(VECTOR_DIMS);
+    throw new ElizaError(
+      `Invalid ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS value ${JSON.stringify(rawDimension)}; expected one of ${allowedDimensions.join(", ")}`,
+      {
+        code: "ELIZA_CLOUD_EMBEDDING_DIMENSION_INVALID",
+        context: {
+          setting: "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+          value: rawDimension,
+          allowedDimensions,
+        },
+        severity: "fatal",
+      },
+    );
   }
 
   return { embeddingModelName, embeddingDimension };

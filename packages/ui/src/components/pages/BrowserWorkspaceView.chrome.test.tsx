@@ -224,24 +224,15 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("view-header")).toBeNull();
   });
 
-  it("collapses Browser Bridge administration without hiding session approvals", async () => {
+  it("omits Browser Bridge administration while preserving session approvals", async () => {
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
 
     expect(await screen.findByText("No page open")).not.toBeNull();
-    const disclosure = screen.getByTestId(
-      "browser-bridge-controls",
-    ) as HTMLDetailsElement;
-    expect(disclosure.open).toBe(false);
+    expect(screen.queryByTestId("browser-bridge-controls")).toBeNull();
     expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
     expect(
       await screen.findByTestId("browser-session-policy-error"),
-    ).not.toBeNull();
-
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
-    expect(
-      await screen.findByText("Install Agent Browser Bridge"),
     ).not.toBeNull();
   });
 
@@ -260,7 +251,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     ).toBe(true);
     const back = screen.getByRole("button", { name: "Back to launcher" });
     expect(toolbar.contains(back)).toBe(true);
-    expect(back.className).toMatch(/(?:^|\s)h-11(?:\s|$)/);
+    expect(back.className).toMatch(/(?:^|\s)(?:h-11|size-11)(?:\s|$)/);
   });
 
   it("invokes launcher navigation once from the toolbar back button", async () => {
@@ -318,7 +309,8 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       screen.getByTestId("browser-workspace-address-input").className,
     ).not.toContain("sm:col-span-1");
     for (const control of toolbar.querySelectorAll("button, input")) {
-      expect(control.className).toMatch(/(?:h-11|min-h-11)/);
+      // size-11 is the merged h-11 w-11 form; all three satisfy the 44px floor.
+      expect(control.className).toMatch(/(?:h-11|min-h-11|size-11)/);
     }
   });
 

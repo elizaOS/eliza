@@ -106,4 +106,45 @@ describe("applyLocalWorkspaceApps", () => {
       "[LocalRegistry] Ignoring malformed local package metadata",
     );
   });
+
+  it("skips file symlinks and broken symlinks in a scanned root instead of aborting on ENOTDIR", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-registry-"));
+    temporaryRoots.push(root);
+    process.env.ELIZA_WORKSPACE_ROOT = root;
+    process.env.ELIZA_STATE_DIR = path.join(root, "state");
+
+    const validDir = path.join(root, "plugins", "app-valid");
+    await fs.mkdir(validDir, { recursive: true });
+    await fs.writeFile(
+      path.join(validDir, "package.json"),
+      JSON.stringify({
+        name: "@test/app-valid",
+        version: "1.0.0",
+        elizaos: {
+          kind: "app",
+          app: { displayName: "Valid App", category: "productivity" },
+        },
+      }),
+    );
+
+    // A foreign checkout pattern: `packages/CLAUDE.md -> ../AGENTS.md`, a
+    // symlink whose target is a FILE. Collecting it as a package candidate
+    // makes `<candidate>/package.json` raise ENOTDIR, which used to abort
+    // the entire listing.
+    const scannedPackagesRoot = path.join(root, "packages");
+    await fs.mkdir(scannedPackagesRoot, { recursive: true });
+    const agentsFile = path.join(root, "AGENTS.md");
+    await fs.writeFile(agentsFile, "# agents\n");
+    await fs.symlink(agentsFile, path.join(scannedPackagesRoot, "CLAUDE.md"));
+    // A dangling symlink must degrade to "not a package" the same way.
+    await fs.symlink(
+      path.join(root, "does-not-exist"),
+      path.join(scannedPackagesRoot, "broken-link"),
+    );
+
+    const apps = new Map<string, RegistryPluginInfo>();
+    await applyLocalWorkspaceApps(apps);
+
+    expect([...apps.keys()]).toEqual(["@test/app-valid"]);
+  });
 });

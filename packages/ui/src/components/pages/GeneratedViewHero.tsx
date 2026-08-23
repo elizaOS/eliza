@@ -208,7 +208,7 @@ export function GeneratedViewHero({
         <ViewIcon
           icon={icon}
           label={label}
-          className={compact ? "h-24 w-24" : "h-40 w-40"}
+          className={compact ? "size-24" : "size-40"}
         />
       </div>
       {/* Centered foreground glyph on a soft disc so it reads on any palette. */}
@@ -221,12 +221,12 @@ export function GeneratedViewHero({
           <ViewIcon
             icon={icon}
             label={label}
-            className={compact ? "h-5 w-5" : "h-7 w-7"}
+            className={compact ? "size-5" : "size-7"}
           />
         </span>
       </div>
       {/* Subtle bottom scrim so the label area below stays readable. */}
-      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/15 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-black/15 to-transparent" />
     </div>
   );
 }

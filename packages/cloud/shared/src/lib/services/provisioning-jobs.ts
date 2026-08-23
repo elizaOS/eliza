@@ -116,6 +116,7 @@ import {
   requiresContainerBackedTarget,
 } from "./provisioning-job-types";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
+import { usesLocalDockerSandboxProvider } from "./sandbox-provider";
 import {
   isWaifuWebhookTargetUrl,
   resolveWaifuWebhookTarget,
@@ -1010,10 +1011,26 @@ interface LifecycleSandboxRow {
   replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
+  deleted_at: Date | null;
   billing_status: AgentBillingStatus;
   shutdown_warning_sent_at: Date | null;
   scheduled_shutdown_at: Date | null;
   pool_status: AgentSandboxPoolStatus | null;
+}
+
+function snapshotAuthorityRejection(
+  sandbox: Pick<LifecycleSandboxRow, "pool_status" | "deleted_at" | "deletion_attempt_id">,
+): string | undefined {
+  if (sandbox.pool_status !== null) {
+    return "Agent snapshot cannot target pool-owned capacity";
+  }
+  if (sandbox.deleted_at !== null) {
+    return "Agent snapshot cannot target a deleted agent";
+  }
+  if (sandbox.deletion_attempt_id !== null) {
+    return "Agent snapshot cannot start while agent deletion is in progress";
+  }
+  return undefined;
 }
 
 interface LifecycleJobOptions<TData extends object> {
@@ -1573,6 +1590,7 @@ export class ProvisioningJobService {
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
+        deleted_at: agentSandboxes.deleted_at,
         billing_status: agentSandboxes.billing_status,
         shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
         scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
@@ -3082,6 +3100,12 @@ export class ProvisioningJobService {
       logName: "agent_snapshot",
       logExtras: { snapshotType },
       idempotencyPredicates: [sql`${jobs.data}->>'snapshotType' = ${snapshotType}`],
+      validateSandbox: (sandbox) => {
+        const rejection = snapshotAuthorityRejection(sandbox);
+        if (rejection) {
+          throw new ApiError(409, "session_not_ready", rejection);
+        }
+      },
     });
   }
 
@@ -3361,6 +3385,11 @@ export class ProvisioningJobService {
     });
   }
 
+  /** Active agent lifecycle jobs used to restore truthful UI polling after reload. */
+  async getActiveAgentLifecycleJobsForOrg(organizationId: string): Promise<Job[]> {
+    return jobsRepository.findActiveAgentLifecycleJobsForOrg(organizationId);
+  }
+
   // ---------------------------------------------------------------------------
   // Processing (called by cron)
   // ---------------------------------------------------------------------------
@@ -3493,8 +3522,20 @@ export class ProvisioningJobService {
     status: "completed" | "cancelled",
     updates?: Partial<Job>,
   ): Promise<void> {
+    const settledUpdates =
+      status === "completed"
+        ? {
+            ...updates,
+            // A retry that succeeds must not retain the prior attempt's error
+            // beside a completed receipt. Keep the payload metadata canonical
+            // too, including when the failed attempt externalized its error.
+            error: null,
+            error_storage: "inline" as const,
+            error_key: null,
+          }
+        : updates;
     await this.retryOwnedWrite(job, "settle", () =>
-      jobsRepository.settleExecution(job, status, updates, this.executionOwnerId),
+      jobsRepository.settleExecution(job, status, settledUpdates, this.executionOwnerId),
     );
   }
 
@@ -3534,6 +3575,9 @@ export class ProvisioningJobService {
         {
           result: agentDeleteJobResultToRecord(jobResult),
           completed_at: new Date(),
+          error: null,
+          error_storage: "inline",
+          error_key: null,
         },
         this.executionOwnerId,
         agentDeleteAuthorityFence(currentData),
@@ -4356,7 +4400,13 @@ export class ProvisioningJobService {
     await this.assertExecutionMutationLease(job);
     await dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
-      await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
+      // PGlite's TCP bridge does not release transaction-scoped advisory locks
+      // reliably at commit. Local Docker still has the exact job-generation,
+      // lease, conflict, and sandbox-row fences below; remote providers retain
+      // the cross-process PostgreSQL advisory lock.
+      if (!usesLocalDockerSandboxProvider()) {
+        await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
+      }
       const [currentJob] = await tx
         .select({ id: jobs.id })
         .from(jobs)
@@ -4382,7 +4432,12 @@ export class ProvisioningJobService {
       }
 
       const [sandboxAuthority] = await tx
-        .select({ executionTier: agentSandboxes.execution_tier })
+        .select({
+          executionTier: agentSandboxes.execution_tier,
+          pool_status: agentSandboxes.pool_status,
+          deleted_at: agentSandboxes.deleted_at,
+          deletion_attempt_id: agentSandboxes.deletion_attempt_id,
+        })
         .from(agentSandboxes)
         .where(
           and(
@@ -4408,6 +4463,21 @@ export class ProvisioningJobService {
             executionTier: sandboxAuthority?.executionTier ?? "missing",
           },
         );
+      }
+
+      if (job.type === JOB_TYPES.AGENT_SNAPSHOT && sandboxAuthority) {
+        const rejection = snapshotAuthorityRejection(sandboxAuthority);
+        if (rejection) {
+          throw new RejectedAgentExecutionError(rejection, {
+            jobId: job.id,
+            jobType: job.type,
+            columnAgentId: job.agent_id,
+            columnOrganizationId: job.organization_id,
+            payloadAgentId: identity.agentId,
+            payloadOrganizationId: identity.organizationId,
+            executionTier: sandboxAuthority.executionTier,
+          });
+        }
       }
 
       if (!EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType)) return;
@@ -6344,16 +6414,28 @@ export class ProvisioningJobService {
         body: rawBody,
         signal: AbortSignal.timeout(10_000),
       });
+      const responseOk = response.ok;
+      const responseStatus = response.status;
+      try {
+        await response.body?.cancel();
+      } catch (error) {
+        // error-policy:J6 The webhook status is already authoritative; response
+        // disposal is best-effort teardown of the pinned outbound connection.
+        logger.warn("[provisioning-jobs] Failed to release webhook response body", {
+          jobId: job.id,
+          error: jobErrorText(error),
+        });
+      }
 
       await jobsRepository.update(job.id, {
-        webhook_status: response.ok ? "delivered" : `failed_${response.status}`,
+        webhook_status: responseOk ? "delivered" : `failed_${responseStatus}`,
       });
 
-      if (!response.ok) {
+      if (!responseOk) {
         logger.warn("[provisioning-jobs] Webhook delivery failed", {
           jobId: job.id,
           webhookUrl: safeWebhookUrl.toString(),
-          status: response.status,
+          status: responseStatus,
         });
       }
     } catch (err) {

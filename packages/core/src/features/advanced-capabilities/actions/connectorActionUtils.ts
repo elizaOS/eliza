@@ -658,7 +658,7 @@ export const LOOSE_TARGET_PARAMETERS: ActionParameter[] = [
 	{
 		name: "source",
 		description:
-			"Connector source: discord, slack, signal, x, bluesky, nostr, telegram.",
+			"Connector source: discord, slack, x, bluesky, nostr, telegram.",
 		required: false,
 		schema: { type: "string" },
 	},

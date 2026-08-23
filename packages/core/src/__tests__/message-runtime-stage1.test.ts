@@ -2441,7 +2441,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
 		);
 		expect(plannerUserContent).toContain(
-			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+			'"tierAParents":["FILE","TASKS_SPAWN_AGENT"]',
 		);
 	});
 
@@ -3522,6 +3522,28 @@ describe("runV5MessageRuntimeStage1", () => {
 						values: { shouldNotRender: "value leak" },
 						data: {
 							secret: "secret leak",
+							recentInteractionsDisclosure:
+								"owner_private_destination" as const,
+							recentInteractions: [
+								{
+									id: "00000000-0000-0000-0000-00000000aaac" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000ffff" as UUID,
+									roomId: "00000000-0000-0000-0000-000000002222" as UUID,
+									createdAt: 3,
+									content: {
+										text: "ORCHID-742 is in locker 19",
+										attachments: [
+											{
+												id: "receipt",
+												url: "https://private.example/receipt.png",
+												filename: "receipt.png",
+												mimeType: "image/png",
+												description: "Dinner at 6:30 PM",
+											},
+										],
+									},
+								},
+							],
 							recentMessages: [
 								{
 									id: "00000000-0000-0000-0000-00000000aaaa" as UUID,
@@ -3613,6 +3635,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).not.toContain("full recent provider text");
 		expect(userContent).toContain("prior_message:user:");
+		expect(userContent).toContain("verified_cross_room_message:user:");
+		expect(userContent).toContain("ORCHID-742 is in locker 19");
+		expect(userContent).toContain("Dinner at 6:30 PM");
+		expect(userContent).not.toContain("https://private.example/receipt.png");
 		expect(userContent).toContain("current_turn_boundary:");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
@@ -4022,9 +4048,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).toContain(
 			"Never send a status update, a progress note, or a description of your own process",
 		);
-		// The policy is planner-scoped: Stage 1 already has the group-triage
-		// tier for ambient turns and its prompt stays byte-identical.
-		expect(stage1Content).not.toContain("ambient_turn_policy");
+		// Stage 1 carries the same policy in shouldRespond terms (the planner
+		// wording names the IGNORE tool, which Stage 1 cannot call): an
+		// ambient-mode group forwards every message, and without this the
+		// shouldRespond field guidance alone read as RESPOND on nearly all of
+		// them (live five-room evaluation: 7-10 unsolicited replies per room).
+		expect(stage1Content).toContain("ambient_turn_policy:");
+		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).not.toContain(
+			"end the turn by calling the IGNORE tool",
+		);
 		// Deliberate planner silence records as a terminal IGNORE — the same
 		// observable outcome a Stage-1 IGNORE gets — not a silent drop.
 		expect(result.kind).toBe("terminal");
@@ -4036,9 +4069,11 @@ describe("runV5MessageRuntimeStage1", () => {
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
 		// Addressed branch pin (same pattern as the memory-surface branch
 		// tests): a platform mention makes the turn addressed, so the
-		// ambient-turn policy must not render and a planner IGNORE keeps
-		// today's planned-reply "none" outcome instead of the ambient terminal
-		// conversion.
+		// ambient-turn policy must not render and the ambient silent-terminal
+		// conversion must not fire. The addressed turn-delivery floor
+		// (#23223) still answers: a toolless planner IGNORE recovers with the
+		// honest zero-action fallback — never silence, and never a fabricated
+		// "I ran the steps … they failed" report for steps that never ran.
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Addressed follow-up; see if the planner has anything.",
@@ -4071,8 +4106,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).not.toContain("ambient_turn_policy");
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.mode).toBe("none");
+			const text = result.result.responseContent?.text ?? "";
+			expect(text).toBe(
+				"I don't have a useful answer to that right now — ask again and I will retry.",
+			);
+			// Effect honesty: nothing ran this turn, so no failure narrative.
+			expect(text).not.toMatch(/ran the steps|failed/i);
 		}
 	});
 
@@ -4723,6 +4762,50 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps strict grounding on a shape-only task_complete relay", async () => {
+		// Relay shape (header + subAgent metadata) is routing, not proof: a
+		// child can claim task_complete without having applied anything, so an
+		// unbound relay's "applied" claim buffers exactly like any other
+		// ungrounded claim (#24425 review: task-complete metadata is not proof
+		// that an effect occurred).
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Relay the claimed build to the user.",
+				contexts: ["simple"],
+				replyText: "The dice roller app is built and deployed.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "No receipt proved the claimed build.",
+				toolCalls: [],
+				messageToUser: "I couldn't verify that build completed.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text:
+					"[sub-agent: dice roller build (opencode) — task_complete]\n" +
+					"Done. The dice roller app is built and deployed.",
+				source: "sub_agent",
+				metadata: { subAgent: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't verify that build completed.",
+			);
+		}
+	});
+
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
 		const canonicalText = "Done — the pickup reminder is scheduled.";
 		const observedAt = "2026-07-27T18:00:00.000Z";
@@ -5135,6 +5218,36 @@ describe("runV5MessageRuntimeStage1", () => {
 		// Pure decision seam: the exact source precedence, ack suppression,
 		// failure-aware wording, and the async-handoff silence gate.
 		describe("resolveZeroDeliveryRecovery", () => {
+			it("never fabricates a failed-steps report on a toolless turn", () => {
+				// Effect honesty: with no action results at all, the fallback must
+				// not claim "I ran the steps … they failed".
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toBe(
+					"I don't have a useful answer to that right now — ask again and I will retry.",
+				);
+				expect(decision.text).not.toMatch(/ran the steps|failed/i);
+			});
+
+			it("keeps the failed-steps fallback when failed steps actually ran", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: false }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.text).toContain(
+					"I ran the steps for that but they failed",
+				);
+			});
+
 			it("prefers surviving planner text over everything else", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "The check passed on retry.",
@@ -5769,7 +5882,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("does not re-add generic inferred actions after an evaluator clears the candidate route", async () => {
+	it("keeps the complete authorized catalog after an evaluator changes ranking hints", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "The generic router guessed shell.",
@@ -5845,7 +5958,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
-		expect(toolNames).not.toContain("SHELL");
+		expect(toolNames).toContain("SHELL");
 		expect(
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))
@@ -7199,6 +7312,24 @@ function withReplyGateMode(
 	return runtime;
 }
 
+function withReplyGateSlots(
+	runtime: IAgentRuntime,
+	userMode: string,
+	globalMode: string,
+): IAgentRuntime {
+	(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+		(type: string) =>
+			type === "PERSONALITY_STORE"
+				? {
+						getSlot: (id: UUID | "global") => ({
+							reply_gate: id === "global" ? globalMode : userMode,
+						}),
+					}
+				: null,
+	);
+	return runtime;
+}
+
 describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	// Live incident: in a busy multi-user group channel the agent replied to
 	// turns its own Stage-1 output tagged as addressed to another participant
@@ -7459,7 +7590,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	});
 
 	it("bypasses the gate when the effective personality reply_gate is an explicit 'always'", async () => {
-		const runtime = withReplyGateMode(
+		const runtime = withReplyGateSlots(
 			withRoomEntities(
 				makeRuntime([
 					stage1Response({
@@ -7471,6 +7602,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				]),
 			),
 			"always",
+			"addressed_or_ambient",
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -7485,6 +7617,118 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Jumping in anyway!");
 		}
+		const stage1Params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).not.toContain("ambient_turn_policy:");
+	});
+
+	it("does not inject ambient policy for canonical or configured response bypasses", async () => {
+		const cases = [
+			{
+				label: "scheduled trigger",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trigger-prompt",
+				},
+				settings: undefined,
+			},
+			{
+				label: "configured source",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trusted_dispatch",
+				},
+				settings: { ALWAYS_RESPOND_SOURCES: "trusted_dispatch" },
+			},
+			{
+				label: "configured channel",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "test",
+				},
+				settings: { ALWAYS_RESPOND_CHANNELS: "group" },
+			},
+		] satisfies Array<{
+			label: string;
+			content: Partial<Memory["content"]>;
+			settings: Record<string, string> | undefined;
+		}>;
+
+		for (const testCase of cases) {
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						thought: "Bypass response.",
+						contexts: ["simple"],
+						replyText: "Delivered.",
+					}),
+				],
+				testCase.settings,
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(testCase.content),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000bd" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages?: Array<{ content?: string | null }>;
+			};
+			const prompt = (params.messages ?? [])
+				.map((entry) => entry.content ?? "")
+				.join("\n");
+
+			expect(result.kind, testCase.label).toBe("direct_reply");
+			expect(prompt, testCase.label).not.toContain("ambient_turn_policy:");
+		}
+	});
+
+	it("fails open without ambient silence when personality lookup throws", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Personality state is unavailable.",
+				contexts: ["simple"],
+				replyText: "Still delivered.",
+			}),
+		]);
+		(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+			(type: string) =>
+				type === "PERSONALITY_STORE"
+					? {
+							getSlot: () => {
+								throw new Error("personality store unavailable");
+							},
+						}
+					: null,
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ambient group message",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000be" as UUID,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const prompt = (params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+
+		expect(result.kind).toBe("direct_reply");
+		expect(prompt).not.toContain("ambient_turn_policy:");
+		expect(reportErrorCalls(runtime)).toContainEqual([
+			"MessageService.resolveAmbientReplyGate",
+			expect.any(Error),
+			expect.objectContaining({ roomId: expect.any(String) }),
+		]);
 	});
 
 	it("keeps the gate armed under reply_gate 'addressed_or_ambient' (only 'always' bypasses)", async () => {

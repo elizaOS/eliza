@@ -84,6 +84,8 @@ export class PluginActivatorService extends Service {
 	private activatedPlugins: Set<string> = new Set();
 	private pluginSecretMapping: Map<string, Set<string>> = new Map();
 	private pollingInterval: ReturnType<typeof setInterval> | null = null;
+	private activePoll: Promise<void> | null = null;
+	private activationPromises: Map<string, Promise<boolean>> = new Map();
 	private unsubscribeSecretChanges: (() => void) | null = null;
 
 	/** Registered plugins with their callbacks */
@@ -234,6 +236,11 @@ export class PluginActivatorService extends Service {
 			this.unsubscribeSecretChanges = null;
 		}
 
+		if (this.activePoll) {
+			await this.activePoll;
+		}
+		await Promise.allSettled(this.activationPromises.values());
+
 		this.pendingPlugins.clear();
 		this.activatedPlugins.clear();
 		this.pluginSecretMapping.clear();
@@ -356,7 +363,36 @@ export class PluginActivatorService extends Service {
 	/**
 	 * Activate a plugin
 	 */
-	private async activatePlugin(
+	private activatePlugin(
+		pluginId: string,
+		plugin: PluginWithSecrets,
+		callback?: () => Promise<void>,
+	): Promise<boolean> {
+		const existingActivation = this.activationPromises.get(pluginId);
+		if (existingActivation) {
+			return existingActivation;
+		}
+
+		if (this.activatedPlugins.has(pluginId)) {
+			return Promise.resolve(true);
+		}
+
+		// Defer the callback until after the promise is registered so concurrent
+		// activation requests see and join this attempt.
+		const work = Promise.resolve().then(() =>
+			this.performPluginActivation(pluginId, plugin, callback),
+		);
+		const activation = work.finally(() => {
+			if (this.activationPromises.get(pluginId) === activation) {
+				this.activationPromises.delete(pluginId);
+			}
+		});
+		this.activationPromises.set(pluginId, activation);
+		return activation;
+	}
+
+	/** Execute the single activation attempt owned by activatePlugin. */
+	private async performPluginActivation(
 		pluginId: string,
 		plugin: PluginWithSecrets,
 		callback?: () => Promise<void>,
@@ -523,6 +559,9 @@ export class PluginActivatorService extends Service {
 
 				// Check if all required secrets are now available
 				const missing = await this.getMissingSecrets(pending.requiredSecrets);
+				if (this.pendingPlugins.get(pluginId) !== pending) {
+					continue;
+				}
 				if (missing.length === 0) {
 					logger.info(
 						`[PluginActivator] All secrets available for ${pluginId}, activating`,
@@ -654,13 +693,38 @@ export class PluginActivatorService extends Service {
 			return;
 		}
 
-		this.pollingInterval = setInterval(async () => {
-			await this.checkPendingPlugins();
+		this.pollingInterval = setInterval(() => {
+			this.pollPendingPlugins();
 		}, this.activatorConfig.pollingIntervalMs);
 
 		logger.debug(
 			`[PluginActivator] Started polling every ${this.activatorConfig.pollingIntervalMs}ms`,
 		);
+	}
+
+	/** Start one observed poll without overlapping a still-running cycle. */
+	private pollPendingPlugins(): void {
+		if (this.activePoll) {
+			return;
+		}
+
+		const poll = this.checkPendingPlugins()
+			.catch((error) => {
+				// error-policy:J7 Poll failures are reported without terminating the
+				// recurring activation loop; the next interval may retry.
+				const errorMessage =
+					error instanceof Error ? error.message : String(error);
+				logger.error(
+					`[PluginActivator] Pending plugin poll failed: ${errorMessage}`,
+				);
+				this.runtime.reportError("PluginActivator.poll", error);
+			})
+			.finally(() => {
+				if (this.activePoll === poll) {
+					this.activePoll = null;
+				}
+			});
+		this.activePoll = poll;
 	}
 
 	/**
@@ -688,6 +752,9 @@ export class PluginActivatorService extends Service {
 
 			// Check if secrets are now available
 			const missing = await this.getMissingSecrets(pending.requiredSecrets);
+			if (this.pendingPlugins.get(pluginId) !== pending) {
+				continue;
+			}
 			if (missing.length === 0) {
 				logger.info(`[PluginActivator] Secrets now available for ${pluginId}`);
 				await pending.callback();

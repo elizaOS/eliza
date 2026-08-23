@@ -509,12 +509,12 @@ const optionalPluginStubs = {
   "@elizaos/plugin-browser": path.join(stubsDir, "null-plugin.cjs"),
   // Server-side connectors that app-lifeops dynamically imports inside
   // its service mixins. Mobile never reaches the runtime path that
-  // calls `import("@elizaos/plugin-whatsapp")` or `plugin-signal`, but
+  // calls `import("@elizaos/plugin-whatsapp")`, but
   // Bun's bundler still has to resolve them statically. The plugins
   // are workspace-only deps on app-lifeops and aren't in
   // packages/agent's resolution scope, so stub them out here. Trying to
-  // bundle the real packages also drags Baileys / libsignal native
-  // bindings into the mobile bundle, which is wrong on every axis.
+  // bundle the real package also drags Baileys native bindings into the mobile
+  // bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
   // Desktop/server-only optional integrations. The mobile agent does not host
   // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
@@ -543,7 +543,7 @@ const optionalPluginStubs = {
   // `await import("@elizaos/plugin-meetings")` when a voice session starts,
   // but Bun still resolves that dynamic import statically. A phone never
   // hosts a Chromium meeting bot; transcripts arrive via the local API
-  // routes instead, so stub the whole package like whatsapp/signal above.
+  // routes instead, so stub the whole package like WhatsApp above.
   "@elizaos/plugin-meetings": path.join(stubsDir, "null-plugin.cjs"),
 };
 
@@ -616,12 +616,11 @@ const exactMobileStubPlugin = {
         "@elizaos/plugin-local-inference/runtime/embedding-presets",
         path.join(stubsDir, "embedding-presets.cjs"),
       ],
-      ["e2b", path.join(stubsDir, "null-plugin.cjs")],
     ]);
     build.onResolve(
       {
         filter:
-          /^(?:@elizaos\/plugin-local-inference(?:\/runtime\/embedding-presets)?|e2b)$/,
+          /^@elizaos\/plugin-local-inference(?:\/runtime\/embedding-presets)?$/,
       },
       (args) => {
         return { path: exactStubs.get(args.path), namespace: "file" };
@@ -633,9 +632,9 @@ const exactMobileStubPlugin = {
 const capabilityRouterStubPlugin = {
   name: "eliza-mobile-capability-router-stubs",
   setup(build) {
-    const e2bRouterStub = path.join(stubsDir, "e2b-capability-router.cjs");
-    build.onResolve({ filter: /e2b-capability-router\.ts$/ }, () => ({
-      path: e2bRouterStub,
+    const remoteRunnerStub = path.join(stubsDir, "remote-coding-runner.cjs");
+    build.onResolve({ filter: /remote-coding-runner\.ts$/ }, () => ({
+      path: remoteRunnerStub,
       namespace: "file",
     }));
   },
@@ -1777,7 +1776,6 @@ const polyfillLines = [
 // Always-on: the few hand-curated overrides that need specific shapes.
 polyfillLines.push("var default10 = () => globalThis.crypto.randomUUID();");
 polyfillLines.push("var applyWhatsAppQrOverride3 = () => {};");
-polyfillLines.push("var applySignalQrOverride3 = () => {};");
 polyfillLines.push(
   "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
     "  static serviceType = 'AUTONOMY';\n" +
@@ -1786,10 +1784,7 @@ polyfillLines.push(
     "};",
 );
 const SKIP_DEFAULTS = new Set(["default10"]);
-const SKIP_APPLIES = new Set([
-  "applyWhatsAppQrOverride3",
-  "applySignalQrOverride3",
-]);
+const SKIP_APPLIES = new Set(["applyWhatsAppQrOverride3"]);
 const SKIP_SERVICES = new Set(["AutonomyService2"]);
 for (const name of renames.undeclaredDefaults) {
   if (SKIP_DEFAULTS.has(name)) continue;

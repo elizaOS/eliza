@@ -27,6 +27,8 @@ import {
 	ServiceType,
 	stringToUuid,
 	TurnAbortedError,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	type UUID,
 } from "@elizaos/core";
 import {
@@ -81,6 +83,7 @@ import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,
 } from "./message-coalesce";
+import { chunkDiscordText } from "./messaging";
 import { waitForDiscordIngressReadiness } from "./readiness";
 import {
 	applyDiscordStalenessGuard,
@@ -118,6 +121,7 @@ import {
 	extractUrls,
 	getMessageService,
 	getMessagingAPI,
+	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
 	sendMessageInChunks,
 } from "./utils";
@@ -194,6 +198,23 @@ export function numericFactSignatureTokens(text: string): Set<string> | null {
 	const set = new Set(tokens);
 	const hasNumber = [...set].some((token) => /[0-9]/.test(token));
 	return hasNumber && set.size > 0 ? set : null;
+}
+
+/** Maximum UTF-16 code units of message text carried in a suppression log. */
+const DUPLICATE_TEXT_PREVIEW_LIMIT = 200;
+
+/**
+ * Collapses external message text into a bounded log preview. Discord text is
+ * untrusted and may already carry lone surrogates, and a plain slice can split
+ * an astral pair, so the value is repaired and truncated on code-point
+ * boundaries before it reaches the logger. This is a preview only; the complete
+ * text is never replaced by it.
+ */
+export function buildDuplicateTextPreview(text: string): string {
+	return truncateWellFormed(
+		toWellFormedUnicode(text.replace(/\s+/g, " ").trim()),
+		DUPLICATE_TEXT_PREVIEW_LIMIT,
+	);
 }
 
 export function isSubsetOrEqual(a: Set<string>, b: Set<string>): boolean {
@@ -845,6 +866,57 @@ export function buildDmSendOptions(
 		...(files.length > 0 ? { files } : {}),
 		...(components && components.length > 0 ? { components } : {}),
 	};
+}
+
+/** Minimal `User.send` surface needed to deliver a chunked DM reply. */
+export interface DmSendTarget {
+	send(options: DmSendOptions): Promise<DiscordMessage>;
+}
+
+/**
+ * Deliver a DM reply through the same transport chunking as guild sends.
+ *
+ * Discord hard-caps message content at 2000 characters; a single
+ * `user.send(...)` with a longer body (e.g. a multi-day recall digest) is
+ * rejected outright, so the reply never arrives. This routes DM text through
+ * `chunkDiscordText` — the fence-aware chunker every other outbound Discord
+ * path already uses — with the shared `MAX_MESSAGE_LENGTH` (1900) headroom
+ * budget, and sends the chunks sequentially so ordering is preserved.
+ *
+ * Attachments and interactive components ride the LAST chunk, mirroring
+ * `sendMessageInChunks`, so widgets sit directly under the end of the answer.
+ *
+ * A components/files-only reply (no prose after trimming) still produces a
+ * single send so those payloads are never dropped.
+ */
+export async function sendDmInChunks(
+	user: DmSendTarget,
+	textContent: string,
+	files: AttachmentBuilder[],
+	components: ActionRowBuilder<MessageActionRowComponentBuilder>[] | undefined,
+): Promise<DiscordMessage[]> {
+	const chunks =
+		textContent.trim().length > 0
+			? chunkDiscordText(textContent, { maxChars: MAX_MESSAGE_LENGTH })
+			: [];
+	if (chunks.length <= 1) {
+		const content = chunks[0] ?? textContent;
+		return [await user.send(buildDmSendOptions(content, files, components))];
+	}
+	const sent: DiscordMessage[] = [];
+	for (let i = 0; i < chunks.length; i++) {
+		const isLast = i === chunks.length - 1;
+		sent.push(
+			await user.send(
+				buildDmSendOptions(
+					chunks[i],
+					isLast ? files : [],
+					isLast ? components : undefined,
+				),
+			),
+		);
+	}
+	return sent;
 }
 
 /**
@@ -2470,10 +2542,7 @@ export class MessageManager {
 									reason: repeatsPriorFact
 										? "fact-signature"
 										: "identical-text",
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: buildDuplicateTextPreview(textContent),
 								},
 								"Suppressing duplicate callback reply",
 							);
@@ -2512,10 +2581,7 @@ export class MessageManager {
 								agentId: this.runtime.agentId,
 								channelId: channel.id,
 								messageId: message.id,
-								textPreview: textContent
-									.replace(/\s+/g, " ")
-									.trim()
-									.slice(0, 200),
+								textPreview: buildDuplicateTextPreview(textContent),
 							},
 							"Suppressing duplicate Discord outbound delivery",
 						);
@@ -2607,10 +2673,9 @@ export class MessageManager {
 						const dmComponents = hasComponents
 							? buildDiscordComponents(rendered.components)
 							: undefined;
-						const dmMessage = await runResponseDispatch(() =>
-							user.send(buildDmSendOptions(textContent, files, dmComponents)),
+						messages = await runResponseDispatch(() =>
+							sendDmInChunks(user, textContent, files, dmComponents),
 						);
-						messages = [dmMessage];
 					} else {
 						if (!message.id) {
 							this.runtime.logger.warn(

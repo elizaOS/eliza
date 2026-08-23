@@ -32,12 +32,11 @@ const STEP_TONE: Record<WorkflowStepStatus, string> = {
 };
 
 function StepIcon({ status }: { status: WorkflowStepStatus }) {
-  if (status === "done") return <CircleCheck className="h-3.5 w-3.5 text-ok" />;
-  if (status === "failed")
-    return <CircleX className="h-3.5 w-3.5 text-danger" />;
+  if (status === "done") return <CircleCheck className="size-3.5 text-ok" />;
+  if (status === "failed") return <CircleX className="size-3.5 text-danger" />;
   if (status === "running")
-    return <Loader2 className="h-3.5 w-3.5 animate-spin text-ok" />;
-  return <Circle className="h-3.5 w-3.5 text-muted" />;
+    return <Loader2 className="size-3.5 animate-spin text-ok" />;
+  return <Circle className="size-3.5 text-muted" />;
 }
 
 // Memoized on the workflow spec by value (see `workflowPropsEqual`): a
@@ -109,7 +108,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
       title={title}
       status={
         <span
-          className={`text-[11px] font-medium tabular-nums ${
+          className={`text-xs-tight font-medium tabular-nums ${
             failed ? "text-danger" : "text-muted"
           }`}
         >
@@ -162,12 +161,12 @@ export const WorkflowSteps = memo(function WorkflowSteps({
               <span className="text-xs font-medium text-txt">
                 {widget.title}
               </span>
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] uppercase text-primary">
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-3xs uppercase tracking-wider text-primary">
                 {widget.component}
               </span>
             </div>
             {execution?.output !== undefined ? (
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-muted">
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs-tight text-muted">
                 {JSON.stringify(execution.output, null, 2)}
               </pre>
             ) : null}
@@ -183,7 +182,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
                 }
                 className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
               >
-                <ExternalLink className="h-3.5 w-3.5" /> Open workflow
+                <ExternalLink className="size-3.5" /> Open workflow
               </button>
             ) : null}
             {workflow.runId && !complete ? (
@@ -196,7 +195,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
                 }
                 className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
-                <Square className="h-3.5 w-3.5" /> Cancel run
+                <Square className="size-3.5" /> Cancel run
               </button>
             ) : null}
           </div>

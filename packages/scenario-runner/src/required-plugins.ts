@@ -3,9 +3,18 @@
  * provider-qualified profile accepts only installable production packages and
  * registers them before runtime initialization; simulated runs retain the
  * small compatibility wrapper needed by existing app-control fixtures.
+ *
+ * Package import specifiers and scenario-local fixture plugin names are
+ * declared separately. Packages are imported here before runtime startup;
+ * fixture names are verified by the executor after the scenario seed runs.
  */
 
-import type { Action, AgentRuntime, Plugin } from "@elizaos/core";
+import {
+  type Action,
+  type AgentRuntime,
+  ElizaError,
+  type Plugin,
+} from "@elizaos/core";
 import type {
   ScenarioDefinition,
   ScenarioExecutionProfile,
@@ -17,7 +26,20 @@ const MEETINGS_TEST_SUPPORT_PACKAGE = "@elizaos/plugin-meetings/test-support";
 const NON_PRODUCTION_PACKAGE_PATTERN =
   /(?:^|[/._-])(?:mock|mocks|fixture|fixtures|test|tests|test-harness)(?:$|[/._-])/iu;
 const PACKAGE_NAME_PATTERN =
-  /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u;
+  /^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)(?:\/(?!\.{1,2}(?:\/|$))[^/\\\s]+)*$/iu;
+
+export function assertScenarioPluginPackageSpecifier(
+  packageName: string,
+): void {
+  if (PACKAGE_NAME_PATTERN.test(packageName)) return;
+  throw new ElizaError(
+    `Scenario plugin package "${packageName}" is not a supported npm import specifier`,
+    {
+      code: "SCENARIO_PLUGIN_PACKAGE_SPECIFIER_INVALID",
+      context: { packageName },
+    },
+  );
+}
 
 function isPlugin(value: unknown): value is Plugin {
   if (value === null || typeof value !== "object") return false;
@@ -40,6 +62,18 @@ export function resolveRequiredPluginPackages(
   scenario: ScenarioDefinition,
 ): string[] {
   const plugins = scenario.requires?.plugins;
+  if (!Array.isArray(plugins)) return [];
+  const normalized = plugins.map((plugin) => plugin.trim()).filter(Boolean);
+  for (const packageName of normalized) {
+    assertScenarioPluginPackageSpecifier(packageName);
+  }
+  return [...new Set(normalized)];
+}
+
+export function resolveRequiredFixturePlugins(
+  scenario: ScenarioDefinition,
+): string[] {
+  const plugins = scenario.requires?.fixturePlugins;
   if (!Array.isArray(plugins)) return [];
   const normalized = plugins.map((plugin) => plugin.trim()).filter(Boolean);
   return [...new Set(normalized)];
@@ -81,7 +115,7 @@ export function providerQualifiedPluginPackageProblem(
   packageName: string,
 ): string | null {
   if (!PACKAGE_NAME_PATTERN.test(packageName)) {
-    return `required plugin "${packageName}" is not a bare npm package name`;
+    return `required plugin "${packageName}" is not a supported npm import specifier`;
   }
   if (NON_PRODUCTION_PACKAGE_PATTERN.test(packageName)) {
     return `required plugin "${packageName}" names a test, mock, or fixture package`;
@@ -118,14 +152,26 @@ function pluginNameAliases(packageName: string): Set<string> {
   ]);
 }
 
+/**
+ * Whether one registered plugin is the one a scenario declared as
+ * `packageName`. A plugin's internal `name` routinely differs from its package
+ * specifier, so this alias comparison is the only correct identity test and
+ * every caller must share it.
+ */
+export function pluginMatchesScenarioPackage(
+  plugin: Pick<Plugin, "name">,
+  packageName: string,
+): boolean {
+  if (typeof plugin.name !== "string") return false;
+  return pluginNameAliases(packageName).has(plugin.name.trim());
+}
+
 export function pluginPackageIsRegistered(
   runtime: Pick<AgentRuntime, "plugins">,
   packageName: string,
 ): boolean {
-  const aliases = pluginNameAliases(packageName);
-  return runtime.plugins.some(
-    (plugin) =>
-      typeof plugin.name === "string" && aliases.has(plugin.name.trim()),
+  return runtime.plugins.some((plugin) =>
+    pluginMatchesScenarioPackage(plugin, packageName),
   );
 }
 
@@ -189,7 +235,11 @@ export async function loadScenarioRequiredPlugin(
   return candidate;
 }
 
-/** Registers every declared package once before scenario runtime startup. */
+/**
+ * Registers every declared package once before scenario runtime startup and
+ * returns the names that are registered afterwards. Fixture plugin names are
+ * a separate declaration and never reach this import boundary.
+ */
 export async function registerScenarioRequiredPlugins(
   runtime: Pick<AgentRuntime, "plugins" | "registerPlugin">,
   packageNames: readonly string[],
@@ -197,6 +247,7 @@ export async function registerScenarioRequiredPlugins(
 ): Promise<string[]> {
   const registered: string[] = [];
   for (const packageName of packageNames) {
+    assertScenarioPluginPackageSpecifier(packageName);
     if (!pluginPackageIsRegistered(runtime, packageName)) {
       const plugin = await loadScenarioRequiredPlugin(
         packageName,

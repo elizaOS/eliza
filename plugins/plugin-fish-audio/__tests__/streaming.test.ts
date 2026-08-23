@@ -1,6 +1,13 @@
 /**
  * Fish Audio plugin TTS tests with an in-memory WebSocket.
  *
+ * Includes the regression guard for issue #25072: a streaming consumer that
+ * only iterates `audioStream` (the documented `for await` pattern in
+ * packages/core/src/types/model.ts) must never leave the parallel `bytes`
+ * promise as an unhandled rejection when synthesis fails mid-stream. These
+ * tests fail if the passive `void bytes.catch(...)` guard in `src/index.ts` is
+ * removed, while every other assertion in this file stays green without it.
+ *
  * Live Fish Audio coverage runs only with explicitly supplied credentials and
  * can write an inspectable WAV when `FISH_AUDIO_EVIDENCE_PATH` is provided:
  * `ELIZA_TTS_FISH_ENABLED=true FISH_AUDIO_API_KEY=... FISH_AUDIO_REFERENCE_ID=... \
@@ -66,9 +73,9 @@ class FakeFishSocket {
     }
   }
 
-  close(_code?: number, reason?: string): void {
+  close(code?: number, reason?: string): void {
     this.readyState = 3;
-    this.fire("close", { reason });
+    this.fire("close", { code, reason });
   }
 
   addEventListener(type: string, listener: (event: never) => void): void {
@@ -88,6 +95,10 @@ class FakeFishSocket {
     this.fire("message", { data: encode({ event: "finish", reason: "stop" }) });
   }
 
+  emitError(message: string, error: unknown): void {
+    this.fire("error", { message, error });
+  }
+
   private fire(type: string, event: unknown): void {
     for (const listener of this.listeners.get(type) ?? []) listener(event);
   }
@@ -100,6 +111,12 @@ function runtime(
     getSetting: (key: string) => settings[key],
     registerModel: vi.fn(),
   } as unknown as IAgentRuntime;
+}
+
+function useFakeSocket(): void {
+  configureFishAudioWebSocketFactory(
+    (url, options) => new FakeFishSocket(url, undefined, options),
+  );
 }
 
 function wrapPcm16MonoAsWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
@@ -182,10 +199,7 @@ describe("fishAudioPlugin", () => {
   });
 
   test("returns AudioStreamResult when audioStream is true and sends MessagePack frames", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const rt = runtime({
       ELIZA_TTS_FISH_ENABLED: "true",
       FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
@@ -245,10 +259,7 @@ describe("fishAudioPlugin", () => {
 
   test("rejects when Fish closes before a finish frame", async () => {
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -263,16 +274,92 @@ describe("fishAudioPlugin", () => {
     FakeFishSocket.instances.at(-1)?.close(1011, "provider failed");
 
     await expect(result.bytes).rejects.toThrow(
-      "Fish Audio WebSocket closed before finish: provider failed",
+      "Fish Audio WebSocket closed before synthesis completed",
     );
+  });
+
+  test("does not preserve provider-controlled WebSocket error text or causes", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "transport error", audioStream: true },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+    await Promise.resolve();
+    const secret = "WS_CAUSE_SECRET_do-not-reflect_88fd";
+    FakeFishSocket.instances
+      .at(-1)
+      ?.emitError(
+        "Unexpected server response: 401",
+        new Error(`cause ${secret}`),
+      );
+
+    const failure = await result.bytes.catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "FISH_AUDIO_AUTH_FAILED",
+      message: "Fish Audio authentication failed",
+      context: { retryable: false, statusCode: 401 },
+    });
+    const error = failure as Error & {
+      cause?: unknown;
+      context?: Record<string, unknown>;
+    };
+    expect(error.cause).toBeUndefined();
+    expect(
+      [
+        String(error),
+        error.stack,
+        JSON.stringify(error),
+        JSON.stringify(error.context),
+        String(error.cause),
+      ].join("\n"),
+    ).not.toContain(secret);
+  });
+
+  test("does not classify injected status digits as an upgrade status", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "ambiguous transport error", audioStream: true },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+    await Promise.resolve();
+    const secret = "WS_STATUS_SECRET_429_then_401_778a";
+    FakeFishSocket.instances
+      .at(-1)
+      ?.emitError(
+        `provider text ${secret}`,
+        new Error(`Unexpected server response: 401 ${secret}`),
+      );
+
+    const failure = await result.bytes.catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "FISH_AUDIO_WEBSOCKET_ERROR",
+      message: "Fish Audio WebSocket transport failed",
+      context: { retryable: true },
+    });
+    const error = failure as Error & { cause?: unknown };
+    expect(error.cause).toBeUndefined();
+    expect(
+      [String(error), error.stack, JSON.stringify(error)].join("\n"),
+    ).not.toContain(secret);
   });
 
   test("rejects a provider finish frame whose reason is error", async () => {
     FakeFishSocket.finishReason = "error";
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -285,15 +372,12 @@ describe("fishAudioPlugin", () => {
     if (!("bytes" in result)) throw new Error("Expected streaming result");
 
     await expect(result.bytes).rejects.toThrow(
-      "Fish Audio TTS failed to finish synthesis",
+      "Fish Audio provider reported a synthesis failure",
     );
   });
 
   test("rejects an already-aborted request", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const controller = new AbortController();
     controller.abort();
     const result = await handleFishAudioTextToSpeech(
@@ -311,10 +395,7 @@ describe("fishAudioPlugin", () => {
   });
 
   test("detaches the abort listener once synthesis finishes on its own", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const controller = new AbortController();
     const remove = vi.spyOn(controller.signal, "removeEventListener");
 
@@ -334,10 +415,7 @@ describe("fishAudioPlugin", () => {
   });
 
   test("buffers bytes when audioStream is false", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const rt = runtime({
       ELIZA_TTS_FISH_ENABLED: "true",
       FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
@@ -352,10 +430,7 @@ describe("fishAudioPlugin", () => {
 
   test("accepts audio exactly at the configured buffer ceiling", async () => {
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -378,10 +453,7 @@ describe("fishAudioPlugin", () => {
 
   test("rejects both result surfaces and closes when audio exceeds the buffer ceiling", async () => {
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -415,10 +487,7 @@ describe("fishAudioPlugin", () => {
   test("rejects and closes a stalled synthesis at the wall-clock deadline", async () => {
     vi.useFakeTimers();
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -441,10 +510,7 @@ describe("fishAudioPlugin", () => {
   test("suppresses provider frames and deadline work after cancellation", async () => {
     vi.useFakeTimers();
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const controller = new AbortController();
     const result = await handleFishAudioTextToSpeech(
       runtime({
@@ -471,6 +537,118 @@ describe("fishAudioPlugin", () => {
     vi.advanceTimersByTime(25);
 
     expect(socket?.readyState).toBe(3);
+  });
+
+  test("stream-only consumer of an early-closed synthesis leaks no unhandled rejection", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const leaks: unknown[] = [];
+    const onUnhandled = (reason: unknown) => leaks.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const result = await handleFishAudioTextToSpeech(
+        runtime({
+          ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+          FISH_AUDIO_API_KEY: "key",
+          FISH_AUDIO_REFERENCE_ID: "voice",
+        }),
+        { text: "stream only", audioStream: true },
+      );
+      if (result instanceof Uint8Array)
+        throw new Error("Expected streaming result");
+      // Consume ONLY the documented `for await (chunk of audioStream)` surface
+      // from packages/core/src/types/model.ts:830 and never touch result.bytes.
+      const iterator = result.audioStream[Symbol.asyncIterator]();
+      await Promise.resolve();
+      const socket = FakeFishSocket.instances.at(-1);
+      socket?.emitAudio(new Uint8Array([5, 6]));
+      await expect(iterator.next()).resolves.toEqual({
+        done: false,
+        value: new Uint8Array([5, 6]),
+      });
+      socket?.close(1011, "provider failed");
+
+      await expect(iterator.next()).rejects.toMatchObject({
+        code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+      });
+      // Give Node a full task tick to surface any unhandled bytes rejection.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(leaks).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  test("stream-only consumer of a buffer-ceiling breach leaks no unhandled rejection", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const leaks: unknown[] = [];
+    const onUnhandled = (reason: unknown) => leaks.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const result = await handleFishAudioTextToSpeech(
+        runtime({
+          ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+          FISH_AUDIO_API_KEY: "key",
+          FISH_AUDIO_REFERENCE_ID: "voice",
+        }),
+        { text: "stream only overflow", audioStream: true, maxBufferBytes: 3 },
+      );
+      if (result instanceof Uint8Array)
+        throw new Error("Expected streaming result");
+      const iterator = result.audioStream[Symbol.asyncIterator]();
+      await Promise.resolve();
+      const socket = FakeFishSocket.instances.at(-1);
+      socket?.emitAudio(new Uint8Array([1, 2]));
+      await expect(iterator.next()).resolves.toEqual({
+        done: false,
+        value: new Uint8Array([1, 2]),
+      });
+      socket?.emitAudio(new Uint8Array([3, 4]));
+
+      await expect(iterator.next()).rejects.toMatchObject({
+        code: "FISH_AUDIO_MAX_BUFFER_BYTES_EXCEEDED",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(leaks).toEqual([]);
+      expect(socket?.readyState).toBe(3);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  test("the passive bytes guard does not swallow the failure for explicit awaiters", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "stream then bytes", audioStream: true },
+    );
+    if (result instanceof Uint8Array)
+      throw new Error("Expected streaming result");
+    const iterator = result.audioStream[Symbol.asyncIterator]();
+    await Promise.resolve();
+    const socket = FakeFishSocket.instances.at(-1);
+    socket?.emitAudio(new Uint8Array([5, 6]));
+    await iterator.next();
+    socket?.close(1011, "provider failed");
+    await expect(iterator.next()).rejects.toMatchObject({
+      code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+    });
+
+    // A real consumer that DID reach `const full = await result.bytes` after an
+    // error still observes the same typed rejection; the guard only marks the
+    // source promise handled, it does not resolve or swallow it.
+    await expect(result.bytes).rejects.toMatchObject({
+      code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+    });
   });
 
   test("wraps live PCM evidence in a valid mono WAV container", () => {

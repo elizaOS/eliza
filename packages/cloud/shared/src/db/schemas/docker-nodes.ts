@@ -3,6 +3,7 @@ import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -12,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 
 export type DockerNodeStatus = "healthy" | "degraded" | "offline" | "unknown";
 export type DockerNodeFleetKind = "robot" | "cloud";
@@ -62,6 +64,8 @@ export const dockerNodes = pgTable(
     provider_server_id: text("provider_server_id"),
     /** Exact lowercase Linux boot UUID attested over host-key-verified SSH. */
     node_incarnation: uuid("node_incarnation"),
+    /** Trigger-owned durable token for this exact mutable-node occurrence. */
+    current_node_history_id: uuid("current_node_history_id"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -76,6 +80,19 @@ export const dockerNodes = pgTable(
     node_incarnation_uidx: uniqueIndex("docker_nodes_node_incarnation_uidx")
       .on(table.node_incarnation)
       .where(sql`${table.node_incarnation} IS NOT NULL`),
+    current_node_history_fk: foreignKey({
+      name: "docker_nodes_current_node_history_fkey",
+      columns: [table.current_node_history_id, table.id, table.node_incarnation],
+      foreignColumns: [
+        agentNodeIncarnationHistories.id,
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
+      ],
+    }).onDelete("restrict"),
+    node_occurrence_shape_check: check(
+      "docker_nodes_node_occurrence_shape_check",
+      sql`(${table.node_incarnation} IS NULL) = (${table.current_node_history_id} IS NULL)`,
+    ),
     backup_source_authority_shape_check: check(
       "docker_nodes_backup_source_authority_shape_check",
       sql`((

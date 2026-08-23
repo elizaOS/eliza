@@ -11,6 +11,7 @@
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { decode, encode } from "@msgpack/msgpack";
+import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
 import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
@@ -41,6 +42,8 @@ mock.module("@elizaos/core", () => ({
   redactLogArgs: (args: unknown) => args,
   redactSensitiveText: (text: string) => text,
   Service: coreTestContract.Service,
+  toWellFormedUnicode: workerCoreStub.toWellFormedUnicode,
+  truncateWellFormed: workerCoreStub.truncateWellFormed,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:
@@ -855,6 +858,8 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(endOfTurnLog?.[1]).toMatchObject({
       transcriptChars: "hello agent".length,
+      callerResponseTurnIndex: 1,
+      isFirstCallerResponse: true,
       configuredEndTimeoutMs: 640,
       turnActiveMs: expect.any(Number),
       firstTranscriptOffsetMs: expect.any(Number),
@@ -1091,6 +1096,56 @@ describe("voice-session WS lifecycle", () => {
         traceId: firstText.traceId,
       },
     ]);
+  });
+
+  test("does not forward ambiguous or non-canonical APP launch handoffs", async () => {
+    for (const actionResults of [
+      [
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=javascript%3Aalert(1)",
+          },
+        },
+      ],
+      [
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Fone.example",
+          },
+        },
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Ftwo.example",
+          },
+        },
+      ],
+    ]) {
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        fetchImpl: makeCanonicalChunkFetch(["Opened Demo."], { actionResults }),
+      });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "launch demo");
+      await flush();
+      await flush();
+      expect(
+        client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+      ).toEqual([]);
+    }
   });
 
   test("prewarms Eliza tenancy context when the live session starts", async () => {
@@ -1785,6 +1840,8 @@ describe("voice-session WS lifecycle", () => {
       ([message]) => message === "[voice-session] first-turn latency",
     );
     expect(latencyLog?.[1]).toMatchObject({
+      callerResponseTurnIndex: 1,
+      isFirstCallerResponse: true,
       upstreamAttemptCount: 3,
       prewarmStatus: "not_configured",
       ttsTransportReadyMs: expect.any(Number),

@@ -1982,6 +1982,90 @@
       "when": 1793995200001,
       "tag": "0299_synthetic_environment_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 283,
+      "version": "7",
+      "when": 1793995200002,
+      "tag": "0300_agent_node_occurrence_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 284,
+      "version": "7",
+      "when": 1793995200003,
+      "tag": "0301_agent_node_occurrence_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1793995200004,
+      "tag": "0302_agent_restore_target_occurrence",
+      "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1794081600000,
+      "tag": "0303_personal_shared_group_authority_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1794168000000,
+      "tag": "0304_personal_shared_group_delivery_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1794168000001,
+      "tag": "0305_secure_remote_hosts",
+      "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1794168000002,
+      "tag": "0306_secure_remote_command_relay",
+      "breakpoints": true
+    },
+    {
+      "idx": 290,
+      "version": "7",
+      "when": 1794168000003,
+      "tag": "0307_twilio_outbound_call_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 291,
+      "version": "7",
+      "when": 1794168000004,
+      "tag": "0308_remove_conversation_token_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1794254400000,
+      "tag": "0309_retire_legacy_bluebubbles_gateways",
+      "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1794254400001,
+      "tag": "0310_personal_shared_inbound_media_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1794254400002,
+      "tag": "0311_personal_shared_group_participants",
+      "breakpoints": true
     }
   ]
 }

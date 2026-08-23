@@ -412,6 +412,42 @@ describe("bridge-routes — credential bridge", () => {
     expect((body() as { value: string }).value).toBe("sk-test");
   });
 
+  it("GET rechecks session authorization immediately before disclosing a ready credential", async () => {
+    const adapter = makeAdapter({
+      tryRetrieveCredential: vi
+        .fn()
+        .mockResolvedValue({ status: "ready", value: "sk-must-not-leak" }),
+    });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce({ id: "pty-1-abc", status: "running" })
+      .mockResolvedValueOnce({ id: "pty-1-abc", status: "running" })
+      .mockResolvedValueOnce({ id: "pty-1-abc", status: "stopped" });
+    const ctx = makeCtx(adapter);
+    ctx.acpService = { getSession } as unknown as RouteContext["acpService"];
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      ctx,
+    );
+
+    expect(getSession).toHaveBeenCalledTimes(3);
+    expect(adapter.tryRetrieveCredential).toHaveBeenCalledTimes(1);
+    expect(status()).toBe(410);
+    expect(body()).toEqual({
+      error: "sub-agent session became inactive before credential delivery",
+      code: "session_not_active",
+    });
+    expect(JSON.stringify(body())).not.toContain("sk-must-not-leak");
+  });
+
   it("GET propagates a 410 when scope expired", async () => {
     const adapter = makeAdapter({
       tryRetrieveCredential: vi.fn().mockResolvedValue({ status: "expired" }),

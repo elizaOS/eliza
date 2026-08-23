@@ -70,7 +70,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
             1080×1240) where the OAuth / wallet rows fell below an unscrollable
             fold — see login-page.safe-area.test.tsx. */}
         <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
-          <div className="my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(0,0,0,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
+          <div className="my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(16,10,5,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
             {children}
           </div>
         </div>
@@ -119,7 +119,7 @@ function PublicLoginPage(): React.JSX.Element {
     return (
       <LoginBackground>
         <div className="space-y-6 text-center">
-          <CheckCircle2 className="mx-auto h-10 w-10 text-status-success" />
+          <CheckCircle2 className="mx-auto size-10 text-status-success" />
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.handoffCompleteTitle", {

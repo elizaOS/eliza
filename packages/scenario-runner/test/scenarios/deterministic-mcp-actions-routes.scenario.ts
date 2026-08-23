@@ -22,7 +22,7 @@ import mcpPlugin, {
   handleMcpRoutes,
   type McpRouteConfig,
 } from "../../../../plugins/plugin-mcp/src/index.ts";
-import type { McpService } from "../../../../plugins/plugin-mcp/src/service.ts";
+import { McpService } from "../../../../plugins/plugin-mcp/src/service.ts";
 import {
   MCP_SERVICE_NAME,
   type McpServer,
@@ -142,6 +142,27 @@ function unsupportedMcpEvaluationFixture(input: string, op: string) {
   };
 }
 
+function unsupportedMcpPostToolFixture(input: string, op: string) {
+  const text = `MCP op=${op} is only available in the cloud runtime.`;
+  return {
+    name: `mcp-unsupported-${op}-post-tool-${input}`,
+    match: {
+      modelType: ModelType.ACTION_PLANNER,
+      input: matchesScenarioInput(input),
+      toolNames: [],
+    },
+    response: {
+      text,
+      thought: `Report the ${op} local-runtime boundary.`,
+      messageToUser: text,
+      completed: true,
+      finishReason: "stop",
+      toolCalls: [],
+    },
+    times: 1,
+  };
+}
+
 type RuntimeWithMcpScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {
     plugins?: Plugin[];
@@ -169,6 +190,9 @@ type RouteStatusBody = {
 };
 
 let scenarioRuntime: RuntimeWithMcpScenario | null = null;
+let scenarioMcpService: McpService | null = null;
+let restoreMcpGetService: (() => void) | null = null;
+let previousMcpEvaluators: RuntimeWithMcpScenario["evaluators"] | null = null;
 
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -504,11 +528,23 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithMcpScenario | undefined;
   if (!runtime) return "scenario runtime was not available";
   scenarioRuntime = runtime;
+  previousMcpEvaluators = runtime.evaluators;
+  runtime.evaluators = [];
   if (!fixtureSource.includes(RESOURCE_TEXT)) {
     return `MCP fixture source does not contain ${RESOURCE_TEXT}`;
   }
 
   runtime.setSetting("mcp", mcpConfig().mcp, false);
+  const originalGetService = runtime.getService.bind(runtime);
+  await originalGetService<McpService>(MCP_SERVICE_NAME)?.stop();
+  scenarioMcpService = await McpService.start(runtime);
+  runtime.getService = ((serviceType: string) =>
+    serviceType === MCP_SERVICE_NAME
+      ? scenarioMcpService
+      : originalGetService(serviceType)) as typeof runtime.getService;
+  restoreMcpGetService = () => {
+    runtime.getService = originalGetService as typeof runtime.getService;
+  };
   registerStrictActionRouteFixtures(runtime, strictMcpRoutes);
   runtime.scenarioModelFixtures?.register(
     {
@@ -579,6 +615,12 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
     ),
     unsupportedMcpEvaluationFixture(searchActionsInput, "search_actions"),
     unsupportedMcpEvaluationFixture(listConnectionsInput, "list_connections"),
+    unsupportedMcpPostToolFixture(
+      parentListConnectionsInput,
+      "list_connections",
+    ),
+    unsupportedMcpPostToolFixture(searchActionsInput, "search_actions"),
+    unsupportedMcpPostToolFixture(listConnectionsInput, "list_connections"),
   );
 
   const registered = (runtime.plugins ?? []).some(
@@ -587,10 +629,7 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   if (!registered) {
     await runtime.registerPlugin(mcpPlugin);
   }
-  const service =
-    ((await runtime.getServiceLoadPromise?.(MCP_SERVICE_NAME)) as
-      | McpService
-      | undefined) ?? runtime.getService<McpService>(MCP_SERVICE_NAME);
+  const service = scenarioMcpService;
   await service?.waitForInitialization?.();
   const server = service
     ?.getServers()
@@ -653,7 +692,6 @@ async function finalMcpCheck(
   if (readPath(server.resources?.[0], "uri") !== RESOURCE_URI) {
     return `expected MCP resource uri ${RESOURCE_URI}, saw ${stableStringify(server.resources)}`;
   }
-  await service.stop();
   return undefined;
 }
 
@@ -765,6 +803,22 @@ export default scenario({
       type: "custom",
       name: "real MCP stdio service discovered the fixture tool and resource",
       predicate: finalMcpCheck,
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "stop scenario MCP service and restore runtime service lookup",
+      apply: async () => {
+        if (scenarioRuntime && previousMcpEvaluators !== null) {
+          scenarioRuntime.evaluators = previousMcpEvaluators;
+          previousMcpEvaluators = null;
+        }
+        await scenarioMcpService?.stop();
+        scenarioMcpService = null;
+        restoreMcpGetService?.();
+        restoreMcpGetService = null;
+      },
     },
   ],
 });

@@ -540,7 +540,7 @@ function LocalWebsiteBlockingCard({
   if (loading) {
     return (
       <p className="py-4 text-center text-xs text-muted">
-        Loading website blocking...
+        Loading website blocking…
       </p>
     );
   }

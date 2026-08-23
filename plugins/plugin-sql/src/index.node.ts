@@ -54,7 +54,8 @@ import {
 import { identityPersonLinkRoutes } from "./routes/identity-person-link";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
-import { SqlIdentityResolutionService } from "./services/sql-identity-resolution";
+import { SqlMembershipService } from "./services/sql-membership";
+import { SqlPrincipalService } from "./services/sql-principal";
 import { stringToUuid } from "./utils/string-to-uuid";
 import { resolvePgliteDir } from "./utils.node.ts";
 
@@ -181,7 +182,7 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
-  services: [AdvancedMemoryStorageService, SqlIdentityResolutionService],
+  services: [AdvancedMemoryStorageService, SqlPrincipalService, SqlMembershipService],
   routes: [...identityPersonLinkRoutes],
   init: async (_config, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
@@ -257,10 +258,11 @@ export {
   uninstallRLS,
 } from "./rls";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+export { SqlMembershipService } from "./services/sql-membership";
 export {
   computeIdentityRequestDigest,
-  SqlIdentityResolutionService,
-} from "./services/sql-identity-resolution";
+  SqlPrincipalService,
+} from "./services/sql-principal";
 
 /**
  * Query the live Electric Sync status from the global PGliteClientManager

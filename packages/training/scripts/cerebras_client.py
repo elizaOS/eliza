@@ -36,6 +36,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from lib.generation_integrity import require_complete_generation
+
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_MODEL = "gpt-oss-120b"
 
@@ -121,19 +123,11 @@ class CerebrasClient:
         resp = self._post("/chat/completions", payload)
         try:
             choice = resp["choices"][0]
+            require_complete_generation(choice, source="cerebras.chat")
             msg = choice["message"]
             content = msg.get("content")
         except (KeyError, IndexError, TypeError) as exc:
             raise CerebrasError(f"unexpected response shape: {json.dumps(resp)[:500]}") from exc
-        if (not isinstance(content, str) or not content.strip()) and choice.get("finish_reason") == "length":
-            # gpt-oss-120b is a reasoning model: it spends tokens in `reasoning`
-            # then emits the answer in `content`. Hitting the cap mid-thought
-            # leaves content empty — surface that clearly so the caller can
-            # retry with a higher max_tokens rather than treating it as content.
-            raise CerebrasError(
-                "Cerebras completion truncated before the answer (finish_reason=length); "
-                f"raise max_tokens (was {max_tokens})."
-            )
         if not isinstance(content, str) or not content.strip():
             raise CerebrasError(f"Cerebras returned an empty completion: {json.dumps(resp)[:300]}")
         return content

@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from lib.generation_integrity import require_complete_generation
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
@@ -134,13 +136,6 @@ def _format_numeric_value(value: Any) -> str:
     if number.is_integer():
         return str(int(number))
     return f"{number:.2f}".rstrip("0").rstrip(".")
-
-
-def _shorten_text(value: str, limit: int) -> str:
-    text = value.strip()
-    if len(text) <= limit:
-        return text
-    return text[: max(limit - 3, 1)].rstrip() + "..."
 
 
 def _is_trade_action_type(action_type: str | None) -> bool:
@@ -273,63 +268,19 @@ def _build_trade_training_prompt(
     step: dict[str, Any],
     llm_call: dict[str, Any] | None,
 ) -> str:
-    prompt_lines: list[str] = []
-    seen_lines: set[str] = set()
-
-    env = _as_dict(step.get("environmentState", step.get("environment_state", {})))
-    if env:
-        summary_line = (
-            f"Balance: ${_format_numeric_value(env.get('agentBalance', env.get('agent_balance', 0)))}. "
-            f"Lifetime P&L: ${_format_numeric_value(env.get('agentPnL', env.get('agent_pnl', 0)))}. "
-            f"Open positions: {env.get('openPositions', env.get('open_positions', 0))}."
-        )
-        prompt_lines.append(summary_line)
-        seen_lines.add(summary_line)
-
     raw_prompt = ""
     if llm_call:
         raw_prompt = str(llm_call.get("userPrompt", llm_call.get("user_prompt", "")) or "")
+    if raw_prompt.strip():
+        return raw_prompt.strip()
 
-    action = _as_dict(step.get("action"))
-    params = _as_dict(action.get("parameters"))
-    target_market_id = str(params.get("marketId") or "").strip()
-    target_ticker = str(params.get("ticker") or params.get("symbol") or "").strip().upper()
-
-    interesting_lines: list[str] = []
-    for line in raw_prompt.splitlines():
-        stripped = " ".join(line.split())
-        if not stripped:
-            continue
-        lowered = stripped.lower()
-        if stripped.startswith("#"):
-            continue
-        keep_line = False
-        if (
-            "balance:" in lowered or "p&l" in lowered or "open positions" in lowered
-        ) and stripped not in seen_lines:
-            keep_line = True
-        elif stripped.startswith("⚠") or stripped.startswith("💡"):
-            keep_line = True
-        elif target_market_id and target_market_id in stripped:
-            keep_line = True
-        elif target_ticker and target_ticker in stripped:
-            keep_line = True
-        elif not target_market_id and not target_ticker and "market #1" in lowered:
-            keep_line = True
-
-        if keep_line and stripped not in seen_lines:
-            interesting_lines.append(stripped)
-            seen_lines.add(stripped)
-        if len("\n".join(interesting_lines)) >= 240 or len(interesting_lines) >= 4:
-            break
-
-    if interesting_lines:
-        prompt_lines.extend(interesting_lines[:4])
-    elif raw_prompt.strip():
-        prompt_lines.append(_shorten_text(" ".join(raw_prompt.split()), limit=220))
-
-    prompt_lines.append("What trade do you place next?")
-    return "\n".join(prompt_lines)
+    env = _as_dict(step.get("environmentState", step.get("environment_state", {})))
+    return (
+        f"Balance: ${_format_numeric_value(env.get('agentBalance', env.get('agent_balance', 0)))}. "
+        f"Lifetime P&L: ${_format_numeric_value(env.get('agentPnL', env.get('agent_pnl', 0)))}. "
+        f"Open positions: {env.get('openPositions', env.get('open_positions', 0))}.\n"
+        "What trade do you place next?"
+    )
 
 
 def _build_trade_canonical_sample(
@@ -383,9 +334,6 @@ def _extract_trade_canonical_samples(
         action_type = str(action.get("actionType", action.get("action_type", ""))).strip()
         if _is_trade_action_type(action_type):
             trade_steps.append(step)
-
-    if max_examples_per_trajectory > 0:
-        trade_steps = trade_steps[-max_examples_per_trajectory:]
 
     samples: list[dict[str, Any]] = []
     for step in trade_steps:
@@ -667,9 +615,6 @@ def _extract_trust_canonical_samples(
         if _looks_like_trust_interaction(step, llm_call):
             trust_steps.append(step)
 
-    if max_examples_per_trajectory > 0:
-        trust_steps = trust_steps[-max_examples_per_trajectory:]
-
     samples: list[dict[str, Any]] = []
     for step in trust_steps:
         sample = _build_trust_canonical_sample(traj, step)
@@ -694,9 +639,6 @@ def _extract_trust_natural_samples(
         llm_call = _select_primary_llm_call(step)
         if _looks_like_trust_interaction(step, llm_call):
             trust_steps.append(step)
-
-    if max_examples_per_trajectory > 0:
-        trust_steps = trust_steps[-max_examples_per_trajectory:]
 
     samples: list[dict[str, Any]] = []
     for step in trust_steps:
@@ -794,15 +736,17 @@ class TinkerTrainingConfig(BaseModel):
     min_agents_per_window: int = Field(default=2, description="Minimum agents per window")
     min_actions_per_trajectory: int = Field(default=3, description="Minimum actions per trajectory")
     max_steps_per_trajectory: int = Field(
-        default=20, description="Max steps to include per trajectory"
+        default=20,
+        description="Deprecated compatibility field; complete trajectories are retained",
     )
     max_trajectories: int = Field(
-        default=1000, description="Maximum trajectories to load (prevents OOM)"
+        default=1000,
+        description="Deprecated compatibility field; complete snapshot is paged",
     )
     max_token_length: int = Field(default=4096, description="Maximum sequence length")
     max_trade_examples_per_trajectory: int = Field(
         default=3,
-        description="Maximum recent trade decisions to learn from per trajectory",
+        description="Deprecated compatibility field; every trade decision is retained",
     )
     alignment_passes: int = Field(
         default=2,
@@ -1003,48 +947,53 @@ class FeedTinkerTrainer:
         from datetime import timedelta
 
         logger.info(
-            f"Loading trajectories (lookback={self.config.lookback_hours}h, "
-            f"max={self.config.max_trajectories})"
+            f"Loading complete trajectory snapshot (lookback={self.config.lookback_hours}h)"
         )
 
         async with self._db_pool.acquire() as conn:
-            # First check available trajectories
-            try:
+            rows = []
+            page_size = 1_000
+            async with conn.transaction(isolation="repeatable_read", readonly=True):
                 count_row = await conn.fetchrow("""
                     SELECT COUNT(*) as total FROM trajectories WHERE "isTrainingData" = true
                 """)
                 total_count = count_row["total"] if count_row else 0
                 logger.info(f"Database has {total_count} total training trajectories")
-            except Exception as e:
-                logger.warning(f"Could not get trajectory count: {e}")
 
-            rows = await conn.fetch(
-                """
-                SELECT
-                    t."trajectoryId",
-                    t."agentId",
-                    t."windowId",
-                    t."scenarioId",
-                    t."stepsJson",
-                    t."finalPnL",
-                    t."episodeLength",
-                    t."totalReward",
-                    u.username as agent_name
-                FROM trajectories t
-                LEFT JOIN "User" u ON t."agentId" = u.id
-                WHERE
-                    t."createdAt" > NOW() - $1::interval
-                    AND t."stepsJson" IS NOT NULL
-                    AND t."stepsJson"::text != 'null'
-                    AND t."stepsJson"::text != '[]'
-                    AND t."episodeLength" >= $2
-                ORDER BY t."createdAt" DESC
-                LIMIT $3
-                """,
-                timedelta(hours=self.config.lookback_hours),
-                self.config.min_actions_per_trajectory,
-                self.config.max_trajectories,
-            )
+                offset = 0
+                while True:
+                    page = await conn.fetch(
+                        """
+                        SELECT
+                            t."trajectoryId",
+                            t."agentId",
+                            t."windowId",
+                            t."scenarioId",
+                            t."stepsJson",
+                            t."finalPnL",
+                            t."episodeLength",
+                            t."totalReward",
+                            u.username as agent_name
+                        FROM trajectories t
+                        LEFT JOIN "User" u ON t."agentId" = u.id
+                        WHERE
+                            t."createdAt" > NOW() - $1::interval
+                            AND t."stepsJson" IS NOT NULL
+                            AND t."stepsJson"::text != 'null'
+                            AND t."stepsJson"::text != '[]'
+                            AND t."episodeLength" >= $2
+                        ORDER BY t."createdAt" DESC, t."trajectoryId" DESC
+                        LIMIT $3 OFFSET $4
+                        """,
+                        timedelta(hours=self.config.lookback_hours),
+                        self.config.min_actions_per_trajectory,
+                        page_size,
+                        offset,
+                    )
+                    rows.extend(page)
+                    if len(page) < page_size:
+                        break
+                    offset += len(page)
 
         logger.info(f"Fetched {len(rows)} trajectories from database")
 
@@ -1101,11 +1050,6 @@ Your goal is to make profitable trading decisions based on market analysis."""
 
         # Convert steps
         steps = traj.get("steps", [])
-        max_steps = self.config.max_steps_per_trajectory
-
-        if len(steps) > max_steps:
-            steps = steps[-max_steps:]
-
         for step_idx, step in enumerate(steps):
             if not isinstance(step, dict):
                 continue
@@ -1222,7 +1166,10 @@ Your goal is to make profitable trading decisions based on market analysis."""
         )
 
         # Parse response
-        content = response.choices[0].message.content or ""
+        choice = require_complete_generation(
+            response.choices[0], source="tinker_trainer.judge"
+        )
+        content = choice.message.content or ""
         try:
             # Clean and parse JSON
             clean = content.strip().replace("```json", "").replace("```", "")

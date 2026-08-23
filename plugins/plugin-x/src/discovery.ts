@@ -8,6 +8,7 @@
 import {
   createUniqueUuid,
   ElizaError,
+  type GenerateTextResult,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -16,7 +17,9 @@ import {
 import type { ClientBase, TwitterAccountSession } from "./base";
 import type { Client, Tweet } from "./client/index";
 import { SearchMode } from "./client/index";
+import { TWEET_MAX_LENGTH } from "./constants";
 import { getRandomInterval } from "./environment";
+import { countTwitterWeightedLength } from "./tweet-length";
 import type { TwitterClientState } from "./types";
 import { createMemorySafe, ensureTwitterContext } from "./utils/memory";
 import { getSetting } from "./utils/settings";
@@ -34,6 +37,65 @@ interface DiscoveryConfig {
   likeThreshold: number;
   replyThreshold: number;
   quoteThreshold: number;
+}
+
+const COMPLETION_LIMIT_REASON =
+  /\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/iu;
+
+function extractDraftText(result: string | GenerateTextResult): string {
+  if (typeof result === "string") return result;
+
+  const finishReason = result.finishReason?.trim() ?? "";
+  if (COMPLETION_LIMIT_REASON.test(finishReason)) {
+    throw new ElizaError(
+      `X draft generation stopped at the provider completion limit (${finishReason})`,
+      {
+        code: "X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED",
+        context: { finishReason },
+      },
+    );
+  }
+
+  if (typeof result.text === "string" && result.text.trim().length > 0) {
+    return result.text;
+  }
+  if (typeof result.content === "string" && result.content.trim().length > 0) {
+    return result.content;
+  }
+  if (Array.isArray(result.content)) {
+    const contentText = result.content
+      .filter(
+        (part) =>
+          part.type === undefined ||
+          part.type === "text" ||
+          part.type === "output_text",
+      )
+      .map((part) => part.text ?? part.content ?? "")
+      .join("");
+    if (contentText.trim().length > 0) return contentText;
+  }
+  if (typeof result.response === "string") return result.response;
+  return result.text;
+}
+
+function validateCompleteDraft(result: string | GenerateTextResult): string {
+  const text = extractDraftText(result).trim();
+  if (text.length === 0) {
+    throw new ElizaError("X draft generation returned no complete text", {
+      code: "X_DISCOVERY_DRAFT_EMPTY",
+    });
+  }
+  const weightedLength = countTwitterWeightedLength(text);
+  if (weightedLength > TWEET_MAX_LENGTH) {
+    throw new ElizaError(
+      `Generated X draft exceeds ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
+      {
+        code: "X_DISCOVERY_DRAFT_LENGTH_EXCEEDED",
+        context: { weightedLength, maxWeightedLength: TWEET_MAX_LENGTH },
+      },
+    );
+  }
+  return text;
 }
 
 interface ScoredTweet {
@@ -351,14 +413,43 @@ export class TwitterDiscoveryClient {
 
     // Sort by relevance score
     const sortedTweets = allTweets
-      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .sort((a, b) => {
+        const bScore =
+          typeof b.relevanceScore === "number" &&
+          Number.isFinite(b.relevanceScore)
+            ? b.relevanceScore
+            : 0;
+        const aScore =
+          typeof a.relevanceScore === "number" &&
+          Number.isFinite(a.relevanceScore)
+            ? a.relevanceScore
+            : 0;
+        return bScore - aScore || a.tweet.id.localeCompare(b.tweet.id);
+      })
       .slice(0, 50); // Top 50 tweets
 
     const sortedAccounts = Array.from(allAccounts.values())
-      .sort(
-        (a, b) =>
-          b.qualityScore * b.relevanceScore - a.qualityScore * a.relevanceScore,
-      )
+      .sort((a, b) => {
+        const bProd =
+          (typeof b.qualityScore === "number" && Number.isFinite(b.qualityScore)
+            ? b.qualityScore
+            : 0) *
+          (typeof b.relevanceScore === "number" &&
+          Number.isFinite(b.relevanceScore)
+            ? b.relevanceScore
+            : 0);
+        const aProd =
+          (typeof a.qualityScore === "number" && Number.isFinite(a.qualityScore)
+            ? a.qualityScore
+            : 0) *
+          (typeof a.relevanceScore === "number" &&
+          Number.isFinite(a.relevanceScore)
+            ? a.relevanceScore
+            : 0);
+        const bScore = Number.isFinite(bProd) ? bProd : 0;
+        const aScore = Number.isFinite(aProd) ? aProd : 0;
+        return bScore - aScore || a.user.id.localeCompare(b.user.id);
+      })
       .slice(0, 20); // Top 20 accounts
 
     return { tweets: sortedTweets, accounts: sortedAccounts };
@@ -704,9 +795,29 @@ export class TwitterDiscoveryClient {
 
     // Sort accounts by combined quality and relevance score
     const sortedAccounts = accounts.sort((a, b) => {
-      const scoreA = a.qualityScore + a.relevanceScore;
-      const scoreB = b.qualityScore + b.relevanceScore;
-      return scoreB - scoreA;
+      const qA =
+        typeof a.qualityScore === "number" && Number.isFinite(a.qualityScore)
+          ? a.qualityScore
+          : 0;
+      const rA =
+        typeof a.relevanceScore === "number" &&
+        Number.isFinite(a.relevanceScore)
+          ? a.relevanceScore
+          : 0;
+      const qB =
+        typeof b.qualityScore === "number" && Number.isFinite(b.qualityScore)
+          ? b.qualityScore
+          : 0;
+      const rB =
+        typeof b.relevanceScore === "number" &&
+        Number.isFinite(b.relevanceScore)
+          ? b.relevanceScore
+          : 0;
+      const scoreA = qA + rA;
+      const scoreB = qB + rB;
+      const validB = Number.isFinite(scoreB) ? scoreB : 0;
+      const validA = Number.isFinite(scoreA) ? scoreA : 0;
+      return validB - validA || a.user.id.localeCompare(b.user.id);
     });
 
     for (const scoredAccount of sortedAccounts) {
@@ -958,13 +1069,13 @@ Keep the reply:
 
 Reply:`;
 
-    const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-      maxTokens: 100,
+    const response = (await this.runtime.useModel(ModelType.TEXT_SMALL, {
+      messages: [{ role: "user", content: prompt }],
+      omitMaxTokens: true,
       temperature: 0.8,
-    });
+    })) as string | GenerateTextResult;
 
-    return response.trim();
+    return validateCompleteDraft(response);
   }
 
   private async generateQuote(tweet: DiscoveryTweet): Promise<string> {
@@ -996,13 +1107,13 @@ Create a quote tweet that:
 
 Quote tweet:`;
 
-    const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-      maxTokens: 100,
+    const response = (await this.runtime.useModel(ModelType.TEXT_SMALL, {
+      messages: [{ role: "user", content: prompt }],
+      omitMaxTokens: true,
       temperature: 0.8,
-    });
+    })) as string | GenerateTextResult;
 
-    return response.trim();
+    return validateCompleteDraft(response);
   }
 
   private async saveEngagementMemory(

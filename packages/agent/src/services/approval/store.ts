@@ -101,7 +101,6 @@ const VALID_ACTIONS: ReadonlySet<ApprovalAction> = new Set([
 const VALID_CHANNELS: ReadonlySet<ApprovalChannel> = new Set([
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "slack",
   "imessage",
@@ -1119,10 +1118,14 @@ export class PgApprovalQueue implements ApprovalQueue {
     if (filter.action !== null) {
       where.push(`action = ${sqlText(filter.action)}`);
     }
+    const limitClause =
+      typeof filter.limit === "number"
+        ? `LIMIT ${sqlInteger(filter.limit)}`
+        : "";
     const sql = `SELECT ${SELECT_COLUMNS} FROM approval_requests
       WHERE ${where.join(" AND ")}
       ORDER BY created_at DESC
-      LIMIT ${sqlInteger(filter.limit)}`;
+      ${limitClause}`;
     const rows = await executeRawSql(this.runtime, sql);
     return rows.map(rowToRequest);
   }

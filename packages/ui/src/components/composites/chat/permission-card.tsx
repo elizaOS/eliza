@@ -200,7 +200,7 @@ export function PermissionCard({
     >
       <header className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-txt-strong">{title}</h3>
-        <span className="rounded-full border border-border/50 px-2 py-0.5 text-[10px] font-medium uppercase text-muted">
+        <span className="rounded-full border border-border/50 px-2 py-0.5 text-2xs font-medium uppercase tracking-wider text-muted">
           {statusLabel(state)}
         </span>
       </header>
@@ -216,9 +216,9 @@ export function PermissionCard({
             size="sm"
             disabled
             data-testid="permission-card-primary"
-            title="Coming soon — requires app entitlement."
+            title="Coming soon: requires app entitlement."
           >
-            {labels.comingSoon ?? "Coming soon — requires app entitlement"}
+            {labels.comingSoon ?? "Coming soon: requires app entitlement"}
           </Button>
         ) : isRestrictedUnavailable || state.status === "not-applicable" ? (
           <Button
@@ -261,7 +261,7 @@ export function PermissionCard({
             disabled={checking || requesting}
             data-testid="permission-card-check-again"
           >
-            {checking ? "Checking..." : "Check again"}
+            {checking ? "Checking…" : "Check again"}
           </Button>
         ) : null}
         {fallbackOffered ? (

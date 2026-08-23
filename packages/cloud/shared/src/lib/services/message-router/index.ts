@@ -5,7 +5,7 @@
  * and handles sending responses back through the correct channel.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/core";
 import { createHash } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../../db/client";
@@ -16,7 +16,9 @@ import {
 } from "../../../db/repositories/phone-metadata-readers";
 import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
 import { agentPhoneNumbers, type PhoneMessageLog } from "../../../db/schemas/agent-phone-numbers";
+import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 import { logger } from "../../utils/logger";
+
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import {
   isPhoneMessagePersistenceFailure,
@@ -26,6 +28,25 @@ import {
   PHONE_MESSAGE_ROUTING_UNAVAILABLE_CODE,
   phoneErrorDiagnostic,
 } from "../phone-error-diagnostics";
+
+export const MESSAGE_ROUTER_TWILIO_TIMEOUT_MS = 30_000;
+const MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES = 64 * 1024;
+
+/**
+ * Bounds the router's Twilio REST hop through the shared provider transport so
+ * a hung or unbounded Twilio response cannot pin an outbound send.
+ */
+export function messageRouterTwilioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = MESSAGE_ROUTER_TWILIO_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedProviderFetch(input, init, {
+    provider: "twilio",
+    timeoutMs,
+    maxResponseBytes: MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES,
+  });
+}
 
 function isUndefinedTableError(error: unknown): boolean {
   return isPostgresUndefinedTableError(error);
@@ -67,6 +88,80 @@ export interface SendMessageParams {
   agentOrganizationId?: string;
   agentUserId?: string;
   contactDisplayName?: string;
+}
+
+export type MessageDeliveryOutcome =
+  | {
+      status: "delivered";
+      provider: SendMessageParams["provider"];
+      providerMessageIds: string[];
+    }
+  | {
+      status: "failed" | "uncertain";
+      provider: SendMessageParams["provider"] | "unknown";
+      code: string;
+      retryable: boolean;
+      providerStatus?: number;
+    };
+
+function deliveryFailed(
+  provider: MessageDeliveryOutcome["provider"],
+  code: string,
+  retryable: boolean,
+  providerStatus?: number,
+): MessageDeliveryOutcome {
+  return {
+    status: "failed",
+    provider,
+    code,
+    retryable,
+    ...(providerStatus === undefined ? {} : { providerStatus }),
+  };
+}
+
+function deliveryUncertain(
+  provider: SendMessageParams["provider"],
+  code: string,
+  providerStatus?: number,
+): MessageDeliveryOutcome {
+  return {
+    status: "uncertain",
+    provider,
+    code,
+    retryable: false,
+    ...(providerStatus === undefined ? {} : { providerStatus }),
+  };
+}
+
+function classifyProviderException(
+  provider: SendMessageParams["provider"],
+  error: unknown,
+): MessageDeliveryOutcome {
+  if (isElizaError(error) && error.code === "PROVIDER_REQUEST_REJECTED") {
+    const providerStatus =
+      typeof error.context?.status === "number" ? error.context.status : undefined;
+    if (providerStatus !== undefined && providerStatus >= 500) {
+      return deliveryUncertain(provider, "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN", providerStatus);
+    }
+    const retryable = error.context?.retryable === true;
+    return deliveryFailed(provider, "DELIVERY_PROVIDER_REJECTED", retryable, providerStatus);
+  }
+  if (isElizaError(error) && error.code === "PROVIDER_RECEIPT_INVALID") {
+    return deliveryUncertain(provider, "DELIVERY_RECEIPT_INVALID");
+  }
+  if (
+    isElizaError(error) &&
+    (error.code === "PROVIDER_RESPONSE_TOO_LARGE" || error.code === "CLOUD_REST_RESPONSE_TOO_LARGE")
+  ) {
+    return deliveryUncertain(provider, "DELIVERY_RESPONSE_TOO_LARGE");
+  }
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return deliveryUncertain(provider, "DELIVERY_TIMEOUT");
+  }
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return deliveryUncertain(provider, "DELIVERY_CANCELLED_AFTER_DISPATCH");
+  }
+  return deliveryUncertain(provider, "DELIVERY_TRANSPORT_UNCERTAIN");
 }
 
 function providerDiagnostic(value: unknown): string {
@@ -361,12 +456,12 @@ class MessageRouterService {
   /**
    * Send a message through the appropriate provider
    */
-  async sendMessage(params: SendMessageParams): Promise<boolean> {
+  async sendMessage(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
     if (!(["twilio", "blooio", "whatsapp"] as const).includes(params.provider)) {
       logger.error("[MessageRouter] Unsupported message provider", {
         organizationId: params.organizationId,
       });
-      return false;
+      return deliveryFailed("unknown", "DELIVERY_PROVIDER_UNSUPPORTED", false);
     }
     logger.info("[MessageRouter] Sending message", {
       provider: providerDiagnostic(params.provider),
@@ -375,14 +470,14 @@ class MessageRouterService {
 
     const contactRequired = this.contactWriteRequired(params);
 
-    const delivered =
+    const delivery =
       params.provider === "twilio"
         ? await this.sendViaTwilio(params)
         : params.provider === "blooio"
           ? await this.sendViaBlooio(params)
           : await this.sendViaWhatsApp(params);
-    if (!delivered) return false;
-    if (!contactRequired) return true;
+    if (delivery.status !== "delivered") return delivery;
+    if (!contactRequired) return delivery;
 
     try {
       await this.recordAgentPhoneContact(params);
@@ -395,7 +490,7 @@ class MessageRouterService {
         ...phoneErrorDiagnostic(error),
       });
     }
-    return true;
+    return delivery;
   }
 
   private normalizeContactIdentifier(value: string): string {
@@ -480,23 +575,26 @@ class MessageRouterService {
   /**
    * Send message via Twilio
    */
-  private async sendViaTwilio(params: SendMessageParams): Promise<boolean> {
+  private async sendViaTwilio(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
+    const { secretsService } = await import("../secrets");
+    const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = await import("../../constants/secrets");
+    let accountSid: string | null | undefined;
+    let authToken: string | null | undefined;
     try {
-      const { secretsService } = await import("../secrets");
+      accountSid = await secretsService.get(params.organizationId, TWILIO_ACCOUNT_SID);
+      authToken = await secretsService.get(params.organizationId, TWILIO_AUTH_TOKEN);
+    } catch (error) {
+      logger.error("[MessageRouter] Twilio credential lookup failed", phoneErrorDiagnostic(error));
+      return deliveryFailed("twilio", "DELIVERY_CREDENTIAL_LOOKUP_FAILED", true);
+    }
+    if (!accountSid || !authToken) {
+      logger.error("[MessageRouter] Missing Twilio credentials");
+      return deliveryFailed("twilio", "DELIVERY_CREDENTIALS_MISSING", false);
+    }
 
-      // Use secretsService.get() which looks up by (organizationId, secretName)
-      // Note: getDecryptedValue() takes (secretId, organizationId) - different signature
-      const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = await import("../../constants/secrets");
-      const accountSid = await secretsService.get(params.organizationId, TWILIO_ACCOUNT_SID);
-      const authToken = await secretsService.get(params.organizationId, TWILIO_AUTH_TOKEN);
-
-      if (!accountSid || !authToken) {
-        logger.error("[MessageRouter] Missing Twilio credentials");
-        return false;
-      }
-
+    try {
       // Twilio REST API
-      const response = await fetch(
+      const response = await messageRouterTwilioFetch(
         `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
         {
           method: "POST",
@@ -514,37 +612,70 @@ class MessageRouterService {
 
       if (!response.ok) {
         logger.error("[MessageRouter] Twilio API error", { status: response.status });
-        return false;
+        if (response.status >= 500) {
+          return deliveryUncertain(
+            "twilio",
+            "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+            response.status,
+          );
+        }
+        return deliveryFailed(
+          "twilio",
+          "DELIVERY_PROVIDER_REJECTED",
+          response.status === 429 || response.status >= 500,
+          response.status,
+        );
       }
 
+      let receipt: unknown;
+      try {
+        receipt = await response.json();
+      } catch {
+        return deliveryUncertain("twilio", "DELIVERY_RECEIPT_INVALID");
+      }
+      const sid =
+        receipt &&
+        typeof receipt === "object" &&
+        typeof (receipt as { sid?: unknown }).sid === "string"
+          ? (receipt as { sid: string }).sid.trim()
+          : "";
+      if (!sid) return deliveryUncertain("twilio", "DELIVERY_RECEIPT_INVALID");
+
       logger.info("[MessageRouter] Twilio message sent successfully");
-      return true;
+      return { status: "delivered", provider: "twilio", providerMessageIds: [sid] };
     } catch (error) {
-      // error-policy:J4 provider errors become a typed delivery outcome at the caller.
+      // error-policy:J4 the caller receives a typed outcome that preserves ambiguity.
       logger.error("[MessageRouter] Twilio send error", phoneErrorDiagnostic(error));
-      return false;
+      return classifyProviderException("twilio", error);
     }
   }
 
   /**
    * Send message via Blooio (iMessage)
    */
-  private async sendViaBlooio(params: SendMessageParams): Promise<boolean> {
+  private async sendViaBlooio(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
+    const { secretsService } = await import("../secrets");
+    const { BLOOIO_API_KEY } = await import("../../constants/secrets");
+    let apiKey: string | null | undefined;
     try {
-      const { secretsService } = await import("../secrets");
+      apiKey = await secretsService.get(params.organizationId, BLOOIO_API_KEY);
+    } catch (error) {
+      logger.error("[MessageRouter] Blooio credential lookup failed", phoneErrorDiagnostic(error));
+      return deliveryFailed("blooio", "DELIVERY_CREDENTIAL_LOOKUP_FAILED", true);
+    }
+    if (!apiKey) {
+      logger.error("[MessageRouter] Missing Blooio API key");
+      return deliveryFailed("blooio", "DELIVERY_CREDENTIALS_MISSING", false);
+    }
+
+    try {
       const { blooioApiRequest } = await import("../../utils/blooio-api");
-
-      // Use secretsService.get() which looks up by (organizationId, secretName)
-      const { BLOOIO_API_KEY } = await import("../../constants/secrets");
-      const apiKey = await secretsService.get(params.organizationId, BLOOIO_API_KEY);
-
-      if (!apiKey) {
-        logger.error("[MessageRouter] Missing Blooio API key");
-        return false;
-      }
-
       // Use the blooioApiRequest helper which uses the correct API base URL
-      await blooioApiRequest(
+      const receipt = await blooioApiRequest<{
+        id?: string;
+        message_id?: string;
+        message_ids?: string[];
+      }>(
         apiKey,
         "POST",
         `/chats/${encodeURIComponent(params.to)}/messages`,
@@ -557,12 +688,26 @@ class MessageRouterService {
         },
       );
 
+      const providerMessageIds = [
+        ...(Array.isArray(receipt.message_ids) ? receipt.message_ids : []),
+        receipt.message_id,
+        receipt.id,
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+      const uniqueProviderMessageIds = [...new Set(providerMessageIds.map((id) => id.trim()))];
+      if (uniqueProviderMessageIds.length === 0) {
+        return deliveryUncertain("blooio", "DELIVERY_RECEIPT_INVALID");
+      }
+
       logger.info("[MessageRouter] Blooio message sent successfully");
-      return true;
+      return {
+        status: "delivered",
+        provider: "blooio",
+        providerMessageIds: uniqueProviderMessageIds,
+      };
     } catch (error) {
-      // error-policy:J4 provider errors become a typed delivery outcome at the caller.
+      // error-policy:J4 the caller receives a typed outcome that preserves ambiguity.
       logger.error("[MessageRouter] Blooio send error", phoneErrorDiagnostic(error));
-      return false;
+      return classifyProviderException("blooio", error);
     }
   }
 
@@ -571,17 +716,18 @@ class MessageRouterService {
    * Tries org-specific credentials from secrets service first,
    * falls back to global elizaAppConfig for the public bot.
    */
-  private async sendViaWhatsApp(params: SendMessageParams): Promise<boolean> {
+  private async sendViaWhatsApp(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
+    const { sendWhatsAppMessage } = await import("../../utils/whatsapp-api");
+    const { secretsService } = await import("../secrets");
+    const { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = await import(
+      "../../constants/secrets"
+    );
+    let accessToken: string | null | undefined;
+    let phoneNumberId: string | null | undefined;
     try {
-      const { sendWhatsAppMessage } = await import("../../utils/whatsapp-api");
-      const { secretsService } = await import("../secrets");
-      const { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = await import(
-        "../../constants/secrets"
-      );
-
       // Try org-specific credentials first (from secrets service)
-      let accessToken = await secretsService.get(params.organizationId, WHATSAPP_ACCESS_TOKEN);
-      let phoneNumberId = await secretsService.get(params.organizationId, WHATSAPP_PHONE_NUMBER_ID);
+      accessToken = await secretsService.get(params.organizationId, WHATSAPP_ACCESS_TOKEN);
+      phoneNumberId = await secretsService.get(params.organizationId, WHATSAPP_PHONE_NUMBER_ID);
 
       // Fall back to global config (for eliza-app public bot)
       if (!accessToken || !phoneNumberId) {
@@ -589,27 +735,41 @@ class MessageRouterService {
         accessToken = accessToken || elizaAppConfig.whatsapp.accessToken;
         phoneNumberId = phoneNumberId || elizaAppConfig.whatsapp.phoneNumberId;
       }
+    } catch (error) {
+      logger.error("[MessageRouter] WhatsApp credential lookup failed", {
+        organizationId: params.organizationId,
+        ...phoneErrorDiagnostic(error),
+      });
+      return deliveryFailed("whatsapp", "DELIVERY_CREDENTIAL_LOOKUP_FAILED", true);
+    }
 
-      if (!accessToken || !phoneNumberId) {
-        logger.error("[MessageRouter] Missing WhatsApp credentials", {
-          organizationId: params.organizationId,
-        });
-        return false;
+    if (!accessToken || !phoneNumberId) {
+      logger.error("[MessageRouter] Missing WhatsApp credentials", {
+        organizationId: params.organizationId,
+      });
+      return deliveryFailed("whatsapp", "DELIVERY_CREDENTIALS_MISSING", false);
+    }
+
+    try {
+      const receipt = await sendWhatsAppMessage(accessToken, phoneNumberId, params.to, params.body);
+      const providerMessageIds = receipt.messages
+        .map((message) => message.id.trim())
+        .filter(Boolean);
+      if (providerMessageIds.length === 0) {
+        return deliveryUncertain("whatsapp", "DELIVERY_RECEIPT_INVALID");
       }
-
-      await sendWhatsAppMessage(accessToken, phoneNumberId, params.to, params.body);
 
       logger.info("[MessageRouter] WhatsApp message sent successfully", {
         organizationId: params.organizationId,
       });
-      return true;
+      return { status: "delivered", provider: "whatsapp", providerMessageIds };
     } catch (error) {
       // error-policy:J4 provider errors become a typed delivery outcome at the caller.
       logger.error("[MessageRouter] WhatsApp send error", {
         organizationId: params.organizationId,
         ...phoneErrorDiagnostic(error),
       });
-      return false;
+      return classifyProviderException("whatsapp", error);
     }
   }
 

@@ -26,6 +26,8 @@ export type {
   NewDockerNode,
 };
 
+export type NewDockerNodeInput = Omit<NewDockerNode, "current_node_history_id">;
+
 export interface NodeIncarnationCasInput {
   id: string;
   nodeId: string;
@@ -53,6 +55,7 @@ const DOCKER_NODE_IDENTITY_FIELDS = [
   "id",
   "node_id",
   "node_incarnation",
+  "current_node_history_id",
   "fleet_kind",
   "infrastructure_provider",
   "provider_server_id",
@@ -228,6 +231,11 @@ export class DockerNodesRepository {
     return r ?? null;
   }
 
+  /** Primary-authority lookup for decisions that must reject replica lag. */
+  async findByIdOnPrimary(id: string): Promise<DockerNode | null> {
+    return findDockerNodeByIdOnPrimary(id);
+  }
+
   /**
    * Find the least-loaded node that is enabled, healthy, and has available capacity.
    * Orders by (capacity - allocated_count) descending, picks the one with most room.
@@ -255,7 +263,12 @@ export class DockerNodesRepository {
   // WRITE OPERATIONS
   // ============================================================================
 
-  async create(data: NewDockerNode): Promise<DockerNode> {
+  async create(data: NewDockerNodeInput): Promise<DockerNode> {
+    if (Object.hasOwn(data, "current_node_history_id")) {
+      throw new AgentBackupSourceAuthorityError(
+        "Docker node creation cannot set trigger-owned current_node_history_id",
+      );
+    }
     const [r] = await dbWrite.insert(dockerNodes).values(data).returning();
     if (!r) throw new Error("Failed to create docker node record");
     return r;

@@ -177,6 +177,21 @@ type BrowserCompanionPendingPairingToken = {
   expiresAt: string | null;
 };
 
+export type BrowserCompanionRevocation = {
+  agentId: string;
+  ownerEntityId: string;
+  browser: BrowserBridgeCompanionStatus["browser"];
+  profileId: string;
+  companionId: string;
+  revokedAt: string;
+};
+
+const BROWSER_COMPANION_WILDCARD_PROFILE_ID = "*";
+
+export type BrowserCompanionPendingPromotionResult =
+  | { ok: true; companion: BrowserBridgeCompanionStatus }
+  | { ok: false; reason: "invalid" | "revoked" };
+
 function normalizeConnectorIdentityEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
@@ -1401,6 +1416,53 @@ const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER =
   "elizaos:life_workflow_runs:idempotency-backfill:v1";
 const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE = 500;
 
+const WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY = `SELECT
+       pg_catalog.pg_get_indexdef(index_catalog.indexrelid) AS indexdef,
+       index_catalog.indisunique AS is_unique,
+       index_catalog.indisvalid AS is_valid,
+       index_catalog.indisready AS is_ready
+  FROM pg_catalog.pg_index AS index_catalog
+  JOIN pg_catalog.pg_class AS index_class
+    ON index_class.oid = index_catalog.indexrelid
+  JOIN pg_catalog.pg_namespace AS index_namespace
+    ON index_namespace.oid = index_class.relnamespace
+  JOIN pg_catalog.pg_class AS table_class
+    ON table_class.oid = index_catalog.indrelid
+  JOIN pg_catalog.pg_namespace AS table_namespace
+    ON table_namespace.oid = table_class.relnamespace
+ WHERE index_namespace.nspname = 'app_lifeops'
+   AND index_class.relname = 'idx_life_workflow_runs_idempotency'
+   AND table_namespace.nspname = 'app_lifeops'
+   AND table_class.relname = 'life_workflow_runs'`;
+
+function assertWorkflowRunIdempotencyIndexDefinition(
+  rows: Array<Record<string, unknown>>,
+): void {
+  const indexDefinition =
+    typeof rows[0]?.indexdef === "string" ? rows[0].indexdef : "";
+  const indexDefinitionIsExpected =
+    rows[0]?.is_unique === true &&
+    rows[0]?.is_valid === true &&
+    rows[0]?.is_ready === true &&
+    /\bUNIQUE INDEX\b/i.test(indexDefinition) &&
+    /\(agent_id, workflow_id, idempotency_key\)/i.test(indexDefinition) &&
+    /WHERE \(idempotency_key IS NOT NULL\)/i.test(indexDefinition);
+  if (!indexDefinitionIsExpected) {
+    throw new ElizaError(
+      "[LifeOpsRepository] idx_life_workflow_runs_idempotency exists but is not the expected partial unique index or is not usable — drop or rename the conflicting index so the workflow-run claim election can be installed",
+      {
+        code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_INDEX_MISMATCH",
+        context: {
+          indexDefinition,
+          isUnique: rows[0]?.is_unique,
+          isValid: rows[0]?.is_valid,
+          isReady: rows[0]?.is_ready,
+        },
+      },
+    );
+  }
+}
+
 function assertValidWorkflowRunIdempotencyKey(
   idempotencyKey: string | null | undefined,
 ): void {
@@ -1632,6 +1694,48 @@ function parseBrowserCompanionCredential(
     pendingPairingTokens,
     pendingPairingTokenHashes: pendingPairingTokens.map((token) => token.hash),
   };
+}
+
+async function lockBrowserCompanionCredential(
+  tx: TransactionalDb,
+  companionsTable: string,
+  agentId: string,
+  companionId: string,
+): Promise<BrowserCompanionCredential | null> {
+  const rows = await executeRawSqlTx(
+    tx,
+    `SELECT *
+       FROM ${companionsTable}
+      WHERE agent_id = ${sqlQuote(agentId)}
+        AND id = ${sqlQuote(companionId)}
+      FOR UPDATE`,
+  );
+  return rows[0] ? parseBrowserCompanionCredential(rows[0]) : null;
+}
+
+async function browserCompanionRevocationExists(
+  tx: TransactionalDb,
+  args: {
+    agentId: string;
+    ownerEntityId: string;
+    browser: BrowserBridgeCompanionStatus["browser"];
+    profileId: string;
+  },
+): Promise<boolean> {
+  const rows = await executeRawSqlTx(
+    tx,
+    `SELECT 1
+       FROM app_lifeops.life_browser_companion_revocations
+      WHERE agent_id = ${sqlQuote(args.agentId)}
+        AND owner_entity_id = ${sqlQuote(args.ownerEntityId)}
+        AND browser = ${sqlQuote(args.browser)}
+        AND profile_id IN (
+          ${sqlQuote(args.profileId)},
+          ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)}
+        )
+      LIMIT 1`,
+  );
+  return rows.length > 0;
 }
 
 function parseBrowserTabSummary(
@@ -2715,6 +2819,12 @@ export class LifeOpsRepository {
         LIMIT 1`;
     const markerRows = await executeRawSql(runtime, markerQuery);
     if (markerRows.length > 0) {
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSql(
+          runtime,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
+      );
       return;
     }
     await executeRawSql(
@@ -2729,6 +2839,12 @@ export class LifeOpsRepository {
         "LOCK TABLE app_lifeops.life_workflow_runs IN SHARE ROW EXCLUSIVE MODE",
       );
       if ((await executeRawSqlTx(tx, markerQuery)).length > 0) {
+        assertWorkflowRunIdempotencyIndexDefinition(
+          await executeRawSqlTx(
+            tx,
+            WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+          ),
+        );
         return;
       }
       await executeRawSqlTx(
@@ -2875,6 +2991,18 @@ export class LifeOpsRepository {
            agent_id, workflow_id, idempotency_key
          )
         WHERE idempotency_key IS NOT NULL`,
+      );
+      // `IF NOT EXISTS` silently accepts any pre-existing index with this
+      // name. A foreign non-unique (or wrong-column/predicate) index would
+      // pass creation and then be stamped as the durable completion marker
+      // while electing nothing. Verify the live definition before stamping;
+      // the transaction rolls back on mismatch so a later boot retries after
+      // the operator drops or renames the conflicting index.
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSqlTx(
+          tx,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
       );
       await executeRawSqlTx(
         tx,
@@ -6807,7 +6935,10 @@ export class LifeOpsRepository {
    * Atomically reserve a workflow run before any workflow step can perform a
    * side effect. The unique `(agent, workflow, idempotency key)` index elects
    * one cross-process winner; PostgreSQL NULL semantics keep unkeyed runs
-   * independent.
+   * independent. The conflict target names that partial index explicitly so a
+   * table missing the index raises ("no unique or exclusion constraint
+   * matching the ON CONFLICT specification") instead of letting every
+   * claimant insert-win and duplicate external workflow execution.
    */
   async claimWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
     assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
@@ -6840,7 +6971,9 @@ export class LifeOpsRepository {
         ${sqlJson(run.result)},
         ${sqlText(run.auditRef)}
       )
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (agent_id, workflow_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+      DO NOTHING
       RETURNING id`,
     );
     return rows.length === 1;
@@ -7583,81 +7716,155 @@ export class LifeOpsRepository {
     );
   }
 
-  async updateBrowserCompanionPairingToken(
-    agentId: string,
-    companionId: string,
-    pairingTokenHash: string,
-    pairingTokenExpiresAt: string | null,
-    pairedAt: string,
-    updatedAt: string,
-  ): Promise<void> {
+  async updateBrowserCompanionPairingToken(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companionId: string;
+    browser: BrowserBridgeCompanionStatus["browser"];
+    profileId: string;
+    pairingTokenHash: string;
+    pairingTokenExpiresAt: string | null;
+    pairedAt: string;
+    updatedAt: string;
+  }): Promise<boolean> {
     const companionsTable = await resolveBrowserBridgeTable(
       this.runtime,
       "companions",
     );
-    await executeRawSql(
-      this.runtime,
-      `UPDATE ${companionsTable}
-          SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
-              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
-              pairing_token_revoked_at = NULL,
-              pending_pairing_token_hashes_json = '[]',
-              paired_at = ${sqlQuote(pairedAt)},
-              updated_at = ${sqlQuote(updatedAt)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(companionId)}`,
-    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companionId,
+      );
+      if (!credential) return false;
+      if (await browserCompanionRevocationExists(tx, args)) return false;
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_hash = ${sqlQuote(args.pairingTokenHash)},
+                pairing_token_expires_at = ${sqlText(args.pairingTokenExpiresAt)},
+                pairing_token_revoked_at = NULL,
+                pending_pairing_token_hashes_json = '[]',
+                paired_at = ${sqlQuote(args.pairedAt)},
+                updated_at = ${sqlQuote(args.updatedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND id = ${sqlQuote(args.companionId)}`,
+      );
+      return true;
+    });
   }
 
-  async updateBrowserCompanionPendingPairingTokenHashes(
-    agentId: string,
-    companionId: string,
-    pendingPairingTokenHashes: Array<
-      string | { hash: string; expiresAt?: string | null }
-    >,
-    updatedAt: string,
-  ): Promise<void> {
+  async updateBrowserCompanionPendingPairingTokenHashes(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companionId: string;
+    browser: BrowserBridgeCompanionStatus["browser"];
+    profileId: string;
+    pairingTokenHash: string;
+    pairingTokenExpiresAt: string | null;
+    updatedAt: string;
+  }): Promise<boolean> {
     const companionsTable = await resolveBrowserBridgeTable(
       this.runtime,
       "companions",
     );
-    await executeRawSql(
-      this.runtime,
-      `UPDATE ${companionsTable}
-          SET pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
-              updated_at = ${sqlQuote(updatedAt)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(companionId)}`,
-    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companionId,
+      );
+      if (!credential) return false;
+      if (await browserCompanionRevocationExists(tx, args)) return false;
+      const pendingPairingTokens = [
+        {
+          hash: args.pairingTokenHash,
+          expiresAt: args.pairingTokenExpiresAt,
+        },
+        ...credential.pendingPairingTokens,
+      ]
+        .filter(
+          (candidate, index, candidates) =>
+            candidate.hash !== credential.pairingTokenHash &&
+            candidates.findIndex((other) => other.hash === candidate.hash) ===
+              index,
+        )
+        .slice(0, 4);
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokens)},
+                updated_at = ${sqlQuote(args.updatedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND id = ${sqlQuote(args.companionId)}`,
+      );
+      return true;
+    });
   }
 
-  async promoteBrowserCompanionPendingPairingToken(
-    agentId: string,
-    companionId: string,
-    pairingTokenHash: string,
-    pendingPairingTokenHashes: Array<
-      string | { hash: string; expiresAt?: string | null }
-    >,
-    pairingTokenExpiresAt: string | null,
-    pairedAt: string,
-    updatedAt: string,
-  ): Promise<void> {
+  async promoteBrowserCompanionPendingPairingToken(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companionId: string;
+    pairingTokenHash: string;
+    pairedAt: string;
+    updatedAt: string;
+  }): Promise<BrowserCompanionPendingPromotionResult> {
     const companionsTable = await resolveBrowserBridgeTable(
       this.runtime,
       "companions",
     );
-    await executeRawSql(
-      this.runtime,
-      `UPDATE ${companionsTable}
-          SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
-              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
-              pairing_token_revoked_at = NULL,
-              pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
-              paired_at = ${sqlQuote(pairedAt)},
-              updated_at = ${sqlQuote(updatedAt)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(companionId)}`,
-    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companionId,
+      );
+      if (!credential) return { ok: false, reason: "invalid" };
+      if (
+        credential.companion.pairingTokenRevokedAt ||
+        (await browserCompanionRevocationExists(tx, {
+          agentId: args.agentId,
+          ownerEntityId: args.ownerEntityId,
+          browser: credential.companion.browser,
+          profileId: credential.companion.profileId,
+        }))
+      ) {
+        return { ok: false, reason: "revoked" };
+      }
+      const promoted = credential.pendingPairingTokens.find(
+        (candidate) => candidate.hash === args.pairingTokenHash,
+      );
+      if (!promoted) return { ok: false, reason: "invalid" };
+      const remainingPendingPairingTokens =
+        credential.pendingPairingTokens.filter(
+          (candidate) => candidate.hash !== args.pairingTokenHash,
+        );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_hash = ${sqlQuote(args.pairingTokenHash)},
+                pairing_token_expires_at = ${sqlText(promoted.expiresAt)},
+                pending_pairing_token_hashes_json = ${sqlJson(remainingPendingPairingTokens)},
+                paired_at = ${sqlQuote(args.pairedAt)},
+                updated_at = ${sqlQuote(args.updatedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND id = ${sqlQuote(args.companionId)}`,
+      );
+      return {
+        ok: true,
+        companion: {
+          ...credential.companion,
+          pairingTokenExpiresAt: promoted.expiresAt,
+          pairedAt: args.pairedAt,
+          updatedAt: args.updatedAt,
+        },
+      };
+    });
   }
 
   async revokeBrowserCompanionPairingToken(
@@ -7679,6 +7886,149 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(companionId)}`,
     );
+  }
+
+  async getBrowserCompanionRevocation(
+    agentId: string,
+    ownerEntityId: string,
+    browser: BrowserBridgeCompanionStatus["browser"],
+    profileId: string,
+  ): Promise<BrowserCompanionRevocation | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT agent_id, owner_entity_id, browser, profile_id, companion_id, revoked_at
+         FROM app_lifeops.life_browser_companion_revocations
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND owner_entity_id = ${sqlQuote(ownerEntityId)}
+          AND browser = ${sqlQuote(browser)}
+          AND profile_id IN (
+            ${sqlQuote(profileId)},
+            ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)}
+          )
+        ORDER BY CASE WHEN profile_id = ${sqlQuote(profileId)} THEN 0 ELSE 1 END
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row
+      ? {
+          agentId: toText(row.agent_id),
+          ownerEntityId: toText(row.owner_entity_id),
+          browser: toText(
+            row.browser,
+          ) as BrowserBridgeCompanionStatus["browser"],
+          profileId: toText(row.profile_id),
+          companionId: toText(row.companion_id),
+          revokedAt: toText(row.revoked_at),
+        }
+      : null;
+  }
+
+  async revokeBrowserCompanionWithTombstone(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companion: BrowserBridgeCompanionStatus;
+    revokedAt: string;
+  }): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
+    await withTransaction(this.runtime, async (tx) => {
+      await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companion.id,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_revoked_at = ${sqlQuote(args.revokedAt)},
+                pending_pairing_token_hashes_json = '[]',
+                connection_state = 'disconnected',
+                updated_at = ${sqlQuote(args.revokedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND id = ${sqlQuote(args.companion.id)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_browser_companion_revocations (
+           agent_id, owner_entity_id, browser, profile_id, companion_id,
+           revoked_at, created_at, updated_at
+         ) VALUES (
+           ${sqlQuote(args.agentId)},
+           ${sqlQuote(args.ownerEntityId)},
+           ${sqlQuote(args.companion.browser)},
+           ${sqlQuote(args.companion.profileId)},
+           ${sqlQuote(args.companion.id)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)}
+         ), (
+           ${sqlQuote(args.agentId)},
+           ${sqlQuote(args.ownerEntityId)},
+           ${sqlQuote(args.companion.browser)},
+           ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)},
+           ${sqlQuote(args.companion.id)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)}
+         )
+         ON CONFLICT (agent_id, owner_entity_id, browser, profile_id)
+         DO UPDATE SET
+           companion_id = excluded.companion_id,
+           revoked_at = excluded.revoked_at,
+           updated_at = excluded.updated_at`,
+      );
+    });
+  }
+
+  async resetBrowserCompanionRevocation(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companion: BrowserBridgeCompanionStatus;
+    resetAt: string;
+  }): Promise<boolean> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companion.id,
+      );
+      if (!credential) return false;
+      const deleted = await executeRawSqlTx(
+        tx,
+        `DELETE FROM app_lifeops.life_browser_companion_revocations
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND owner_entity_id = ${sqlQuote(args.ownerEntityId)}
+            AND browser = ${sqlQuote(args.companion.browser)}
+          RETURNING revoked_at`,
+      );
+      if (deleted.length === 0) return false;
+      // A wildcard tombstone deliberately makes revocation browser-wide so a
+      // reinstall cannot evade it with a new profile identifier. Reset must
+      // therefore clear that browser's exact and wildcard rows atomically;
+      // reporting a per-profile success while the wildcard survives would
+      // leave the requested profile unusable.
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_hash = NULL,
+                pairing_token_expires_at = NULL,
+                pairing_token_revoked_at = NULL,
+                pending_pairing_token_hashes_json = '[]',
+                connection_state = 'disconnected',
+                updated_at = ${sqlQuote(args.resetAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND browser = ${sqlQuote(args.companion.browser)}`,
+      );
+      return true;
+    });
   }
 
   async listBrowserCompanions(

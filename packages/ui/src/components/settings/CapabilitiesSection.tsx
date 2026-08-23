@@ -79,11 +79,10 @@ type CapabilityRouterConnectResponse = {
   mode?:
     | "endpoint"
     | "cloud"
-    | "e2b"
     | "home-machine"
     | "mobile-companion"
     | "desktop-companion";
-  provider?: "e2b" | "home-machine" | "mobile-companion" | "desktop-companion";
+  provider?: "home-machine" | "mobile-companion" | "desktop-companion";
   agentId?: string;
   endpoint?: {
     id?: string;
@@ -113,7 +112,7 @@ export function CapabilitiesSection() {
   const [capabilityConnectMode, setCapabilityConnectMode] =
     useState<CapabilityConnectMode>("endpoint");
   const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
-    "direct" | "e2b" | "home-machine" | "mobile-companion" | "desktop-companion"
+    "direct" | "home-machine" | "mobile-companion" | "desktop-companion"
   >("direct");
   const [capabilityEndpointUrl, setCapabilityEndpointUrl] = useState("");
   const [capabilityEndpointId, setCapabilityEndpointId] = useState("");
@@ -446,7 +445,7 @@ export function CapabilitiesSection() {
                   value: "endpoint",
                   label: (
                     <span className="inline-flex items-center gap-1.5">
-                      <PlugZap className="h-4 w-4" aria-hidden />
+                      <PlugZap className="size-4" aria-hidden />
                       {t("capabilities.mode.endpoint", {
                         defaultValue: "Endpoint",
                       })}
@@ -457,7 +456,7 @@ export function CapabilitiesSection() {
                   value: "cloud",
                   label: (
                     <span className="inline-flex items-center gap-1.5">
-                      <Cloud className="h-4 w-4" aria-hidden />
+                      <Cloud className="size-4" aria-hidden />
                       {t("capabilities.mode.cloud", {
                         defaultValue: "Cloud",
                       })}
@@ -554,12 +553,6 @@ export function CapabilitiesSection() {
                     value: "direct",
                     label: t("capabilities.provider.direct", {
                       defaultValue: "Direct endpoint",
-                    }),
-                  },
-                  {
-                    value: "e2b",
-                    label: t("capabilities.provider.e2b", {
-                      defaultValue: "E2B sandbox",
                     }),
                   },
                   {
@@ -667,9 +660,9 @@ export function CapabilitiesSection() {
                 className="h-11 w-full gap-2 rounded-md text-sm"
               >
                 {capabilityConnectLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
                 ) : (
-                  <PlugZap className="h-4 w-4" aria-hidden />
+                  <PlugZap className="size-4" aria-hidden />
                 )}
                 {t("settings.sections.capabilities.capabilityRouterConnect", {
                   defaultValue: "Connect",
@@ -810,9 +803,9 @@ function DeviceLocationGroup() {
               data-testid="settings-location-enable"
             >
               {requesting ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <Loader2 className="size-4 animate-spin" aria-hidden />
               ) : (
-                <MapPin className="h-4 w-4" aria-hidden />
+                <MapPin className="size-4" aria-hidden />
               )}
               {t("settings.sections.capabilities.locationEnable", {
                 defaultValue: "Enable",

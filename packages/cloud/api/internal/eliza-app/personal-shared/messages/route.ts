@@ -1,12 +1,17 @@
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
 import { ChannelType } from "@elizaos/core/edge";
+import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
   PersonalDeliveryAccountResolutionError,
   resolvePersonalDeliveryProjection,
 } from "@/api-app/personal-delivery-projection";
+import {
+  type GroupParticipantIdentity,
+  personalSharedGroupParticipantsRepository,
+} from "@/db/repositories/personal-shared-group-participants";
 import { personalSharedGroupsRepository } from "@/db/repositories/personal-shared-groups";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
@@ -14,10 +19,18 @@ import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { elizaAppUserService } from "@/lib/services/eliza-app";
+import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-allowlist";
+import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbound-media";
+import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
+import {
+  GROUP_OWNER_FALLBACK_LABEL,
+  groupParticipantLabel,
+  redactGroupParticipantHandles,
+} from "@/lib/services/shared-runtime/group-participant-labels";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
@@ -42,6 +55,8 @@ const FAILURE_STAGE_HEADER = "X-Eliza-Failure-Stage";
 const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
 const GROUP_CLAIM_TTL_MS = 10 * 60_000;
 const GROUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH = 240;
+const GENERATED_MEDIA_ONLY_MESSAGE = /^\[media: https?:\/\/[^\r\n]+\]$/u;
 
 type DeliveryStage =
   | "authentication"
@@ -49,6 +64,7 @@ type DeliveryStage =
   | "worker_context"
   | "account_resolution"
   | "voice_transcription"
+  | "media_description"
   | "account_claim"
   | "dedicated_runtime"
   | "shared_runtime";
@@ -71,6 +87,14 @@ const SAFE_ERROR_NAMES = new Set([
 function safeErrorName(error: unknown): string {
   const name = error instanceof Error ? error.name : "";
   return SAFE_ERROR_NAMES.has(name) ? name : "OtherError";
+}
+
+function isGroupDeliveryPendingError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as { code?: unknown }).code ===
+      "PERSONAL_SHARED_GROUP_DELIVERY_PENDING"
+  );
 }
 
 const telegramVoiceNoteSchema = z.object({
@@ -98,6 +122,12 @@ const groupActorSchema = z.object({
   displayName: z.string().trim().min(1).max(128).optional(),
   role: z.enum(["creator", "administrator", "member", "unknown", "possessor"]),
 });
+const groupDeliveryAuthoritySchema = z.object({
+  bindingId: z.string().uuid(),
+  ownerUserId: z.string().uuid(),
+  personalAgentId: z.string().trim().min(1).max(160),
+  version: z.number().int().positive(),
+});
 const groupFields = {
   project: projectSchema,
   connectorAccountId: connectorAccountIdSchema,
@@ -120,16 +150,51 @@ const sharedMessageSchema = z.union([
     membershipChange: z.enum(["joined", "removed"]),
   }),
   z.object({
+    eventType: z.literal("delivery_authorization"),
+    platform: z.enum(["telegram", "blooio"]),
+    project: projectSchema,
+    connectorAccountId: connectorAccountIdSchema,
+    chatId: z.string().trim().min(1).max(160),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
+    leaseToken: z.string().uuid(),
+    invocation: z.enum(["mention", "command", "reply", "ambient"]),
+    authority: groupDeliveryAuthoritySchema,
+  }),
+  z.object({
+    eventType: z.literal("delivery_commit"),
+    platform: z.enum(["telegram", "blooio"]),
+    project: projectSchema,
+    connectorAccountId: connectorAccountIdSchema,
+    chatId: z.string().trim().min(1).max(160),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
+    leaseToken: z.string().uuid(),
+    authority: groupDeliveryAuthoritySchema,
+  }),
+  z.object({
     eventType: z.literal("delivery_receipt"),
     platform: z.enum(["telegram", "blooio"]),
     project: projectSchema,
     connectorAccountId: connectorAccountIdSchema,
     chatId: z.string().trim().min(1).max(160),
-    sourceMessageId: z.string().trim().min(1).max(160),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
     providerMessageIds: z
       .array(z.string().trim().min(1).max(160))
       .min(1)
       .max(8),
+    leaseToken: z.string().uuid(),
+    authority: groupDeliveryAuthoritySchema,
   }),
   z
     .object({
@@ -170,17 +235,26 @@ const sharedMessageSchema = z.union([
     messageId: z.string().trim().min(1).max(160),
     message: z.string().trim().min(1).max(4000),
   }),
-  z.object({
-    platform: z.enum(["twilio", "blooio"]),
-    project: projectSchema,
-    connectorAccountId: connectorAccountIdSchema,
-    phoneNumber: z
-      .string()
-      .trim()
-      .regex(/^\+[1-9]\d{6,14}$/),
-    messageId: z.string().trim().min(1).max(160),
-    message: z.string().trim().min(1).max(4000),
-  }),
+  z
+    .object({
+      platform: z.enum(["twilio", "blooio"]),
+      project: projectSchema,
+      connectorAccountId: connectorAccountIdSchema,
+      phoneNumber: z
+        .string()
+        .trim()
+        .regex(/^\+[1-9]\d{6,14}$/),
+      messageId: z.string().trim().min(1).max(160),
+      message: z.string().trim().min(1).max(4000),
+      mediaUrls: z
+        .array(z.string().url().refine(isAllowedBlooioMediaUrl))
+        .min(1)
+        .max(MAX_INBOUND_MEDIA_IMAGES)
+        .optional(),
+    })
+    .refine(
+      (input) => input.platform === "blooio" || input.mediaUrls === undefined,
+    ),
   z.object({
     platform: z.literal("blooio"),
     chatType: z.literal("group"),
@@ -193,6 +267,46 @@ type GroupMessage = Extract<
   SharedMessage,
   { chatType: "group" | "supergroup" }
 >;
+
+interface GroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
+const GROUP_CONTROL_DELIVERY = { kind: "control" as const };
+
+function groupBindingDelivery(binding: {
+  id: string;
+  owner_user_id: string;
+  personal_agent_id: string;
+  authority_version: number;
+}): { kind: "binding"; authority: GroupDeliveryAuthority } {
+  return {
+    kind: "binding",
+    authority: {
+      bindingId: binding.id,
+      ownerUserId: binding.owner_user_id,
+      personalAgentId: binding.personal_agent_id,
+      version: binding.authority_version,
+    },
+  };
+}
+
+/**
+ * Last stop before a group reply leaves for the provider. The model is never
+ * shown a participant's raw connector handle, so this normally returns the
+ * text unchanged; it exists because the one thing worse than a group turn
+ * mis-attributing a person is one broadcasting their phone number. Direct
+ * turns keep no roster and are passed through.
+ */
+function guardGroupReply(
+  text: string,
+  roster: readonly GroupParticipantIdentity[] | undefined,
+): string {
+  return roster ? redactGroupParticipantHandles(text, roster) : text;
+}
 
 function isGroupMessage(message: SharedMessage): message is GroupMessage {
   return "chatType" in message;
@@ -360,7 +474,38 @@ app.post("/", async (c) => {
           },
         });
       }
-      const inserted =
+      if (parsed.data.eventType === "delivery_authorization") {
+        const lease = await personalSharedGroupsRepository.authorizeDelivery({
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          providerChatId: parsed.data.chatId,
+          sourceMessageId: parsed.data.sourceMessageId,
+          leaseToken: parsed.data.leaseToken,
+          invocation: parsed.data.invocation,
+          authority: parsed.data.authority,
+        });
+        return c.json({
+          success: true,
+          data: { code: "group_delivery_authorization", ...lease },
+        });
+      }
+      if (parsed.data.eventType === "delivery_commit") {
+        const committed = await personalSharedGroupsRepository.commitDelivery({
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          providerChatId: parsed.data.chatId,
+          sourceMessageId: parsed.data.sourceMessageId,
+          authority: parsed.data.authority,
+          leaseToken: parsed.data.leaseToken,
+        });
+        return c.json({
+          success: true,
+          data: { code: "group_delivery_committed", committed },
+        });
+      }
+      const receipt =
         await personalSharedGroupsRepository.recordDeliveryReceipts({
           platform: parsed.data.platform,
           project: parsed.data.project,
@@ -368,10 +513,12 @@ app.post("/", async (c) => {
           providerChatId: parsed.data.chatId,
           sourceMessageId: parsed.data.sourceMessageId,
           providerMessageIds: parsed.data.providerMessageIds,
+          authority: parsed.data.authority,
+          leaseToken: parsed.data.leaseToken,
         });
       return c.json({
         success: true,
-        data: { code: "group_delivery_receipt_recorded", inserted },
+        data: { code: "group_delivery_receipt_recorded", ...receipt },
       });
     }
     let telegramVoiceBytes: Uint8Array | undefined;
@@ -414,7 +561,10 @@ app.post("/", async (c) => {
     let accountResolution = "phone-query";
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
+    let groupParticipantRoster: GroupParticipantIdentity[] | undefined;
     let groupPersonalAgentId: string | undefined;
+    let groupDeliveryAuthority: GroupDeliveryAuthority | undefined;
+    let groupTrustedDelivery: SharedGroupReminderDelivery | undefined;
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
@@ -434,6 +584,7 @@ app.post("/", async (c) => {
               code: "group_admin_required",
               reply:
                 "Only a Telegram group creator or administrator can link Eliza. Make Eliza an admin, then have the same owner retry the link command.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -459,6 +610,7 @@ app.post("/", async (c) => {
                     : claimed.status === "already_bound"
                       ? "This group is already linked to another Eliza owner. That owner must disconnect it before a different owner can link it."
                       : "That group link is not valid for this account or sender. DM Eliza `/group` yourself and paste the exact command here.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -476,6 +628,7 @@ app.post("/", async (c) => {
             },
             reply:
               "Eliza is linked to this group. I respond to explicit mentions, commands, and replies by default. The owner can say `Eliza ambient on`, `Eliza ambient off`, or `Eliza leave`.",
+            groupDelivery: groupBindingDelivery(claimed.binding),
           },
         });
       }
@@ -497,6 +650,7 @@ app.post("/", async (c) => {
                 : binding
                   ? "This group link is inactive. The owner can DM Eliza `/group` to reconnect it."
                   : "This group is not linked yet. DM your Eliza `/group`, then paste the one-time link command here.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
           },
         });
       }
@@ -514,6 +668,7 @@ app.post("/", async (c) => {
             code: "group_owner_required",
             reply:
               "Only the owner who linked Eliza can change this group's response policy.",
+            groupDelivery: groupBindingDelivery(binding),
           },
         });
       }
@@ -531,6 +686,7 @@ app.post("/", async (c) => {
               code: "group_binding_changed",
               reply:
                 "This group link changed before the policy update. Reconnect it and try again.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -542,6 +698,7 @@ app.post("/", async (c) => {
               requestedPolicy === "ambient"
                 ? "Ambient replies are on. I may respond without a mention when I have something useful to add. Say `Eliza ambient off` to return to mention-only."
                 : "Mention-only is on. I will answer explicit mentions, commands, and replies to me.",
+            groupDelivery: groupBindingDelivery(updated),
           },
         });
       }
@@ -556,6 +713,7 @@ app.post("/", async (c) => {
             data: {
               code: "group_binding_changed",
               reply: "This group link changed before it could be disconnected.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -565,6 +723,7 @@ app.post("/", async (c) => {
             code: "group_binding_revoked",
             reply:
               "This group is disconnected from your Eliza. Remove the bot/account here, or DM Eliza `/group` later to reconnect.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
           },
         });
       }
@@ -595,12 +754,40 @@ app.post("/", async (c) => {
       accountResolution = "group-binding";
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
-      const actorDigest = (
-        await sha256Hex(
-          `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
-        )
-      ).slice(0, 8);
-      groupActorLabel = `${parsed.data.actor.displayName ?? "Participant"} [participant ${actorDigest}]`;
+      groupDeliveryAuthority = groupBindingDelivery(binding).authority;
+      // Only the owner who linked Eliza may schedule proactive sends into the
+      // group; other participants have no account or billing authority here.
+      // The stored destination pins the binding generation of this turn so a
+      // later rebind, revocation, or chat cutover fails the fire closed.
+      if (
+        parsed.data.actor.platformUserId === binding.created_by_platform_user_id
+      ) {
+        groupTrustedDelivery = {
+          platform: parsed.data.platform,
+          kind: "group",
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          chatId: parsed.data.chatId,
+          ownerLabel:
+            parsed.data.actor.displayName ?? GROUP_OWNER_FALLBACK_LABEL,
+          authority: groupDeliveryAuthority,
+        };
+      }
+      // The speaker's identity is registry-resolved, never taken from the
+      // payload as-is. A connector that sends a name (Telegram, Discord) gets
+      // that name once the registry has checked it cannot forge a label, an
+      // owner destination, a handle, or another member's identity; a connector
+      // that sends none (Blooio sends none at all) gets its stable ordinal.
+      // Either way the label is enumerable, which is what lets
+      // `guardGroupReply` redact a handle back to it.
+      const participants =
+        await personalSharedGroupParticipantsRepository.recordTurn({
+          bindingId: binding.id,
+          platformUserId: parsed.data.actor.platformUserId,
+          displayName: parsed.data.actor.displayName,
+        });
+      groupParticipantRoster = participants.roster;
+      groupActorLabel = groupParticipantLabel(participants.actor);
     } else if (parsed.data.platform === "telegram") {
       const delivery = await resolvePersonalDeliveryProjection(
         c.env,
@@ -734,6 +921,15 @@ app.post("/", async (c) => {
           return timing;
         })();
     let deliveryMessage = parsed.data.message;
+    // Public-data capability checks may inspect only authenticated user content,
+    // never the actor labels, media descriptions, or other server context that
+    // this route appends to the model-facing delivery message below.
+    let capabilityText =
+      (parsed.data.platform === "blooio" ||
+        parsed.data.platform === "twilio") &&
+      GENERATED_MEDIA_ONLY_MESSAGE.test(parsed.data.message)
+        ? undefined
+        : parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
       !isGroupMessage(parsed.data) &&
@@ -752,6 +948,9 @@ app.post("/", async (c) => {
       deliveryMessage = parsed.data.message
         ? `${parsed.data.message}\n\n[Voice note transcript]\n${transcript}`
         : transcript;
+      capabilityText = parsed.data.message
+        ? `${parsed.data.message}\n${transcript}`
+        : transcript;
       logger.info(
         "[personal-shared-messaging] Telegram voice note transcribed",
         {
@@ -760,6 +959,37 @@ app.post("/", async (c) => {
           userId: account.userId,
         },
       );
+    }
+    // A dedicated runtime describes images itself through its own metered
+    // IMAGE_DESCRIPTION model, so pooled-key vision runs only for turns the
+    // shared runtime (text-only) will answer.
+    if (
+      parsed.data.platform === "blooio" &&
+      !isGroupMessage(parsed.data) &&
+      parsed.data.mediaUrls &&
+      !dedicated
+    ) {
+      stage = "media_description";
+      // Pooled-key spend is reachable by any inbound sender, so it sits behind
+      // the durable admission ledger: one idempotency claim per connector
+      // message id (a redelivery reuses the stored description instead of
+      // re-spending) and atomic per-sender/per-connector daily image
+      // ceilings. Every skip, including a missing admission decision, keeps
+      // the raw media-URL text the adapter synthesized; only an untyped bug
+      // fails the delivery.
+      const enrichment = await enrichInboundImageMedia({
+        env: c.env,
+        platform: "blooio",
+        project: parsed.data.project,
+        connectorAccountId: parsed.data.connectorAccountId,
+        sourceMessageId: parsed.data.messageId,
+        organizationId: account.organizationId,
+        userId: account.userId,
+        mediaUrls: parsed.data.mediaUrls,
+      });
+      if (enrichment.kind === "described") {
+        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}`;
+      }
     }
     if (deliveryMessage && groupActorLabel) {
       deliveryMessage = `${groupActorLabel}: ${deliveryMessage}`;
@@ -993,7 +1223,15 @@ app.post("/", async (c) => {
             userId: account.userId,
             organizationId: account.organizationId,
           },
-          reply: result.text,
+          reply: guardGroupReply(result.text, groupParticipantRoster),
+          ...(groupDeliveryAuthority
+            ? {
+                groupDelivery: {
+                  kind: "binding" as const,
+                  authority: groupDeliveryAuthority,
+                },
+              }
+            : {}),
         },
       });
     }
@@ -1033,8 +1271,8 @@ app.post("/", async (c) => {
           worker.namespace,
           parsed.data.messageId,
           "platform",
-          undefined,
-          undefined,
+          groupTrustedDelivery,
+          capabilityText,
           { type: ChannelType.GROUP, source: parsed.data.platform },
         )
       : await sharedRestMessageSend(
@@ -1047,6 +1285,7 @@ app.post("/", async (c) => {
           parsed.data.messageId,
           "platform",
           trustedDelivery,
+          capabilityText,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
@@ -1071,7 +1310,15 @@ app.post("/", async (c) => {
           userId: account.userId,
           organizationId: account.organizationId,
         },
-        reply: result.text,
+        reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(groupDeliveryAuthority
+          ? {
+              groupDelivery: {
+                kind: "binding" as const,
+                authority: groupDeliveryAuthority,
+              },
+            }
+          : {}),
       },
     });
   } catch (error) {
@@ -1084,6 +1331,13 @@ app.post("/", async (c) => {
       errorName,
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }
+        : {}),
+      ...(isGroupDeliveryPendingError(error)
+        ? {
+            deliveryState: "live_reservation_pending",
+            operatorAction:
+              "retry after the active uncommitted delivery lease expires",
+          }
         : {}),
     });
     // This route is internal-authenticated. Safe classification headers let
@@ -1117,6 +1371,19 @@ app.post("/", async (c) => {
         },
         503,
         { "Retry-After": "1" },
+      );
+    }
+    if (isGroupDeliveryPendingError(error)) {
+      return c.json(
+        {
+          success: false,
+          error:
+            "A provider delivery reservation is still active. Group authority was not changed; retry shortly.",
+          code: "group_delivery_pending",
+          retryable: true,
+        },
+        409,
+        { "Retry-After": "5" },
       );
     }
     return failureResponse(c, error);

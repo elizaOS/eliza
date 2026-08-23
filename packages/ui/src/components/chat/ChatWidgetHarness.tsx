@@ -147,6 +147,18 @@ const INITIAL_MESSAGES: ConversationMessage[] = [
     failureKind: "rate_limited",
   },
   {
+    id: "gallery-connector-choice",
+    role: "assistant",
+    text: "Looking up Slack.\n[CHOICE:connector-add id=gallery-connector-add]\nAdd the Slack connector=Add it\nNot now=Not now\n[/CHOICE]",
+    timestamp: 12.1,
+  },
+  {
+    id: "gallery-connector-card",
+    role: "assistant",
+    text: "Adding Slack now.\n[CONNECTOR:slack]\nTap the card to sign in.",
+    timestamp: 12.2,
+  },
+  {
     id: "gallery-secret",
     role: "assistant",
     text: "",
@@ -249,8 +261,8 @@ export function ChatWidgetHarness() {
         }}
       >
         <header className="z-10 flex shrink-0 items-center gap-3 border-b border-border/60 bg-bg px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-sm">
-            <Sparkles className="h-4 w-4 text-accent" />
+          <div className="flex size-10 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-sm">
+            <Sparkles className="size-4 text-accent" />
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold">Chat UX Gallery</h1>
@@ -269,7 +281,7 @@ export function ChatWidgetHarness() {
               setDraft("");
             }}
           >
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="size-4" />
           </Button>
         </header>
 
@@ -332,12 +344,12 @@ export function ChatWidgetHarness() {
             <Button
               type="button"
               size="icon"
-              className="h-11 w-11 shrink-0 rounded-full"
+              className="size-11 shrink-0 rounded-full"
               aria-label="Send local message"
               disabled={!draft.trim()}
               onClick={submitDraft}
             >
-              <Send className="h-4 w-4" />
+              <Send className="size-4" />
             </Button>
           </div>
         </footer>

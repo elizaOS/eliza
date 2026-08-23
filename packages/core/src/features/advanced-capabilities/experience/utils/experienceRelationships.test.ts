@@ -59,6 +59,28 @@ describe("ExperienceRelationshipManager.findContradictions", () => {
 		expect(result.filter((e) => e.id === other.id)).toHaveLength(1);
 	});
 
+	it("sorts experiences safely in detectCausalChain when createdAt contains NaN or non-finite numbers", () => {
+		const manager = new ExperienceRelationshipManager();
+		const expHypothesis = makeExperience("H1", {
+			type: ExperienceType.HYPOTHESIS,
+			createdAt: NaN,
+		});
+		const expValidation = makeExperience("V1", {
+			type: ExperienceType.VALIDATION,
+			createdAt: 1000,
+		});
+
+		manager.addRelationship({
+			fromId: "H1",
+			toId: "V1",
+			type: "validates",
+			strength: 1,
+		});
+
+		const chains = manager.detectCausalChain([expHypothesis, expValidation]);
+		expect(chains).toBeDefined();
+	});
+
 	it("detects a same-action/opposite-outcome contradiction", () => {
 		const manager = new ExperienceRelationshipManager();
 		const base = makeExperience("A", { outcome: OutcomeType.POSITIVE });

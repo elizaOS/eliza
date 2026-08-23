@@ -22,7 +22,6 @@ export const SCHEDULING_APPROVAL_TRANSPORT_CHANNELS = [
   "email",
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "imessage",
   "sms",
@@ -73,7 +72,6 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
-  | "signal"
   | "whatsapp"
   | "slack"
   | "imessage"
@@ -355,7 +353,8 @@ export interface ApprovalListFilter {
   readonly subjectUserId: string | null;
   readonly state: ApprovalRequestState | null;
   readonly action: ApprovalAction | null;
-  readonly limit: number;
+  /** Optional caller-requested page size; omit or pass null for the complete set. */
+  readonly limit?: number | null;
 }
 
 /** Resolution input for `approve` / `reject`. */

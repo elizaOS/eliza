@@ -6,7 +6,7 @@
  * send/read/search messages, reactions, contact resolution, chat/user context).
  *
  * Inbound: webhook events and Baileys socket messages are normalized, deduped
- * into stable memory ids (createUniqueUuid keyed on chat + message id), and
+ * into stable memory ids (createUniqueUuid keyed on account + chat + message), and
  * routed through `runtime.messageService`. Replies are only generated when
  * auto-reply is enabled or the message connector protocol invokes the send
  * handler; otherwise inbound messages are stored to memory only.
@@ -16,17 +16,21 @@
  * messages, chunking long text per the configured limit. Access is gated by the
  * DM/group policies resolved in accounts.ts.
  */
+import crypto from "node:crypto";
 import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  detectMime,
   ElizaError,
   type IAgentRuntime,
+  type IFileStorageService,
   lifeOpsPassiveConnectorsEnabled,
   type Media,
   type Memory,
   type Room,
   Service,
+  ServiceType,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -39,6 +43,7 @@ import {
   resolveWhatsAppAccount,
   resolveWhatsAppAccountConfig,
 } from "./accounts";
+import { fetchVerifiedPersonalMedia } from "./baileys/media";
 import { WhatsAppClient } from "./client";
 import { BaileysClient } from "./clients/baileys-client";
 import {
@@ -62,6 +67,7 @@ import type {
   CloudAPIConfig,
   ConnectionStatus,
   NormalizedMessage,
+  PersonalMediaMetadata,
   WhatsAppIncomingMessage,
   WhatsAppMediaMessage,
   WhatsAppMessageResponse,
@@ -79,6 +85,7 @@ type RuntimeServiceConfig =
       groupPolicy?: "open" | "allowlist" | "disabled";
       allowFrom?: string[];
       groupAllowFrom?: string[];
+      mediaMaxMb?: number;
     }
   | {
       accountId: string;
@@ -93,7 +100,25 @@ type RuntimeServiceConfig =
       groupPolicy?: "open" | "allowlist" | "disabled";
       allowFrom?: string[];
       groupAllowFrom?: string[];
+      mediaMaxMb?: number;
     };
+
+const DEFAULT_WHATSAPP_MEDIA_MAX_BYTES = 50 * 1024 * 1024;
+const CONTENT_ADDRESSED_MEDIA_URL = /^\/api\/media\/([a-f0-9]{64}\.[a-z0-9]{1,8})$/;
+
+function sha256Hex(bytes: Uint8Array): string {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}
+
+function exactBytesEqual(left: Buffer | null, right: Uint8Array): boolean {
+  if (left === null) return false;
+  return left.equals(right);
+}
+
+function mimeMatchesMediaType(mimeType: string | undefined, type: string): boolean {
+  if (mimeType === undefined) return false;
+  return mimeType.startsWith(`${type}/`);
+}
 
 function readStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
   const value = runtime.getSetting(key);
@@ -136,9 +161,7 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   const allowFrom = readCsvSetting(runtime, "WHATSAPP_ALLOW_FROM");
   const groupAllowFrom = readCsvSetting(runtime, "WHATSAPP_GROUP_ALLOW_FROM");
 
-  const authDir =
-    readStringSetting(runtime, "WHATSAPP_AUTH_DIR") ??
-    readStringSetting(runtime, "WHATSAPP_SESSION_PATH");
+  const authDir = readStringSetting(runtime, "WHATSAPP_AUTH_DIR");
   if (authDir) {
     return {
       accountId: DEFAULT_ACCOUNT_ID,
@@ -191,6 +214,7 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
         groupPolicy: accountConfig.groupPolicy,
         allowFrom: accountConfig.allowFrom?.map(String),
         groupAllowFrom: accountConfig.groupAllowFrom?.map(String),
+        mediaMaxMb: accountConfig.mediaMaxMb,
       });
       continue;
     }
@@ -210,6 +234,7 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
         groupPolicy: cloud.config.groupPolicy,
         allowFrom: cloud.config.allowFrom?.map(String),
         groupAllowFrom: cloud.config.groupAllowFrom?.map(String),
+        mediaMaxMb: cloud.config.mediaMaxMb,
       });
     }
   }
@@ -260,6 +285,57 @@ function toTimestampMs(value: number | string | undefined): number {
 
 function toMemoryId(runtime: IAgentRuntime, chatId: string, messageId: string): UUID {
   return createUniqueUuid(runtime, `whatsapp:${chatId}:${messageId}`) as UUID;
+}
+
+function inboundMessageScope(accountId: string, chatId: string): string {
+  return `${normalizeWhatsAppAccountId(accountId)}:${chatId}`;
+}
+
+/** Build the account-and-chat-scoped identity shared by inbound rows and reply links. */
+export function toInboundWhatsAppMemoryId(
+  runtime: IAgentRuntime,
+  accountId: string,
+  chatId: string,
+  messageId: string
+): UUID {
+  return toMemoryId(runtime, inboundMessageScope(accountId, chatId), messageId);
+}
+
+type WhatsAppQuoteContext = {
+  participant?: string;
+  fromMe: boolean;
+  type: "text" | "image" | "audio" | "video" | "document";
+  text: string;
+};
+
+function quoteContextFromMemory(memory: Memory | null): WhatsAppQuoteContext | undefined {
+  if (!memory) return undefined;
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  const participant =
+    typeof metadata?.rawSenderId === "string" && metadata.rawSenderId.trim()
+      ? metadata.rawSenderId.trim()
+      : undefined;
+  const attachment = Array.isArray(memory.content?.attachments)
+    ? memory.content.attachments[0]
+    : undefined;
+  const contentType = String(attachment?.contentType ?? "").toLowerCase();
+  const mimeType = String(attachment?.mimeType ?? "").toLowerCase();
+  const type =
+    contentType === "image" || mimeType.startsWith("image/")
+      ? "image"
+      : contentType === "video" || mimeType.startsWith("video/")
+        ? "video"
+        : contentType === "audio" || mimeType.startsWith("audio/")
+          ? "audio"
+          : attachment
+            ? "document"
+            : "text";
+  return {
+    ...(participant ? { participant } : {}),
+    fromMe: metadata?.fromBot === true,
+    type,
+    text: typeof memory.content?.text === "string" ? memory.content.text : "",
+  };
 }
 
 type RuntimeWithOptionalConnectorRegistry = IAgentRuntime & {
@@ -767,14 +843,35 @@ export class WhatsAppConnectorService extends Service {
           }
 
           let replyToMessageId: string | undefined;
+          let quoteContext: WhatsAppQuoteContext | undefined;
           if (typeof content.inReplyTo === "string" && content.inReplyTo.trim()) {
-            const repliedToMemory = await runtime.getMemoryById(content.inReplyTo as UUID);
+            const inReplyTo = content.inReplyTo.trim() as UUID;
+            const repliedToMemory = await runtime.getMemoryById(inReplyTo);
+            if (!repliedToMemory) {
+              throw new ElizaError("WhatsApp reply parent was not found", {
+                code: "WHATSAPP_REPLY_PARENT_NOT_FOUND",
+                context: {
+                  accountId: resolved.accountId,
+                  chatId: resolved.chatId,
+                  inReplyTo,
+                },
+              });
+            }
             const metadata = repliedToMemory?.metadata as Record<string, unknown> | undefined;
             const externalMessageId =
               metadata?.messageIdFull ?? metadata?.externalMessageId ?? metadata?.whatsappMessageId;
-            if (typeof externalMessageId === "string" && externalMessageId.trim()) {
-              replyToMessageId = externalMessageId.trim();
+            if (typeof externalMessageId !== "string" || !externalMessageId.trim()) {
+              throw new ElizaError("WhatsApp reply parent has no authoritative provider id", {
+                code: "WHATSAPP_REPLY_PROVIDER_ID_MISSING",
+                context: {
+                  accountId: resolved.accountId,
+                  chatId: resolved.chatId,
+                  inReplyTo,
+                },
+              });
             }
+            replyToMessageId = externalMessageId.trim();
+            quoteContext = quoteContextFromMemory(repliedToMemory);
           }
 
           if (text) {
@@ -785,28 +882,29 @@ export class WhatsAppConnectorService extends Service {
                 to: resolved.chatId,
                 content: chunk,
                 replyToMessageId,
+                ...(quoteContext
+                  ? {
+                      replyToParticipant: quoteContext.participant,
+                      replyToFromMe: quoteContext.fromMe,
+                      replyToType: quoteContext.type,
+                      replyToText: quoteContext.text,
+                    }
+                  : {}),
               });
             }
           }
 
           // Agent-generated attachments ride as native WhatsApp media messages
-          // (#8876). Both transports (Cloud API by-link + Baileys) build their
-          // payload from the same WhatsAppMessage media type, so one call works
-          // for either. Each is isolated so one failure never drops the rest.
+          // (#8876). Both transports build their payload from the same type;
+          // delivery stops at the first failed effect so partial success is visible.
           for (const media of attachments) {
-            try {
-              await service.sendMediaMessage(resolved.accountId, resolved.chatId, media);
-            } catch (error) {
-              runtime.logger.warn(
-                {
-                  src: "plugin:whatsapp",
-                  agentId: runtime.agentId,
-                  url: media.url,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-                "Failed to send WhatsApp outbound attachment; skipping"
-              );
-            }
+            await service.sendMediaMessage(
+              resolved.accountId,
+              resolved.chatId,
+              media,
+              replyToMessageId,
+              quoteContext
+            );
           }
         },
         resolveTargets: async (query: string) => {
@@ -907,6 +1005,7 @@ export class WhatsAppConnectorService extends Service {
         config.transport === "baileys"
           ? new BaileysClient({
               authMethod: "baileys",
+              accountId: config.accountId,
               authDir: config.authDir,
               printQRInTerminal: false,
             } satisfies BaileysConfig)
@@ -1102,28 +1201,22 @@ export class WhatsAppConnectorService extends Service {
 
     client.on("message", (message: NormalizedMessage) => {
       void this.handleNormalizedMessage(message, accountId).catch((error: unknown) => {
-        this.runtime.logger.error(
-          {
-            src: "plugin:whatsapp",
-            agentId: this.runtime.agentId,
-            accountId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to process inbound WhatsApp message"
-        );
+        // error-policy:J7 Per-message transport failures are reported without killing the client loop.
+        this.runtime.reportError("plugin:whatsapp:inbound-message", error, {
+          accountId,
+          chatId: message.chatId ?? message.from,
+          externalMessageId: message.id,
+          stage: message.personalMedia ? "media-fetch-store-decrypt" : "message-processing",
+        });
       });
     });
 
     client.on("error", (error: unknown) => {
-      this.runtime.logger.error(
-        {
-          src: "plugin:whatsapp",
-          agentId: this.runtime.agentId,
-          accountId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "WhatsApp client error"
-      );
+      // error-policy:J7 Baileys metadata and socket failures are diagnostic events, not loop exits.
+      this.runtime.reportError("plugin:whatsapp:client", error, {
+        accountId,
+        stage: client instanceof BaileysClient ? "baileys-metadata-or-socket" : "cloud-client",
+      });
     });
   }
 
@@ -1135,7 +1228,7 @@ export class WhatsAppConnectorService extends Service {
     const senderId = message.senderId ?? message.from;
     const text = typeof message.content === "string" ? message.content.trim() : "";
 
-    if (!chatId || !senderId || !text) {
+    if (!chatId || !senderId || (!text && !message.personalMedia)) {
       return;
     }
 
@@ -1145,6 +1238,8 @@ export class WhatsAppConnectorService extends Service {
       text,
       externalMessageId: message.id,
       replyToExternalMessageId: message.replyToId,
+      messageType: message.type,
+      personalMedia: message.personalMedia,
       createdAt: toTimestampMs(message.timestamp),
       accountId,
     });
@@ -1172,6 +1267,69 @@ export class WhatsAppConnectorService extends Service {
     });
   }
 
+  private mediaMaxBytes(accountId: string): number {
+    const configuredMb = this.getConfigForAccount(accountId)?.mediaMaxMb;
+    if (configuredMb === undefined) return DEFAULT_WHATSAPP_MEDIA_MAX_BYTES;
+    if (!Number.isSafeInteger(configuredMb) || configuredMb <= 0 || configuredMb > 1024) {
+      throw new ElizaError("WhatsApp mediaMaxMb must be an integer from 1 through 1024", {
+        code: "WHATSAPP_MEDIA_LIMIT_INVALID",
+        context: { accountId, configuredMb },
+      });
+    }
+    return configuredMb * 1024 * 1024;
+  }
+
+  private fileStorage(accountId: string): IFileStorageService {
+    const storage = this.runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES);
+    if (!storage) {
+      throw new ElizaError("WhatsApp media requires the canonical file-storage service", {
+        code: "WHATSAPP_MEDIA_STORAGE_UNAVAILABLE",
+        context: { accountId },
+      });
+    }
+    return storage;
+  }
+
+  private async ingestPersonalMedia(
+    accountId: string,
+    metadata: PersonalMediaMetadata
+  ): Promise<Media> {
+    const storage = this.fileStorage(accountId);
+    const verified = await fetchVerifiedPersonalMedia(metadata, this.mediaMaxBytes(accountId));
+    const stored = await storage.store(verified.bytes, verified.mimeType);
+    const expectedHash = sha256Hex(verified.bytes);
+    if (
+      stored.hash !== expectedHash ||
+      !stored.fileName.startsWith(`${expectedHash}.`) ||
+      stored.url !== `/api/media/${stored.fileName}`
+    ) {
+      throw new ElizaError(
+        "Canonical WhatsApp media storage returned a mismatched content address",
+        {
+          code: "WHATSAPP_MEDIA_STORE_HASH_MISMATCH",
+          context: { accountId, expectedHash, storedHash: stored.hash },
+        }
+      );
+    }
+    const readback = await storage.read(stored.fileName);
+    if (!exactBytesEqual(readback, verified.bytes)) {
+      throw new ElizaError("Canonical WhatsApp media readback did not match stored bytes", {
+        code: "WHATSAPP_MEDIA_STORE_READBACK_MISMATCH",
+        context: { accountId, fileName: stored.fileName },
+      });
+    }
+    return {
+      id: stored.hash,
+      url: stored.url,
+      source: "whatsapp",
+      contentType: metadata.kind,
+      mimeType: verified.mimeType,
+      size: verified.bytes.length,
+      checksum: stored.hash,
+      ...(verified.fileName ? { filename: verified.fileName } : {}),
+    };
+  }
+
   private async processIncomingMessage(params: {
     accountId: string;
     chatId: string;
@@ -1179,6 +1337,8 @@ export class WhatsAppConnectorService extends Service {
     text: string;
     externalMessageId: string;
     replyToExternalMessageId?: string;
+    messageType?: "text" | "image" | "audio" | "video" | "document";
+    personalMedia?: PersonalMediaMetadata;
     createdAt: number;
   }): Promise<void> {
     if (!this.runtime.messageService) {
@@ -1200,9 +1360,7 @@ export class WhatsAppConnectorService extends Service {
     //      convergence;
     //   3. inbound message existence — the deterministic message id catches
     //      a prior successful delivery that pre-dates the claim table.
-    const chatKey =
-      accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`;
-    const dedupeKey = `${accountId}:${params.externalMessageId}`;
+    const dedupeKey = `${accountId}:${params.chatId}:${params.externalMessageId}`;
     if (this.inflightInboundMessageIds.has(dedupeKey)) {
       this.runtime.logger.debug(
         {
@@ -1218,8 +1376,18 @@ export class WhatsAppConnectorService extends Service {
     this.inflightInboundMessageIds.add(dedupeKey);
     let claim: InboundClaimState | null = null;
     let claimHandled = false;
-    const inboundMemoryId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
-    const claimId = createInboundClaimId(this.runtime, accountId, params.externalMessageId);
+    const inboundMemoryId = toInboundWhatsAppMemoryId(
+      this.runtime,
+      accountId,
+      params.chatId,
+      params.externalMessageId
+    );
+    const claimId = createInboundClaimId(
+      this.runtime,
+      accountId,
+      params.chatId,
+      params.externalMessageId
+    );
     try {
       // Durable staged claim: atomically acquire a processing claim in the
       // memory store. Returns won=false if another host or prior delivery
@@ -1228,6 +1396,7 @@ export class WhatsAppConnectorService extends Service {
         this.runtime,
         claimId,
         accountId,
+        params.chatId,
         params.externalMessageId
       );
       if (!claimResult.won) {
@@ -1288,6 +1457,12 @@ export class WhatsAppConnectorService extends Service {
         }
         return;
       }
+
+      // Access policy and provider metadata authorization both complete before
+      // the guarded network fetch or canonical-store write can occur.
+      const inboundAttachment = params.personalMedia
+        ? await this.ingestPersonalMedia(accountId, params.personalMedia)
+        : undefined;
 
       const channelType = isGroup ? ChannelType.GROUP : ChannelType.DM;
       const roomId = this.roomIdFor(params.chatId, accountId);
@@ -1358,13 +1533,13 @@ export class WhatsAppConnectorService extends Service {
           channelType,
           from: normalizedSender,
           messageId: params.externalMessageId,
+          ...(inboundAttachment ? { attachments: [inboundAttachment] } : {}),
           ...(params.replyToExternalMessageId
             ? {
-                inReplyTo: toMemoryId(
+                inReplyTo: toInboundWhatsAppMemoryId(
                   this.runtime,
-                  accountId === DEFAULT_ACCOUNT_ID
-                    ? params.chatId
-                    : `${accountId}:${params.chatId}`,
+                  accountId,
+                  params.chatId,
                   params.replyToExternalMessageId
                 ),
               }
@@ -1412,7 +1587,13 @@ export class WhatsAppConnectorService extends Service {
             params.chatId,
             chunk,
             params.externalMessageId,
-            accountId
+            accountId,
+            {
+              participant: isGroup ? params.senderId : undefined,
+              fromMe: false,
+              type: params.messageType ?? "text",
+              text: params.text,
+            }
           );
           const externalResponseId =
             response.messages[0]?.id ??
@@ -1421,7 +1602,7 @@ export class WhatsAppConnectorService extends Service {
           responseMemories.push({
             id: toMemoryId(
               this.runtime,
-              accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
+              inboundMessageScope(accountId, params.chatId),
               externalResponseId
             ),
             entityId: this.runtime.agentId,
@@ -1528,7 +1709,8 @@ export class WhatsAppConnectorService extends Service {
     chatId: string,
     text: string,
     replyToMessageId?: string,
-    accountId?: string
+    accountId?: string,
+    quote?: WhatsAppQuoteContext
   ): Promise<WhatsAppMessageResponse> {
     const normalizedAccountId = this.resolveAccountId(accountId);
     const client = this.getClientForAccount(normalizedAccountId);
@@ -1545,6 +1727,16 @@ export class WhatsAppConnectorService extends Service {
           : normalizeCloudApiSendTarget(chatId),
       content: text,
       replyToMessageId,
+      ...(config.transport === "baileys" && quote?.participant
+        ? { replyToParticipant: quote.participant }
+        : {}),
+      ...(config.transport === "baileys" && quote
+        ? {
+            replyToFromMe: quote.fromMe,
+            replyToType: quote.type,
+            replyToText: quote.text,
+          }
+        : {}),
     });
 
     return "data" in response
@@ -1558,12 +1750,24 @@ export class WhatsAppConnectorService extends Service {
     to: string;
     content: string;
     replyToMessageId?: string;
+    replyToParticipant?: string;
+    replyToFromMe?: boolean;
+    replyToType?: "text" | "image" | "audio" | "video" | "document";
+    replyToText?: string;
   }): Promise<WhatsAppMessageResponse> {
     return this.sendTextMessage(
       message.to,
       message.content,
       message.replyToMessageId,
-      message.accountId
+      message.accountId,
+      message.replyToMessageId
+        ? {
+            participant: message.replyToParticipant,
+            fromMe: message.replyToFromMe ?? false,
+            type: message.replyToType ?? "text",
+            text: message.replyToText ?? "",
+          }
+        : undefined
     );
   }
 
@@ -1577,30 +1781,107 @@ export class WhatsAppConnectorService extends Service {
     return "document";
   }
 
+  private async canonicalPersonalMediaBytes(
+    accountId: string,
+    media: Media,
+    type: "image" | "video" | "audio" | "document"
+  ): Promise<Buffer> {
+    const match = media.url?.match(CONTENT_ADDRESSED_MEDIA_URL);
+    if (!match) {
+      throw new ElizaError(
+        "Personal WhatsApp media must use the canonical content-addressed media handle",
+        {
+          code: "WHATSAPP_PERSONAL_MEDIA_CANONICAL_URL_REQUIRED",
+          context: { accountId, messageType: type },
+        }
+      );
+    }
+    const fileName = match[1];
+    const expectedHash = fileName.slice(0, 64);
+    if (media.checksum && media.checksum !== expectedHash) {
+      throw new ElizaError("Personal WhatsApp media checksum does not match its canonical handle", {
+        code: "WHATSAPP_PERSONAL_MEDIA_HANDLE_MISMATCH",
+        context: { accountId, messageType: type, expectedHash },
+      });
+    }
+    const bytes = await this.fileStorage(accountId).read(fileName);
+    if (!bytes) {
+      throw new ElizaError("Canonical personal WhatsApp media bytes are unavailable", {
+        code: "WHATSAPP_PERSONAL_MEDIA_NOT_FOUND",
+        context: { accountId, messageType: type, fileName },
+      });
+    }
+    const maxBytes = this.mediaMaxBytes(accountId);
+    if (bytes.length === 0 || bytes.length > maxBytes) {
+      throw new ElizaError("Canonical personal WhatsApp media violates the configured byte limit", {
+        code: "WHATSAPP_PERSONAL_MEDIA_SIZE_DENIED",
+        context: { accountId, messageType: type, actualBytes: bytes.length, maxBytes },
+      });
+    }
+    const actualHash = sha256Hex(bytes);
+    if (actualHash !== expectedHash) {
+      throw new ElizaError(
+        "Canonical personal WhatsApp media failed content-address verification",
+        {
+          code: "WHATSAPP_PERSONAL_MEDIA_STORE_CORRUPT",
+          context: { accountId, messageType: type, expectedHash, actualHash },
+        }
+      );
+    }
+    const detectedMime = await detectMime({ buffer: bytes, headerMime: media.mimeType });
+    if (type !== "document" && !mimeMatchesMediaType(detectedMime, type)) {
+      throw new ElizaError("Canonical personal WhatsApp media bytes do not match the send type", {
+        code: "WHATSAPP_PERSONAL_MEDIA_CONTENT_TYPE_MISMATCH",
+        context: { accountId, messageType: type, detectedMime },
+      });
+    }
+    return bytes;
+  }
+
   /**
    * Send an agent attachment as a native WhatsApp media message (#8876). Works
-   * across both transports: the Cloud-API client and the Baileys client each
-   * build their own payload from the shared `WhatsAppMessage` media type, both
-   * keyed on a media URL (`link`).
+   * The official Cloud transport retains its URL contract. Personal Baileys
+   * sends only hash-verified bytes read from the canonical agent media store.
    */
   async sendMediaMessage(
     accountId: string | null | undefined,
     to: string,
-    media: Media
+    media: Media,
+    replyToMessageId?: string,
+    quote?: WhatsAppQuoteContext
   ): Promise<void> {
     if (!media.url) return;
     const client = this.getClientForAccount(accountId);
-    if (!client) {
+    const config = this.getConfigForAccount(accountId);
+    if (!client || !config) {
       throw new Error("WhatsApp client not initialized");
     }
     const type = this.whatsappMediaType(media);
     const filename = media.filename ?? media.title ?? undefined;
     const mediaContent: WhatsAppMediaMessage = {
       link: media.url,
+      ...(config.transport === "baileys"
+        ? { bytes: await this.canonicalPersonalMediaBytes(config.accountId, media, type) }
+        : {}),
       ...(media.description ? { caption: media.description } : {}),
       ...(type === "document" && filename ? { filename } : {}),
     };
-    await client.sendMessage({ type, to, content: mediaContent });
+    await client.sendMessage({
+      type,
+      to,
+      content: mediaContent,
+      ...(config.transport === "baileys" && replyToMessageId ? { replyToMessageId } : {}),
+      ...(config.transport === "baileys" && quote?.participant
+        ? { replyToParticipant: quote.participant }
+        : {}),
+      ...(config.transport === "baileys" && quote
+        ? {
+            replyToFromMe: quote.fromMe,
+            replyToType: quote.type,
+            replyToText: quote.text,
+          }
+        : {}),
+    });
   }
 
   async fetchConnectorMessages(
@@ -1689,7 +1970,21 @@ export class WhatsAppConnectorService extends Service {
         }
         return true;
       })
-      .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
+      .sort((left, right) => {
+        const r =
+          typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+            ? right.createdAt
+            : Number.isFinite(Number(right.createdAt))
+              ? Number(right.createdAt)
+              : 0;
+        const l =
+          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+            ? left.createdAt
+            : Number.isFinite(Number(left.createdAt))
+              ? Number(left.createdAt)
+              : 0;
+        return r - l;
+      })
       .slice(0, limit);
   }
 
@@ -1790,7 +2085,17 @@ export class WhatsAppConnectorService extends Service {
     const normalizedAccountId = accountId ? this.resolveAccountId(accountId) : null;
     return Array.from(this.knownTargets.values())
       .filter((target) => !normalizedAccountId || target.accountId === normalizedAccountId)
-      .sort((left, right) => right.lastMessageAt - left.lastMessageAt);
+      .sort((left, right) => {
+        const r =
+          typeof right.lastMessageAt === "number" && Number.isFinite(right.lastMessageAt)
+            ? right.lastMessageAt
+            : 0;
+        const l =
+          typeof left.lastMessageAt === "number" && Number.isFinite(left.lastMessageAt)
+            ? left.lastMessageAt
+            : 0;
+        return r - l;
+      });
   }
 
   getKnownTarget(chatId: string, accountId?: string | null): KnownWhatsAppTarget | null {

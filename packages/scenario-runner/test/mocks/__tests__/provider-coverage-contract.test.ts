@@ -26,7 +26,6 @@ const LEGACY_MISSING_VALIDATION_PATHS = new Set([
   "plugins/plugin-telegram/src/local-client.test.ts",
   "plugins/plugin-personal-assistant/src/lifeops/service-mixin-telegram.test.ts",
   "plugins/plugin-personal-assistant/test/cross-channel-send.test.ts",
-  "plugins/plugin-personal-assistant/src/lifeops/service-mixin-signal.test.ts",
   "plugins/plugin-personal-assistant/test/discord-browser-scraper.test.ts",
   "plugins/plugin-personal-assistant/test/lifeops-discord-browser-companion.test.ts",
   "plugins/plugin-personal-assistant/test/imessage.test.ts",

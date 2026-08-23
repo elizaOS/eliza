@@ -1,27 +1,32 @@
 /**
- * Regression tests for eager per-org Steward tenant provisioning at signup
+ * Regression tests for per-org Steward tenant provisioning at signup
  * (#14645).
  *
- * Steward tenants used to be created LAZILY, only at agent-provision time
- * (docker-sandbox-provider → ensureStewardTenant). A brand-new user therefore
- * had no Steward tenant, so the app's first post-login call
- * (`GET /steward/user/me/tenants`) returned 403, which the frontend read as
- * "not authenticated" → an infinite bounce back to /login. The user could
- * never reach agent-provision to self-heal (629/630 staging orgs had a NULL
- * steward_tenant_id).
+ * Steward tenants used to be created only at agent-provision time, leaving
+ * newly created organizations without their downstream Steward resources.
+ * Follow-up receipts on #14645 established that `/user/me/tenants` returning
+ * 403 for a tenant-scoped session is expected and is swallowed by
+ * `@stwd/react@0.7.2`; it does not clear auth and was not the staging login-loop
+ * cause. Tenant provisioning remains an important post-commit readiness and
+ * self-heal invariant, but it is not part of cookie/session authority.
  *
- * Fix under test: syncUserFromSteward's new-user branch (branch 5) now calls
- * ensureStewardTenant(org.id) after the user + org are fully created. Two
- * properties are asserted here:
+ * Properties asserted here:
  *
- *   (a) a new-user signup provisions the tenant for the NEW org, and
- *   (b) FAIL-OPEN: a Steward failure (unreachable, 5xx, ...) must NOT block
- *       signup — the sync still resolves with the user, the org is NOT rolled
- *       back, and the failure is logged as a warning carrying the org id
- *       (the lazy agent-provision call site remains as the later self-heal).
+ *   (a) non-Worker signup provisions the new org inline,
+ *   (b) a Worker owns the idempotent provisioning tail through waitUntil, and
+ *   (c) FAIL-OPEN: Steward failure never rolls back the committed signup and
+ *       remains observable for the later agent-provision/sign-in self-heal.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 // ── Mock state captured per test ─────────────────────────────────────────
 const ensureStewardTenantCalls: string[] = [];
@@ -51,8 +56,23 @@ const existingUser = {
 // Default = new-user path (no existing user); existing-user tests override.
 let getByStewardIdImpl: () => Promise<unknown> = async () => undefined;
 
-const createdOrg = { id: "org-new-1", slug: "alice-abc123", credit_balance: "0.00" };
-const createdUser = { id: "user-new-1", organization_id: "org-new-1" };
+const createdOrg = {
+  id: "org-new-1",
+  name: "alice's Organization",
+  slug: "alice-abc123",
+  credit_balance: "0.00",
+};
+const createdUser = {
+  id: "user-new-1",
+  organization_id: "org-new-1",
+  steward_user_id: "steward-123",
+  email: "alice@example.com",
+  name: "alice",
+  wallet_address: null,
+  role: "owner",
+  email_verified: true,
+  wallet_verified: false,
+};
 const finalUserWithOrg = {
   id: "user-new-1",
   steward_user_id: "steward-123",
@@ -104,6 +124,8 @@ mock.module("./services/users", () => ({
     getByWalletAddressWithOrganization: async () => undefined,
     getStewardIdentityForWrite: async () => undefined,
     getByStewardIdForWrite: async () => finalUserWithOrg,
+    createFreshStewardSignupUser: async () => createdUser,
+    initializeFreshStewardIdentity: async () => undefined,
     create: async () => createdUser,
     update: async () => undefined,
     linkStewardId: async () => undefined,
@@ -154,9 +176,10 @@ mock.module("./db/repositories/organization-invites", () => ({
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
     delete: async () => undefined,
-    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
-      status: "not_found" as const,
-    }),
+    findPendingPhoneTelegramPersonalAccountConvergence: async () => {
+      const user = await getByStewardIdImpl();
+      return user ? { status: "canonical_user" as const, user } : { status: "not_found" as const };
+    },
   },
 }));
 
@@ -238,12 +261,42 @@ describe("syncUserFromSteward — eager Steward tenant provisioning (#14645)", (
     expect(warn!.message).toContain("Steward unreachable");
   });
 
+  test("Worker signup hands the eager tenant call to waitUntil", async () => {
+    const tenant = deferred<{
+      tenantId: string;
+      apiKey: string;
+      isNew: boolean;
+    }>();
+    ensureStewardTenantImpl = async (organizationId) => {
+      ensureStewardTenantCalls.push(organizationId);
+      return tenant.promise;
+    };
+    const background: Promise<unknown>[] = [];
+
+    const { syncUserFromSteward } = await import("./steward-sync");
+    const result = await syncUserFromSteward({
+      ...baseParams,
+      executionCtx: {
+        waitUntil: (promise) => background.push(promise),
+      },
+    });
+
+    expect(result).toMatchObject(finalUserWithOrg);
+    expect(ensureStewardTenantCalls).toEqual(["org-new-1"]);
+    expect(background).toHaveLength(1);
+
+    tenant.resolve({
+      tenantId: "elizacloud-org-new-1",
+      apiKey: "tenant-key",
+      isNew: true,
+    });
+    await expect(background[0]).resolves.toBeUndefined();
+  });
+
   // ── #14645 residual: existing-org self-heal on sign-in ──────────────────
-  // #14869's eager call covers NEW signups only; orgs created before it keep
-  // looping (they 403 on /me/tenants and can never reach agent-provision to
-  // self-heal). Every returning user resolves through the existing-user
-  // branch, so the heal there converts each looping account's next sign-in
-  // into the fix.
+  // #14869's new-user call did not cover organizations created before it.
+  // Returning users therefore retain the sign-in self-heal so legacy orgs
+  // converge before downstream agent provisioning needs the tenant.
 
   test("existing-user sign-in self-heals the org's Steward tenant", async () => {
     getByStewardIdImpl = async () => existingUser;

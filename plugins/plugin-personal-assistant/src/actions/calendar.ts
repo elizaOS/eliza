@@ -1418,9 +1418,13 @@ async function handleBulkReschedulePreview(args: {
 
   const matches = feed.events
     .filter((event) => eventMatchesBulkRescheduleCohort(event, cohortLabel))
-    .sort(
-      (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
-    );
+    .sort((left, right) => {
+      const aTime = Date.parse(left.startAt);
+      const bTime = Date.parse(right.startAt);
+      const aSafe = Number.isFinite(aTime) ? aTime : 0;
+      const bSafe = Number.isFinite(bTime) ? bTime : 0;
+      return aSafe - bSafe;
+    });
 
   const cohortText = cohortLabel ? `${cohortLabel} meetings` : "those meetings";
   const previewLines = formatBulkReschedulePreviewLines(matches);

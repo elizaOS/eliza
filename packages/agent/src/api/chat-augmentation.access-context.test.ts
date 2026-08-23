@@ -96,8 +96,18 @@ function makeRuntime(fragments: Memory[]): {
     // returning EVERY fragment regardless of requester keeps the suite's
     // point sharp — access control must come from the service's own
     // AccessContext post-filter, never from the storage query.
+    // The stub honors the adapter's `limit`/`offset` contract so the service's
+    // exhaustive traversal can prove it read the COMPLETE fragment set (see
+    // CLAUDE.md prompt integrity: model-facing content is never capped). A stub
+    // that ignored the window would look like a source-imposed cap and be
+    // rejected outright.
     adapter: {
-      queryDocumentFragments: vi.fn(async () => fragments),
+      queryDocumentFragments: vi.fn(
+        async (params: { limit: number; offset?: number }) => {
+          const offset = params.offset ?? 0;
+          return fragments.slice(offset, offset + params.limit);
+        },
+      ),
     },
     getModel: vi.fn(() => undefined),
     getMemories: vi.fn(async () => fragments),

@@ -489,12 +489,13 @@ export function collectPluginNames(
   // provider plugins for model calls. Configured Cloud intent is insufficient:
   // without the credential used by plugin-elizacloud, removing the fallback
   // providers leaves only an unservable priority-50 Cloud route (#20045).
-  // Provisioned containers own their repaired Cloud runtime route even before
-  // host env projection; ordinary hosts require the usable credential itself.
+  // Provisioned containers normally arrive here after their topology has been
+  // repaired to Cloud. Do not infer text ownership from the container marker
+  // plus credential alone: the explicit local-Docker acceptance lane keeps the
+  // managed credential for auth/lifecycle while routing llmText directly.
   const cloudHandlesInference =
-    (cloudTopology.services.inference &&
-      (hasUsableCloudApiKey || isCloudContainer)) ||
-    (isCloudContainer && hasUsableCloudApiKey);
+    cloudTopology.services.inference &&
+    (hasUsableCloudApiKey || isCloudContainer);
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean }> | undefined;
 

@@ -189,6 +189,44 @@ interface AssistantTurnOrigin {
   persistedUserMessageId?: string;
 }
 
+interface CompletedTurnHistorySnapshot {
+  userReceiptId: string;
+  assistantReceiptId: string | undefined;
+  user: ConversationMessage | null;
+  assistant: ConversationMessage | null;
+}
+
+function captureCompletedTurnForHistoryRefresh(
+  messages: readonly ConversationMessage[],
+  ids: {
+    userReceiptId: string;
+    assistantReceiptId?: string;
+    optimisticUserMessageId: string;
+    optimisticAssistantMessageId: string;
+  },
+): CompletedTurnHistorySnapshot {
+  return {
+    userReceiptId: ids.userReceiptId,
+    assistantReceiptId: ids.assistantReceiptId,
+    user:
+      messages.find(
+        (message) =>
+          message.role === "user" &&
+          (message.id === ids.userReceiptId ||
+            message.id === ids.optimisticUserMessageId ||
+            message.clientRenderId === ids.optimisticUserMessageId),
+      ) ?? null,
+    assistant:
+      messages.find(
+        (message) =>
+          message.role === "assistant" &&
+          (message.id === ids.assistantReceiptId ||
+            message.id === ids.optimisticAssistantMessageId ||
+            message.clientRenderId === ids.optimisticAssistantMessageId),
+      ) ?? null,
+  };
+}
+
 /**
  * Whether another user turn follows the turn that owns a local assistant row.
  *
@@ -676,7 +714,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           ...(data.failureKind
-            ? { mode: "fail", failureKind: data.failureKind }
+            ? {
+                mode: "fail",
+                failureKind: data.failureKind,
+                ...(data.terminalFailure
+                  ? { terminalFailure: data.terminalFailure }
+                  : {}),
+              }
             : { mode: "drop" }),
         });
       } else if (
@@ -689,6 +733,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           mode: "complete",
           fullText: data.text,
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+          ...(data.terminalFailure
+            ? { terminalFailure: data.terminalFailure }
+            : {}),
           ...(options.includeAccountConnect && data.accountConnect
             ? { accountConnect: data.accountConnect }
             : {}),
@@ -703,6 +750,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           messageId: assistantMessageId,
           mode: "fail",
           failureKind: data.failureKind,
+          ...(data.terminalFailure
+            ? { terminalFailure: data.terminalFailure }
+            : {}),
         });
       } else if (options.includeAccountConnect && data.accountConnect) {
         applyStreamingModificationForConversation(conversationId, {
@@ -1393,6 +1443,84 @@ export function useChatSend(deps: UseChatSendDeps) {
     [setConversationMessagesForConversation],
   );
 
+  // A successful stream can carry durable user/assistant receipt ids before the
+  // follow-up history endpoint exposes those rows.
+  // When an action or compatibility response requires that immediate refresh,
+  // the full replacement must retain the exact completed local turn until the
+  // history view converges. Match only receipt/client-render ids for the user
+  // row; merge missing rows adjacent to each other without duplicating server
+  // truth.
+  const preserveCompletedTurnAfterHistoryRefresh = useCallback(
+    (
+      conversationId: string | null,
+      turn: {
+        user: ConversationMessage;
+        assistant: ConversationMessage | null;
+        userReceiptId: string;
+        assistantReceiptId?: string;
+      },
+    ) => {
+      setConversationMessagesForConversation(conversationId, (prev) => {
+        const userIds = new Set(
+          [turn.userReceiptId, turn.user.id, turn.user.clientRenderId].filter(
+            (value): value is string => Boolean(value),
+          ),
+        );
+        const userIndex = prev.findIndex(
+          (message) =>
+            message.role === "user" &&
+            (userIds.has(message.id) ||
+              (message.clientRenderId
+                ? userIds.has(message.clientRenderId)
+                : false)),
+        );
+        const assistant = turn.assistant;
+        const assistantIds = new Set(
+          [
+            turn.assistantReceiptId,
+            assistant?.id,
+            assistant?.clientRenderId,
+          ].filter((value): value is string => Boolean(value)),
+        );
+        let assistantIndex = assistant
+          ? prev.findIndex(
+              (message) =>
+                message.role === "assistant" &&
+                (assistantIds.has(message.id) ||
+                  (message.clientRenderId
+                    ? assistantIds.has(message.clientRenderId)
+                    : false)),
+            )
+          : -1;
+        if (assistant && assistantIndex < 0 && !turn.assistantReceiptId) {
+          assistantIndex = prev.findIndex(
+            (message) =>
+              message.role === "assistant" &&
+              message.text.trim() === assistant.text.trim() &&
+              Math.abs(message.timestamp - assistant.timestamp) <=
+                SENT_TURN_MATCH_SLACK_MS,
+          );
+        }
+
+        if (userIndex >= 0 && (!assistant || assistantIndex >= 0)) return prev;
+
+        const next = [...prev];
+        if (userIndex < 0 && assistantIndex >= 0) {
+          next.splice(assistantIndex, 0, turn.user);
+          return next;
+        }
+        if (userIndex >= 0 && assistant && assistantIndex < 0) {
+          next.splice(userIndex + 1, 0, assistant);
+          return next;
+        }
+        next.push(turn.user);
+        if (assistant) next.push(assistant);
+        return next;
+      });
+    },
+    [setConversationMessagesForConversation],
+  );
+
   const runQueuedChatSend = useCallback(
     async (turn: Omit<QueuedChatSend, "resolve" | "reject">) => {
       const hasAttachedImages = Boolean(turn.images?.length);
@@ -1686,6 +1814,21 @@ export function useChatSend(deps: UseChatSendDeps) {
           setActionNotice(message, "error", 8_000);
         });
 
+        const completedTurnSnapshot =
+          data.completed && data.userMessageId
+            ? captureCompletedTurnForHistoryRefresh(
+                conversationMessagesRef.current,
+                {
+                  userReceiptId: data.userMessageId,
+                  ...(data.messageId
+                    ? { assistantReceiptId: data.messageId }
+                    : {}),
+                  optimisticUserMessageId: userMsgId,
+                  optimisticAssistantMessageId: assistantMsgId,
+                },
+              )
+            : null;
+
         // Direct replies already carry both committed memory ids, so reloading
         // the whole transcript would add a DB round trip, replace every message
         // object, and race the terminal frame. Action callbacks are the only
@@ -1698,6 +1841,19 @@ export function useChatSend(deps: UseChatSendDeps) {
             !data.userMessageId)
         ) {
           await loadConversationMessages(convId);
+          if (completedTurnSnapshot?.user) {
+            preserveCompletedTurnAfterHistoryRefresh(convId, {
+              user: completedTurnSnapshot.user,
+              assistant: completedTurnSnapshot.assistant,
+              userReceiptId: completedTurnSnapshot.userReceiptId,
+              ...(completedTurnSnapshot.assistantReceiptId
+                ? {
+                    assistantReceiptId:
+                      completedTurnSnapshot.assistantReceiptId,
+                  }
+                : {}),
+            });
+          }
           // The reload above full-replaces the thread; a stopped reply is often
           // NOT persisted server-side, so re-attach the partial the user watched
           // stream in (no-op / no duplicate when the server kept it).
@@ -2078,7 +2234,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatAbortRef,
       chatInputRef,
       chatPendingImagesRef,
-      conversationMessagesRef.current.filter,
+      conversationMessagesRef,
       conversationsRef,
       isConversationCommitActive,
       setActiveConversationId,
@@ -2091,6 +2247,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       dropEmptyAssistantPlaceholder,
       reattachInterruptedPartial,
       restoreEvictedUserTurn,
+      preserveCompletedTurnAfterHistoryRefresh,
       setConversations,
       setActionNotice,
       setChatInput,

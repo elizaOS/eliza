@@ -678,7 +678,7 @@ export function TriggerForm({
               ref={saveTemplateButton.ref}
               variant="ghost"
               size="sm"
-              className="h-auto px-0 py-0 text-xs font-medium text-muted underline-offset-2 transition-colors hover:bg-transparent hover:text-accent hover:underline"
+              className="h-auto p-0 text-xs font-medium text-muted underline-offset-2 transition-colors hover:bg-transparent hover:text-accent hover:underline"
               onClick={saveFormAsTemplate}
               {...saveTemplateButton.agentProps}
             >
@@ -897,7 +897,7 @@ function TriggerKindSection({
                 ref={goToWorkflowsButton.ref}
                 variant="ghost"
                 size="sm"
-                className="mt-2 h-auto px-0 py-0 text-xs font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
+                className="mt-2 h-auto p-0 text-xs font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
                 onClick={onGoToWorkflows}
                 {...goToWorkflowsButton.agentProps}
               >
@@ -1346,7 +1346,7 @@ function TriggerRunHistory({
   return (
     <div className="mt-10 grid gap-8 pt-8">
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        <PagePanel.SummaryCard className="px-4 py-4">
+        <PagePanel.SummaryCard className="p-4">
           <dt className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted">
             {t("triggersview.maxRuns")}
           </dt>
@@ -1361,7 +1361,7 @@ function TriggerRunHistory({
             })()}
           </dd>
         </PagePanel.SummaryCard>
-        <PagePanel.SummaryCard className="px-4 py-4">
+        <PagePanel.SummaryCard className="p-4">
           <dt className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted">
             {t("triggersview.LastRun")}
           </dt>
@@ -1376,7 +1376,7 @@ function TriggerRunHistory({
             })()}
           </dd>
         </PagePanel.SummaryCard>
-        <PagePanel.SummaryCard className="px-4 py-4">
+        <PagePanel.SummaryCard className="p-4">
           <dt className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted">
             {t("triggersview.nextRun")}
           </dt>
@@ -1417,7 +1417,7 @@ function TriggerRunHistory({
           if (!hasLoadedRuns) {
             return (
               <div className="py-6 text-sm text-muted flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-muted/30 border-t-muted/80 rounded-full animate-spin" />{" "}
+                <div className="size-4 border-2 border-muted/30 border-t-muted/80 rounded-full animate-spin" />{" "}
                 {t("appsview.Loading")}
               </div>
             );
@@ -1440,7 +1440,7 @@ function TriggerRunHistory({
                     <div className="flex items-start gap-3">
                       <StatusDot
                         status={run.status}
-                        className="mt-1 flex-shrink-0"
+                        className="mt-1 shrink-0"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">

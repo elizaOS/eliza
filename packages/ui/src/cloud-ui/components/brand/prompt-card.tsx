@@ -26,7 +26,7 @@ export function PromptCard({ prompt, onClick, className }: PromptCardProps) {
       <p className="text-sm text-muted-foreground group-hover:text-txt">
         {prompt}
       </p>
-      <ArrowUp className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground group-hover:text-txt" />
+      <ArrowUp className="absolute bottom-4 right-4 size-4 text-muted-foreground group-hover:text-txt" />
     </Button>
   );
 }

@@ -107,7 +107,9 @@ function viewSupportsFamily(
 	family: CapabilityFamily,
 ): boolean {
 	return (view.capabilities ?? []).some(
-		(capability) => capabilityFamily(capability) === family,
+		(capability) =>
+			capability.authority !== "human" &&
+			capabilityFamily(capability) === family,
 	);
 }
 

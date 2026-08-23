@@ -3,7 +3,7 @@
 Bun-based HTTP runner image for Eliza Cloud coding containers and home-machine
 Remote runner hosting.
 
-It exposes the contract consumed by `packages/agent/src/services/e2b-capability-router.ts`:
+It exposes the contract consumed by `packages/agent/src/services/remote-coding-runner.ts`:
 
 ```text
 GET  /health

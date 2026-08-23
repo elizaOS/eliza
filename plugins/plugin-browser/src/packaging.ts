@@ -260,7 +260,9 @@ function deriveNightlyOrdinal(value: string | null): number {
     const year = Number.parseInt(value.slice(0, 4), 10);
     const month = Number.parseInt(value.slice(4, 6), 10);
     const day = Number.parseInt(value.slice(6, 8), 10);
-    const utcMs = Date.UTC(year, month - 1, day);
+    const dN = new Date(0);
+    dN.setUTCFullYear(year, month - 1, day);
+    const utcMs = dN.getTime();
     if (Number.isFinite(utcMs)) {
       return clamp(
         Math.floor((utcMs - NIGHTLY_EPOCH_UTC_MS) / 86_400_000) + 1,
@@ -443,14 +445,8 @@ export function buildBrowserBridgeReleaseManifestForVersion(
     firefox: {
       installKind: storeUrls.firefoxAddonsUrl
         ? "firefox_addons"
-        : "github_release",
-      installUrl:
-        storeUrls.firefoxAddonsUrl ??
-        buildGitHubReleaseAssetDownloadUrl(
-          repository,
-          release,
-          firefoxAssetName,
-        ),
+        : "firefox_unsigned_submission",
+      installUrl: storeUrls.firefoxAddonsUrl,
       storeListingUrl: storeUrls.firefoxAddonsUrl,
       asset: {
         fileName: firefoxAssetName,

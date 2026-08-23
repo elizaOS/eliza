@@ -10,6 +10,8 @@ Adds real desktop control to an Eliza agent: taking screenshots, clicking/typing
 
 File operations belong to the FILE action; shell/terminal access belongs to the SHELL action — this plugin does not expose them.
 
+Android and desktop action/agent-step trajectory fields are complete audit records. Route free-form text through the shared trajectory-text boundary: preserve every well-formed value exactly, reject malformed Unicode with `COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE` before logging, and never clip, repair, or partially emit errors, goals, rationales, references, or codes. The shared agent-step `error` field is the complete message and `errorCode` is its stable classifier on every platform.
+
 ## Plugin surface
 
 ### Actions

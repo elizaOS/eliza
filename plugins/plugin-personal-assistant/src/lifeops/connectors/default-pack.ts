@@ -15,7 +15,6 @@ import { createDiscordConnectorContribution } from "./discord.js";
 import { createDuffelConnectorContribution } from "./duffel.js";
 import { createGoogleConnectorContribution } from "./google.js";
 import { createIMessageConnectorContribution } from "./imessage.js";
-import { createSignalConnectorContribution } from "./signal.js";
 import { createTelegramConnectorContribution } from "./telegram.js";
 import { createTwilioConnectorContribution } from "./twilio.js";
 import { createWhatsAppConnectorContribution } from "./whatsapp.js";
@@ -36,7 +35,6 @@ export const DEFAULT_CONNECTOR_CONTRIBUTIONS: ReadonlyArray<ConnectorContributio
     createGoogleConnectorContribution,
     createTelegramConnectorContribution,
     createDiscordConnectorContribution,
-    createSignalConnectorContribution,
     createWhatsAppConnectorContribution,
     createIMessageConnectorContribution,
     createXConnectorContribution,

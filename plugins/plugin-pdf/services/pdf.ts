@@ -10,6 +10,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service, ServiceType } from "@elizaos/core";
 import { getDocumentProxy } from "unpdf";
+import { parsePdfSpecDate } from "./pdf-date.ts";
 
 import type {
   PdfConversionResult,
@@ -137,12 +138,31 @@ function normalizeExtractionOptions(
   };
 }
 
+/**
+ * PDF spec (ISO 32000-1, 7.9.4) date string: `D:YYYYMMDDHHmmSSOHH'mm'` where
+ * every component after the year is optional and `O` is the UT relation
+ * (`+`, `-`, or `Z`). This is what `pdf.js`/`unpdf` actually surface in
+ * `info.CreationDate`/`info.ModDate`, not an ISO-8601 string. The groups mirror
+ * `PDFDateString.toDateObject` in pdf.js so real-world documents round-trip.
+ */
+export { parsePdfSpecDate } from "./pdf-date.ts";
+
 function parseMetadataDate(value: unknown): Date | undefined {
-  if (typeof value !== "string" && !(value instanceof Date)) {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value : undefined;
+  }
+
+  if (typeof value !== "string") {
     return undefined;
   }
 
-  const date = value instanceof Date ? value : new Date(value);
+  // Real unpdf/pdf.js output is the PDF-spec `D:` format; only fall back to the
+  // permissive `new Date()` path for actual ISO-8601 / RFC strings.
+  if (value.startsWith("D:")) {
+    return parsePdfSpecDate(value);
+  }
+
+  const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date : undefined;
 }
 

@@ -249,16 +249,20 @@ describe("device-class background budget (#11760 seam)", () => {
 		expect(constrained.lockWaitMs).toBeLessThan(standard.lockWaitMs);
 	});
 
-	it("preserves a large prompt while capping requested output tokens", () => {
+	it("rejects an unsupported output request without rewriting it", () => {
 		const budget = resolveBackgroundInferenceBudget("constrained");
 		const prompt = "<start_of_turn>system\n".padEnd(150_000, "x");
-		const result = applyBackgroundInferenceBudget(
-			{ prompt, maxTokens: 8_192 },
-			budget,
+		expect(() =>
+			applyBackgroundInferenceBudget({ prompt, maxTokens: 8_192 }, budget),
+		).toThrowError(
+			expect.objectContaining({
+				code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
+				context: {
+					requestedMaxTokens: 8_192,
+					supportedMaxTokens: budget.maxTokens,
+				},
+			}),
 		);
-		expect(result.prompt).toBe(prompt);
-		expect(result.maxTokens).toBe(budget.maxTokens);
-		expect(result.clamped).toHaveLength(1);
 	});
 
 	it("never clamps a request already inside the budget", () => {
@@ -272,13 +276,29 @@ describe("device-class background budget (#11760 seam)", () => {
 		expect(result.clamped).toEqual([]);
 	});
 
-	it("defaults maxTokens to the budget cap when the caller left it unset", () => {
+	it("accepts the exact device boundary without adjustment", () => {
 		const budget = resolveBackgroundInferenceBudget("constrained");
 		const result = applyBackgroundInferenceBudget(
-			{ prompt: "p", maxTokens: undefined },
+			{ prompt: "p", maxTokens: budget.maxTokens },
 			budget,
 		);
 		expect(result.maxTokens).toBe(budget.maxTokens);
 		expect(result.clamped).toEqual([]);
+	});
+
+	it("uses the device maximum when the optional output ceiling is omitted", () => {
+		const budget = resolveBackgroundInferenceBudget("constrained");
+		expect(
+			applyBackgroundInferenceBudget(
+				{ prompt: "p", maxTokens: undefined },
+				budget,
+			),
+		).toEqual(
+			expect.objectContaining({
+				prompt: "p",
+				maxTokens: budget.maxTokens,
+				clamped: [],
+			}),
+		);
 	});
 });

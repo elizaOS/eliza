@@ -38,6 +38,7 @@ let dbWriteUpdateRows: Array<Record<string, unknown>> | null = null;
 let containerInfrastructureCalls = 0;
 let agentInfrastructureCalls = 0;
 let lastAgentSuspendParams: Record<string, unknown> | null = null;
+let agentInfrastructureMutation: (() => Promise<void>) | null = null;
 
 // Identify which fixture a `.from(table)` call wants without importing the real
 // drizzle table objects: the schema modules export named tables, and the real
@@ -124,6 +125,7 @@ mock.module("./provisioning-jobs", () => ({
     enqueueAgentSuspendOnce: async (params: Record<string, unknown>) => {
       agentInfrastructureCalls += 1;
       lastAgentSuspendParams = params;
+      await agentInfrastructureMutation?.();
     },
     enqueueAgentDeleteOnce: async () => {
       agentInfrastructureCalls += 1;
@@ -176,7 +178,7 @@ const baseAgent = (overrides: Record<string, unknown> = {}) => ({
   last_billed_at: null,
   last_backup_at: null,
   scheduled_shutdown_at: null,
-  execution_tier: "dedicated",
+  execution_tier: "dedicated-always",
   ...overrides,
 });
 
@@ -199,6 +201,7 @@ beforeEach(() => {
   containerInfrastructureCalls = 0;
   agentInfrastructureCalls = 0;
   lastAgentSuspendParams = null;
+  agentInfrastructureMutation = null;
 });
 
 // ── Parser boundary (exhaustive) ─────────────────────────────────────────────
@@ -368,6 +371,7 @@ describe("cancelResource fail-closed before side effects", () => {
       organizationId: ORG,
       resourceId: "agent-100000",
       resourceType: "agent_sandbox",
+      authorizeInfrastructureMutation: async () => undefined,
     });
 
     expect(result.stoppedBilling).toBe(true);
@@ -387,6 +391,7 @@ describe("cancelResource fail-closed before side effects", () => {
         organizationId: ORG,
         resourceId: "container-1",
         resourceType: "container",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).rejects.toBeInstanceOf(CorruptActiveBillingNumberError);
 
@@ -402,6 +407,7 @@ describe("cancelResource fail-closed before side effects", () => {
         organizationId: ORG,
         resourceId: "agent-100000",
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).rejects.toBeInstanceOf(CorruptActiveBillingNumberError);
 
@@ -410,14 +416,17 @@ describe("cancelResource fail-closed before side effects", () => {
   });
 
   test("deletion winning the billing CAS returns an explicit conflict instead of fake suspension", async () => {
-    agentRows = [
-      baseAgent({
-        deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
-        status: "deletion_pending",
-        billing_status: "active",
-      }),
-    ];
+    agentRows = [baseAgent()];
+    agentInfrastructureMutation = async () => {
+      agentRows = [
+        baseAgent({
+          deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
+          status: "deletion_pending",
+          billing_status: "active",
+        }),
+      ];
+    };
     dbWriteUpdateRows = [];
 
     try {
@@ -425,6 +434,7 @@ describe("cancelResource fail-closed before side effects", () => {
         organizationId: ORG,
         resourceId: "agent-100000",
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       });
       throw new Error("Expected deletion conflict");
     } catch (error) {
@@ -437,5 +447,23 @@ describe("cancelResource fail-closed before side effects", () => {
 
     expect(agentInfrastructureCalls).toBe(1);
     expect(dbWriteUpdateCalls).toBe(1);
+  });
+
+  test("authority loss after resource lookup prevents every infrastructure effect", async () => {
+    agentRows = [baseAgent()];
+
+    await expect(
+      activeBillingService.cancelResource({
+        organizationId: ORG,
+        resourceId: "agent-100000",
+        resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => {
+          throw new Error("authority changed");
+        },
+      }),
+    ).rejects.toThrow("authority changed");
+
+    expect(agentInfrastructureCalls).toBe(0);
+    expect(dbWriteUpdateCalls).toBe(0);
   });
 });

@@ -6,14 +6,14 @@
 import {
   ElizaError,
   type IdentityPersonLinkActorRole,
-  IdentityResolutionService,
+  PrincipalService,
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import { computeIdentityPersonLinkRequestDigest } from "../services/sql-identity-resolution";
+import { computeIdentityPersonLinkRequestDigest } from "../services/sql-principal";
 
 const ATTEST_PATH = "/api/identity/person-links/attest";
 const VERIFY_PATH = "/api/identity/person-links/verify";
@@ -100,9 +100,7 @@ async function attest(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
   }
   const actor = authenticatedActor(ctx);
   if ("status" in actor) return actor;
-  const service = ctx.runtime.getService<IdentityResolutionService>(
-    IdentityResolutionService.serviceType
-  );
+  const service = ctx.runtime.getService<PrincipalService>(PrincipalService.serviceType);
   if (!service) return json(503, { error: "IDENTITY_AUTHORITY_UNAVAILABLE" });
   const requestWithoutDigest = {
     agentId: ctx.runtime.agentId,
@@ -137,9 +135,7 @@ async function verify(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
   if (!leftPrincipalId || !rightPrincipalId || generation === null) {
     return json(400, { error: "IDENTITY_PERSON_LINK_INPUT_INVALID" });
   }
-  const service = ctx.runtime.getService<IdentityResolutionService>(
-    IdentityResolutionService.serviceType
-  );
+  const service = ctx.runtime.getService<PrincipalService>(PrincipalService.serviceType);
   if (!service) return json(503, { error: "IDENTITY_AUTHORITY_UNAVAILABLE" });
   try {
     const verification = await service.verifyPersonLink({

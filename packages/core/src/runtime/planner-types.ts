@@ -4,7 +4,10 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
-import type { ActionFailureProvenance } from "../types/action-failure";
+import type {
+	ActionFailureKind,
+	ActionFailureProvenance,
+} from "../types/action-failure";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -226,10 +229,23 @@ export interface PlannerStep {
 
 export interface PlannerTrajectory {
 	context: ContextObject;
+	/** Internal execution-mode provenance for mode-specific terminal handling. */
+	codingMode?: boolean;
 	steps: PlannerStep[];
 	archivedSteps: PlannerStep[];
 	plannedQueue: PlannerToolCall[];
 	evaluatorOutputs: EvaluatorOutput[];
+}
+
+export interface PlannerTerminalFailure {
+	kind:
+		| "coding_mutation_unverified"
+		| "coding_tool_failure"
+		| ActionFailureKind;
+	transient: boolean;
+	message: string;
+	/** Action boundary code when the failing tool supplied typed provenance. */
+	code?: string;
 }
 
 export interface PlannerLoopResult {
@@ -237,6 +253,12 @@ export interface PlannerLoopResult {
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
 	finalMessage?: string;
+	/**
+	 * Machine-readable terminal failure that survives independent text delivery.
+	 * The message service propagates this outside `responseContent`, so a host
+	 * cannot mistake a callback-delivered failure for a successful turn.
+	 */
+	terminalFailure?: PlannerTerminalFailure;
 	/**
 	 * Marks a turn whose empty `finalMessage` is a designed outcome — the
 	 * planner ended on STOP/IGNORE or a `suppressPlannerReply` terminal action —
@@ -273,6 +295,8 @@ export interface PlannerLoopParams {
 		toolCall: PlannerToolCall;
 		result: PlannerToolResult;
 	};
+	/** Trusted per-turn coding-loop mode; never used as an authorization signal. */
+	codingMode?: boolean;
 	config?: Partial<ChainingLoopConfig>;
 	executeToolCall: (
 		toolCall: PlannerToolCall,

@@ -18,6 +18,19 @@ import type { Task, TaskWorker } from "../types/task";
 import { stringToUuid } from "../utils";
 import type { ContactInfo, RelationshipsService } from "./relationships.ts";
 
+const FOLLOW_UP_WORKER_NAME = "follow_up";
+
+/**
+ * Keeps one-shot follow-up rows out of TaskService's orphan deletion path while
+ * the relationships plugin is disabled. This worker is deliberately stateless:
+ * it captures no service/runtime and a later FollowUpService start replaces it.
+ */
+const PARKED_FOLLOW_UP_WORKER: TaskWorker = {
+	name: FOLLOW_UP_WORKER_NAME,
+	shouldRun: async () => false,
+	execute: async () => ({ preserveTask: true }),
+};
+
 export interface FollowUpTask {
 	entityId: UUID;
 	reason: string;
@@ -42,6 +55,10 @@ export class FollowUpService extends Service {
 		"Task-based follow-up scheduling and management for contacts";
 
 	private relationshipsService!: RelationshipsService;
+	private followUpWorker: TaskWorker | null = null;
+	private stopping = false;
+	private stopPromise: Promise<void> | null = null;
+	private readonly activeWorkerExecutions = new Set<Promise<unknown>>();
 
 	constructor(runtime?: IAgentRuntime) {
 		super();
@@ -70,6 +87,38 @@ export class FollowUpService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		if (this.stopPromise) {
+			return this.stopPromise;
+		}
+		this.stopping = true;
+		const worker = this.followUpWorker;
+		if (
+			worker &&
+			this.runtime.getTaskWorker(FOLLOW_UP_WORKER_NAME) === worker
+		) {
+			// A missing worker makes TaskService delete queued one-shot follow-ups
+			// after its orphan grace period. Replace only our exact worker with a
+			// module-level parking worker: it retains no stopped service instance,
+			// never executes a reminder, and leaves every persisted task byte-for-byte
+			// intact for the next relationships-plugin start to reclaim.
+			this.runtime.unregisterTaskWorker(FOLLOW_UP_WORKER_NAME);
+			this.runtime.registerTaskWorker(PARKED_FOLLOW_UP_WORKER);
+		}
+		this.followUpWorker = null;
+
+		this.stopPromise = this.finishStop();
+		return this.stopPromise;
+	}
+
+	private async finishStop(): Promise<void> {
+		// A TaskService tick may already hold this instance's worker closure. Wait
+		// until every such execution reaches its no-further-effects boundary before
+		// allowing plugin teardown to complete. Captured closures invoked after the
+		// fence return preserveTask without touching their row.
+		while (this.activeWorkerExecutions.size > 0) {
+			await Promise.allSettled([...this.activeWorkerExecutions]);
+		}
+
 		// relationshipsService will be cleaned up by the runtime
 		logger.info("[FollowUpService] Stopped successfully");
 	}
@@ -153,9 +202,10 @@ export class FollowUpService extends Service {
 		for (const task of tasks) {
 			if (task.metadata?.status !== "pending") continue;
 
-			const scheduledAt = task.metadata.scheduledAt
+			const scheduledAtRaw = task.metadata.scheduledAt
 				? new Date(task.metadata.scheduledAt as string).getTime()
 				: 0;
+			const scheduledAt = Number.isFinite(scheduledAtRaw) ? scheduledAtRaw : 0;
 
 			// Check if task is within the time range
 			if (includeOverdue && scheduledAt < now) {
@@ -179,12 +229,14 @@ export class FollowUpService extends Service {
 
 		// Sort by scheduled date
 		upcomingFollowUps.sort((a, b) => {
-			const aScheduled = a.task.metadata?.scheduledAt
+			const aRaw = a.task.metadata?.scheduledAt
 				? new Date(a.task.metadata.scheduledAt as string).getTime()
 				: 0;
-			const bScheduled = b.task.metadata?.scheduledAt
+			const bRaw = b.task.metadata?.scheduledAt
 				? new Date(b.task.metadata.scheduledAt as string).getTime()
 				: 0;
+			const aScheduled = Number.isFinite(aRaw) ? aRaw : 0;
+			const bScheduled = Number.isFinite(bRaw) ? bRaw : 0;
 			return aScheduled - bScheduled;
 		});
 
@@ -381,17 +433,25 @@ export class FollowUpService extends Service {
 			return scoreB - scoreA;
 		});
 
-		return suggestions.slice(0, 10); // Return top 10 suggestions
+		return suggestions;
 	}
 
 	// Task Workers
 	private registerFollowUpWorker(): void {
+		if (
+			this.followUpWorker &&
+			this.runtime.getTaskWorker(FOLLOW_UP_WORKER_NAME) === this.followUpWorker
+		) {
+			return;
+		}
+
 		const worker: TaskWorker = {
-			name: "follow_up",
+			name: FOLLOW_UP_WORKER_NAME,
 			shouldRun: async (
 				runtime: IAgentRuntime,
 				task: Task,
 			): Promise<boolean> => {
+				if (this.stopping) return false;
 				// Execution gate for rows stored before completion stopped
 				// unqueueing them: an explicitly completed follow-up must never
 				// fire. Rows without a status field stay runnable (backward
@@ -404,86 +464,104 @@ export class FollowUpService extends Service {
 				const entity = await runtime.getEntityById(targetEntityId);
 				return entity != null;
 			},
-			execute: async (
+			execute: (
 				runtime: IAgentRuntime,
 				_options: { [key: string]: JsonValue | object },
 				task: Task,
 			) => {
-				try {
-					if (!task.id) return { preserveTask: true };
-					const claimed = await runtime.updatePendingTask(task.id, {
-						tags: (task.tags ?? []).filter((tag) => tag !== "queue"),
-						metadata: { ...task.metadata, status: "executing" },
-					});
-					if (!claimed) return { preserveTask: true };
-
-					const targetEntityId = task.metadata?.targetEntityId as UUID;
-					const message =
-						(task.metadata?.message as string) || "Time for a follow-up!";
-
-					// Get entity
-					const entity = await runtime.getEntityById(targetEntityId);
-					if (!entity) {
-						logger.warn(
-							`[FollowUpService] Entity ${targetEntityId} not found for follow-up`,
-						);
-						return undefined;
-					}
-
-					// Create a follow-up memory/reminder
-					const memory: Memory = {
-						id: createUniqueUuid(runtime, `followup-memory-${Date.now()}`),
-						entityId: runtime.agentId,
-						agentId: runtime.agentId,
-						roomId: stringToUuid(`relationships-${runtime.agentId}`),
-						content: {
-							text: `Follow-up reminder: ${entity.names[0]} - ${task.metadata?.reason || "Check in"}. ${message}`,
-							type: "follow_up_reminder",
-						},
-						metadata: {
-							type: MemoryType.CUSTOM,
-							source: "relationships",
-							targetEntityId: targetEntityId,
-							taskId: task.id ?? "",
-							priority: (task.metadata?.priority as string) ?? "medium",
-						},
-						createdAt: Date.now(),
-					};
-
-					// Save the reminder
-					await runtime.createMemory(memory, "reminders");
-
-					// Emit follow-up event - cast to avoid event type checking
-					await (
-						runtime as {
-							emitEvent: (
-								event: string,
-								payload: Record<string, JsonValue | object>,
-							) => Promise<void>;
-						}
-					).emitEvent("follow_up:due", {
-						taskId: task.id ?? "",
-						taskName: task.name,
-						entityId: entity.id ?? "",
-						message: message,
-					});
-
-					logger.info(
-						`[FollowUpService] Executed follow-up for ${entity.names[0]}`,
-					);
-				} catch (error) {
-					// error-policy:J2 Log follow-up identity and preserve the execution failure.
-					logger.error(
-						"[FollowUpService] Error executing follow-up:",
-						error instanceof Error ? error.message : String(error),
-					);
-					throw error;
-				}
-				return undefined;
+				const execution = this.executeFollowUpWorker(runtime, task);
+				this.activeWorkerExecutions.add(execution);
+				void execution.then(
+					() => this.activeWorkerExecutions.delete(execution),
+					() => this.activeWorkerExecutions.delete(execution),
+				);
+				return execution;
 			},
 		};
 
 		this.runtime.registerTaskWorker(worker);
+		this.followUpWorker = worker;
+	}
+
+	private async executeFollowUpWorker(
+		runtime: IAgentRuntime,
+		task: Task,
+	): Promise<{ preserveTask: true } | undefined> {
+		try {
+			if (this.stopping || !task.id) return { preserveTask: true };
+
+			const targetEntityId = task.metadata?.targetEntityId as UUID;
+			const message =
+				(task.metadata?.message as string) || "Time for a follow-up!";
+
+			// Resolve every fallible prerequisite before the durable claim. If stop
+			// wins this await, the original pending row remains byte-for-byte intact.
+			const entity = await runtime.getEntityById(targetEntityId);
+			if (this.stopping) return { preserveTask: true };
+			if (!entity) {
+				logger.warn(
+					`[FollowUpService] Entity ${targetEntityId} not found for follow-up`,
+				);
+				return undefined;
+			}
+
+			const claimed = await runtime.updatePendingTask(task.id, {
+				tags: (task.tags ?? []).filter((tag) => tag !== "queue"),
+				metadata: { ...task.metadata, status: "executing" },
+			});
+			if (!claimed) return { preserveTask: true };
+
+			// The claim is the delivery linearization point. stop() drains this
+			// tracked execution, so its effects complete before teardown returns.
+
+			const memory: Memory = {
+				id: createUniqueUuid(runtime, `followup-memory-${Date.now()}`),
+				entityId: runtime.agentId,
+				agentId: runtime.agentId,
+				roomId: stringToUuid(`relationships-${runtime.agentId}`),
+				content: {
+					text: `Follow-up reminder: ${entity.names[0]} - ${task.metadata?.reason || "Check in"}. ${message}`,
+					type: "follow_up_reminder",
+				},
+				metadata: {
+					type: MemoryType.CUSTOM,
+					source: "relationships",
+					targetEntityId: targetEntityId,
+					taskId: task.id ?? "",
+					priority: (task.metadata?.priority as string) ?? "medium",
+				},
+				createdAt: Date.now(),
+			};
+
+			await runtime.createMemory(memory, "reminders");
+
+			// Emit follow-up event - cast to avoid event type checking
+			await (
+				runtime as {
+					emitEvent: (
+						event: string,
+						payload: Record<string, JsonValue | object>,
+					) => Promise<void>;
+				}
+			).emitEvent("follow_up:due", {
+				taskId: task.id ?? "",
+				taskName: task.name,
+				entityId: entity.id ?? "",
+				message: message,
+			});
+
+			logger.info(
+				`[FollowUpService] Executed follow-up for ${entity.names[0]}`,
+			);
+		} catch (error) {
+			// error-policy:J2 Log follow-up identity and preserve the execution failure.
+			logger.error(
+				"[FollowUpService] Error executing follow-up:",
+				error instanceof Error ? error.message : String(error),
+			);
+			throw error;
+		}
+		return undefined;
 	}
 
 	// Helper Methods

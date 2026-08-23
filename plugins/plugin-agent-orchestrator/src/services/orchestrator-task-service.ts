@@ -59,6 +59,7 @@ import {
   type SerializableSpawnOpts,
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
+import { deriveChildTerminalResult } from "./child-terminal-result.js";
 import {
   extractWriteLedger,
   verifyClaimedFiles,
@@ -217,6 +218,7 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   TASK_SUPERVISOR_SERVICE_TYPE,
   type TaskSupervisorService,
@@ -227,6 +229,8 @@ import {
   SessionCapError,
   type SessionInfo,
   type SpawnResult,
+  type SubscriptionExecutionAuthorization,
+  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
@@ -404,6 +408,8 @@ export interface SpawnAgentForTaskOptions {
    * enqueuedAt and push the task to the back of its band.
    */
   parkOnCap?: boolean;
+  /** Interactive authority minted by the route/action boundary and persisted. */
+  subscriptionExecutionAuthorization?: SubscriptionExecutionAuthorization;
 }
 
 /**
@@ -556,6 +562,15 @@ function isSerializableSpawnOpts(
     const field = value[key];
     if (field !== undefined && typeof field !== "string") return false;
   }
+  if (
+    value.subscriptionExecutionAuthorization !== undefined &&
+    !subscriptionExecutionAuthorizationFromMetadata({
+      subscriptionExecutionAuthorization:
+        value.subscriptionExecutionAuthorization,
+    })
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -674,7 +689,11 @@ function latestActiveSession(
 ): OrchestratorTaskSession | undefined {
   return doc.sessions
     .filter((session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status))
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+        (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+    )[0];
 }
 
 /** The session whose workspace the residuals gate inspects when the caller has
@@ -686,7 +705,11 @@ function latestWorkspaceSession(
 ): OrchestratorTaskSession | undefined {
   return doc.sessions
     .filter((session) => session.workdir.trim().length > 0)
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+        (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+    )[0];
 }
 
 /** Whether the residuals gate must treat the workspace as a REQUIRED git repo
@@ -1169,7 +1192,7 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
+        return this.onSessionEvent(
           sessionId,
           event,
           data,
@@ -1603,6 +1626,17 @@ export class OrchestratorTaskService extends Service {
           ? snapshotTaskId
           : await this.resolveTaskId(sessionId);
       if (!taskId) return;
+      const rawData = isRecord(data) ? data : { value: data };
+      const taskDoc = await this.store.getTask(taskId);
+      const childTerminalResult = taskDoc
+        ? deriveChildTerminalResult(taskDoc, {
+            eventType: event,
+            sessionId,
+            summary: describeEvent(event, data),
+            data: rawData,
+            timestamp: Date.now(),
+          })
+        : undefined;
       await this.store.addEvent({
         id: randomUUID(),
         taskId,
@@ -1610,7 +1644,10 @@ export class OrchestratorTaskService extends Service {
         ...(turnId ? { turnId } : {}),
         eventType: event,
         summary: describeEvent(event, data),
-        data: isRecord(data) ? data : { value: data },
+        data: {
+          ...rawData,
+          ...(childTerminalResult ? { childTerminalResult } : {}),
+        },
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
@@ -1635,6 +1672,10 @@ export class OrchestratorTaskService extends Service {
           note: "further event-record failures for this session are suppressed",
         });
       }
+      // Account identity is an authority boundary: its caller awaits this
+      // consumer before exposing failover credentials to a child. Other
+      // telemetry events retain their established diagnostics-only behavior.
+      if (event === "account_switched") throw err;
     }
   }
 
@@ -2246,7 +2287,11 @@ export class OrchestratorTaskService extends Service {
         mtimeMs: (await stat(path)).mtimeMs,
       })),
     );
-    withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    withMtime.sort(
+      (a, b) =>
+        (Number.isFinite(b.mtimeMs) ? b.mtimeMs : 0) -
+        (Number.isFinite(a.mtimeMs) ? a.mtimeMs : 0),
+    );
 
     const session = (await this.store.findSession(sessionId, taskId))?.session;
     const ingested: string[] = [];
@@ -3801,9 +3846,10 @@ export class OrchestratorTaskService extends Service {
    * 3. **Independent execution verifier (#8898).** For code-change tasks
    *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
    *    the tests/diff and returns an execution-grounded verdict. A failing verdict
-   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
-   *    the task `validating` (never a false promotion on a verifier crash); a
-   *    passing/skipped verdict falls through.
+   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict
+   *    reopens a retryable worker turn without consuming its corrective-attempt
+   *    budget (never a false promotion on a verifier crash); a passing/skipped
+   *    verdict falls through.
    * 4. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
    *    judges the evidence and promotes (→ `done`) or re-prompts.
    *
@@ -3840,12 +3886,50 @@ export class OrchestratorTaskService extends Service {
       );
     } catch (err) {
       // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
-      // failure warns and must not break the session-event write path.
+      // failure warns and must not break the session-event write path. Recover
+      // the durable state too: logging alone used to strand the task forever in
+      // `validating`, with no retry surface and no terminal signal.
       this.log("warn", "auto goal verification failed", {
         taskId,
         sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
+      this.runtime.reportError?.(
+        "OrchestratorTaskService.autoVerifyCompletion",
+        err,
+        { taskId, sessionId },
+      );
+      try {
+        await this.withTaskWriteLock(taskId, () =>
+          this.retryInconclusiveVerification({
+            taskId,
+            sessionId,
+            eventType: "auto_verify_inconclusive",
+            verifier: "auto-verifier-infrastructure",
+            summary: `Automatic verification could not run: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            correction:
+              "Automatic verification was temporarily unavailable. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+          }),
+        );
+      } catch (recoveryErr) {
+        // error-policy:J7 diagnostics/recovery must not reject the detached
+        // event handler. A second failure is reported distinctly.
+        this.log("error", "failed to recover inconclusive auto verification", {
+          taskId,
+          sessionId,
+          error:
+            recoveryErr instanceof Error
+              ? recoveryErr.message
+              : String(recoveryErr),
+        });
+        this.runtime.reportError?.(
+          "OrchestratorTaskService.autoVerifyRecovery",
+          recoveryErr,
+          { taskId, sessionId },
+        );
+      }
     } finally {
       this.autoVerifyInFlight.delete(taskId);
     }
@@ -4030,9 +4114,23 @@ export class OrchestratorTaskService extends Service {
       }
 
       const acceptanceCriteria = doc.task.acceptanceCriteria;
-      // Criteria-free tasks keep the prior behavior after deterministic gates:
-      // stay `validating` for a human/manual caller, with no model spend.
-      if (acceptanceCriteria.length === 0) return;
+      // With no criteria there is nothing for the model judge to decide. Once
+      // the deterministic residuals/ground-truth gates above are clear, finish
+      // explicitly instead of leaving the task permanently `validating`.
+      if (acceptanceCriteria.length === 0) {
+        await this.validateTaskLocked(taskId, {
+          passed: true,
+          summary:
+            "No acceptance criteria were specified; deterministic completion gates passed.",
+          evidence:
+            completionEvidence.trim() ||
+            rawCompletion.trim() ||
+            "Criteria-free completion passed deterministic gates.",
+          verifier: "criteria-free-completion-gate",
+        });
+        this.emitChange(taskId);
+        return;
+      }
 
       // 2. Structural envelope gate (#8895) — BEFORE any model spend.
       if (parse.present && !parse.ok) {
@@ -4218,17 +4316,10 @@ export class OrchestratorTaskService extends Service {
       );
       if (independent) {
         if (independent.inconclusive) {
-          // A verifier crash/empty verdict is never a pass — but a silent
-          // return here parked the task in `validating` forever with no
-          // re-prompt, no escalation, and no signal to the task creator
-          // (observed live: a website-build task whose final task_complete hit
-          // "no usable CompletionEnvelope" and then sat `validating` for
-          // hours while the user asked "is it done?"). Route it through the
-          // shared re-engage/escalate path like every other non-pass verdict:
-          // under the attempts cap the worker is re-prompted to re-report
-          // with the structured envelope (making the next verify decidable);
-          // at the cap the task parks on waiting_on_user instead of ghosting.
-          await this.reEngageOrEscalate({
+          // A verifier crash/empty verdict is an infrastructure outcome, not
+          // evidence that the worker failed a criterion. Re-open a retryable
+          // turn, but preserve the worker's bounded corrective-attempt budget.
+          await this.retryInconclusiveVerification({
             taskId,
             sessionId,
             correction: [
@@ -4241,11 +4332,6 @@ export class OrchestratorTaskService extends Service {
             eventType: "independent_verify_inconclusive",
             verifier: INDEPENDENT_ACP_VERIFIER_NAME,
             summary: independent.summary,
-            missing: [
-              ...independent.unmet,
-              ...independent.failedCommands.map((c) => `command failed: ${c}`),
-            ],
-            attempt: attempts,
           });
           return;
         }
@@ -4308,6 +4394,19 @@ export class OrchestratorTaskService extends Service {
         },
       );
 
+      if (verdict.inconclusive) {
+        await this.retryInconclusiveVerification({
+          taskId,
+          sessionId,
+          eventType: "goal_verify_inconclusive",
+          verifier: LLM_GOAL_VERIFIER_NAME,
+          summary: verdict.summary,
+          correction:
+            "The goal-verification model was temporarily unavailable or returned no usable verdict. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+        });
+        return;
+      }
+
       if (verdict.passed) {
         await this.validateTaskLocked(taskId, {
           passed: true,
@@ -4339,6 +4438,70 @@ export class OrchestratorTaskService extends Service {
         attempt: attempts,
       });
     }
+  }
+
+  /**
+   * Re-open a task when the verifier itself could not decide. This deliberately
+   * does not write `autoVerifyAttempts` or `attemptReflections`: those counters
+   * measure worker proof failures, not provider outages, malformed judge
+   * responses, or verifier subprocess failures.
+   */
+  private async retryInconclusiveVerification(args: {
+    taskId: string;
+    sessionId: string;
+    correction: string;
+    eventType: string;
+    verifier: string;
+    summary: string;
+  }): Promise<void> {
+    const { taskId, sessionId, correction, eventType, verifier, summary } =
+      args;
+    const doc = await this.store.getTask(taskId);
+    if (doc?.task.status !== "validating") return;
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType,
+      summary,
+      data: { verifier, retryable: true },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    try {
+      await this.store.updateSession(sessionId, {
+        status: "ready",
+        taskDelivered: false,
+        stoppedAt: undefined,
+      });
+      await this.sendToTaskAgent(
+        taskId,
+        sessionId,
+        correction,
+        "validation_failed",
+      );
+      await this.advanceTaskStatus(taskId, "validation_failed");
+    } catch (sendErr) {
+      // error-policy:J1 boundary — an inconclusive verifier plus an unavailable
+      // worker is surfaced to a human instead of remaining stuck validating.
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "auto_verify_retry_failed",
+        summary:
+          "Verification was inconclusive and its retry could not be delivered; escalating to a human.",
+        data: {
+          verifier,
+          retryable: true,
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.advanceTaskStatus(taskId, "awaiting_user");
+    }
+    this.emitChange(taskId);
   }
 
   /**
@@ -5268,6 +5431,9 @@ export class OrchestratorTaskService extends Service {
     // ambiguous value to the child.
     const traceEnv = this.buildChildTraceEnv(taskId);
 
+    const subscriptionExecutionAuthorization =
+      opts.subscriptionExecutionAuthorization;
+
     const framework =
       opts.framework ??
       policy.preferredFramework ??
@@ -5287,6 +5453,7 @@ export class OrchestratorTaskService extends Service {
     ) {
       const wave = await waveSupervisor.concurrencyForTask(taskId);
       if (
+        normalizeTaskAgentAdapter(framework) !== "kimi" &&
         nestingDepth === 0 &&
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
@@ -5300,6 +5467,7 @@ export class OrchestratorTaskService extends Service {
           task: opts.task,
           approvalPreset: opts.approvalPreset,
           providerSource: opts.providerSource ?? policy.providerSource,
+          subscriptionExecutionAuthorization,
         });
       }
       throw new WaveConcurrencyCapError(
@@ -5321,6 +5489,7 @@ export class OrchestratorTaskService extends Service {
         // vendored CLI. opencode remains available only as an explicit
         // selection (settings/routing/request).
         agentType: framework,
+        subscriptionExecutionAuthorization,
         workdir,
         initialTask: goalPrompt,
         model: opts.model ?? policy.model,
@@ -5366,6 +5535,7 @@ export class OrchestratorTaskService extends Service {
       if (
         err instanceof SessionCapError &&
         err.slotClass === "worker" &&
+        normalizeTaskAgentAdapter(framework) !== "kimi" &&
         nestingDepth === 0 &&
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
@@ -5379,6 +5549,7 @@ export class OrchestratorTaskService extends Service {
           task: opts.task,
           approvalPreset: opts.approvalPreset,
           providerSource: opts.providerSource ?? policy.providerSource,
+          subscriptionExecutionAuthorization,
         });
       }
       throw err;
@@ -5435,13 +5606,14 @@ export class OrchestratorTaskService extends Service {
       ...(traceEnv[TRACE_ENV.PARENT_STEP_ID]
         ? { parentTrajectoryStepId: traceEnv[TRACE_ENV.PARENT_STEP_ID] }
         : {}),
-      metadata:
-        orchestratorOwnedArtifacts.length > 0
+      metadata: {
+        ...(orchestratorOwnedArtifacts.length > 0
           ? {
               [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
                 orchestratorOwnedArtifacts,
             }
-          : {},
+          : {}),
+      },
       createdAt: ts,
       updatedAt: ts,
     };
@@ -5960,7 +6132,11 @@ export class OrchestratorTaskService extends Service {
       });
     }
 
-    rooms.sort((a, b) => b.activeAgentCount - a.activeAgentCount);
+    rooms.sort(
+      (a, b) =>
+        (Number.isFinite(b.activeAgentCount) ? b.activeAgentCount : 0) -
+        (Number.isFinite(a.activeAgentCount) ? a.activeAgentCount : 0),
+    );
     return { rooms };
   }
 
@@ -6573,7 +6749,17 @@ export class OrchestratorTaskService extends Service {
       });
     }
     if (candidates.length === 0) return false;
-    candidates.sort((a, b) => a.createdAt - b.createdAt);
+    candidates.sort((a, b) => {
+      const aTime =
+        typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+          ? a.createdAt
+          : 0;
+      const bTime =
+        typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+          ? b.createdAt
+          : 0;
+      return aTime - bTime || a.id.localeCompare(b.id);
+    });
     const victim = candidates[0];
     if (!victim) return false;
     try {
@@ -6619,7 +6805,17 @@ function paginate<T extends { timestamp: number }>(
   opts: { limit?: number; cursor?: string },
 ): PageResult<T> {
   const limit = opts.limit && opts.limit > 0 ? Math.min(opts.limit, 500) : 100;
-  const sorted = [...items].sort((a, b) => b.timestamp - a.timestamp);
+  const sorted = [...items].sort((a, b) => {
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    return bTime - aTime;
+  });
   const start = opts.cursor
     ? Math.max(0, Number.parseInt(opts.cursor, 10) || 0)
     : 0;

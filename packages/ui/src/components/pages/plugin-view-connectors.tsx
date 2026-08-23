@@ -1,6 +1,6 @@
 /**
  * Connector cards for the Plugins view: renders each connector plugin (Discord,
- * Telegram, Signal, cloud OAuth connections, …) as an expandable card that
+ * Telegram, WhatsApp, cloud OAuth connections, …) as an expandable card that
  * co-renders its config form and its setup/account-management panel — including
  * the case where a mode delegates its setup panel to a *different* plugin id.
  * `ConnectorPluginGroups` groups the visible connectors and lays them out flat
@@ -843,17 +843,17 @@ function ConnectorPluginCard({
   const BrandIcon = getBrandIcon(plugin.id);
   const connectorHeaderMedia = (
     <span
-      className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border p-2.5 ${
+      className={`mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-sm border p-2.5 ${
         isSelected
           ? "border-accent/30 bg-accent/18 text-txt-strong"
           : "border-border/50 bg-bg-accent/80 text-muted"
       }`}
     >
       {BrandIcon ? (
-        <BrandIcon className="h-5 w-5 shrink-0" />
+        <BrandIcon className="size-5 shrink-0" />
       ) : (
         renderResolvedIcon(plugin, {
-          className: "h-4 w-4 shrink-0 rounded-sm object-contain",
+          className: "size-4 shrink-0 rounded-sm object-contain",
           emojiClassName: "text-base",
         })
       )}
@@ -917,7 +917,7 @@ function ConnectorPluginCard({
           allParamsSet ? "text-ok" : "text-warn"
         }`}
       >
-        <StatusIcon className="h-5 w-5" aria-hidden="true" />
+        <StatusIcon className="size-5" aria-hidden="true" />
       </span>
       <Switch
         ref={toggleControl.ref}
@@ -937,7 +937,7 @@ function ConnectorPluginCard({
         ref={expandControl.ref}
         variant="ghost"
         size="icon"
-        className={`h-8 w-8 shrink-0 rounded-none border-0 bg-transparent transition-colors hover:bg-transparent ${
+        className={`size-8 shrink-0 rounded-none border-0 bg-transparent transition-colors hover:bg-transparent ${
           isExpanded ? "text-txt" : "text-muted hover:text-txt"
         }`}
         onClick={(event) => {
@@ -952,7 +952,7 @@ function ConnectorPluginCard({
         {...expandControl.agentProps}
       >
         <ChevronRight
-          className={`h-4 w-4 transition-transform ${
+          className={`size-4 transition-transform ${
             isExpanded ? "rotate-90" : ""
           }`}
         />
@@ -1114,12 +1114,9 @@ function ConnectorPluginCard({
                       )}
                       icon={
                         role === "agent" ? (
-                          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                          <Bot className="size-3.5" aria-hidden="true" />
                         ) : (
-                          <UserRound
-                            className="h-3.5 w-3.5"
-                            aria-hidden="true"
-                          />
+                          <UserRound className="size-3.5" aria-hidden="true" />
                         )
                       }
                       label={

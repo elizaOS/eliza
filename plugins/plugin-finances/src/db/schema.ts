@@ -1,8 +1,9 @@
 /**
  * Drizzle schema for @elizaos/plugin-finances.
  *
- * Tables live in their own pgSchema("app_finances") namespace. The five
- * finance tables below were carved out of @elizaos/plugin-personal-assistant
+ * Tables live in their own pgSchema("app_finances") namespace. Five legacy
+ * finance tables below were carved out of
+ * @elizaos/plugin-personal-assistant
  * (formerly in app_lifeops); table NAMES are preserved verbatim
  * (life_payment_*, life_subscription_*) so a non-destructive copy migration can
  * move existing rows across schemas. All raw SQL that targets these tables must
@@ -105,6 +106,37 @@ export const lifePaymentSources = financesSchema.table("life_payment_sources", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/**
+ * Normalized provider identities serialize Link completion independently of
+ * the JSON metadata stored on a payment source. One logical bank/account set
+ * and one Cloud connection can each resolve to only one local source.
+ */
+export const lifePaymentSourceIdentities = financesSchema.table(
+  "life_payment_source_identities",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    identityKey: text("identity_key").notNull(),
+    connectionId: text("connection_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique("life_payment_source_identities_logical_unique").on(
+      t.agentId,
+      t.provider,
+      t.identityKey,
+    ),
+    unique("life_payment_source_identities_connection_unique").on(
+      t.agentId,
+      t.provider,
+      t.connectionId,
+    ),
+  ],
+);
+
 export const lifePaymentTransactions = financesSchema.table(
   "life_payment_transactions",
   {
@@ -148,6 +180,7 @@ export const financesDbSchema = {
   lifeSubscriptionCandidates,
   lifeSubscriptionCancellations,
   lifePaymentSources,
+  lifePaymentSourceIdentities,
   lifePaymentTransactions,
 } as const;
 
@@ -165,6 +198,10 @@ export type LifeSubscriptionCancellationInsert =
   typeof lifeSubscriptionCancellations.$inferInsert;
 export type LifePaymentSourceRow = typeof lifePaymentSources.$inferSelect;
 export type LifePaymentSourceInsert = typeof lifePaymentSources.$inferInsert;
+export type LifePaymentSourceIdentityRow =
+  typeof lifePaymentSourceIdentities.$inferSelect;
+export type LifePaymentSourceIdentityInsert =
+  typeof lifePaymentSourceIdentities.$inferInsert;
 export type LifePaymentTransactionRow =
   typeof lifePaymentTransactions.$inferSelect;
 export type LifePaymentTransactionInsert =

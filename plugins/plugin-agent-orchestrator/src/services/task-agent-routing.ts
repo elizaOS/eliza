@@ -8,14 +8,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { CODING_AGENT_BACKENDS } from "@elizaos/shared";
 import { readConfigEnvKey } from "./config-env.js";
 
-export const KNOWN_ADAPTER_TYPES = new Set([
-  "elizaos",
-  "pi-agent",
-  "claude",
-  "codex",
-]);
+export const KNOWN_ADAPTER_TYPES = new Set<string>(CODING_AGENT_BACKENDS);
 
 export function normalizeTaskAgentAdapter(
   value: string | undefined,
@@ -40,6 +36,17 @@ export function normalizeTaskAgentAdapter(
     case "openai-codex":
     case "openai codex":
       return "codex";
+    case "kimi":
+    case "kimi-code":
+    case "kimi code":
+    case "moonshot":
+      return "kimi";
+    case "grok":
+    case "grok-build":
+    case "grok build":
+    case "xai":
+    case "x-ai":
+      return "grok";
     default:
       return normalized;
   }

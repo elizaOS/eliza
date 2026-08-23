@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { closeSync, openSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import { flattenPrompt } from "./prompt-flatten";
 import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 import { filterEnv, redactStderr, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
@@ -97,15 +97,29 @@ export const defaultSpawn: SpawnFn = (argv, opts) =>
       return;
     }
 
-    const child = spawn(argv[0], argv.slice(1), {
-      cwd: opts.cwd,
-      env: opts.env,
-      stdio: [stdinFd, "pipe", "pipe"],
-      // Lead a new process group so we can signal the whole tree (the CLI may
-      // fork helpers) and so SIGKILL escalation reaches a child that traps
-      // SIGTERM.
-      detached: true,
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(argv[0], argv.slice(1), {
+        cwd: opts.cwd,
+        env: opts.env,
+        stdio: [stdinFd, "pipe", "pipe"],
+        // Lead a new process group so we can signal the whole tree (the CLI may
+        // fork helpers) and so SIGKILL escalation reaches a child that traps
+        // SIGTERM.
+        detached: true,
+      });
+    } catch (err) {
+      // error-policy:J2 context-adding rethrow — spawn() can throw synchronously
+      // (e.g. invalid options) before any 'error'/'close' handler is attached,
+      // so close the parent's stdin fd here or it leaks on the throw path.
+      try {
+        closeSync(stdinFd);
+      } catch {
+        // error-policy:J6 best-effort teardown — already-invalid fd is harmless.
+      }
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
 
     let stdout = "";
     let stderr = "";
@@ -137,9 +151,29 @@ export const defaultSpawn: SpawnFn = (argv, opts) =>
       killTimer.unref?.();
     }, opts.timeoutMs);
 
+    // Close the PARENT's copy of the stdin fd exactly once on any terminal
+    // outcome. Node dup's the descriptor into the child at spawn() time, so the
+    // child keeps its own inherited copy — but Node does NOT auto-close an
+    // integer fd passed via `stdio`, so without this the parent leaks one fd per
+    // spawn. The CLI inference route cold-spawns per model call (~4-8 per turn),
+    // so an unclosed fd here marches the process toward EMFILE and breaks every
+    // subsequent open/spawn/socket, not just inference (#24979).
+    let stdinFdClosed = false;
+    const closeStdinFd = (): void => {
+      if (stdinFdClosed) return;
+      stdinFdClosed = true;
+      try {
+        closeSync(stdinFd);
+      } catch {
+        // error-policy:J6 best-effort teardown — a double-close / already-invalid
+        // fd is harmless; the only goal is to not leak the parent's copy.
+      }
+    };
+
     const clearTimers = (): void => {
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
+      closeStdinFd();
     };
 
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -255,7 +289,7 @@ export class ClaudeCli {
       const text = stripSystemReminderBlocks(result.stdout).trim();
       const apiError = parseProviderApiErrorText(text);
       if (apiError) {
-        throw new ProviderApiError(`[cli-inference] claude upstream ${text.slice(0, 160)}`, {
+        throw new ProviderApiError(`[cli-inference] claude upstream ${toWellFormedUnicode(text)}`, {
           statusCode: apiError.statusCode,
         });
       }

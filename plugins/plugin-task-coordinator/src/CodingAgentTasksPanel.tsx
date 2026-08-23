@@ -501,7 +501,7 @@ function threadChips(
   return (
     <>
       {thread.sessionCount > 0 ? (
-        <TaskMetaChip icon={<Bot className="h-3 w-3" />}>
+        <TaskMetaChip icon={<Bot className="size-3" />}>
           {t("codingagenttaskspanel.sessionsCount", {
             defaultValue: "{{count}} sessions",
             count: thread.sessionCount,
@@ -509,7 +509,7 @@ function threadChips(
         </TaskMetaChip>
       ) : null}
       {thread.decisionCount > 0 ? (
-        <TaskMetaChip icon={<ListChecks className="h-3 w-3" />}>
+        <TaskMetaChip icon={<ListChecks className="size-3" />}>
           {t("codingagenttaskspanel.decisionsCount", {
             defaultValue: "{{count}} decisions",
             count: thread.decisionCount,
@@ -517,7 +517,7 @@ function threadChips(
         </TaskMetaChip>
       ) : null}
       {kindLabel ? (
-        <TaskMetaChip icon={<Terminal className="h-3 w-3" />}>
+        <TaskMetaChip icon={<Terminal className="size-3" />}>
           {kindLabel}
         </TaskMetaChip>
       ) : null}
@@ -640,6 +640,8 @@ export function CodingAgentTasksPanel({
       label: searchLabel,
       group: "task-filters",
       description: "Filter task threads by title or request text",
+      getValue: () => search,
+      onFill: setSearch,
     });
   const { ref: archivedRef, agentProps: archivedAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -913,7 +915,7 @@ export function CodingAgentTasksPanel({
         </div>
       ) : (
         <TaskListHeader
-          icon={<ListChecks className="h-5 w-5" />}
+          icon={<ListChecks className="size-5" />}
           title={t("taskseventspanel.Tasks", { defaultValue: "Coding Tasks" })}
           counts={
             threads.length > 0 ? (
@@ -963,7 +965,7 @@ export function CodingAgentTasksPanel({
             }`}
             {...archivedAgentProps}
           >
-            <Archive className="h-3.5 w-3.5" />
+            <Archive className="size-3.5" />
             {showArchivedLabel}
           </Button>
         </div>

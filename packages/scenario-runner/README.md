@@ -49,6 +49,19 @@ export default {
 } satisfies ScenarioDefinition;
 ```
 
+### Plugin requirements
+
+Declare npm plugin import specifiers in `requires.plugins`; the runner passes
+each value to the runtime module resolver and registers the exported plugin
+before startup. This supports scoped or unscoped packages and package subpath
+exports without guessing from the spelling. Relative, absolute, `file:`, and
+`workspace:` specifiers fail preflight with a typed error because they are not
+portable runtime package requirements.
+
+If a scenario seed registers an in-file fixture plugin, declare its runtime
+plugin name in `requires.fixturePlugins` instead. Fixture names are verified
+after seeding and are never treated as module specifiers.
+
 ### Turn kinds
 
 | Kind | What it does |
@@ -58,6 +71,16 @@ export default {
 | `api` | Makes an HTTP request to the agent's registered routes via a loopback server |
 | `tick` | Invokes the lifeops scheduler at a logical clock time |
 | `wait` | Waits for `durationMs`, or polls a bounded `until(ctx)` state predicate |
+
+### Multi-world rooms and linked accounts
+
+`rooms[].world` names a logical world and `rooms[].entity` names a canonical
+logical entity. Distinct connector `account` values can use the same `entity`
+to model verified linked accounts across platforms. Omitting both fields keeps
+the legacy single-world, account-derived identity behavior. Seeds and custom
+checks receive deterministic runtime IDs through `ctx.roomIds`, `ctx.worldIds`,
+`ctx.entityIds`, `ctx.accountEntityIds`, `ctx.roomWorldIds`, and
+`ctx.roomEntityIds`. A memory seed may set `roomId` to a logical room name.
 
 ### Assertions
 
@@ -185,14 +208,21 @@ enter a model path may instead declare
 `modelFixtures: { mode: "model-free", reason: "..." }`; message, voice, tick,
 or judge work makes that declaration invalid. Wait turns are also model-free.
 
+Before final fixture validation, the executor waits a bounded interval for
+tracked post-delivery work and requests cancellation through each task's
+`AbortSignal`. A task that ignores cancellation leaves its runtime quarantined:
+the attempt fails and every later scenario is refused before its fixture scope
+or world can start. JavaScript cannot terminate arbitrary code that ignores an
+abort signal, so subprocess/generation isolation must end that container before
+the runtime can be replaced; quarantine is containment, not a claim that the
+task was killed.
+
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
-`strict-fixtures` or `model-free`. The migration ratchet currently records 46
-strict or explicitly model-free and 74 legacy `pr-deterministic` scenario sources across
-the repository. The declared rows contain only direct action/API work or
-wait/seed/final checks and are validated again by the real executor before each
-attempt. The legacy count may only decrease, and the epic is complete only when
-it reaches zero.
+`strict-fixtures` or `model-free`. Declared rows contain only direct action/API
+work or wait/seed/final checks and are validated again by the real executor
+before each attempt. Migration is complete when no scenario reports
+`legacy-fallback`.
 
 Reusable Stage-1/planner fixtures are exported by `@elizaos/core/testing` for
 single tools, multiple tools, clarifications, terminal replies, evaluators,

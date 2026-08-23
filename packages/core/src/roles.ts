@@ -30,7 +30,7 @@ import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
-import type { IdentityResolutionService } from "./types/identity";
+import type { PrincipalService } from "./types/identity";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
 	MESSAGE_SOURCE_CLIENT_CHAT,
@@ -40,7 +40,7 @@ import {
 import { ServiceType } from "./types/service";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
-import { validateUuid } from "./utils.ts";
+import { stringToUuid, validateUuid } from "./utils.ts";
 
 export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
@@ -171,7 +171,7 @@ function normalizeRoleGrantSource(
 }
 
 function getRuntimeSettingString(
-	runtime: IAgentRuntime,
+	runtime: Pick<IAgentRuntime, "getSetting">,
 	key: string,
 ): string | undefined {
 	if (typeof runtime.getSetting !== "function") {
@@ -389,7 +389,9 @@ export async function findWorldsForOwner(
 	return ownerWorlds.length ? ownerWorlds : null;
 }
 
-export function getConfiguredOwnerEntityIds(runtime: IAgentRuntime): string[] {
+export function getConfiguredOwnerEntityIds(
+	runtime: Pick<IAgentRuntime, "getSetting">,
+): string[] {
 	const configuredAdminEntityId = getRuntimeSettingString(
 		runtime,
 		CANONICAL_OWNER_SETTING_KEY,
@@ -417,7 +419,7 @@ export function hasConfiguredCanonicalOwner(runtime: IAgentRuntime): boolean {
 }
 
 export function resolveCanonicalOwnerId(
-	runtime: IAgentRuntime,
+	runtime: Pick<IAgentRuntime, "getSetting">,
 	metadata?: RolesWorldMetadata,
 ): string | null {
 	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
@@ -429,6 +431,35 @@ export function resolveCanonicalOwnerId(
 	// sometimes persisted numeric provider IDs here; reject them before any role
 	// path can pass the value into UUID-backed entity/relationship queries.
 	return validateUuid(metadata?.ownership?.ownerId);
+}
+
+/**
+ * Deterministic owner-entity id for an agent that has no configured canonical
+ * owner. Seeded from the agent ID — never the character name, which is
+ * user-editable and differs between surfaces that read it (`character.name`,
+ * `agents.defaults.name`, a hard-coded "Eliza") — so every owner-scoped surface
+ * lands on one `subject_id`. Prefer {@link resolveOwnerEntityIdOrDefault}
+ * whenever a runtime is available; call this directly only when the caller has
+ * already established that no canonical owner is configured.
+ */
+export function deterministicOwnerEntityId(agentId: string): UUID {
+	return stringToUuid(`${agentId}-admin-entity`);
+}
+
+/**
+ * The single owner-entity derivation shared by the client-chat write path, the
+ * pendant and personal-assistant routes, LifeOps reads and the scheduler, the
+ * outbound owner target, and connector ownership metadata: the configured
+ * canonical owner (`ELIZA_ADMIN_ENTITY_ID` / owner contacts) when it is a
+ * UUID, otherwise {@link deterministicOwnerEntityId}. Surfaces that derive the
+ * owner any other way fork the owner `subject_id`, making rows written on one
+ * surface invisible to the others.
+ */
+export function resolveOwnerEntityIdOrDefault(
+	runtime: Pick<IAgentRuntime, "agentId" | "getSetting">,
+): UUID {
+	const configuredOwnerId = validateUuid(resolveCanonicalOwnerId(runtime));
+	return configuredOwnerId ?? deterministicOwnerEntityId(runtime.agentId);
 }
 
 function resolveOwnershipCandidateIds(
@@ -512,9 +543,7 @@ async function resolveIdentityOwnerBinding(
 	ownerIds: readonly UUID[],
 ): Promise<boolean | null> {
 	if (typeof runtime.getService !== "function") return null;
-	const service = runtime.getService<IdentityResolutionService>(
-		ServiceType.IDENTITY_RESOLUTION,
-	);
+	const service = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL);
 	if (!service) return null;
 
 	try {
@@ -776,13 +805,11 @@ async function resolveExplicitGrantedRole(
 		return { role: directRole, source: "manual" };
 	}
 
-	const identityService =
+	const principalService =
 		typeof runtime.getService === "function"
-			? runtime.getService<IdentityResolutionService>(
-					ServiceType.IDENTITY_RESOLUTION,
-				)
+			? runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
 			: null;
-	if (identityService) return null;
+	if (principalService) return null;
 
 	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
 	let bestRole: RoleName | null = null;
@@ -1003,13 +1030,68 @@ export async function resolveCanonicalOwnerIdForMessage(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<string | null> {
-	const configuredOwnerId = resolveCanonicalOwnerId(runtime);
-	if (configuredOwnerId) {
-		return configuredOwnerId;
+	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+	if (configuredOwnerIds.length > 0) {
+		// A connector-specific owner principal is the canonical owner for its
+		// current destination when it was configured directly or the principal
+		// authority verifies its owner binding. Keeping the live principal here
+		// lets the delivery-audience census prove the actual two-party DM rather
+		// than comparing a Discord principal to a Telegram-shaped owner UUID.
+		if (configuredOwnerIds.includes(message.entityId)) {
+			return message.entityId;
+		}
+		const verifiedBinding = await resolveIdentityOwnerBinding(
+			runtime,
+			message.entityId,
+			configuredOwnerIds as UUID[],
+		);
+		if (verifiedBinding === true) {
+			return message.entityId;
+		}
+		return configuredOwnerIds[0] ?? null;
 	}
 
 	const resolved = await resolveWorldForMessage(runtime, message);
-	return resolveCanonicalOwnerId(runtime, resolved?.metadata);
+	const recordedOwnerId = resolveCanonicalOwnerId(runtime, resolved?.metadata);
+
+	// The owner-exclusive disclosure gate compares this id to the message actor
+	// with strict equality. A connector can persist the owner under a DIFFERENT
+	// canonical UUID than the one it stamps on the owner's own messages: e.g.
+	// plugin-discord records `ownership.ownerId` as the synthetic
+	// `deterministicOwnerEntityId(agentId)` fallback while the owner's inbound
+	// message carries `createUniqueUuid(runtime, <snowflake>)`. Both denote the
+	// same human, but a naive equality check reads them as different principals
+	// and denies every owner-private surface with `owner_mismatch`, even in a
+	// 2-person owner DM/guild whose census is exactly {owner, agent}.
+	//
+	// The role system already reconciles these via connector-stable-identity and
+	// confirmed identity links (resolveOwnershipRole). Reuse that verdict: when
+	// the message actor IS the owner but under a different entity UUID than the
+	// world recorded, return the ACTOR's id so the strict-equality gate matches
+	// the genuine owner. Non-owners never satisfy resolveOwnershipRole, so they
+	// stay denied. Idempotent and connector-agnostic — no Discord-only branch.
+	const actorEntityId = message.entityId;
+	if (
+		actorEntityId &&
+		recordedOwnerId &&
+		recordedOwnerId !== actorEntityId &&
+		resolved?.world
+	) {
+		const actorOwnershipRole = await resolveOwnershipRole(
+			runtime,
+			resolved.metadata,
+			actorEntityId,
+			{
+				liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+				liveEntityId: actorEntityId,
+			},
+		);
+		if (actorOwnershipRole === "OWNER") {
+			return actorEntityId;
+		}
+	}
+
+	return recordedOwnerId;
 }
 
 export async function checkSenderRole(

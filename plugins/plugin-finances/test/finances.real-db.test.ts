@@ -176,6 +176,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "11111111-1111-4111-8111-111111111111",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-1",
@@ -261,6 +262,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "22222222-2222-4222-8222-222222222222",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-2",
@@ -276,7 +278,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         return Response.json({ error: "unexpected route" }, { status: 500 });
       });
     const persistSpy = vi
-      .spyOn(service.repository, "upsertPaymentSource")
+      .spyOn(service.repository, "upsertPlaidPaymentSource")
       .mockRejectedValueOnce(new Error("local persistence unavailable"));
 
     try {
@@ -309,6 +311,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "33333333-3333-4333-8333-333333333333",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-3",
@@ -347,6 +350,8 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       ).resolves.toEqual({
         inserted: 25,
         skipped: 0,
+        modified: 0,
+        removed: 0,
         nextCursor: "cursor-25",
       });
 
@@ -375,6 +380,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "33333333-3333-4333-8333-333333333334",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-cycle",
@@ -544,6 +550,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "55555555-5555-4555-8555-555555555555",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-5",
@@ -602,6 +609,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "44444444-4444-4444-8444-444444444444",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-4",
@@ -673,6 +681,8 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       ).resolves.toEqual({
         inserted: 1,
         skipped: 0,
+        modified: 1,
+        removed: 1,
         nextCursor: "stable-cursor",
       });
       expect(requestedCursors).toEqual(["", "unstable-page-1", ""]);
@@ -715,6 +725,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "66666666-6666-4666-8666-666666666666",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-6",

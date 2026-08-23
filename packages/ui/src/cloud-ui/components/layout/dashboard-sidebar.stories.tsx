@@ -76,7 +76,7 @@ const sections: DashboardSidebarSection[] = [
 
 const Logo = () => (
   <div className="flex items-center gap-2 text-white">
-    <Sparkles className="h-5 w-5 text-orange-400" />
+    <Sparkles className="size-5 text-orange-400" />
     <span className="text-sm font-semibold tracking-wide">elizaOS</span>
   </div>
 );
@@ -87,7 +87,7 @@ const Footer = () => (
       <img
         src="https://placehold.co/24x24/orange/white?text=E"
         alt="avatar"
-        className="h-6 w-6 rounded-full"
+        className="size-6 rounded-full"
       />
       <div className="flex flex-col">
         <span className="text-white">jane@eliza.dev</span>

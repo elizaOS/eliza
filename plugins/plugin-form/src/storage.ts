@@ -788,7 +788,17 @@ export async function getSubmissions(
 
   // Sort by submission time, newest first
   // WHY: Most recent submissions are usually most relevant
-  submissions.sort((a, b) => b.submittedAt - a.submittedAt);
+  submissions.sort((a, b) => {
+    const bTime =
+      typeof b.submittedAt === "number" && Number.isFinite(b.submittedAt)
+        ? b.submittedAt
+        : 0;
+    const aTime =
+      typeof a.submittedAt === "number" && Number.isFinite(a.submittedAt)
+        ? a.submittedAt
+        : 0;
+    return bTime - aTime || a.id.localeCompare(b.id);
+  });
 
   return submissions;
 }
