@@ -16,7 +16,7 @@ vi.mock("@elizaos/core", () => ({
 import {
   resolveFallbackOwnerEntityId,
   resolveOwnerEntityId,
-} from "./owner-entity.ts";
+} from "../owner-entity.ts";
 
 describe("resolveFallbackOwnerEntityId", () => {
   it("derives a synthetic id from the character name", () => {
