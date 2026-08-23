@@ -129,7 +129,7 @@ function _systemMessageContent(request: CapturedRequest): string {
 	return typeof system?.content === "string" ? system.content : "";
 }
 
-describe("runEvaluator — over-window input trims to fit (never context_length_exceeded)", () => {
+describe("runEvaluator — complete-input admission (never context_length_exceeded)", () => {
 	it("preserves a large-context candidate's 30k tool result byte-for-byte", async () => {
 		const result = "large-context-result-".repeat(1_600);
 		const { runtime, captured } = makeRegisteredRuntime([
@@ -151,12 +151,7 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 		if (!request) throw new Error("no captured request");
 		expect(toolMessageValues(request)[0]).toContain(result);
 		expect(toolMessageValues(request)[0]).not.toContain("chars truncated]");
-		expect(request.providerOptions?.eliza?.contentProjection).toMatchObject({
-			enabled: false,
-			resultCount: 1,
-			pagesIncluded: 0,
-			pagesOmitted: 0,
-		});
+		expect(request.providerOptions?.eliza?.contentProjection).toBeUndefined();
 	});
 
 	it("preserves the selected primary input and lets AgentRuntime compact a smaller failover", async () => {

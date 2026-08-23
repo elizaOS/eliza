@@ -42,6 +42,7 @@ import {
 	type ChatMessage,
 	type GenerateTextResult,
 	type JSONSchema,
+	type ModelAttemptContext,
 	ModelType,
 	type PromptSegment,
 	type ResponseSkeleton,
@@ -63,10 +64,6 @@ import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
-	buildContentProjectionDiagnostics,
-	isProgressiveContentProjectionEnabled,
-} from "./content-projection-policy";
-import {
 	computePrefixHashes,
 	hashString,
 	stableJsonStringify,
@@ -77,7 +74,7 @@ import {
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
-import { runEvaluator } from "./evaluator";
+import { modelNameFromMetadata, runEvaluator } from "./evaluator";
 import {
 	extractJsonObjects,
 	parseJsonObject,
@@ -94,9 +91,7 @@ import {
 	TrajectoryLimitExceeded,
 } from "./limits";
 import {
-	buildContentProjectionBudget,
 	buildModelInputBudget,
-	type ContentProjectionBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
@@ -1903,8 +1898,6 @@ function renderPlannerModelInput(params: {
 	template?: string;
 	codingMode?: boolean;
 	runtime?: PlannerRuntime;
-	projectionBudget?: ContentProjectionBudget;
-	omitRecoverableText?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -1928,10 +1921,6 @@ function renderPlannerModelInput(params: {
 	};
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		redactText: composeToolDiagnosticRedactor(params.runtime),
-		...(params.projectionBudget
-			? { projectionBudget: params.projectionBudget }
-			: {}),
-		...(params.omitRecoverableText ? { omitRecoverableText: true } : {}),
 		onProjectionStats: (stats) => {
 			projectionStats = stats;
 		},
@@ -2022,11 +2011,8 @@ function normalizePlannerToolName(name: string): string {
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
  *
- * When `ELIZA_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
- * entirely — the Cerebras compress-mode escape hatch trades these hints for a
- * tighter token budget. Memoized on `context.events` identity; the events
- * array is immutable per planner iteration (`appendContextEvent` returns a
- * new array each time).
+ * Memoized on `context.events` identity; the events array is immutable per
+ * planner iteration (`appendContextEvent` returns a new array each time).
  */
 const ROUTING_HINTS_MEMO = new WeakMap<
 	NonNullable<ContextObject["events"]>,
@@ -2065,7 +2051,6 @@ function appendMandatoryPlannerPolicy(instructions: string): string {
 }
 
 function renderRoutingHintsBlock(context: ContextObject): string | null {
-	if (process.env.ELIZA_PROMPT_COMPRESS === "1") return null;
 	const events = context.events;
 	if (events && ROUTING_HINTS_MEMO.has(events)) {
 		return ROUTING_HINTS_MEMO.get(events) ?? null;
@@ -2485,9 +2470,6 @@ async function callPlanner(params: {
 			: {}),
 		reserveTokens: compactionReserveForBudget(params.config),
 	};
-	const projectionEnabled = isProgressiveContentProjectionEnabled(
-		params.runtime,
-	);
 	const renderArgs = {
 		context: params.context,
 		trajectory: params.trajectory,
@@ -2498,53 +2480,12 @@ async function callPlanner(params: {
 		codingMode: params.trajectory.codingMode === true,
 		runtime: params.runtime,
 	};
-	const baselineInput = renderPlannerModelInput({
-		...renderArgs,
-		...(projectionEnabled ? { omitRecoverableText: true } : {}),
-	});
-	const baselineBudget = buildModelInputBudget({
-		messages: baselineInput.messages,
-		promptSegments: baselineInput.promptSegments,
-		...budgetOptions,
-	});
-	const projectionBudget = projectionEnabled
-		? buildContentProjectionBudget({
-				budget: baselineBudget,
-				resultCount: baselineInput.projectionStats.resultCount,
-			})
-		: undefined;
-	const renderedInput = projectionBudget
-		? renderPlannerModelInput({ ...renderArgs, projectionBudget })
-		: baselineInput;
+	const renderedInput = renderPlannerModelInput(renderArgs);
 	const modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		...budgetOptions,
 	});
-	const contentProjection = buildContentProjectionDiagnostics({
-		enabled: projectionEnabled,
-		baselineBudget,
-		...(projectionBudget ? { projectionBudget } : {}),
-		stats: renderedInput.projectionStats,
-	});
-	params.runtime.logger?.debug?.(
-		{ src: "planner-loop", contentProjection },
-		"Computed progressive content projection",
-	);
-	if (projectionEnabled && modelInputBudget.shouldCompact) {
-		throw new ElizaError(
-			"Planner model input exceeds the resolved context budget after content projection",
-			{
-				code: "PLANNER_INPUT_OVER_BUDGET",
-				context: {
-					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
-					compactionThresholdTokens: modelInputBudget.compactionThresholdTokens,
-					contextWindowTokens: modelInputBudget.contextWindowTokens,
-					resultCount: contentProjection.resultCount,
-				},
-			},
-		);
-	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -2562,6 +2503,14 @@ async function callPlanner(params: {
 		grammar?: string;
 		spanSamplerPlan?: SpanSamplerPlan;
 		maxTokens?: number;
+		prepareModelAttempt?: (
+			attempt: ModelAttemptContext,
+			request: {
+				messages: ChatMessage[];
+				promptSegments?: PromptSegment[];
+				providerOptions?: Record<string, unknown>;
+			},
+		) => Promise<void> | void;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -2589,8 +2538,133 @@ async function callPlanner(params: {
 			...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
 				.eliza ?? {}),
 			thinking: "off",
-			contentProjection,
 		},
+	};
+	type PreparedPlannerAttempt = {
+		input: typeof renderedInput;
+		providerOptions: Record<string, unknown>;
+		prefixHashes: ReturnType<typeof computePrefixHashes>;
+		prefixHash: string;
+		provider: string | undefined;
+	};
+	let preparedAttempt: PreparedPlannerAttempt | undefined;
+	const buildInputBudgetError = (
+		budget: ReturnType<typeof buildModelInputBudget>,
+	): ElizaError =>
+		new ElizaError("Planner model input exceeds the resolved context budget", {
+			code: "PLANNER_INPUT_OVER_BUDGET",
+			context: {
+				estimatedInputTokens: budget.estimatedInputTokens,
+				admissionThresholdTokens: budget.admissionThresholdTokens,
+				contextWindowTokens: budget.contextWindowTokens,
+				resultCount: renderedInput.projectionStats.resultCount,
+			},
+		});
+	const recordInputBudgetFailure = async (
+		error: ElizaError,
+		snapshot: PreparedPlannerAttempt,
+		failureStartedAt: number,
+	): Promise<void> => {
+		await recordPlannerStage({
+			runtime: params.runtime,
+			recorder: params.recorder,
+			trajectoryId: params.trajectoryId,
+			parentStageId: params.parentStageId,
+			iteration: params.iteration ?? 1,
+			modelType: params.modelType ?? ModelType.ACTION_PLANNER,
+			provider: snapshot.provider,
+			modelParams: {
+				messages: snapshot.input.messages,
+				tools: modelParams.tools,
+				toolChoice: modelParams.toolChoice,
+				providerOptions: snapshot.providerOptions,
+			},
+			raw: `[planner input budget failure] ${error.message} | code: PLANNER_INPUT_OVER_BUDGET`,
+			parsed: {
+				toolCalls: [],
+				raw: { code: "PLANNER_INPUT_OVER_BUDGET" },
+			},
+			startedAt: failureStartedAt,
+			endedAt: Date.now(),
+			segmentHashes: snapshot.prefixHashes.map((entry) => entry.segmentHash),
+			prefixHash: snapshot.prefixHash,
+			logger: params.runtime.logger,
+			providerAttributionState: params.providerAttributionState,
+		});
+	};
+	const initialSnapshot: PreparedPlannerAttempt = {
+		input: renderedInput,
+		providerOptions: modelParams.providerOptions,
+		prefixHashes,
+		prefixHash,
+		provider: params.provider,
+	};
+	if (
+		modelInputBudget.shouldReject &&
+		params.runtime.supportsModelAttemptPreparation !== true
+	) {
+		const error = buildInputBudgetError(modelInputBudget);
+		await recordInputBudgetFailure(error, initialSnapshot, Date.now());
+		throw error;
+	}
+	modelParams.prepareModelAttempt = (attempt, request) => {
+		const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
+		const attemptInput = renderPlannerModelInput(renderArgs);
+		const attemptBudget = buildModelInputBudget({
+			messages: attemptInput.messages,
+			promptSegments: attemptInput.promptSegments,
+			tools: params.tools,
+			modelName,
+			reserveTokens:
+				params.config.compactionReserveTokensExplicit === true
+					? params.config.compactionReserveTokens
+					: undefined,
+		});
+		const attemptPrefixHashes = computePrefixHashes(
+			attemptInput.promptSegments,
+		);
+		const attemptPrefixHash =
+			computePrefixHashes(attemptInput.cacheKeySegments).at(-1)?.hash ??
+			"no-context-segments";
+		const budgetedAttemptOptions = withModelInputBudgetProviderOptions(
+			cacheProviderOptions({
+				prefixHash: attemptPrefixHash,
+				segmentHashes: attemptPrefixHashes.map((entry) => entry.segmentHash),
+				promptSegments: attemptInput.promptSegments,
+				provider: attempt.provider,
+				hasTools,
+				conversationId: params.trajectoryId,
+			}),
+			attemptBudget,
+		) as Record<string, unknown>;
+		const requestEliza = (
+			request.providerOptions as { eliza?: Record<string, unknown> } | undefined
+		)?.eliza;
+		const budgetedEliza = (
+			budgetedAttemptOptions as { eliza?: Record<string, unknown> }
+		).eliza;
+		const attemptProviderOptions = {
+			...(request.providerOptions ?? {}),
+			...budgetedAttemptOptions,
+			eliza: {
+				...(requestEliza ?? {}),
+				...(budgetedEliza ?? {}),
+				thinking: "off",
+			},
+		};
+		preparedAttempt = {
+			input: attemptInput,
+			providerOptions: attemptProviderOptions,
+			prefixHashes: attemptPrefixHashes,
+			prefixHash: attemptPrefixHash,
+			provider: attempt.provider,
+		};
+		if (attemptBudget.shouldReject) {
+			throw buildInputBudgetError(attemptBudget);
+		}
+		request.messages = attemptInput.messages;
+		request.promptSegments = attemptInput.promptSegments;
+		request.providerOptions = attemptProviderOptions;
 	};
 	if (hasTools) {
 		// Every native tool schema gains the reserved `eliza_turn_scope`
@@ -2665,15 +2739,30 @@ async function callPlanner(params: {
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.ACTION_PLANNER;
 	const streamingContext = getStreamingContext();
-	const raw = await runWithStreamingContext(
-		streamingContext
-			? {
-					...streamingContext,
-					onStreamChunk: async () => undefined,
-				}
-			: undefined,
-		() => params.runtime.useModel(modelType, modelParams, params.provider),
-	);
+	let raw: string | GenerateTextResult;
+	try {
+		raw = await runWithStreamingContext(
+			streamingContext
+				? {
+						...streamingContext,
+						onStreamChunk: async () => undefined,
+					}
+				: undefined,
+			() => params.runtime.useModel(modelType, modelParams, params.provider),
+		);
+	} catch (error) {
+		if (
+			error instanceof ElizaError &&
+			error.code === "PLANNER_INPUT_OVER_BUDGET"
+		) {
+			await recordInputBudgetFailure(
+				error,
+				preparedAttempt ?? initialSnapshot,
+				startedAt,
+			);
+		}
+		throw error;
+	}
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
@@ -2713,14 +2802,23 @@ async function callPlanner(params: {
 		parentStageId: params.parentStageId,
 		iteration: params.iteration ?? 1,
 		modelType,
-		provider: params.provider,
-		modelParams,
+		provider: preparedAttempt?.provider ?? params.provider,
+		modelParams: preparedAttempt
+			? {
+					...modelParams,
+					messages: preparedAttempt.input.messages,
+					promptSegments: preparedAttempt.input.promptSegments,
+					providerOptions: preparedAttempt.providerOptions,
+				}
+			: modelParams,
 		raw,
 		parsed,
 		startedAt,
 		endedAt,
-		segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-		prefixHash,
+		segmentHashes: (preparedAttempt?.prefixHashes ?? prefixHashes).map(
+			(entry) => entry.segmentHash,
+		),
+		prefixHash: preparedAttempt?.prefixHash ?? prefixHash,
 		logger: params.runtime.logger,
 		providerAttributionState: params.providerAttributionState,
 	});

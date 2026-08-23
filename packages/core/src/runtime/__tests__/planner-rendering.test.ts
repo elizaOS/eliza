@@ -58,17 +58,12 @@ function readViewFor(text: string) {
 }
 
 describe("trajectoryStepsToMessages", () => {
-	it("renders a result larger than the former cap in full", () => {
-		const result = `HEAD_SENTINEL${"x".repeat(150_000)}TAIL_SENTINEL`;
-		const steps = [stepWithResult(1, result)];
-		const rendered = getRenderedResultValue(trajectoryStepsToMessages(steps));
-		expect(JSON.parse(rendered).text).toBe(result);
-		expect(steps[0]?.result?.text).toBe(result);
-	});
-
 	it("renders every large step independently and completely", () => {
 		const steps = Array.from({ length: 3 }, (_, index) =>
-			stepWithResult(index + 1, `${index}:${"z".repeat(50_000)}:${index}`),
+			stepWithResult(
+				index + 1,
+				`HEAD_${index}:${"z".repeat(150_000)}:TAIL_${index}`,
+			),
 		);
 		const messages = trajectoryStepsToMessages(steps).filter(
 			(message) => message.role === "tool",
@@ -76,67 +71,47 @@ describe("trajectoryStepsToMessages", () => {
 		expect(messages).toHaveLength(3);
 		for (const [index, message] of messages.entries()) {
 			expect(JSON.parse(getRenderedResultValue([message])).text).toBe(
-				`${index}:${"z".repeat(50_000)}:${index}`,
+				`HEAD_${index}:${"z".repeat(150_000)}:TAIL_${index}`,
 			);
 		}
 	});
 });
 
 describe("renderActionResultsForModel", () => {
-	it("removes recoverable page text while retaining its exact continuation", () => {
-		const page = `BEGIN${"x".repeat(20_000)}END`;
-		const rendered = renderActionResultsForModel(
-			[
-				{
-					success: true,
-					text: page,
-					data: { actionName: "FILE", rawBody: "SECOND_CARRIER" },
-					promptData: { actionName: "FILE", readView: readViewFor(page) },
-				},
-			],
-			{ omitRecoverableText: true },
-		);
-
-		expect(rendered.text).toContain("file_opaque");
-		expect(rendered.text).not.toContain("BEGIN");
-		expect(rendered.text).not.toContain("SECOND_CARRIER");
-		expect(rendered.stats).toEqual({
-			resultCount: 1,
-			pagesIncluded: 0,
-			pagesOmitted: 1,
-			omissionReasons: { "model-input-budget": 1 },
-		});
-	});
-
-	it("fails rather than dropping a non-recoverable oversized result", () => {
-		expect(() =>
-			renderActionResultsForModel(
-				[
-					{
-						success: true,
-						text: "x".repeat(20_000),
-						data: { actionName: "BASH" },
-					},
-				],
-				{
-					projectionBudget: {
-						perResultTokens: 100,
-						aggregateTokens: 100,
-					},
-				},
-			),
-		).toThrow(/Non-recoverable tool result exceeds/u);
-	});
-
-	it("redacts credentials from legacy model-facing results", () => {
+	it("preserves complete recoverable and non-recoverable results", () => {
+		const page = `PAGE_HEAD${"x".repeat(50_000)}PAGE_TAIL`;
+		const shell = `SHELL_HEAD${"y".repeat(50_000)}SHELL_TAIL`;
 		const rendered = renderActionResultsForModel([
 			{
 				success: true,
-				text: "completed with sk-test-secret-value",
+				text: page,
+				data: { actionName: "FILE", rawBody: "SECOND_CARRIER" },
+				promptData: { actionName: "FILE", readView: readViewFor(page) },
+			},
+			{ success: true, text: shell, data: { actionName: "BASH" } },
+		]);
+
+		expect(rendered.text).toContain(page);
+		expect(rendered.text).toContain(shell);
+		expect(rendered.text).not.toContain("SECOND_CARRIER");
+		expect(rendered.stats).toEqual({
+			resultCount: 2,
+			pagesIncluded: 1,
+			pagesOmitted: 0,
+			omissionReasons: {},
+		});
+	});
+
+	it("redacts credentials without dropping surrounding content", () => {
+		const rendered = renderActionResultsForModel([
+			{
+				success: true,
+				text: "HEAD completed with sk-test-secret-value TAIL",
 				data: { apiKey: "must-not-leak", actionName: "FETCH" },
 			},
 		]);
-
+		expect(rendered.text).toContain("HEAD");
+		expect(rendered.text).toContain("TAIL");
 		expect(rendered.text).not.toContain("sk-test-secret-value");
 		expect(rendered.text).not.toContain("must-not-leak");
 		expect(rendered.text).toContain("[REDACTED]");
@@ -144,250 +119,41 @@ describe("renderActionResultsForModel", () => {
 });
 
 describe("toolMessageContent", () => {
-	it("uses promptData as a replacement and does not duplicate machine payload", () => {
-		const memories = Array.from({ length: 17 }, (_, index) => ({
-			id: `id-${index}`,
-			type: "facts",
-			text: `stored fact ${index}: ${"detail ".repeat(400)}`,
-		}));
-		const rendered = toolMessageContent({
-			success: true,
-			text: "Showing all 17 match(es) found in the scanned window.",
-			data: { actionName: "MEMORY", op: "search", memories },
-			promptData: { actionName: "MEMORY", op: "search", matchedInWindow: 17 },
-		});
-		expect(rendered).toContain('"matchedInWindow": 17');
-		expect(rendered).not.toContain("stored fact 0");
-		expect(rendered).not.toContain("stored fact 16");
+	it("uses promptData as a replacement without dropping complete text", () => {
+		const text = `BEGIN\u0000é🙂\r\n${"exact ".repeat(20_000)}END`;
+		const readView = readViewFor(text);
+		const parsed = JSON.parse(
+			toolMessageContent({
+				success: true,
+				text,
+				data: { rawMachinePayload: "must-not-duplicate" },
+				promptData: { actionName: "FILE", readView },
+			}),
+		);
+		expect(parsed.text).toBe(text);
+		expect(parsed.data).toBeUndefined();
+		expect(parsed.promptData.readView).toEqual(readView);
+		expect(parsed.contentProjection).toBeUndefined();
 	});
 
-	it("renders large chaining data completely", () => {
-		const marker = `CHAINING_FIELD_${"x".repeat(150_000)}_END`;
-		const rendered = toolMessageContent({
-			success: true,
-			text: "Created workspace.",
-			data: { agentId: "a1", marker, workspaceId: "w1" },
-		});
-		expect(rendered).toContain(marker);
-		expect(rendered).toContain('"workspaceId": "w1"');
-	});
-
-	it("renders large data completely when no text projection exists", () => {
+	it("preserves large structured data and the first, middle, and last fields", () => {
 		const rows = Array.from(
 			{ length: 2_000 },
 			(_, index) => `row ${index} ${"y".repeat(100)}`,
 		);
-		const rendered = toolMessageContent({ success: true, data: { rows } });
+		const rendered = toolMessageContent({
+			success: true,
+			data: { first: "FIRST", rows, middle: "MIDDLE", last: "LAST" },
+		});
+		expect(rendered).toContain("FIRST");
+		expect(rendered).toContain("row 1000");
 		expect(rendered).toContain("row 1999");
+		expect(rendered).toContain("MIDDLE");
+		expect(rendered).toContain("LAST");
 		expect(rendered).not.toMatch(/truncated|omitted/i);
 	});
 
-	it("omits only recoverable page text when its serialized budget is exceeded", () => {
-		const readView = {
-			reference: { kind: "file" as const, ref: "file_opaque", revision: "r1" },
-			slice: {
-				range: { unit: "line" as const, start: 0, end: 100, total: 200 },
-				hasPrevious: false,
-				hasMore: true,
-				nextOffset: 100,
-				revision: "r1",
-				completeness: "partial-recoverable" as const,
-				sliceSha256: "a".repeat(64),
-			},
-		};
-		const rendered = toolMessageContent(
-			{
-				success: true,
-				text: `BEGIN${"x".repeat(20_000)}END`,
-				data: { readView, body: "must-not-duplicate", path: "/raw/path" },
-				promptData: { readView, actionName: "FILE" },
-			},
-			{ maxSerializedTokens: 500 },
-		);
-		const parsed = JSON.parse(rendered);
-		expect(parsed.text).toBeUndefined();
-		expect(parsed.data).toBeUndefined();
-		expect(parsed.promptData.readView).toEqual(readView);
-		expect(parsed.contentProjection).toEqual({
-			textIncluded: false,
-			reason: "model-input-budget",
-		});
-		expect(rendered).not.toContain("/raw/path");
-		expect(rendered).not.toContain("must-not-duplicate");
-	});
-
-	it("omits recoverable legacy-data text without discarding its continuation", () => {
-		const text = `BEGIN${"x".repeat(20_000)}END`;
-		const readView = readViewFor(text);
-		const parsed = JSON.parse(
-			toolMessageContent(
-				{
-					success: true,
-					text,
-					data: { actionName: "FILE", readView },
-				},
-				{ maxSerializedTokens: 500 },
-			),
-		);
-
-		expect(parsed.text).toBeUndefined();
-		expect(parsed.data.readView).toEqual(readView);
-		expect(parsed.contentProjection).toEqual({
-			textIncluded: false,
-			reason: "model-input-budget",
-		});
-	});
-
-	it("preserves exact page text and its validated slice hash when included", () => {
-		const text = `BEGIN\u0000é🙂\r\n${"exact ".repeat(200)}END`;
-		const readView = readViewFor(text);
-		const parsed = JSON.parse(
-			toolMessageContent(
-				{
-					success: true,
-					text,
-					promptData: { actionName: "FILE", readView },
-				},
-				{ maxSerializedTokens: 10_000 },
-			),
-		);
-		expect(parsed.text).toBe(text);
-		expect(parsed.promptData.readView.slice.sliceSha256).toBe(
-			readView.slice.sliceSha256,
-		);
-	});
-
-	it("does not treat reference-only search metadata as a recoverable page", () => {
-		const reference = {
-			kind: "document" as const,
-			ref: "document:00000000-0000-0000-0000-000000000001",
-			revision: "rev:stable",
-		};
-		expect(() =>
-			toolMessageContent(
-				{
-					success: true,
-					text: "match ".repeat(10_000),
-					promptData: { results: [{ reference }] },
-				},
-				{ maxSerializedTokens: 100 },
-			),
-		).toThrow(/Non-recoverable tool result exceeds/u);
-	});
-
-	it("does not treat an arbitrary nested reference as proof that result text is recoverable", () => {
-		expect(() =>
-			toolMessageContent(
-				{
-					success: true,
-					text: "nonrecoverable ".repeat(10_000),
-					promptData: {
-						debug: { kind: "file", ref: "opaque_debug_reference" },
-					},
-				},
-				{ maxSerializedTokens: 100 },
-			),
-		).toThrow(/Non-recoverable tool result exceeds/u);
-	});
-
-	it("does not omit mixed search text when any result lacks a recoverable locator", () => {
-		expect(() =>
-			toolMessageContent(
-				{
-					success: true,
-					text: "mixed search result ".repeat(10_000),
-					promptData: {
-						results: [
-							{
-								reference: {
-									kind: "document",
-									ref: "document:recoverable",
-								},
-							},
-							{ coordinateUnavailable: true },
-						],
-					},
-				},
-				{ maxSerializedTokens: 100 },
-			),
-		).toThrow(/Non-recoverable tool result exceeds/u);
-	});
-
-	it("does not grant recoverable omission to a hostile ReadView-like shape", () => {
-		const text = "x".repeat(20_000);
-		const invalidReadView = {
-			...readViewFor(text),
-			rawPath: "/Users/private/secret.txt",
-		};
-		expect(() =>
-			toolMessageContent(
-				{
-					success: true,
-					text,
-					promptData: { readView: invalidReadView },
-				},
-				{ maxSerializedTokens: 100 },
-			),
-		).toThrow(/Non-recoverable tool result exceeds/u);
-	});
-
-	it("reports only aggregate page inclusion and omission reasons", () => {
-		const shortText = "short exact page";
-		const longText = `BEGIN${"x".repeat(20_000)}END`;
-		let stats:
-			| Parameters<
-					NonNullable<
-						Parameters<typeof trajectoryStepsToMessages>[1]["onProjectionStats"]
-					>
-			  >[0]
-			| null = null;
-		trajectoryStepsToMessages(
-			[
-				{
-					...stepWithResult(1, shortText),
-					result: {
-						success: true,
-						text: shortText,
-						promptData: { readView: readViewFor(shortText) },
-					},
-				},
-				{
-					...stepWithResult(2, longText),
-					result: {
-						success: true,
-						text: longText,
-						promptData: { readView: readViewFor(longText) },
-					},
-				},
-			],
-			{
-				projectionBudget: { perResultTokens: 500, aggregateTokens: 1_000 },
-				onProjectionStats: (value) => {
-					stats = value;
-				},
-			},
-		);
-		expect(stats).toEqual({
-			resultCount: 2,
-			pagesIncluded: 1,
-			pagesOmitted: 1,
-			omissionReasons: { "model-input-budget": 1 },
-		});
-		expect(JSON.stringify(stats)).not.toMatch(
-			/short exact page|BEGIN|file_opaque/u,
-		);
-	});
-
-	it("fails explicitly instead of truncating a non-recoverable result", () => {
-		expect(() =>
-			toolMessageContent(
-				{ success: true, text: "x".repeat(20_000) },
-				{ maxSerializedTokens: 100 },
-			),
-		).toThrow(/Non-recoverable tool result exceeds/u);
-	});
-
-	it("does not mutate the complete trajectory result during projection", () => {
+	it("does not mutate the complete trajectory result", () => {
 		const result = {
 			success: true,
 			text: "page",

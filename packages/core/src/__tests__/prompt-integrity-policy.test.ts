@@ -20,6 +20,7 @@ const removedCompactionModules = [
 	"packages/agent/src/runtime/conversation-compactor.ts",
 	"packages/agent/src/runtime/prompt-compaction.ts",
 	"packages/core/src/runtime/conversation-compaction-hook.ts",
+	"packages/core/src/runtime/content-projection-policy.ts",
 	"packages/training/scripts/transform_drop_oversized.py",
 ];
 
@@ -88,6 +89,21 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/projectStepForFinalSynthesis/,
 		/DEFAULT_(?:CODING_)?PLANNER_MAX_TOKENS/,
 		/maxTokens:\s*\d+/,
+		/ELIZA_PROMPT_COMPRESS/,
+		/omitRecoverableText/,
+		/projectionBudget/,
+	],
+	"packages/core/src/runtime/planner-rendering.ts": [
+		/maxSerializedTokens/,
+		/omitRecoverableText/,
+		/projectionBudget/,
+		/omissionReason:\s*["']model-input-budget["']/,
+	],
+	"packages/core/src/runtime/model-input-budget.ts": [
+		/buildContentProjectionBudget/,
+		/ContentProjectionBudget/,
+		/shouldCompact/,
+		/compactionThresholdTokens/,
 	],
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,

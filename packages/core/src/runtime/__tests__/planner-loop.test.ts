@@ -503,7 +503,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
 		expect(plannerParams.providerOptions.eliza.modelInputBudget).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 		expect(plannerParams.maxTokens).toBeUndefined();
 		expect(plannerParams.providerOptions.eliza.thinking).toBe("off");
@@ -1504,7 +1504,7 @@ describe("v5 planner loop skeleton", () => {
 			{
 				contextWindowTokens: 131_000,
 				reserveTokens: 26_200,
-				compactionThresholdTokens: 104_800,
+				admissionThresholdTokens: 104_800,
 				resolvedModelKey: "gpt-oss-120b",
 			},
 		);
@@ -1535,10 +1535,85 @@ describe("v5 planner loop skeleton", () => {
 			{
 				contextWindowTokens: 131_000,
 				reserveTokens: 5_000,
-				compactionThresholdTokens: 126_000,
+				admissionThresholdTokens: 126_000,
 				resolvedModelKey: "gpt-oss-120b",
 			},
 		);
+	});
+
+	it("rejects an oversized complete planner request before an unprepared runtime dispatch", async () => {
+		const sentinel = `HEAD_SENTINEL${"x".repeat(50_000)}TAIL_SENTINEL`;
+		const runtime = { useModel: vi.fn() };
+		const recorded: Array<Record<string, unknown>> = [];
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: {
+					id: "ctx",
+					staticPrefix: {
+						characterPrompt: { content: sentinel, stable: true },
+					},
+				},
+				config: {
+					contextWindowTokens: 2_000,
+					compactionReserveTokens: 500,
+				},
+				recorder: {
+					recordStage: vi.fn(
+						async (_trajectoryId: string, stage: Record<string, unknown>) => {
+							recorded.push(stage);
+						},
+					),
+				} as never,
+				trajectoryId: "planner-budget-rejection",
+			}),
+		).rejects.toMatchObject({ code: "PLANNER_INPUT_OVER_BUDGET" });
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(recorded).toHaveLength(1);
+		expect(JSON.stringify(recorded[0])).toContain("HEAD_SENTINEL");
+		expect(JSON.stringify(recorded[0])).toContain("TAIL_SENTINEL");
+		expect(JSON.stringify(recorded[0])).toContain("PLANNER_INPUT_OVER_BUDGET");
+	});
+
+	it("prepares the complete planner request against the selected model window", async () => {
+		const sentinel = `HEAD_SENTINEL${"y".repeat(500_000)}TAIL_SENTINEL`;
+		let dispatchedMessages: unknown;
+		const runtime = {
+			supportsModelAttemptPreparation: true,
+			useModel: vi.fn(async (_modelType, request) => {
+				await request.prepareModelAttempt?.(
+					{
+						modelType: ModelType.ACTION_PLANNER,
+						provider: "large",
+						priority: 0,
+						metadata: { displayModel: "claude-sonnet-5" },
+					},
+					request,
+				);
+				dispatchedMessages = request.messages;
+				return `{
+  "thought": "Done.",
+  "messageToUser": "Final answer.",
+  "toolCalls": []
+}`;
+			}),
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: sentinel, stable: true },
+				},
+			},
+		});
+
+		expect(result.finalMessage).toBe("Final answer.");
+		expect(JSON.stringify(dispatchedMessages)).toContain("HEAD_SENTINEL");
+		expect(JSON.stringify(dispatchedMessages)).toContain("TAIL_SENTINEL");
 	});
 
 	it("retries premature terminal output when a non-terminal tool call is required", async () => {

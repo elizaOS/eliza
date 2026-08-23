@@ -1,20 +1,12 @@
 /**
- * Exercises `ELIZA_PROMPT_COMPRESS` token-budget mode: the optimized-prompt
- * resolver keeps every few-shot demonstration regardless of the flag, and the
- * planner-loop routing-hints block is skipped when the env flag is set.
- * Deterministic — toggles the env var directly, no model.
+ * Proves the retired `ELIZA_PROMPT_COMPRESS` escape hatch cannot discard
+ * optimized-prompt demonstrations or planner routing hints.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import type { OptimizedPromptService } from "../../services/optimized-prompt";
 import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver";
 import { __renderRoutingHintsBlockForTests } from "../planner-loop";
 import type { ContextObject } from "../planner-types";
-
-// Wave 2-D: `ELIZA_PROMPT_COMPRESS=1` is the Cerebras token-budget escape
-// hatch. Cache-key snapshots in `cache-key-stability.test.ts` are NOT
-// expected to drift from this flag — the snapshots use a canonical
-// non-resolver prefix without routing hints. The behavior change is
-// observable here on the resolver + routing-hints renderer.
 
 function makeService(args: {
 	prompt: string;
@@ -53,7 +45,7 @@ function makeContext(): ContextObject {
 	} as unknown as ContextObject;
 }
 
-describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
+describe("retired ELIZA_PROMPT_COMPRESS setting", () => {
 	afterEach(() => {
 		delete process.env.ELIZA_PROMPT_COMPRESS;
 	});
@@ -93,7 +85,7 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		expect(out).toBe("BASELINE");
 	});
 
-	it("skips routing-hint rendering when enabled", () => {
+	it("does not skip routing-hint rendering", () => {
 		const ctx = makeContext();
 		const before = __renderRoutingHintsBlockForTests(ctx);
 		expect(before).not.toBeNull();
@@ -102,7 +94,8 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		// Routing hints memo is keyed on context.events identity, so a fresh
 		// context is needed to observe the env flag change.
 		process.env.ELIZA_PROMPT_COMPRESS = "1";
-		const compressed = __renderRoutingHintsBlockForTests(makeContext());
-		expect(compressed).toBeNull();
+		const withRetiredFlag = __renderRoutingHintsBlockForTests(makeContext());
+		expect(withRetiredFlag).toBe(before);
+		expect(withRetiredFlag).toContain("# Routing hints");
 	});
 });

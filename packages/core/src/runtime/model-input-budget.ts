@@ -1,8 +1,8 @@
 /**
  * Estimates a planner stage's model-input token count and derives its
- * compaction budget: resolves the context window (per-model lookup > explicit
- * arg > default), computes the reserve and compaction threshold, and reports
- * whether the input should be compacted before the call.
+ * admission budget: resolves the context window (per-model lookup > explicit
+ * arg > default), computes the response reserve and dispatch threshold, and
+ * reports whether the complete input must be rejected before the call.
  */
 import { lookupModelContextWindow } from "../features/trajectories/pricing";
 import type {
@@ -12,24 +12,20 @@ import type {
 } from "../types/model";
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
-export const DEFAULT_COMPACTION_RESERVE_TOKENS = 10_000;
-/** Conservative maximum inline allowance for one recoverable tool result. */
-export const DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS = 16_000;
-/** Conservative aggregate inline allowance for recoverable results in a turn. */
-export const DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS = 64_000;
+export const DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS = 10_000;
 
 /**
  * When the context window is resolved from `lookupModelContextWindow` (i.e.
  * we know the exact ceiling for this model), use this fraction of the window
- * as the compaction reserve floor.
+ * as the model-output reserve floor.
  *
  * 0.20 is chosen so the estimator + provider tokenization variance + the
  * planner's small re-render growth between the budget-check and the actual
  * send all fit under the ceiling. Empirically: char/3.5 underestimates by
  * roughly 25–30% on tool-heavy planner prompts; a 20% reserve absorbs that
- * without compacting healthy traffic prematurely.
+ * without rejecting healthy traffic prematurely.
  *
- * The reserve is `max(DEFAULT_COMPACTION_RESERVE_TOKENS, window * 0.20)` so
+ * The reserve is `max(DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS, window * 0.20)` so
  * tiny windows (≤ 50k) still get the 10k floor and large windows (≥ 200k)
  * scale up proportionally.
  *
@@ -45,22 +41,15 @@ export interface ModelInputBudget {
 	estimatedInputTokens: number;
 	contextWindowTokens: number;
 	reserveTokens: number;
-	compactionThresholdTokens: number;
-	shouldCompact: boolean;
+	admissionThresholdTokens: number;
+	shouldReject: boolean;
 	/**
 	 * The matched model-family key from the context-window lookup, or null
 	 * when the window came from the caller's explicit argument or the
 	 * `DEFAULT_CONTEXT_WINDOW_TOKENS` fallback. Surfaced for observability
-	 * (e.g. trajectory recorder, compaction logs).
+	 * (e.g. trajectory recorder and admission logs).
 	 */
 	resolvedModelKey: string | null;
-}
-
-export interface ContentProjectionBudget {
-	/** Maximum serialized tokens assigned to one tool result. */
-	perResultTokens: number;
-	/** Maximum serialized tokens assigned to all tool results in the turn. */
-	aggregateTokens: number;
 }
 
 function textLength(value: unknown): number {
@@ -75,55 +64,6 @@ function textLength(value: unknown): number {
 
 export function estimateTokensFromChars(chars: number): number {
 	return Math.ceil(chars / 3.5);
-}
-
-/**
- * Derive a fair model-facing content allowance from an already-rendered
- * metadata-only request. The baseline includes tool wrappers and ReadView
- * metadata, so only capacity that remains below the request threshold is made
- * available to exact page text.
- */
-export function buildContentProjectionBudget(args: {
-	budget: ModelInputBudget;
-	resultCount: number;
-	perResultCeilingTokens?: number;
-	aggregateCeilingTokens?: number;
-}): ContentProjectionBudget {
-	if (!Number.isSafeInteger(args.resultCount) || args.resultCount < 0) {
-		throw new TypeError("resultCount must be a nonnegative safe integer");
-	}
-	const normalizeCeiling = (value: number | undefined, fallback: number) => {
-		if (value === undefined) return fallback;
-		if (!Number.isSafeInteger(value) || value < 0) {
-			throw new TypeError(
-				"content projection ceilings must be nonnegative safe integers",
-			);
-		}
-		return value;
-	};
-	const aggregateCeiling = normalizeCeiling(
-		args.aggregateCeilingTokens,
-		DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS,
-	);
-	const perResultCeiling = normalizeCeiling(
-		args.perResultCeilingTokens,
-		DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS,
-	);
-	const remainingTokens = Math.max(
-		0,
-		args.budget.compactionThresholdTokens - args.budget.estimatedInputTokens,
-	);
-	const aggregateTokens = Math.min(aggregateCeiling, remainingTokens);
-	return {
-		aggregateTokens,
-		perResultTokens:
-			args.resultCount === 0
-				? 0
-				: Math.min(
-						perResultCeiling,
-						Math.floor(aggregateTokens / args.resultCount),
-					),
-	};
 }
 
 export function estimateModelInputTokens(args: {
@@ -163,7 +103,7 @@ export function buildModelInputBudget(args: {
 	contextWindowTokens?: number;
 	/**
 	 * Explicit reserve. When set, wins over the per-model 20%-of-window
-	 * derivation and the `DEFAULT_COMPACTION_RESERVE_TOKENS` fallback.
+	 * derivation and the `DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS` fallback.
 	 */
 	reserveTokens?: number;
 	/**
@@ -210,7 +150,7 @@ export function buildModelInputBudget(args: {
 			? Math.max(0, Math.floor(args.reserveTokens))
 			: undefined;
 
-	// Treat a caller-supplied reserve equal to `DEFAULT_COMPACTION_RESERVE_TOKENS`
+	// Treat a caller-supplied reserve equal to `DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS`
 	// as "carrying the legacy default" rather than an explicit override.
 	// Otherwise the planner-loop's call site — which always forwards
 	// `params.config.compactionReserveTokens` (default 10k) — would lock the
@@ -221,13 +161,13 @@ export function buildModelInputBudget(args: {
 	// `contextWindowTokens` explicitly (then derivation is bypassed because
 	// `lookup` is checked first).
 	//
-	// Net effect: passing `DEFAULT_COMPACTION_RESERVE_TOKENS` is treated as
+	// Net effect: passing `DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS` is treated as
 	// "no override" so derivation can fire when the lookup hits. Any other
 	// reserve value (0, 5000, 25000, …) is honored verbatim as an explicit
 	// override.
 	const lookupHit = lookup !== null;
 	const explicitReserve =
-		rawExplicitReserve === DEFAULT_COMPACTION_RESERVE_TOKENS && lookupHit
+		rawExplicitReserve === DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS && lookupHit
 			? undefined
 			: rawExplicitReserve;
 
@@ -236,16 +176,16 @@ export function buildModelInputBudget(args: {
 	//      The default-equal-to-DEFAULT-and-lookup-hit case folds into #2
 	//      so the per-model derivation can fire (see comment above).
 	//   2. Per-model derived reserve (only when window came from lookup):
-	//      `max(DEFAULT_COMPACTION_RESERVE_TOKENS, window * 0.20)`. This
+	//      `max(DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS, window * 0.20)`. This
 	//      absorbs the char/3.5 estimator's empirical 25–30% under-shoot on
 	//      tool-heavy planner prompts plus the small per-iteration re-render
 	//      growth between the budget check and the actual send.
-	//   3. `DEFAULT_COMPACTION_RESERVE_TOKENS` — unchanged backwards-compat
+	//   3. `DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS` — unchanged backwards-compat
 	//      default for callers that don't pass `modelName`.
 	const derivedReserveFromLookup =
 		lookup !== null
 			? Math.max(
-					DEFAULT_COMPACTION_RESERVE_TOKENS,
+					DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS,
 					Math.floor(contextWindowTokens * MODEL_WINDOW_RESERVE_FRACTION),
 				)
 			: undefined;
@@ -253,9 +193,9 @@ export function buildModelInputBudget(args: {
 	const reserveTokens =
 		explicitReserve ??
 		derivedReserveFromLookup ??
-		DEFAULT_COMPACTION_RESERVE_TOKENS;
+		DEFAULT_MODEL_OUTPUT_RESERVE_TOKENS;
 
-	const compactionThresholdTokens = Math.max(
+	const admissionThresholdTokens = Math.max(
 		1,
 		contextWindowTokens - reserveTokens,
 	);
@@ -264,8 +204,8 @@ export function buildModelInputBudget(args: {
 		estimatedInputTokens,
 		contextWindowTokens,
 		reserveTokens,
-		compactionThresholdTokens,
-		shouldCompact: estimatedInputTokens >= compactionThresholdTokens,
+		admissionThresholdTokens,
+		shouldReject: estimatedInputTokens >= admissionThresholdTokens,
 		resolvedModelKey: lookup?.matchedKey ?? null,
 	};
 }

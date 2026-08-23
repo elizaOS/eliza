@@ -2,8 +2,8 @@
  * Memoization of the planner-loop routing-hints prompt block. Exercises
  * `__renderRoutingHintsBlockForTests`: output is memoized on `context.events`
  * identity via a WeakMap, so repeated within-turn renders return the same bytes
- * for free (and drop when the context is GC'd), and the compress-mode env flag
- * suppresses rendering. Deterministic, no model.
+ * for free (and drop when the context is GC'd), while the retired compress-mode
+ * flag cannot change model-facing content. Deterministic, no model.
  */
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -61,11 +61,13 @@ describe("planner-loop memoization", () => {
 		expect(a).toContain("TEST_ACTION_0");
 	});
 
-	it("compress-mode env flag suppresses routing-hint rendering", () => {
+	it("retired compress-mode env flag preserves routing-hint rendering", () => {
 		const ctx = makeContextWithHints(3);
+		const baseline = __renderRoutingHintsBlockForTests(ctx);
 		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		try {
-			expect(__renderRoutingHintsBlockForTests(ctx)).toBeNull();
+			expect(__renderRoutingHintsBlockForTests(ctx)).toBe(baseline);
+			expect(baseline).toContain("TEST_ACTION_2");
 		} finally {
 			delete process.env.ELIZA_PROMPT_COMPRESS;
 		}

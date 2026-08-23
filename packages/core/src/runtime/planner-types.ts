@@ -94,6 +94,10 @@ export type EvaluatorOutput = EvaluationResult & {
 };
 
 export interface PlannerRuntime {
+	/** True when useModel invokes prepareModelAttempt before every provider handler. */
+	supportsModelAttemptPreparation?: boolean;
+	/** Optional model registry access used to resolve the selected model's context ceiling. */
+	getModelRegistrations?(): ModelRegistrationInfo[];
 	getService?(service: string): unknown;
 	/** Optional per-agent setting lookup used by guarded runtime features. */
 	getSetting?(key: string): string | boolean | number | null;
@@ -118,6 +122,14 @@ export interface PlannerRuntime {
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
+			prepareModelAttempt?: (
+				attempt: ModelAttemptContext,
+				params: {
+					messages: ChatMessage[];
+					promptSegments?: PromptSegment[];
+					providerOptions?: Record<string, unknown>;
+				},
+			) => Promise<void> | void;
 		},
 		provider?: string,
 	): Promise<string | GenerateTextResult>;
