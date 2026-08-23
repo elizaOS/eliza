@@ -3746,6 +3746,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     match_threshold?: number;
     count?: number;
     limit?: number;
+    offset?: number;
     unique?: boolean;
     query?: string;
     roomId?: UUID;
@@ -3759,6 +3760,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       // as a legacy alias) instead of silently ignoring it and capping the
       // candidate pool at the default 10.
       count: params.count ?? params.limit,
+      offset: params.offset,
       // Pass direct scope fields down
       roomId: params.roomId,
       worldId: params.worldId,
@@ -3786,6 +3788,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: {
       match_threshold?: number;
       count?: number;
+      offset?: number;
       roomId?: UUID;
       worldId?: UUID;
       entityId?: UUID;
@@ -3851,8 +3854,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(and(...conditions))
-        .orderBy(asc(distance))
-        .limit(count);
+        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id))
+        .limit(count)
+        .offset(params.offset ?? 0);
 
       // Same truthiness contract as the removed WHERE predicate: an absent or
       // zero threshold applies no similarity floor.
