@@ -20,6 +20,7 @@ import type {
 	UUID,
 } from "../types/primitives";
 import { asUUID } from "../types/primitives";
+import type { AccessContext } from "../types/access-context";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { stringToUuid } from "../utils";
@@ -45,6 +46,7 @@ const RELATIONSHIP_MESSAGE_PAGE_SIZE = 200;
 async function getAllRelationshipMessages(
 	runtime: IAgentRuntime,
 	roomIds: UUID[],
+	accessContext?: AccessContext,
 ): Promise<Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>>> {
 	const messages: Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>> =
 		[];
@@ -55,6 +57,7 @@ async function getAllRelationshipMessages(
 			roomIds,
 			limit: RELATIONSHIP_MESSAGE_PAGE_SIZE,
 			offset,
+			accessContext,
 		});
 		const pageIds = page.flatMap((memory) => (memory.id ? [memory.id] : []));
 		if (
@@ -1055,12 +1058,16 @@ export class RelationshipsService extends Service {
 	async analyzeRelationship(
 		sourceEntityId: UUID,
 		targetEntityId: UUID,
+		accessContext?: AccessContext,
 	): Promise<RelationshipAnalytics | null> {
 		const [firstEntityId, secondEntityId] =
 			sourceEntityId < targetEntityId
 				? [sourceEntityId, targetEntityId]
 				: [targetEntityId, sourceEntityId];
-		const cacheKey = `${firstEntityId}-${secondEntityId}`;
+		const scopeId = accessContext
+			? `${accessContext.requesterEntityId}:${accessContext.role ?? ""}:${accessContext.isOwner ? "1" : "0"}:${accessContext.worldId ?? ""}`
+			: `agent:${this.runtime.agentId}`;
+		const cacheKey = `${firstEntityId}-${secondEntityId}:${scopeId}`;
 
 		// Check cache first (valid for 1 hour from computation)
 		const cached = this.analyticsCache.get(cacheKey);
@@ -1095,7 +1102,7 @@ export class RelationshipsService extends Service {
 		);
 		const sharedMessages =
 			sharedRoomIds.length > 0
-				? await getAllRelationshipMessages(this.runtime, sharedRoomIds)
+				? await getAllRelationshipMessages(this.runtime, sharedRoomIds, accessContext)
 				: [];
 
 		const interactions = sharedMessages
@@ -1210,7 +1217,7 @@ export class RelationshipsService extends Service {
 		return analytics;
 	}
 
-	async getRelationshipInsights(entityId: UUID): Promise<{
+	async getRelationshipInsights(entityId: UUID, accessContext?: AccessContext): Promise<{
 		strongestRelationships: Array<{
 			entity: Entity;
 			analytics: RelationshipAnalytics;
@@ -1244,7 +1251,7 @@ export class RelationshipsService extends Service {
 		);
 		const analyticsResults = await Promise.all(
 			targets.map((target, index) =>
-				entities[index] ? this.analyzeRelationship(entityId, target) : null,
+				entities[index] ? this.analyzeRelationship(entityId, target, accessContext) : null,
 			),
 		);
 
