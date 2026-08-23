@@ -317,13 +317,17 @@ export function sortOverviewOccurrences(
   occurrences: LifeOpsOccurrenceView[],
 ): LifeOpsOccurrenceView[] {
   return [...occurrences].sort((left, right) => {
-    const leftStart = new Date(left.relevanceStartAt).getTime();
-    const rightStart = new Date(right.relevanceStartAt).getTime();
+    const leftRaw = new Date(left.relevanceStartAt).getTime();
+    const rightRaw = new Date(right.relevanceStartAt).getTime();
+    const leftStart = Number.isFinite(leftRaw) ? leftRaw : 0;
+    const rightStart = Number.isFinite(rightRaw) ? rightRaw : 0;
     if (leftStart !== rightStart) {
       return leftStart - rightStart;
     }
-    if (left.priority !== right.priority) {
-      return left.priority - right.priority;
+    const leftPri = Number.isFinite(left.priority) ? left.priority : 0;
+    const rightPri = Number.isFinite(right.priority) ? right.priority : 0;
+    if (leftPri !== rightPri) {
+      return leftPri - rightPri;
     }
     return left.title.localeCompare(right.title);
   });
@@ -399,11 +403,15 @@ export function buildActiveReminders(
       });
     }
   }
-  reminders.sort(
-    (left, right) =>
-      new Date(left.scheduledFor).getTime() -
-      new Date(right.scheduledFor).getTime(),
-  );
+  reminders.sort((left, right) => {
+    const leftTime = Number.isFinite(new Date(left.scheduledFor).getTime())
+      ? new Date(left.scheduledFor).getTime()
+      : 0;
+    const rightTime = Number.isFinite(new Date(right.scheduledFor).getTime())
+      ? new Date(right.scheduledFor).getTime()
+      : 0;
+    return leftTime - rightTime;
+  });
   return reminders;
 }
 
@@ -452,11 +460,15 @@ export function buildActiveCalendarEventReminders(
       });
     }
   }
-  reminders.sort(
-    (left, right) =>
-      new Date(left.scheduledFor).getTime() -
-      new Date(right.scheduledFor).getTime(),
-  );
+  reminders.sort((left, right) => {
+    const leftTime = Number.isFinite(new Date(left.scheduledFor).getTime())
+      ? new Date(left.scheduledFor).getTime()
+      : 0;
+    const rightTime = Number.isFinite(new Date(right.scheduledFor).getTime())
+      ? new Date(right.scheduledFor).getTime()
+      : 0;
+    return leftTime - rightTime;
+  });
   return reminders;
 }
 
