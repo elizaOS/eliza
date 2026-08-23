@@ -103,6 +103,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       character,
       history: [],
       message: "what is btc price rn",
+      capabilityText: "what is btc price rn",
       execution: {
         agentKey: "personal-shared:test",
         roomKey: "telegram:test",
@@ -118,11 +119,15 @@ describe("runSharedAgentTurn realtime grounding", () => {
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
-          originalModelReply: runtimeReply,
           deliveredReply: expect.stringContaining("Source: example.com"),
+          groundingStatus: "verified",
+          sourceUrls: ["https://example.com/markets/btc-usd"],
         }),
       }),
     ]);
+    expect(JSON.stringify(result.actionResults)).not.toContain("originalModelReply");
+    expect(JSON.stringify(result.actionResults)).not.toContain('"sources"');
+    expect(JSON.stringify(result.actionResults)).not.toContain('"excerpt"');
     expect(capturedRuntimeInput?.preflightActionResults).toEqual([searchResult]);
     if (!capturedRuntimeInput) throw new Error("runtime input was not captured");
     expect((capturedRuntimeInput.character as { system: string }).system).toContain(
@@ -130,7 +135,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
     );
   });
 
-  test("keeps a distinct runtime search receipt while deduplicating only the preflight query", async () => {
+  test("keeps all raw search receipts internal and exposes one safe public receipt", async () => {
     const followUpSearch: ActionResult = {
       success: true,
       text: JSON.stringify({ symbol: "ETH", value: "3,500", currency: "USD" }),
@@ -169,11 +174,13 @@ describe("runSharedAgentTurn realtime grounding", () => {
       character,
       history: [],
       message: "what is btc price rn",
+      capabilityText: "what is btc price rn",
     });
 
-    expect(result.actionResults).toHaveLength(2);
+    expect(result.actionResults).toHaveLength(1);
     expect(result.actionResults?.[0]?.data?.query).toBe("what is btc price rn");
-    expect(result.actionResults?.[1]).toEqual(followUpSearch);
+    expect(JSON.stringify(result.actionResults)).not.toContain("compare with ethereum price");
+    expect(JSON.stringify(result.actionResults)).not.toContain("3,500");
   });
 
   test("replaces a fabricated value and attribution with a safe answer", async () => {
@@ -182,12 +189,15 @@ describe("runSharedAgentTurn realtime grounding", () => {
       character,
       history: [],
       message: "what is btc price rn",
+      capabilityText: "what is btc price rn",
     });
 
     expect(result.reply).not.toContain("63,800");
     expect(result.reply).not.toContain("TradingView");
     expect(result.reply).toContain("couldn’t safely bind the requested claim");
     expect(result.reply).toContain("Source provider: parallel");
+    expect(JSON.stringify(result.actionResults)).not.toContain("63,800");
+    expect(JSON.stringify(result.actionResults)).not.toContain("TradingView");
   });
 
   test("fails closed when search has no traceable source", async () => {
@@ -206,6 +216,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       character,
       history: [],
       message: "weather today",
+      capabilityText: "weather today",
     });
 
     expect(result.reply).toContain("can’t verify");
@@ -246,6 +257,16 @@ describe("runSharedAgentTurn realtime grounding", () => {
 
     searchQueries = [];
     capturedRuntimeInput = undefined;
+    await runSharedAgentTurn({
+      character,
+      history: [],
+      message: "what is btc price rn",
+    });
+    expect(searchQueries).toEqual([]);
+    expect(capturedRuntimeInput?.preflightActionResults).toBeUndefined();
+
+    searchQueries = [];
+    capturedRuntimeInput = undefined;
     runtimeReply = "Your todos are available privately.";
     await runSharedAgentTurn({
       character,
@@ -257,7 +278,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
     expect(capturedRuntimeInput?.preflightActionResults).toBeUndefined();
   });
 
-  test("turns model silence into useful correction recovery", async () => {
+  test("does not export prior history for an ambiguous correction", async () => {
     runtimeReply = "";
     runtimeResponded = false;
     const result = await runSharedAgentTurn({
@@ -267,11 +288,12 @@ describe("runSharedAgentTurn realtime grounding", () => {
         { role: "assistant", content: "Bitcoin is 63,800 USD." },
       ],
       message: "wrong, check again",
+      capabilityText: "wrong, check again",
     });
 
-    expect(result.responded).toBe(true);
-    expect(result.reply).toContain("couldn’t safely bind the requested claim");
-    expect(result.reply).not.toMatch(/^\?+$/u);
+    expect(result.responded).toBe(false);
+    expect(searchQueries).toEqual([]);
+    expect(capturedRuntimeInput?.preflightActionResults).toBeUndefined();
   });
 
   test("buffers current-data streaming so no unverified prefix escapes", async () => {
@@ -279,6 +301,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       character,
       history: [],
       message: "latest ethereum price",
+      capabilityText: "latest ethereum price",
     });
     if (!result.parts) throw new Error("stream returned no parts");
     const parts = [];
@@ -296,5 +319,11 @@ describe("runSharedAgentTurn realtime grounding", () => {
         }),
       }),
     ]);
+    const terminalReceipt = JSON.stringify(
+      parts[1]?.type === "finish" ? parts[1].actionResults : undefined,
+    );
+    expect(terminalReceipt).not.toContain("originalModelReply");
+    expect(terminalReceipt).not.toContain('"sources"');
+    expect(terminalReceipt).not.toContain('"excerpt"');
   });
 });
