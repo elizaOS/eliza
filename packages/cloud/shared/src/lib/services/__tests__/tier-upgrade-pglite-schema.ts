@@ -580,6 +580,7 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "organization_id" uuid NOT NULL,
   "agent_id" uuid NOT NULL,
   "lifecycle_revision" bigint NOT NULL,
+  "authorization" text NOT NULL DEFAULT 'billing_request',
   "status" text NOT NULL DEFAULT 'pending',
   "job_id" uuid REFERENCES "jobs"("id") ON DELETE SET NULL,
   "attempts" integer NOT NULL DEFAULT 0,
@@ -592,11 +593,17 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "agent_compute_stop_intents_status_check" CHECK (
     "status" IN ('pending', 'dispatching', 'retry', 'terminal_attention', 'provider_confirmed', 'superseded')
+  ),
+  CONSTRAINT "agent_compute_stop_intents_authorization_check" CHECK (
+    "authorization" IN ('billing_request', 'user_request')
   )
 )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "agent_compute_stop_intents_active_unique"
   ON "agent_compute_stop_intents" ("organization_id", "agent_id")
   WHERE "status" IN ('pending', 'dispatching', 'retry', 'terminal_attention')`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_compute_stop_intents_user_request_unique"
+  ON "agent_compute_stop_intents" ("organization_id", "agent_id", "lifecycle_revision")
+  WHERE "authorization" = 'user_request'`,
   `CREATE INDEX IF NOT EXISTS "agent_compute_stop_intents_recovery_idx"
   ON "agent_compute_stop_intents" ("status", "next_attempt_at")
   WHERE "status" IN ('pending', 'retry', 'terminal_attention')`,

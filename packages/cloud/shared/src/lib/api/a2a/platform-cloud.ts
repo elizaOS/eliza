@@ -184,15 +184,33 @@ async function executePlatformSkill(c: AppContext, skill: string, args: Record<s
     case "cloud.billing.cancel_resource": {
       const resourceId = typeof args.resourceId === "string" ? args.resourceId : "";
       if (!resourceId) throw new Error("resourceId is required");
+      const resourceType =
+        args.resourceType === "container" || args.resourceType === "agent_sandbox"
+          ? args.resourceType
+          : undefined;
+      if (!resourceType) throw new Error("resourceType is required");
+      if (args.mode !== undefined && args.mode !== "stop") {
+        throw new Error("Only mode=stop supports durable billing cancellation");
+      }
+      if (
+        !Number.isSafeInteger(args.expectedLifecycleRevision) ||
+        Number(args.expectedLifecycleRevision) < 0
+      ) {
+        throw new Error("expectedLifecycleRevision is required");
+      }
+      const idempotencyKey =
+        typeof args.idempotencyKey === "string"
+          ? args.idempotencyKey
+          : (c.req.header("idempotency-key") ?? "");
       const user = await requireCurrentBillingManagerSession(c);
-      return activeBillingService.cancelResource({
+      return activeBillingService.requestCancellation({
         organizationId: user.organization_id,
+        requestedByUserId: user.id,
         resourceId,
-        resourceType:
-          args.resourceType === "container" || args.resourceType === "agent_sandbox"
-            ? args.resourceType
-            : undefined,
-        mode: args.mode === "delete" ? "delete" : "stop",
+        resourceType,
+        expectedLifecycleRevision: Number(args.expectedLifecycleRevision),
+        idempotencyKey,
+        triggerEnv: c.env,
         authorizeInfrastructureMutation: async () => {
           await requireCurrentBillingManagerSession(c);
         },

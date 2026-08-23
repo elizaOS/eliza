@@ -51,6 +51,7 @@ export * from "./app-usage-projections";
 export * from "./apps";
 export * from "./auth-events";
 export * from "./auto-top-up-attempts";
+export * from "./billing-cancel-commands";
 export * from "./cli-auth-sessions";
 export * from "./cloud-files";
 export * from "./compute-billing";

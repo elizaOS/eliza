@@ -9,7 +9,7 @@ import { checkCookieMutationGuard } from "../auth/cookie-mutation-guard";
 
 const requireCurrentBillingManagerSession = mock();
 const requireUserOrApiKeyWithOrg = mock();
-const cancelResource = mock();
+const requestCancellation = mock();
 const originalFetch = globalThis.fetch;
 
 mock.module("../auth/workers-hono-auth", () => ({
@@ -20,7 +20,7 @@ mock.module("../auth/workers-hono-auth", () => ({
 
 mock.module("../services/active-billing", () => ({
   activeBillingService: {
-    cancelResource,
+    requestCancellation,
     listActiveResources: mock(),
     listLedger: mock(),
   },
@@ -34,6 +34,7 @@ mock.module("../cloud-capabilities", () => ({
   executeCloudCapabilityRest: mock(),
   getCloudCapabilities: () => [
     {
+      id: "billing.cancel_resource",
       summary: "Stop future billing.",
       auth: { modes: ["session"], organizationRoles: ["owner", "admin"] },
       surfaces: {
@@ -70,7 +71,7 @@ const context = {
 beforeEach(() => {
   requireCurrentBillingManagerSession.mockReset();
   requireUserOrApiKeyWithOrg.mockReset();
-  cancelResource.mockReset();
+  requestCancellation.mockReset();
 });
 
 afterEach(() => {
@@ -102,6 +103,17 @@ describe("platform MCP billing cancellation authority", () => {
       modes: ["session"],
       organizationRoles: ["owner", "admin"],
     });
+    expect(tool?.inputSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["resourceId", "resourceType", "expectedLifecycleRevision", "idempotencyKey"],
+      properties: {
+        resourceId: { type: "string", format: "uuid" },
+        resourceType: { enum: ["container", "agent_sandbox"] },
+        mode: { enum: ["stop"] },
+        expectedLifecycleRevision: { type: "integer", minimum: 0 },
+        idempotencyKey: { type: "string", minLength: 8, maxLength: 128 },
+      },
+    });
   });
 
   test("uses the current authorized tenant and rechecks before infrastructure", async () => {
@@ -110,24 +122,29 @@ describe("platform MCP billing cancellation authority", () => {
       organization_id: "org-current",
       role: "owner",
     });
-    cancelResource.mockImplementation(async (options) => {
+    requestCancellation.mockImplementation(async (options) => {
       await options.authorizeInfrastructureMutation();
-      return { status: "cancelled" };
+      return { disposition: "accepted", receipt: { status: "accepted" } };
     });
 
     const result = await callPlatformCloudMcpTool(context, "cloud.billing.cancel_resource", {
       resourceId: "resource-1",
       resourceType: "agent_sandbox",
-      mode: "delete",
+      mode: "stop",
+      expectedLifecycleRevision: 7,
+      idempotencyKey: "billing-cancel-request-0001",
     });
 
-    expect(result.content[0]?.text).toContain('"status": "cancelled"');
-    expect(cancelResource).toHaveBeenCalledTimes(1);
-    expect(cancelResource).toHaveBeenCalledWith({
+    expect(result.content[0]?.text).toContain('"status": "accepted"');
+    expect(requestCancellation).toHaveBeenCalledTimes(1);
+    expect(requestCancellation).toHaveBeenCalledWith({
       organizationId: "org-current",
+      requestedByUserId: "owner-1",
       resourceId: "resource-1",
       resourceType: "agent_sandbox",
-      mode: "delete",
+      expectedLifecycleRevision: 7,
+      idempotencyKey: "billing-cancel-request-0001",
+      triggerEnv: {},
       authorizeInfrastructureMutation: expect.any(Function),
     });
     expect(requireCurrentBillingManagerSession).toHaveBeenCalledTimes(2);
@@ -141,11 +158,14 @@ describe("platform MCP billing cancellation authority", () => {
       await expect(
         callPlatformCloudMcpTool(context, "cloud.billing.cancel_resource", {
           resourceId: "resource-1",
+          resourceType: "container",
+          expectedLifecycleRevision: 7,
+          idempotencyKey: "billing-cancel-request-0001",
         }),
       ).rejects.toThrow("denied");
     }
 
-    expect(cancelResource).not.toHaveBeenCalled();
+    expect(requestCancellation).not.toHaveBeenCalled();
   });
 
   test("cloud.api.request preserves cookie-session CSRF proof on its REST hop", async () => {
