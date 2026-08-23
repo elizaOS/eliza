@@ -45,8 +45,32 @@ function harness(text: string) {
 		readDocumentRange: vi.fn(
 			async (
 				_documentId: UUID,
-				params: { unit: "line" | "fragment"; offset: number; limit: number },
+				params: {
+					unit: "line" | "fragment" | "byte";
+					offset: number;
+					limit: number;
+				},
 			) => {
+				if (params.unit === "byte") {
+					const bytes = Buffer.from(currentText, "utf8");
+					const pageText = bytes
+						.subarray(params.offset, params.offset + params.limit)
+						.toString("utf8");
+					return {
+						unit: "byte" as const,
+						text: pageText,
+						start: params.offset,
+						end: params.offset + Buffer.byteLength(pageText, "utf8"),
+						total: bytes.length,
+						documentRevision: currentRevision,
+						revisionAttemptId: `native-secret-${currentRevision}`,
+						sourceFingerprint: `sha256:${createHash("sha256").update(currentText).digest("hex")}`,
+						examinedSourceSegments: 1,
+						sourceQueryCount: 2,
+						returnedSourceSegments: 1,
+						returnedSourceBytes: Buffer.byteLength(pageText, "utf8"),
+					};
+				}
 				const lines =
 					currentText.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
 				const units =
@@ -63,10 +87,12 @@ function harness(text: string) {
 									return fragments;
 								}, [])
 								.filter(Boolean);
+				const pageText = units
+					.slice(params.offset, params.offset + params.limit)
+					.join("");
 				return {
-					text: units
-						.slice(params.offset, params.offset + params.limit)
-						.join(""),
+					unit: params.unit,
+					text: pageText,
 					start: params.offset,
 					end: Math.min(params.offset + params.limit, units.length),
 					total: units.length,
@@ -75,6 +101,10 @@ function harness(text: string) {
 					sourceFingerprint: `sha256:${createHash("sha256")
 						.update(currentText)
 						.digest("hex")}`,
+					examinedSourceSegments: 1,
+					sourceQueryCount: 2,
+					returnedSourceSegments: 1,
+					returnedSourceBytes: Buffer.byteLength(pageText, "utf8"),
 				};
 			},
 		),

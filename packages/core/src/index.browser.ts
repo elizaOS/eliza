@@ -54,14 +54,21 @@ export * from "./env-utils";
 export * from "./errors";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
+export type { DocumentSourceReadMetadata } from "./features/documents/index";
 export {
 	__setDocumentUrlFetchImplForTests,
+	DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+	DOCUMENT_SOURCE_READ_MAX_SEGMENTS,
+	DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
+	DOCUMENT_SOURCE_SEGMENT_VERSION,
 	type FetchDocumentFromUrlOptions,
 	type FetchedDocumentUrl,
 	type FetchedDocumentUrlKind,
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 	normalizeDocumentContentType,
+	readDocumentSourceProjection,
+	requireDocumentSourceReadMetadata,
 } from "./features/documents/index";
 export type {
 	DeferredMessageScheduleCommit,

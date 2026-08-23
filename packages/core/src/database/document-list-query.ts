@@ -390,6 +390,17 @@ export function validateDocumentRevisionReplacement(
 		| Record<string, unknown>
 		| undefined;
 	const revision = replacementMetadata?.documentRevision;
+	const sourceStorage = replacementMetadata?.sourceStorage;
+	const hasCanonicalSource =
+		replacementMetadata?.sourceSegmentVersion === 1 &&
+		typeof replacementMetadata.sourceSegmentCount === "number" &&
+		typeof replacementMetadata.sourceByteLength === "number" &&
+		typeof replacementMetadata.sourceFingerprint === "string" &&
+		((sourceStorage === "inline" &&
+			typeof replacement.content.text === "string") ||
+			(sourceStorage === "segments" &&
+				replacement.content.documentSource !== null &&
+				typeof replacement.content.documentSource === "object"));
 	const replacementSnapshot = readDocumentMutationSnapshot(replacement);
 	const invalid = (
 		reason: string,
@@ -405,7 +416,7 @@ export function validateDocumentRevisionReplacement(
 		replacement.agentId !== params.agentId ||
 		replacementMetadata?.type !== MemoryType.DOCUMENT ||
 		replacementMetadata.documentId !== params.documentId ||
-		typeof replacement.content.text !== "string" ||
+		!hasCanonicalSource ||
 		revision !== params.expected.revision + 1 ||
 		!replacementSnapshot ||
 		replacementSnapshot.scope !== params.expected.scope ||
@@ -429,10 +440,16 @@ export function validateDocumentRevisionReplacement(
 		});
 	}
 	const ids = new Set<string>();
+	let sourcePosition = 0;
+	let embeddingPosition = 0;
 	for (let index = 0; index < params.fragments.length; index++) {
 		const fragment = params.fragments[index];
 		const fragmentId = fragment.id;
 		const metadata = fragment.metadata as Record<string, unknown> | undefined;
+		const isSourceSegment = metadata?.fragmentRole === "source-segment";
+		const expectedPosition = isSourceSegment
+			? sourcePosition++
+			: embeddingPosition++;
 		if (
 			!isUuid(fragmentId) ||
 			fragmentId === params.documentId ||
@@ -444,7 +461,12 @@ export function validateDocumentRevisionReplacement(
 			metadata?.type !== MemoryType.FRAGMENT ||
 			metadata.documentId !== params.documentId ||
 			metadata.documentRevision !== revision ||
-			metadata.position !== index ||
+			metadata.position !== expectedPosition ||
+			(isSourceSegment &&
+				(metadata.sourceSegmentVersion !== 1 ||
+					typeof metadata.sourceSegmentSha256 !== "string" ||
+					typeof metadata.sourceByteStart !== "number" ||
+					typeof metadata.sourceByteEnd !== "number")) ||
 			typeof fragment.content.text !== "string" ||
 			(fragment.embedding !== undefined &&
 				(!Array.isArray(fragment.embedding) ||
@@ -457,6 +479,12 @@ export function validateDocumentRevisionReplacement(
 			});
 		}
 		ids.add(fragmentId as UUID);
+	}
+	if (sourcePosition !== replacementMetadata?.sourceSegmentCount) {
+		invalid("source segment count does not match the replacement parent", {
+			expectedSourceSegments: replacementMetadata?.sourceSegmentCount,
+			actualSourceSegments: sourcePosition,
+		});
 	}
 }
 
@@ -1006,7 +1034,9 @@ export function queryDocumentFragmentsInMemory(
 		.filter((memory) => {
 			if (
 				memory.agentId !== params.agentId ||
-				memory.metadata?.type !== MemoryType.FRAGMENT
+				memory.metadata?.type !== MemoryType.FRAGMENT ||
+				(memory.metadata as unknown as Record<string, unknown>).fragmentRole ===
+					"source-segment"
 			) {
 				return false;
 			}
