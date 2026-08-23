@@ -62,6 +62,14 @@ authorized click to that observation, verifies the page transition, and proves
 that the consumed frame cannot authorize a repeated action. It never drives the
 host cursor or an existing browser profile.
 
+The protected multimodal acceptance path is
+`bun run test:live:cerebras-browser-fixture`. It skips explicitly unless
+`CEREBRAS_API_KEY` is injected through a protected environment, then makes two
+bounded `gemma-4-31b` image-description calls: one to plan the allowlisted
+fixture click despite hostile on-screen instructions, and one on a fresh frame
+to verify completion. It uses the same isolated headless browser and ephemeral
+loopback fixture; it never opens an existing profile or logs the credential.
+
 ## Surface
 
 - **Actions** — `COMPUTER_USE` (canonical screenshot / click / key /
@@ -83,10 +91,12 @@ host cursor or an existing browser profile.
   browser/sandbox/remote-guest targets. The compatibility DTO now projects the
   core v2 interaction semantics: canonical state/isolation/generation,
   screenshot observation IDs and SHA-256 provenance, typed outcomes, and
-  metadata-only events. Every consequential action binds to the latest
-  unconsumed observation; stale, wrong-target, duplicate, busy, and repeated
-  unchanged-screen attempts fail closed. Cursor state remains virtual per
-  session. A desktop still has one physical mouse and keyboard.
+  metadata-only events. Before dispatch, the DTO is translated into a canonical
+  core session/surface/action and passes the shared atomic
+  `authorizeInteractionDispatch` boundary. Every consequential action binds to
+  the latest unconsumed observation; stale, wrong-target, duplicate, busy, and
+  repeated unchanged-screen attempts fail closed. Cursor state remains virtual
+  per session. A desktop still has one physical mouse and keyboard.
 - **Safety** — secure accessibility fields and overlapping OCR are structurally
   redacted before model prompting. Screenshot/OCR/page text is explicitly
   untrusted, the autonomous loop has owner cancellation plus a repeated-action

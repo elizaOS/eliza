@@ -4,7 +4,7 @@
  * seam; lifecycle, lease, sequencing, isolation, and event state are real.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ComputerUseSessionError,
   ComputerUseSessionManager,
@@ -115,7 +115,7 @@ describe("ComputerUseSessionManager", () => {
       leaseTtlMs: 5_000,
     });
     const running = manager.execute(host.id, action("action-one", 0));
-    await Promise.resolve();
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
     now += 5_001;
 
     expect(manager.get(host.id)?.status).toBe("running");
@@ -153,7 +153,10 @@ describe("ComputerUseSessionManager", () => {
 
     const firstRun = manager.execute(first.id, action("action-a", 0));
     const secondRun = manager.execute(second.id, action("action-b", 0));
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(releases.get("browser-a")).toBeTypeOf("function");
+      expect(releases.get("sandbox-b")).toBeTypeOf("function");
+    });
     expect(manager.get(first.id)?.status).toBe("running");
     expect(manager.get(second.id)?.status).toBe("running");
     releases.get("browser-a")?.();
@@ -200,7 +203,7 @@ describe("ComputerUseSessionManager", () => {
       target: { kind: "browser", targetId: "browser-one" },
     });
     const running = manager.execute(session.id, action("action-one", 0));
-    await Promise.resolve();
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
     await expect(
       manager.execute(session.id, action("action-two", 0)),
     ).rejects.toMatchObject({ code: "SESSION_BUSY" });
@@ -368,6 +371,33 @@ describe("ComputerUseSessionManager", () => {
     ).rejects.toMatchObject({ code: "REPEATED_ACTION_GUARD" });
   });
 
+  it("normalizes compatibility actions through the canonical core authority", async () => {
+    let executed = false;
+    const manager = new ComputerUseSessionManager({
+      idFactory: () => "session-one",
+      executor: async () => {
+        executed = true;
+        return { success: true };
+      },
+      frameProvider: async () => ({ mimeType: "image/png", data: "cG5n" }),
+    });
+    const session = manager.create({ target: { kind: "host" } });
+    const frame = await manager.captureFrame(session.id);
+
+    await expect(
+      manager.execute(
+        session.id,
+        action("invalid-canonical-pointer", 0, {
+          command: "click",
+          parameters: {},
+          observationId: frame.provenance.observationId,
+          observationSequence: frame.provenance.sequence,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_SESSION_INPUT" });
+    expect(executed).toBe(false);
+  });
+
   it("pauses, resumes, and aborts an in-flight action on stop", async () => {
     let release: (() => void) | undefined;
     const manager = new ComputerUseSessionManager({
@@ -394,7 +424,7 @@ describe("ComputerUseSessionManager", () => {
     ).rejects.toMatchObject({ code: "SESSION_PAUSED" });
     manager.resume(session.id);
     const running = manager.execute(session.id, action("running", 0));
-    await Promise.resolve();
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
     expect(manager.stop(session.id)).toMatchObject({
       status: "stopping",
       canonicalState: "stopping",
