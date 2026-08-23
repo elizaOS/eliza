@@ -86,9 +86,7 @@ describe("SigningPolicyEvaluator", () => {
     const policy = createDefaultPolicy();
     policy.maxTransactionValueWei = "1000000000000000";
     const ev = new SigningPolicyEvaluator(policy);
-    const d = ev.evaluate(
-      makeRequest({ value: "1000000000000001" }),
-    );
+    const d = ev.evaluate(makeRequest({ value: "1000000000000001" }));
     expect(d.allowed).toBe(false);
     expect(d.matchedRule).toBe("value_cap");
   });
@@ -105,7 +103,9 @@ describe("SigningPolicyEvaluator", () => {
     policy.allowedMethodSelectors = ["0x12345678"];
     const ev = new SigningPolicyEvaluator(policy);
     const d = ev.evaluate(
-      makeRequest({ data: "0xdeadbeef00000000000000000000000000000000000000000000000000000000" }),
+      makeRequest({
+        data: "0xdeadbeef00000000000000000000000000000000000000000000000000000000",
+      }),
     );
     expect(d.allowed).toBe(false);
     expect(d.matchedRule).toBe("method_selector_allowlist");
@@ -116,7 +116,9 @@ describe("SigningPolicyEvaluator", () => {
     policy.allowedMethodSelectors = ["0x12345678"];
     const ev = new SigningPolicyEvaluator(policy);
     const d = ev.evaluate(
-      makeRequest({ data: "0x12345678deadbeef0000000000000000000000000000000000000000000000" }),
+      makeRequest({
+        data: "0x12345678deadbeef0000000000000000000000000000000000000000000000",
+      }),
     );
     expect(d.allowed).toBe(true);
   });
@@ -138,7 +140,11 @@ describe("SigningPolicyEvaluator", () => {
     ev.recordRequest("a");
     ev.recordRequest("b");
     // Overwrite timestamps to be recent
-    (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog = [
+    (
+      ev as unknown as {
+        requestLog: Array<{ requestId: string; timestamp: number }>;
+      }
+    ).requestLog = [
       { requestId: "a", timestamp: now - 1000 },
       { requestId: "b", timestamp: now - 2000 },
     ];
@@ -153,7 +159,11 @@ describe("SigningPolicyEvaluator", () => {
     policy.maxTransactionsPerDay = 2;
     const ev = new SigningPolicyEvaluator(policy);
     const now = Date.now();
-    (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog = [
+    (
+      ev as unknown as {
+        requestLog: Array<{ requestId: string; timestamp: number }>;
+      }
+    ).requestLog = [
       { requestId: "a", timestamp: now - 2 * 3600 * 1000 }, // 2h ago (within a day, outside hour)
       { requestId: "b", timestamp: now - 3 * 3600 * 1000 },
     ];
@@ -167,9 +177,7 @@ describe("SigningPolicyEvaluator", () => {
     policy.humanConfirmationThresholdWei = "1000000000000000";
     policy.requireHumanConfirmation = false;
     const ev = new SigningPolicyEvaluator(policy);
-    const d = ev.evaluate(
-      makeRequest({ value: "2000000000000000" }),
-    );
+    const d = ev.evaluate(makeRequest({ value: "2000000000000000" }));
     expect(d.allowed).toBe(true);
     expect(d.requiresHumanConfirmation).toBe(true);
   });
@@ -178,9 +186,7 @@ describe("SigningPolicyEvaluator", () => {
     const policy = createDefaultPolicy();
     policy.humanConfirmationThresholdWei = "1000000000000000";
     const ev = new SigningPolicyEvaluator(policy);
-    const d = ev.evaluate(
-      makeRequest({ value: "500000000000000" }),
-    );
+    const d = ev.evaluate(makeRequest({ value: "500000000000000" }));
     expect(d.allowed).toBe(true);
     expect(d.requiresHumanConfirmation).toBe(false);
   });
@@ -196,11 +202,19 @@ describe("SigningPolicyEvaluator", () => {
   it("prunes expired entries from the request log", () => {
     const ev = new SigningPolicyEvaluator();
     const now = Date.now();
-    (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog = [
+    (
+      ev as unknown as {
+        requestLog: Array<{ requestId: string; timestamp: number }>;
+      }
+    ).requestLog = [
       { requestId: "old", timestamp: now - 48 * 3600 * 1000 }, // 2 days ago
     ];
     ev.evaluate(makeRequest({ requestId: "new" }));
-    const log = (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog;
+    const log = (
+      ev as unknown as {
+        requestLog: Array<{ requestId: string; timestamp: number }>;
+      }
+    ).requestLog;
     expect(log.some((r) => r.requestId === "old")).toBe(false);
   });
 });
