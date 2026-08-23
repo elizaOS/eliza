@@ -180,7 +180,7 @@ describe("browser bridge broker IPC", () => {
     expect(executableProbe).toContain("Invoke-SecurePipeRoundTrip");
     expect(executableProbe).toContain("StandardOutput.BaseStream");
     expect(executableProbe).toContain("StandardInput.BaseStream");
-    expect(executableProbe).toContain("StandardInputEncoding");
+    expect(executableProbe).toContain("[Console]::InputEncoding");
     expect(executableProbe).toContain("return ,$buffer");
     expect(executableProbe).toContain("StandardError.ReadToEnd()");
   });
