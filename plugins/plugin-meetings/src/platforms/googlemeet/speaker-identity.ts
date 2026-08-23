@@ -75,7 +75,7 @@ export class VoteLockTable {
       (a, b) => {
         const bWeight = Number.isFinite(b[1]) ? b[1] : 0;
         const aWeight = Number.isFinite(a[1]) ? a[1] : 0;
-        return bWeight - aWeight || a[0].localeCompare(b[0]);
+        return bWeight - aWeight;
       },
     )[0];
     if (
@@ -98,7 +98,7 @@ export class VoteLockTable {
     for (const [name] of [...byName.entries()].sort((a, b) => {
       const bWeight = Number.isFinite(b[1]) ? b[1] : 0;
       const aWeight = Number.isFinite(a[1]) ? a[1] : 0;
-      return bWeight - aWeight || a[0].localeCompare(b[0]);
+      return bWeight - aWeight;
     })) {
       if (!this.isNameTaken(name, track)) return name;
     }
