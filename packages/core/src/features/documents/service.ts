@@ -2095,7 +2095,18 @@ export class DocumentService extends Service {
 				worldId: fragment.worldId,
 			}))
 			.filter((item) => item.similarity > 0)
-			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
+			.sort((a, b) => {
+				const bS =
+					typeof b.similarity === "number" && Number.isFinite(b.similarity)
+						? b.similarity
+						: 0;
+				const aS =
+					typeof a.similarity === "number" && Number.isFinite(a.similarity)
+						? a.similarity
+						: 0;
+				if (bS !== aS) return bS - aS;
+				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+			}) as StoredDocument[];
 	}
 
 	/**
@@ -2310,7 +2321,18 @@ export class DocumentService extends Service {
 							memory.metadata.ragUsage
 						),
 				)
-				.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+				.sort((a, b) => {
+					const bT =
+						typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+							? b.createdAt
+							: 0;
+					const aT =
+						typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+							? a.createdAt
+							: 0;
+					if (bT !== aT) return bT - aT;
+					return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+				});
 
 			for (const pendingEntry of this.pendingRAGEnrichment) {
 				const matchingMemory = recentConversationMemories.find(
