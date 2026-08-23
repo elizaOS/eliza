@@ -33,7 +33,7 @@ vi.mock("./preaction", () => ({
 }));
 
 import { Command } from "commander";
-import { buildProgram } from "./build-program.ts";
+import { buildProgram } from "../build-program.ts";
 
 describe("buildProgram", () => {
   it("assembles the program with help, hooks, and commands", () => {
