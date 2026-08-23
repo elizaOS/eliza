@@ -56,6 +56,15 @@ const renderState = vi.hoisted(() => ({
   successTitle: vi.fn(),
 }));
 
+const checkoutIntentState = vi.hoisted(() => ({
+  clearVerifiedSession: vi.fn(() =>
+    Promise.resolve({
+      status: "cleared" as const,
+      source: "tab-pointer" as const,
+    }),
+  ),
+}));
+
 vi.mock("@elizaos/ui/cloud-ui", () => ({
   Button: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Card: ({ children, ...props }: { children: ReactNode }) => (
@@ -96,6 +105,10 @@ vi.mock("./components/success-client", () => ({
 
 vi.mock("./data/billing-data", () => ({
   useVerifyCheckout: () => verifyState,
+}));
+
+vi.mock("./lib/card-checkout-intent", () => ({
+  browserCardCheckoutIntentCoordinator: checkoutIntentState,
 }));
 
 import BillingSuccessPage from "./BillingSuccessPage";
@@ -192,6 +205,11 @@ beforeEach(() => {
   renderState.balance.mockClear();
   renderState.suspensions.mockClear();
   renderState.successTitle.mockClear();
+  checkoutIntentState.clearVerifiedSession.mockClear();
+  checkoutIntentState.clearVerifiedSession.mockResolvedValue({
+    status: "cleared",
+    source: "tab-pointer",
+  });
 });
 
 afterEach(() => {
@@ -277,6 +295,7 @@ describe("BillingSuccessPage checkout verification truth", () => {
     expect(screen.getByRole("alert").textContent).toContain("Payment Issue");
     expectNoSuccess();
     expect(verifyState.mutate).toHaveBeenCalledTimes(1);
+    expect(checkoutIntentState.clearVerifiedSession).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -294,6 +313,7 @@ describe("BillingSuccessPage checkout verification truth", () => {
       expect(screen.getByRole("alert").textContent).toContain("Payment Issue");
       expectNoSuccess();
       expect(verifyState.mutate).toHaveBeenCalledTimes(1);
+      expect(checkoutIntentState.clearVerifiedSession).not.toHaveBeenCalled();
     },
   );
 
@@ -310,6 +330,32 @@ describe("BillingSuccessPage checkout verification truth", () => {
     expect(screen.getByTestId("credit-balance")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(verifyState.mutate).toHaveBeenCalledTimes(1);
+    expect(checkoutIntentState.clearVerifiedSession).toHaveBeenCalledTimes(1);
+    expect(checkoutIntentState.clearVerifiedSession).toHaveBeenCalledWith({
+      sessionId: "cs_paid",
+    });
+  });
+
+  it("keeps verified success visible when exact local cleanup fails", async () => {
+    checkoutIntentState.clearVerifiedSession.mockRejectedValueOnce(
+      new Error("storage denied"),
+    );
+    renderPage("session_id=cs_cleanup_failed&from=settings");
+    await expectRequestCount(1);
+
+    resolveRequest(0, {
+      success: true,
+      balance: 42,
+      alreadyApplied: false,
+    });
+
+    expect(screen.getByText("Purchase Successful!")).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/could not finish local checkout cleanup/i),
+      ).toBeTruthy();
+    });
+    expect(screen.queryByText("Payment Issue")).toBeNull();
   });
 
   it("starts verification when a missing query gains a checkout session", async () => {
@@ -545,6 +591,7 @@ describe("BillingSuccessPage checkout verification truth", () => {
     });
     expect(screen.getByRole("alert").textContent).toContain("Payment Issue");
     expectNoSuccess();
+    expect(checkoutIntentState.clearVerifiedSession).not.toHaveBeenCalled();
   });
 
   it("invalidates verification callbacks when the page unmounts", async () => {
@@ -563,6 +610,7 @@ describe("BillingSuccessPage checkout verification truth", () => {
       });
 
       expect(consoleError).not.toHaveBeenCalled();
+      expect(checkoutIntentState.clearVerifiedSession).not.toHaveBeenCalled();
     } finally {
       consoleError.mockRestore();
     }

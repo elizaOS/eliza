@@ -1318,6 +1318,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		unique?: boolean;
 		tableName: string;
 		query?: string;

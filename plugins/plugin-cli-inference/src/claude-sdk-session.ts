@@ -52,7 +52,7 @@
  * @module plugin-cli-inference/claude-sdk-session
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { RotationSubprocessEnv } from "./account-rotation";
 import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 
@@ -728,7 +728,7 @@ export class ClaudeSdkSession {
     );
     if (sawResult && limitEnvelope !== undefined) {
       throw new Error(
-        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`
+        `[cli-inference:sdk] subscription rate limit reached: ${truncateWellFormed(toWellFormedUnicode(limitEnvelope.trim()), 120)}`
       );
     }
 
@@ -745,7 +745,7 @@ export class ClaudeSdkSession {
     if (apiErrorEnvelope !== undefined) {
       const parsed = parseProviderApiErrorText(apiErrorEnvelope);
       throw new ProviderApiError(
-        `[cli-inference:sdk] upstream ${apiErrorEnvelope.trim().slice(0, 160)}`,
+        `[cli-inference:sdk] upstream ${truncateWellFormed(toWellFormedUnicode(apiErrorEnvelope.trim()), 160)}`,
         { statusCode: parsed?.statusCode }
       );
     }

@@ -39,6 +39,7 @@ export interface CloudCapability {
   auth: {
     modes: readonly CloudAuthMode[];
     adminOnly?: boolean;
+    organizationRoles?: readonly ("owner" | "admin")[];
   };
   billing: {
     effect: CloudBillingEffect;
@@ -217,7 +218,7 @@ export const CLOUD_CAPABILITIES = [
     category: "billing",
     title: "Cancel billable resource",
     summary: "Stop or delete a billable resource so future billing stops.",
-    auth: { modes: ["session", "api_key", "bearer_steward", "wallet_signature"] },
+    auth: { modes: ["session"], organizationRoles: ["owner", "admin"] },
     billing: { effect: "recurring_compute", account: "organization", cancellable: true },
     surfaces: {
       rest: { method: "POST", path: "/api/v1/billing/resources/:id/cancel", status: "implemented" },
@@ -396,6 +397,7 @@ export function getCloudProtocolCoverage() {
     a2a: capability.surfaces.a2a.status,
     skill: capability.surfaces.skill.status,
     adminOnly: capability.auth.adminOnly === true,
+    organizationRoles: capability.auth.organizationRoles ?? [],
     billingEffect: capability.billing.effect,
   }));
 }

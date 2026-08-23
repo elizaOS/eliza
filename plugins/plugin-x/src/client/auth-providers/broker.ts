@@ -9,7 +9,11 @@
  * Broker HTTP uses AbortSignal.timeout so a hung cloud token hop cannot stall
  * every X action that needs credentials.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
 import type { BrokerAuthCredentials, TwitterBrokerProvider } from "./types";
 
@@ -158,9 +162,16 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
       );
     }
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
+      let errorBodyPreview: string;
+      try {
+        const body = await response.text();
+        errorBodyPreview = truncateWellFormed(toWellFormedUnicode(body), 200);
+      } catch (error) {
+        // error-policy:J1 translate body-read failure explicitly without fabricating an empty body.
+        errorBodyPreview = "[unreadable]";
+      }
       throw new Error(
-        `X broker request failed (${response.status}): ${body.slice(0, 200)}`,
+        `X broker request failed (${response.status}): ${errorBodyPreview}`,
       );
     }
     const token: unknown = await response.json();

@@ -3,7 +3,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +21,7 @@ vi.mock("../../lib/use-session-auth", () => ({
   }),
 }));
 
-import { useVerifyCheckout } from "./billing-data";
+import { useBillingUser, useVerifyCheckout } from "./billing-data";
 import { BILLING_SNAPSHOT_V2_QUERY_KEY } from "./billing-snapshot";
 
 function wrapper(client: QueryClient) {
@@ -35,6 +35,62 @@ function wrapper(client: QueryClient) {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe("useBillingUser", () => {
+  it("maps the validated API user id instead of the session cache id", async () => {
+    apiMock.mockResolvedValue({
+      success: true,
+      data: {
+        id: "  api-user-id  ",
+        organization_id: "org-one",
+        wallet_address: "0xabc",
+        organization: { credit_balance: "12.5" },
+      },
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(() => useBillingUser(), {
+      wrapper: wrapper(client),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.user).toEqual({
+      id: "api-user-id",
+      organization_id: "org-one",
+      wallet_address: "0xabc",
+    });
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/user", {
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it.each(["", "   ", null, undefined, 42])(
+    "rejects an invalid or blank API user id (%j)",
+    async (id) => {
+      apiMock.mockResolvedValue({
+        success: true,
+        data: {
+          id,
+          organization_id: "org-one",
+          wallet_address: null,
+          organization: { credit_balance: "12.5" },
+        },
+      });
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const { result } = renderHook(() => useBillingUser(), {
+        wrapper: wrapper(client),
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(result.current.user).toBeNull();
+    },
+  );
 });
 
 describe("useVerifyCheckout", () => {

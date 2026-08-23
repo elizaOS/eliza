@@ -196,6 +196,101 @@ export interface AssembleContextPackRequest {
 }
 
 const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6;
+const COMPLETE_SOURCE_INITIAL_PREFIX = 64;
+
+interface PrefixRequest {
+	readonly limit: number;
+	readonly offset: number;
+}
+
+function sameOrderedValues<T>(
+	left: readonly T[],
+	right: readonly T[],
+): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function readStableCompletePrefix<T>(
+	source: string,
+	fetchPrefix: (request: PrefixRequest) => Promise<readonly T[]>,
+): Promise<readonly T[]> {
+	let limit = COMPLETE_SOURCE_INITIAL_PREFIX;
+	let previous: readonly T[] = [];
+
+	for (;;) {
+		const current = await fetchPrefix({ limit, offset: 0 });
+		if (current.length > limit) {
+			throw new ElizaError(
+				`PII context ${source} source exceeded its requested page`,
+				{
+					code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
+					context: { source, requested: limit, received: current.length },
+					severity: "fatal",
+				},
+			);
+		}
+		if (
+			previous.length > 0 &&
+			!sameOrderedValues(current.slice(0, previous.length), previous)
+		) {
+			throw new ElizaError(
+				`PII context ${source} source changed during traversal`,
+				{
+					code: "PII_CONTEXT_SOURCE_UNSTABLE",
+					context: { source, requested: limit },
+				},
+			);
+		}
+
+		if (current.length < limit) {
+			const continuation = await fetchPrefix({
+				limit: 1,
+				offset: current.length,
+			});
+			if (continuation.length > 0) {
+				throw new ElizaError(
+					`PII context ${source} source returned a capped prefix`,
+					{
+						code: "PII_CONTEXT_SOURCE_INCOMPLETE",
+						context: { source, returned: current.length, requested: limit },
+					},
+				);
+			}
+
+			const verified = await fetchPrefix({ limit, offset: 0 });
+			const verifiedContinuation = await fetchPrefix({
+				limit: 1,
+				offset: verified.length,
+			});
+			if (
+				!sameOrderedValues(current, verified) ||
+				verifiedContinuation.length > 0
+			) {
+				throw new ElizaError(
+					`PII context ${source} source changed during verification`,
+					{
+						code: "PII_CONTEXT_SOURCE_UNSTABLE",
+						context: { source, requested: limit },
+					},
+				);
+			}
+			return verified;
+		}
+
+		previous = current;
+		if (limit > Math.floor(Number.MAX_SAFE_INTEGER / 2)) {
+			throw new ElizaError(
+				`PII context ${source} result count is not representable`,
+				{
+					code: "PII_CONTEXT_SOURCE_TOO_LARGE",
+					context: { source, requested: limit },
+					severity: "fatal",
+				},
+			);
+		}
+		limit *= 2;
+	}
+}
 
 function assertWellFormedContextText(value: string, field: string): void {
 	if (toWellFormedUnicode(value) !== value) {
@@ -417,7 +512,7 @@ export interface RuntimeContextSourceOptions {
 	 * When omitted, the messages source is structurally absent.
 	 */
 	readonly roomIds?: readonly UUID[];
-	/** Per-source result limit (default 5). */
+	/** @deprecated Retained for compatibility; complete source traversal ignores it. */
 	readonly limit?: number;
 	/**
 	 * The entity resolver, wired by the pipeline from the knowledge-graph
@@ -447,7 +542,6 @@ export function sourcesFromRuntime(
 	runtime: IAgentRuntime,
 	options: RuntimeContextSourceOptions = {},
 ): PiiContextSources {
-	const limit = options.limit ?? 5;
 	const sources: {
 		-readonly [K in keyof PiiContextSources]: PiiContextSources[K];
 	} = {};
@@ -487,12 +581,17 @@ export function sourcesFromRuntime(
 				ModelType.TEXT_EMBEDDING,
 				params,
 			);
-			const memories = await runtime.searchMemories({
-				embedding,
-				query,
-				tableName: "messages",
-				count: limit,
-			});
+			const memories = await readStableCompletePrefix(
+				"memories",
+				async ({ limit, offset }) =>
+					runtime.searchMemories({
+						embedding,
+						query,
+						tableName: "messages",
+						count: limit,
+						offset,
+					}),
+			);
 			return memories
 				.filter((memory) => typeof memory.content.text === "string")
 				.map((memory) => ({
@@ -509,11 +608,16 @@ export function sourcesFromRuntime(
 	const roomIds = options.roomIds;
 	if (roomIds && roomIds.length > 0) {
 		sources.searchMessages = async (query) => {
-			const hits = await runtime.adapter.searchMessages({
-				roomIds: [...roomIds],
-				query,
-				limit,
-			});
+			const hits = await readStableCompletePrefix(
+				"messages",
+				async ({ limit, offset }) =>
+					runtime.adapter.searchMessages({
+						roomIds: [...roomIds],
+						query,
+						limit,
+						offset,
+					}),
+			);
 			return hits
 				.filter((hit) => typeof hit.memory.content.text === "string")
 				.map((hit) => ({

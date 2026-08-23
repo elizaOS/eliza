@@ -15,19 +15,10 @@
  * companion bridge. Mounted in `App.tsx` under the `browser` route key.
  */
 import { Capacitor } from "@capacitor/core";
-import {
-  ExternalLink,
-  FolderOpen,
-  Globe,
-  Plus,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { ExternalLink, Globe, Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
-  type BrowserBridgeCompanionPackageStatus,
-  type BrowserBridgeCompanionStatus,
   type BrowserWorkspaceSnapshot,
   type BrowserWorkspaceTab,
   client,
@@ -81,7 +72,6 @@ import {
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
-const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
 const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
 const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 // Concrete partition for a client-side "user" tab on the native mobile shell,
@@ -586,15 +576,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // this one switcher instead of a permanent sidebar strip, so this is the only
   // multi-tab surface — opened from the toolbar's fold control.
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
-  const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
-  const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
-    BrowserBridgeCompanionStatus[]
-  >([]);
-  const [browserBridgePackageStatus, setBrowserBridgePackageStatus] =
-    useState<BrowserBridgeCompanionPackageStatus | null>(null);
-  const [browserBridgeControlsOpen, setBrowserBridgeControlsOpen] =
-    useState(false);
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
   );
@@ -713,18 +694,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // leak into a user tab. The address bar remains the explicit path for opening
   // a chosen URL.
   const newBrowserWorkspaceTabSeedUrl = BROWSER_WORKSPACE_DEFAULT_HOME_URL;
-  const primaryBrowserBridgeCompanion = useMemo(
-    () =>
-      browserBridgeCompanions.find(
-        (companion) => companion.connectionState === "connected",
-      ) ??
-      browserBridgeCompanions[0] ??
-      null,
-    [browserBridgeCompanions],
-  );
-  const browserBridgeConnected =
-    primaryBrowserBridgeCompanion?.connectionState === "connected";
-
   const browserBridgeSupported = useMemo(
     () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
     [plugins],
@@ -821,47 +790,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     walletState: browserWalletState,
     loadWalletState: loadBrowserWalletState,
   });
-
-  const loadBrowserBridgeState = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (browserBridgeUnsupportedInNativeLocalMode) {
-        setBrowserBridgeCompanions([]);
-        setBrowserBridgePackageStatus(null);
-        setBrowserBridgeAvailable(false);
-        setBrowserBridgeLoading(false);
-        return;
-      }
-      if (!options?.silent) {
-        setBrowserBridgeLoading(true);
-      }
-      const [companionsResult, packageResult] = await Promise.allSettled([
-        client.fetch<{ companions: BrowserBridgeCompanionStatus[] }>(
-          "/api/browser-bridge/companions",
-        ),
-        client.fetch<{ status: BrowserBridgeCompanionPackageStatus }>(
-          "/api/browser-bridge/packages",
-        ),
-      ]);
-      if (companionsResult.status === "fulfilled") {
-        setBrowserBridgeCompanions(companionsResult.value.companions);
-      } else {
-        setBrowserBridgeCompanions([]);
-      }
-      if (packageResult.status === "fulfilled") {
-        setBrowserBridgePackageStatus(packageResult.value.status);
-      } else {
-        setBrowserBridgePackageStatus(null);
-      }
-      setBrowserBridgeAvailable(
-        companionsResult.status === "fulfilled" ||
-          packageResult.status === "fulfilled",
-      );
-      if (!options?.silent) {
-        setBrowserBridgeLoading(false);
-      }
-    },
-    [browserBridgeUnsupportedInNativeLocalMode],
-  );
 
   const readBrowserWorkspaceFocusReturnTarget = useCallback(() => {
     if (typeof document === "undefined") return null;
@@ -2265,17 +2193,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     void loadBrowserWalletState();
   }, [loadBrowserWalletState]);
 
-  useEffect(() => {
-    if (workspace.mode !== "web" || !browserBridgeSupported) {
-      setBrowserBridgeAvailable(false);
-      setBrowserBridgeCompanions([]);
-      setBrowserBridgePackageStatus(null);
-      setBrowserBridgeLoading(false);
-      return;
-    }
-    void loadBrowserBridgeState();
-  }, [browserBridgeSupported, loadBrowserBridgeState, workspace.mode]);
-
   useIntervalWhenDocumentVisible(() => {
     void refreshWorkspaceInBackground();
   }, POLL_INTERVAL_MS);
@@ -2302,14 +2219,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   useIntervalWhenDocumentVisible(() => {
     void loadBrowserWalletState();
   }, 5_000);
-
-  useIntervalWhenDocumentVisible(
-    () => {
-      void loadBrowserBridgeState({ silent: true });
-    },
-    BROWSER_BRIDGE_POLL_INTERVAL_MS,
-    workspace.mode === "web" && browserBridgeSupported,
-  );
 
   useEffect(() => {
     const currentSelectedId = selectedTab?.id ?? null;
@@ -2399,146 +2308,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     selectedTab,
     workspace.mode,
   ]);
-
-  const installBrowserBridgeExtension = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:install",
-      async () => {
-        let nextPackageStatus = browserBridgePackageStatus;
-        if (!nextPackageStatus?.chromeBuildPath) {
-          const buildResponse = await client.fetch<{
-            status: BrowserBridgeCompanionPackageStatus;
-          }>("/api/browser-bridge/packages/chrome/build", {
-            method: "POST",
-          });
-          nextPackageStatus = buildResponse.status;
-          setBrowserBridgePackageStatus(buildResponse.status);
-        }
-
-        const revealResponse = await client.fetch<{
-          path: string;
-          target: string;
-          revealOnly: boolean;
-        }>("/api/browser-bridge/packages/open-path", {
-          method: "POST",
-          body: JSON.stringify({
-            target: "chrome_build",
-            revealOnly: true,
-          }),
-        });
-
-        let openedManager = true;
-        try {
-          await client.fetch(
-            "/api/browser-bridge/packages/chrome/open-manager",
-            {
-              method: "POST",
-            },
-          );
-        } catch {
-          openedManager = false;
-        }
-
-        setActionNoticeRef.current(
-          openedManager
-            ? t("browserworkspace.BrowserBridgeChromeReady", {
-                defaultValue:
-                  "Chrome is ready. Click Load unpacked and choose {{path}}.",
-                path: revealResponse.path,
-              })
-            : t("browserworkspace.BrowserBridgeFolderReady", {
-                defaultValue:
-                  "The Agent Browser Bridge folder is ready at {{path}}. Open chrome://extensions, click Load unpacked, and choose that folder.",
-                path: revealResponse.path,
-              }),
-          "success",
-          6_000,
-        );
-        await loadBrowserBridgeState({ silent: true });
-      },
-      t("browserworkspace.InstallBrowserBridgeFailed", {
-        defaultValue: "Failed to prepare the Agent Browser Bridge extension.",
-      }),
-    );
-  }, [
-    browserBridgePackageStatus,
-    loadBrowserBridgeState,
-    runBrowserWorkspaceAction,
-    t,
-  ]);
-
-  const revealBrowserBridgeFolder = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:reveal-folder",
-      async () => {
-        const response = await client.fetch<{
-          path: string;
-          target: string;
-          revealOnly: boolean;
-        }>("/api/browser-bridge/packages/open-path", {
-          method: "POST",
-          body: JSON.stringify({
-            target: "chrome_build",
-            revealOnly: true,
-          }),
-        });
-        setActionNoticeRef.current(
-          t("browserworkspace.BrowserBridgeFolderRevealed", {
-            defaultValue:
-              "Revealed the Agent Browser Bridge folder at {{path}}.",
-            path: response.path,
-          }),
-          "success",
-          4_000,
-        );
-      },
-      t("browserworkspace.OpenBrowserBridgeFolderFailed", {
-        defaultValue:
-          "Failed to reveal the Agent Browser Bridge extension folder.",
-      }),
-    );
-  }, [runBrowserWorkspaceAction, t]);
-
-  const openBrowserBridgeChromeExtensions = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:open-manager",
-      async () => {
-        await client.fetch("/api/browser-bridge/packages/chrome/open-manager", {
-          method: "POST",
-        });
-        setActionNoticeRef.current(
-          t("browserworkspace.BrowserBridgeOpenedChromeExtensions", {
-            defaultValue:
-              "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.",
-          }),
-          "success",
-          4_000,
-        );
-      },
-      t("browserworkspace.OpenBrowserBridgeManagerFailed", {
-        defaultValue: "Failed to open Chrome extensions.",
-      }),
-    );
-  }, [runBrowserWorkspaceAction, t]);
-
-  const refreshBrowserBridgeConnection = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:refresh",
-      async () => {
-        await loadBrowserBridgeState({ silent: true });
-        setActionNoticeRef.current(
-          t("browserworkspace.BrowserBridgeRefreshSuccess", {
-            defaultValue: "Refreshed Agent Browser Bridge connection status.",
-          }),
-          "success",
-          3_000,
-        );
-      },
-      t("browserworkspace.RefreshBrowserBridgeFailed", {
-        defaultValue: "Failed to refresh Agent Browser Bridge status.",
-      }),
-    );
-  }, [loadBrowserBridgeState, runBrowserWorkspaceAction, t]);
 
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
@@ -2868,98 +2637,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               {workspace.mode === "web" &&
               browserBridgeSupported &&
               !browserBridgeUnsupportedInNativeLocalMode ? (
-                <>
-                  <details
-                    data-testid="browser-bridge-controls"
-                    className="w-full max-w-xl px-6 text-xs text-muted"
-                    onToggle={(event) =>
-                      setBrowserBridgeControlsOpen(event.currentTarget.open)
-                    }
-                  >
-                    <summary className="mx-auto w-fit cursor-pointer py-2 font-medium">
-                      {browserBridgeConnected
-                        ? t("browserworkspace.BrowserBridgeConnected", {
-                            defaultValue: "Browser Bridge connected",
-                          })
-                        : browserBridgeAvailable
-                          ? t("browserworkspace.BrowserBridgeAvailable", {
-                              defaultValue: "Browser Bridge available",
-                            })
-                          : t("browserworkspace.BrowserBridgeNotConnected", {
-                              defaultValue: "Browser Bridge",
-                            })}
-                    </summary>
-                    {browserBridgeControlsOpen ? (
-                      <div className="grid grid-cols-1 items-stretch gap-1.5 sm:grid-cols-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyAction !== null}
-                          onClick={() => void installBrowserBridgeExtension()}
-                          className="min-h-11 sm:col-span-3"
-                        >
-                          {t("browserworkspace.InstallBrowserBridge", {
-                            defaultValue: "Install Agent Browser Bridge",
-                          })}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={
-                            busyAction !== null ||
-                            !browserBridgePackageStatus?.chromeBuildPath
-                          }
-                          onClick={() => void revealBrowserBridgeFolder()}
-                          className="min-h-11 min-w-0"
-                        >
-                          <FolderOpen className="h-4 w-4" />
-                          <span className="truncate">
-                            {t("browserworkspace.OpenBrowserBridgeFolder", {
-                              defaultValue: "Open extension folder",
-                            })}
-                          </span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busyAction !== null}
-                          onClick={() =>
-                            void openBrowserBridgeChromeExtensions()
-                          }
-                          className="min-h-11 min-w-0"
-                        >
-                          <span className="truncate">
-                            {t("browserworkspace.OpenChromeExtensions", {
-                              defaultValue: "Open Chrome extensions",
-                            })}
-                          </span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={browserBridgeLoading || busyAction !== null}
-                          onClick={() => void refreshBrowserBridgeConnection()}
-                          className="min-h-11 min-w-0"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                          <span className="truncate">
-                            {t("browserworkspace.RefreshBrowserBridge", {
-                              defaultValue: "Refresh connection",
-                            })}
-                          </span>
-                        </Button>
-                      </div>
-                    ) : null}
-                  </details>
-                  <div className="mt-2 flex w-full max-w-xl flex-col gap-2 px-6 pb-4">
-                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
-                      {t("browserworkspace.AgentBrowserSessions", {
-                        defaultValue: "Agent browser sessions",
-                      })}
-                    </div>
-                    <BrowserSessionPolicyPanel api={client} />
-                  </div>
-                </>
+                <div className="w-full max-w-xl px-6 pb-4">
+                  <BrowserSessionPolicyPanel api={client} hideWhenEmpty />
+                </div>
               ) : null}
             </div>
           </div>

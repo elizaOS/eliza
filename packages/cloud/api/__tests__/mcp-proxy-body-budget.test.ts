@@ -91,6 +91,46 @@ describe("readBodyTextWithinBudget", () => {
     });
   });
 
+  test("rejects malformed UTF-8 with a typed malformed-utf8 budget result (#24768)", async () => {
+    // 0xc3 0x28 is an invalid 2-byte sequence (lead without continuation) — the
+    // stream is valid bytes but not valid UTF-8, and must be rejected before
+    // JSON.parse rather than silently replacing with U+FFFD.
+    const malformed = new Uint8Array([
+      0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xc3, 0x28, 0x22, 0x7d,
+    ]);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(malformed);
+        controller.close();
+      },
+    });
+
+    expect(await readBodyTextWithinBudget(source(body), 1024)).toEqual({
+      ok: false,
+      bytes: malformed.byteLength,
+      reason: "malformed-utf8",
+    });
+  });
+
+  test("rejects malformed UTF-8 split across chunks (#24768)", async () => {
+    const malformed = new Uint8Array([
+      0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xc3, 0x28, 0x22, 0x7d,
+    ]);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(malformed.subarray(0, 7));
+        controller.enqueue(malformed.subarray(7));
+        controller.close();
+      },
+    });
+
+    expect(await readBodyTextWithinBudget(source(body), 1024)).toEqual({
+      ok: false,
+      bytes: malformed.byteLength,
+      reason: "malformed-utf8",
+    });
+  });
+
   test("rejects malicious tiny-chunk fragmentation without retaining chunk objects", async () => {
     let pulls = 0;
     const body = new ReadableStream<Uint8Array>({

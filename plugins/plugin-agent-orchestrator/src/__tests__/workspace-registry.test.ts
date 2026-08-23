@@ -291,3 +291,41 @@ describe("config parsing", () => {
     expect(config.minFreeBytes).toBe(6789);
   });
 });
+
+describe("CodingWorkspaceService listScratchWorkspaces sorting", () => {
+  it("maintains strict total ordering when terminalAt timestamps contain non-finite numbers", async () => {
+    const mockRuntime = {
+      getSetting: () => undefined,
+      getService: () => null,
+      reportError: () => undefined,
+      logger: { warn: () => undefined, info: () => undefined },
+    };
+    const service = new CodingWorkspaceService(mockRuntime as never);
+
+    await service.registerScratchWorkspace(
+      "sess-1",
+      "/tmp/sess-1",
+      "Session 1",
+      "done",
+    );
+    await service.registerScratchWorkspace(
+      "sess-2",
+      "/tmp/sess-2",
+      "Session 2",
+      "done",
+    );
+
+    const scratchMap = (
+      service as unknown as {
+        scratchBySession: Map<string, { terminalAt: number }>;
+      }
+    ).scratchBySession;
+    const sess1 = scratchMap.get("sess-1");
+    if (sess1) sess1.terminalAt = Number.NaN;
+
+    const list = service.listScratchWorkspaces();
+    expect(list).toHaveLength(2);
+    expect(list[0]?.sessionId).toBe("sess-2");
+    expect(list[1]?.sessionId).toBe("sess-1");
+  });
+});

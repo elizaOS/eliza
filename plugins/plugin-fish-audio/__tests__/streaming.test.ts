@@ -1,6 +1,13 @@
 /**
  * Fish Audio plugin TTS tests with an in-memory WebSocket.
  *
+ * Includes the regression guard for issue #25072: a streaming consumer that
+ * only iterates `audioStream` (the documented `for await` pattern in
+ * packages/core/src/types/model.ts) must never leave the parallel `bytes`
+ * promise as an unhandled rejection when synthesis fails mid-stream. These
+ * tests fail if the passive `void bytes.catch(...)` guard in `src/index.ts` is
+ * removed, while every other assertion in this file stays green without it.
+ *
  * Live Fish Audio coverage runs only with explicitly supplied credentials and
  * can write an inspectable WAV when `FISH_AUDIO_EVIDENCE_PATH` is provided:
  * `ELIZA_TTS_FISH_ENABLED=true FISH_AUDIO_API_KEY=... FISH_AUDIO_REFERENCE_ID=... \
@@ -530,6 +537,118 @@ describe("fishAudioPlugin", () => {
     vi.advanceTimersByTime(25);
 
     expect(socket?.readyState).toBe(3);
+  });
+
+  test("stream-only consumer of an early-closed synthesis leaks no unhandled rejection", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const leaks: unknown[] = [];
+    const onUnhandled = (reason: unknown) => leaks.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const result = await handleFishAudioTextToSpeech(
+        runtime({
+          ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+          FISH_AUDIO_API_KEY: "key",
+          FISH_AUDIO_REFERENCE_ID: "voice",
+        }),
+        { text: "stream only", audioStream: true },
+      );
+      if (result instanceof Uint8Array)
+        throw new Error("Expected streaming result");
+      // Consume ONLY the documented `for await (chunk of audioStream)` surface
+      // from packages/core/src/types/model.ts:830 and never touch result.bytes.
+      const iterator = result.audioStream[Symbol.asyncIterator]();
+      await Promise.resolve();
+      const socket = FakeFishSocket.instances.at(-1);
+      socket?.emitAudio(new Uint8Array([5, 6]));
+      await expect(iterator.next()).resolves.toEqual({
+        done: false,
+        value: new Uint8Array([5, 6]),
+      });
+      socket?.close(1011, "provider failed");
+
+      await expect(iterator.next()).rejects.toMatchObject({
+        code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+      });
+      // Give Node a full task tick to surface any unhandled bytes rejection.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(leaks).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  test("stream-only consumer of a buffer-ceiling breach leaks no unhandled rejection", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const leaks: unknown[] = [];
+    const onUnhandled = (reason: unknown) => leaks.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const result = await handleFishAudioTextToSpeech(
+        runtime({
+          ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+          FISH_AUDIO_API_KEY: "key",
+          FISH_AUDIO_REFERENCE_ID: "voice",
+        }),
+        { text: "stream only overflow", audioStream: true, maxBufferBytes: 3 },
+      );
+      if (result instanceof Uint8Array)
+        throw new Error("Expected streaming result");
+      const iterator = result.audioStream[Symbol.asyncIterator]();
+      await Promise.resolve();
+      const socket = FakeFishSocket.instances.at(-1);
+      socket?.emitAudio(new Uint8Array([1, 2]));
+      await expect(iterator.next()).resolves.toEqual({
+        done: false,
+        value: new Uint8Array([1, 2]),
+      });
+      socket?.emitAudio(new Uint8Array([3, 4]));
+
+      await expect(iterator.next()).rejects.toMatchObject({
+        code: "FISH_AUDIO_MAX_BUFFER_BYTES_EXCEEDED",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(leaks).toEqual([]);
+      expect(socket?.readyState).toBe(3);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  test("the passive bytes guard does not swallow the failure for explicit awaiters", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "stream then bytes", audioStream: true },
+    );
+    if (result instanceof Uint8Array)
+      throw new Error("Expected streaming result");
+    const iterator = result.audioStream[Symbol.asyncIterator]();
+    await Promise.resolve();
+    const socket = FakeFishSocket.instances.at(-1);
+    socket?.emitAudio(new Uint8Array([5, 6]));
+    await iterator.next();
+    socket?.close(1011, "provider failed");
+    await expect(iterator.next()).rejects.toMatchObject({
+      code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+    });
+
+    // A real consumer that DID reach `const full = await result.bytes` after an
+    // error still observes the same typed rejection; the guard only marks the
+    // source promise handled, it does not resolve or swallow it.
+    await expect(result.bytes).rejects.toMatchObject({
+      code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+    });
   });
 
   test("wraps live PCM evidence in a valid mono WAV container", () => {

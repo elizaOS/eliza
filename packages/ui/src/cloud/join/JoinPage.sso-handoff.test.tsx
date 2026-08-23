@@ -3,8 +3,10 @@
 // @vitest-environment-options {"url": "https://cloud.eliza.app/join"}
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appModeNavigation } from "../app-mode/app-mode";
+import { markSsoLoggedOut } from "../sso-bridge/sso-bridge";
 
 const { authenticatedRef, runJoinFlowMock } = vi.hoisted(() => ({
   authenticatedRef: { current: false },
@@ -80,7 +82,8 @@ describe("JoinPage managed-app SSO handoff", () => {
     expect(screen.queryByTestId("navigate")).toBeNull();
   });
 
-  it("falls back to the local login when no bridge session marker exists", async () => {
+  it("falls back to the local login after an explicit logout", async () => {
+    markSsoLoggedOut();
     render(<JoinPage />);
 
     expect((await screen.findByTestId("navigate")).textContent).toBe(
@@ -99,5 +102,28 @@ describe("JoinPage managed-app SSO handoff", () => {
     expect((await screen.findByTestId("navigate")).textContent).toBe("/");
     expect(assignedUrls).toEqual([]);
     expect(replacedUrls).toEqual([]);
+  });
+
+  it("restarts a join request cancelled by the StrictMode probe", async () => {
+    authenticatedRef.current = true;
+    runJoinFlowMock
+      .mockImplementationOnce(
+        ({ signal }: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+      )
+      .mockResolvedValueOnce({ agentId: "agent-1" });
+
+    render(
+      <StrictMode>
+        <JoinPage />
+      </StrictMode>,
+    );
+
+    await waitFor(() => expect(runJoinFlowMock).toHaveBeenCalledTimes(2));
+    expect((await screen.findByTestId("navigate")).textContent).toBe("/");
   });
 });

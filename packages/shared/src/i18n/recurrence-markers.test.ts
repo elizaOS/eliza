@@ -65,9 +65,29 @@ describe("textStatesExplicitRecurrence", () => {
       "never repeat every day",
       "not recurring every month",
       "no recurrence every year",
-      "繰り返さない毎週",
+      // Directly negated cadence adjectives and plural weekday nouns are
+      // one-shot statements (#25108): a wrong `true` erases the maxRuns:1
+      // cap and turns the ask into an indefinitely recurring reminder.
+      "not weekly",
+      "not daily",
+      "not monthly",
+      "not nightly",
+      "not on Mondays",
+      "remind me tomorrow, not on weekdays",
+      "one-off standup, never weekends or holidays",
     ]) {
       expect(textStatesExplicitRecurrence(text)).toBe(false);
+    }
+  });
+
+  it("keeps positive cadence when negation words are absent", () => {
+    for (const text of [
+      "weekly sync",
+      "daily standup on Mondays",
+      "water the plants on weekends",
+      "isn't this a daily job?",
+    ]) {
+      expect(textStatesExplicitRecurrence(text)).toBe(true);
     }
   });
 

@@ -666,6 +666,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@elizaos/cloud-services-common": "workspace:*",
+        "@elizaos/core": "workspace:*",
         "@upstash/redis": "^1.37.0",
         "hashring": "^3.2.0",
         "hono": "4.13.1",
@@ -1097,6 +1098,19 @@
         "@types/node": "^25.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
+      },
+    },
+    "packages/synthetic-world": {
+      "name": "@elizaos/synthetic-world",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@elizaos/cloud-test-mocks": "workspace:*",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "bun-types": "*",
       },
     },
     "packages/test": {
@@ -3070,24 +3084,6 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-signal": {
-      "name": "@elizaos/plugin-signal",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "2.5.8",
-        "@types/node": "^25.0.3",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.2.25",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.10",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-    },
     "plugins/plugin-slack": {
       "name": "@elizaos/plugin-slack",
       "version": "2.0.3-beta.7",
@@ -4303,8 +4299,6 @@
 
     "@elizaos/plugin-scheduling": ["@elizaos/plugin-scheduling@workspace:plugins/plugin-scheduling"],
 
-    "@elizaos/plugin-signal": ["@elizaos/plugin-signal@workspace:plugins/plugin-signal"],
-
     "@elizaos/plugin-slack": ["@elizaos/plugin-slack@workspace:plugins/plugin-slack"],
 
     "@elizaos/plugin-spotify": ["@elizaos/plugin-spotify@workspace:plugins/plugin-spotify"],
@@ -4352,6 +4346,8 @@
     "@elizaos/shared": ["@elizaos/shared@workspace:packages/shared"],
 
     "@elizaos/skills": ["@elizaos/skills@workspace:packages/skills"],
+
+    "@elizaos/synthetic-world": ["@elizaos/synthetic-world@workspace:packages/synthetic-world"],
 
     "@elizaos/test-corpus": ["@elizaos/test-corpus@workspace:packages/test"],
 

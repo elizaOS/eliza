@@ -437,6 +437,17 @@ export default defineConfig({
         find: /^@elizaos\/agent\/security\/access$/,
         replacement: path.join(agentSourceRoot, "security", "access.ts"),
       },
+      // The owner-scope invariant test exercises the real chat-surface and
+      // trust-fallback owner derivations; anchor both to source ahead of the
+      // bare `@elizaos/agent` stub alias below.
+      {
+        find: /^@elizaos\/agent\/api\/client-chat-admin$/,
+        replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/owner-entity$/,
+        replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
+      },
       {
         find: /^@elizaos\/agent\/services\/knowledge-graph$/,
         replacement: path.join(

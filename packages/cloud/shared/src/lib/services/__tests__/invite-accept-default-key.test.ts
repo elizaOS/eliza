@@ -21,6 +21,7 @@
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import crypto from "node:crypto";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports.
@@ -174,6 +175,56 @@ async function readActiveKeys(
   return rows.rows as Array<{ name: string; key_prefix: string }>;
 }
 
+interface DefaultKeyRow {
+  id: string;
+  key_prefix: string;
+}
+
+async function seedProvisioningTarget(): Promise<{
+  organizationId: string;
+  userId: string;
+}> {
+  const organizationId = uid();
+  const userId = uid();
+  await dbWrite.insert(schemas.organizations).values({
+    id: organizationId,
+    name: "Provisioning Target",
+    slug: `provisioning-${organizationId}`,
+  });
+  await dbWrite.insert(schemas.users).values({
+    id: userId,
+    steward_user_id: `steward-${userId}`,
+    email: `provisioning-${userId}@example.com`,
+    organization_id: organizationId,
+    role: "member",
+  });
+  return { organizationId, userId };
+}
+
+async function readDefaultKeyRows(
+  userId: string,
+  organizationId: string,
+  usableOnly = false,
+): Promise<DefaultKeyRow[]> {
+  const filters = [
+    eq(schemas.apiKeys.user_id, userId),
+    eq(schemas.apiKeys.organization_id, organizationId),
+    eq(schemas.apiKeys.name, "Default API Key"),
+    eq(schemas.apiKeys.is_active, true),
+    isNull(schemas.apiKeys.deleted_at),
+  ];
+  if (usableOnly) {
+    filters.push(
+      or(isNull(schemas.apiKeys.expires_at), gt(schemas.apiKeys.expires_at, new Date()))!,
+    );
+  }
+  return await dbWrite
+    .select({ id: schemas.apiKeys.id, key_prefix: schemas.apiKeys.key_prefix })
+    .from(schemas.apiKeys)
+    .where(and(...filters))
+    .orderBy(schemas.apiKeys.created_at, schemas.apiKeys.id);
+}
+
 beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
@@ -186,6 +237,9 @@ beforeAll(async () => {
     const { users } = await import("../../../db/schemas/users");
     const { userIdentities } = await import("../../../db/schemas/user-identities");
     const { organizationInvites } = await import("../../../db/schemas/organization-invites");
+    const { personalAccountConvergences } = await import(
+      "../../../db/schemas/personal-account-convergences"
+    );
     const { apiKeys } = await import("../../../db/schemas/api-keys");
     const { creditTransactions } = await import("../../../db/schemas/credit-transactions");
     const { userCharacters } = await import("../../../db/schemas/user-characters");
@@ -213,6 +267,7 @@ beforeAll(async () => {
         organizations,
         users,
         userIdentities,
+        personalAccountConvergences,
         organizationInvites,
         apiKeys,
         creditTransactions,
@@ -371,30 +426,86 @@ describe("invite accept provisions the personal default API key", () => {
     "concurrent default-key provisioning mints one active default key",
     async () => {
       expect(pgliteReady).toBe(true);
-      const organizationId = uid();
-      const userId = uid();
-
-      await dbWrite.insert(schemas.organizations).values({
-        id: organizationId,
-        name: "Team Org",
-        slug: `team-${organizationId}`,
-      });
-      await dbWrite.insert(schemas.users).values({
-        id: userId,
-        steward_user_id: `steward-${userId}`,
-        email: `user-${userId}@example.com`,
-        organization_id: organizationId,
-        role: "member",
-      });
+      const { organizationId, userId } = await seedProvisioningTarget();
 
       await Promise.all([
         apiKeysService.provisionDefaultApiKey(userId, organizationId),
         apiKeysService.provisionDefaultApiKey(userId, organizationId),
+        apiKeysService.provisionDefaultApiKey(userId, organizationId),
       ]);
 
-      const keys = await readActiveKeys(userId, organizationId);
+      const keys = await readDefaultKeyRows(userId, organizationId);
       expect(keys.length).toBe(1);
-      expect(keys[0].name).toBe("Default API Key");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "existing unexpired default key is retained without another insert",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const { organizationId, userId } = await seedProvisioningTarget();
+      const existingId = uid();
+      await dbWrite.insert(schemas.apiKeys).values({
+        id: existingId,
+        name: "Default API Key",
+        key_hash: `hash-existing-${existingId}`,
+        key_prefix: "eliza_existing",
+        organization_id: organizationId,
+        user_id: userId,
+        expires_at: new Date(Date.now() + 60_000),
+      });
+
+      await apiKeysService.provisionDefaultApiKey(userId, organizationId);
+
+      const keys = await readDefaultKeyRows(userId, organizationId);
+      expect(keys).toEqual([{ id: existingId, key_prefix: "eliza_existing" }]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "expired default key gets exactly one usable replacement",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const { organizationId, userId } = await seedProvisioningTarget();
+      const expiredId = uid();
+      await dbWrite.insert(schemas.apiKeys).values({
+        id: expiredId,
+        name: "Default API Key",
+        key_hash: `hash-expired-${expiredId}`,
+        key_prefix: "eliza_expired",
+        organization_id: organizationId,
+        user_id: userId,
+        expires_at: new Date(Date.now() - 60_000),
+      });
+
+      await apiKeysService.provisionDefaultApiKey(userId, organizationId);
+
+      const allKeys = await readDefaultKeyRows(userId, organizationId);
+      expect(allKeys).toHaveLength(2);
+      expect(allKeys.some((key) => key.id === expiredId)).toBe(true);
+      const usableKeys = await readDefaultKeyRows(userId, organizationId, true);
+      expect(usableKeys).toHaveLength(1);
+      expect(usableKeys[0].id).not.toBe(expiredId);
+      expect(usableKeys[0].key_prefix).not.toBe("eliza_expired");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "conditional insert failure rejects instead of reporting readiness",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const missingOrganizationId = uid();
+      const missingUserId = uid();
+
+      await expect(
+        apiKeysService.provisionDefaultApiKey(missingUserId, missingOrganizationId),
+      ).rejects.toThrow();
+
+      const keys = await readDefaultKeyRows(missingUserId, missingOrganizationId);
+      expect(keys).toHaveLength(0);
     },
     PGLITE_TIMEOUT,
   );

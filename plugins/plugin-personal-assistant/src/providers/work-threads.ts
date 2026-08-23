@@ -117,7 +117,17 @@ export const workThreadsProvider: Provider = {
       if (currentRoomDelta !== 0) {
         return currentRoomDelta;
       }
-      return Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt);
+      const bTime =
+        typeof b.lastActivityAt === "string" &&
+        Number.isFinite(Date.parse(b.lastActivityAt))
+          ? Date.parse(b.lastActivityAt)
+          : 0;
+      const aTime =
+        typeof a.lastActivityAt === "string" &&
+        Number.isFinite(Date.parse(a.lastActivityAt))
+          ? Date.parse(a.lastActivityAt)
+          : 0;
+      return bTime - aTime || a.id.localeCompare(b.id);
     });
     if (threads.length === 0) {
       return EMPTY;

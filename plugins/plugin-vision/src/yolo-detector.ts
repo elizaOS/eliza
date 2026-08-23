@@ -311,7 +311,11 @@ export class YOLODetector {
   }
 
   private nms(detections: Detection[]): Detection[] {
-    const sorted = [...detections].sort((a, b) => b.score - a.score);
+    const sorted = [...detections].sort((a, b) => {
+      const aScore = Number.isFinite(a.score) ? a.score : 0;
+      const bScore = Number.isFinite(b.score) ? b.score : 0;
+      return bScore - aScore;
+    });
     const kept: Detection[] = [];
     while (sorted.length) {
       const top = sorted.shift();

@@ -459,6 +459,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		unique?: boolean;
 		query?: string;
 		roomId?: UUID;

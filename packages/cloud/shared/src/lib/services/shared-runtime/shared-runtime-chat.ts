@@ -7,7 +7,13 @@
  */
 
 import crypto from "node:crypto";
-import { ChannelType, ElizaError, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import {
+  ChannelType,
+  ElizaError,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/edge";
 import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
@@ -1922,7 +1928,7 @@ export class SharedRuntimeChatService {
             error: error instanceof Error ? error.message : String(error),
             cause:
               error instanceof Error && error.cause instanceof Error
-                ? error.cause.message.slice(0, 240)
+                ? truncateWellFormed(toWellFormedUnicode(error.cause.message), 240)
                 : undefined,
           });
           if (!consumerCanceled) {

@@ -142,4 +142,61 @@ describe("BrokerAuthProvider", () => {
       "Expected agent|owner",
     );
   });
+
+  it("surfaces a bounded well-formed error preview without splitting astral at 200 (#24938)", async () => {
+    const astral = "🦊";
+    const body = "a".repeat(199) + astral + "b".repeat(50);
+    expect(body.length).toBe(199 + 2 + 50);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 500 })),
+    );
+    const provider = new BrokerAuthProvider(
+      runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+    );
+    await expect(provider.getAccessToken()).rejects.toThrow(
+      /X broker request failed \(500\): /,
+    );
+    try {
+      await provider.getAccessToken();
+    } catch (error) {
+      const message = (error as Error).message;
+      const preview = message.split(": ").pop() ?? "";
+      expect(preview.length).toBeLessThanOrEqual(200);
+      expect(() => preview).not.toThrow();
+      expect(preview).not.toContain("�".repeat(2));
+      // Well-formed check: lone surrogate should be replaced, not split
+      const lone = "\uD800";
+      const loneBody = lone + "x".repeat(199);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(loneBody, { status: 500 })),
+      );
+      await expect(provider.getAccessToken()).rejects.toThrow(
+        /X broker request failed \(500\): /,
+      );
+    }
+  });
+
+  it("translates body-read failure without fabricating an empty preview (#24938)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 500,
+            text: async () => {
+              throw new Error("body read failed");
+            },
+          }) as unknown as Response,
+      ),
+    );
+    const provider = new BrokerAuthProvider(
+      runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+    );
+    await expect(provider.getAccessToken()).rejects.toThrow(
+      "X broker request failed (500): [unreadable]",
+    );
+  });
 });

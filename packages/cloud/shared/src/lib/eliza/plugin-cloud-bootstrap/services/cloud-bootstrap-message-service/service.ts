@@ -163,8 +163,13 @@ export class CloudBootstrapMessageService implements IMessageService {
 
       // Set up timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(async () => {
-          await runtime.emitEvent(EventType.RUN_TIMEOUT, {
+        timeoutId = setTimeout(() => {
+          // The configured deadline must be enforced regardless of whether the
+          // diagnostic RUN_TIMEOUT emission settles (#25109): awaiting it here
+          // let a stalled or rejecting listener keep the entire run pending
+          // forever. Reject first, then emit the lifecycle event in the
+          // background with failures reported and never blocking the deadline.
+          const timeoutEmission = runtime.emitEvent(EventType.RUN_TIMEOUT, {
             runtime,
             runId,
             messageId: message.id!,
@@ -176,7 +181,23 @@ export class CloudBootstrapMessageService implements IMessageService {
             duration: Date.now() - startTime,
             error: "Run exceeded timeout",
             source: "CloudBootstrapMessageService",
-          } as never);
+          } as never) as unknown;
+          if (typeof (timeoutEmission as { then?: unknown })?.then === "function") {
+            (timeoutEmission as Promise<void>).catch((error: unknown) => {
+              logger.warn(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                "[CloudBootstrap] RUN_TIMEOUT emission failed after deadline enforcement",
+              );
+              try {
+                runtime.reportError("CloudBootstrapMessageService.runTimeoutEmission", error);
+              } catch {
+                // error-policy:J7 reporting is best-effort diagnostics; the
+                // deadline was already enforced above.
+              }
+            });
+          }
           reject(new Error("Run exceeded timeout"));
         }, timeoutDuration);
       });

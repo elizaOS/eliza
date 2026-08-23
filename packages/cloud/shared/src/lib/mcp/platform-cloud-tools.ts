@@ -2,7 +2,11 @@
 import type { Context } from "hono";
 import { organizationsRepository } from "../../db/repositories";
 import type { AppEnv } from "../../types/cloud-worker-env";
-import { requireAdmin, requireUserOrApiKeyWithOrg } from "../auth/workers-hono-auth";
+import {
+  requireAdmin,
+  requireCurrentBillingManagerSession,
+  requireUserOrApiKeyWithOrg,
+} from "../auth/workers-hono-auth";
 import {
   executeCloudCapabilityRest,
   getCloudCapabilities,
@@ -16,6 +20,10 @@ export interface McpToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  auth?: {
+    modes: readonly string[];
+    organizationRoles: readonly string[];
+  };
 }
 
 type ToolArgs = Record<string, unknown>;
@@ -83,6 +91,10 @@ function capabilityToolDefinitions(): McpToolDefinition[] {
   return getCloudCapabilities().map((capability) => ({
     name: capability.surfaces.mcp.tool,
     description: `${capability.summary} REST: ${capability.surfaces.rest.method} ${capability.surfaces.rest.path}`,
+    auth: {
+      modes: capability.auth.modes,
+      organizationRoles: capability.auth.organizationRoles ?? [],
+    },
     inputSchema: jsonSchemaObject({
       action: {
         type: "string",
@@ -144,6 +156,9 @@ function copyAuthHeaders(c: AppContext): Headers {
     "idempotency-key",
     "x-idempotency-key",
     "cookie",
+    "origin",
+    "referer",
+    "x-eliza-csrf",
   ]) {
     const value = c.req.header(name);
     if (value) headers.set(name, value);
@@ -266,19 +281,22 @@ export async function callPlatformCloudMcpTool(c: AppContext, name: string, args
       });
     }
     case "cloud.billing.cancel_resource": {
-      const user = await requireUserOrApiKeyWithOrg(c);
       const resourceId = typeof input.resourceId === "string" ? input.resourceId : "";
       if (!resourceId) throw new Error("resourceId is required");
       const resourceType =
         input.resourceType === "container" || input.resourceType === "agent_sandbox"
           ? input.resourceType
           : undefined;
+      const user = await requireCurrentBillingManagerSession(c);
       return jsonText(
         await activeBillingService.cancelResource({
           organizationId: user.organization_id,
           resourceId,
           resourceType,
           mode: input.mode === "delete" ? "delete" : "stop",
+          authorizeInfrastructureMutation: async () => {
+            await requireCurrentBillingManagerSession(c);
+          },
         }),
       );
     }

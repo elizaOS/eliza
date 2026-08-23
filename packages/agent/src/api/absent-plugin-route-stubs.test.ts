@@ -102,7 +102,7 @@ describe("absent-plugin route stub registry", () => {
     });
   });
 
-  it("keeps Signal status as an explicit unsupported 501 tombstone", () => {
+  it("keeps Signal status as an explicit unsupported 501 declaration", () => {
     const stub = resolveAbsentPluginRouteStub("GET", "/api/signal/status");
     expect(stub?.capabilityId).toBe("signal-unsupported");
     expect(stub?.statusCode).toBe(501);

@@ -25,6 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lib.generation_integrity import IncompleteGenerationError, require_complete_generation
+
 
 SCRIPT_PATH = Path(__file__).resolve()
 TRAINING_ROOT = SCRIPT_PATH.parents[1]
@@ -501,6 +503,10 @@ def parse_cerebras_json(response: dict[str, Any]) -> tuple[dict[str, Any] | None
     if "error" in response:
         return None, "", json.dumps(response["error"], ensure_ascii=False)
     choice = (response.get("choices") or [{}])[0]
+    try:
+        require_complete_generation(choice, source="native_fillins.parse_cerebras_json")
+    except IncompleteGenerationError as exc:
+        return None, "", json.dumps(exc.rejection.as_dict(), sort_keys=True)
     message = choice.get("message") or {}
     content = message.get("content") or ""
     if not isinstance(content, str):

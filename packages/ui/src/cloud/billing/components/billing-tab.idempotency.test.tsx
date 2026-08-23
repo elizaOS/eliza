@@ -3,8 +3,8 @@
  *
  * The server requires an Idempotency-Key header (8-128 chars,
  * ^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$) on non-hardware credit purchases and
- * scopes durable checkout orders to (org, key). These tests pin the client
- * side: key present and well-formed on card checkout, reused across retries
+ * scopes durable checkout orders to (org, initiating user, key). These tests
+ * pin the client side: key present and well-formed on card checkout, reused across retries
  * of the same amount after transient/ambiguous failures, rotated when the
  * amount changes (including the A -> B -> A resurrection trap), absent from
  * the crypto path, and never generated for invalid submissions.
@@ -12,11 +12,13 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
@@ -106,10 +108,18 @@ vi.mock("./auto-top-up-card", () => ({
   AutoTopUpCard: () => null,
 }));
 
+import {
+  type CardCheckoutIntentCoordinator,
+  type CardCheckoutIntentLockManager,
+  type CardCheckoutIntentStorage,
+  cardCheckoutIntentStorageKey,
+  createCardCheckoutIntentCoordinator,
+} from "../lib/card-checkout-intent";
 import type { BillingUser, InvoiceDisplay } from "../types";
-import { BillingTab, type CardCheckoutIntentStore } from "./billing-tab";
+import { BillingTab } from "./billing-tab";
 
 const user: BillingUser = {
+  id: "user-1",
   organization_id: "org-1",
   wallet_address: null,
 };
@@ -120,6 +130,90 @@ const invoices: InvoiceDisplay[] = [
 
 /** The server's exact header contract. */
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
+
+class MemoryStorage implements CardCheckoutIntentStorage {
+  private readonly values = new Map<string, string>();
+
+  get length() {
+    return this.values.size;
+  }
+
+  getItem(key: string) {
+    return this.values.get(key) ?? null;
+  }
+
+  key(index: number) {
+    return [...this.values.keys()][index] ?? null;
+  }
+
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
+
+  setItem(key: string, value: string) {
+    this.values.set(key, value);
+  }
+}
+
+class SerialLockManager implements CardCheckoutIntentLockManager {
+  private tail: Promise<unknown> = Promise.resolve();
+
+  request<T>(
+    _name: string,
+    options: { mode: "exclusive"; signal: AbortSignal },
+    callback: () => T | PromiseLike<T>,
+  ): Promise<T> {
+    const result = this.tail.then(() => {
+      if (options.signal.aborted)
+        throw new DOMException("Aborted", "AbortError");
+      return callback();
+    });
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+}
+
+let checkoutCoordinator: CardCheckoutIntentCoordinator;
+let nextUuid = 0;
+
+function newUuid() {
+  nextUuid += 1;
+  return `00000000-0000-4000-8000-${String(nextUuid).padStart(12, "0")}`;
+}
+
+function createTestCoordinator(options?: {
+  localStorage?: CardCheckoutIntentStorage | null;
+  lockManager?: CardCheckoutIntentLockManager | null;
+  sessionStorage?: CardCheckoutIntentStorage | null;
+}) {
+  return createCardCheckoutIntentCoordinator({
+    localStorage:
+      options && "localStorage" in options
+        ? options.localStorage
+        : new MemoryStorage(),
+    sessionStorage:
+      options && "sessionStorage" in options
+        ? options.sessionStorage
+        : new MemoryStorage(),
+    lockManager:
+      options && "lockManager" in options
+        ? options.lockManager
+        : new SerialLockManager(),
+    now: () => 1_800_000_000_000,
+    randomUUID: newUuid,
+  });
+}
+
+function renderBillingTab(
+  coordinator: CardCheckoutIntentCoordinator = checkoutCoordinator,
+) {
+  return render(
+    <BillingTab user={user} checkoutIntentCoordinator={coordinator} />,
+  );
+}
 
 function routeApi(
   checkoutResponse: () => Promise<unknown> = () => Promise.resolve({}),
@@ -187,17 +281,20 @@ async function submitAmount(
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.history.replaceState({}, "", window.location.pathname);
 });
 
 describe("BillingTab card-checkout idempotency key (#24144)", () => {
   beforeEach(() => {
     apiMock.mockReset();
+    nextUuid = 0;
+    checkoutCoordinator = createTestCoordinator();
   });
 
   it("sends a server-contract-valid Idempotency-Key on card checkout (click path)", async () => {
     routeApi();
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "25");
@@ -209,9 +306,274 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     expect(key).toMatch(IDEMPOTENCY_KEY_PATTERN);
     // A UUID (36 chars) satisfies the contract and is collision-safe.
     expect(key).toHaveLength(36);
-    // The body contract is unchanged.
+    // The live server principal must still match the UI principal captured
+    // before reservation; this closes an external account-switch race.
     const init = checkoutCalls()[0][1] as { json: unknown };
-    expect(init.json).toEqual({ amount: 25, returnUrl: "settings" });
+    expect(init.json).toEqual({
+      amount: 25,
+      expectedOrganizationId: "org-1",
+      expectedUserId: "user-1",
+      returnUrl: "settings",
+    });
+  });
+
+  it("coordinates the same key across two mounted Billing tabs", async () => {
+    const sharedStorage = new MemoryStorage();
+    const sharedLockManager = new SerialLockManager();
+    const firstCoordinator = createTestCoordinator({
+      localStorage: sharedStorage,
+      lockManager: sharedLockManager,
+      sessionStorage: new MemoryStorage(),
+    });
+    const secondCoordinator = createTestCoordinator({
+      localStorage: sharedStorage,
+      lockManager: sharedLockManager,
+      sessionStorage: new MemoryStorage(),
+    });
+    routeApi(() => new Promise(() => undefined));
+
+    render(
+      <>
+        <section aria-label="Checkout tab A">
+          <BillingTab
+            user={user}
+            checkoutIntentCoordinator={firstCoordinator}
+          />
+        </section>
+        <section aria-label="Checkout tab B">
+          <BillingTab
+            user={user}
+            checkoutIntentCoordinator={secondCoordinator}
+          />
+        </section>
+      </>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("invoice-row")).toHaveLength(2),
+    );
+    for (const name of ["Checkout tab A", "Checkout tab B"]) {
+      const tab = within(screen.getByRole("region", { name }));
+      // Two browser tabs have separate documents; this same-document harness
+      // scopes each otherwise-identical form by region.
+      const input = tab.getByRole("spinbutton");
+      fireEvent.change(input, { target: { value: "25" } });
+      const form = input.closest("form");
+      if (!form) throw new Error(`Missing checkout form in ${name}`);
+      fireEvent.submit(form);
+    }
+
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
+    expect(keyOf(checkoutCalls()[0])).toBe(keyOf(checkoutCalls()[1]));
+  });
+
+  it("binds a valid returned session without clearing its intent before navigation", async () => {
+    const checkoutUrl = new URL("#stripe-checkout", window.location.href).href;
+    routeApi(() =>
+      Promise.resolve({ sessionId: "cs_test_bound", url: checkoutUrl }),
+    );
+    renderBillingTab();
+    await screen.findAllByTestId("invoice-row");
+
+    submitFormAmount("25");
+    await waitFor(() => expect(window.location.hash).toBe("#stripe-checkout"));
+
+    const persisted = await checkoutCoordinator.reserve({
+      organizationId: user.organization_id,
+      initiatedByUserId: user.id,
+      amountCents: 2_500,
+    });
+    expect(persisted.idempotencyKey).toBe(keyOf(checkoutCalls()[0]));
+    expect(persisted.sessionId).toBe("cs_test_bound");
+    window.history.replaceState({}, "", window.location.pathname);
+  });
+
+  it("navigates after binding when sessionStorage is unavailable and later scans for cleanup", async () => {
+    const localStorage = new MemoryStorage();
+    const coordinator = createTestCoordinator({
+      localStorage,
+      sessionStorage: null,
+    });
+    const checkoutUrl = new URL(
+      "#stripe-checkout-no-session-storage",
+      window.location.href,
+    ).href;
+    routeApi(() =>
+      Promise.resolve({
+        sessionId: "cs_test_no_session_storage",
+        url: checkoutUrl,
+      }),
+    );
+    renderBillingTab(coordinator);
+    await screen.findAllByTestId("invoice-row");
+
+    submitFormAmount("25");
+    await waitFor(() =>
+      expect(window.location.hash).toBe("#stripe-checkout-no-session-storage"),
+    );
+    expect(
+      JSON.parse(
+        localStorage.getItem(
+          cardCheckoutIntentStorageKey(user.organization_id),
+        ) ?? "null",
+      ),
+    ).toMatchObject({
+      initiatedByUserId: user.id,
+      sessionId: "cs_test_no_session_storage",
+    });
+    await expect(
+      coordinator.clearVerifiedSession({
+        sessionId: "cs_test_no_session_storage",
+      }),
+    ).resolves.toEqual({ status: "cleared", source: "namespace-scan" });
+    window.history.replaceState({}, "", window.location.pathname);
+  });
+
+  it("invalidates an old response synchronously when the rendered principal changes", async () => {
+    const localStorage = new MemoryStorage();
+    const coordinator = createTestCoordinator({ localStorage });
+    const oldResponse = deferred<unknown>();
+    let checkoutAttempt = 0;
+    routeApi(() => {
+      checkoutAttempt += 1;
+      return checkoutAttempt === 1
+        ? oldResponse.promise
+        : new Promise(() => undefined);
+    });
+    const bindSpy = vi.spyOn(coordinator, "bindSession");
+    const firstRender = renderBillingTab(coordinator);
+    await screen.findAllByTestId("invoice-row");
+    submitFormAmount("25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+    const oldKey = keyOf(checkoutCalls()[0]);
+
+    const nextUser: BillingUser = { ...user, id: "user-2" };
+    firstRender.rerender(
+      <BillingTab user={nextUser} checkoutIntentCoordinator={coordinator} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy(),
+    );
+
+    await act(async () => {
+      oldResponse.resolve({
+        sessionId: "cs_test_old_account",
+        url: new URL("#old-account-checkout", window.location.href).href,
+      });
+      await oldResponse.promise;
+      await Promise.resolve();
+    });
+
+    expect(bindSpy).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+    expect(
+      JSON.parse(
+        localStorage.getItem(
+          cardCheckoutIntentStorageKey(user.organization_id),
+        ) ?? "null",
+      ),
+    ).toMatchObject({
+      initiatedByUserId: user.id,
+      idempotencyKey: oldKey,
+      sessionId: null,
+    });
+
+    submitFormAmount("25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
+    expect(keyOf(checkoutCalls()[1])).not.toBe(oldKey);
+    expect(
+      (checkoutCalls()[1][1] as { json: Record<string, unknown> }).json,
+    ).toMatchObject({
+      expectedUserId: "user-2",
+      expectedOrganizationId: "org-1",
+    });
+  });
+
+  it("pins the reserved principal so an external auth switch is rejected before checkout side effects", async () => {
+    const apiClient = await import("../../lib/api-client");
+    const coordinator = createTestCoordinator();
+    const originalReserve = coordinator.reserve.bind(coordinator);
+    const bindSpy = vi.spyOn(coordinator, "bindSession");
+    let livePrincipal = {
+      userId: user.id,
+      organizationId: user.organization_id,
+    };
+    const switchingCoordinator: CardCheckoutIntentCoordinator = {
+      ...coordinator,
+      reserve: async (input) => {
+        const intent = await originalReserve(input);
+        // Models another tab replacing the bearer/cookie after local reserve
+        // but before apiFetch constructs the request.
+        livePrincipal = { userId: "user-2", organizationId: "org-2" };
+        return intent;
+      },
+    };
+    const createOrderOrSession = vi.fn();
+    apiMock.mockImplementation(
+      (url: string, init?: { json?: Record<string, unknown> }) => {
+        if (url.startsWith("/api/invoices/list")) {
+          return Promise.resolve({ invoices });
+        }
+        if (url.startsWith("/api/crypto/status")) {
+          return Promise.resolve({ enabled: false });
+        }
+        if (url.startsWith("/api/stripe/create-checkout-session")) {
+          const expectedUserId = init?.json?.expectedUserId;
+          const expectedOrganizationId = init?.json?.expectedOrganizationId;
+          if (
+            expectedUserId !== livePrincipal.userId ||
+            expectedOrganizationId !== livePrincipal.organizationId
+          ) {
+            return Promise.reject(
+              new apiClient.ApiError(
+                409,
+                "CHECKOUT_PRINCIPAL_CHANGED",
+                "Checkout identity changed; refresh before retrying",
+              ),
+            );
+          }
+          createOrderOrSession();
+          return Promise.resolve({
+            sessionId: "cs_wrong_principal",
+            url: new URL("#wrong-principal", window.location.href).href,
+          });
+        }
+        return Promise.resolve({});
+      },
+    );
+
+    renderBillingTab(switchingCoordinator);
+    await screen.findAllByTestId("invoice-row");
+    submitFormAmount("25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy(),
+    );
+
+    expect(
+      (checkoutCalls()[0][1] as { json: Record<string, unknown> }).json,
+    ).toMatchObject({
+      expectedUserId: user.id,
+      expectedOrganizationId: user.organization_id,
+    });
+    expect(createOrderOrSession).not.toHaveBeenCalled();
+    expect(bindSpy).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+  });
+
+  it("fails closed with a persistent alert before POST when Web Locks are unavailable", async () => {
+    routeApi();
+    renderBillingTab(createTestCoordinator({ lockManager: null }));
+    await screen.findAllByTestId("invoice-row");
+
+    submitFormAmount("25");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Card checkout could not be coordinated safely",
+    );
+    expect(alert.textContent).toContain("Android System WebView");
+    expect(checkoutCalls()).toHaveLength(0);
   });
 
   it("reuses the same key when the same amount is retried after a transient failure", async () => {
@@ -229,7 +591,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       return Promise.resolve({});
     });
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "25");
@@ -248,6 +610,52 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     expect(keyOf(checkoutCalls()[0])).toBe(keyOf(checkoutCalls()[1]));
   });
 
+  it("preserves the key after a malformed successful response", async () => {
+    routeApi(() => Promise.resolve({ url: "https://checkout.example.test" }));
+    renderBillingTab();
+    await screen.findAllByTestId("invoice-row");
+
+    submitFormAmount("25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy(),
+    );
+    submitFormAmount("25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
+
+    expect(keyOf(checkoutCalls()[1])).toBe(keyOf(checkoutCalls()[0]));
+  });
+
+  it.each([401, 403, 408, 409, 429])(
+    "preserves the key after ambiguous HTTP %s",
+    async (status) => {
+      const apiClient = await import("../../lib/api-client");
+      let attempt = 0;
+      routeApi(() => {
+        attempt += 1;
+        return attempt === 1
+          ? Promise.reject(
+              new apiClient.ApiError(status, "ambiguous", "retry safely"),
+            )
+          : Promise.resolve({});
+      });
+      renderBillingTab();
+      await screen.findAllByTestId("invoice-row");
+
+      submitFormAmount("25");
+      await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: /Buy credits/i }),
+        ).toBeTruthy(),
+      );
+      submitFormAmount("25");
+      await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
+
+      expect(keyOf(checkoutCalls()[1])).toBe(keyOf(checkoutCalls()[0]));
+    },
+  );
+
   it("rotates the key when the amount changes before retry", async () => {
     let attempt = 0;
     routeApi(() => {
@@ -258,7 +666,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       return Promise.resolve({});
     });
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "25");
@@ -285,7 +693,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     // across DIFFERENT submitted amounts.
     routeApi();
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "25");
@@ -327,7 +735,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       return Promise.resolve({});
     });
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "25");
@@ -354,7 +762,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
   it("makes no checkout request for an invalid amount", async () => {
     routeApi();
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "0");
@@ -362,6 +770,19 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Minimum amount is \$1/i)).toBeTruthy();
     });
+    expect(checkoutCalls()).toHaveLength(0);
+  });
+
+  it("rejects sub-cent card amounts before reserving or posting", async () => {
+    routeApi();
+    renderBillingTab();
+    await screen.findAllByTestId("invoice-row");
+
+    submitFormAmount("1.001");
+
+    expect(
+      await screen.findByText("Amount must use exact whole cents"),
+    ).toBeTruthy();
     expect(checkoutCalls()).toHaveLength(0);
   });
 
@@ -386,7 +807,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       return Promise.resolve({});
     });
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "25");
@@ -415,7 +836,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       return Promise.resolve({});
     });
     const apiClient = await import("../../lib/api-client");
-    render(<BillingTab user={user} />);
+    renderBillingTab();
     await screen.findAllByTestId("invoice-row");
 
     submitFormAmount("25");
@@ -446,7 +867,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       return Promise.resolve({});
     });
     const apiClient = await import("../../lib/api-client");
-    render(<BillingTab user={user} />);
+    renderBillingTab();
     await screen.findAllByTestId("invoice-row");
 
     submitFormAmount("25");
@@ -468,7 +889,6 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
   });
 
   it("reuses an ambiguous intent after BillingTab unmounts and remounts", async () => {
-    const intentStore: CardCheckoutIntentStore = { current: null };
     let attempt = 0;
     routeApi(() => {
       attempt += 1;
@@ -476,9 +896,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
         ? Promise.reject(new Error("response lost"))
         : Promise.resolve({});
     });
-    const firstRender = render(
-      <BillingTab user={user} checkoutIntentStore={intentStore} />,
-    );
+    const firstRender = renderBillingTab();
     await screen.findAllByTestId("invoice-row");
     const actor = userEvent.setup();
     await submitAmount(actor, "25");
@@ -486,12 +904,62 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     const originalKey = keyOf(checkoutCalls()[0]);
 
     firstRender.unmount();
-    render(<BillingTab user={user} checkoutIntentStore={intentStore} />);
+    renderBillingTab();
     await screen.findAllByTestId("invoice-row");
     await submitAmount(actor, "25");
     await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
 
     expect(keyOf(checkoutCalls()[1])).toBe(originalKey);
+  });
+
+  it("keeps card and crypto method toggles disabled while a card request is pending", async () => {
+    const checkoutResponse = deferred<unknown>();
+    const cryptoPayment = vi.fn();
+    apiMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/invoices/list")) {
+        return Promise.resolve({ invoices });
+      }
+      if (url.startsWith("/api/crypto/status")) {
+        return Promise.resolve({
+          enabled: true,
+          directWallet: { enabled: false },
+        });
+      }
+      if (url.startsWith("/api/stripe/create-checkout-session")) {
+        return checkoutResponse.promise;
+      }
+      if (url.startsWith("/api/crypto/payments")) {
+        cryptoPayment();
+        return Promise.resolve({ payLink: "https://crypto.example.test" });
+      }
+      return Promise.resolve({});
+    });
+    const actor = userEvent.setup();
+    renderBillingTab();
+    await screen.findAllByTestId("invoice-row");
+    const cardToggle = await screen.findByRole("button", { name: /^Card$/i });
+    const cryptoToggle = screen.getByRole("button", { name: /^Crypto$/i });
+
+    await submitAmount(actor, "25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+
+    expect(cardToggle).toHaveProperty("disabled", true);
+    expect(cryptoToggle).toHaveProperty("disabled", true);
+    fireEvent.click(cryptoToggle);
+    expect(cryptoToggle.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen.queryByRole("button", { name: /Pay with Crypto/i }),
+    ).toBeNull();
+    expect(cryptoPayment).not.toHaveBeenCalled();
+
+    await act(async () => {
+      checkoutResponse.resolve({});
+      await checkoutResponse.promise;
+    });
+    await waitFor(() => {
+      expect(cardToggle).toHaveProperty("disabled", false);
+      expect(cryptoToggle).toHaveProperty("disabled", false);
+    });
   });
 
   it("sends no Idempotency-Key on the hosted crypto path", async () => {
@@ -516,7 +984,7 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       return Promise.resolve({});
     });
     const actor = userEvent.setup();
-    render(<BillingTab user={user} />);
+    renderBillingTab();
 
     await screen.findAllByTestId("invoice-row");
     // Select the crypto payment-method toggle then submit via its own button.

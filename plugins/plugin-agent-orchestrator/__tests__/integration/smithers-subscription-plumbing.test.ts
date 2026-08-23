@@ -49,56 +49,63 @@ function nativeState(): NativeMockState {
   return global.__smithersSubscriptionNativeMock;
 }
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
-  const state = nativeState();
-  state.NativeAcpClient = class MockNativeAcpClient
-    implements MockNativeClient
-  {
-    opts: NativeOptions;
-    eventHandler?: NativeEventHandler;
-    start = vi.fn(async () => undefined);
-    createSession = vi.fn(async () => ({
-      sessionId: "protocol-session",
-      agentSessionId: "agent-session",
-    }));
-    prompt = vi.fn(async (sessionId: string) => {
-      this.eventHandler?.({
-        jsonrpc: "2.0",
-        method: "session/update",
-        params: {
-          sessionId,
-          update: {
-            sessionUpdate: "agent_message_chunk",
-            content: {
-              type: "text",
-              text: "subscription-backed Smithers result",
+vi.mock(
+  "../../src/services/acp-native-transport.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/acp-native-transport.js")
+      >();
+    const state = nativeState();
+    state.NativeAcpClient = class MockNativeAcpClient
+      implements MockNativeClient
+    {
+      opts: NativeOptions;
+      eventHandler?: NativeEventHandler;
+      start = vi.fn(async () => undefined);
+      createSession = vi.fn(async () => ({
+        sessionId: "protocol-session",
+        agentSessionId: "agent-session",
+      }));
+      prompt = vi.fn(async (sessionId: string) => {
+        this.eventHandler?.({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: {
+                type: "text",
+                text: "subscription-backed Smithers result",
+              },
             },
           },
-        },
-      } as AcpJsonRpcMessage);
-      return { stopReason: "end_turn" };
-    });
-    cancel = vi.fn(async () => undefined);
-    closeSession = vi.fn(async () => undefined);
-    close = vi.fn(async () => undefined);
+        } as AcpJsonRpcMessage);
+        return { stopReason: "end_turn" };
+      });
+      cancel = vi.fn(async () => undefined);
+      closeSession = vi.fn(async () => undefined);
+      close = vi.fn(async () => undefined);
 
-    constructor(opts: NativeOptions) {
-      this.opts = opts;
-      this.eventHandler = opts.onEvent;
-      nativeState().instances.push(this);
-    }
+      constructor(opts: NativeOptions) {
+        this.opts = opts;
+        this.eventHandler = opts.onEvent;
+        nativeState().instances.push(this);
+      }
 
-    setEventHandler(handler: NativeEventHandler | undefined): void {
-      this.eventHandler = handler;
-      this.opts.onEvent = handler;
-    }
+      setEventHandler(handler: NativeEventHandler | undefined): void {
+        this.eventHandler = handler;
+        this.opts.onEvent = handler;
+      }
 
-    setTimeoutMs(timeoutMs: number | undefined): void {
-      this.opts.timeoutMs = timeoutMs;
-    }
-  };
-  return { NativeAcpClient: state.NativeAcpClient };
-});
+      setTimeoutMs(timeoutMs: number | undefined): void {
+        this.opts.timeoutMs = timeoutMs;
+      }
+    };
+    return { ...actual, NativeAcpClient: state.NativeAcpClient };
+  },
+);
 
 import { AcpService } from "../../src/services/acp-service.js";
 import { runDurableTask } from "../../src/services/smithers-task-integration.js";

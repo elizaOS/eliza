@@ -51,7 +51,14 @@ async function postAuthJson(
   return fetch(resolvedEndpoint, {
     method,
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    // Cookie-authenticated mutations must carry an explicit non-simple marker.
+    // Keep this even for bodyless DELETEs: browsers/proxies may discard a
+    // content type when there is no body, which otherwise turns logout and
+    // stale-session recovery into a CSRF-guarded 403.
+    headers: {
+      "Content-Type": "application/json",
+      "X-Eliza-CSRF": "1",
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
     ...(signal ? { signal } : {}),
   });

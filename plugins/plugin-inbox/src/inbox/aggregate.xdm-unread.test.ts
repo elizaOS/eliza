@@ -79,4 +79,21 @@ describe("x_dm unread derivation", () => {
     ]);
     expect(inbox.messages[0]?.unread).toBe(true);
   });
+
+  it("maintains strict total ordering in thread groups when timestamp is NaN", () => {
+    const inbox = build([
+      xDm({
+        id: "dm-invalid",
+        threadId: "conv-mixed",
+        timestamp: Number.NaN,
+      }),
+      xDm({
+        id: "dm-valid",
+        threadId: "conv-mixed",
+        timestamp: NOW,
+      }),
+    ]);
+    expect(inbox.threadGroups).toHaveLength(1);
+    expect(inbox.threadGroups?.[0]?.latestMessage.id).toBe("x_dm:dm-valid");
+  });
 });

@@ -14,6 +14,7 @@ import { mkdirSync } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import sharp from "sharp";
 import { brandColorFractions } from "./analyzers/brand.ts";
 import { dominantPalette as analyzeDominantPalette } from "./analyzers/color.ts";
@@ -497,13 +498,13 @@ export async function ocrImage(pngPath, opts = {}) {
   if (primaryOutcome.status === "rejected") {
     return {
       available: false,
-      reason: `${engine.label} failed: ${errorMessage(primaryOutcome.reason).slice(0, 200)}`,
+      reason: `${engine.label} failed: ${truncateWellFormed(toWellFormedUnicode(errorMessage(primaryOutcome.reason)), 200)}`,
     };
   }
   if (imageOutcome.status === "rejected") {
     return {
       available: false,
-      reason: `pixel diagnostics failed: ${errorMessage(imageOutcome.reason).slice(0, 200)}`,
+      reason: `pixel diagnostics failed: ${truncateWellFormed(toWellFormedUnicode(errorMessage(imageOutcome.reason)), 200)}`,
     };
   }
   const primaryRecognition = primaryOutcome.value;

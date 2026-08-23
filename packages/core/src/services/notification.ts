@@ -159,9 +159,24 @@ export class NotificationService extends Service {
 	/** Newest-last ordered list (mirrors the persisted store). */
 	private notifications: AgentNotification[] = [];
 	private notificationWriteTail: Promise<void> = Promise.resolve();
+	/**
+	 * Set once {@link stop} begins. Write admission closes immediately so a
+	 * caller racing after teardown receives an explicit failure instead of a
+	 * silently accepted mutation that could outlive the service.
+	 */
+	private stopped = false;
 
 	/** Serialize every mutation of the shared inbox and its durable snapshot. */
 	private enqueueWrite<T>(write: () => Promise<T>): Promise<T> {
+		if (this.stopped) {
+			// Teardown has begun; a write admitted now could persist and fan out
+			// after the service reports it is stopped. Fail explicitly instead.
+			return Promise.reject(
+				new Error(
+					"[NotificationService] notification write rejected: service is stopped",
+				),
+			);
+		}
 		const operation = this.notificationWriteTail.then(write, write);
 		// error-policy:J5 the caller observes `operation`; the tail converts either
 		// outcome to completion so a rejected write cannot poison later mutations.
@@ -306,6 +321,16 @@ export class NotificationService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		// Close write admission first: any caller racing this teardown from now
+		// on receives an explicit rejection instead of a silently accepted
+		// mutation that could persist after the service reports it stopped.
+		this.stopped = true;
+		// Drain the serialized durable-write tail so a notification accepted
+		// before shutdown finishes persisting (and broadcasting) BEFORE the
+		// service reports teardown complete. error-policy:J5 — the tail never
+		// rejects, but await defensively so a future tail change cannot leak an
+		// unhandled rejection out of stop().
+		await this.notificationWriteTail.catch(() => undefined);
 		this.notifications = [];
 	}
 

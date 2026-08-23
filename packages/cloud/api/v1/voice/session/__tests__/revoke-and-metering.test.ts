@@ -4,6 +4,7 @@
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
 import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 const fakeLogger = {
@@ -31,6 +32,8 @@ mock.module("@elizaos/core", () => ({
   redactLogArgs: (a: unknown) => a,
   redactSensitiveText: (text: string) => text,
   Service: coreTestContract.Service,
+  toWellFormedUnicode: workerCoreStub.toWellFormedUnicode,
+  truncateWellFormed: workerCoreStub.truncateWellFormed,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:

@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import type { SQL, SQLWrapper } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as realHelpers from "../helpers";
+import type { ProvisioningAdmissionCapture } from "./agent-sandboxes";
 
 let capturedWhere: SQL | undefined;
 
@@ -121,6 +122,25 @@ let useWriteSelectMock = false;
 let useRepositoryTransactionUpdate = false;
 
 const warnLog = mock((..._args: unknown[]) => {});
+
+function restoreProvisioningCapture(
+  overrides: Partial<ProvisioningAdmissionCapture> = {},
+): ProvisioningAdmissionCapture {
+  return {
+    id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+    organization_id: "c21ed7f4-4d97-4b69-a09a-71a6af758591",
+    status: "stopped",
+    lifecycle_job_id: null,
+    lifecycle_execution_generation: null,
+    execution_tier: "dedicated-lazy",
+    pool_status: null,
+    deleted_at: null,
+    deletion_attempt_id: null,
+    lifecycle_revision: 47,
+    ...overrides,
+  };
+}
+
 const dbReadMock = new Proxy(realHelpers.dbRead as unknown as Record<PropertyKey, unknown>, {
   get(target, prop, receiver) {
     if (prop === "select" && useRepositoryMocks) return select;
@@ -289,6 +309,136 @@ describe("AgentSandboxesRepository", () => {
     expect(after).toContain("container_name");
     expect(after).toContain("sandbox_id");
     expect((after.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("restore provisioning admission is tenant-scoped to the exact captured generation", async () => {
+    capturedWhere = undefined;
+    set.mockClear();
+    useTransactionMock = true;
+    useRepositoryTransactionUpdate = true;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    const capture = restoreProvisioningCapture();
+
+    await new AgentSandboxesRepository().trySetProvisioningFromRestoreCapture(capture);
+
+    if (!capturedWhere) {
+      throw new Error("trySetProvisioningFromRestoreCapture did not build a where clause");
+    }
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+
+    expect(query.params).toContain(capture.id);
+    expect(query.params).toContain(capture.organization_id);
+    expect(query.params).toContain(capture.status);
+    expect(query.params).toContain(capture.execution_tier);
+    expect(query.params).toContain(capture.lifecycle_revision);
+
+    for (const status of ["stopped", "sleeping", "disconnected", "error"]) {
+      expect(query.params).toContain(status);
+    }
+    // "pending" belongs only to the active-job exclusion, never to the
+    // restore-admissible sandbox statuses above.
+    expect(query.params.filter((param) => param === "pending")).toHaveLength(1);
+    expect(query.params).not.toContain("provisioning");
+    expect(query.params).not.toContain("running");
+    expect(query.params).not.toContain("deletion_pending");
+    expect(query.params).not.toContain("deletion_failed");
+
+    for (const column of [
+      "organization_id",
+      "status",
+      "lifecycle_job_id",
+      "lifecycle_execution_generation",
+      "execution_tier",
+      "lifecycle_revision",
+      "pool_status",
+      "deleted_at",
+      "deletion_attempt_id",
+    ]) {
+      expect(sql).toContain(column);
+    }
+    for (const tier of ["dedicated-lazy", "dedicated-always", "custom"]) {
+      expect(query.params).toContain(tier);
+    }
+    expect(query.params).not.toContain("shared");
+    expect(sql).toContain("jobs");
+    expect(sql).toContain("not exists");
+    expect(query.params).toContain("pending");
+    expect(query.params).toContain("in_progress");
+
+    const updatePayload = set.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
+    expect(updatePayload?.status).toBe("provisioning");
+    expect(updatePayload?.error_message).toBeNull();
+  });
+
+  test("restore provisioning admission refuses every replacement and failed-warm cleanup owner", async () => {
+    capturedWhere = undefined;
+    useTransactionMock = true;
+    useRepositoryTransactionUpdate = true;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    await new AgentSandboxesRepository().trySetProvisioningFromRestoreCapture(
+      restoreProvisioningCapture(),
+    );
+
+    if (!capturedWhere) {
+      throw new Error("trySetProvisioningFromRestoreCapture did not build a where clause");
+    }
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+
+    for (const column of [
+      "replacement_cleanup_sandbox_id",
+      "replacement_cleanup_node_id",
+      "replacement_cleanup_container_name",
+      "replacement_cleanup_attempt_id",
+      "replacement_cleanup_container_id",
+      "replacement_cleanup_vpn_node_id",
+      "replacement_cleanup_vpn_node_name",
+      "replacement_cleanup_preserved_vpn_node_id",
+      "replacement_cleanup_vpn_registration_started_at",
+      "replacement_cleanup_allocation_counted",
+      "replacement_cleanup_created_at",
+    ]) {
+      expect(sql).toContain(column);
+    }
+    expect(sql).toContain("warm_claim_credential_state");
+    expect(sql).toContain("is distinct from 'failed'");
+    expect(sql).not.toContain("warm_claim_cleanup_completed_at");
+  });
+
+  test("restore provisioning admission rejects a forbidden capture before any database action", async () => {
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    const repository = new AgentSandboxesRepository();
+
+    const forbidden: ProvisioningAdmissionCapture[] = [
+      restoreProvisioningCapture({ status: "pending" }),
+      restoreProvisioningCapture({ status: "provisioning" }),
+      restoreProvisioningCapture({ status: "running" }),
+      restoreProvisioningCapture({ status: "deletion_pending" }),
+      restoreProvisioningCapture({ status: "deletion_failed" }),
+      restoreProvisioningCapture({
+        lifecycle_job_id: "d9f62174-4c24-421e-bb93-192dc0a5882c",
+        lifecycle_execution_generation: "f35b93df-ad0d-480c-bf72-1e8fcb55de42",
+      }),
+      restoreProvisioningCapture({ execution_tier: "shared" }),
+      restoreProvisioningCapture({ pool_status: "unclaimed" }),
+      restoreProvisioningCapture({ deleted_at: new Date("2026-08-23T00:00:00.000Z") }),
+      restoreProvisioningCapture({
+        deletion_attempt_id: "8ec9c406-838c-4fe4-ac2d-3d3dd2db1a3f",
+      }),
+    ];
+
+    for (const capture of forbidden) {
+      update.mockClear();
+      ensureAgentSandboxSchema.mockClear();
+      await expect(
+        repository.trySetProvisioningFromRestoreCapture(capture),
+      ).resolves.toBeUndefined();
+      expect(ensureAgentSandboxSchema).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    }
   });
 
   test("heartbeat selection excludes shared-runtime agents (no container to dial)", async () => {

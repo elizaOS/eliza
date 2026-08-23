@@ -2,9 +2,10 @@
  * Route contract for direct-signup post-commit provisioning.
  *
  * The session exchange must pass the Worker lifetime into the shared identity
- * authority and may mint cookies/cache only after identity and the required
- * default API key are ready. Its waitUntil-owned, independently self-healing
- * onboarding tail must not delay the response or Personal conversations.
+ * authority and must prime the first-request cache after identity and the
+ * required default API key are ready, before independently self-healing
+ * onboarding starts. The waitUntil-owned onboarding and audit tails must not
+ * delay the response or the first authenticated Personal request.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -18,8 +19,10 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const emitAudit = mock(async () => undefined);
-const primeVerifiedUserSessionCache = mock(async () => undefined);
+const emitAudit = mock(async (): Promise<void> => undefined);
+const primeVerifiedUserSessionCache = mock(
+  async (): Promise<void> => undefined,
+);
 const verifyStewardTokenCached = mock(async () => ({
   userId: "steward-user-1",
   email: "person@example.test",
@@ -37,15 +40,18 @@ type MockSyncedUser = {
 const syncUserFromSteward = mock(
   async (params: {
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    afterRequiredSignupProvisioning?: (user: MockSyncedUser) => Promise<void>;
   }): Promise<MockSyncedUser> => {
-    params.executionCtx?.waitUntil(postCommitTail.promise);
-    return {
+    const user = {
       id: "cloud-user-1",
       organization_id: "org-1",
       initialCreditsGranted: false,
       initialFreeCreditsUsd: 0,
       postCommitProvisioningDeferred: true as const,
     };
+    await params.afterRequiredSignupProvisioning?.(user);
+    params.executionCtx?.waitUntil(postCommitTail.promise);
+    return user;
   },
 );
 const committedUser = {
@@ -151,26 +157,37 @@ function sessionRequest(): Request {
 
 beforeEach(() => {
   postCommitTail = deferred<void>();
-  emitAudit.mockClear();
+  emitAudit.mockReset();
+  emitAudit.mockResolvedValue(undefined);
   primeVerifiedUserSessionCache.mockReset();
   primeVerifiedUserSessionCache.mockResolvedValue(undefined);
   syncUserFromSteward.mockClear();
   syncUserFromSteward.mockImplementation(async (params) => {
-    params.executionCtx?.waitUntil(postCommitTail.promise);
-    return {
+    const user = {
       id: "cloud-user-1",
       organization_id: "org-1",
       initialCreditsGranted: false,
       initialFreeCreditsUsd: 0,
       postCommitProvisioningDeferred: true as const,
     };
+    await params.afterRequiredSignupProvisioning?.(user);
+    params.executionCtx?.waitUntil(postCommitTail.promise);
+    return user;
   });
   getByStewardId.mockClear();
   findActivePersonalDedicatedTarget.mockClear();
 });
 
 describe("POST /api/auth/steward-session post-commit tail", () => {
-  test("serves the committed user's Personal conversation before waitUntil settles", async () => {
+  test("primes cache before onboarding starts, then responds while audit and onboarding are pending", async () => {
+    const cachePrimeStarted = deferred<void>();
+    const cachePrimeTail = deferred<void>();
+    const auditTail = deferred<void>();
+    primeVerifiedUserSessionCache.mockImplementationOnce(async () => {
+      cachePrimeStarted.resolve();
+      await cachePrimeTail.promise;
+    });
+    emitAudit.mockImplementationOnce(async () => await auditTail.promise);
     const background: Promise<unknown>[] = [];
     const executionCtx = {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
@@ -184,20 +201,37 @@ describe("POST /api/auth/steward-session post-commit tail", () => {
       personalConversationsRoute,
     );
 
-    const response = await app.fetch(
-      sessionRequest(),
-      ENV,
-      executionCtx as never,
-    );
+    let responseSettled = false;
+    const responsePromise = Promise.resolve(
+      app.fetch(sessionRequest(), ENV, executionCtx as never),
+    ).then((response) => {
+      responseSettled = true;
+      return response;
+    });
+
+    await cachePrimeStarted.promise;
+    expect(responseSettled).toBe(false);
+    expect(background).toHaveLength(0);
+    cachePrimeTail.resolve();
+
+    const response = await responsePromise;
 
     expect(response.status).toBe(200);
     const setCookie = response.headers.get("set-cookie") ?? "";
     expect(setCookie).toContain("steward-token-staging=valid-steward-token");
     expect(setCookie).toContain("steward-authed-staging=1");
-    expect(background).toEqual([postCommitTail.promise]);
+    expect(background[0]).toBe(postCommitTail.promise);
+    expect(background).toHaveLength(2);
     expect(primeVerifiedUserSessionCache).toHaveBeenCalledWith(
       "valid-steward-token",
       expect.objectContaining({ id: "cloud-user-1", organization_id: "org-1" }),
+    );
+    expect(emitAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { type: "user", id: "cloud-user-1" },
+        action: "auth.login",
+        result: "success",
+      }),
     );
 
     const personalResponse = await app.fetch(
@@ -237,10 +271,14 @@ describe("POST /api/auth/steward-session post-commit tail", () => {
     });
     expect(getByStewardId).toHaveBeenCalledTimes(2);
     expect(findActivePersonalDedicatedTarget).toHaveBeenCalledTimes(1);
-    expect(background).toEqual([postCommitTail.promise]);
+    expect(background).toHaveLength(2);
 
     postCommitTail.resolve();
-    await expect(background[0]).resolves.toBeUndefined();
+    auditTail.resolve();
+    await expect(Promise.all(background)).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   test("required default API-key failure remains fail-closed and plants no cookie or cache", async () => {
@@ -282,10 +320,76 @@ describe("POST /api/auth/steward-session post-commit tail", () => {
     expect(response.headers.get("set-cookie")).toContain(
       "steward-token-staging=valid-steward-token",
     );
-    expect(background).toEqual([postCommitTail.promise]);
+    expect(background).toHaveLength(2);
 
     postCommitTail.resolve();
-    await expect(background[0]).resolves.toBeUndefined();
+    await expect(Promise.all(background)).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("audit failure stays fail-open after cookie mint", async () => {
+    emitAudit.mockRejectedValueOnce(new Error("audit unavailable"));
+    const background: Promise<unknown>[] = [];
+    const app = new Hono();
+    app.route("/api/auth/steward-session", stewardSessionRoute);
+
+    const response = await app.fetch(sessionRequest(), ENV, {
+      waitUntil: (promise: Promise<unknown>) => background.push(promise),
+      passThroughOnException: () => undefined,
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain(
+      "steward-token-staging=valid-steward-token",
+    );
+    expect(background).toHaveLength(2);
+
+    postCommitTail.resolve();
+    await expect(Promise.all(background)).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("non-Worker callers retain inline cache and audit completion", async () => {
+    const cachePrimeStarted = deferred<void>();
+    const cachePrimeTail = deferred<void>();
+    const auditStarted = deferred<void>();
+    const auditTail = deferred<void>();
+    primeVerifiedUserSessionCache.mockImplementationOnce(async () => {
+      cachePrimeStarted.resolve();
+      await cachePrimeTail.promise;
+    });
+    emitAudit.mockImplementationOnce(async () => {
+      auditStarted.resolve();
+      await auditTail.promise;
+    });
+    const app = new Hono();
+    app.route("/api/auth/steward-session", stewardSessionRoute);
+
+    let responseSettled = false;
+    const responsePromise = Promise.resolve(
+      app.fetch(sessionRequest(), ENV),
+    ).then((response) => {
+      responseSettled = true;
+      return response;
+    });
+
+    await cachePrimeStarted.promise;
+    expect(responseSettled).toBe(false);
+    cachePrimeTail.resolve();
+
+    await auditStarted.promise;
+    expect(responseSettled).toBe(false);
+    auditTail.resolve();
+
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain(
+      "steward-token-staging=valid-steward-token",
+    );
   });
 
   test("returning-user exchanges do not suppress cache-miss self-heal", async () => {
@@ -304,6 +408,7 @@ describe("POST /api/auth/steward-session post-commit tail", () => {
 
     expect(response.status).toBe(200);
     expect(primeVerifiedUserSessionCache).not.toHaveBeenCalled();
-    expect(background).toHaveLength(0);
+    expect(background).toHaveLength(1);
+    await expect(background[0]).resolves.toBeUndefined();
   });
 });

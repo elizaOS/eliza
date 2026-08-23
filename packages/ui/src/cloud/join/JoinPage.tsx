@@ -113,6 +113,11 @@ export default function JoinPage(): React.JSX.Element {
 
   useEffect(
     () => () => {
+      // React StrictMode performs a development-only setup → cleanup → setup
+      // cycle while preserving refs. Reset the launch guard before aborting so
+      // the second setup can replace the intentionally cancelled request.
+      // On a real unmount there is no second setup, so this remains inert.
+      startedRef.current = false;
       activeAttemptRef.current?.controller.abort(
         new DOMException("Join page unmounted", "AbortError"),
       );

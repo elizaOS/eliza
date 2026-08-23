@@ -72,6 +72,7 @@ export interface StewardSyncExecutionContext {
 }
 
 const STEWARD_IDENTITY_UNIQUE_CONSTRAINT = "user_identities_steward_user_id_unique";
+const ORGANIZATION_SLUG_UNIQUE_CONSTRAINT = "organizations_slug_unique";
 
 function extractErrorMetadata(candidate: unknown): {
   code?: string;
@@ -146,6 +147,21 @@ function isRecoverableStewardProjectionConflict(error: unknown): boolean {
     causeMetadata.constraint === STEWARD_IDENTITY_UNIQUE_CONSTRAINT;
 
   return isUniqueViolation && hasExactStewardConstraint;
+}
+
+function isOrganizationSlugConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const errorMetadata = extractErrorMetadata(error);
+  const causeMetadata = "cause" in error ? extractErrorMetadata(error.cause) : { message: "" };
+  const isUniqueViolation = errorMetadata.code === "23505" || causeMetadata.code === "23505";
+  const hasExactSlugConstraint =
+    errorMetadata.constraint === ORGANIZATION_SLUG_UNIQUE_CONSTRAINT ||
+    causeMetadata.constraint === ORGANIZATION_SLUG_UNIQUE_CONSTRAINT;
+
+  return isUniqueViolation && hasExactSlugConstraint;
 }
 
 async function recoverCanonicalStewardUser(
@@ -260,6 +276,12 @@ export interface StewardSyncParams {
   sharedRuntimeConversationNamespace?: RuntimeDurableObjectNamespace;
   /** Worker lifetime for direct-new-user post-commit provisioning. */
   executionCtx?: StewardSyncExecutionContext;
+  /**
+   * Optional direct-signup barrier invoked after required API-key readiness
+   * and before independently recoverable onboarding work starts. The caller
+   * owns its error policy; returning-user and account-link paths never run it.
+   */
+  afterRequiredSignupProvisioning?: (user: UserWithOrganization) => Promise<void>;
 }
 
 type DirectSignupProvisioningOperation = {
@@ -290,14 +312,20 @@ async function provisionDirectSignupResources(input: {
   userId: string;
   organizationId: string;
   executionCtx?: StewardSyncExecutionContext;
+  afterRequiredSignupProvisioning?: () => Promise<void>;
 }): Promise<void> {
-  const { userId, organizationId, executionCtx } = input;
+  const { userId, organizationId, executionCtx, afterRequiredSignupProvisioning } = input;
 
   // A default API key is required account readiness, and no durable outbox or
   // restart-safe reconciler owns it. Keep this strict and on the response path
   // for Worker and non-Worker callers alike. The route can therefore prime its
   // verified session cache only after required key readiness has succeeded.
   await apiKeysService.provisionDefaultApiKey(userId, organizationId);
+
+  // The Cloud auth boundary uses this barrier to prime the verified session
+  // projection before optional character/tenant subrequests begin. Keeping the
+  // hook here makes that ordering explicit without weakening API-key readiness.
+  await afterRequiredSignupProvisioning?.();
 
   if (!executionCtx) {
     // Preserve the non-Worker contract: character and tenant provisioning keep
@@ -600,6 +628,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     stewardUserId,
     ...(verifiedPhone ? { phoneNumber: verifiedPhone } : {}),
   });
+  const inspectedCanonicalUser = pending.status === "canonical_user" ? pending.user : undefined;
   if (pending.status === "identity_projection_conflict") {
     throw new StewardTelegramAccountClaimError(pending.status);
   }
@@ -750,7 +779,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // misread the subject's own account as `steward_subject_owned_by_other_user`
   // and 409 the first verified-phone session (#19365). An existing user links
   // the unowned verified phone through the existing-user path below instead.
-  let user = claimedTelegramUser ?? (await usersService.getByStewardId(stewardUserId));
+  let user = claimedTelegramUser ?? inspectedCanonicalUser;
 
   // A signed inbound text creates a phone-only personal account before any
   // browser session exists. SMS login may claim only that exact synthetic
@@ -1042,40 +1071,37 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
 
   // ── 5. Create new user + organization ────────────────────────────────
 
-  // Generate organization slug
-  let orgSlug: string;
-  if (email) {
-    orgSlug = generateSlugFromEmail(email);
-  } else if (walletAddress) {
-    orgSlug = generateSlugFromWallet(walletAddress);
-  } else if (name) {
-    orgSlug = generateSlugFromName(name);
-  } else {
+  const generateOrganizationSlug = (): string => {
+    if (email) return generateSlugFromEmail(email);
+    if (walletAddress) return generateSlugFromWallet(walletAddress);
+    if (name) return generateSlugFromName(name);
     throw new Error(`Cannot generate organization slug for Steward user ${stewardUserId}`);
-  }
+  };
 
-  // Ensure slug uniqueness
-  let attempts = 0;
-  while (await organizationsService.getBySlug(orgSlug)) {
-    attempts++;
-    if (attempts > 10) {
-      throw new Error(
-        `Failed to generate unique organization slug for Steward user ${stewardUserId}`,
-      );
+  // The database's unique constraint is the authority. Avoid a redundant
+  // preflight read (and its TOCTOU window); retry only the exact slug
+  // constraint, never unrelated organization insert failures.
+  let orgSlug = generateOrganizationSlug();
+  let organization: Awaited<ReturnType<typeof organizationsService.create>> | undefined;
+  for (let attempt = 0; attempt <= 10; attempt += 1) {
+    try {
+      organization = await organizationsService.create({
+        name: `${name}'s Organization`,
+        slug: orgSlug,
+        credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
+      });
+      break;
+    } catch (error) {
+      if (!isOrganizationSlugConflict(error) || attempt === 10) {
+        throw error;
+      }
+      orgSlug = generateOrganizationSlug();
     }
-    orgSlug = email
-      ? generateSlugFromEmail(email)
-      : walletAddress
-        ? generateSlugFromWallet(walletAddress)
-        : generateSlugFromName(name);
   }
 
-  // Create organization with zero balance initially
-  const organization = await organizationsService.create({
-    name: `${name}'s Organization`,
-    slug: orgSlug,
-    credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
-  });
+  if (!organization) {
+    throw new Error(`Failed to create organization for Steward user ${stewardUserId}`);
+  }
 
   // Cloud identity is created at $0. Shared service access is not a credit
   // grant, and purchased credits remain exclusive to explicit funding paths.
@@ -1083,10 +1109,12 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
 
   // Create user, handle race conditions
-  let createdUser: Awaited<ReturnType<typeof usersService.create>> | undefined;
+  let createdUser:
+    | Awaited<ReturnType<typeof usersService.createFreshStewardSignupUser>>
+    | undefined;
 
   try {
-    createdUser = await usersService.create({
+    createdUser = await usersService.createFreshStewardSignupUser({
       steward_user_id: stewardUserId,
       email: email || null,
       email_verified: !!email,
@@ -1185,9 +1213,15 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     throw new Error(`Failed to create user for Steward user ${stewardUserId}`);
   }
 
-  // Upsert identity projection
+  // Initialize the identity projection from the exact row returned by the
+  // fresh insert. The direct-signup lookups above proved this subject absent,
+  // so the generic link path's prior-state reads and cache invalidations would
+  // only add database/cache round trips to the first session handoff.
   try {
-    await usersService.upsertStewardIdentity(createdUser.id, stewardUserId);
+    await usersService.initializeFreshStewardIdentity({
+      user: createdUser,
+      stewardUserId,
+    });
   } catch (error) {
     const recovered = await recoverCanonicalStewardUser(
       createdUser.id,
@@ -1206,14 +1240,37 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     }
   }
 
-  // Fetch final user with organization
-  const userWithOrg = await usersService.getByStewardIdForWrite(stewardUserId);
+  // Both inserts and the identity projection have committed successfully. Use
+  // their primary RETURNING rows instead of immediately reading the same user
+  // and organization back through the database and cache.
+  const userWithOrg: UserWithOrganization = {
+    ...createdUser,
+    organization,
+  };
 
-  if (!userWithOrg) {
-    throw new Error(`Failed to fetch newly created Steward user ${stewardUserId}`);
+  // Identity is committed above, but the default API key remains required
+  // readiness and is awaited strictly before this function can return. Only
+  // the default character and Steward tenant have proven deterministic repair
+  // paths, so Workers may keep those two concurrent operations alive through
+  // waitUntil. Tests and non-Worker callers retain the prior inline ordering.
+  const newOrganizationId = userWithOrg.organization?.id;
+  if (!newOrganizationId) {
+    throw new Error(`New Steward user ${userWithOrg.id} is missing its organization`);
   }
+  const afterRequiredSignupProvisioning = params.afterRequiredSignupProvisioning;
+  await provisionDirectSignupResources({
+    userId: userWithOrg.id,
+    organizationId: newOrganizationId,
+    executionCtx: params.executionCtx,
+    afterRequiredSignupProvisioning: afterRequiredSignupProvisioning
+      ? () => afterRequiredSignupProvisioning(userWithOrg)
+      : undefined,
+  });
 
-  // Send welcome email (fire-and-forget)
+  // Start best-effort notifications only after required key readiness, the
+  // caller's session-cache barrier, and waitUntil registration have completed.
+  // This keeps external notification subrequests from contending with the
+  // first authorization projection write.
   const recipientEmail = email || userWithOrg.organization?.billing_email;
   if (recipientEmail) {
     queueWelcomeEmail({
@@ -1231,7 +1288,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     });
   }
 
-  // Log to Discord (fire-and-forget)
   discordService
     .logUserSignup({
       userId: userWithOrg.id,
@@ -1247,21 +1303,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     .catch((error) => {
       logger.error("[StewardSync] Discord signup log failed:", { error });
     });
-
-  // Identity is committed above, but the default API key remains required
-  // readiness and is awaited strictly before this function can return. Only
-  // the default character and Steward tenant have proven deterministic repair
-  // paths, so Workers may keep those two concurrent operations alive through
-  // waitUntil. Tests and non-Worker callers retain the prior inline ordering.
-  const newOrganizationId = userWithOrg.organization?.id;
-  if (!newOrganizationId) {
-    throw new Error(`New Steward user ${userWithOrg.id} is missing its organization`);
-  }
-  await provisionDirectSignupResources({
-    userId: userWithOrg.id,
-    organizationId: newOrganizationId,
-    executionCtx: params.executionCtx,
-  });
 
   return {
     ...userWithOrg,

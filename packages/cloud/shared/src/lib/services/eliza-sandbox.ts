@@ -26,6 +26,7 @@ import {
   agentSandboxesRepository,
   hydrateAgentSandboxBackup,
   PRE_DELETE_BACKUP_RETENTION_MS,
+  type ProvisioningAdmissionCapture,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "../../db/repositories/characters";
@@ -447,7 +448,18 @@ function rejectNonContainerBackedProvision(
  * entirely. Callers that omit an override keep latest-backup auto-restore.
  */
 export type ProvisionRestoreOverride =
-  | { kind: "from-backup"; backupId: string; requireRestoreEndpoint?: boolean }
+  | {
+      kind: "from-backup";
+      backupId: string;
+      requireRestoreEndpoint?: false;
+      expectedAdmission?: never;
+    }
+  | {
+      kind: "from-backup";
+      backupId: string;
+      requireRestoreEndpoint: true;
+      expectedAdmission: ProvisioningAdmissionCapture;
+    }
   | { kind: "fresh-boot" };
 
 export type DeleteAgentResult =
@@ -1463,7 +1475,7 @@ export class ElizaSandboxService {
     const rawName =
       typeof rawConfig.name === "string" && rawConfig.name.trim()
         ? rawConfig.name.trim()
-        : rec.agent_name?.trim() || `Cloud Agent ${rec.id.slice(0, 8)}`;
+        : rec.agent_name?.trim() || `Cloud Agent ${rec.id}`;
     const plugins =
       Array.isArray(rawConfig.plugins) && rawConfig.plugins.length > 0
         ? rawConfig.plugins
@@ -3237,70 +3249,98 @@ export class ElizaSandboxService {
     orgId: string,
     restoreOverride?: ProvisionRestoreOverride,
   ): Promise<ProvisionResult> {
-    let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
-    const initialTierRejection = rejectNonContainerBackedProvision(rec);
-    if (initialTierRejection) return initialTierRejection;
-    if (rec.claimed_at && rec.warm_claim_credential_state === "failed") {
-      const retryPreparation = await this.retireFailedWarmClaimForRetry(agentId, orgId);
-      if (!retryPreparation.success) {
-        return {
-          success: false,
-          sandboxRecord: rec,
-          error: retryPreparation.error,
-        };
-      }
-      rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-      if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
-      const retryTierRejection = rejectNonContainerBackedProvision(rec);
-      if (retryTierRejection) return retryTierRejection;
-    }
-    if (this.getReplacementCleanupLocator(rec)) {
-      try {
-        await this.retirePersistedReplacementCleanup(agentId, orgId);
-      } catch (error) {
-        // error-policy:J1 provisioning boundary translation — unresolved cleanup
-        // becomes an explicit retryable failure while the durable fence remains.
-        return {
-          success: false,
-          retryable: true,
-          sandboxRecord: rec,
-          error: `Replacement cleanup is still pending: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        };
-      }
-      rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-      if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
-      const cleanupTierRejection = rejectNonContainerBackedProvision(rec);
-      if (cleanupTierRejection) return cleanupTierRejection;
-    }
+    const expectedAdmission =
+      restoreOverride?.kind === "from-backup" && restoreOverride.requireRestoreEndpoint
+        ? restoreOverride.expectedAdmission
+        : undefined;
+    let rec: AgentSandbox;
+    let previousStatus: AgentSandboxStatus;
 
-    const previousStatus = rec.status;
-    const lock = await agentSandboxesRepository.trySetProvisioning(rec.id);
-    if (!lock) {
-      if (rec.status === "running" && rec.bridge_url && rec.health_url) {
-        if (restoreOverride?.kind === "from-backup") {
+    if (expectedAdmission) {
+      if (expectedAdmission.id !== agentId || expectedAdmission.organization_id !== orgId) {
+        return { success: false, error: RESTORE_AUTHORITY_CHANGED };
+      }
+      // Manual stopped restore selected and hydrated a specific backup from this
+      // exact generation. Admission must therefore be the first lifecycle
+      // action: a replica re-read, cleanup preparation, or generic running-row
+      // reuse could otherwise mutate/report a different generation while
+      // claiming that the selected backup was applied.
+      const lock =
+        await agentSandboxesRepository.trySetProvisioningFromRestoreCapture(expectedAdmission);
+      if (!lock) {
+        return { success: false, error: RESTORE_AUTHORITY_CHANGED };
+      }
+      rec = lock;
+      // Preserve the captured pre-CAS state. The returned row is already
+      // `provisioning`; using that value would incorrectly re-probe a retained
+      // stopped handle instead of creating the restore replacement.
+      previousStatus = expectedAdmission.status;
+    } else {
+      let candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const initialTierRejection = rejectNonContainerBackedProvision(candidate);
+      if (initialTierRejection) return initialTierRejection;
+      if (candidate.claimed_at && candidate.warm_claim_credential_state === "failed") {
+        const retryPreparation = await this.retireFailedWarmClaimForRetry(agentId, orgId);
+        if (!retryPreparation.success) {
           return {
             success: false,
-            sandboxRecord: rec,
-            error: RESTORE_AUTHORITY_CHANGED,
+            sandboxRecord: candidate,
+            error: retryPreparation.error,
+          };
+        }
+        candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+        if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
+        const retryTierRejection = rejectNonContainerBackedProvision(candidate);
+        if (retryTierRejection) return retryTierRejection;
+      }
+      if (this.getReplacementCleanupLocator(candidate)) {
+        try {
+          await this.retirePersistedReplacementCleanup(agentId, orgId);
+        } catch (error) {
+          // error-policy:J1 provisioning boundary translation — unresolved cleanup
+          // becomes an explicit retryable failure while the durable fence remains.
+          return {
+            success: false,
+            retryable: true,
+            sandboxRecord: candidate,
+            error: `Replacement cleanup is still pending: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          };
+        }
+        candidate = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+        if (!candidate) return { success: false, error: "Agent not found" } as ProvisionResult;
+        const cleanupTierRejection = rejectNonContainerBackedProvision(candidate);
+        if (cleanupTierRejection) return cleanupTierRejection;
+      }
+
+      previousStatus = candidate.status;
+      const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
+      if (!lock) {
+        if (candidate.status === "running" && candidate.bridge_url && candidate.health_url) {
+          if (restoreOverride?.kind === "from-backup") {
+            return {
+              success: false,
+              sandboxRecord: candidate,
+              error: RESTORE_AUTHORITY_CHANGED,
+            };
+          }
+          return {
+            success: true,
+            sandboxRecord: candidate,
+            bridgeUrl: candidate.bridge_url,
+            healthUrl: candidate.health_url,
           };
         }
         return {
-          success: true,
-          sandboxRecord: rec,
-          bridgeUrl: rec.bridge_url,
-          healthUrl: rec.health_url,
+          success: false,
+          sandboxRecord: candidate,
+          error: "Agent is already being provisioned",
         };
       }
-      return {
-        success: false,
-        sandboxRecord: rec,
-        error: "Agent is already being provisioned",
-      };
+      rec = lock;
     }
-    rec = lock;
 
     // 1. Database
     let dbUri = rec.database_uri;
@@ -7686,6 +7726,18 @@ export class ElizaSandboxService {
         kind: "from-backup",
         backupId: storedBackup.id,
         requireRestoreEndpoint: true,
+        expectedAdmission: {
+          id: rec.id,
+          organization_id: rec.organization_id,
+          status: rec.status,
+          lifecycle_job_id: rec.lifecycle_job_id,
+          lifecycle_execution_generation: rec.lifecycle_execution_generation,
+          execution_tier: rec.execution_tier,
+          pool_status: rec.pool_status,
+          deleted_at: rec.deleted_at,
+          deletion_attempt_id: rec.deletion_attempt_id,
+          lifecycle_revision: rec.lifecycle_revision,
+        },
       });
       return prov.success ? { success: true, backup } : { success: false, error: prov.error };
     }

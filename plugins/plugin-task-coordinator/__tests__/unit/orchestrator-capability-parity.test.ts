@@ -39,6 +39,7 @@ import {
   ORCHESTRATOR_CAPABILITY_IDS,
   runOrchestratorCapability,
 } from "../../src/orchestrator-capabilities";
+import { HUMAN_ONLY_ORCHESTRATOR_CAPABILITY_IDS } from "../../src/orchestrator-capability-authority";
 
 function manifestCapabilityIds(): Set<string> {
   const ids = new Set<string>();
@@ -69,6 +70,20 @@ describe("orchestrator capability manifest↔dispatch parity", () => {
     expect(ORCHESTRATOR_CAPABILITY_IDS.size).toBeGreaterThan(0);
     expect([...manifest].sort()).toEqual(
       [...ORCHESTRATOR_CAPABILITY_IDS].sort(),
+    );
+  });
+
+  it("marks every human-only mutation in the trusted manifest", () => {
+    const capabilities = taskCoordinatorPlugin.views?.find(
+      (view) => view.id === "orchestrator",
+    )?.capabilities;
+    const humanOnly = new Set(
+      capabilities
+        ?.filter((capability) => capability.authority === "human")
+        .map((capability) => capability.id),
+    );
+    expect([...humanOnly].sort()).toEqual(
+      [...HUMAN_ONLY_ORCHESTRATOR_CAPABILITY_IDS].sort(),
     );
   });
 

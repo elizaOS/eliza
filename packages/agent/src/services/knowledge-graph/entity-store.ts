@@ -592,7 +592,11 @@ export class EntityStore {
         }
         return { entity, confidence, evidence, safeToSend };
       })
-      .sort((a, b) => b.confidence - a.confidence);
+      .sort((a, b) => {
+        const aConf = Number.isFinite(a.confidence) ? a.confidence : 0;
+        const bConf = Number.isFinite(b.confidence) ? b.confidence : 0;
+        return bConf - aConf;
+      });
   }
 
   /**

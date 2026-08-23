@@ -25,3 +25,45 @@ describe("MediaPipeFaceDetector compatibility surface", () => {
     await expect(det.initialize()).rejects.toBeInstanceOf(Error);
   });
 });
+
+describe("YOLODetector NMS sorting", () => {
+  it("maintains strict total ordering when detection scores contain non-finite values", () => {
+    const yolo = new YOLODetector();
+    const detections = [
+      {
+        classId: 0,
+        className: "person",
+        score: 0.9,
+        x: 10,
+        y: 10,
+        width: 50,
+        height: 50,
+      },
+      {
+        classId: 0,
+        className: "person",
+        score: Number.NaN,
+        x: 10,
+        y: 10,
+        width: 50,
+        height: 50,
+      },
+      {
+        classId: 0,
+        className: "person",
+        score: 0.8,
+        x: 100,
+        y: 100,
+        width: 50,
+        height: 50,
+      },
+    ];
+    const nms = (
+      yolo as unknown as { nms: (dets: typeof detections) => typeof detections }
+    ).nms.bind(yolo);
+    const kept = nms(detections);
+    expect(kept).toHaveLength(2);
+    expect(kept[0]?.score).toBe(0.9);
+    expect(kept[1]?.score).toBe(0.8);
+  });
+});

@@ -24,44 +24,11 @@
         <button id="primaryAction" class="primary" type="button" hidden></button>
       </section>
 
-      <details id="details" class="details">
+      <details id="details" class="details" hidden>
         <summary>Details</summary>
-        <dl>
-          <div>
-            <dt>App</dt>
-            <dd id="appValue">Looking for Eliza…</dd>
-          </div>
-          <div>
-            <dt>Last connected</dt>
-            <dd id="lastSyncValue">Not yet</dd>
-          </div>
-          <div>
-            <dt>Browser mode</dt>
-            <dd id="modeValue">Not available</dd>
-          </div>
-          <div>
-            <dt>Shared tabs</dt>
-            <dd id="tabCountValue">0</dd>
-          </div>
-        </dl>
         <button id="disconnect" class="disconnect" type="button" hidden>
           Disconnect this browser
         </button>
-
-        <details id="recovery" class="recovery">
-          <summary>Advanced recovery</summary>
-          <label for="pairingJson">Pairing JSON from Eliza</label>
-          <textarea
-            id="pairingJson"
-            rows="5"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-          ></textarea>
-          <button id="importPairing" class="secondary" type="button">
-            Import pairing
-          </button>
-        </details>
       </details>
     </main>
     <script src="./popup.js"></script>

@@ -513,8 +513,8 @@ const optionalPluginStubs = {
   // Bun's bundler still has to resolve them statically. The plugins
   // are workspace-only deps on app-lifeops and aren't in
   // packages/agent's resolution scope, so stub them out here. Trying to
-  // bundle the real packages also drags Baileys / libsignal native
-  // bindings into the mobile bundle, which is wrong on every axis.
+  // bundle the real package also drags Baileys native bindings into the mobile
+  // bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
   // Desktop/server-only optional integrations. The mobile agent does not host
   // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
@@ -543,7 +543,7 @@ const optionalPluginStubs = {
   // `await import("@elizaos/plugin-meetings")` when a voice session starts,
   // but Bun still resolves that dynamic import statically. A phone never
   // hosts a Chromium meeting bot; transcripts arrive via the local API
-  // routes instead, so stub the whole package like whatsapp/signal above.
+  // routes instead, so stub the whole package like WhatsApp above.
   "@elizaos/plugin-meetings": path.join(stubsDir, "null-plugin.cjs"),
 };
 

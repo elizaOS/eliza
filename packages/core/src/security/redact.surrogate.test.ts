@@ -12,7 +12,7 @@ function isWellFormed(value: string): boolean {
 describe("security redact surrogate safety", () => {
 	test("emoji in token head backs off without lone surrogate", () => {
 		const fox = "🦊";
-		const token = "abc" + fox + "long_secret_key_123456789";
+		const token = `abc${fox}long_secret_key_123456789`;
 		const text = `API_KEY=${token}`;
 		const redacted = redactSensitiveText(text);
 		expect(isWellFormed(redacted)).toBe(true);
@@ -22,7 +22,7 @@ describe("security redact surrogate safety", () => {
 
 	test("emoji in token tail backs off without lone surrogate", () => {
 		const fox = "🦊";
-		const token = "long_prefix_secret_token_123" + fox + "xyz";
+		const token = `long_prefix_secret_token_123${fox}xyz`;
 		const text = `API_KEY=${token}`;
 		const redacted = redactSensitiveText(text);
 		expect(isWellFormed(redacted)).toBe(true);
