@@ -20,6 +20,7 @@
  * decoding path, no live model.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { ELIZA_TRACE_ID_HEADER } from "../observability/http-telemetry";
 import { logger } from "../utils/logger";
@@ -531,9 +532,12 @@ function extractErrorMessage(payload: string): string {
     if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message;
   } catch (error) {
     // Preserve a bounded raw payload when the canonical route returns malformed JSON.
-    return payload.slice(0, 256) || `unknown agent stream error: ${String(error)}`;
+    return (
+      truncateWellFormed(toWellFormedUnicode(payload), 256) ||
+      `unknown agent stream error: ${String(error)}`
+    );
   }
-  return payload.slice(0, 256) || "unknown agent stream error";
+  return truncateWellFormed(toWellFormedUnicode(payload), 256) || "unknown agent stream error";
 }
 
 function extractPayloadType(payload: string): string | null {
