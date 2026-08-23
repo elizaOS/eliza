@@ -8,8 +8,8 @@
  * without `tool_choice`.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { GenerateTextResult, TextStreamResult, TokenUsage, ToolCall } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { ModelMessage, ToolSet } from "ai";
 import { estimateUsage } from "./modelUsage";
 
