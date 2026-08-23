@@ -546,6 +546,18 @@ export class ComputerUseService extends Service {
     return this.sessionManager.close(id);
   }
 
+  pauseSession(id: string): ComputerUseSessionSnapshot {
+    return this.sessionManager.pause(id);
+  }
+
+  resumeSession(id: string): ComputerUseSessionSnapshot {
+    return this.sessionManager.resume(id);
+  }
+
+  stopSession(id: string): ComputerUseSessionSnapshot {
+    return this.sessionManager.stop(id);
+  }
+
   renewSessionLease(
     id: string,
     leaseTtlMs?: number,
@@ -643,7 +655,7 @@ export class ComputerUseService extends Service {
 
   private async captureSessionTargetFrame(
     target: ComputerUseSessionTarget,
-  ): Promise<Omit<ComputerUseSessionFrame, "capturedAt">> {
+  ): Promise<Omit<ComputerUseSessionFrame, "capturedAt" | "provenance">> {
     if (target.kind === "host") {
       const result = await this.executeDesktopAction({ action: "screenshot" });
       if (!result.success || !result.screenshot) {

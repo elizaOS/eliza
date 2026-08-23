@@ -55,6 +55,13 @@ The Windows release-evidence path is executable with
 fresh Notepad process, serves the browser fixture from a disposable loopback
 origin, and emits a strict-validator-compatible evidence bundle.
 
+The local browser-only safety path is executable with
+`bun run test:e2e:browser-fixture`. It launches an isolated headless browser
+against an ephemeral loopback page, captures a real screenshot, binds the
+authorized click to that observation, verifies the page transition, and proves
+that the consumed frame cannot authorize a repeated action. It never drives the
+host cursor or an existing browser profile.
+
 ## Surface
 
 - **Actions** — `COMPUTER_USE` (canonical screenshot / click / key /
@@ -71,11 +78,22 @@ origin, and emits a strict-validator-compatible evidence bundle.
 - **Routes** — approval inbox + SSE stream + approval-mode toggle under
   `/api/computer-use/...`.
 - **Sessions** — authenticated `/api/computer-use/sessions` CRUD, action,
-  read-only frame, lease-renewal, and SSE routes expose exclusive physical-host ownership plus
-  concurrent browser/sandbox/remote-guest targets. Each action carries a
-  unique id and expected sequence; stale, duplicate, busy, and cross-target
-  attempts fail closed. Cursor state is virtual per session. A desktop still
-  has one physical mouse and keyboard.
+  read-only frame, lease-renewal, pause/resume/stop, and SSE routes expose
+  exclusive physical-host ownership plus concurrent
+  browser/sandbox/remote-guest targets. The compatibility DTO now projects the
+  core v2 interaction semantics: canonical state/isolation/generation,
+  screenshot observation IDs and SHA-256 provenance, typed outcomes, and
+  metadata-only events. Every consequential action binds to the latest
+  unconsumed observation; stale, wrong-target, duplicate, busy, and repeated
+  unchanged-screen attempts fail closed. Cursor state remains virtual per
+  session. A desktop still has one physical mouse and keyboard.
+- **Safety** — secure accessibility fields and overlapping OCR are structurally
+  redacted before model prompting. Screenshot/OCR/page text is explicitly
+  untrusted, the autonomous loop has owner cancellation plus a repeated-action
+  guard, and the existing approval manager remains the authority for
+  consequential dispatch. The session monitor shows capture/input/browser/
+  vision readiness, approval mode, provenance, outcomes, history, and
+  pause/resume/stop controls.
 
 ## File operations + shell
 
