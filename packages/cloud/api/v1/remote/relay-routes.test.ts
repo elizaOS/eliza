@@ -39,12 +39,13 @@ const listOwned = mock();
 const revokeHost = mock();
 const revokeAuthenticatedHost = mock();
 const recordManagedEnrollment = mock();
+const recordManagedCleanupPending = mock();
 const recordManagedCleanupFailure = mock();
 const completeManagedCleanup = mock();
 const createPreAuthKey = mock();
 const expirePreAuthKey = mock();
 const deletePreAuthKey = mock();
-const getNodeByNameStrict = mock();
+const listNodesStrict = mock();
 const deleteNode = mock();
 const createPendingForOwnedAgent = mock();
 const createPendingForOwnedHost = mock();
@@ -69,6 +70,7 @@ mock.module("@/db/repositories/remote-hosts", () => ({
     revoke: revokeHost,
     revokeAuthenticated: revokeAuthenticatedHost,
     recordManagedEnrollment,
+    recordManagedCleanupPending,
     recordManagedCleanupFailure,
     completeManagedCleanup,
   },
@@ -78,7 +80,7 @@ mock.module("@/lib/services/headscale-client", () => ({
     createPreAuthKey = createPreAuthKey;
     expirePreAuthKey = expirePreAuthKey;
     deletePreAuthKey = deletePreAuthKey;
-    getNodeByNameStrict = getNodeByNameStrict;
+    listNodesStrict = listNodesStrict;
     deleteNode = deleteNode;
   },
 }));
@@ -208,12 +210,13 @@ beforeEach(() => {
     revokeHost,
     revokeAuthenticatedHost,
     recordManagedEnrollment,
+    recordManagedCleanupPending,
     recordManagedCleanupFailure,
     completeManagedCleanup,
     createPreAuthKey,
     expirePreAuthKey,
     deletePreAuthKey,
-    getNodeByNameStrict,
+    listNodesStrict,
     deleteNode,
     createPendingForOwnedAgent,
     createPendingForOwnedHost,
@@ -243,7 +246,7 @@ beforeEach(() => {
   });
   expirePreAuthKey.mockResolvedValue(undefined);
   deletePreAuthKey.mockResolvedValue(undefined);
-  getNodeByNameStrict.mockResolvedValue(null);
+  listNodesStrict.mockResolvedValue([]);
   deleteNode.mockResolvedValue(undefined);
 });
 
@@ -309,9 +312,12 @@ describe("secure remote relay routes", () => {
     const body = (await response.json()) as {
       data: {
         hostToken: string;
+        status: string;
         managedNetworkEnrollment: { authKey: string; hostname: string };
       };
     };
+    expect(createOwned.mock.calls[0]?.[0]).toMatchObject({ status: "pending" });
+    expect(body.data.status).toBe("active");
     expect(body.data.managedNetworkEnrollment.authKey).toBe(
       "hskey-auth-one-use-secret",
     );
@@ -387,6 +393,11 @@ describe("secure remote relay routes", () => {
         revoked_at: null,
       },
       {
+        id: "40000000-0000-4000-8000-000000000003",
+        status: "pending",
+        created_at: new Date(),
+      },
+      {
         id: staleHostId,
         device_id: "linux-stale",
         display_name: "Linux Stale",
@@ -418,6 +429,7 @@ describe("secure remote relay routes", () => {
       encryptionPublicKeyJwk: publicJwk,
       status: "active",
     });
+    expect(body.data.hosts).toHaveLength(2);
     expect(body.data.hosts[1]).toMatchObject({
       id: staleHostId,
       status: "offline",
@@ -779,11 +791,18 @@ describe("secure remote relay routes", () => {
         headscale_hostname: "eliza-host-one",
         headscale_preauth_key_id: "123",
         headscale_cleanup_pending: true,
+        created_at: new Date(0),
       },
       alreadyRevoked: true,
       cleanup: { sessions: 0, commands: 0, more: false },
     });
-    getNodeByNameStrict.mockResolvedValue({ id: "9" });
+    listNodesStrict.mockResolvedValue([
+      {
+        id: "9",
+        name: "eliza-host-one",
+        createdAt: new Date(0).toISOString(),
+      },
+    ]);
     const response = await request(
       `/api/v1/remote/hosts/${hostId}/revoke`,
       {},

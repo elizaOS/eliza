@@ -18,7 +18,7 @@ import {
 import { organizations } from "./organizations";
 import { users } from "./users";
 
-export const REMOTE_HOST_STATUSES = ["active", "revoked"] as const;
+export const REMOTE_HOST_STATUSES = ["pending", "active", "revoked"] as const;
 export type RemoteHostStatus = (typeof REMOTE_HOST_STATUSES)[number];
 
 export const remoteHosts = pgTable(

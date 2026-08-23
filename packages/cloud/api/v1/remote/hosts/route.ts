@@ -31,27 +31,29 @@ app.get("/", async (c) => {
       success: true,
       data: {
         ownerId: user.id,
-        hosts: hosts.map((host) => ({
-          id: host.id,
-          deviceId: host.device_id,
-          displayName: host.display_name,
-          platform: host.platform,
-          connectionMode: host.connection_mode,
-          runtimeKeyId: host.runtime_key_id,
-          signingPublicKeyJwk: host.signing_public_jwk,
-          encryptionPublicKeyJwk: host.encryption_public_jwk,
-          status:
-            host.status === "revoked"
-              ? "revoked"
-              : host.last_seen_at &&
-                  Date.now() - host.last_seen_at.getTime() <=
-                    REMOTE_HOST_ONLINE_WINDOW_MS
-                ? "active"
-                : "offline",
-          lastSeenAt: host.last_seen_at,
-          createdAt: host.created_at,
-          revokedAt: host.revoked_at,
-        })),
+        hosts: hosts
+          .filter((host) => host.status !== "pending")
+          .map((host) => ({
+            id: host.id,
+            deviceId: host.device_id,
+            displayName: host.display_name,
+            platform: host.platform,
+            connectionMode: host.connection_mode,
+            runtimeKeyId: host.runtime_key_id,
+            signingPublicKeyJwk: host.signing_public_jwk,
+            encryptionPublicKeyJwk: host.encryption_public_jwk,
+            status:
+              host.status === "revoked"
+                ? "revoked"
+                : host.last_seen_at &&
+                    Date.now() - host.last_seen_at.getTime() <=
+                      REMOTE_HOST_ONLINE_WINDOW_MS
+                  ? "active"
+                  : "offline",
+            lastSeenAt: host.last_seen_at,
+            createdAt: host.created_at,
+            revokedAt: host.revoked_at,
+          })),
       },
     });
   } catch (error) {
@@ -189,7 +191,7 @@ app.post("/", async (c) => {
           signing_public_jwk: identity.signingPublicKeyJwk,
           encryption_public_jwk: identity.encryptionPublicKeyJwk,
           host_token_hash: hostTokenHash,
-          status: "active",
+          status: networkConfig ? "pending" : "active",
         });
     if (result.kind === "conflict") {
       return c.json(
@@ -247,7 +249,7 @@ app.post("/", async (c) => {
           hostId: result.host.id,
           hostToken: token,
           runtimeKeyId: result.host.runtime_key_id,
-          status: result.host.status,
+          status: managedNetworkEnrollment ? "active" : result.host.status,
           createdAt: result.host.created_at,
           recovered: result.kind === "recovered",
           managedNetworkEnrollment,
