@@ -1137,8 +1137,39 @@ export class BrowserDomain {
     companionId: string,
     pairingToken: string,
   ): Promise<BrowserBridgeCompanionRevokeResponse> {
-    const companion = await this.requireBrowserCompanion(
+    const normalizedCompanionId = requireNonEmptyString(
       companionId,
+      "companionId",
+    );
+    const credential = await this.ctx.repository.getBrowserCompanionCredential(
+      this.ctx.agentId(),
+      normalizedCompanionId,
+    );
+    if (
+      credential?.pairingTokenHash ===
+      hashBrowserCompanionPairingToken(pairingToken)
+    ) {
+      const revocation =
+        await this.ctx.repository.getBrowserCompanionRevocation(
+          this.ctx.agentId(),
+          this.ctx.ownerEntityId(),
+          credential.companion.browser,
+          credential.companion.profileId,
+        );
+      if (revocation) {
+        return {
+          companion: {
+            ...credential.companion,
+            connectionState: "disconnected",
+            pairingTokenRevokedAt: revocation.revokedAt,
+            updatedAt: revocation.revokedAt,
+          },
+          revokedAt: revocation.revokedAt,
+        };
+      }
+    }
+    const companion = await this.requireBrowserCompanion(
+      normalizedCompanionId,
       pairingToken,
     );
     return this.revokeBrowserCompanion(companion.id);

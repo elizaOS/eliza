@@ -31,6 +31,10 @@ import {
   installBrowserBridgeRegistration,
   resolveBrowserBridgeNativeHostExecutable,
 } from "./browser-bridge-registration";
+import {
+  PersistentNativeEnrollmentReplayGuard,
+  resolveBrowserBridgeReplayStorePath,
+} from "./browser-bridge-replay-store";
 
 let stopActiveBroker: (() => Promise<void>) | null = null;
 let activeApiBase: string | null = null;
@@ -156,11 +160,16 @@ export async function startBrowserBridgeDesktopLifecycle(options: {
     return false;
   }
   const secret = loadOrCreateBrowserBridgeBrokerSecret(env);
+  const replayGuard = new PersistentNativeEnrollmentReplayGuard(
+    resolveBrowserBridgeReplayStorePath(env),
+    secret,
+  );
   const broker = new BrowserBridgeEnrollmentBroker({
     apiBase: options.apiBase,
     ownerSession: async () => resolveDesktopOwnerSession(options.apiBase, env),
     brokerSecret: secret,
     callerAllowlist: allowlist,
+    replayGuard,
   });
   const servers: BrowserBridgeBrokerServerHandle[] = [];
   const server = await startBrowserBridgeBrokerServer({
@@ -195,6 +204,7 @@ export async function startBrowserBridgeDesktopLifecycle(options: {
             loadOrCreateMacBrowserBridgeSharedSecret
           )(appGroupContainer),
           callerAllowlist: allowlist,
+          replayGuard,
         });
         servers.push(
           await startBrowserBridgeBrokerServer({

@@ -66,7 +66,10 @@ beforeEach(async () => {
         typeof req.headers.authorization === "string"
           ? req.headers.authorization
           : "";
-      if (authorization === "Bearer explicit-session") {
+      if (
+        options.allowBearerAuth !== false &&
+        authorization === "Bearer explicit-session"
+      ) {
         return { ok: true, role: "OWNER", identityId: "owner" };
       }
       if (!options.allowCookieAuth) return { ok: false, role: "NONE" };
@@ -264,6 +267,25 @@ describe("browser companion owner enrollment boundary", () => {
         },
       });
       expect(nonOwner.status).toBe(403);
+
+      const wrongCsrf = await fetch(endpointPath(pathname), {
+        method: "POST",
+        headers: {
+          Cookie: "eliza_session=browser-session",
+          "X-Eliza-CSRF": "wrong-csrf",
+        },
+      });
+      expect(wrongCsrf.status).toBe(401);
+
+      const bearerSubstitution = await fetch(endpointPath(pathname), {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer explicit-session",
+          Cookie: "eliza_session=invalid-session",
+          "X-Eliza-CSRF": "valid-csrf",
+        },
+      });
+      expect(bearerSubstitution.status).toBe(401);
 
       const owner = await fetch(endpointPath(pathname), {
         method: "POST",
