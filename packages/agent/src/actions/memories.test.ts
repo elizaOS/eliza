@@ -135,7 +135,7 @@ function seedRow(
 
 function seedFact(
   rows: StoredRow[],
-  fields: { text: string; entityId: UUID; roomId?: UUID },
+  fields: { text: string; entityId: UUID; roomId?: UUID; createdAt?: number },
 ): UUID {
   return seedRow(rows, { ...fields, tableName: "facts" });
 }
@@ -699,6 +699,25 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("does not treat an omitted type as authorization to delete transcripts", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedRow(rows, {
+      text: "sensitive transcript line",
+      entityId: USER_ID,
+      tableName: "messages",
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "sensitive transcript line",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe("MEMORY_NOT_FOUND");
+    expect(rows).toHaveLength(1);
+  });
+
   it("finds and deletes a scoped match older than the former 200-row window", async () => {
     const { runtime, rows } = makeRuntime();
     const target = seedFact(rows, {
@@ -751,9 +770,17 @@ describe("MEMORY op:search windowed-read disclosure", () => {
   // simply older than the 200-row window.
   it("does not call a windowed match count a total when the window filled up", async () => {
     const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "my sister is named vega", entityId: USER_ID });
+    seedFact(rows, {
+      text: "my sister is named vega",
+      entityId: USER_ID,
+      createdAt: 1,
+    });
     for (let i = 0; i < 250; i++) {
-      seedFact(rows, { text: `unrelated note ${i}`, entityId: USER_ID });
+      seedFact(rows, {
+        text: `unrelated note ${i}`,
+        entityId: USER_ID,
+        createdAt: 2 + i,
+      });
     }
 
     const result = await runAction(runtime, makeMessage(), {

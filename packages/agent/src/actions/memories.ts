@@ -637,6 +637,7 @@ async function doDeleteByQuery(
 
   let scan = await collectCandidates(runtime, {
     type,
+    tables: type ? undefined : FORGET_WIDENING_TABLES,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
