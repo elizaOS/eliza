@@ -5,7 +5,10 @@
  */
 
 import { ElizaError } from "../errors";
-import { lookupModelContextWindow } from "../features/trajectories/pricing";
+import {
+	lookupModelContextWindow,
+	lookupModelMaxOutputTokens,
+} from "../features/trajectories/pricing";
 import type {
 	ChatMessage,
 	PromptSegment,
@@ -248,6 +251,7 @@ export function buildModelInputBudget(args: {
 	// custom long-context tier) can still pin a number explicitly by
 	// omitting `modelName` and passing `contextWindowTokens`.
 	const lookup = lookupModelContextWindow(args.modelName);
+	const outputLookup = lookupModelMaxOutputTokens(args.modelName);
 
 	const contextWindowTokens =
 		lookup?.contextWindowTokens ??
@@ -296,6 +300,7 @@ export function buildModelInputBudget(args: {
 			? Math.max(
 					DEFAULT_INPUT_RESERVE_TOKENS,
 					Math.floor(contextWindowTokens * MODEL_WINDOW_RESERVE_FRACTION),
+					outputLookup?.maxOutputTokens ?? 0,
 				)
 			: undefined;
 

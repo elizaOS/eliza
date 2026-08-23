@@ -6595,7 +6595,11 @@ export class AgentRuntime implements IAgentRuntime {
 			Number.isFinite(record.maxTokens) &&
 			record.maxTokens > 0
 				? Math.floor(record.maxTokens)
-				: 0;
+				: typeof metadata?.maxOutputTokens === "number" &&
+						Number.isFinite(metadata.maxOutputTokens) &&
+						metadata.maxOutputTokens > 0
+					? Math.floor(metadata.maxOutputTokens)
+					: 0;
 		const requestedModelName =
 			typeof record.model === "string" && record.model.trim()
 				? record.model.trim()

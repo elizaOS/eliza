@@ -1639,6 +1639,8 @@ export interface ModelRegistrationMetadata {
 	 * a limit from the display model id.
 	 */
 	contextWindowTokens?: number;
+	/** Provider-declared maximum generated-token count for the concrete model. */
+	maxOutputTokens?: number;
 	/**
 	 * Concrete model id to display for this registration when callers ask what
 	 * model is powering a slot.
