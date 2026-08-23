@@ -17,6 +17,8 @@ describe("messaging interactions layout", () => {
 	it("projects choice blocks to neutral button layout with callback data", () => {
 		const block: InteractionBlock = {
 			kind: "choice",
+			id: "choice-1",
+			scope: "test",
 			prompt: "Choose your favorite fruit",
 			options: [
 				{ label: "Apple", value: "apple" },
@@ -37,6 +39,8 @@ describe("messaging interactions layout", () => {
 	it("handles choice blocks with allowCustom requiring fallback", () => {
 		const block: InteractionBlock = {
 			kind: "choice",
+			id: "choice-2",
+			scope: "test",
 			prompt: "Select or write your own",
 			options: [{ label: "Opt1", value: "opt1" }],
 			allowCustom: true,
@@ -49,6 +53,7 @@ describe("messaging interactions layout", () => {
 	it("renders secret blocks with url or requires fallback", () => {
 		const blockWithUrl: InteractionBlock = {
 			kind: "secret",
+			id: "secret-1",
 			reason: "API key needed",
 			url: "https://example.com/oauth",
 			secretKind: "oauth",
@@ -63,8 +68,9 @@ describe("messaging interactions layout", () => {
 
 		const blockWithoutUrl: InteractionBlock = {
 			kind: "secret",
+			id: "secret-2",
 			reason: "Secret key",
-			secretKind: "api_key",
+			secretKind: "secret",
 		};
 		const noUrlLayout = toNeutralLayout(blockWithoutUrl);
 		expect(noUrlLayout.needsFallback).toBe(true);
@@ -73,6 +79,8 @@ describe("messaging interactions layout", () => {
 	it("formats plain text fallback for choice, form, and followups", () => {
 		const choiceBlock: InteractionBlock = {
 			kind: "choice",
+			id: "choice-3",
+			scope: "test",
 			prompt: "Pick one",
 			options: [
 				{ label: "Red", value: "red" },
@@ -87,6 +95,7 @@ describe("messaging interactions layout", () => {
 
 		const formBlock: InteractionBlock = {
 			kind: "form",
+			id: "form-1",
 			title: "Survey",
 			description: "Tell us your thoughts",
 			fields: [],
@@ -106,6 +115,8 @@ describe("messaging interactions layout", () => {
 			interactions: [
 				{
 					kind: "choice",
+					id: "choice-4",
+					scope: "test",
 					prompt: "Confirm action",
 					options: [{ label: "Yes", value: "yes" }],
 				},
