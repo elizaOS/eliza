@@ -3,7 +3,7 @@ import {
   RESTART_EXIT_CODE,
   requestRestart,
   setRestartHandler,
-} from "./restart.ts";
+} from "../restart.ts";
 
 describe("restart", () => {
   it("exposes a numeric restart exit code", () => {
