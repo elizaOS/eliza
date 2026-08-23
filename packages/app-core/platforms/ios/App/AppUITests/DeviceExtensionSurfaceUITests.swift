@@ -401,6 +401,84 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "keyboard-dictation-02-ended")
     }
 
+    func testElizaKeyboardAppearsInSystemPicker() throws {
+        guard ProcessInfo.processInfo.environment["SIMULATOR_UDID"] == nil else {
+            throw XCTSkip("Custom-keyboard enablement requires a provisioned iPhone.")
+        }
+
+        shortcuts.launch()
+        XCTAssertTrue(
+            shortcuts.wait(for: .runningForeground, timeout: 15),
+            "Apple Shortcuts must foreground before the system keyboard picker can be inspected."
+        )
+        let search = shortcuts.searchFields.firstMatch
+        XCTAssertTrue(
+            search.waitForExistence(timeout: 10),
+            "Apple Shortcuts must expose a text field that can host the installed keyboard extension."
+        )
+        search.tap()
+        let dictate = shortcuts.buttons["Dictate with Eliza"].firstMatch
+        let keyboard = shortcuts.keyboards.firstMatch
+        let activeElizaNextKeyboard = shortcuts.buttons["Next keyboard"].firstMatch
+        XCTAssertTrue(
+            keyboard.waitForExistence(timeout: 2)
+                || dictate.waitForExistence(timeout: 8),
+            "The focused field must present either the system keyboard or the already-selected Eliza keyboard."
+        )
+        if dictate.exists {
+            XCTAssertTrue(
+                activeElizaNextKeyboard.waitForExistence(timeout: 5)
+                    && activeElizaNextKeyboard.isHittable,
+                "An already-selected Eliza keyboard must expose the system input-mode switcher."
+            )
+            activeElizaNextKeyboard.tap()
+            XCTAssertTrue(
+                keyboard.waitForExistence(timeout: 5),
+                "Cycling away from Eliza must restore the system keyboard before the extension is reselected."
+            )
+        }
+        // iOS exposes these controls as siblings of the Keyboard element on
+        // current devices, so query the owning application rather than the
+        // keyboard subtree.
+        let nextKeyboard = shortcuts.buttons["Next keyboard"].firstMatch
+        let emoji = shortcuts.buttons["Emoji"].firstMatch
+        let inputModePicker = nextKeyboard.exists ? nextKeyboard : emoji
+        attachAccessibilitySnapshot(of: shortcuts, named: "keyboard-extension-picker-before-open")
+        XCTAssertTrue(
+            inputModePicker.waitForExistence(timeout: 5) && inputModePicker.isHittable,
+            "The system keyboard must expose its input-mode picker as Next keyboard or Emoji."
+        )
+        inputModePicker.press(forDuration: 1.0)
+
+        let elizaMode = shortcuts.cells.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Eliza Keyboard")
+        ).firstMatch
+        XCTAssertTrue(
+            elizaMode.waitForExistence(timeout: 5) && elizaMode.isHittable,
+            "The provisioned ElizaKeyboard extension must be enabled in iOS Settings before device acceptance."
+        )
+        elizaMode.tap()
+        let fullAccessWarning = shortcuts.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH[c] %@", "Allow Full Access")
+        ).firstMatch
+        XCTAssertTrue(
+            dictate.waitForExistence(timeout: 10),
+            "Selecting Eliza from the system picker must render the real custom keyboard extension."
+        )
+
+        attachAccessibilitySnapshot(of: shortcuts, named: "keyboard-extension-selected")
+        attachScreenshot(named: "keyboard-extension-selected")
+        let fullAccessIsMissing = fullAccessWarning.exists
+        let restoreSystemKeyboard = shortcuts.buttons["Next keyboard"].firstMatch
+        if restoreSystemKeyboard.waitForExistence(timeout: 2), restoreSystemKeyboard.isHittable {
+            restoreSystemKeyboard.tap()
+        }
+        XCTAssertFalse(
+            fullAccessIsMissing,
+            "Device acceptance requires Full Access so the Eliza keyboard can reach the containing app for dictation."
+        )
+    }
+
     // MARK: - Control Center controls
 
     private func launchShortcutsSearchEliza() throws {
