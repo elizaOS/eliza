@@ -2,10 +2,11 @@
 
 /**
  * ios:device:provision (#13567) — mint iOS **development** provisioning profiles
- * for the app + every appex non-interactively via the App Store Connect API, so
- * the physical-device test lane can install the full app (widgets, keyboard,
- * DeviceActivity, WebsiteBlocker) and rebuild its XCUITest runner WITHOUT a
- * signed-in Xcode account session.
+ * for the app + every embedded appex non-interactively via the App Store
+ * Connect API, so the physical-device test lane can install the v1 extension
+ * set (widgets, DeviceActivity, WebsiteBlocker) or the explicitly enabled v2
+ * keyboard and rebuild its XCUITest runner WITHOUT a signed-in Xcode account
+ * session.
  *
  * Today `ios:device:deploy` needs one development profile per appex
  * (`ios-device-deploy.mjs` `discoverProfiles()` scans

@@ -16,7 +16,7 @@
  *      the maintained target entitlements, sign only those target claims plus
  *      required identity/debug keys, then codesign inner→outer: frameworks → EVERY
  *      nested dylib (deep-verify does NOT catch unsigned appex dylibs) →
- *      appexes → app.
+ *      embedded appexes → app.
  *   4. codesign --verify --deep --strict, devicectl install, optional launch.
  *
  * Usage:
@@ -38,6 +38,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isIosKeyboardExtensionEnabled } from "../../app-core/scripts/lib/ios-extension-policy.mjs";
 import {
   readDevicectlDeviceList,
   readDevicectlDeviceLockState,
@@ -276,6 +277,7 @@ function signApp({
   identityOverride,
   workDir,
   requireAllAppexes,
+  keyboardExtensionEnabled,
 }) {
   const profiles = discoverProfiles();
   log(`scanned ${profiles.length} provisioning profile(s)`);
@@ -351,6 +353,7 @@ function signApp({
     appBundleId: bundleId,
     appexes: builtAppexes,
     requireAllAppexes,
+    keyboardExtensionEnabled,
   });
   for (const signingTarget of signingTargets.slice(1)) {
     const {
@@ -606,6 +609,7 @@ async function main() {
     identityOverride: args.identity ?? null,
     workDir: stagingRoot,
     requireAllAppexes: !args["skip-appexes"],
+    keyboardExtensionEnabled: isIosKeyboardExtensionEnabled(),
   });
 
   // 5. Install.

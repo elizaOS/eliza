@@ -29,6 +29,11 @@ export const IOS_APPEX_TARGET_NAMES = Object.freeze(
     .sort(),
 );
 
+/** App extensions included in v1; the custom keyboard is retained for v2. */
+export const IOS_V1_APPEX_TARGET_NAMES = Object.freeze(
+  IOS_APPEX_TARGET_NAMES.filter((targetName) => targetName !== "ElizaKeyboard"),
+);
+
 /**
  * Test-process inputs that the physical/simulator capture wrapper may forward
  * through Xcode's TEST_RUNNER_ environment convention. Keep this list explicit:
@@ -132,11 +137,17 @@ export function resolveMaintainedIosSigningTargets({
   appBundleId,
   appexes,
   requireAllAppexes = true,
+  keyboardExtensionEnabled = false,
 }) {
   const targets = [{ targetName: "App", bundleId: appBundleId }];
   const seen = new Set();
   for (const appex of appexes) {
     entitlementSourceForTarget(appex.targetName);
+    if (appex.targetName === "ElizaKeyboard" && !keyboardExtensionEnabled) {
+      throw new Error(
+        "Built App.app unexpectedly contains ElizaKeyboard; v1 builds must omit it unless ELIZA_IOS_KEYBOARD_EXTENSION_ENABLED=1.",
+      );
+    }
     if (seen.has(appex.targetName)) {
       throw new Error(`Duplicate maintained iOS appex ${appex.targetName}.`);
     }
@@ -153,7 +164,10 @@ export function resolveMaintainedIosSigningTargets({
     targets.push({ ...appex, bundleId: expected });
   }
   if (requireAllAppexes) {
-    const missing = IOS_APPEX_TARGET_NAMES.filter(
+    const requiredAppexes = keyboardExtensionEnabled
+      ? IOS_APPEX_TARGET_NAMES
+      : IOS_V1_APPEX_TARGET_NAMES;
+    const missing = requiredAppexes.filter(
       (targetName) => !seen.has(targetName),
     );
     if (missing.length > 0) {

@@ -45,6 +45,7 @@ import {
   formatDeviceUnlockWaitMessage,
   hasBundleKeyInSimctlListappsOutput,
   IOS_APPEX_TARGET_NAMES,
+  IOS_V1_APPEX_TARGET_NAMES,
   isBenignIosAppAbsence,
   normalizeDeviceLockState,
   normalizeProvisioningProfile,
@@ -403,28 +404,54 @@ describe("resolveMaintainedIosSigningTargets", () => {
     bundleId: `ai.elizaos.app.${targetName}`,
     path: `/App.app/PlugIns/${targetName}.appex`,
   }));
+  const v1Appexes = completeAppexes.filter(
+    ({ targetName }) => targetName !== "ElizaKeyboard",
+  );
 
-  it("accepts the exact full app/appex target layout", () => {
+  it("accepts the exact v1 app/appex target layout without the keyboard", () => {
     expect(
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: v1Appexes,
+      }),
+    ).toHaveLength(1 + IOS_V1_APPEX_TARGET_NAMES.length);
+  });
+
+  it("requires an explicit v2 opt-in to accept and require the keyboard", () => {
+    expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
         appexes: completeAppexes,
       }),
+    ).toThrow(/unexpectedly contains ElizaKeyboard/);
+    expect(
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: completeAppexes,
+        keyboardExtensionEnabled: true,
+      }),
     ).toHaveLength(1 + IOS_APPEX_TARGET_NAMES.length);
+    expect(() =>
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: v1Appexes,
+        keyboardExtensionEnabled: true,
+      }),
+    ).toThrow(/missing maintained appexes: ElizaKeyboard/);
   });
 
   it("fails for missing, unknown, or bundle-id-substituted appexes", () => {
     expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
-        appexes: completeAppexes.slice(1),
+        appexes: v1Appexes.slice(1),
       }),
     ).toThrow(/missing maintained appexes/);
     expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
         appexes: [
-          ...completeAppexes,
+          ...v1Appexes,
           {
             targetName: "UnknownExtension",
             bundleId: "ai.elizaos.app.UnknownExtension",
@@ -435,7 +462,7 @@ describe("resolveMaintainedIosSigningTargets", () => {
     expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
-        appexes: completeAppexes.map((appex, index) =>
+        appexes: v1Appexes.map((appex, index) =>
           index === 0
             ? { ...appex, bundleId: "com.attacker.substitute" }
             : appex,
