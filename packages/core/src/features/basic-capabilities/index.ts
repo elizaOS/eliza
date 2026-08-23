@@ -82,6 +82,7 @@ import {
 	type JsonValue,
 } from "../../types/primitives.ts";
 import { ServiceType } from "../../types/service.ts";
+import { textContainsAgentName } from "../../utils/agent-name-match.ts";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,
@@ -138,6 +139,7 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
+import { channelRecapAction } from "./actions/channel-recap.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
@@ -233,33 +235,6 @@ async function readBoundedMediaResponse(
 		}
 	}
 	return await readResponseWithLimit(response, MAX_MEDIA_BYTES);
-}
-
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function textContainsAgentName(
-	text: string | undefined,
-	names: Array<string | null | undefined>,
-): boolean {
-	if (!text) {
-		return false;
-	}
-
-	const safeText = toWellFormedUnicode(text);
-	return names.some((name) => {
-		const candidate = name?.trim();
-		if (!candidate) {
-			return false;
-		}
-
-		const pattern = new RegExp(
-			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
-			"iu",
-		);
-		return pattern.test(safeText);
-	});
 }
 
 function textContainsUserTag(text: string | undefined): boolean {
@@ -1447,6 +1422,7 @@ export const basicActions = [
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
 	withCanonicalActionDocs(channelTopicSearchAction),
+	withCanonicalActionDocs(channelRecapAction),
 ];
 
 /**

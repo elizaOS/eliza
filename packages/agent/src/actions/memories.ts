@@ -29,6 +29,17 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
 
+/**
+ * Tables the delete-by-query type-miss widening may rescan. "Remember" and
+ * "forget" semantically cover the agent's own memory tables — memories and
+ * facts — so a typed miss widens only across those two. Chat transcripts
+ * (messages) and ingested documents are NEVER pulled into scope by a typed
+ * miss: deleting from those tables requires the caller to name them via an
+ * explicit `type` parameter (the untyped path, which scans every table, is
+ * likewise an explicit caller choice of full scope).
+ */
+const FORGET_WIDENING_TABLES: readonly MemoryType[] = ["memories", "facts"];
+
 const UUID_SCHEMA_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
@@ -224,6 +235,7 @@ interface CandidateScan {
   perTable: number;
   tables: readonly MemoryType[];
   saturatedTables: MemoryType[];
+  complete: boolean;
 }
 
 const RECALL_TERMINAL_SETTING = "ELIZA_RECALL_SHORT_CIRCUIT";
@@ -246,20 +258,52 @@ async function collectCandidates(
   runtime: IAgentRuntime,
   scope: {
     type?: MemoryType;
+    /** Explicit table set; takes precedence over `type`. */
+    tables?: readonly MemoryType[];
     entityId?: UUID;
     roomId?: UUID;
     query?: string;
     limit: number;
+    /** Destructive resolution must inspect the complete scoped table. */
+    complete?: boolean;
   },
 ): Promise<CandidateScan> {
-  const tables: readonly MemoryType[] = scope.type
-    ? [scope.type]
-    : MEMORY_TYPES;
+  const tables: readonly MemoryType[] =
+    scope.tables ?? (scope.type ? [scope.type] : MEMORY_TYPES);
   const perTable = Math.max(scope.limit * 2, 200);
   const collected: MemoryCandidate[] = [];
   const saturatedTables: MemoryType[] = [];
 
   for (const tableName of tables) {
+    if (scope.complete) {
+      let cursor: { createdAt: number; id: UUID } | undefined;
+      for (;;) {
+        const page = await runtime.getMemories({
+          agentId: runtime.agentId as UUID,
+          roomId: scope.roomId,
+          tableName,
+          limit: 200,
+          cursor,
+          includeEmbedding: false,
+        });
+        for (const memory of page) collected.push({ memory, type: tableName });
+        if (page.length < 200) break;
+        const last = page.at(-1);
+        if (!last?.id || !Number.isFinite(last.createdAt)) {
+          throw new Error(
+            `Cannot complete ${tableName} scan: page cursor is missing`,
+          );
+        }
+        const next = { createdAt: last.createdAt as number, id: last.id };
+        if (cursor?.createdAt === next.createdAt && cursor.id === next.id) {
+          throw new Error(
+            `Cannot complete ${tableName} scan: cursor did not advance`,
+          );
+        }
+        cursor = next;
+      }
+      continue;
+    }
     // One row past the window, so "older rows exist" is observed rather than
     // assumed from a page that happened to fill.
     const page = await runtime.getMemories({
@@ -300,7 +344,13 @@ async function collectCandidates(
   filtered.sort(
     (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
   );
-  return { matches: filtered, perTable, tables, saturatedTables };
+  return {
+    matches: filtered,
+    perTable,
+    tables,
+    saturatedTables,
+    complete: scope.complete === true,
+  };
 }
 
 /** Names every narrowing that was applied, so an empty result can say why. */
@@ -326,6 +376,9 @@ function describeSearchScope(scope: {
  * with "I have nothing stored about her".
  */
 function describeScanWindow(scan: CandidateScan): string {
+  if (scan.complete) {
+    return `Scanned every stored row in the scoped tables (${scan.tables.join(", ")}) before filtering.`;
+  }
   const base = `Scanned only the ${scan.perTable} most recent row(s) of each table (${scan.tables.join(", ")}) before filtering.`;
   if (scan.saturatedTables.length === 0) {
     // "overflowed", not "filled": a table holding exactly `perTable` rows fills
@@ -548,6 +601,10 @@ async function doDelete(
  * match in a multi-user room would also hit another user's identical-text
  * fact, so "forget that I play guitar" may only remove the asking user's own
  * rows. Cross-entity deletes must go through op:search + delete by memoryId.
+ *
+ * A typed scan that misses widens across FORGET_WIDENING_TABLES (memories +
+ * facts) only — never into messages or documents, which require an explicit
+ * `type` to be deleted from.
  */
 async function doDeleteByQuery(
   runtime: IAgentRuntime,
@@ -569,21 +626,57 @@ async function doDeleteByQuery(
   const scopeEntityId = message.entityId ?? entityParam.id;
 
   const limit = clampLimit(params.limit, 50);
-  const scan = await collectCandidates(runtime, {
+  const strongMatches = (scan: CandidateScan) =>
+    // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
+    // the whole phrase matched or every query term matched.
+    scan.matches.filter((c) => {
+      const text =
+        (c.memory.content as { text?: string } | undefined)?.text ?? "";
+      return scoreText(text, query) >= 1;
+    });
+
+  let scan = await collectCandidates(runtime, {
     type,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
     limit,
+    complete: true,
   });
+  let matched = strongMatches(scan);
+  let widenedNote = "";
 
-  // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
-  // the whole phrase matched or every query term matched.
-  const matched = scan.matches.filter((c) => {
-    const text =
-      (c.memory.content as { text?: string } | undefined)?.text ?? "";
-    return scoreText(text, query) >= 1;
-  });
+  // The table is an implementation detail the caller routinely guesses wrong
+  // (live 2026-08-23: "forget my dog's name" arrived as type=memories while
+  // the record was a FACT row, and the miss read back as "no record exists" —
+  // a broken forget). When a type-scoped scan finds nothing, rescan before
+  // failing — but only across FORGET_WIDENING_TABLES (memories + facts, the
+  // tables "remember/forget" semantically covers). Messages and documents
+  // stay out of a typed miss's blast radius and are deleted only when the
+  // caller explicitly targets them. The strong match bar, confirm gate, and
+  // distinct-text ambiguity guard below still bound what can be deleted, and
+  // the widening is disclosed in the result.
+  if (
+    matched.length === 0 &&
+    type !== undefined &&
+    FORGET_WIDENING_TABLES.includes(type)
+  ) {
+    scan = await collectCandidates(runtime, {
+      tables: FORGET_WIDENING_TABLES,
+      entityId: scopeEntityId,
+      roomId: roomParam.id,
+      query,
+      limit,
+      complete: true,
+    });
+    matched = strongMatches(scan);
+    if (matched.length > 0) {
+      // The delete loop removes EVERY matched row, and identical normalized
+      // text can exist in more than one table — name them all.
+      const matchedTables = [...new Set(matched.map((c) => c.type))];
+      widenedNote = ` (no match in the requested "${type}" table; found in ${matchedTables.join(", ")}).`;
+    }
+  }
 
   if (matched.length === 0) {
     return fail(
@@ -611,17 +704,31 @@ async function doDeleteByQuery(
     };
   }
 
-  const deleted: MemoryListItem[] = [];
-  for (const c of matched) {
-    const id = c.memory.id;
-    if (!id) continue;
-    await runtime.deleteMemory(id);
-    deleted.push(toListItem(c.memory, c.type));
+  const deletable = matched.filter(
+    (
+      candidate,
+    ): candidate is MemoryCandidate & { memory: Memory & { id: UUID } } =>
+      candidate.memory.id !== undefined,
+  );
+  const deleted = deletable.map((candidate) =>
+    toListItem(candidate.memory, candidate.type),
+  );
+  const ids = deletable.map((candidate) => candidate.memory.id);
+  if (ids.length > 1) {
+    if (!runtime.deleteMemories) {
+      return fail(
+        "Refusing a multi-record forget because this runtime cannot delete the whole set atomically.",
+        "MEMORY_ATOMIC_DELETE_UNAVAILABLE",
+      );
+    }
+    await runtime.deleteMemories(ids);
+  } else if (ids[0]) {
+    await runtime.deleteMemory(ids[0]);
   }
 
   return {
     success: true,
-    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
+    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}${widenedNote}`,
     values: { deletedCount: deleted.length },
     data: {
       actionName: "MEMORY",

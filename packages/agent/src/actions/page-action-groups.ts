@@ -370,10 +370,33 @@ export const pageDelegateAction: PageActionGroup = {
         runtime,
         childContexts,
       );
+      // Self-correction affordance: planners routinely wrap a DIRECT action in
+      // PAGE_DELEGATE (live tj-…, PAGE_DELEGATE{action:"CHANNEL_RECAP"} then a
+      // bare stop). When the requested name resolves — through the same
+      // name/simile normalization findChildAction uses — to a registered
+      // action whose context set reaches beyond the page-only surfaces, say
+      // so: the next iteration can call it directly instead of giving up.
+      // Children of a DIFFERENT page are excluded: they surface only in
+      // page-scoped chats, so claiming direct callability here would
+      // misdirect the planner away from the availableActions correction.
+      // PAGE_DELEGATE itself never counts as its own recovery target.
+      const normalizedRequested = normalizeActionName(requestedAction);
+      const pageOnlyContexts = new Set(ALL_PAGE_CONTEXTS.map(normalizeContext));
+      const directlyCallable = runtime.actions.some(
+        (candidate) =>
+          !isPageDelegate(candidate) &&
+          actionMatchesName(candidate, normalizedRequested) &&
+          resolveActionContexts(candidate).some(
+            (context) => !pageOnlyContexts.has(normalizeContext(context)),
+          ),
+      );
       return {
         success: false,
         text:
           `${requestedAction} is not available on the ${page} page.` +
+          (directlyCallable
+            ? ` ${requestedAction} IS a directly callable tool on this turn — call ${requestedAction} directly instead of wrapping it in PAGE_DELEGATE.`
+            : "") +
           (availableActions.length > 0
             ? ` Actions available on the ${page} page: ${availableActions.join(", ")}.`
             : ` No child actions are registered for the ${page} page in this deployment.`),
@@ -382,7 +405,14 @@ export const pageDelegateAction: PageActionGroup = {
           code: "PAGE_CHILD_UNAVAILABLE",
           page,
           requestedAction,
+          directlyCallable,
           availableActions,
+          // Non-retryable even when directlyCallable: the planner-loop dedup
+          // guard suppresses only the identical PAGE_DELEGATE call, and that
+          // exact call stays deterministic within the turn. The recovery is a
+          // DIFFERENT call (the direct action), carried by directlyCallable
+          // and the text hint; retryable:true would only re-enable the same
+          // failing wrapper call and burn iterations.
           retryable: false,
         },
       };

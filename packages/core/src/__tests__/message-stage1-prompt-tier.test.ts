@@ -14,16 +14,14 @@ import {
 } from "../runtime/builtin-field-evaluators";
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import {
-	runV5MessageRuntimeStage1,
-	textContainsAgentName,
-} from "../services/message";
+import { runV5MessageRuntimeStage1 } from "../services/message";
 import { isUnaddressedTextGroupTurn } from "../services/message/stage1-prompt-tier";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import { textContainsAgentName } from "../utils/agent-name-match.ts";
 
 const FULL_TEMPLATE_MARKER = "Domain routing (when context is available):";
 const FULL_SHOULD_RESPOND_DOCS = "DM usually RESPOND unless explicit stop.";

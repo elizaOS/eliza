@@ -1430,6 +1430,8 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean>;
 	deleteMemory(memoryId: UUID): Promise<void>;
+	/** Atomic bulk deletion used when one logical record spans several rows. */
+	deleteMemories(memoryIds: UUID[]): Promise<void>;
 
 	removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 	updateRoom(room: Room): Promise<void>;

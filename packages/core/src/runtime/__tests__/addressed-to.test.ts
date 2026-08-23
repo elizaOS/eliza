@@ -3,12 +3,16 @@
  * returns true only when a turn is directed at a resolvable OTHER room
  * participant — bot or human alike — resolving @-names to ids via room
  * entities, treating platform-alias self-addresses as self, failing safe on
- * unresolvable names, and never consulting sender bot-ness. Runtime and its
- * entity lookup are vi-mocked; no model or database.
+ * unresolvable names, and never consulting sender bot-ness. The gate
+ * OR-composes its two independent evidence sources — a text-corroborated
+ * Stage-1 tag, or a structural leading vocative — over a single room-entity
+ * fetch, so a hallucinated tag never blocks the vocative evidence. Runtime
+ * and its entity lookup are vi-mocked; no model or database.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import {
+	classifyLeadingVocative,
 	messageAddressedToOtherParticipant,
 	messageVocativelyAddressesOtherParticipant,
 } from "../addressed-to.ts";
@@ -253,6 +257,28 @@ describe("messageAddressedToOtherParticipant (#9874 — uniform addressing gate)
 		).toBe(false);
 	});
 
+	it("performs exactly ONE room-entity fetch for resolution, corroboration, and the vocative fallback", async () => {
+		const runtime = makeRuntime(roomWithOthers());
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime,
+				message: makeMessage(undefined, undefined, "Alice do the thing"),
+				addressedTo: ["Alice"],
+			}),
+		).toBe(true);
+		expect(vi.mocked(runtime.getEntitiesForRoom)).toHaveBeenCalledTimes(1);
+	});
+
+	it("gates a leading vocative even with EMPTY tags (OR-composition: vocative evidence alone)", async () => {
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(roomWithOthers()),
+				message: makeMessage(undefined, undefined, "hey Alice, you around?"),
+				addressedTo: [],
+			}),
+		).toBe(true);
+	});
+
 	it("propagates a room-lookup failure so the caller's fail-open catch owns it (J4 contract)", async () => {
 		// The helper itself does NOT swallow resolution errors: the message
 		// service wraps the call in a fail-open catch (a DB hiccup means "don't
@@ -332,6 +358,19 @@ describe("live 2026-08-22 Discord incident regression (nubilio test server)", ()
 				runtime: nubilio(),
 				message: makeMessage(undefined, undefined, "Hey Eliza why not respond"),
 				addressedTo: ["Eliza"],
+			}),
+		).toBe(true);
+	});
+
+	it('gates "hey eliza" even under a hallucinated shaw tag (OR-composition)', async () => {
+		// A tag the text never corroborates must not BLOCK the independent
+		// vocative evidence: the text verifiably opens by addressing Eliza,
+		// so the mis-tag cannot fail the turn open.
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: nubilio(),
+				message: makeMessage(undefined, undefined, "hey eliza"),
+				addressedTo: ["shaw"],
 			}),
 		).toBe(true);
 	});
@@ -435,5 +474,130 @@ describe("messageVocativelyAddressesOtherParticipant (structural vocative)", () 
 				message: makeMessage(undefined, undefined, "whats going on"),
 			}),
 		).toBe(false);
+	});
+
+	describe("greeting boundary — a greeting only counts when it ends the word", () => {
+		// Without the boundary, the greeting alternation consumed a PREFIX of an
+		// ordinary word and matched a short participant name against the
+		// remainder: "gmsol" parsed as "gm"+"sol", "hiro" as "hi"+"ro" — each
+		// false positive converting normal chatter into deliberate silence.
+		const roomWithSol = (): IAgentRuntime =>
+			makeRuntime({
+				character: { name: "remilio nubilio" },
+				getEntitiesForRoom: vi.fn(async () => [
+					{ id: AGENT_ID, names: ["remilio nubilio"] },
+					{ id: OTHER_BOT, names: ["sol"] },
+					{ id: HUMAN_X, names: ["ro"] },
+					{ id: SENDER_ID, names: ["nubs"] },
+				]),
+			} as unknown as Partial<IAgentRuntime>);
+
+		it('does NOT gate "gmsol what a chart" against participant "sol"', async () => {
+			expect(
+				await messageVocativelyAddressesOtherParticipant({
+					runtime: roomWithSol(),
+					message: makeMessage(undefined, undefined, "gmsol what a chart"),
+				}),
+			).toBe(false);
+		});
+
+		it('does NOT gate "hiro can you look at this" against participant "ro"', async () => {
+			expect(
+				await messageVocativelyAddressesOtherParticipant({
+					runtime: roomWithSol(),
+					message: makeMessage(
+						undefined,
+						undefined,
+						"hiro can you look at this",
+					),
+				}),
+			).toBe(false);
+		});
+
+		it('still gates "gm sol what a chart" — greeting, then a real vocative', async () => {
+			expect(
+				await messageVocativelyAddressesOtherParticipant({
+					runtime: roomWithSol(),
+					message: makeMessage(undefined, undefined, "gm sol what a chart"),
+				}),
+			).toBe(true);
+		});
+	});
+});
+
+describe("classifyLeadingVocative (identity notice classifier)", () => {
+	const room = (): Partial<IAgentRuntime> =>
+		({
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: AGENT_ID, names: ["remilio nubilio"] },
+				{ id: HUMAN_X, names: ["shaw"] },
+				{ id: SENDER_ID, names: ["nubs"] },
+			]),
+		}) as unknown as Partial<IAgentRuntime>;
+	const rt = (): IAgentRuntime =>
+		makeRuntime({
+			character: { name: "remilio nubilio" },
+			...room(),
+		} as Partial<IAgentRuntime>);
+	const msg = (text: string) => makeMessage(undefined, undefined, text);
+
+	it('classifies "hey eliza" as unresolved in a room with no Eliza', async () => {
+		expect(
+			await classifyLeadingVocative({
+				runtime: rt(),
+				message: msg("hey eliza"),
+			}),
+		).toEqual({ kind: "unresolved", name: "eliza" });
+	});
+
+	it('classifies a bare "eliza" as unresolved', async () => {
+		expect(
+			await classifyLeadingVocative({ runtime: rt(), message: msg("eliza") }),
+		).toEqual({ kind: "unresolved", name: "eliza" });
+	});
+
+	it("classifies the agent's own name token as self", async () => {
+		expect(
+			await classifyLeadingVocative({
+				runtime: rt(),
+				message: msg("nubilio, you there?"),
+			}),
+		).toEqual({ kind: "self", name: "nubilio" });
+	});
+
+	it("classifies a real participant as participant", async () => {
+		expect(
+			await classifyLeadingVocative({
+				runtime: rt(),
+				message: msg("hey shaw what do you think"),
+			}),
+		).toEqual({ kind: "participant", name: "shaw" });
+	});
+
+	it("never classifies interjections or ordinary sentences", async () => {
+		for (const text of [
+			"ok cool",
+			"hey bro",
+			"whats my favorite color",
+			"thanks!",
+			"lol",
+			"yes please",
+		]) {
+			expect(
+				(await classifyLeadingVocative({ runtime: rt(), message: msg(text) }))
+					.kind,
+			).toBe("none");
+		}
+	});
+
+	it("mid-text names never classify (vocative position only)", async () => {
+		expect(
+			(
+				await classifyLeadingVocative({
+					runtime: rt(),
+					message: msg("i was talking to eliza"),
+				})
+			).kind,
+		).toBe("none");
 	});
 });
