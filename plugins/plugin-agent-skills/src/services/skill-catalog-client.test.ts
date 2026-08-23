@@ -80,4 +80,30 @@ describe("searchCatalogSkills", () => {
     );
     await expect(getTrendingSkills(1)).resolves.toHaveLength(1);
   });
+
+  it("sorts catalog skills safely when search scores contain NaN", () => {
+    const scored = [
+      { s: { slug: "skill-nan", stats: { downloads: 10 } }, score: NaN },
+      { s: { slug: "skill-valid", stats: { downloads: 10 } }, score: 5 },
+    ];
+    scored.sort((a, b) => {
+      const bScore =
+        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+      const aScore =
+        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+      const bDl =
+        typeof b.s.stats.downloads === "number" &&
+        Number.isFinite(b.s.stats.downloads)
+          ? b.s.stats.downloads
+          : 0;
+      const aDl =
+        typeof a.s.stats.downloads === "number" &&
+        Number.isFinite(a.s.stats.downloads)
+          ? a.s.stats.downloads
+          : 0;
+      return bScore - aScore || bDl - aDl || a.s.slug.localeCompare(b.s.slug);
+    });
+    expect(scored[0]?.s.slug).toBe("skill-valid");
+    expect(scored[1]?.s.slug).toBe("skill-nan");
+  });
 });
