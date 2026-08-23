@@ -126,6 +126,50 @@ function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
 }
 
+function documentSourceIndexKey(args: {
+	agentId: UUID;
+	documentId: UUID | string;
+	documentRevision: number;
+	revisionAttemptId?: string;
+}): string {
+	return JSON.stringify([
+		String(args.agentId),
+		String(args.documentId),
+		args.documentRevision,
+		args.revisionAttemptId ?? null,
+	]);
+}
+
+function sourceSegmentIndexKey(memory: Memory): string | null {
+	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+	if (
+		typeof memory.agentId !== "string" ||
+		metadata.type !== MemoryType.FRAGMENT ||
+		metadata.fragmentRole !== "source-segment" ||
+		metadata.sourceSegmentVersion !== 1 ||
+		typeof metadata.documentId !== "string" ||
+		!Number.isSafeInteger(metadata.documentRevision) ||
+		(metadata.revisionAttemptId !== undefined &&
+			typeof metadata.revisionAttemptId !== "string")
+	) {
+		return null;
+	}
+	return documentSourceIndexKey({
+		agentId: memory.agentId as UUID,
+		documentId: metadata.documentId,
+		documentRevision: metadata.documentRevision as number,
+		revisionAttemptId: metadata.revisionAttemptId as string | undefined,
+	});
+}
+
+function sourceSegmentPosition(memory: Memory): number {
+	const position = (memory.metadata as Record<string, unknown> | undefined)
+		?.position;
+	return typeof position === "number" && Number.isSafeInteger(position)
+		? position
+		: Number.MAX_SAFE_INTEGER;
+}
+
 function memoryMatchesMetadata(
 	memory: Memory,
 	filter: Record<string, unknown>,
@@ -324,7 +368,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	private memoriesById = new Map<string, Memory>();
 	private memoriesByRoom = new Map<string, Memory[]>();
-	private sourceSegmentsByDocument = new Map<string, Memory[]>();
+	private sourceSegmentsByGeneration = new Map<string, Memory[]>();
 	private cache = new Map<string, string>();
 	/** Width last passed to {@link ensureEmbeddingDimension}; used to reclaim stale vectors. */
 	private embeddingDimension: number | undefined;
@@ -347,42 +391,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private oauthFlowsByStateHash = new Map<string, OAuthFlowRecord>();
 
 	private removeSourceSegmentIndex(memory: Memory): void {
-		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-		if (
-			metadata.fragmentRole !== "source-segment" ||
-			typeof metadata.documentId !== "string"
-		) {
-			return;
-		}
-		const existing = this.sourceSegmentsByDocument.get(metadata.documentId);
+		const key = sourceSegmentIndexKey(memory);
+		if (!key) return;
+		const existing = this.sourceSegmentsByGeneration.get(key);
 		if (!existing) return;
 		const next = existing.filter((segment) => segment.id !== memory.id);
-		if (next.length === 0)
-			this.sourceSegmentsByDocument.delete(metadata.documentId);
-		else this.sourceSegmentsByDocument.set(metadata.documentId, next);
+		if (next.length === 0) this.sourceSegmentsByGeneration.delete(key);
+		else this.sourceSegmentsByGeneration.set(key, next);
 	}
 
 	private indexSourceSegment(memory: Memory): void {
-		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-		if (
-			metadata.fragmentRole !== "source-segment" ||
-			typeof metadata.documentId !== "string" ||
-			typeof metadata.sourceByteStart !== "number"
-		) {
-			return;
+		const key = sourceSegmentIndexKey(memory);
+		if (!key) return;
+		const existing = this.sourceSegmentsByGeneration.get(key) ?? [];
+		const position = sourceSegmentPosition(memory);
+		let low = 0;
+		let high = existing.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			if (sourceSegmentPosition(existing[middle]) <= position) low = middle + 1;
+			else high = middle;
 		}
-		const existing =
-			this.sourceSegmentsByDocument.get(metadata.documentId) ?? [];
-		const next = [...existing, memory].sort(
-			(left, right) =>
-				Number(
-					(left.metadata as Record<string, unknown>)?.sourceByteStart ?? -1,
-				) -
-				Number(
-					(right.metadata as Record<string, unknown>)?.sourceByteStart ?? -1,
-				),
-		);
-		this.sourceSegmentsByDocument.set(metadata.documentId, next);
+		existing.splice(low, 0, memory);
+		this.sourceSegmentsByGeneration.set(key, existing);
 	}
 
 	private cloneComponent(component: Component): Component {
@@ -956,6 +987,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async readDocumentRange(
 		params: DocumentRangeReadParams,
 	): Promise<DocumentRangeReadResult | null> {
+		if (
+			!(["line", "fragment", "byte"] as const).includes(params.unit) ||
+			!Number.isSafeInteger(params.offset) ||
+			params.offset < 0 ||
+			!Number.isSafeInteger(params.limit) ||
+			params.limit < 1 ||
+			params.offset > Number.MAX_SAFE_INTEGER - params.limit
+		) {
+			throw new ElizaError(
+				"Document range requires a bounded safe-integer range",
+				{
+					code: "DOCUMENT_READ_INVALID_RANGE",
+				},
+			);
+		}
 		const memory = await this.getDocument(params);
 		if (!memory) return null;
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
@@ -969,20 +1015,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				: params.unit === "line"
 					? "sourceLine"
 					: "sourceFragment";
-		const active = (
-			this.sourceSegmentsByDocument.get(String(params.documentId)) ?? []
-		).filter((segment) => {
-			const segmentMetadata = (segment.metadata ?? {}) as Record<
-				string,
-				unknown
-			>;
-			return (
-				segment.agentId === params.agentId &&
-				segmentMetadata.documentRevision === parent.documentRevision &&
-				(parent.revisionAttemptId === undefined ||
-					segmentMetadata.revisionAttemptId === parent.revisionAttemptId)
-			);
-		});
+		const active =
+			this.sourceSegmentsByGeneration.get(
+				documentSourceIndexKey({
+					agentId: params.agentId,
+					documentId: params.documentId,
+					documentRevision: parent.documentRevision,
+					revisionAttemptId: parent.revisionAttemptId,
+				}),
+			) ?? [];
 		let low = 0;
 		let high = active.length;
 		while (low < high) {

@@ -2231,6 +2231,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: DocumentRangeReadParams
   ): Promise<DocumentRangeReadResult | null> {
     validateDocumentRequesterContext(params);
+    if (params.unit === "byte") {
+      throw new ElizaError("Legacy SQL document reads do not support byte ranges", {
+        code: "DOCUMENT_RANGE_READ_UNSUPPORTED",
+      });
+    }
     if (
       !Number.isSafeInteger(params.offset) ||
       params.offset < 0 ||
@@ -2313,6 +2318,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const total = Number(row.total);
       const start = params.offset;
       return {
+        unit: params.unit,
         text: typeof row.text === "string" ? row.text : "",
         start,
         end: Math.min(start + params.limit, total),
@@ -2322,6 +2328,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           ? { revisionAttemptId: row.revision_attempt_id }
           : {}),
         sourceFingerprint: `md5:${row.source_fingerprint}`,
+        examinedSourceSegments: 0,
+        sourceQueryCount: 1,
+        returnedSourceSegments: 0,
+        returnedSourceBytes: Buffer.byteLength(
+          typeof row.text === "string" ? row.text : "",
+          "utf8"
+        ),
       };
     });
   }
@@ -2345,6 +2358,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         eq(fragment.type, "document_fragments"),
         eq(fragment.agentId, params.agentId),
         sql`${fragment.metadata}->>'type' = 'fragment'`,
+        sql`COALESCE(${fragment.metadata}->>'fragmentRole', 'embedding-chunk') <> 'source-segment'`,
         validDocumentRevision(fragment.metadata),
         sql`${documentRevisionExpression(fragment.metadata)}
           = ${documentRevisionExpression(parent.metadata)}`,
@@ -2379,7 +2393,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const rows = await tx
           .select({
             memory: fragment,
-            sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+            sourceFingerprint: sql<string>`${parent.metadata}->>'sourceFingerprint'`,
           })
           .from(fragment)
           .innerJoin(parent, parentJoin)
@@ -2393,7 +2407,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             ...memory,
             metadata: {
               ...(memory.metadata ?? {}),
-              sourceFingerprint: `md5:${row.sourceFingerprint}`,
+              ...(row.sourceFingerprint ? { sourceFingerprint: row.sourceFingerprint } : {}),
             } as Memory["metadata"],
           };
         });
@@ -2411,7 +2425,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           memory: fragment,
           embedding: activeColumn,
           similarity,
-          sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+          sourceFingerprint: sql<string>`${parent.metadata}->>'sourceFingerprint'`,
         })
         .from(embeddingTable)
         .innerJoin(fragment, eq(fragment.id, embeddingTable.memoryId))
@@ -2430,7 +2444,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           ...memory,
           metadata: {
             ...(memory.metadata ?? {}),
-            sourceFingerprint: `md5:${row.sourceFingerprint}`,
+            ...(row.sourceFingerprint ? { sourceFingerprint: row.sourceFingerprint } : {}),
           } as Memory["metadata"],
         };
       });
