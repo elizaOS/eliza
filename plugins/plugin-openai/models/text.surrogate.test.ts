@@ -1,8 +1,9 @@
 /**
  * Surrogate-safe truncation for provider error body excerpt.
  */
-import { describe, expect, it } from "vitest";
+
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 describe("openai provider error surrogate-safe", () => {
   it("replaces lone surrogate", () => {
