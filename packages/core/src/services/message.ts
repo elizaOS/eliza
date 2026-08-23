@@ -83,6 +83,7 @@ import {
 import { tierActionResults } from "../runtime/action-tiering";
 import {
 	applyAddressedTo,
+	classifyLeadingVocative,
 	messageAddressedToOtherParticipant,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
@@ -3766,6 +3767,11 @@ async function createV5MessageContextObject(args: {
 	 * byte-identical to before, so addressed turns are untouched.
 	 */
 	ambientTurn?: boolean;
+	/** Set when the message opens by addressing a name that is neither the
+	 *  agent nor any room participant; renders the identity notice so the
+	 *  model never answers AS that name (live 2026-08-23: bare "eliza" drew
+	 *  "yeah?"). */
+	unresolvedVocativeName?: string;
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
@@ -3897,6 +3903,16 @@ async function createV5MessageContextObject(args: {
 	// the IGNORE terminal invoked here already flows to deliberate,
 	// recorded non-delivery (see the planner deliberate-silence terminal in
 	// runV5MessageRuntimeStage1).
+	if (args.unresolvedVocativeName) {
+		events.push({
+			id: "unresolved-vocative-notice",
+			type: "instruction",
+			source: "message-service",
+			stable: false,
+			content: `unresolved_vocative_notice: The final message:user opens by addressing "${args.unresolvedVocativeName}" — that is not your name and matches no participant of this room. Never answer as though you were "${args.unresolvedVocativeName}" or adopt that identity. If the sender plausibly means you (a nickname or a slip for your actual name), answer as yourself and briefly note your name. Otherwise the message is not addressed to you: end the turn with the IGNORE tool.`,
+		});
+	}
+
 	if (args.ambientTurn) {
 		events.push({
 			id: "ambient-turn-policy",
@@ -8288,10 +8304,29 @@ export async function runV5MessageRuntimeStage1(args: {
 		args.runtime.contexts,
 		senderRole,
 	);
+	// Identity notice: when the message opens by addressing a name that is
+	// neither the agent nor any room participant, both Stage 1 and the planner
+	// are told never to answer AS that name (live 2026-08-23: bare "eliza" in
+	// a room with no Eliza drew "yeah?"). Fails open on lookup errors — a
+	// missing notice degrades to today's behavior, never to silence.
+	const vocativeClass = await classifyLeadingVocative({
+		runtime: args.runtime,
+		message: args.message,
+	}).catch((error) => {
+		// error-policy:J4 a failed room lookup must not affect the turn; the
+		// notice is advisory evidence only.
+		args.runtime.reportError("MessageService.classifyLeadingVocative", error, {
+			roomId: args.message.roomId,
+		});
+		return { kind: "none" } as const;
+	});
+	const unresolvedVocativeName =
+		vocativeClass.kind === "unresolved" ? vocativeClass.name : undefined;
 	const context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
+		unresolvedVocativeName,
 		// Per-turn exclusions (not the static list): even if a cached compose
 		// left RECENT_ERRORS in state, an unaddressed group turn must not
 		// render internal diagnostics into its Stage-1 context.
@@ -9530,6 +9565,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			...args,
 			state: plannerState,
 			selectedContexts,
+			unresolvedVocativeName,
 			includeTools: true,
 			userRoles: [senderRole],
 			availableContexts,
