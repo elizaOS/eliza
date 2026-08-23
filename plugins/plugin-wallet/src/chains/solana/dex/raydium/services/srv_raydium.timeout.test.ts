@@ -110,6 +110,28 @@ describe("RaydiumService fetch timeout", () => {
     }
   });
 
+  it("sorts arbitrage paths safely when expectedReturn contains NaN", () => {
+    const paths = [
+      { path: ["mintA", "mintB", "mintC", "mintA"], expectedReturn: NaN, priceImpact: 0.1 },
+      { path: ["mintA", "mintD", "mintE", "mintA"], expectedReturn: 1.5, priceImpact: 0.05 },
+    ];
+
+    paths.sort((a, b) => {
+      const bReturn =
+        typeof b.expectedReturn === "number" && Number.isFinite(b.expectedReturn)
+          ? b.expectedReturn
+          : 0;
+      const aReturn =
+        typeof a.expectedReturn === "number" && Number.isFinite(a.expectedReturn)
+          ? a.expectedReturn
+          : 0;
+      return bReturn - aReturn || a.path.join("-").localeCompare(b.path.join("-"));
+    });
+
+    expect(paths[0]?.expectedReturn).toBe(1.5);
+    expect(paths[1]?.expectedReturn).toBeNaN();
+  });
+
   it("surfaces a provider error from a completed upstream", async () => {
     const svc = new RaydiumService();
     const spy = vi.fn(async () => new Response("Service Unavailable", { status: 503 }));
