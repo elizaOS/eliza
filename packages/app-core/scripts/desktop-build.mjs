@@ -639,6 +639,24 @@ function failPreflight(message, fields = {}, detailLines = []) {
 
 function runDesktopPreflight() {
   ensureAppDirs();
+  if (process.platform === "linux") {
+    run(
+      "node",
+      [
+        path.join(
+          ROOT,
+          "packages",
+          "scripts",
+          "patch-electrobun-linux-cef-profile.mjs",
+        ),
+        "--require",
+      ],
+      {
+        cwd: ROOT,
+        label: "Verifying Electrobun Linux CEF profile hotfix",
+      },
+    );
+  }
   const moduleName = "electrobun/view";
   const preflightCwd = ELECTROBUN_DIR;
 

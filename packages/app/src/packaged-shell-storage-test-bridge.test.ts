@@ -11,18 +11,27 @@ const storageBridge = vi.hoisted(() => ({
     window.localStorage.setItem(key, value),
   ),
   removeItem: vi.fn((key: string) => window.localStorage.removeItem(key)),
+  removeStorageValue: vi.fn(async (key: string) =>
+    window.localStorage.removeItem(key),
+  ),
+  getStorageValue: vi.fn(async (key: string) =>
+    window.localStorage.getItem(key),
+  ),
   setStorageValue: vi.fn(async (key: string, value: string) =>
     window.localStorage.setItem(key, value),
   ),
 }));
 
 vi.mock("@elizaos/ui/bridge", () => ({
+  getStorageValue: storageBridge.getStorageValue,
+  removeStorageValue: storageBridge.removeStorageValue,
   setStorageValue: storageBridge.setStorageValue,
   shellLocalStorage: storageBridge,
 }));
 
 import {
   installPackagedShellStorageTestBridge,
+  readReturningInstallStateForPackagedTests,
   seedResettableStateForPackagedTests,
   seedReturningInstallStateForPackagedTests,
 } from "./packaged-shell-storage-test-bridge";
@@ -34,7 +43,9 @@ describe("packaged shell storage test bridge", () => {
     Reflect.deleteProperty(window, "__ELIZA_PACKAGED_SHELL_STORAGE_TEST__");
     storageBridge.setItem.mockClear();
     storageBridge.removeItem.mockClear();
+    storageBridge.removeStorageValue.mockClear();
     storageBridge.getItem.mockClear();
+    storageBridge.getStorageValue.mockClear();
     storageBridge.setStorageValue.mockClear();
   });
 
@@ -51,7 +62,23 @@ describe("packaged shell storage test bridge", () => {
 
     expect(
       Object.keys(window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__ ?? {}),
-    ).toEqual(["seedResettableState", "seedReturningInstallState"]);
+    ).toEqual([
+      "clearProtectedTestState",
+      "readReturningInstallState",
+      "seedResettableState",
+      "seedReturningInstallState",
+    ]);
+  });
+
+  it("clears protected test state through the secure storage bridge", async () => {
+    window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__ = true;
+    installPackagedShellStorageTestBridge();
+
+    await window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__?.clearProtectedTestState();
+
+    expect(storageBridge.removeStorageValue).toHaveBeenCalledWith(
+      "elizaos:active-server",
+    );
   });
 
   it("awaits protected storage when seeding resettable local state", async () => {
@@ -123,6 +150,26 @@ describe("packaged shell storage test bridge", () => {
       kind: "remote",
       label: "127.0.0.1:31337",
       apiBase: "http://127.0.0.1:31337",
+    });
+  });
+
+  it("reads active-server through protected storage", async () => {
+    window.localStorage.setItem("eliza:first-run-complete", "1");
+    window.localStorage.setItem("eliza:setup:step", "activate");
+    window.localStorage.setItem("eliza:ui-shell-mode", "native");
+    window.localStorage.setItem("elizaos:active-server", "protected-value");
+
+    const result = await readReturningInstallStateForPackagedTests();
+
+    expect(storageBridge.getStorageValue).toHaveBeenCalledWith(
+      "elizaos:active-server",
+    );
+    expect(result).toEqual({
+      ok: true,
+      firstRunComplete: "1",
+      setupStep: "activate",
+      uiShellMode: "native",
+      activeServer: "protected-value",
     });
   });
 });
