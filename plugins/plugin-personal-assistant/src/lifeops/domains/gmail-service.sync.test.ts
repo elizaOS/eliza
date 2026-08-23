@@ -47,9 +47,11 @@ function harness(args: {
   previousState?: Record<string, unknown> | null;
   listHistory?: ReturnType<typeof vi.fn>;
   historyId?: string;
+  searchPages?: ReturnType<typeof vi.fn>;
 }) {
   const upsertGmailMessage = vi.fn(async () => undefined);
   const deleteGmailMessages = vi.fn(async () => undefined);
+  const deleteGmailMessagesByExternalId = vi.fn(async () => 1);
   const upsertGmailSyncState = vi.fn(async () => undefined);
   const google = {
     getGmailHistoryId: vi.fn(async () => args.historyId ?? "100"),
@@ -91,6 +93,12 @@ function harness(args: {
       }),
     ),
     searchGmailMessages: vi.fn(async () => [providerMessage("seeded")]),
+    searchGmailMessagesPage:
+      args.searchPages ??
+      vi.fn(async () => ({
+        messages: [providerMessage("seeded")],
+        nextPageToken: null,
+      })),
   };
   const repository = {
     getGmailSyncState: vi.fn(async () => args.previousState ?? null),
@@ -99,6 +107,7 @@ function harness(args: {
     countGmailSpamReviewItems: vi.fn(async () => 2),
     upsertGmailMessage,
     deleteGmailMessages,
+    deleteGmailMessagesByExternalId,
     deleteGmailMessagesForProvider: vi.fn(async () => undefined),
     deleteGmailSpamReviewItemsForProvider: vi.fn(async () => undefined),
     deleteGmailSyncState: vi.fn(async () => undefined),
@@ -181,13 +190,16 @@ describe("LifeOps Gmail sync cursors", () => {
       startHistoryId: "100",
       pageToken: "page-2",
     });
-    expect(repository.deleteGmailMessages).toHaveBeenCalledWith(
+    // Tombstones match on the provider message id so rows written under the
+    // pre-account-scoped projection id are deleted as well.
+    expect(repository.deleteGmailMessagesByExternalId).toHaveBeenCalledWith(
       "agent-1",
       "google",
-      ["agent-1:google:owner:account-1:gmail:gone"],
+      ["gone"],
       "owner",
       grant.id,
     );
+    expect(repository.deleteGmailMessages).not.toHaveBeenCalled();
     expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
       expect.objectContaining({
         historyId: "105",
@@ -244,6 +256,115 @@ describe("LifeOps Gmail sync cursors", () => {
       cachedMessageCount: 4,
       syncedAt: "2026-08-22T08:00:00.000Z",
     });
+  });
+});
+
+describe("LifeOps Gmail range seed", () => {
+  const url = new URL("http://127.0.0.1/");
+
+  it("walks every provider page for the range and reports the complete count", async () => {
+    const pageOne = Array.from({ length: 100 }, (_, index) =>
+      providerMessage(`p1-${index}`),
+    );
+    const pageTwo = Array.from({ length: 37 }, (_, index) =>
+      providerMessage(`p2-${index}`),
+    );
+    const searchPages = vi
+      .fn()
+      .mockResolvedValueOnce({ messages: pageOne, nextPageToken: "page-2" })
+      .mockResolvedValueOnce({ messages: pageTwo, nextPageToken: null });
+    const { domain, google, repository } = harness({
+      searchPages,
+      historyId: "300",
+    });
+
+    const receipt = await domain.seedGmailMessages(
+      url,
+      { grantId: grant.id, rangeDays: 30 },
+      new Date("2026-08-22T10:00:00.000Z"),
+    );
+
+    expect(receipt).toEqual({
+      provider: "google",
+      side: "owner",
+      grantId: grant.id,
+      connectorAccountId: "account-1",
+      rangeDays: 30,
+      query: "newer_than:30d",
+      messageCount: 137,
+      pageCount: 2,
+      historyCursorPresent: true,
+      seededAt: "2026-08-22T10:00:00.000Z",
+    });
+    expect(searchPages).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        accountId: "account-1",
+        query: "newer_than:30d",
+        pageToken: null,
+        pageSize: 100,
+      }),
+    );
+    expect(searchPages).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ pageToken: "page-2" }),
+    );
+    expect(repository.upsertGmailMessage).toHaveBeenCalledTimes(137);
+    expect(google.getGmailHistoryId).toHaveBeenCalledBefore(searchPages);
+    expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historyId: "300",
+        cursorStatus: "seeded",
+        maxResults: 137,
+      }),
+    );
+  });
+
+  it("aborts without a receipt or cursor when the provider repeats a page token", async () => {
+    const searchPages = vi.fn(async () => ({
+      messages: [providerMessage("loop")],
+      nextPageToken: "same-token",
+    }));
+    const { domain, repository } = harness({ searchPages });
+
+    await expect(
+      domain.seedGmailMessages(url, { grantId: grant.id, rangeDays: 7 }),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "LIFEOPS_GMAIL_SEED_PAGINATION_REPEATED",
+    });
+    expect(searchPages).toHaveBeenCalledTimes(2);
+    expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
+  });
+
+  it("fails explicitly instead of issuing a receipt when pagination never ends", async () => {
+    let page = 0;
+    const searchPages = vi.fn(async () => {
+      page += 1;
+      return { messages: [], nextPageToken: `token-${page}` };
+    });
+    const { domain, repository } = harness({ searchPages });
+
+    await expect(
+      domain.seedGmailMessages(url, { grantId: grant.id, rangeDays: 90 }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LIFEOPS_GMAIL_SEED_INCOMPLETE",
+    });
+    expect(searchPages).toHaveBeenCalledTimes(500);
+    expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
+  });
+
+  it("rejects a range outside the owner-selectable 7/30/90-day windows", async () => {
+    const { domain, google } = harness({});
+
+    await expect(
+      domain.seedGmailMessages(url, {
+        grantId: grant.id,
+        rangeDays: 45 as never,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(google.searchGmailMessagesPage).not.toHaveBeenCalled();
   });
 });
 
@@ -315,16 +436,43 @@ describe("LifeOps Gmail imported-data purge", () => {
 });
 
 describe("LifeOps Gmail effect confirmation", () => {
-  it("rejects a non-destructive execute request without immediate confirmation", async () => {
-    const { domain } = harness({});
+  it("rejects a destructive execute request without immediate confirmation", async () => {
+    const { domain, google } = harness({});
 
     await expect(
       domain.manageGmailMessages(new URL("http://127.0.0.1/"), {
-        operation: "mark_read",
+        operation: "trash",
         messageIds: ["message-1"],
         executionMode: "execute",
       }),
-    ).rejects.toThrow(/explicit confirmation immediately before execution/i);
+    ).rejects.toThrow(/explicit destructive confirmation/i);
+    expect(google.modifyGmailMessages).not.toHaveBeenCalled();
+  });
+
+  it("executes a non-destructive operation without a confirmation flag", async () => {
+    const { domain, google } = harness({});
+    google.modifyGmailMessages.mockResolvedValueOnce({
+      operation: "archive",
+      requestedMessageIds: ["message-1"],
+      succeededMessageIds: ["message-1"],
+      failures: [],
+    });
+
+    const result = await domain.manageGmailMessages(
+      new URL("http://127.0.0.1/"),
+      {
+        operation: "archive",
+        messageIds: ["message-1"],
+        executionMode: "execute",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: "executed",
+      affectedCount: 1,
+    });
+    expect(google.modifyGmailMessages).toHaveBeenCalledOnce();
   });
 
   it("returns an honest partial receipt and only updates succeeded messages", async () => {

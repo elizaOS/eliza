@@ -117,6 +117,66 @@ describe("LifeOpsRepository Gmail account isolation", () => {
     ]);
   });
 
+  it("tombstones a pre-account-scoped projection row by provider message id", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const ownerGrant = grant("account-1");
+    const current = lifeOpsGmailMessageFromGoogle({
+      agentId: runtime.agentId,
+      grant: ownerGrant,
+      message: providerMessage(),
+      syncedAt: SYNCED_AT,
+    });
+    // Rows written before the account-scoped id format keep the legacy id but
+    // the same provider message id and grant.
+    const legacy = {
+      ...current,
+      id: `${runtime.agentId}:google:owner:gmail:legacy-provider-id`,
+      externalId: "legacy-provider-id",
+      threadId: "legacy-thread",
+    };
+    await repository.upsertGmailMessage(current);
+    await repository.upsertGmailMessage(legacy);
+    await expect(
+      repository.listGmailMessages(
+        runtime.agentId,
+        "google",
+        { grantId: ownerGrant.id },
+        "owner",
+      ),
+    ).resolves.toHaveLength(2);
+
+    await expect(
+      repository.deleteGmailMessagesByExternalId(
+        runtime.agentId,
+        "google",
+        ["legacy-provider-id"],
+        "owner",
+        ownerGrant.id,
+      ),
+    ).resolves.toBe(1);
+    await expect(
+      repository.deleteGmailMessagesByExternalId(
+        runtime.agentId,
+        "google",
+        ["legacy-provider-id"],
+        "owner",
+        grant("account-2").id,
+      ),
+    ).resolves.toBe(0);
+
+    await expect(
+      repository.listGmailMessages(
+        runtime.agentId,
+        "google",
+        { grantId: ownerGrant.id },
+        "owner",
+      ),
+    ).resolves.toEqual([expect.objectContaining({ id: current.id })]);
+  });
+
   it("stores identical inbox provider ids independently for two Gmail grants", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;

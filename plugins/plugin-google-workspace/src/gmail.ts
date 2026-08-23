@@ -30,6 +30,7 @@ import type {
   GoogleGmailMessageDetail,
   GoogleGmailMessageSummary,
   GoogleGmailMutationReceipt,
+  GoogleGmailSearchPage,
   GoogleGmailSendResult,
   GoogleGmailSubscriptionMessageHeaders,
   GoogleGmailUnrespondedThread,
@@ -140,6 +141,8 @@ export class GoogleGmailClient {
         historyId,
       };
     } catch (error) {
+      // error-policy:J2 A 404 from history.list means Google expired the
+      // cursor; rethrow as the typed resync signal with the cause preserved.
       if (googleErrorStatus(error) === 404) {
         throw new GoogleGmailHistoryExpiredError(startHistoryId, error);
       }
@@ -262,6 +265,61 @@ export class GoogleGmailClient {
     }
 
     return sortGmailMessages(messages).slice(0, maxResults);
+  }
+
+  /**
+   * Fetches exactly one provider page of a search so callers that must cover a
+   * whole time range can walk pages until the provider stops returning a
+   * token. Unlike searchGmailMessages there is no caller-side ceiling: the
+   * returned page is complete for that token and the token is the only
+   * continuation state.
+   */
+  async searchGmailMessagesPage(
+    params: GoogleAccountRef & {
+      query: string;
+      selfEmail?: string | null;
+      pageToken?: string | null;
+      pageSize?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailSearchPage> {
+    const gmail = await this.clientFactory.gmail(
+      params,
+      ["gmail.read"],
+      "gmail.searchGmailMessagesPage"
+    );
+    const response = await gmail.users.messages.list({
+      userId: "me",
+      q: params.query,
+      includeSpamTrash: params.includeSpamTrash === true,
+      maxResults: normalizedLimit(params.pageSize, GMAIL_LIST_PAGE_SIZE, GMAIL_LIST_PAGE_SIZE),
+      pageToken: params.pageToken ?? undefined,
+    });
+    const pageMessages = await mapWithConcurrency(
+      response.data.messages ?? [],
+      GMAIL_METADATA_CONCURRENCY,
+      async (messageRef) => {
+        const messageId = messageRef.id?.trim();
+        if (!messageId) {
+          return null;
+        }
+        return this.getRichMessageWithClient(gmail, {
+          accountId: params.accountId,
+          messageId,
+          selfEmail: params.selfEmail,
+        });
+      }
+    );
+    const messages: GoogleGmailMessageSummary[] = [];
+    for (const message of pageMessages) {
+      if (message) {
+        messages.push(message);
+      }
+    }
+    return {
+      messages: sortGmailMessages(messages),
+      nextPageToken: response.data.nextPageToken?.trim() || null,
+    };
   }
 
   async getGmailMessage(

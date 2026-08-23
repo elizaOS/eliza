@@ -212,6 +212,16 @@ export interface GoogleGmailHistoryPage {
   historyId: string;
 }
 
+/**
+ * One provider page of a Gmail search. `nextPageToken` is null only when the
+ * provider reported no further page, so a caller that walks pages until null
+ * has seen every message matching the query.
+ */
+export interface GoogleGmailSearchPage {
+  messages: GoogleGmailMessageSummary[];
+  nextPageToken: string | null;
+}
+
 export interface GoogleGmailSubscriptionMessageHeaders {
   messageId: string;
   threadId: string;
@@ -846,6 +856,15 @@ export interface IGoogleGmailService extends Service {
       includeSpamTrash?: boolean;
     }
   ): Promise<GoogleGmailMessageSummary[]>;
+  searchGmailMessagesPage(
+    params: GoogleAccountRef & {
+      query: string;
+      selfEmail?: string | null;
+      pageToken?: string | null;
+      pageSize?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailSearchPage>;
   getGmailMessage(
     params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
   ): Promise<GoogleGmailMessageSummary | null>;

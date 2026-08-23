@@ -6656,6 +6656,37 @@ export class LifeOpsRepository {
     );
   }
 
+  /**
+   * Deletes cached Gmail rows by provider message id within one exact grant.
+   * History tombstones arrive as provider ids, and rows written before the
+   * account-scoped projection id format still carry the legacy `id`, so
+   * matching on `external_message_id` is the only way to tombstone both.
+   */
+  async deleteGmailMessagesByExternalId(
+    agentId: string,
+    provider: LifeOpsConnectorGrant["provider"],
+    externalMessageIds: readonly string[],
+    side: LifeOpsConnectorSide,
+    grantId: string,
+  ): Promise<number> {
+    if (externalMessageIds.length === 0) {
+      return 0;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_gmail_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND side = ${sqlQuote(side)}
+          AND grant_id = ${sqlQuote(grantId)}
+          AND external_message_id IN (${externalMessageIds
+            .map((externalMessageId) => sqlQuote(externalMessageId))
+            .join(", ")})
+        RETURNING id`,
+    );
+    return rows.length;
+  }
+
   async deleteGmailMessagesForProvider(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],

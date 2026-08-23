@@ -27,6 +27,8 @@ import type {
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedRangeDays,
+  LifeOpsGmailSeedReceipt,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
   LifeOpsGmailSyncHealth,
@@ -34,6 +36,7 @@ import type {
   LifeOpsGmailUnrespondedFeed,
   ManageLifeOpsGmailMessagesRequest,
   PurgeLifeOpsGmailImportedDataRequest,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -45,7 +48,6 @@ import {
   googleAccountIdFromGrantId,
   googleSendEmailInput,
   lifeOpsGmailMessageFromGoogle,
-  lifeOpsGmailMessageId,
   requireGoogleServiceMethod,
 } from "../google-plugin-delegates.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
@@ -83,6 +85,12 @@ import {
 const GOOGLE_GMAIL_MAILBOX = "me";
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 const DEFAULT_GMAIL_SEARCH_LIMIT = 25;
+const GMAIL_SEED_PAGE_SIZE = 100;
+// A seed walks provider pages until Gmail stops returning a token. This cap
+// only bounds runaway pagination; reaching it fails the seed explicitly rather
+// than issuing a receipt for a range that was not fully imported.
+const GMAIL_SEED_MAX_PAGES = 500;
+const GMAIL_SEED_RANGE_DAYS: readonly LifeOpsGmailSeedRangeDays[] = [7, 30, 90];
 
 /**
  * Dependencies the Gmail domain needs that are owned by the `google` domain
@@ -378,16 +386,11 @@ export class GmailDomain {
         historyId = nextHistoryId;
 
         for (const [externalId, action] of actions) {
-          const canonicalId = lifeOpsGmailMessageId({
-            agentId: this.ctx.agentId(),
-            grant,
-            externalId,
-          });
           if (action === "delete") {
-            await this.ctx.repository.deleteGmailMessages(
+            await this.ctx.repository.deleteGmailMessagesByExternalId(
               this.ctx.agentId(),
               "google",
-              [canonicalId],
+              [externalId],
               grant.side,
               grant.id,
             );
@@ -399,10 +402,10 @@ export class GmailDomain {
             selfEmail: grant.identityEmail,
           });
           if (!changed) {
-            await this.ctx.repository.deleteGmailMessages(
+            await this.ctx.repository.deleteGmailMessagesByExternalId(
               this.ctx.agentId(),
               "google",
-              [canonicalId],
+              [externalId],
               grant.side,
               grant.id,
             );
@@ -419,6 +422,9 @@ export class GmailDomain {
           );
         }
       } catch (error) {
+        // error-policy:J4 Only the typed expired-cursor signal degrades to a
+        // full reseed, and the sync state records it as "resynced" with a
+        // reason; every other failure propagates.
         const code =
           error && typeof error === "object" && "code" in error
             ? (error as { code?: unknown }).code
@@ -467,6 +473,129 @@ export class GmailDomain {
       }),
     );
     return { grant, query: args.query, messages, syncedAt };
+  }
+
+  /**
+   * Imports every message the provider reports for `newer_than:<rangeDays>d`
+   * into the local projection and resets the History cursor to the instant
+   * captured before the walk began. Unlike the bounded triage/search syncs,
+   * there is no result ceiling: either the whole range is imported and a
+   * receipt is issued, or the seed fails with a typed error and no receipt.
+   */
+  async seedGmailMessages(
+    requestUrl: URL,
+    request: SeedLifeOpsGmailRequest,
+    now = new Date(),
+  ): Promise<LifeOpsGmailSeedReceipt> {
+    const mode = normalizeOptionalConnectorMode(request.mode, "mode");
+    const side = normalizeOptionalConnectorSide(request.side, "side");
+    const grantId = requireNonEmptyString(request.grantId, "grantId");
+    const rangeDays = request.rangeDays;
+    if (!GMAIL_SEED_RANGE_DAYS.includes(rangeDays)) {
+      fail(
+        400,
+        `rangeDays must be one of ${GMAIL_SEED_RANGE_DAYS.join(", ")}.`,
+        "LIFEOPS_GMAIL_SEED_RANGE_INVALID",
+      );
+    }
+    const grant = await this.deps.requireGoogleGmailGrant(
+      requestUrl,
+      mode,
+      side,
+      grantId,
+    );
+    const accountId = accountIdForGrant(grant);
+    const getGmailHistoryId = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "getGmailHistoryId",
+    );
+    const searchGmailMessagesPage = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "searchGmailMessagesPage",
+    );
+    const query = `newer_than:${rangeDays}d`;
+    const seededAt = now.toISOString();
+    // Capture the cursor before listing so changes that land during the walk
+    // are replayed by the next incremental sync instead of being lost.
+    const historyId = await getGmailHistoryId({ accountId });
+
+    const seenPageTokens = new Set<string>();
+    let pageToken: string | null = null;
+    let pageCount = 0;
+    let messageCount = 0;
+    do {
+      if (pageCount >= GMAIL_SEED_MAX_PAGES) {
+        fail(
+          409,
+          `Gmail returned more than ${GMAIL_SEED_MAX_PAGES} pages for the last ${rangeDays} days; the seed was not completed and no receipt was issued. Choose a shorter range.`,
+          "LIFEOPS_GMAIL_SEED_INCOMPLETE",
+        );
+      }
+      const page = await searchGmailMessagesPage({
+        accountId,
+        query,
+        pageToken,
+        pageSize: GMAIL_SEED_PAGE_SIZE,
+        selfEmail: grant.identityEmail,
+      });
+      pageCount += 1;
+      for (const message of page.messages) {
+        await this.ctx.repository.upsertGmailMessage(
+          lifeOpsGmailMessageFromGoogle({
+            message,
+            grant,
+            agentId: this.ctx.agentId(),
+            syncedAt: seededAt,
+          }),
+          grant.side,
+        );
+        messageCount += 1;
+      }
+      pageToken = page.nextPageToken;
+      if (pageToken) {
+        if (seenPageTokens.has(pageToken)) {
+          fail(
+            502,
+            "Gmail search pagination repeated a page token; the seed was aborted before issuing a receipt.",
+            "LIFEOPS_GMAIL_SEED_PAGINATION_REPEATED",
+          );
+        }
+        seenPageTokens.add(pageToken);
+      }
+    } while (pageToken);
+
+    await this.ctx.repository.upsertGmailSyncState(
+      createLifeOpsGmailSyncState({
+        agentId: this.ctx.agentId(),
+        provider: "google",
+        side: grant.side,
+        mailbox: GOOGLE_GMAIL_MAILBOX,
+        grantId: grant.id,
+        maxResults: messageCount,
+        historyId,
+        cursorStatus: "seeded",
+        fullResyncReason: null,
+        syncedAt: seededAt,
+      }),
+    );
+    await this.ctx.recordConnectorAudit(
+      grant.id,
+      "gmail range seeded through plugin-google-workspace",
+      { rangeDays, query, connectorAccountId: accountId },
+      { messageCount, pageCount, historyCursorPresent: Boolean(historyId) },
+    );
+    return {
+      provider: "google",
+      side: grant.side,
+      grantId: grant.id,
+      connectorAccountId: accountId,
+      rangeDays,
+      query,
+      messageCount,
+      pageCount,
+      historyCursorPresent: Boolean(historyId),
+      seededAt,
+    };
   }
 
   async getGmailSyncHealth(
@@ -886,14 +1015,18 @@ export class GmailDomain {
         "confirmDestructive",
       ) ?? false;
 
+    // Non-destructive execute calls (mark_read, archive, labels) keep working
+    // without confirmation so existing callers of /api/lifeops/gmail/manage
+    // are not broken; destructive operations accept either confirmation flag.
     if (
       executionMode === "execute" &&
+      destructive &&
       !confirmAction &&
-      !(destructive && confirmDestructive)
+      !confirmDestructive
     ) {
       fail(
         409,
-        `${operation} requires explicit confirmation immediately before execution.`,
+        `${operation} requires explicit destructive confirmation immediately before execution.`,
       );
     }
     if (

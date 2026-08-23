@@ -141,6 +141,7 @@ import type {
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedReceipt,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
   LifeOpsGmailSyncHealth,
@@ -166,6 +167,7 @@ import type {
   PurgeLifeOpsGmailImportedDataRequest,
   RecordLifeOpsProgressRequest,
   RecordLifeOpsProgressResult,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -700,6 +702,14 @@ export class LifeOpsService extends LifeOpsServiceBase {
         grantId,
       ),
   });
+
+  seedGmailMessages(
+    requestUrl: URL,
+    request: SeedLifeOpsGmailRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailSeedReceipt> {
+    return this.gmailDomain.seedGmailMessages(requestUrl, request, now);
+  }
 
   getGmailSyncHealth(
     requestUrl: URL,

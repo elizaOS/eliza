@@ -5,7 +5,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { lifeOpsCalendarEventFromApple } from "./apple-calendar.js";
+import {
+  appleRecurrenceToRrules,
+  lifeOpsCalendarEventFromApple,
+} from "./apple-calendar.js";
 import { mergeAggregatedCalendarFeedEvents } from "./service/CalendarService.js";
 
 describe("Apple Calendar portable identity", () => {
@@ -38,6 +41,57 @@ describe("Apple Calendar portable identity", () => {
       recurrenceRules: [{ frequency: "weekly", interval: 1 }],
       reminders: [{ relativeOffsetSeconds: -900 }],
     });
+  });
+
+  it("projects EventKit recurrence onto RRULE lines and the series identity", () => {
+    const occurrence = lifeOpsCalendarEventFromApple({
+      agentId: "agent-1",
+      event: {
+        id: "series-1",
+        externalId: "series-1",
+        calendarId: "apple-calendar-1",
+        title: "Weekly sync",
+        startAt: "2026-08-31T16:00:00.000Z",
+        endAt: "2026-08-31T16:30:00.000Z",
+        originalStartAt: "2026-08-31T16:00:00.000Z",
+        recurrenceRules: [
+          { frequency: "weekly", interval: 2, occurrenceCount: 10 },
+          { frequency: "unknown", interval: 1 },
+        ],
+      },
+    });
+
+    expect(occurrence.recurrence).toEqual([
+      "RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=10",
+    ]);
+    expect(occurrence.recurringEventId).toBe("series-1");
+    expect(
+      appleRecurrenceToRrules([
+        {
+          frequency: "daily",
+          interval: 1,
+          endDate: "2026-09-30T00:00:00.000Z",
+        },
+      ]),
+    ).toEqual(["RRULE:FREQ=DAILY;UNTIL=20260930T000000Z"]);
+  });
+
+  it("leaves one-off events without recurrence or series identity", () => {
+    const single = lifeOpsCalendarEventFromApple({
+      agentId: "agent-1",
+      event: {
+        id: "single-1",
+        externalId: "single-1",
+        calendarId: "apple-calendar-1",
+        title: "Dentist",
+        startAt: "2026-08-24T16:00:00.000Z",
+        endAt: "2026-08-24T16:30:00.000Z",
+        recurrenceRules: [],
+      },
+    });
+
+    expect(single.recurrence).toBeNull();
+    expect(single.recurringEventId).toBeNull();
   });
 
   it("keeps one authoritative event for Google-via-Apple overlap", () => {

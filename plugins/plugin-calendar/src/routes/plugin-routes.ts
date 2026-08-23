@@ -140,6 +140,8 @@ function isCalendarRouteService(
     typeof (service as CalendarRouteService).syncIcsCalendarSource ===
       "function" &&
     typeof (service as CalendarRouteService).purgeImportedCalendarData ===
+      "function" &&
+    typeof (service as CalendarRouteService).seedImportedCalendarData ===
       "function"
   );
 }

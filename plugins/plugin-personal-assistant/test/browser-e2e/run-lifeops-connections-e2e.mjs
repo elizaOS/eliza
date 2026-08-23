@@ -130,7 +130,11 @@ try {
   await desktop.getByText(/Some calendar sources failed/).waitFor({
     state: "detached",
   });
-  assert(true, "partial failure recovers through an explicit retry");
+  assert(
+    (await desktop.getByText(/Some calendar sources failed/).count()) === 0 &&
+      (await desktop.getByTestId("seed-receipt").count()) === 1,
+    "partial failure recovers through an explicit retry",
+  );
 
   await desktop
     .getByRole("button", { name: /Purge imported Google data/ })
@@ -147,7 +151,11 @@ try {
   );
   await desktop.keyboard.press("Escape");
   await desktop.getByRole("alertdialog").waitFor({ state: "detached" });
-  assert(true, "Escape cancels a destructive confirmation without an effect");
+  assert(
+    (await desktop.getByRole("alertdialog").count()) === 0 &&
+      (await desktop.getByTestId("purge-receipt").count()) === 0,
+    "Escape cancels a destructive confirmation without an effect",
+  );
   await desktop
     .getByRole("button", { name: /Purge imported Google data/ })
     .click();
@@ -322,7 +330,15 @@ try {
     .getByRole("button", { name: "Request permission" })
     .click();
   await requestPermission.getByText("Full access", { exact: true }).waitFor();
-  assert(true, "Apple permission request refreshes to the granted state");
+  assert(
+    (await requestPermission
+      .getByText("Full access", { exact: true })
+      .isVisible()) &&
+      (await requestPermission
+        .getByRole("button", { name: "Request permission" })
+        .count()) === 0,
+    "Apple permission request refreshes to the granted state",
+  );
   await requestPermission.close();
 
   const faultCases = [

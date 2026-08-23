@@ -96,25 +96,24 @@ const ROOT_STYLE: CSSProperties = {
   height: "100%",
   minHeight: 0,
   overflowY: "auto",
-  color: "var(--txt, #f5f5f5)",
+  color: "var(--txt)",
   background:
-    "radial-gradient(circle at 10% 0%, rgba(255,108,28,.13), transparent 34%), var(--bg, #0b0b0b)",
+    "radial-gradient(circle at 10% 0%, var(--accent-subtle), transparent 34%), var(--bg)",
 };
 
 const PANEL_STYLE: CSSProperties = {
-  border: "1px solid color-mix(in srgb, var(--txt, #fff) 10%, transparent)",
+  border: "1px solid var(--border)",
   borderRadius: 22,
-  background: "color-mix(in srgb, var(--card, #171717) 88%, transparent)",
-  boxShadow: "inset 0 1px rgba(255,255,255,.05)",
+  background: "var(--card)",
 };
 
 const BUTTON_STYLE: CSSProperties = {
   minHeight: 44,
   borderRadius: 13,
-  border: "1px solid rgba(255,255,255,.12)",
+  border: "1px solid var(--border)",
   padding: "0 16px",
   color: "inherit",
-  background: "rgba(255,255,255,.07)",
+  background: "var(--bg-muted)",
   font: "inherit",
   fontWeight: 650,
   cursor: "pointer",
@@ -183,13 +182,13 @@ function formatTime(value: string | null): string {
 function toneColor(tone: "good" | "warn" | "bad" | "muted"): string {
   switch (tone) {
     case "good":
-      return "#65d49a";
+      return "var(--status-success)";
     case "warn":
-      return "#f5a65b";
+      return "var(--status-warning)";
     case "bad":
-      return "#ff7d73";
+      return "var(--status-danger)";
     default:
-      return "var(--muted, #aaa)";
+      return "var(--muted)";
   }
 }
 
@@ -209,7 +208,7 @@ function StatusPill({
         minHeight: 28,
         borderRadius: 999,
         padding: "0 10px",
-        background: "rgba(255,255,255,.06)",
+        background: "var(--bg-muted)",
         color: toneColor(tone),
         fontSize: 12,
         fontWeight: 700,
@@ -236,7 +235,7 @@ function Section({
       <p
         style={{
           margin: "7px 0 18px",
-          color: "var(--muted, #aaa)",
+          color: "var(--muted)",
           fontSize: 13,
           lineHeight: 1.5,
         }}
@@ -462,6 +461,7 @@ export function LifeOpsConnectionsView({
     try {
       await adapter.connectGoogle([...capabilities]);
     } catch (cause) {
+      // error-policy:J4 OAuth start failures surface as a visible, retryable banner.
       setError(userFacingError(cause, "Google connect failed."));
       setBusy(null);
     }
@@ -491,6 +491,7 @@ export function LifeOpsConnectionsView({
         return next;
       });
     } catch (cause) {
+      // error-policy:J4 A rejected selection write keeps the prior state and shows the failure.
       setError(
         userFacingError(cause, "Calendar selection could not be saved."),
       );
@@ -521,6 +522,7 @@ export function LifeOpsConnectionsView({
       setSeedReceipt(receipt);
       await refresh(false);
     } catch (cause) {
+      // error-policy:J4 A failed seed shows the failure and leaves no receipt behind.
       setError(userFacingError(cause, "Initial sync failed."));
     } finally {
       setBusy(null);
@@ -537,6 +539,7 @@ export function LifeOpsConnectionsView({
       );
       await refresh(false);
     } catch (cause) {
+      // error-policy:J4 Permission request failures become a visible recovery state.
       setError(userFacingError(cause, "Calendar permission failed."));
     } finally {
       setBusy(null);
@@ -549,6 +552,7 @@ export function LifeOpsConnectionsView({
     try {
       await adapter.openApplePermissionSettings();
     } catch (cause) {
+      // error-policy:J4 Settings deep-link failures are shown instead of silently ignored.
       setError(userFacingError(cause, "System Settings could not be opened."));
     } finally {
       setBusy(null);
@@ -592,6 +596,7 @@ export function LifeOpsConnectionsView({
       }
       await refresh(false);
     } catch (cause) {
+      // error-policy:J4 Disconnect/purge failures are shown; no receipt is fabricated.
       setError(userFacingError(cause, "Action failed."));
     } finally {
       setBusy(null);
@@ -1037,21 +1042,21 @@ function LifeOpsStyles() {
   return (
     <style>{`
       .lifeops-shell{box-sizing:border-box;width:min(1180px,100%);margin:0 auto;padding:clamp(18px,4vw,42px);padding-bottom:calc(100px + var(--safe-area-bottom,0px));font-family:inherit}
-      .lifeops-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:24px}.lifeops-header h1{max-width:760px;margin:4px 0 10px;font-size:clamp(28px,5vw,48px);line-height:1.02;letter-spacing:-.035em}.lifeops-header p:not(.lifeops-eyebrow){max-width:720px;margin:0;color:var(--muted,#aaa);line-height:1.55}.lifeops-eyebrow{margin:0;color:#ff8738;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+      .lifeops-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:24px}.lifeops-header h1{max-width:760px;margin:4px 0 10px;font-size:clamp(28px,5vw,48px);line-height:1.02;letter-spacing:-.035em}.lifeops-header p:not(.lifeops-eyebrow){max-width:720px;margin:0;color:var(--muted);line-height:1.55}.lifeops-eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
       .lifeops-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:16px;margin-bottom:16px}.lifeops-grid>section:nth-child(3){grid-column:1/-1}
-      .lifeops-options,.lifeops-range{margin:16px 0;border:0;padding:0}.lifeops-options legend,.lifeops-range legend{margin-bottom:10px;font-size:12px;font-weight:750;color:var(--muted,#aaa)}
-      .lifeops-check-row{display:flex;align-items:flex-start;gap:12px;padding:12px;border-radius:14px;background:rgba(255,255,255,.035);margin-bottom:7px;cursor:pointer}.lifeops-check-row.compact{align-items:center}.lifeops-check-row input{width:20px;height:20px;margin:1px 0 0;accent-color:#ff7a24;flex:0 0 auto}.lifeops-check-row span{display:grid;gap:3px;min-width:0}.lifeops-check-row small{color:var(--muted,#aaa);line-height:1.4}.lifeops-check-row code{width:max-content;max-width:100%;overflow-wrap:anywhere;color:#f3a66f;font-size:11px}
-      .lifeops-field{display:grid;gap:7px;font-size:12px;font-weight:700}.lifeops-field select{min-height:44px;border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:0 12px;background:#202020;color:inherit;font:inherit}.lifeops-range{display:flex;flex-wrap:wrap;gap:8px}.lifeops-range legend{width:100%}.lifeops-range label{display:flex;align-items:center;gap:7px;min-height:44px;padding:0 13px;border:1px solid rgba(255,255,255,.1);border-radius:12px}.lifeops-range input{accent-color:#ff7a24}
-      .lifeops-primary,.lifeops-danger-confirm{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border:0;border-radius:13px;padding:0 17px;background:#f36f21;color:white;font:inherit;font-weight:800;cursor:pointer}.lifeops-primary:hover{background:#cf5515}.lifeops-primary:disabled,button:disabled{opacity:.48;cursor:not-allowed}.lifeops-danger-confirm{background:#b93d35}.lifeops-danger-confirm:hover{background:#942d28}
-      .lifeops-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}.lifeops-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px}.lifeops-empty{padding:14px;border:1px dashed rgba(255,255,255,.16);border-radius:13px;color:var(--muted,#aaa)}
-      .lifeops-status-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}.lifeops-status-row div{display:grid;gap:4px}.lifeops-status-row span{color:var(--muted,#aaa);font-size:13px;line-height:1.4}
-      .lifeops-calendar-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:14px}.lifeops-progress{color:#f5a65b;text-transform:capitalize}.lifeops-receipt{display:flex;align-items:flex-start;gap:9px;margin:12px 0 0;padding:12px;border-radius:12px;background:rgba(75,188,126,.1);color:#86dda9;font-size:13px;line-height:1.45}
-      .lifeops-health-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.lifeops-health-grid article{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:11px;padding:14px;border-radius:15px;background:rgba(255,255,255,.035)}.lifeops-health-grid article>div{display:grid;gap:4px}.lifeops-health-grid span,.lifeops-health-grid small{color:var(--muted,#aaa);font-size:12px;line-height:1.4}.lifeops-error-copy{color:#ff8f86!important}
-      .lifeops-banner{display:flex;align-items:center;gap:10px;margin:0 0 16px;padding:13px 15px;border-radius:14px;background:rgba(245,166,91,.12);color:#ffc484}.lifeops-banner-error{background:rgba(255,90,80,.12);color:#ffaaa2}.lifeops-banner button{margin-left:auto;min-height:36px;border:0;border-radius:10px;padding:0 12px;background:rgba(255,255,255,.1);color:inherit;font:inherit;font-weight:700}
-      .lifeops-safety-list p{display:flex;align-items:flex-start;gap:9px;margin:10px 0;color:var(--muted,#aaa);line-height:1.45}.lifeops-safety-list svg{color:#65d49a;flex:0 0 auto}.lifeops-danger-actions{display:grid;gap:8px}.lifeops-danger-actions button{display:flex;align-items:center;gap:9px;min-height:44px;border:1px solid rgba(255,110,99,.2);border-radius:12px;padding:0 13px;background:rgba(185,61,53,.08);color:#ffaaa2;font:inherit;font-weight:700;text-align:left}
-      .lifeops-provenance{display:grid;grid-template-columns:auto 1fr;gap:13px;margin-top:16px;padding:16px 18px;border:1px solid rgba(255,135,56,.2);border-radius:16px;background:rgba(255,122,36,.06)}.lifeops-provenance span{color:var(--muted,#aaa);font-size:13px;line-height:1.5}
-      .lifeops-dialog-backdrop{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.7);backdrop-filter:blur(8px)}.lifeops-dialog{width:min(480px,100%);box-sizing:border-box;padding:24px;border:1px solid rgba(255,255,255,.14);border-radius:20px;background:#181818;box-shadow:0 28px 90px rgba(0,0,0,.5)}.lifeops-dialog h2{margin:0 0 10px}.lifeops-dialog p{margin:0;color:#b8b8b8;line-height:1.55}
-      button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #ff9c58;outline-offset:3px}
+      .lifeops-options,.lifeops-range{margin:16px 0;border:0;padding:0}.lifeops-options legend,.lifeops-range legend{margin-bottom:10px;font-size:12px;font-weight:750;color:var(--muted)}
+      .lifeops-check-row{display:flex;align-items:flex-start;gap:12px;padding:12px;border-radius:14px;background:var(--bg-accent);margin-bottom:7px;cursor:pointer}.lifeops-check-row.compact{align-items:center}.lifeops-check-row input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--accent);flex:0 0 auto}.lifeops-check-row span{display:grid;gap:3px;min-width:0}.lifeops-check-row small{color:var(--muted);line-height:1.4}.lifeops-check-row code{width:max-content;max-width:100%;overflow-wrap:anywhere;color:var(--accent);font-size:11px}
+      .lifeops-field{display:grid;gap:7px;font-size:12px;font-weight:700}.lifeops-field select{min-height:44px;border:1px solid var(--border);border-radius:13px;padding:0 12px;background:var(--card);color:inherit;font:inherit}.lifeops-range{display:flex;flex-wrap:wrap;gap:8px}.lifeops-range legend{width:100%}.lifeops-range label{display:flex;align-items:center;gap:7px;min-height:44px;padding:0 13px;border:1px solid var(--border);border-radius:12px}.lifeops-range input{accent-color:var(--accent)}
+      .lifeops-primary,.lifeops-danger-confirm{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border:0;border-radius:13px;padding:0 17px;background:var(--accent);color:var(--accent-foreground);font:inherit;font-weight:800;cursor:pointer}.lifeops-primary:hover{background:color-mix(in srgb, var(--accent) 82%, black)}.lifeops-primary:disabled,button:disabled{opacity:.48;cursor:not-allowed}.lifeops-danger-confirm{background:var(--destructive);color:var(--destructive-foreground)}.lifeops-danger-confirm:hover{background:color-mix(in srgb, var(--destructive) 82%, black)}
+      .lifeops-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}.lifeops-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px}.lifeops-empty{padding:14px;border:1px dashed var(--border-strong);border-radius:13px;color:var(--muted)}
+      .lifeops-status-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}.lifeops-status-row div{display:grid;gap:4px}.lifeops-status-row span{color:var(--muted);font-size:13px;line-height:1.4}
+      .lifeops-calendar-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:14px}.lifeops-progress{color:var(--status-warning);text-transform:capitalize}.lifeops-receipt{display:flex;align-items:flex-start;gap:9px;margin:12px 0 0;padding:12px;border-radius:12px;background:var(--status-success-bg);color:var(--txt);font-size:13px;line-height:1.45}
+      .lifeops-health-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.lifeops-health-grid article{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:11px;padding:14px;border-radius:15px;background:var(--bg-accent)}.lifeops-health-grid article>div{display:grid;gap:4px}.lifeops-health-grid span,.lifeops-health-grid small{color:var(--muted);font-size:12px;line-height:1.4}.lifeops-error-copy{color:var(--status-danger)!important}
+      .lifeops-banner{display:flex;align-items:center;gap:10px;margin:0 0 16px;padding:13px 15px;border-radius:14px;background:var(--status-warning-bg);color:var(--txt)}.lifeops-banner-error{background:var(--status-danger-bg);color:var(--txt)}.lifeops-banner button{margin-left:auto;min-height:36px;border:0;border-radius:10px;padding:0 12px;background:var(--bg-muted);color:inherit;font:inherit;font-weight:700}
+      .lifeops-safety-list p{display:flex;align-items:flex-start;gap:9px;margin:10px 0;color:var(--muted);line-height:1.45}.lifeops-safety-list svg{color:var(--status-success);flex:0 0 auto}.lifeops-danger-actions{display:grid;gap:8px}.lifeops-danger-actions button{display:flex;align-items:center;gap:9px;min-height:44px;border:1px solid var(--border-strong);border-radius:12px;padding:0 13px;background:var(--destructive-subtle);color:var(--txt);font:inherit;font-weight:700;text-align:left}
+      .lifeops-provenance{display:grid;grid-template-columns:auto 1fr;gap:13px;margin-top:16px;padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:var(--accent-subtle)}.lifeops-provenance span{color:var(--muted);font-size:13px;line-height:1.5}
+      .lifeops-dialog-backdrop{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px;background:var(--scrim);backdrop-filter:blur(8px)}.lifeops-dialog{width:min(480px,100%);box-sizing:border-box;padding:24px;border:1px solid var(--border);border-radius:20px;background:var(--card);box-shadow:0 28px 90px var(--scrim)}.lifeops-dialog h2{margin:0 0 10px}.lifeops-dialog p{margin:0;color:var(--muted);line-height:1.55}
+      button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
       @media(max-width:760px){.lifeops-header{display:grid}.lifeops-grid,.lifeops-health-grid,.lifeops-calendar-list{grid-template-columns:1fr}.lifeops-grid>section:nth-child(3){grid-column:auto}.lifeops-status-row,.lifeops-health-grid article{grid-template-columns:auto 1fr}.lifeops-status-row>span,.lifeops-health-grid article>span{grid-column:2}.lifeops-provenance{grid-template-columns:1fr}.lifeops-actions>*{flex:1 1 100%}}
       @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
     `}</style>

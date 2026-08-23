@@ -432,4 +432,53 @@ describe("GoogleDomain OAuth callback parity", () => {
     expect(repository.deleteGmailSyncState).not.toHaveBeenCalled();
     expect(repository.deleteGmailMessagesForProvider).not.toHaveBeenCalled();
   });
+
+  it("purges the imported projection only when the disconnect asks for it", async () => {
+    let accounts = [connectedAccount()];
+    const manager = {
+      registerProvider: () => undefined,
+      evaluatePolicy: () => undefined,
+      getProvider: () => ({ provider: "google" }),
+      listAccounts: async () => accounts,
+      deleteAccount: vi.fn(async () => {
+        accounts = [];
+      }),
+    };
+    const repository = {
+      listCalendarEvents: vi.fn(async () => []),
+      deleteCalendarEventsForProvider: vi.fn(async () => undefined),
+      deleteCalendarSyncState: vi.fn(async () => undefined),
+      deleteGmailSyncState: vi.fn(async () => undefined),
+      deleteGmailMessagesForProvider: vi.fn(async () => undefined),
+      deleteGmailSpamReviewItemsForProvider: vi.fn(async () => undefined),
+    };
+    const domain = new GoogleDomain({
+      runtime: {
+        getSetting: () => undefined,
+        getService: () => manager,
+      },
+      agentId: () => "agent-1",
+      repository,
+      recordConnectorAudit: vi.fn(async () => undefined),
+    } as never);
+
+    const status = await domain.disconnectGoogleConnector(
+      {
+        side: "owner",
+        mode: "local",
+        grantId: "connector-account:acct-1",
+        purgeImportedData: true,
+      },
+      new URL("http://127.0.0.1/"),
+    );
+
+    expect(status.connected).toBe(false);
+    expect(repository.deleteGmailMessagesForProvider).toHaveBeenCalledWith(
+      "agent-1",
+      "google",
+      "owner",
+      "connector-account:acct-1",
+    );
+    expect(repository.deleteCalendarEventsForProvider).toHaveBeenCalled();
+  });
 });
