@@ -1413,7 +1413,19 @@ export class RemindersDomain {
             response.createdAt <= nowMs &&
             response.text.length > 0,
         )
-        .sort((left, right) => left.createdAt - right.createdAt);
+        .sort((left, right) => {
+          const l =
+            typeof left.createdAt === "number" &&
+            Number.isFinite(left.createdAt)
+              ? left.createdAt
+              : 0;
+          const r =
+            typeof right.createdAt === "number" &&
+            Number.isFinite(right.createdAt)
+              ? right.createdAt
+              : 0;
+          return l - r;
+        });
       if (ownerResponses.length === 0) {
         return noResponse;
       }
