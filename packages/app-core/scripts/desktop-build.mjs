@@ -32,6 +32,13 @@ import {
   shouldPackageNativeActivityTracker,
   verifyNativeActivityTrackerBinary,
 } from "./lib/native-activity-tracker-packaging.mjs";
+import {
+  nativeComputerUseBundleBinary,
+  nativeComputerUseSourceBinary,
+  nativeComputerUseStagedBinary,
+  shouldPackageNativeComputerUse,
+  verifyNativeComputerUseBinary,
+} from "./lib/native-computeruse-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
 import { workspaceRuntimePackageLooksBuilt } from "./lib/workspace-runtime-package.mjs";
@@ -1038,6 +1045,56 @@ function verifyPackagedNativeActivityTrackerBinary(appBundlePath) {
   );
 }
 
+function shouldStageNativeComputerUse() {
+  return shouldPackageNativeComputerUse({
+    platform: process.platform,
+    buildVariant,
+    buildProfile,
+    cloudOnly: cloudOnlyBuild,
+  });
+}
+
+function stageNativeComputerUseSourceBinary() {
+  if (!shouldStageNativeComputerUse()) return;
+
+  runBun(["run", "build:swift"], {
+    cwd: PLUGIN_COMPUTERUSE_PACKAGE_DIR,
+    label: "Building native macOS Computer Use Accessibility helper",
+  });
+  const result = verifyNativeComputerUseBinary(
+    nativeComputerUseSourceBinary(ROOT),
+    {
+      arch: process.arch,
+      label: "generated Computer Use Accessibility helper",
+    },
+  );
+  console.log(
+    `[desktop-build] Verified generated Computer Use Accessibility helper (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyStagedNativeComputerUseBinary() {
+  if (!shouldStageNativeComputerUse()) return;
+  const result = verifyNativeComputerUseBinary(
+    nativeComputerUseStagedBinary(ROOT),
+    { arch: process.arch, label: "staged Computer Use Accessibility helper" },
+  );
+  console.log(
+    `[desktop-build] Verified staged Computer Use Accessibility helper (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyPackagedNativeComputerUseBinary(appBundlePath) {
+  if (!shouldStageNativeComputerUse()) return;
+  const result = verifyNativeComputerUseBinary(
+    nativeComputerUseBundleBinary(appBundlePath),
+    { arch: process.arch, label: "packaged Computer Use Accessibility helper" },
+  );
+  console.log(
+    `[desktop-build] Verified packaged Computer Use Accessibility helper (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
 function desktopRendererBuildEnv() {
   let env = {
     ...process.env,
@@ -1467,6 +1524,7 @@ function stageDesktopBuild() {
 
   ensureRootRuntimeBundle();
   ensureWorkspaceRuntimePackagesBuilt();
+  stageNativeComputerUseSourceBinary();
   stageNativeActivityTrackerSourceBinary();
 
   // Build + bundle the fused local-inference native lib so the packaged app
@@ -1483,6 +1541,7 @@ function stageDesktopBuild() {
   });
 
   copyRuntimeNodeModulesWithRetry();
+  verifyStagedNativeComputerUseBinary();
   verifyStagedNativeActivityTrackerBinary();
 
   // `bun install` for these workspaces can emit benign EEXIST errors when
@@ -1780,7 +1839,9 @@ function packageDesktopBuild() {
   hardenPackagedLinuxArtifacts();
 
   if (process.platform === "darwin") {
-    verifyPackagedNativeActivityTrackerBinary(findLatestMacAppBundle());
+    const appBundlePath = findLatestMacAppBundle();
+    verifyPackagedNativeComputerUseBinary(appBundlePath);
+    verifyPackagedNativeActivityTrackerBinary(appBundlePath);
   }
 
   // The legacy compatibility path (APP_DIR/electrobun) is not read by any

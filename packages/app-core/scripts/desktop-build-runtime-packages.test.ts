@@ -27,5 +27,10 @@ describe("desktop runtime package build set", () => {
     expect(source).toContain(
       'ensureWorkspaceRuntimePackageBuilt(\n    "@elizaos/plugin-computeruse",\n    PLUGIN_COMPUTERUSE_PACKAGE_DIR,\n  );',
     );
+    expect(source).toContain("stageNativeComputerUseSourceBinary();");
+    expect(source).toContain("verifyStagedNativeComputerUseBinary();");
+    expect(source).toContain(
+      "verifyPackagedNativeComputerUseBinary(appBundlePath);",
+    );
   });
 });

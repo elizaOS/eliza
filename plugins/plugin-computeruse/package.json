@@ -33,6 +33,8 @@
   "files": [
     "registry-entry.json",
     "dist",
+    "native/macos/accessibility-control",
+    "native/macos/accessibility-control.swift",
     "auto-enable.ts",
     "README.md",
     "package.json"
@@ -40,6 +42,7 @@
   "scripts": {
     "postinstall": "node scripts/ensure-platform-deps.mjs",
     "build": "bun run build.ts && bun run build:views",
+    "build:swift": "swiftc -O native/macos/accessibility-control.swift -o native/macos/accessibility-control",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e:browser-fixture": "vitest run --config vitest.browser-fixture.config.ts",

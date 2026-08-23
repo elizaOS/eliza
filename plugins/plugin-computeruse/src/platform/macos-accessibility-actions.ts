@@ -10,6 +10,8 @@
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export type MacosAccessibilityAction =
   | "press"
@@ -254,10 +256,10 @@ do {
   case "press": try perform(element, kAXPressAction as CFString)
   case "confirm": try perform(element, "AXConfirm" as CFString)
   case "raise":
-    running.activate(options: [.activateIgnoringOtherApps])
+    running.activate()
     try perform(element, kAXRaiseAction as CFString)
   case "focus":
-    running.activate(options: [.activateIgnoringOtherApps])
+    running.activate()
     guard AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success else {
       try fail("AX_ACTION_UNSUPPORTED")
     }
@@ -280,6 +282,26 @@ do {
 `;
 
 function defaultRunNative(request: Record<string, unknown>): string {
+  const packagedHelper = fileURLToPath(
+    new URL("../native/macos/accessibility-control", import.meta.url),
+  );
+  const sourceHelper = fileURLToPath(
+    new URL("../../native/macos/accessibility-control", import.meta.url),
+  );
+  const helperPath = [packagedHelper, sourceHelper].find((candidate) =>
+    existsSync(candidate),
+  );
+  if (helperPath) {
+    return execFileSync(helperPath, [], {
+      timeout: 8_000,
+      encoding: "utf8",
+      input: JSON.stringify(request),
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  }
+
+  // Source-only development fallback. Packaged Darwin builds fail their build
+  // gate unless the compiled helper is present, executable, and target-arch.
   return execFileSync("/usr/bin/swift", ["-e", SWIFT_PROGRAM], {
     timeout: 8_000,
     encoding: "utf8",
