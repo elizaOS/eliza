@@ -6,6 +6,9 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
+export const ELIZA_AI_VOICE_DISCLOSURE =
+  "Just so you know, I'm an AI assistant using an AI-generated voice.";
+
 export interface InboundCallOpeningClaim extends CallContinuityContext {
   id: string;
   receivedAt: Date;
@@ -122,7 +125,8 @@ export function callStartedEvent(
  * through the agent runtime puts its entire cold path before first audio.
  */
 export function callOpeningGreeting(returningCaller: boolean): string {
-  return returningCaller ? "Hey, what's up?" : "Hello? Who's this?";
+  const greeting = returningCaller ? "Hey, what's up?" : "Hello? Who's this?";
+  return `${greeting} ${ELIZA_AI_VOICE_DISCLOSURE}`;
 }
 
 /** Keeps variable history inside the canonical private turn while bounding its spoken output. */
