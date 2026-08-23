@@ -1,6 +1,6 @@
 /**
- * Pins quality.yml to the Develop Full latest-tip cancellation contract while
- * preserving independent manual diagnostics.
+ * Pins quality.yml's defensive child-local push guard while Develop Full
+ * serializes complete graphs and manual diagnostics remain independent.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -16,7 +16,7 @@ describe("quality.yml concurrency contract", () => {
     concurrency?: { group?: string; "cancel-in-progress"?: string | boolean };
   };
 
-  test("shares one concurrency group per ref so pushes supersede, not queue", () => {
+  test("keeps a stable push-context backstop group", () => {
     const group = workflow.concurrency?.group;
     expect(group).toStartWith("quality-");
     expect(group).toContain("|| github.ref");
@@ -24,14 +24,14 @@ describe("quality.yml concurrency contract", () => {
     // An unconditional run_id fallback would give every push a unique group
     // and re-open the unbounded queue from #14069. run_id may appear only
     // behind an explicit workflow_dispatch guard, so a manual health read is
-    // not parked behind — and then superseded by — the develop push queue.
+    // not parked behind the child group used by called push-context runs.
     const dispatchGuard =
       "github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id)";
     const withoutDispatchGuard = String(group).replace(dispatchGuard, "");
     expect(withoutDispatchGuard).not.toContain("run_id");
   });
 
-  test("cancels a superseded develop tip", () => {
+  test("cancels only overlapping push-context child runs", () => {
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(
       `\${{ github.event_name == 'push' }}`,
     );

@@ -21,8 +21,8 @@ on:
         default: false
         type: boolean
 
-# Develop Full owns cancellation of superseded tips. Manual runs use a per-run
-# group so an on-demand diagnostic remains independent.
+# Develop Full serializes complete graphs before they reach this child. The
+# child-local push guard remains defensive; manual runs use a per-run group.
 concurrency:
   group: test-${{ github.event_name == 'push' && github.ref || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'push' }}

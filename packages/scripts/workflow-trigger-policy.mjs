@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Enforces one lightweight pull-request authority and one latest-tip develop
+ * Enforces one lightweight pull-request authority and one serial develop
  * authority. Periodic and completion-chained triggers remain forbidden so a
  * merged develop tip is the repository's only automatic full-validation event.
  */
@@ -18,6 +18,7 @@ const FORBIDDEN_EVENTS = new Set([
 ]);
 const CANONICAL_ADMISSION_WORKFLOW = "pr-static-smoke.yml";
 const DEVELOP_AUTHORITY_WORKFLOW = "develop-full.yml";
+const DEVELOP_CONCURRENCY_GROUP = "develop-full";
 const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
 const REQUIRED_PR_BRANCHES = ["develop", "main"];
 const REQUIRED_PR_TYPES = [
@@ -70,6 +71,18 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     const workflow = document.toJS();
     const entries = triggerEntries(workflow?.on);
     if (name === CANONICAL_ADMISSION_WORKFLOW) sawCanonicalWorkflow = true;
+    if (name === DEVELOP_AUTHORITY_WORKFLOW) {
+      const concurrency = workflow?.concurrency;
+      if (
+        concurrency?.group !== DEVELOP_CONCURRENCY_GROUP ||
+        concurrency?.["cancel-in-progress"] !== false ||
+        concurrency?.queue !== "max"
+      ) {
+        failures.push(
+          `${name}: concurrency must serialize ${DEVELOP_CONCURRENCY_GROUP} with cancel-in-progress:false and queue:max`,
+        );
+      }
+    }
 
     for (const [eventName, config] of entries) {
       if (FORBIDDEN_AUTOMATION_EVENTS.has(eventName)) {

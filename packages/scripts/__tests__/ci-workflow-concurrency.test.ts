@@ -1,6 +1,6 @@
 /**
- * Pins latest-tip cancellation for the current develop CI graph while manual
- * diagnostics keep independent run-scoped identities.
+ * Pins the CI child's defensive push guard while Develop Full serializes its
+ * complete graphs and manual diagnostics keep independent run identities.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -28,12 +28,12 @@ describe("ci.yml concurrency contract", () => {
     );
   });
 
-  test("uses one stable develop ref group", () => {
+  test("uses one stable push-context backstop group", () => {
     expect(group).toContain("|| github.ref || github.run_id");
     expect(concurrency?.queue).toBeUndefined();
   });
 
-  test("cancels superseded develop pushes", () => {
+  test("cancels only overlapping push-context child runs", () => {
     expect(concurrency?.["cancel-in-progress"]).toBe(
       `\${{ github.event_name == 'push' }}`,
     );

@@ -7,7 +7,8 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# Develop Full owns latest-tip cancellation for called runs.
+# Develop Full serializes complete graphs before they reach this child. Retain
+# this child-local push guard for any reusable caller carrying a push event.
 concurrency:
   group: cloud-tests-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}

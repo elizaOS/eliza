@@ -7,8 +7,8 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# A newer develop tip invalidates read-only verification of an older tip. Manual
-# diagnostics retain a run-scoped group and never collide with branch health.
+# Develop Full serializes complete graphs before they reach this child. The
+# child-local push guard remains defensive; manual diagnostics stay run-scoped.
 concurrency:
   group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'push' }}

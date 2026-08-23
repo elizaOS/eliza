@@ -6,8 +6,8 @@ name: gitleaks
 on:
   workflow_call:
 
-# Develop Full owns cancellation of superseded tips. This stable child group
-# prevents duplicate standalone invocations for the same ref.
+# Develop Full serializes complete graphs before they reach this child. This
+# stable child group remains a defensive duplicate guard for overlapping calls.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

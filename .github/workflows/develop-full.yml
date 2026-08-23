@@ -1,6 +1,7 @@
-# This workflow is the sole develop-push validation authority. It cancels the
-# complete read-only graph for a superseded tip and reuses a surface verdict
-# only when immutable cached evidence matches that surface's exact input digest.
+# This workflow is the sole develop-push validation authority. It serializes
+# complete read-only graphs so adjacent merge tips can reach terminal results,
+# and reuses a surface verdict only when immutable cached evidence matches that
+# surface's exact input digest.
 name: Develop Full
 
 on:
@@ -9,7 +10,10 @@ on:
 
 concurrency:
   group: develop-full
-  cancel-in-progress: true
+  # Keep one graph active and retain up to GitHub's bounded limit of 100 waiting
+  # merge tips. Arrivals beyond that platform limit are cancelled.
+  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read

@@ -33,9 +33,8 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# Develop Full owns latest-tip cancellation; standalone dispatches retain their
-# own stable ref group.
-# work instead of accumulating behind the runner fleet.
+# Develop Full serializes complete graphs before they reach this child. Retain
+# the child-local push guard; standalone dispatches keep their stable ref group.
 concurrency:
   group: chat-shell-gestures-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}

@@ -9,8 +9,8 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# Develop Full owns cancellation of superseded tips. Manual runs stay isolated
-# so an on-demand health read is not parked behind the develop queue.
+# Develop Full serializes complete graphs before they reach this child. The
+# child-local push guard remains defensive, while manual runs stay isolated.
 concurrency:
   group: quality-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}

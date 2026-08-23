@@ -14,9 +14,11 @@ building plus linting and typechecking the affected workspace closure. It does
 not run tests, scenarios, live providers, devices, deployments, or destructive
 effects. New commits cancel stale work for the same pull request or merge group.
 
-`develop-full.yml` is the sole develop-push workflow. Its stable concurrency
-group cancels the complete read-only graph for a superseded tip, delegates each
-invalidated validation family to its reusable workflow, and publishes `Complete
+`develop-full.yml` is the sole develop-push workflow. Its stable bounded
+concurrency group runs one complete read-only graph at a time and retains up to
+100 waiting merge tips instead of cancelling an adjacent head. Arrivals beyond
+that platform limit are cancelled. Each admitted run delegates its invalidated
+validation families to their reusable workflows and publishes `Complete
 manifest` only when every registered family has current green evidence.
 `.github/develop-surface-graph.json` owns the reviewed surface DAG, workspace
 roots, non-workspace inputs, environment identity, and evidence lifetime.
@@ -30,7 +32,8 @@ duplicate, unexpected, stale, or ambiguous evidence fails closed or reruns the
 surface; unknown changed-path ownership forces the full graph. The expected and
 observed manifests are retained as the run's reviewable domain artifact.
 The hosted runner image is mutable and is not yet measured by this graph, so
-the reviewed `current-run-only` policy disables cross-run verdict reuse. The
+the reviewed `current-run-only` policy disables cross-run verdict reuse. Every
+admitted queue entry therefore executes its own invalidated families. The
 environment digest identifies declared toolchain and runner policy only; it is
 not represented as an exact hosted-image match. Cross-run cache reuse may be
 enabled only after every delegated runner's immutable image identity is bound

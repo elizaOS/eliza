@@ -9,7 +9,11 @@ const workflowPath = fileURLToPath(
 );
 const workflow = Bun.YAML.parse(readFileSync(workflowPath, "utf8")) as {
   on?: Record<string, { branches?: string[] }>;
-  concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+  concurrency?: {
+    group?: string;
+    "cancel-in-progress"?: boolean;
+    queue?: string;
+  };
   permissions?: Record<string, string>;
   jobs?: Record<
     string,
@@ -65,11 +69,12 @@ const delegatedJobs = [
 ];
 
 describe("Develop Full workflow authority", () => {
-  test("is the latest-tip develop-push authority", () => {
+  test("preserves adjacent develop heads in a bounded serial queue", () => {
     expect(workflow.on).toEqual({ push: { branches: ["develop"] } });
     expect(workflow.concurrency).toEqual({
       group: "develop-full",
-      "cancel-in-progress": true,
+      "cancel-in-progress": false,
+      queue: "max",
     });
   });
 

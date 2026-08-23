@@ -1,4 +1,4 @@
-/** Exercises the single PR Static Smoke and latest-tip Develop Full trigger authorities. */
+/** Exercises the single PR Static Smoke and serial Develop Full trigger authorities. */
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -44,6 +44,10 @@ const developPush = `name: Develop Full
 on:
   push:
     branches: [develop]
+concurrency:
+  group: develop-full
+  cancel-in-progress: false
+  queue: max
 jobs: {}
 `;
 
@@ -55,6 +59,10 @@ on:
   push:
     branches: [develop]
   workflow_dispatch:
+concurrency:
+  group: develop-full
+  cancel-in-progress: false
+  queue: max
 jobs: {}
 `),
     ).toEqual({ developPushWorkflows: 1, files: 1 });
@@ -77,7 +85,7 @@ jobs: {}
 
   test("accepts tag-only release pushes", () => {
     const root = buildRepo({
-      "develop-full.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
+      "develop-full.yml": developPush,
       "release.yml": `on:\n  push:\n    tags: ["v*"]\njobs: {}\n`,
     });
     try {
@@ -124,6 +132,32 @@ jobs: {}
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test.each([
+    [
+      "active-run cancellation",
+      developPush.replace(
+        "cancel-in-progress: false",
+        "cancel-in-progress: true",
+      ),
+    ],
+    ["single pending run", developPush.replace("queue: max", "queue: 1")],
+    [
+      "a different group",
+      developPush.replace("group: develop-full", "group: other"),
+    ],
+    [
+      "missing configuration",
+      developPush.replace(
+        "concurrency:\n  group: develop-full\n  cancel-in-progress: false\n  queue: max\n",
+        "",
+      ),
+    ],
+  ])("rejects Develop Full concurrency with %s", (_name, workflow) => {
+    expect(() => validateFixture(workflow)).toThrow(
+      /serialize develop-full with cancel-in-progress:false and queue:max/,
+    );
   });
 
   test("fails closed when PR Static Smoke loses either admission trigger", () => {
