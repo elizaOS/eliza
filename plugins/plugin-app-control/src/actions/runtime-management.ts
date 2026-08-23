@@ -22,8 +22,8 @@ import {
 	userRequestMessageText,
 } from "../params.js";
 import {
-	type ConfirmedRuntimeOperation,
-	isUnambiguousRuntimeConfirmation,
+	isBoundRuntimeManagementConfirmation,
+	runtimeManagementConfirmationText,
 } from "./runtime-management-confirmation.js";
 import { readViewInteractionClientId } from "./view-delivery.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
@@ -43,12 +43,6 @@ const CONFIRMATION_REQUIRED: ReadonlySet<RuntimeManagementRequest["op"]> =
 			(op) => op !== "list" && op !== "inspect_ssh",
 		),
 	);
-
-function requiresConfirmation(
-	op: RuntimeManagementRequest["op"],
-): op is ConfirmedRuntimeOperation {
-	return CONFIRMATION_REQUIRED.has(op);
-}
 
 const SECRET_OPTION_NAMES = new Set([
 	"accesstoken",
@@ -110,9 +104,43 @@ export function parseRuntimeManagementRequest(
 		apiBase: readStringOption(options, "apiBase") ?? undefined,
 		sessionId: readStringOption(options, "sessionId") ?? undefined,
 		code: readStringOption(options, "code") ?? undefined,
+		proposalId: readStringOption(options, "proposalId") ?? undefined,
+		proposalNonce: readStringOption(options, "proposalNonce") ?? undefined,
 	};
 }
 
+async function defaultProposeRuntime(
+	request: RuntimeManagementRequest,
+	message: Memory,
+): Promise<{ proposalId: string; proposalNonce: string }> {
+	const clientId = readViewInteractionClientId(message);
+	if (!clientId) {
+		throw new Error(
+			"Open the Eliza app and request this operation from its chat first.",
+		);
+	}
+	const response = await fetch(
+		`${getAppControlApiBase()}/api/runtime/manage/propose`,
+		{
+			method: "POST",
+			headers: createViewsRequestHeaders(),
+			body: JSON.stringify({ ...request, clientId }),
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+		},
+	);
+	const body = (await response.json().catch(() => {
+		// error-policy:J3 an invalid proposal response remains explicitly invalid.
+		return null;
+	})) as { proposalId?: unknown; proposalNonce?: unknown } | null;
+	if (
+		!response.ok ||
+		typeof body?.proposalId !== "string" ||
+		typeof body.proposalNonce !== "string"
+	) {
+		throw new Error("The app could not prepare a bound runtime operation.");
+	}
+	return { proposalId: body.proposalId, proposalNonce: body.proposalNonce };
+}
 async function defaultManageRuntime(
 	request: RuntimeManagementRequest,
 	message: Memory,
@@ -318,6 +346,20 @@ export function createRuntimeManagementAction(
 				required: false,
 				schema: { type: "string" },
 			},
+			{
+				name: "proposalId",
+				description:
+					"Opaque proposal id returned by the immediately preceding RUNTIMES confirmation request. Copy it exactly; never invent one.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "proposalNonce",
+				description:
+					"Opaque one-use proposal nonce returned with proposalId. Copy it exactly only after the user's exact confirmation.",
+				required: false,
+				schema: { type: "string" },
+			},
 		],
 		validate: async (): Promise<boolean> => true,
 		handler: async (
@@ -335,22 +377,54 @@ export function createRuntimeManagementAction(
 				return { success: false, text: reply };
 			}
 			const normalized = normalizeActionOptions(options) ?? {};
+			const requiresConfirmation = CONFIRMATION_REQUIRED.has(request.op);
+			const confirmationText = runtimeManagementConfirmationText(request);
+			const userConfirmed = isBoundRuntimeManagementConfirmation(
+				userRequestMessageText(message),
+				request,
+			);
+			const hasProposal = Boolean(request.proposalId && request.proposalNonce);
 			if (
-				requiresConfirmation(request.op) &&
+				requiresConfirmation &&
 				(!isConfirmed(normalized) ||
-					!isUnambiguousRuntimeConfirmation(
-						userRequestMessageText(message),
-						request.op,
-					))
+					!userConfirmed ||
+					(!manageRuntime && !hasProposal))
 			) {
-				const reply = `Please confirm before I run the ${request.op} Devices & Runtimes operation.`;
+				let proposal = hasProposal
+					? {
+							proposalId: request.proposalId as string,
+							proposalNonce: request.proposalNonce as string,
+						}
+					: undefined;
+				if (!manageRuntime && !proposal) {
+					try {
+						proposal = await defaultProposeRuntime(
+							{ ...request, proposalId: undefined, proposalNonce: undefined },
+							message,
+						);
+					} catch (cause) {
+						// error-policy:J1 the action boundary returns a visible proposal failure.
+						const reply =
+							cause instanceof Error && cause.message.trim()
+								? cause.message
+								: "The app could not prepare this runtime operation.";
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+				}
+				const reply = `To authorize this exact operation, reply: “${confirmationText}”.`;
 				await callback?.({ text: reply });
 				return {
 					success: false,
 					text: reply,
 					userFacingText: reply,
 					verifiedUserFacing: true,
-					values: { awaitingConfirmation: true, op: request.op },
+					values: {
+						awaitingConfirmation: true,
+						op: request.op,
+						confirmationText,
+						...(proposal ?? {}),
+					},
 				};
 			}
 

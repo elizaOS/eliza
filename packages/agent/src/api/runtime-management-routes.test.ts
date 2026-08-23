@@ -3,6 +3,10 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  RuntimeManagementProposal,
+  RuntimeManagementProposalStore,
+} from "./runtime-management-proposal-store.ts";
 import {
   handleRuntimeManagementRoutes,
   type RuntimeManagementRouteContext,
@@ -10,6 +14,31 @@ import {
 } from "./runtime-management-routes.ts";
 
 type Body = Record<string, unknown>;
+
+class MemoryProposalStore implements RuntimeManagementProposalStore {
+  readonly proposals = new Map<string, RuntimeManagementProposal>();
+
+  async create(proposal: RuntimeManagementProposal): Promise<void> {
+    this.proposals.set(proposal.proposalId, proposal);
+  }
+
+  async consume(proposal: RuntimeManagementProposal): Promise<boolean> {
+    const stored = this.proposals.get(proposal.proposalId);
+    if (
+      !stored ||
+      stored.expiresAt <= Date.now() ||
+      stored.nonce !== proposal.nonce ||
+      stored.clientId !== proposal.clientId ||
+      stored.requestKey !== proposal.requestKey
+    ) {
+      return false;
+    }
+    this.proposals.delete(proposal.proposalId);
+    return true;
+  }
+}
+
+const proposalStore = new MemoryProposalStore();
 
 function makeContext(method: string, pathname: string, body: Body | null) {
   const req = Readable.from(
@@ -31,6 +60,7 @@ function makeContext(method: string, pathname: string, body: Body | null) {
     broadcastWs,
     broadcastWsToClientId,
     callerAuthorization: { ok: true, role: "OWNER" },
+    proposalStore,
   };
   return { ctx, json, error, broadcastWs, broadcastWsToClientId };
 }
@@ -43,6 +73,7 @@ async function flushUntil(predicate: () => boolean): Promise<void> {
 
 afterEach(() => {
   runtimeManagementRouteInternals.claims.clear();
+  proposalStore.proposals.clear();
 });
 
 describe("POST /api/runtime/manage", () => {
@@ -75,6 +106,22 @@ describe("POST /api/runtime/manage", () => {
     );
     expect(request.broadcastWs).not.toHaveBeenCalled();
     expect(request.broadcastWsToClientId).not.toHaveBeenCalled();
+  });
+
+  it("rejects proposal minting without owner authority", async () => {
+    const request = makeContext("POST", "/api/runtime/manage/propose", {
+      op: "remove",
+      runtimeId: "vps-1",
+      clientId: "origin-renderer",
+    });
+    request.ctx.callerAuthorization = { ok: true, role: "USER" };
+    await handleRuntimeManagementRoutes(request.ctx);
+    expect(request.error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Runtime management requires owner authority.",
+      403,
+    );
+    expect(proposalStore.proposals.size).toBe(0);
   });
 
   it("lets exactly one shell claim and resolve an operation", async () => {
@@ -152,6 +199,85 @@ describe("POST /api/runtime/manage", () => {
       400,
     );
     expect(aliased.broadcastWs).not.toHaveBeenCalled();
+  });
+
+  it("binds each destructive request to one server proposal, target, and renderer", async () => {
+    const proposed = makeContext("POST", "/api/runtime/manage/propose", {
+      op: "remove",
+      runtimeId: "vps-1",
+      clientId: "origin-renderer",
+    });
+    await handleRuntimeManagementRoutes(proposed.ctx);
+    const authority = proposed.json.mock.calls[0]?.[1] as {
+      proposalId: string;
+      proposalNonce: string;
+    };
+
+    const wrongTarget = makeContext("POST", "/api/runtime/manage", {
+      op: "remove",
+      runtimeId: "vps-2",
+      clientId: "origin-renderer",
+      ...authority,
+    });
+    await handleRuntimeManagementRoutes(wrongTarget.ctx);
+    expect(wrongTarget.error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Runtime proposal is missing, expired, or does not match.",
+      409,
+    );
+
+    const wrongRenderer = makeContext("POST", "/api/runtime/manage", {
+      op: "remove",
+      runtimeId: "vps-1",
+      clientId: "other-renderer",
+      ...authority,
+    });
+    await handleRuntimeManagementRoutes(wrongRenderer.ctx);
+    expect(wrongRenderer.error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Runtime proposal is missing, expired, or does not match.",
+      409,
+    );
+
+    const manage = makeContext("POST", "/api/runtime/manage", {
+      op: "remove",
+      runtimeId: "vps-1",
+      clientId: "origin-renderer",
+      ...authority,
+    });
+    const waiting = handleRuntimeManagementRoutes(manage.ctx);
+    await flushUntil(
+      () => manage.broadcastWsToClientId.mock.calls.length === 1,
+    );
+    const frame = manage.broadcastWsToClientId.mock.calls[0]?.[1] as {
+      requestId: string;
+    };
+    const claim = makeContext("POST", "/api/runtime/manage/claim", {
+      requestId: frame.requestId,
+    });
+    await handleRuntimeManagementRoutes(claim.ctx);
+    const claimBody = claim.json.mock.calls[0]?.[1] as { claimToken: string };
+    await handleRuntimeManagementRoutes(
+      makeContext("POST", "/api/runtime/manage/result", {
+        requestId: frame.requestId,
+        claimToken: claimBody.claimToken,
+        ok: true,
+      }).ctx,
+    );
+    await waiting;
+
+    const replay = makeContext("POST", "/api/runtime/manage", {
+      op: "remove",
+      runtimeId: "vps-1",
+      clientId: "origin-renderer",
+      ...authority,
+    });
+    await handleRuntimeManagementRoutes(replay.ctx);
+    expect(replay.error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Runtime proposal is missing, expired, or does not match.",
+      409,
+    );
   });
 
   it("targets the renderer that originated an app-chat action", async () => {

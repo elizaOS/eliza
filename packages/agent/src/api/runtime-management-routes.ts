@@ -10,11 +10,21 @@ import {
 } from "@elizaos/shared";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { PendingRequestMap } from "./pending-request-map.ts";
+import {
+  FileRuntimeManagementProposalStore,
+  type RuntimeManagementProposalStore,
+} from "./runtime-management-proposal-store.ts";
 
 const PREFIX = "/api/runtime/manage";
 const SHELL_TIMEOUT_MS = 45_000;
+const PROPOSAL_TIMEOUT_MS = 5 * 60_000;
 const pending = new PendingRequestMap();
 const claims = new Map<string, { token: string | null; expiresAt: number }>();
+let defaultProposalStore: RuntimeManagementProposalStore | undefined;
+const READ_ONLY_OPERATIONS = new Set<RuntimeManagementRequest["op"]>([
+  "list",
+  "inspect_ssh",
+]);
 
 export interface RuntimeManagementRouteContext {
   req: http.IncomingMessage;
@@ -26,6 +36,7 @@ export interface RuntimeManagementRouteContext {
   broadcastWs?: (payload: object) => void;
   broadcastWsToClientId?: (clientId: string, payload: object) => number;
   callerAuthorization: AgentHttpRequestAuthorization;
+  proposalStore?: RuntimeManagementProposalStore;
 }
 
 function boundedString(value: unknown, max = 512): string | undefined {
@@ -76,13 +87,30 @@ function parseRequest(
     apiBase: boundedString(body.apiBase, 2048),
     sessionId: boundedString(body.sessionId, 256),
     code: boundedString(body.code, 32),
+    proposalId: boundedString(body.proposalId, 128),
+    proposalNonce: boundedString(body.proposalNonce, 128),
   };
+}
+
+function requestKey(request: RuntimeManagementRequest): string {
+  return JSON.stringify({
+    ...request,
+    proposalId: undefined,
+    proposalNonce: undefined,
+  });
 }
 
 function purgeExpiredClaims(now = Date.now()): void {
   for (const [requestId, claim] of claims) {
     if (claim.expiresAt <= now) claims.delete(requestId);
   }
+}
+
+function proposalStore(
+  ctx: RuntimeManagementRouteContext,
+): RuntimeManagementProposalStore {
+  defaultProposalStore ??= new FileRuntimeManagementProposalStore();
+  return ctx.proposalStore ?? defaultProposalStore;
 }
 
 export async function handleRuntimeManagementRoutes(
@@ -99,6 +127,38 @@ export async function handleRuntimeManagementRoutes(
     return true;
   }
   purgeExpiredClaims();
+
+  if (method === "POST" && pathname === `${PREFIX}/propose`) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
+      () => {
+        // error-policy:J3 malformed transport input remains explicitly invalid.
+        return null;
+      },
+    );
+    if (!body) return true;
+    const request = parseRequest(body);
+    const clientId = boundedString(body.clientId, 128);
+    if (
+      !request ||
+      READ_ONLY_OPERATIONS.has(request.op) ||
+      !clientId ||
+      !/^[A-Za-z0-9._-]{1,128}$/.test(clientId)
+    ) {
+      error(res, "Invalid runtime proposal.", 400);
+      return true;
+    }
+    const proposalId = randomUUID();
+    const proposalNonce = randomUUID();
+    await proposalStore(ctx).create({
+      proposalId,
+      nonce: proposalNonce,
+      clientId,
+      requestKey: requestKey(request),
+      expiresAt: Date.now() + PROPOSAL_TIMEOUT_MS,
+    });
+    json(res, { proposalId, proposalNonce, expiresInMs: PROPOSAL_TIMEOUT_MS });
+    return true;
+  }
 
   if (method === "POST" && pathname === PREFIX) {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
@@ -117,6 +177,29 @@ export async function handleRuntimeManagementRoutes(
     if (clientId && !/^[A-Za-z0-9._-]{1,128}$/.test(clientId)) {
       error(res, "Invalid runtime client id.", 400);
       return true;
+    }
+    if (!READ_ONLY_OPERATIONS.has(request.op)) {
+      const proposalId = boundedString(body.proposalId, 128);
+      const proposalNonce = boundedString(body.proposalNonce, 128);
+      if (
+        !proposalId ||
+        !proposalNonce ||
+        !clientId ||
+        !(await proposalStore(ctx).consume({
+          proposalId,
+          nonce: proposalNonce,
+          clientId,
+          requestKey: requestKey(request),
+          expiresAt: Date.now(),
+        }))
+      ) {
+        error(
+          res,
+          "Runtime proposal is missing, expired, or does not match.",
+          409,
+        );
+        return true;
+      }
     }
     if (!ctx.broadcastWs && !ctx.broadcastWsToClientId) {
       json(res, { ok: false, op: request.op, error: "no-shell" });
@@ -235,4 +318,5 @@ export const runtimeManagementRouteInternals = {
   claims,
   parseRequest,
   purgeExpiredClaims,
+  requestKey,
 };

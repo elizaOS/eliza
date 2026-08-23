@@ -32,6 +32,9 @@ export interface RuntimeManagementRequest {
   apiBase?: string;
   sessionId?: string;
   code?: string;
+  /** One-use server proposal authority for an exact destructive request. */
+  proposalId?: string;
+  proposalNonce?: string;
 }
 
 export interface RuntimeManagementResult {

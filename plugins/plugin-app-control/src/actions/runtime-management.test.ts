@@ -25,6 +25,9 @@ describe("RUNTIMES action", () => {
 		expect(action.parameters?.map((parameter) => parameter.name)).not.toContain(
 			"privateKey",
 		);
+		expect(action.parameters?.map((parameter) => parameter.name)).toEqual(
+			expect.arrayContaining(["proposalId", "proposalNonce"]),
+		);
 	});
 
 	it("rejects secret-bearing action options instead of silently discarding them", () => {
@@ -112,26 +115,25 @@ describe("RUNTIMES action", () => {
 		expect(manageRuntime).not.toHaveBeenCalled();
 	});
 
-	it.each([
-		"confirm the removal",
-		"yes, confirm remove",
-		"proceed with the removal",
-	])("accepts exact operation-bound confirmation: %s", async (text) => {
-		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
-			ok: true,
-			op: request.op,
-		}));
-		const action = createRuntimeManagementAction({ manageRuntime });
-		const result = await action.handler(
-			runtime,
-			{ content: { text } } as Memory,
-			undefined,
-			{ op: "remove", runtimeId: "runtime-1", confirm: "true" },
-			callback(),
-		);
-		expect(result?.success).toBe(true);
-		expect(manageRuntime).toHaveBeenCalledTimes(1);
-	});
+	it.each(["confirm remove runtime-1", "yes, confirm remove runtime-1"])(
+		"accepts exact operation-bound confirmation: %s",
+		async (text) => {
+			const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+				ok: true,
+				op: request.op,
+			}));
+			const action = createRuntimeManagementAction({ manageRuntime });
+			const result = await action.handler(
+				runtime,
+				{ content: { text } } as Memory,
+				undefined,
+				{ op: "remove", runtimeId: "runtime-1", confirm: "true" },
+				callback(),
+			);
+			expect(result?.success).toBe(true);
+			expect(manageRuntime).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it.each(["yes", "Yes, please", "confirm", "proceed", "go ahead", "do it"])(
 		"rejects generic approval that is not bound to the requested operation: %s",
@@ -170,7 +172,7 @@ describe("RUNTIMES action", () => {
 		const action = createRuntimeManagementAction({ manageRuntime });
 		const result = await action.handler(
 			runtime,
-			{ content: { text: "Yes, confirm pairing" } } as Memory,
+			{ content: { text: "confirm pair host:mac" } } as Memory,
 			undefined,
 			{ op: "pair", targetId: "host:mac", confirm: "true" },
 			callback(),
@@ -188,9 +190,33 @@ describe("RUNTIMES action", () => {
 			apiBase: undefined,
 			sessionId: undefined,
 			code: undefined,
+			proposalId: undefined,
+			proposalNonce: undefined,
 		});
 		expect(result?.success).toBe(true);
 		expect(result?.text).toContain("123456");
+	});
+
+	it("rejects a confirmation for the right operation but wrong target", async () => {
+		const manageRuntime = vi.fn();
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text: "confirm remove runtime-2" } } as Memory,
+			undefined,
+			{
+				op: "remove",
+				runtimeId: "runtime-1",
+				confirm: "true",
+			},
+		);
+		expect(result?.success).toBe(false);
+		expect(result?.values).toEqual(
+			expect.objectContaining({
+				confirmationText: "confirm remove runtime-1",
+			}),
+		);
+		expect(manageRuntime).not.toHaveBeenCalled();
 	});
 
 	it("returns every saved runtime in model-visible text and structured data", async () => {
@@ -280,6 +306,75 @@ describe("RUNTIMES action", () => {
 		}
 	});
 
+	it("requires a server proposal before the default destructive handoff", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						proposalId: "proposal-1",
+						proposalNonce: "nonce-1",
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				),
+			)
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ ok: true, op: "remove" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+		try {
+			const action = createRuntimeManagementAction();
+			const first = await action.handler(
+				runtime,
+				{
+					content: {
+						text: "remove runtime-1",
+						metadata: { viewClientId: "origin-renderer" },
+					},
+				} as Memory,
+				undefined,
+				{ op: "remove", runtimeId: "runtime-1" },
+			);
+			expect(first?.values).toEqual(
+				expect.objectContaining({
+					proposalId: "proposal-1",
+					proposalNonce: "nonce-1",
+					confirmationText: "confirm remove runtime-1",
+				}),
+			);
+			expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+				"/api/runtime/manage/propose",
+			);
+
+			const second = await action.handler(
+				runtime,
+				{
+					content: {
+						text: "confirm remove runtime-1",
+						metadata: { viewClientId: "origin-renderer" },
+					},
+				} as Memory,
+				undefined,
+				{
+					op: "remove",
+					runtimeId: "runtime-1",
+					confirm: "true",
+					proposalId: "proposal-1",
+					proposalNonce: "nonce-1",
+				},
+			);
+			expect(second?.success).toBe(true);
+			expect(String(fetchMock.mock.calls[1]?.[0])).toMatch(
+				/\/api\/runtime\/manage$/,
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("refuses an unbound mutation instead of racing arbitrary connected shells", async () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
@@ -293,7 +388,7 @@ describe("RUNTIMES action", () => {
 				callback(),
 			);
 			expect(result?.success).toBe(false);
-			expect(result?.text).toContain("bound to that device");
+			expect(result?.text).toContain("Open the Eliza app");
 			expect(fetchMock).not.toHaveBeenCalled();
 		} finally {
 			vi.unstubAllGlobals();
