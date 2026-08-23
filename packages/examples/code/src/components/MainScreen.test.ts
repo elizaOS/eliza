@@ -2,9 +2,9 @@
 // chat and task panes, focus-sync fan-out, the hidden/auto/shown layout
 // switch read from the real store, split-width arithmetic, row joining with
 // the pane separator, and final-width clipping of overflowing child output.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { stringToUuid } from "@elizaos/core";
 import { type Terminal, truncateToWidth, visibleWidth } from "@elizaos/tui";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { useStore } from "../lib/store.js";
 import type { ChatPane } from "./ChatPane.js";
 import { MainScreen } from "./MainScreen.js";
