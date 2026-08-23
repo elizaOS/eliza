@@ -101,10 +101,13 @@ function normalizeSleepHour(hour: number): number {
 }
 
 function median(values: number[]): number | null {
-  if (values.length === 0) {
+  const finiteValues = values.filter(
+    (v) => typeof v === "number" && Number.isFinite(v),
+  );
+  if (finiteValues.length === 0) {
     return null;
   }
-  const sorted = [...values].sort((left, right) => left - right);
+  const sorted = [...finiteValues].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   if (sorted.length % 2 === 1) {
     return sorted[middle] ?? null;

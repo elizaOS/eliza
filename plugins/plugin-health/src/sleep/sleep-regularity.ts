@@ -242,8 +242,11 @@ function circularMeanHour(minuteValues: readonly number[]): number | null {
 }
 
 function medianNumber(values: readonly number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((left, right) => left - right);
+  const finiteValues = values.filter(
+    (v) => typeof v === "number" && Number.isFinite(v),
+  );
+  if (finiteValues.length === 0) return null;
+  const sorted = [...finiteValues].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   if (sorted.length % 2 === 1) {
     const value = sorted[middle];
