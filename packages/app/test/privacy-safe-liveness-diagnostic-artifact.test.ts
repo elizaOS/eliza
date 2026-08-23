@@ -17,6 +17,7 @@ describe("privacy-safe liveness diagnostic artifact", () => {
     const writeFileFn = vi.fn(async () => undefined);
     const annotations: Array<{ type: string; description: string }> = [];
     const diagnosticRecord = {
+      schema: "caller-must-not-override-the-closed-schema",
       historyGetDelta: 1,
       retryObservationAvailable: true,
       phase: "terminal",
@@ -40,8 +41,8 @@ describe("privacy-safe liveness diagnostic artifact", () => {
       "/tmp/eliza-run/diagnostic.json",
       `${JSON.stringify(
         {
-          schema: LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
           ...diagnosticRecord,
+          schema: LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
         },
         null,
         2,

@@ -14,6 +14,16 @@ export const LIVENESS_DIAGNOSTIC_WRITE_FAILURE_ANNOTATION = Object.freeze({
   description: "write-failed",
 });
 
+/**
+ * @param {{
+ *   diagnosticPath: string,
+ *   diagnosticRecord: Record<string, string | number | boolean | null>,
+ *   annotations: { push(annotation: { type: string, description: string }): number },
+ *   mkdirFn?: (path: string, options: { recursive: boolean, mode: number }) => Promise<string | undefined>,
+ *   writeFileFn?: (path: string, data: string, options: { encoding: string, flag: string, mode: number }) => Promise<void>,
+ * }} options
+ * @returns {Promise<boolean>}
+ */
 export async function writePrivacySafeLivenessDiagnostic({
   diagnosticPath,
   diagnosticRecord,
@@ -30,8 +40,8 @@ export async function writePrivacySafeLivenessDiagnostic({
       diagnosticPath,
       `${JSON.stringify(
         {
-          schema: LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
           ...diagnosticRecord,
+          schema: LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
         },
         null,
         2,
