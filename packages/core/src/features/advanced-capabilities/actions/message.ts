@@ -21,6 +21,7 @@ import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
 import {
+	markOwnerExclusiveDisclosureUsed,
 	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 	revalidateOwnerExclusiveDisclosure,
 } from "../../../security/trusted-delivery-audience.ts";
@@ -4202,6 +4203,10 @@ async function loadAuthorizedTopology(
 	);
 	const worlds =
 		worldIds.length > 0 ? await runtime.getWorldsByIds(worldIds) : [];
+	// The topology result can now influence model text. Latch the turn so
+	// streaming remains suppressed and the final delivery seam revalidates the
+	// destination after this read, including while the planner is still running.
+	markOwnerExclusiveDisclosureUsed(message);
 	return { worlds, rooms };
 }
 

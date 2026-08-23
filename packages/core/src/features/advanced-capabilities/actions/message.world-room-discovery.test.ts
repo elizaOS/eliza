@@ -5,7 +5,11 @@
  * fail-closed behavior outside a freshly attested owner-private destination.
  */
 import { describe, expect, it, vi } from "vitest";
-import { attestDeliveryAudienceFromCanonicalRoom } from "../../../security/trusted-delivery-audience.ts";
+import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	ownerExclusiveDisclosureWasUsed,
+} from "../../../security/trusted-delivery-audience.ts";
+import { enforceTrustedDeliveryAudienceAtEgress } from "../../../services/message.ts";
 import type {
 	ActionResult,
 	IAgentRuntime,
@@ -89,6 +93,7 @@ type Harness = {
 	message: Memory;
 	getRoomsByIds: ReturnType<typeof vi.fn>;
 	getWorldsByIds: ReturnType<typeof vi.fn>;
+	getParticipantsForRoom: ReturnType<typeof vi.fn>;
 };
 
 function harness(channelType: ChannelType = ChannelType.DM): Harness {
@@ -111,6 +116,9 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 			const world = worldById.get(id);
 			return world ? [world] : [];
 		}),
+	);
+	const getParticipantsForRoom = vi.fn(async (roomId: UUID) =>
+		roomId === CURRENT_ROOM ? [DISCORD_OWNER, AGENT] : [],
 	);
 	const runtime = {
 		agentId: AGENT,
@@ -147,9 +155,7 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 					}
 				: null;
 		}),
-		getParticipantsForRoom: vi.fn(async (roomId: UUID) =>
-			roomId === CURRENT_ROOM ? [DISCORD_OWNER, AGENT] : [],
-		),
+		getParticipantsForRoom,
 		getRoomsForParticipant: vi.fn(
 			async (entityId: UUID) => participantRooms.get(entityId) ?? [],
 		),
@@ -168,7 +174,13 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 		},
 		createdAt: 1,
 	} as Memory;
-	return { runtime, message, getRoomsByIds, getWorldsByIds };
+	return {
+		runtime,
+		message,
+		getRoomsByIds,
+		getWorldsByIds,
+		getParticipantsForRoom,
+	};
 }
 
 async function run(
@@ -357,5 +369,28 @@ describe("MESSAGE authorized world and room discovery", () => {
 			data: { error: "PRIVATE_DESTINATION_REQUIRED" },
 		});
 		expect(h.getRoomsByIds).not.toHaveBeenCalled();
+	});
+
+	it("revalidates topology results when the destination audience changes before egress", async () => {
+		const h = harness();
+		const result = await run(h, { action: "list_worlds" });
+		expect(result.success).toBe(true);
+		expect(ownerExclusiveDisclosureWasUsed(h.message)).toBe(true);
+
+		h.getParticipantsForRoom.mockResolvedValue([
+			DISCORD_OWNER,
+			AGENT,
+			UNRELATED,
+		]);
+		const finalContent = await enforceTrustedDeliveryAudienceAtEgress(
+			h.runtime,
+			h.message,
+			{ text: result.text },
+		);
+
+		expect(finalContent).toMatchObject({
+			actions: ["PRIVACY_DENIED"],
+			data: { privacyDenied: true, privacyReason: "audience_changed" },
+		});
 	});
 });
