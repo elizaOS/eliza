@@ -8,7 +8,7 @@ import {
   optsCaller,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "./internal-utils.js";
+} from "../src/internal-utils.js";
 
 describe("assertKey", () => {
   it("accepts valid keys up to 256 characters", () => {
