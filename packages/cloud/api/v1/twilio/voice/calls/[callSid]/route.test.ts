@@ -60,7 +60,7 @@ const dbWrite = {
 };
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserOrApiKeyWithOrg: requireUser,
+  requireSessionUserWithOrg: requireUser,
 }));
 mock.module("@/db/helpers", () => ({ dbWrite }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
@@ -69,6 +69,10 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 mock.module("@/lib/utils/twilio-api", () => ({
   twilioApiRequest: providerRequest,
+  verifyTwilioSignature: mock(async () => true),
+}));
+mock.module("@/lib/utils/logger", () => ({
+  logger: { error: mock(), info: mock() },
 }));
 
 const { default: route } = await import("./route");

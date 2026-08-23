@@ -1,6 +1,7 @@
 /** Tests the outbound Twilio call boundary with provider and storage doubles. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
 const requireUser = mock(async () => ({
   id: "11111111-1111-4111-8111-111111111111",
@@ -46,20 +47,28 @@ const dbWrite = {
   })),
   update: mock(() => ({ set: () => ({ where: updateWhere }) })),
 };
+const writeTransaction = mock(
+  async (callback: (transaction: typeof dbWrite) => unknown) =>
+    callback(dbWrite),
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserOrApiKeyWithOrg: requireUser,
+  requireSessionUserWithOrg: requireUser,
 }));
 mock.module("@/db/repositories/users", () => ({
   usersRepository: { findById: findUser },
 }));
-mock.module("@/db/helpers", () => ({ dbWrite }));
+mock.module("@/db/helpers", () => ({ dbWrite, writeTransaction }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { CRITICAL: { windowMs: 300_000, maxRequests: 5 } },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 mock.module("@/lib/utils/twilio-api", () => ({
   twilioApiRequest: queueCall,
+  verifyTwilioSignature: mock(async () => true),
+}));
+mock.module("@/lib/utils/logger", () => ({
+  logger: { error: mock(), info: mock() },
 }));
 mock.module("../lib/resolve-voice-target", () => ({
   resolveTwilioVoiceTarget: resolveTarget,
@@ -85,6 +94,8 @@ function callRequest(
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
+        "X-Forwarded-Host": "attacker.example",
+        "X-Forwarded-Proto": "http",
       },
       body: JSON.stringify(body),
     },
@@ -108,6 +119,7 @@ describe("POST Twilio outbound voice call", () => {
     selectLimit.mockClear();
     selectLimit.mockImplementation(async () => []);
     updateWhere.mockClear();
+    writeTransaction.mockClear();
     outboundInserts.length = 0;
   });
 
@@ -182,20 +194,29 @@ describe("POST Twilio outbound voice call", () => {
     expect(queueCall).not.toHaveBeenCalled();
   });
 
-  test("reclaims an expired idempotency key and queues the current call", async () => {
-    returning
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ key: "reclaimed" }]);
+  test("returns the same unresolved call for a fresh client key", async () => {
+    returning.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        callSid: null,
+        status: "submission-unknown",
+        to: "+14155550100",
+      },
+    ]);
 
     const response = await callRequest(
       { to: "+14155550100" },
       "00000000-0000-4000-8000-000000000001",
     );
 
-    expect(response.status).toBe(200);
-    expect(deleteWhere).toHaveBeenCalledTimes(1);
-    expect(returning).toHaveBeenCalledTimes(2);
-    expect(queueCall).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      callId: "33333333-3333-4333-8333-333333333333",
+      status: "submission-unknown",
+      replayed: true,
+    });
+    expect(queueCall).not.toHaveBeenCalled();
   });
 
   test("keeps a live duplicate claim fail-closed", async () => {
@@ -208,7 +229,7 @@ describe("POST Twilio outbound voice call", () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
-      code: "duplicate_call",
+      code: "duplicate_call_pending",
     });
     expect(deleteWhere).toHaveBeenCalledTimes(1);
     expect(returning).toHaveBeenCalledTimes(2);
@@ -286,4 +307,77 @@ describe("POST Twilio outbound voice call", () => {
     expect(outboundInserts).toHaveLength(1);
     expect(updateWhere).toHaveBeenCalledTimes(1);
   });
+
+  test("terminalizes an explicit provider rejection and releases the fence", async () => {
+    queueCall.mockRejectedValueOnce(
+      new ElizaError("Twilio rejected the request", {
+        code: "TWILIO_PROVIDER_REJECTED",
+        context: { providerStatus: 400, retryable: false },
+      }),
+    );
+
+    const response = await callRequest({ to: "+14155550100" });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "provider_rejected",
+      providerStatus: 400,
+    });
+    expect(queueCall).toHaveBeenCalledTimes(1);
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ["missing CallSid", { status: "queued" }],
+    [
+      "invalid status",
+      { sid: "CA11111111111111111111111111111111", status: "invented" },
+    ],
+  ])(
+    "keeps an accepted malformed receipt uncertain: %s",
+    async (_case, receipt) => {
+      queueCall.mockResolvedValueOnce(receipt as never);
+
+      const response = await callRequest({ to: "+14155550100" });
+
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toMatchObject({
+        status: "submission-unknown",
+        auditPending: true,
+      });
+      expect(deleteWhere).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    ["missing", undefined],
+    ["non-HTTPS", "http://api.eliza.app"],
+    ["credentials", "https://user:secret@api.eliza.app"],
+    ["path", "https://api.eliza.app/callback"],
+  ])(
+    "rejects %s canonical public URL before storage or provider side effects",
+    async (_case, publicUrl) => {
+      const response = await app.request(
+        "https://worker.internal/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+            "X-Forwarded-Host": "attacker.example",
+            "X-Forwarded-Proto": "https",
+          },
+          body: JSON.stringify({ to: "+14155550100" }),
+        },
+        { ...env, TWILIO_PUBLIC_URL: publicUrl } as never,
+      );
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "voice_not_configured",
+      });
+      expect(writeTransaction).not.toHaveBeenCalled();
+      expect(queueCall).not.toHaveBeenCalled();
+    },
+  );
 });
