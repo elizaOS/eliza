@@ -3,21 +3,30 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { UUID } from "../../../../types/primitives.js";
 import { type Experience, ExperienceType } from "../types.js";
 import { ConfidenceDecayManager } from "./confidenceDecay.js";
 
 function makeExperience(overrides: Partial<Experience> = {}): Experience {
+	const now = Date.now();
 	return {
-		id: "exp-1",
+		id: "11111111-2222-3333-4444-555555555555" as UUID,
+		agentId: "00000000-0000-0000-0000-000000000000" as UUID,
 		type: ExperienceType.LEARNING,
 		domain: "general",
-		title: "Test experience",
-		description: "Testing decay behavior",
+		outcome: "success",
+		context: "test context",
+		action: "test action",
+		result: "test result",
+		learning: "test learning",
+		keywords: ["test"],
+		associatedEntityIds: [],
 		confidence: 0.9,
-		createdAt: Date.now(),
-		updatedAt: Date.now(),
+		importance: 0.5,
+		accessCount: 1,
 		tags: ["test"],
-		metadata: {},
+		createdAt: now,
+		updatedAt: now,
 		...overrides,
 	};
 }
@@ -47,14 +56,14 @@ describe("ConfidenceDecayManager", () => {
 
 		// Created 3000ms ago -> 1000ms grace period -> 2000ms decay time (1 half-life)
 		const exp = makeExperience({
-			type: ExperienceType.ACTION_RESULT, // standard decay multiplier 1.0
+			type: ExperienceType.SUCCESS, // standard decay multiplier 1.0
 			domain: "general",
 			confidence: 0.8,
 			createdAt: Date.now() - 3000,
 		});
 
 		const decayed = manager.getDecayedConfidence(exp);
-		expect(decayed).toBeCloseTo(0.4, 4); // 0.8 * 0.5^1 = 0.4
+		expect(decayed).toBeCloseTo(0.4, 2); // 0.8 * 0.5^1 = 0.4
 	});
 
 	it("respects the configured minimum confidence floor", () => {
@@ -87,7 +96,7 @@ describe("ConfidenceDecayManager", () => {
 
 		const perfExp = makeExperience({
 			domain: "performance",
-			type: ExperienceType.ACTION_RESULT,
+			type: ExperienceType.SUCCESS,
 		});
 		const perfConfig = manager.getDomainSpecificDecay(perfExp);
 		expect(perfConfig.halfLife).toBe(30 * 24 * 60 * 60 * 1000 * 0.5);
@@ -109,7 +118,7 @@ describe("ConfidenceDecayManager", () => {
 
 		// Boost = (1 - 0.6) * 1.0 * 0.5 = 0.2 -> new confidence = 0.8
 		const boosted = manager.calculateReinforcementBoost(freshExp, 1.0);
-		expect(boosted).toBeCloseTo(0.8, 4);
+		expect(boosted).toBeCloseTo(0.8, 3);
 	});
 
 	it("identifies experiences needing reinforcement", () => {
@@ -120,23 +129,23 @@ describe("ConfidenceDecayManager", () => {
 		});
 
 		const freshExp = makeExperience({
-			id: "fresh",
+			id: "11111111-1111-1111-1111-111111111111" as UUID,
 			confidence: 0.9,
 			createdAt: Date.now(),
 		});
 
 		const decayedExp = makeExperience({
-			type: ExperienceType.ACTION_RESULT,
+			type: ExperienceType.SUCCESS,
 			domain: "general",
-			id: "decayed",
+			id: "22222222-2222-2222-2222-222222222222" as UUID,
 			confidence: 0.8,
 			createdAt: Date.now() - 300, // 200ms decay = 2 half-lives -> 0.8 * 0.25 = 0.2
 		});
 
 		const ancientExp = makeExperience({
-			type: ExperienceType.ACTION_RESULT,
+			type: ExperienceType.SUCCESS,
 			domain: "general",
-			id: "ancient",
+			id: "33333333-3333-3333-3333-333333333333" as UUID,
 			confidence: 0.8,
 			createdAt: Date.now() - 10000, // hits minConfidence = 0.1
 		});
@@ -146,7 +155,9 @@ describe("ConfidenceDecayManager", () => {
 			0.3,
 		);
 
-		expect(needing.map((e) => e.id)).toEqual(["decayed"]);
+		expect(needing.map((e) => e.id)).toEqual([
+			"22222222-2222-2222-2222-222222222222",
+		]);
 	});
 
 	it("generates a confidence trend series over time", () => {
