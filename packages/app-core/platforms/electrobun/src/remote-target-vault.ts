@@ -38,6 +38,9 @@ export interface EnrolledRemoteTargetVaultRecord {
   deviceId: string;
   signingPrivateKeyJwk: JsonWebKey;
   encryptionPrivateKeyJwk: JsonWebKey;
+  managedNetwork?: {
+    hostname: string;
+  };
 }
 
 type RemoteTargetVaultRecord =
@@ -99,6 +102,19 @@ function canonicalApiBase(value: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+function isManagedNetworkRecord(value: unknown): boolean {
+  if (value === undefined) return true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof Reflect.get(value, "hostname") === "string" &&
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
+      Reflect.get(value, "hostname") as string,
+    )
+  );
+}
+
 export function remoteTargetVaultId(
   canonicalStateDir = resolveCanonicalStateDir(),
 ): string {
@@ -158,7 +174,8 @@ function parseRecord(raw: string): RemoteTargetVaultRecord {
     typeof Reflect.get(value, "apiBaseUrl") !== "string" ||
     typeof Reflect.get(value, "hostToken") !== "string" ||
     !HOST_TOKEN_PATTERN.test(Reflect.get(value, "hostToken") as string) ||
-    !isRemoteTargetPublicIdentity(Reflect.get(value, "identity"))
+    !isRemoteTargetPublicIdentity(Reflect.get(value, "identity")) ||
+    !isManagedNetworkRecord(Reflect.get(value, "managedNetwork"))
   ) {
     throw new Error("Stored remote target identity is corrupt.");
   }
@@ -327,6 +344,42 @@ export class RemoteTargetVault {
         throw new Error("Secure remote target storage is unavailable.");
       }
       return enrolled;
+    });
+  }
+
+  async recordManagedNetwork(input: {
+    hostId: string;
+    hostname: string;
+  }): Promise<EnrolledRemoteTargetVaultRecord> {
+    if (
+      !isIdentifier(input.hostId) ||
+      !isManagedNetworkRecord({ hostname: input.hostname })
+    ) {
+      throw new Error("Managed network identity is invalid.");
+    }
+    return this.serialize(async () => {
+      const existing = await this.load();
+      if (
+        existing?.status !== "enrolled" ||
+        existing.identity.runtimeId !== input.hostId
+      ) {
+        throw new Error(
+          "Managed network enrollment does not match stored state.",
+        );
+      }
+      const updated: EnrolledRemoteTargetVaultRecord = {
+        ...existing,
+        managedNetwork: { hostname: input.hostname },
+      };
+      const stored = await this.secureStore.set(
+        this.vaultId,
+        TARGET_VAULT_KIND,
+        JSON.stringify(updated),
+      );
+      if (!stored.ok) {
+        throw new Error("Secure remote target storage is unavailable.");
+      }
+      return updated;
     });
   }
 

@@ -342,45 +342,75 @@ export class RemoteTargetDesktopService {
       createdAt: response.createdAt,
     });
     if (managedNetwork) {
+      let joinedManagedNetwork = false;
       try {
         // The response was validated before committing credentials, so this
         // assertion only narrows the discriminated managed path for TypeScript.
         if (!managedEnrollment)
           throw new Error("Managed enrollment is missing.");
         await this.managedNetworkJoiner.join(managedEnrollment);
+        joinedManagedNetwork = true;
+        await this.vault.recordManagedNetwork({
+          hostId: enrolled.identity.runtimeId,
+          hostname: managedEnrollment.hostname,
+        });
         await this.transport.activateManagedNetwork({
           enrollment: enrolled,
           expectedHostname: managedEnrollment.hostname,
         });
       } catch (cause) {
+        const cleanupFailures: unknown[] = [];
+        if (joinedManagedNetwork && managedEnrollment) {
+          try {
+            await this.managedNetworkJoiner.leave({
+              hostname: managedEnrollment.hostname,
+            });
+          } catch (cleanupCause) {
+            // error-policy:J6 Cloud cleanup must still run if native
+            // membership teardown fails after a partial activation.
+            cleanupFailures.push(cleanupCause);
+          }
+        }
         try {
+          let cloudCleanupComplete = false;
           for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
             const page = await this.transport.revokeHost({
               enrollment: enrolled,
             });
             if (!page.cleanup.more) {
-              if (!(await this.vault.delete())) {
+              if (
+                cleanupFailures.length === 0 &&
+                !(await this.vault.delete())
+              ) {
                 throw new Error(
                   "Managed enrollment was revoked, but local credentials could not be removed.",
                 );
               }
-              throw cause;
+              cloudCleanupComplete = true;
+              break;
             }
             if (page.cleanup.sessions === 0 && page.cleanup.commands === 0) {
               throw new Error("Managed enrollment cleanup made no progress.");
             }
           }
-          throw new Error(
-            "Managed enrollment cleanup exceeded its retry bound.",
-          );
+          if (!cloudCleanupComplete) {
+            throw new Error(
+              "Managed enrollment cleanup exceeded its retry bound.",
+            );
+          }
         } catch (cleanupCause) {
-          if (cleanupCause === cause) throw cause;
+          // error-policy:J6 native and Cloud cleanup failures are retained
+          // together without suppressing the primary activation failure.
+          cleanupFailures.push(cleanupCause);
+        }
+        if (cleanupFailures.length > 0) {
           throw new AggregateError(
-            [cause, cleanupCause],
+            [cause, ...cleanupFailures],
             "Managed enrollment failed and cleanup must be retried from Devices & Runtimes.",
             { cause },
           );
         }
+        throw cause;
       }
     }
     return {
@@ -628,6 +658,11 @@ export class RemoteTargetDesktopService {
             },
           );
         }
+      }
+      if (enrollment.managedNetwork) {
+        await this.managedNetworkJoiner.leave({
+          hostname: enrollment.managedNetwork.hostname,
+        });
       }
       await this.runner?.stop();
       this.runner = null;
