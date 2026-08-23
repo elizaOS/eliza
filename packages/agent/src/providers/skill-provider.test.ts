@@ -146,4 +146,22 @@ describe("createDynamicSkillProvider instructions well-formed Unicode", () => {
     expect(isWellFormed(result.text)).toBe(true);
     expect(result.text).toContain(longBody);
   });
+
+  it("sorts skill search scores safely when score contains NaN", () => {
+    const results = [
+      { slug: "skill-b", name: "B", description: "B", score: NaN },
+      { slug: "skill-a", name: "A", description: "A", score: 10 },
+    ];
+
+    results.sort((a, b) => {
+      const bScore =
+        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+      const aScore =
+        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+      return bScore - aScore || a.slug.localeCompare(b.slug);
+    });
+
+    expect(results[0]?.slug).toBe("skill-a");
+    expect(results[1]?.slug).toBe("skill-b");
+  });
 });
