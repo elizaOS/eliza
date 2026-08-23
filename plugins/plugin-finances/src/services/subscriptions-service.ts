@@ -846,7 +846,17 @@ export class SubscriptionsService {
           score: scoreMessageAgainstPlaybook(message, playbook),
         }))
         .filter((candidate) => candidate.score > 0)
-        .sort((left, right) => right.score - left.score);
+        .sort((left, right) => {
+          const rightScore =
+            typeof right.score === "number" && Number.isFinite(right.score)
+              ? right.score
+              : 0;
+          const leftScore =
+            typeof left.score === "number" && Number.isFinite(left.score)
+              ? left.score
+              : 0;
+          return rightScore - leftScore;
+        });
       if (evidence.length === 0 && source !== "manual") {
         continue;
       }

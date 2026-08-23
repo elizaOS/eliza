@@ -551,4 +551,26 @@ describe("buildCapabilityMeta / buildWriteReceipt / isPendingTransaction", () =>
       ),
     ).toBe(false);
   });
+
+  it("sorts subscription candidate evidence safely when score contains NaN", () => {
+    const evidence = [
+      { score: NaN, messageId: "msg-nan" },
+      { score: 3.5, messageId: "msg-valid" },
+    ];
+
+    evidence.sort((left, right) => {
+      const rightScore =
+        typeof right.score === "number" && Number.isFinite(right.score)
+          ? right.score
+          : 0;
+      const leftScore =
+        typeof left.score === "number" && Number.isFinite(left.score)
+          ? left.score
+          : 0;
+      return rightScore - leftScore;
+    });
+
+    expect(evidence[0]?.messageId).toBe("msg-valid");
+    expect(evidence[1]?.messageId).toBe("msg-nan");
+  });
 });
