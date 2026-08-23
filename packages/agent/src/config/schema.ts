@@ -443,9 +443,7 @@ const FIELD_LABELS: Record<string, string> = {
   "connectors.telegram.customCommands": "Telegram Custom Commands",
   "connectors.discord": "Discord",
   "connectors.slack": "Slack",
-  "connectors.mattermost": "Mattermost",
   "connectors.imessage": "iMessage",
-  "connectors.msteams": "MS Teams",
   "connectors.telegram.botToken": "Telegram Bot Token",
   "connectors.telegram.dmPolicy": "Telegram DM Policy",
   "connectors.telegram.streamMode": "Telegram Draft Stream Mode",
@@ -486,11 +484,6 @@ const FIELD_LABELS: Record<string, string> = {
   "connectors.slack.userTokenReadOnly": "Slack User Token Read Only",
   "connectors.slack.thread.historyScope": "Slack Thread History Scope",
   "connectors.slack.thread.inheritParent": "Slack Thread Parent Inheritance",
-  "connectors.mattermost.botToken": "Mattermost Bot Token",
-  "connectors.mattermost.baseUrl": "Mattermost Base URL",
-  "connectors.mattermost.chatmode": "Mattermost Chat Mode",
-  "connectors.mattermost.oncharPrefixes": "Mattermost Onchar Prefixes",
-  "connectors.mattermost.requireMention": "Mattermost Require Mention",
   "connectors.imessage.cliPath": "iMessage CLI Path",
   "agents.list[].skills": "Agent Skill Filter",
   "agents.list[].identity.avatar": "Agent Avatar",
@@ -655,16 +648,6 @@ const FIELD_HELP: Record<string, string> = {
     'Scope for Slack thread history context ("thread" isolates per thread; "channel" reuses channel history).',
   "connectors.slack.thread.inheritParent":
     "If true, Slack thread sessions inherit the parent channel transcript (default: false).",
-  "connectors.mattermost.botToken":
-    "Bot token from Mattermost System Console -> Integrations -> Bot Accounts.",
-  "connectors.mattermost.baseUrl":
-    "Base URL for your Mattermost server (e.g., https://chat.example.com).",
-  "connectors.mattermost.chatmode":
-    'Reply to channel messages on mention ("oncall"), on trigger chars (">" or "!") ("onchar"), or on every message ("onmessage").',
-  "connectors.mattermost.oncharPrefixes":
-    'Trigger prefixes for onchar mode (default: [">", "!"]).',
-  "connectors.mattermost.requireMention":
-    "Require @mention in channels before responding (default: true).",
   "auth.profiles": "Named auth profiles (provider + mode + optional email).",
   "auth.order":
     "Ordered auth profile IDs per provider (used for automatic failover).",
@@ -856,16 +839,12 @@ const FIELD_HELP: Record<string, string> = {
     "Allow Telegram to write config in response to channel events/commands (default: true).",
   "connectors.slack.configWrites":
     "Allow Slack to write config in response to channel events/commands (default: true).",
-  "connectors.mattermost.configWrites":
-    "Allow Mattermost to write config in response to channel events/commands (default: true).",
   "connectors.discord.configWrites":
     "Allow Discord to write config in response to channel events/commands (default: true).",
   "connectors.whatsapp.configWrites":
     "Allow WhatsApp to write config in response to channel events/commands (default: true).",
   "connectors.imessage.configWrites":
     "Allow iMessage to write config in response to channel events/commands (default: true).",
-  "connectors.msteams.configWrites":
-    "Allow Microsoft Teams to write config in response to channel events/commands (default: true).",
   "connectors.discord.commands.native":
     'Override native commands for Discord (bool or "auto").',
   "connectors.discord.commands.nativeSkills":
@@ -955,7 +934,6 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   "gateway.controlUi.basePath": "/eliza",
   "gateway.controlUi.root": "dist/control-ui",
   "gateway.controlUi.allowedOrigins": "https://control.example.com",
-  "connectors.mattermost.baseUrl": "https://chat.example.com",
   "agents.list[].identity.avatar": "avatars/eliza.png",
 };
 

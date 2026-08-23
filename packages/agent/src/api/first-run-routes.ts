@@ -673,62 +673,6 @@ export async function handleFirstRunRoutes(
         sessionPath: body.whatsappSessionPath.trim(),
       };
     }
-    if (
-      body.twilioAccountSid &&
-      typeof body.twilioAccountSid === "string" &&
-      body.twilioAccountSid.trim() &&
-      body.twilioAuthToken &&
-      typeof body.twilioAuthToken === "string" &&
-      body.twilioAuthToken.trim()
-    ) {
-      if (!config.env) config.env = {};
-      (config.env as Record<string, string>).TWILIO_ACCOUNT_SID = (
-        body.twilioAccountSid as string
-      ).trim();
-      (config.env as Record<string, string>).TWILIO_AUTH_TOKEN = (
-        body.twilioAuthToken as string
-      ).trim();
-      process.env.TWILIO_ACCOUNT_SID = (body.twilioAccountSid as string).trim();
-      process.env.TWILIO_AUTH_TOKEN = (body.twilioAuthToken as string).trim();
-      if (
-        body.twilioPhoneNumber &&
-        typeof body.twilioPhoneNumber === "string" &&
-        body.twilioPhoneNumber.trim()
-      ) {
-        (config.env as Record<string, string>).TWILIO_PHONE_NUMBER = (
-          body.twilioPhoneNumber as string
-        ).trim();
-        process.env.TWILIO_PHONE_NUMBER = (
-          body.twilioPhoneNumber as string
-        ).trim();
-      }
-    }
-    if (
-      body.blooioApiKey &&
-      typeof body.blooioApiKey === "string" &&
-      body.blooioApiKey.trim()
-    ) {
-      if (!config.env) config.env = {};
-      const trimmedKey = (body.blooioApiKey as string).trim();
-      (config.env as Record<string, string>).BLOOIO_API_KEY = trimmedKey;
-      process.env.BLOOIO_API_KEY = trimmedKey;
-
-      const blooioConnector: Record<string, string> = { apiKey: trimmedKey };
-
-      if (
-        body.blooioPhoneNumber &&
-        typeof body.blooioPhoneNumber === "string" &&
-        body.blooioPhoneNumber.trim()
-      ) {
-        const trimmedPhone = (body.blooioPhoneNumber as string).trim();
-        (config.env as Record<string, string>).BLOOIO_PHONE_NUMBER =
-          trimmedPhone;
-        process.env.BLOOIO_PHONE_NUMBER = trimmedPhone;
-        blooioConnector.fromNumber = trimmedPhone;
-      }
-
-      config.connectors.blooio = blooioConnector;
-    }
 
     const explicitFeatures = asRecord(body.features);
     if (explicitFeatures) {
