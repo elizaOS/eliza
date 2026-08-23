@@ -1,7 +1,7 @@
 /**
- * Shape test asserting that in Cerebras mode the media model types (image /
- * transcription / TTS) stay unregistered absent an explicit per-capability
- * endpoint override. Deterministic, mocked runtime.
+ * Shape test asserting that Cerebras registers only its verified Gemma image
+ * description path while unsupported generation and audio remain unavailable.
+ * Deterministic, mocked runtime.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
@@ -24,6 +24,8 @@ const ENV_KEYS = [
   "CEREBRAS_BASE_URL",
   "OPENAI_IMAGE_DESCRIPTION_BASE_URL",
   "OPENAI_IMAGE_DESCRIPTION_API_KEY",
+  "OPENAI_IMAGE_DESCRIPTION_MODEL",
+  "CEREBRAS_IMAGE_DESCRIPTION_MODEL",
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>();
@@ -71,7 +73,7 @@ describe("plugin-openai media capability gating", () => {
     expect(openaiPlugin.models?.[ModelType.TEXT_SMALL]).toBeTypeOf("function");
   });
 
-  it("registers no media capabilities in Cerebras mode (2026-06-10 incident config)", async () => {
+  it("registers verified Gemma image description in Cerebras mode", async () => {
     const { runtime, registeredModelTypes } = buildRuntime({
       OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
       CEREBRAS_API_KEY: "csk-cerebras-fake",
@@ -79,9 +81,10 @@ describe("plugin-openai media capability gating", () => {
 
     await openaiPlugin.init?.({}, runtime);
 
-    for (const modelType of MEDIA_MODEL_TYPES) {
-      expect(registeredModelTypes()).not.toContain(modelType);
-    }
+    expect(registeredModelTypes()).toContain(ModelType.IMAGE_DESCRIPTION);
+    expect(registeredModelTypes()).not.toContain(ModelType.TRANSCRIPTION);
+    expect(registeredModelTypes()).not.toContain(ModelType.TEXT_TO_SPEECH);
+    expect(registeredModelTypes()).not.toContain(ModelType.IMAGE);
   });
 
   it("performs no detached network probe during initialization", async () => {
@@ -121,6 +124,18 @@ describe("plugin-openai media capability gating", () => {
       ELIZA_PROVIDER: "cerebras",
       CEREBRAS_API_KEY: "csk-cerebras-fake",
       OPENAI_IMAGE_DESCRIPTION_API_KEY: "sk-vision-fake",
+    });
+
+    await openaiPlugin.init?.({}, runtime);
+
+    expect(registeredModelTypes()).toContain(ModelType.IMAGE_DESCRIPTION);
+  });
+
+  it("fails closed when Cerebras is configured with an unverified vision model", async () => {
+    const { runtime, registeredModelTypes } = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      CEREBRAS_IMAGE_DESCRIPTION_MODEL: "text-only-model",
     });
 
     await openaiPlugin.init?.({}, runtime);
