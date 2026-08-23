@@ -20,6 +20,7 @@
 
 import type { IAgentRuntime, Logger } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
+import type { ParentAgentBrokerResult } from "./parent-agent-broker.js";
 import {
   PARENT_AGENT_BROKER_SLUG,
   runParentAgentBroker,
@@ -30,6 +31,33 @@ const DISPATCH_LOG_SRC = "acpx:parent-agent-dispatch";
 
 /** The exact prefix a child emits to invoke the parent-agent broker. */
 export const PARENT_AGENT_DIRECTIVE_MARKER = `USE_SKILL ${PARENT_AGENT_BROKER_SLUG}`;
+
+/** Stable prefix for the JSON failure receipt delivered to a child session. */
+export const PARENT_AGENT_FAILURE_RECEIPT_PREFIX =
+  "PARENT_AGENT_FAILURE_RECEIPT ";
+
+type ParentAgentTerminalFailure = NonNullable<
+  ParentAgentBrokerResult["terminalFailure"]
+>;
+
+/** Machine-readable proof that the parent broker operation failed. */
+export interface ParentAgentFailureReceipt {
+  type: "parent_agent_failure";
+  version: 1;
+  brokerSuccess: false;
+  terminalFailure: ParentAgentTerminalFailure;
+}
+
+/** Independent broker and transport outcomes for one child directive. */
+export interface DispatchParentAgentResult {
+  /** Compatibility aggregate: true only when the broker and delivery succeed. */
+  ok: boolean;
+  brokerSuccess: boolean;
+  delivered: boolean;
+  reply: string;
+  terminalFailure?: ParentAgentTerminalFailure;
+  failureReceipt?: ParentAgentFailureReceipt;
+}
 
 /**
  * A child streams its `USE_SKILL parent-agent` directive mid-turn and then ends
@@ -166,7 +194,7 @@ export function extractParentAgentDirective(
 export interface DispatchParentAgentParams {
   runtime: IAgentRuntime;
   /** Only the methods the dispatcher needs, so tests can pass a tiny stub. */
-  acp: Pick<AcpService, "sendToSession">;
+  acp: Pick<AcpService, "sendToSession" | "emitSessionEvent">;
   sessionId: string;
   session?: SessionInfo;
   args: Record<string, unknown>;
@@ -180,11 +208,13 @@ export interface DispatchParentAgentParams {
  */
 export async function dispatchParentAgentDirective(
   params: DispatchParentAgentParams,
-): Promise<{ ok: boolean; reply: string }> {
+): Promise<DispatchParentAgentResult> {
   const { runtime, acp, sessionId, session, args, log } = params;
 
   let reply: string;
-  let ok = false;
+  let brokerSuccess = false;
+  let terminalFailure: ParentAgentTerminalFailure | undefined;
+  let failureReceipt: ParentAgentFailureReceipt | undefined;
   try {
     const result = await runParentAgentBroker({
       runtime,
@@ -192,8 +222,18 @@ export async function dispatchParentAgentDirective(
       session,
       args,
     });
-    ok = result.success;
+    brokerSuccess = result.success;
     reply = result.text;
+    terminalFailure = result.terminalFailure;
+    if (terminalFailure) {
+      failureReceipt = {
+        type: "parent_agent_failure",
+        version: 1,
+        brokerSuccess: false,
+        terminalFailure,
+      };
+      reply = `${reply}\n\n${PARENT_AGENT_FAILURE_RECEIPT_PREFIX}${JSON.stringify(failureReceipt)}`;
+    }
   } catch (err) {
     // error-policy:J1 broker boundary; the failure becomes a structured
     // { ok: false } result plus a child-facing error reply, logged at error.
@@ -202,5 +242,18 @@ export async function dispatchParentAgentDirective(
   }
 
   const delivered = await deliverReplyToChild(acp, sessionId, reply, log);
-  return { ok: ok && delivered, reply };
+  if (failureReceipt) {
+    acp.emitSessionEvent(sessionId, "parent_agent_failure", {
+      ...failureReceipt,
+      delivered,
+    });
+  }
+  return {
+    ok: brokerSuccess && delivered,
+    brokerSuccess,
+    delivered,
+    reply,
+    ...(terminalFailure ? { terminalFailure } : {}),
+    ...(failureReceipt ? { failureReceipt } : {}),
+  };
 }

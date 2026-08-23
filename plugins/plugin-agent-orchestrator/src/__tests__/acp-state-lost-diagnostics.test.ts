@@ -117,6 +117,18 @@ describe("AcpService state-lost diagnostics", () => {
     svc.emitSessionEvent("sess-3", "reasoning", {
       text: "waiting for the install to finish before wiring routes",
     });
+    svc.emitSessionEvent("sess-3", "parent_agent_failure", {
+      type: "parent_agent_failure",
+      version: 1,
+      brokerSuccess: false,
+      delivered: true,
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        code: "SHELL_UNAVAILABLE",
+        transient: true,
+        message: "Shell execution failed.",
+      },
+    });
 
     (
       svc as unknown as {
@@ -127,10 +139,13 @@ describe("AcpService state-lost diagnostics", () => {
     const [, data] = warn.mock.calls[0] as [string, Record<string, unknown>];
     expect(data.tailOutput).toBe("(no buffered output)");
     const events = data.recentEvents as string[];
-    expect(events).toHaveLength(3);
+    expect(events).toHaveLength(4);
     expect(events[0]).toContain("ready");
     expect(events[1]).toContain("tool_running — bun install --frozen-lockfile");
     expect(events[2]).toContain("reasoning — waiting for the install");
+    expect(events[3]).toContain(
+      "parent_agent_failure — kind=coding_tool_failure code=SHELL_UNAVAILABLE transient=true delivered=true",
+    );
   });
 
   it("ring-caps the trail and degrades hints gracefully on unrecognized payloads", async () => {

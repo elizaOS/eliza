@@ -5891,6 +5891,22 @@ const EVENT_TRAIL_HINT_MAX_CHARS = 120;
 function eventTrailHint(data: unknown): string | undefined {
   const record = asRecord(data);
   if (!record) return undefined;
+  const terminalFailure = asRecord(record.terminalFailure);
+  if (
+    record.type === "parent_agent_failure" &&
+    typeof terminalFailure?.kind === "string" &&
+    typeof terminalFailure.transient === "boolean" &&
+    typeof record.delivered === "boolean"
+  ) {
+    const code =
+      typeof terminalFailure.code === "string"
+        ? ` code=${terminalFailure.code}`
+        : "";
+    return `kind=${terminalFailure.kind}${code} transient=${terminalFailure.transient} delivered=${record.delivered}`.slice(
+      0,
+      EVENT_TRAIL_HINT_MAX_CHARS,
+    );
+  }
   const toolCall = asRecord(record.toolCall);
   const candidates = [
     toolCall?.title,

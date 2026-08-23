@@ -8,6 +8,7 @@ import {
   dispatchParentAgentDirective,
   extractParentAgentDirective,
   PARENT_AGENT_DIRECTIVE_MARKER,
+  PARENT_AGENT_FAILURE_RECEIPT_PREFIX,
   parentAgentMarkerIndex,
 } from "../services/parent-agent-dispatch.js";
 import { resetSessionSpendUsd } from "../services/spend-allowance.js";
@@ -111,6 +112,7 @@ describe("dispatchParentAgentDirective", () => {
   it("runs the directive through the broker and streams the reply to the session", async () => {
     const sent: Array<{ sessionId: string; input: string }> = [];
     const acp = {
+      emitSessionEvent: vi.fn(),
       sendToSession: async (sessionId: string, input: string) => {
         sent.push({ sessionId, input });
         return { ok: true } as unknown as ReturnType<
@@ -129,6 +131,8 @@ describe("dispatchParentAgentDirective", () => {
     });
 
     expect(result.ok).toBe(true);
+    expect(result.brokerSuccess).toBe(true);
+    expect(result.delivered).toBe(true);
     expect(sent).toHaveLength(1);
     expect(sent[0].sessionId).toBe("sess-1");
     // The reply is the broker's command catalog text.
@@ -138,6 +142,7 @@ describe("dispatchParentAgentDirective", () => {
 
   it("reports a delivery failure without throwing", async () => {
     const acp = {
+      emitSessionEvent: vi.fn(),
       sendToSession: async () => {
         throw new Error("session gone");
       },
@@ -149,6 +154,8 @@ describe("dispatchParentAgentDirective", () => {
       args: { mode: "list-cloud-commands" },
     });
     expect(result.ok).toBe(false);
+    expect(result.brokerSuccess).toBe(true);
+    expect(result.delivered).toBe(false);
   });
 
   // Regression: a child streams its directive mid-turn and then ends the turn to
@@ -159,6 +166,7 @@ describe("dispatchParentAgentDirective", () => {
   it("retries delivery while the child turn is still in flight (session busy)", async () => {
     let attempts = 0;
     const acp = {
+      emitSessionEvent: vi.fn(),
       sendToSession: async (sessionId: string) => {
         attempts++;
         if (attempts < 3) {
@@ -184,6 +192,7 @@ describe("dispatchParentAgentDirective", () => {
     try {
       let calls = 0;
       const acp = {
+        emitSessionEvent: vi.fn(),
         sendToSession: async (sessionId: string) => {
           calls++;
           throw new Error(`ACP session is already busy: ${sessionId}`);
@@ -208,6 +217,7 @@ describe("dispatchParentAgentDirective", () => {
   it("does not retry a terminal (non-busy) delivery error", async () => {
     let calls = 0;
     const acp = {
+      emitSessionEvent: vi.fn(),
       sendToSession: async () => {
         calls++;
         throw new Error("session lost");
@@ -221,5 +231,118 @@ describe("dispatchParentAgentDirective", () => {
     });
     expect(result.ok).toBe(false);
     expect(calls).toBe(1);
+  });
+
+  it("preserves a typed broker failure in the child reply and session event after successful delivery", async () => {
+    const terminalFailure = {
+      kind: "coding_tool_failure" as const,
+      code: "SHELL_UNAVAILABLE",
+      transient: true,
+      message: "Shell execution failed.",
+    };
+    const sent: string[] = [];
+    const acp = {
+      emitSessionEvent: vi.fn(),
+      sendToSession: vi.fn(async (_sessionId: string, input: string) => {
+        sent.push(input);
+        return {} as unknown as ReturnType<
+          import("../services/acp-service.js").AcpService["sendToSession"]
+        >;
+      }),
+    };
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _memory, callback) => {
+          await callback({ text: "Done." });
+          return {
+            didRespond: true,
+            responseContent: null,
+            responseMessages: [],
+            terminalFailure,
+          };
+        }),
+      },
+    } as Partial<IAgentRuntime>);
+
+    const result = await dispatchParentAgentDirective({
+      runtime,
+      acp,
+      sessionId: "sess-failed-delivered",
+      args: { request: "Run the coding task." },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      brokerSuccess: false,
+      delivered: true,
+      terminalFailure,
+      failureReceipt: {
+        type: "parent_agent_failure",
+        version: 1,
+        brokerSuccess: false,
+        terminalFailure,
+      },
+    });
+    expect(sent).toHaveLength(1);
+    const receiptJson = sent[0].split(PARENT_AGENT_FAILURE_RECEIPT_PREFIX)[1];
+    expect(JSON.parse(receiptJson)).toEqual(result.failureReceipt);
+    expect(sent[0]).not.toContain("Done.");
+    expect(acp.emitSessionEvent).toHaveBeenCalledWith(
+      "sess-failed-delivered",
+      "parent_agent_failure",
+      {
+        ...result.failureReceipt,
+        delivered: true,
+      },
+    );
+  });
+
+  it("records typed broker failure and failed child delivery as independent outcomes", async () => {
+    const terminalFailure = {
+      kind: "coding_mutation_unverified" as const,
+      transient: false,
+      message: "Coding changes were not verified.",
+    };
+    const acp = {
+      emitSessionEvent: vi.fn(),
+      sendToSession: vi.fn(async () => {
+        throw new Error("session lost");
+      }),
+    };
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: { text: "Everything passed." },
+          responseMessages: [],
+          terminalFailure,
+        })),
+      },
+    } as Partial<IAgentRuntime>);
+
+    const result = await dispatchParentAgentDirective({
+      runtime,
+      acp,
+      sessionId: "sess-failed-undelivered",
+      args: { request: "Edit and verify the parser." },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      brokerSuccess: false,
+      delivered: false,
+      terminalFailure,
+    });
+    expect(result.reply).toContain(PARENT_AGENT_FAILURE_RECEIPT_PREFIX);
+    expect(acp.emitSessionEvent).toHaveBeenCalledWith(
+      "sess-failed-undelivered",
+      "parent_agent_failure",
+      {
+        ...result.failureReceipt,
+        delivered: false,
+      },
+    );
   });
 });
