@@ -1,7 +1,8 @@
 /**
  * Persists and advances one-shot sandbox replacement attempts on the primary.
  * Every callback is fenced by tenant, agent, activation generation, and the
- * byte-identical S0 locator; no API expires, deletes, or reopens an attempt.
+ * byte-identical S0 locator. Ambiguous effects also hold an agent-wide fence;
+ * no API expires, deletes, or reopens an attempt.
  */
 
 import { Buffer } from "node:buffer";
@@ -801,11 +802,11 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
     return frozenResult(created, false);
   } catch (error) {
     if (error instanceof ElizaError) throw error;
-    // error-policy:J1 repository boundary translates primary-key and active-
-    // generation races into one explicit authority conflict.
+    // error-policy:J1 repository boundary translates primary-key, agent-wide
+    // active-effect, and generation-fence races into one authority conflict.
     if (isUniqueConstraintError(error)) {
       throw conflict(
-        "Replacement attempt ID or active activation generation is already owned",
+        "Replacement attempt ID, agent-wide effect, or activation generation is already owned",
         validated,
       );
     }

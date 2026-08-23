@@ -39,10 +39,15 @@ export const AGENT_SANDBOX_REPLACEMENT_ATTEMPT_STATES = [
 export type AgentSandboxReplacementAttemptState =
   (typeof AGENT_SANDBOX_REPLACEMENT_ATTEMPT_STATES)[number];
 
-/** States that still forbid a second provider create for the same activation. */
-export const ACTIVE_AGENT_SANDBOX_REPLACEMENT_ATTEMPT_STATES = [
+/** Ambiguous or adoptable provider effects block every generation for an agent. */
+export const AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES = [
   "in_flight_unresolved",
   "provider_succeeded",
+] as const satisfies readonly AgentSandboxReplacementAttemptState[];
+
+/** States that fence one generation; lifecycle commitment retains that fence permanently. */
+export const AGENT_SANDBOX_REPLACEMENT_GENERATION_FENCE_STATES = [
+  ...AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES,
   "lifecycle_committed",
 ] as const satisfies readonly AgentSandboxReplacementAttemptState[];
 
@@ -159,7 +164,12 @@ export const agentSandboxReplacementAttempts = pgTable(
         agentBackupRestoreLeases.expected_manifest_sha256,
       ],
     }).onDelete("restrict"),
-    one_active_generation_uidx: uniqueIndex(
+    one_active_effect_per_agent_uidx: uniqueIndex(
+      "agent_sandbox_replacement_attempts_active_agent_uidx",
+    )
+      .on(table.organization_id, table.agent_id)
+      .where(sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded')`),
+    one_attempt_per_generation_uidx: uniqueIndex(
       "agent_sandbox_replacement_attempts_active_generation_uidx",
     )
       .on(table.organization_id, table.agent_id, table.activation_generation)

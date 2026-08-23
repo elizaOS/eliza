@@ -56,9 +56,12 @@ const ATTEMPT_ID = "00000000-0000-4000-8000-00000000a003";
 const OTHER_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a004";
 const THIRD_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a025";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000a005";
+const NEXT_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000a027";
 const NODE_RECORD_ID = "00000000-0000-4000-8000-00000000a006";
 const LIFECYCLE_JOB_ID = "00000000-0000-4000-8000-00000000a007";
 const LIFECYCLE_EXECUTION_GENERATION = "00000000-0000-4000-8000-00000000a008";
+const NEXT_LIFECYCLE_JOB_ID = "00000000-0000-4000-8000-00000000a028";
+const NEXT_LIFECYCLE_EXECUTION_GENERATION = "00000000-0000-4000-8000-00000000a029";
 const BACKUP_ID = "00000000-0000-4000-8000-00000000a009";
 const BACKUP_OPERATION_ID = "00000000-0000-4000-8000-00000000a00a";
 const BACKUP_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000a00b";
@@ -164,6 +167,119 @@ function adoptionInput(
     lifecycleReceiptDigest: LIFECYCLE_DIGEST,
     ...overrides,
   };
+}
+
+function rotatedStartInput(
+  lifecycleRevision: string,
+  attemptId = OTHER_ATTEMPT_ID,
+): StartAgentSandboxReplacementAttemptInput {
+  return startInput({
+    attemptId,
+    lifecycleRevision,
+    activationGeneration: NEXT_ACTIVATION_GENERATION,
+    lifecycleJobId: NEXT_LIFECYCLE_JOB_ID,
+    lifecycleExecutionGeneration: NEXT_LIFECYCLE_EXECUTION_GENERATION,
+  });
+}
+
+async function rotateSandboxLifecycle(expectedLifecycleRevision: number): Promise<void> {
+  const rotated = await dbWrite
+    .update(agentSandboxes)
+    .set({
+      lifecycle_job_id: NEXT_LIFECYCLE_JOB_ID,
+      lifecycle_execution_generation: NEXT_LIFECYCLE_EXECUTION_GENERATION,
+      activation_previous_generation: ACTIVATION_GENERATION,
+      activation_generation: NEXT_ACTIVATION_GENERATION,
+      activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+      activation_token_hash: "2".repeat(64),
+      activation_token_ciphertext: "test-only-rotated-activation-token",
+      updated_at: new Date(),
+    })
+    .where(
+      and(
+        eq(agentSandboxes.id, AGENT_ID),
+        eq(agentSandboxes.organization_id, ORGANIZATION_ID),
+        eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
+        eq(agentSandboxes.activation_generation, ACTIVATION_GENERATION),
+        eq(agentSandboxes.lifecycle_job_id, LIFECYCLE_JOB_ID),
+        eq(agentSandboxes.lifecycle_execution_generation, LIFECYCLE_EXECUTION_GENERATION),
+      ),
+    )
+    .returning({
+      lifecycleRevision: agentSandboxes.lifecycle_revision,
+      activationGeneration: agentSandboxes.activation_generation,
+      activationLifecycleRevision: agentSandboxes.activation_lifecycle_revision,
+      lifecycleJobId: agentSandboxes.lifecycle_job_id,
+      lifecycleExecutionGeneration: agentSandboxes.lifecycle_execution_generation,
+    });
+  expect(rotated).toEqual([
+    {
+      lifecycleRevision: expectedLifecycleRevision + 1,
+      activationGeneration: NEXT_ACTIVATION_GENERATION,
+      activationLifecycleRevision: BigInt(expectedLifecycleRevision + 1),
+      lifecycleJobId: NEXT_LIFECYCLE_JOB_ID,
+      lifecycleExecutionGeneration: NEXT_LIFECYCLE_EXECUTION_GENERATION,
+    },
+  ]);
+}
+
+async function restampRotatedActivationAuthority(expectedLifecycleRevision: number): Promise<void> {
+  const restamped = await dbWrite
+    .update(agentSandboxes)
+    .set({
+      activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+      updated_at: new Date(),
+    })
+    .where(
+      and(
+        eq(agentSandboxes.id, AGENT_ID),
+        eq(agentSandboxes.organization_id, ORGANIZATION_ID),
+        eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
+        eq(agentSandboxes.activation_generation, NEXT_ACTIVATION_GENERATION),
+        eq(agentSandboxes.lifecycle_job_id, NEXT_LIFECYCLE_JOB_ID),
+        eq(agentSandboxes.lifecycle_execution_generation, NEXT_LIFECYCLE_EXECUTION_GENERATION),
+      ),
+    )
+    .returning({
+      lifecycleRevision: agentSandboxes.lifecycle_revision,
+      activationLifecycleRevision: agentSandboxes.activation_lifecycle_revision,
+    });
+  expect(restamped).toEqual([
+    {
+      lifecycleRevision: expectedLifecycleRevision + 1,
+      activationLifecycleRevision: BigInt(expectedLifecycleRevision + 1),
+    },
+  ]);
+}
+
+async function seedReplacementCleanupLocator(
+  attemptId: string,
+  expectedLifecycleRevision: number,
+): Promise<void> {
+  const seeded = await dbWrite
+    .update(agentSandboxes)
+    .set({
+      replacement_cleanup_sandbox_id: CONTAINER_NAME,
+      replacement_cleanup_node_id: "robot-node-a",
+      replacement_cleanup_container_name: CONTAINER_NAME,
+      replacement_cleanup_attempt_id: attemptId,
+      replacement_cleanup_container_id: CONTAINER_ID,
+      replacement_cleanup_vpn_node_id: "42",
+      replacement_cleanup_vpn_node_name: CONTAINER_NAME,
+      replacement_cleanup_preserved_vpn_node_id: "41",
+      replacement_cleanup_vpn_registration_started_at: new Date("2026-08-23T12:00:00.000Z"),
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-08-23T12:03:00.000Z"),
+    })
+    .where(
+      and(
+        eq(agentSandboxes.id, AGENT_ID),
+        eq(agentSandboxes.organization_id, ORGANIZATION_ID),
+        eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
+      ),
+    )
+    .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+  expect(seeded).toEqual([{ lifecycleRevision: expectedLifecycleRevision + 1 }]);
 }
 
 type ReplacementTransaction = Parameters<
@@ -958,6 +1074,91 @@ describe("agent sandbox replacement attempts", () => {
         }),
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+  });
+
+  test("keeps unresolved and provider effects fenced across rotation until cleanup", async () => {
+    await startAgentSandboxReplacementAttempt(startInput());
+    await rotateSandboxLifecycle(7);
+
+    await expect(startAgentSandboxReplacementAttempt(rotatedStartInput("8"))).rejects.toMatchObject(
+      { code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" },
+    );
+    expect(await getAgentSandboxReplacementAttempt(reference(OTHER_ATTEMPT_ID))).toBeNull();
+    expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(1);
+
+    await persistSuccessfulProviderAttemptAfterExistingStart(ATTEMPT_ID);
+    await expect(startAgentSandboxReplacementAttempt(rotatedStartInput("8"))).rejects.toMatchObject(
+      { code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" },
+    );
+    expect(await getAgentSandboxReplacementAttempt(reference(OTHER_ATTEMPT_ID))).toBeNull();
+    expect(await getAgentSandboxReplacementAttempt(reference())).toMatchObject({
+      state: "provider_succeeded",
+      activation_generation: ACTIVATION_GENERATION,
+    });
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      lifecycle_revision: 8,
+      activation_generation: NEXT_ACTIVATION_GENERATION,
+      lifecycle_job_id: NEXT_LIFECYCLE_JOB_ID,
+      lifecycle_execution_generation: NEXT_LIFECYCLE_EXECUTION_GENERATION,
+    });
+
+    await seedReplacementCleanupLocator(ATTEMPT_ID, 8);
+    expect(
+      (await recordAgentSandboxReplacementCleanupProven(reference(), CLEANUP_DIGEST)).replayed,
+    ).toBe(false);
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      lifecycle_revision: 10,
+      activation_generation: NEXT_ACTIVATION_GENERATION,
+      replacement_cleanup_sandbox_id: null,
+      replacement_cleanup_allocation_counted: null,
+    });
+
+    await restampRotatedActivationAuthority(10);
+    const rotated = await startAgentSandboxReplacementAttempt(rotatedStartInput("11"));
+    expect(rotated).toMatchObject({
+      replayed: false,
+      attempt: {
+        id: OTHER_ATTEMPT_ID,
+        state: "in_flight_unresolved",
+        activation_generation: NEXT_ACTIVATION_GENERATION,
+      },
+    });
+    expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(2);
+  });
+
+  test("keeps a committed generation fenced while allowing a rotated generation", async () => {
+    await startAgentSandboxReplacementAttempt(startInput());
+    await persistSuccessfulProviderAttemptAfterExistingStart(ATTEMPT_ID);
+    expect((await recordAgentSandboxReplacementLifecycleCommitted(adoptionInput())).replayed).toBe(
+      false,
+    );
+
+    await expect(
+      startAgentSandboxReplacementAttempt(
+        startInput({ attemptId: OTHER_ATTEMPT_ID, lifecycleRevision: "8" }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    expect(await getAgentSandboxReplacementAttempt(reference(OTHER_ATTEMPT_ID))).toBeNull();
+    expect(await getAgentSandboxReplacementAttempt(reference())).toMatchObject({
+      state: "lifecycle_committed",
+      activation_generation: ACTIVATION_GENERATION,
+    });
+
+    await rotateSandboxLifecycle(8);
+    const rotated = await startAgentSandboxReplacementAttempt(rotatedStartInput("9"));
+    expect(rotated).toMatchObject({
+      replayed: false,
+      attempt: {
+        id: OTHER_ATTEMPT_ID,
+        state: "in_flight_unresolved",
+        activation_generation: NEXT_ACTIVATION_GENERATION,
+      },
+    });
+    expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(2);
   });
 
   test("rejects partial locators and immutable Docker or VPN enrichment drift", async () => {
