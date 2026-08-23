@@ -302,7 +302,7 @@ function callerConflict(
 }
 
 function deferredSignal(): { promise: Promise<void>; resolve: () => void } {
-  let resolvePromise = () => {
+  let resolvePromise: () => void = () => {
     throw new Error("Deferred signal was resolved before initialization");
   };
   const promise = new Promise<void>((resolve) => {
