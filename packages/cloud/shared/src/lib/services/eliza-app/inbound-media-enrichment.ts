@@ -11,6 +11,7 @@
  * live claim, and never retries a terminal failure.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
   type InboundMediaDescriptionCeilings,
   type InboundMediaDescriptionClaim,
@@ -46,9 +47,11 @@ export type InboundMediaEnrichmentSkipReason =
   | "admission_unavailable"
   | "in_flight"
   | "previously_failed"
+  | "identity_mismatch"
   | "media_mismatch"
   | "exhausted"
-  | "description_failed";
+  | "description_failed"
+  | "settlement_failed";
 
 export type InboundMediaEnrichmentOutcome =
   | { kind: "described"; description: string; reused: boolean }
@@ -71,7 +74,7 @@ const LOG_PREFIX = "[inbound-media-enrichment]";
 function parseCeiling(raw: string | undefined, fallback: number): number | null {
   if (raw === undefined) return fallback;
   const trimmed = raw.trim();
-  if (trimmed === "") return fallback;
+  if (trimmed === "") return null;
   if (!/^\d{1,9}$/.test(trimmed)) return null;
   return Number(trimmed);
 }
@@ -95,31 +98,37 @@ export function resolveInboundMediaVisionCeilings(
   return { senderDailyImages, connectorDailyImages };
 }
 
-/** Canonical digest of the exact URL list so a reuse only matches the same media. */
+/** Canonical unambiguous digest of the ordered URL list. */
 export async function inboundMediaDigest(mediaUrls: readonly string[]): Promise<string> {
-  return sha256Hex(mediaUrls.join("\n"));
+  return sha256Hex(JSON.stringify(mediaUrls));
 }
 
 async function settleClaim(
   settle: () => Promise<boolean>,
   context: Record<string, unknown>,
-): Promise<void> {
+): Promise<boolean> {
   let settled: boolean;
   try {
     settled = await settle();
   } catch (error) {
-    // error-policy:J7 the provider outcome is already final for this turn; a
-    // ledger write failure is reported and the pending claim lapses with its
-    // lease instead of failing the delivery.
+    if (
+      !(error instanceof ElizaError) ||
+      error.code !== "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE"
+    ) {
+      throw error;
+    }
+    // error-policy:J4 settlement authority is unavailable, so the caller
+    // keeps the raw media turn instead of trusting an uncommitted description.
     logger.error(`${LOG_PREFIX} failed to settle the description claim`, {
       ...context,
       error: error instanceof Error ? error.message : String(error),
     });
-    return;
+    return false;
   }
   if (!settled) {
     logger.warn(`${LOG_PREFIX} description claim was reclaimed before settlement`, context);
   }
+  return settled;
 }
 
 export async function enrichInboundImageMedia(
@@ -162,6 +171,12 @@ export async function enrichInboundImageMedia(
       ceilings,
     });
   } catch (error) {
+    if (
+      !(error instanceof ElizaError) ||
+      error.code !== "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE"
+    ) {
+      throw error;
+    }
     // error-policy:J4 no admission decision means no spend: the turn keeps the
     // raw media text instead of failing or calling the provider ungated.
     logger.error(`${LOG_PREFIX} admission ledger unavailable; vision fails closed`, {
@@ -183,6 +198,12 @@ export async function enrichInboundImageMedia(
         failureReason: admission.reason,
       });
       return { kind: "skipped", reason: "previously_failed" };
+    case "identity_mismatch":
+      logger.error(
+        `${LOG_PREFIX} connector message identity belongs to a different account`,
+        context,
+      );
+      return { kind: "skipped", reason: "identity_mismatch" };
     case "media_mismatch":
       logger.warn(
         `${LOG_PREFIX} redelivery carries different media than the stored claim`,
@@ -236,7 +257,17 @@ async function describeBehindClaim(
     // An untyped failure is a bug; the pending claim lapses with its lease.
     throw error;
   }
-  await settleClaim(() => deps.repository.complete(claim, description), claimContext);
+  const settled = await settleClaim(
+    () => deps.repository.complete(claim, description),
+    claimContext,
+  );
+  if (!settled) {
+    logger.error(
+      `${LOG_PREFIX} description was not committed by the live claim; keeping raw media`,
+      claimContext,
+    );
+    return { kind: "skipped", reason: "settlement_failed" };
+  }
   logger.info(`${LOG_PREFIX} inbound media described`, claimContext);
   return { kind: "described", description, reused: false };
 }
