@@ -126,7 +126,11 @@ export class DmChannelRegistry {
 	listRecent(limit = this.maxEntries): DmChannelRecord[] {
 		this.load();
 		return [...this.entries.values()]
-			.sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+			.sort(
+				(a, b) =>
+					(Number.isFinite(b.lastSeenAt) ? b.lastSeenAt : 0) -
+					(Number.isFinite(a.lastSeenAt) ? a.lastSeenAt : 0),
+			)
 			.slice(0, Math.max(0, limit));
 	}
 

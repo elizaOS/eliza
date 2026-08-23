@@ -491,8 +491,11 @@ function pruneOutboundDedupeState(
 					}
 				>,
 			] => entry[1].status === "settled",
-		)
-		.sort((left, right) => left[1].settledAt - right[1].settledAt);
+		.sort(
+			(left, right) =>
+				(Number.isFinite(left[1].settledAt) ? left[1].settledAt : 0) -
+				(Number.isFinite(right[1].settledAt) ? right[1].settledAt : 0),
+		);
 	const overflow = Math.max(0, state.size - DISCORD_OUTBOUND_DEDUPE_MAX_KEYS);
 	for (const [key] of settled.slice(0, overflow)) {
 		state.delete(key);

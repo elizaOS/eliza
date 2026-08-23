@@ -744,7 +744,11 @@ export async function fetchChannelHistory(
 
 			const messages = Array.from(
 				batch.values() as IterableIterator<Message>,
-			).sort((a, b) => (a.createdTimestamp ?? 0) - (b.createdTimestamp ?? 0));
+			).sort(
+				(a, b) =>
+					(Number.isFinite(a.createdTimestamp) ? a.createdTimestamp : 0) -
+					(Number.isFinite(b.createdTimestamp) ? b.createdTimestamp : 0),
+			);
 
 			const knownNewestTimestamp = spiderState.newestMessageTimestamp ?? 0;
 			const knownNewestId = spiderState.newestMessageId;

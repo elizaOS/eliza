@@ -227,7 +227,11 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			}
 		}
 
-		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
+		merged.sort(
+			(a, b) =>
+				(Number.isFinite(b.receivedAtMs) ? b.receivedAtMs : 0) -
+				(Number.isFinite(a.receivedAtMs) ? a.receivedAtMs : 0),
+		);
 		const out = merged.slice(0, limit);
 		for (const ref of out) this.cacheRef(ref);
 		return out;
