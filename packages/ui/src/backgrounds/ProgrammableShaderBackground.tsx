@@ -33,6 +33,7 @@ import {
   type ShaderUniformValues,
   uniformsEqual,
 } from "./shader-schema";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /** Present cap while the home↔launcher rail is mid-gesture (#15282): the
  * compositor is already translating the promoted rail layer (plus, on one half,
@@ -138,7 +139,7 @@ export function ProgrammableShaderBackground({
     const compileError = fragmentCompileError(gl, source);
     if (compileError) {
       renderer.dispose();
-      fallback(`compile: ${compileError.slice(0, 200)}`);
+      fallback(`compile: ${truncateWellFormed(toWellFormedUnicode(compileError), 200)}`);
       return;
     }
 
