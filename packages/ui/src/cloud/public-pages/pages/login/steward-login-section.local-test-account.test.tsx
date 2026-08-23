@@ -12,6 +12,7 @@
 
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -139,11 +140,15 @@ async function renderSectionWithEnv(env: {
   const { default: StewardLoginSection } = await import(
     "./steward-login-section"
   );
-  return render(
+  const rendered = render(
     <MemoryRouter initialEntries={["/login?returnTo=%2Fcloud%2Fagents"]}>
       <StewardLoginSection />
     </MemoryRouter>,
   );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  return rendered;
 }
 
 function jsonResponse(body: unknown, status: number): Response {
