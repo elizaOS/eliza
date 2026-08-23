@@ -46,6 +46,18 @@ export const CHANNEL_RECAP_DEFAULT_COUNT = 50;
  */
 export const CHANNEL_RECAP_MAX_FETCH = 500;
 
+/**
+ * Deliverable-size bound on the rendered transcript, in characters. The row
+ * bound above cannot express this: 500 short messages fit any model window
+ * while 500 long ones do not (live 2026-08-23: a complete 500-message
+ * transcript rendered ~202K tokens against a 131K-token provider limit and
+ * killed the turn, so the caller received nothing at all). A transcript that
+ * cannot be delivered is not a completeness win, so an over-size range is
+ * REJECTED before dispatch with an actionable count — never sliced, never
+ * partially served.
+ */
+export const CHANNEL_RECAP_DELIVERABLE_CHARS = 60_000;
+
 function resolveRequestedCount(options?: HandlerOptions): number | undefined {
 	const raw =
 		options?.parameters && typeof options.parameters === "object"
@@ -241,6 +253,39 @@ export const channelRecapAction: Action = {
 			dialogue,
 		);
 		const transcript = formatMessages({ messages: dialogue, entities });
+		// A single message larger than the bound has no smaller range to
+		// suggest, and slicing it is the violation this action exists to avoid,
+		// so it is served complete; rejection applies only when a smaller
+		// deliverable range genuinely exists.
+		if (
+			dialogue.length > 1 &&
+			transcript.length > CHANNEL_RECAP_DELIVERABLE_CHARS
+		) {
+			// Proportional suggestion: the caller asked for a range whose rendered
+			// size exceeds what one model call can carry, so name a count that
+			// fits rather than returning any part of it.
+			const deliverableCount = Math.max(
+				1,
+				Math.floor(
+					(dialogue.length * CHANNEL_RECAP_DELIVERABLE_CHARS) /
+						transcript.length,
+				),
+			);
+			return {
+				success: false,
+				text: `CHANNEL_RECAP range renders ${transcript.length} characters, over the ${CHANNEL_RECAP_DELIVERABLE_CHARS}-character deliverable bound for one call; request at most ${deliverableCount} message(s), or page older history with offset=${offset + deliverableCount}.`,
+				values: { success: false },
+				data: {
+					actionName: "CHANNEL_RECAP",
+					error: "CHANNEL_RECAP_RANGE_NOT_DELIVERABLE",
+					roomId,
+					renderedChars: transcript.length,
+					deliverableChars: CHANNEL_RECAP_DELIVERABLE_CHARS,
+					deliverableCount,
+					nextOffset: offset + deliverableCount,
+				},
+			};
+		}
 
 		// Store-exhaustion is measured against the full fetch depth
 		// (count + offset): with a nonzero offset the store can satisfy
