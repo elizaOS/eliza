@@ -1036,6 +1036,17 @@ function objectByteLength(
   return base + (index % 7) * 257;
 }
 
+/** Return the deterministic byte schedule without materializing corpus files. */
+export function planProgressiveContentByteLengths(
+  profile: ProgressiveContentProfile,
+  family: ProgressiveContentFamily,
+): readonly number[] {
+  const shape = PROFILE_SHAPES[profile];
+  return Array.from({ length: shape.counts[family] }, (_, index) =>
+    objectByteLength(shape, family, index, profile),
+  );
+}
+
 function canariesFor(
   id: string,
   byteLength: number,
