@@ -155,15 +155,7 @@ function isDevMode(): boolean {
 /** All registered cloud routes, in registration order. */
 export function listCloudRoutes(): CloudRouteDef[] {
   return [...getStore().entries.values()]
-    .sort(
-      (a, b) =>
-        (Number.isFinite((a as CloudRouteEntry).order)
-          ? (a as CloudRouteEntry).order
-          : 0) -
-        (Number.isFinite((b as CloudRouteEntry).order)
-          ? (b as CloudRouteEntry).order
-          : 0),
-    )
+    .sort((a, b) => (a as CloudRouteEntry).order - (b as CloudRouteEntry).order)
     .map(({ path, element, public: isPublic, publicAccess, group, gate }) => ({
       path,
       element,

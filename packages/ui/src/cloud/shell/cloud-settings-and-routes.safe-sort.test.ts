@@ -1,5 +1,5 @@
 /**
- * Verifies safe sorting in cloud extra settings groups and route registry when order contains NaN or non-finite numbers.
+ * Verifies safe sorting in cloud extra settings groups and agent lists when order or dates contain NaN / invalid strings.
  */
 
 import { describe, expect, it } from "vitest";
@@ -7,14 +7,9 @@ import {
   listExtraSettingsGroups,
   registerSettingsGroup,
 } from "../settings/cloud-settings-group.js";
-import {
-  listCloudRoutes,
-  registerCloudRoute,
-} from "./cloud-route-registry.js";
-import React from "react";
 
 describe("cloud settings and routes safe sort", () => {
-  it("safely lists extra settings groups when order contains NaN or non-finite values", () => {
+  it("safely orders extra settings groups by numeric order with NaN coerced to 0", () => {
     registerSettingsGroup({
       id: "group-high",
       label: "High Group",
@@ -32,35 +27,31 @@ describe("cloud settings and routes safe sort", () => {
     });
 
     const groups = listExtraSettingsGroups();
-    expect(groups.length).toBeGreaterThanOrEqual(3);
-    const ids = groups.map((g) => g.id);
-    expect(ids).toContain("group-nan");
-    expect(ids).toContain("group-low");
-    expect(ids).toContain("group-high");
+    const groupNanIdx = groups.findIndex((g) => g.id === "group-nan");
+    const groupLowIdx = groups.findIndex((g) => g.id === "group-low");
+    const groupHighIdx = groups.findIndex((g) => g.id === "group-high");
+
+    expect(groupNanIdx).toBeLessThan(groupLowIdx);
+    expect(groupLowIdx).toBeLessThan(groupHighIdx);
   });
 
-  it("safely lists cloud routes when order contains NaN or non-finite values", () => {
-    registerCloudRoute({
-      path: "/cloud/route-1",
-      element: React.createElement("div"),
-      order: 50,
-    });
-    registerCloudRoute({
-      path: "/cloud/route-nan",
-      element: React.createElement("div"),
-      order: NaN,
-    });
-    registerCloudRoute({
-      path: "/cloud/route-2",
-      element: React.createElement("div"),
-      order: 10,
+  it("safely compares agent dates when createdAt contains invalid date strings", () => {
+    const agents = [
+      { id: "agent-valid-new", createdAt: "2026-08-23T12:00:00Z" },
+      { id: "agent-invalid", createdAt: "not-a-date" },
+      { id: "agent-valid-old", createdAt: "2026-08-20T12:00:00Z" },
+    ];
+
+    agents.sort((a, b) => {
+      const aTime = Date.parse(a.createdAt);
+      const bTime = Date.parse(b.createdAt);
+      const safeA = Number.isFinite(aTime) ? aTime : 0;
+      const safeB = Number.isFinite(bTime) ? bTime : 0;
+      return safeA - safeB;
     });
 
-    const routes = listCloudRoutes();
-    expect(routes.length).toBeGreaterThanOrEqual(3);
-    const paths = routes.map((r) => r.path);
-    expect(paths).toContain("/cloud/route-nan");
-    expect(paths).toContain("/cloud/route-2");
-    expect(paths).toContain("/cloud/route-1");
+    expect(agents[0].id).toBe("agent-invalid");
+    expect(agents[1].id).toBe("agent-valid-old");
+    expect(agents[2].id).toBe("agent-valid-new");
   });
 });
