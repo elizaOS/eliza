@@ -8,11 +8,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: () => mocks.getPlatform(),
-    registerPlugin: (...a: unknown[]) => mocks.registerPlugin(...a),
+    registerPlugin: (name: string) => mocks.registerPlugin(name),
   },
 }));
-
-import { getKeyboardDictationBridge } from "./keyboard-dictation-bridge.ts";
 
 describe("getKeyboardDictationBridge", () => {
   beforeEach(() => {
@@ -23,7 +21,7 @@ describe("getKeyboardDictationBridge", () => {
 
   it("returns null off iOS", async () => {
     const { getKeyboardDictationBridge: g } = await import(
-      "./keyboard-dictation-bridge.ts"
+      "../keyboard-dictation-bridge.ts"
     );
     mocks.getPlatform.mockReturnValue("android");
     expect(g()).toBeNull();
@@ -32,7 +30,7 @@ describe("getKeyboardDictationBridge", () => {
 
   it("registers and caches the plugin on iOS", async () => {
     const { getKeyboardDictationBridge: g } = await import(
-      "./keyboard-dictation-bridge.ts"
+      "../keyboard-dictation-bridge.ts"
     );
     mocks.getPlatform.mockReturnValue("ios");
     const bridge = { setDictationState: async () => ({ saved: true }) };

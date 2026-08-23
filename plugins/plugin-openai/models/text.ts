@@ -31,6 +31,7 @@ import {
   resolveEffectiveSystemPrompt,
   sanitizeFunctionNameForCerebras,
   toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   generateText,
