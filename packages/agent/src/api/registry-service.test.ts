@@ -38,7 +38,10 @@ function makeHarness() {
     updateAgentProfile: vi.fn(),
     updateTokenURI: vi.fn(),
   };
-  const getContract = vi.fn(() => contract as unknown as ethers.Contract);
+  const getContract = vi.fn(
+    (_address: string, _abi: ethers.InterfaceAbi) =>
+      contract as unknown as ethers.Contract,
+  );
   const txService = {
     address: WALLET_ADDRESS,
     getChainId: vi.fn().mockResolvedValue(8453),
@@ -126,7 +129,7 @@ describe("RegistryService", () => {
 
   it("returns the token id encoded in the first registration event", async () => {
     const { contract, service, txService } = makeHarness();
-    const event = new ethers.Interface([
+    const encodedEvent = new ethers.Interface([
       "event AgentRegistered(uint256 indexed tokenId, address indexed owner, string name, string endpoint)",
     ]).encodeEventLog("AgentRegistered", [
       23n,
@@ -134,6 +137,16 @@ describe("RegistryService", () => {
       "Astra",
       "https://agent.example",
     ]);
+    const event = {
+      ...encodedEvent,
+      transactionHash: "0xregistration",
+      blockHash: "0xblock",
+      blockNumber: 1,
+      removed: false,
+      address: REGISTRY_ADDRESS,
+      index: 0,
+      transactionIndex: 0,
+    } satisfies ethers.LogParams;
     contract.registerAgent.mockResolvedValue(
       transaction("0xregistration", [event]),
     );

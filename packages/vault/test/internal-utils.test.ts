@@ -50,6 +50,7 @@ describe("optsCaller", () => {
 
   it("returns empty object when caller is absent or empty", () => {
     expect(optsCaller({})).toEqual({});
+    // @ts-expect-error test explicit undefined from an untyped caller
     expect(optsCaller({ caller: undefined })).toEqual({});
     expect(optsCaller({ caller: "" })).toEqual({});
   });

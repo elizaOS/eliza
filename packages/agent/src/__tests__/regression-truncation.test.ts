@@ -31,6 +31,7 @@ function isWellFormed(value: string): boolean {
 const baseOpts = {
   maxDepth: 4,
   maxArrayLength: 20,
+  maxObjectEntries: 20,
   maxObjectKeys: 20,
 } as const;
 
