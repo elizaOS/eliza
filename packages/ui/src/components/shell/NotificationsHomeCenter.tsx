@@ -2602,7 +2602,7 @@ export function NotificationsHomeCenter({
           <button
             type="button"
             onClick={() => void retryNotificationHydration()}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-3 text-xs font-semibold text-black transition-colors hover:bg-orange-600"
+            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
           >
             <RefreshCw aria-hidden className="h-3.5 w-3.5" />
             Retry
