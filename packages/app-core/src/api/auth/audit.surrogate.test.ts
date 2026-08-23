@@ -1,7 +1,6 @@
 /**
  * Surrogate-safe truncation for auth audit User-Agent.
  */
-
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
