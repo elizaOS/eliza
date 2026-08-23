@@ -80,6 +80,12 @@ describe("computer-use MCP tool catalog", () => {
       findComputerUseMcpTool("computer_accessibility_action")?.destructive,
     ).toBe(true);
     expect(
+      findComputerUseMcpTool("computer_accessibility_snapshot")?.destructive,
+    ).toBe(false);
+    expect(
+      findComputerUseMcpTool("computer_accessibility_action")?.destructive,
+    ).toBe(true);
+    expect(
       findComputerUseMcpTool("computer_get_cursor_position")?.destructive,
     ).toBe(false);
     expect(findComputerUseMcpTool("computer_left_click")?.destructive).toBe(

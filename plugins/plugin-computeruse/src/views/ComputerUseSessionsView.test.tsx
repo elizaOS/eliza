@@ -137,6 +137,9 @@ describe("ComputerUseSessionsView", () => {
       await screen.findByAltText("Chrome research latest frame"),
     ).toBeTruthy();
     expect(screen.getByLabelText("Virtual cursor at 640, 360")).toBeTruthy();
+    expect(
+      screen.getByText("Coordinate fallback restored the pointer."),
+    ).toBeTruthy();
     expect(screen.getByText("Capture: ready")).toBeTruthy();
     expect(screen.getByText("Vision: ready")).toBeTruthy();
     expect(

@@ -102,7 +102,12 @@ import {
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { killApp, launchApp, openTarget } from "../platform/launch.js";
+import {
+  type MacosAccessibilityAction,
+  MacosAccessibilityController,
+} from "../platform/macos-accessibility-actions.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
+import { runRestoredPointerFallback } from "../platform/pointer-fallback.js";
 import { disposePsHost, warmPsHost } from "../platform/ps-host.js";
 import {
   clearTerminal,
@@ -238,6 +243,8 @@ const HOST_SESSION_COMMANDS = new Set([
   "get_cursor_position",
   "detect_elements",
   "ocr",
+  "accessibility_snapshot",
+  "accessibility_action",
   "open",
   "launch",
   "kill_app",
@@ -289,6 +296,8 @@ const KNOWN_DESKTOP_ACTIONS = new Set<DesktopActionParams["action"]>([
   "get_cursor_position",
   "detect_elements",
   "ocr",
+  "accessibility_snapshot",
+  "accessibility_action",
   "open",
   "launch",
   "kill_app",
@@ -349,6 +358,9 @@ export class ComputerUseService extends Service {
   private recentActions: ActionHistoryEntry[] = [];
   private screenSize: ScreenSize = { width: 1920, height: 1080 };
   private approvalManager = new ComputerUseApprovalManager();
+  private readonly macosAccessibility = new MacosAccessibilityController({
+    readCursor: () => driverGetCursorPosition(),
+  });
   private readonly sessionTargetExecutors = new Map<
     string,
     ComputerUseSessionExecutor
@@ -502,6 +514,8 @@ export class ComputerUseService extends Service {
       case "get_cursor_position":
       case "detect_elements":
       case "ocr":
+      case "accessibility_snapshot":
+      case "accessibility_action":
       case "open":
       case "launch":
       case "kill_app":
@@ -978,6 +992,14 @@ export class ComputerUseService extends Service {
       }
 
       const targetDisplayId = this.resolveDisplayIdForAction(params);
+      let controlMetadata: Pick<
+        ComputerActionResult,
+        | "controlMode"
+        | "physicalPointerBorrowed"
+        | "fallbackDisclosure"
+        | "message"
+        | "data"
+      > = {};
       switch (params.action) {
         case "screenshot": {
           const captured = await this.captureScreenshotForDisplay(
@@ -992,85 +1014,114 @@ export class ComputerUseService extends Service {
         case "click": {
           this.requireCoordinate(params.coordinate, "click");
           const g = this.toGlobal(params, params.coordinate);
-          await driverClick(g.x, g.y);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverClick(g.x, g.y),
+            [{ x: g.x, y: g.y }],
+          );
           break;
         }
         case "click_with_modifiers": {
           this.requireCoordinate(params.coordinate, "click_with_modifiers");
           const g = this.toGlobal(params, params.coordinate);
-          await driverClickWithModifiers(g.x, g.y, params.modifiers ?? []);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverClickWithModifiers(g.x, g.y, params.modifiers ?? []),
+            [{ x: g.x, y: g.y }],
+          );
           break;
         }
         case "double_click": {
           this.requireCoordinate(params.coordinate, "double_click");
           const g = this.toGlobal(params, params.coordinate);
-          await driverDoubleClick(g.x, g.y);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverDoubleClick(g.x, g.y),
+            [{ x: g.x, y: g.y }],
+          );
           break;
         }
         case "right_click": {
           this.requireCoordinate(params.coordinate, "right_click");
           const g = this.toGlobal(params, params.coordinate);
-          await driverRightClick(g.x, g.y);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverRightClick(g.x, g.y),
+            [{ x: g.x, y: g.y }],
+          );
           break;
         }
         case "mouse_move": {
           this.requireCoordinate(params.coordinate, "mouse_move");
           const g = this.toGlobal(params, params.coordinate);
-          await driverMouseMove(g.x, g.y);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverMouseMove(g.x, g.y),
+            [{ x: g.x, y: g.y }],
+          );
           break;
         }
         case "middle_click": {
           this.requireCoordinate(params.coordinate, "middle_click");
           const g = this.toGlobal(params, params.coordinate);
-          await driverMiddleClick(g.x, g.y);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverMiddleClick(g.x, g.y),
+            [{ x: g.x, y: g.y }],
+          );
           break;
         }
         case "mouse_down": {
           this.requireCoordinate(params.coordinate, "mouse_down");
           const g = this.toGlobal(params, params.coordinate);
           await driverMouseDown(g.x, g.y, params.button ?? "left");
+          controlMetadata = this.unrestoredCoordinateFallbackMetadata();
           break;
         }
         case "mouse_up": {
           this.requireCoordinate(params.coordinate, "mouse_up");
           const g = this.toGlobal(params, params.coordinate);
           await driverMouseUp(g.x, g.y, params.button ?? "left");
+          controlMetadata = this.unrestoredCoordinateFallbackMetadata();
           break;
         }
         case "type":
           if (!params.text) throw new Error("text is required for type action");
           await driverType(params.text);
+          controlMetadata = { controlMode: "keyboard" };
           break;
         case "key":
           if (!params.key) throw new Error("key is required for key action");
           await driverKeyPress(params.key);
+          controlMetadata = { controlMode: "keyboard" };
           break;
         case "key_combo":
           if (!params.key) {
             throw new Error("key is required for key_combo action");
           }
           await driverKeyCombo(params.key);
+          controlMetadata = { controlMode: "keyboard" };
           break;
         case "key_down":
           if (!params.key) {
             throw new Error("key is required for key_down action");
           }
           await driverKeyDown(params.key);
+          controlMetadata = { controlMode: "keyboard" };
           break;
         case "key_up":
           if (!params.key) {
             throw new Error("key is required for key_up action");
           }
           await driverKeyUp(params.key);
+          controlMetadata = { controlMode: "keyboard" };
           break;
         case "scroll": {
           this.requireCoordinate(params.coordinate, "scroll");
           const g = this.toGlobal(params, params.coordinate);
-          await driverScroll(
-            g.x,
-            g.y,
-            params.scrollDirection ?? "down",
-            params.scrollAmount ?? 3,
+          controlMetadata = await this.runCoordinateFallback(
+            () =>
+              driverScroll(
+                g.x,
+                g.y,
+                params.scrollDirection ?? "down",
+                params.scrollAmount ?? 3,
+              ),
+            [{ x: g.x, y: g.y }],
           );
           break;
         }
@@ -1089,7 +1140,10 @@ export class ComputerUseService extends Service {
           // startCoordinate→coordinate drag.
           if (params.path && params.path.length >= 2) {
             const global = params.path.map((p) => this.toGlobal(params, p));
-            await driverDragPath(global);
+            controlMetadata = await this.runCoordinateFallback(
+              () => driverDragPath(global),
+              global,
+            );
             break;
           }
           this.requireCoordinate(
@@ -1100,7 +1154,61 @@ export class ComputerUseService extends Service {
           this.requireCoordinate(params.coordinate, "drag");
           const start = this.toGlobal(params, params.startCoordinate);
           const end = this.toGlobal(params, params.coordinate);
-          await driverDrag(start.x, start.y, end.x, end.y);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverDrag(start.x, start.y, end.x, end.y),
+            [start, end],
+          );
+          break;
+        }
+        case "accessibility_snapshot": {
+          if (currentPlatform() !== "darwin") {
+            throw new Error(
+              "accessibility_snapshot is currently available only on macOS",
+            );
+          }
+          const app = this.requireIdentifier(
+            params.app,
+            "app is required for accessibility_snapshot",
+          );
+          return this.succeedEntry(entry, {
+            success: true,
+            controlMode: "accessibility" as const,
+            physicalPointerBorrowed: false,
+            data: this.macosAccessibility.snapshot(app),
+            message: `Captured a fresh app-scoped Accessibility tree for ${app}.`,
+          });
+        }
+        case "accessibility_action": {
+          if (currentPlatform() !== "darwin") {
+            throw new Error(
+              "accessibility_action is currently available only on macOS",
+            );
+          }
+          await this.macosAccessibility.act({
+            app: this.requireIdentifier(
+              params.app,
+              "app is required for accessibility_action",
+            ),
+            snapshotId: this.requireIdentifier(
+              params.axSnapshotId,
+              "axSnapshotId is required for accessibility_action",
+            ),
+            elementId: this.requireIdentifier(
+              params.axElementId,
+              "axElementId is required for accessibility_action",
+            ),
+            action: this.requireIdentifier(
+              params.axAction,
+              "axAction is required for accessibility_action",
+            ) as MacosAccessibilityAction,
+            ...(params.text !== undefined ? { text: params.text } : {}),
+          });
+          controlMetadata = {
+            controlMode: "accessibility",
+            physicalPointerBorrowed: false,
+            message:
+              "Completed the app-scoped Accessibility action without borrowing the physical cursor. Capture a fresh AX tree before the next action.",
+          };
           break;
         }
         case "open": {
@@ -1147,7 +1255,10 @@ export class ComputerUseService extends Service {
             );
           }
           const g = this.toGlobal(params, params.coordinate);
-          await driverSetValue(g.x, g.y, params.text);
+          controlMetadata = await this.runCoordinateFallback(
+            () => driverSetValue(g.x, g.y, params.text as string),
+            [{ x: g.x, y: g.y }],
+          );
           break;
         }
         default:
@@ -1157,7 +1268,10 @@ export class ComputerUseService extends Service {
           });
       }
 
-      const result: ComputerActionResult = { success: true };
+      const result: ComputerActionResult = {
+        success: true,
+        ...controlMetadata,
+      };
       if (this.shouldCaptureAfterDesktopAction(params.action)) {
         try {
           const captured = await this.captureScreenshotForDisplay(
@@ -2186,6 +2300,33 @@ export class ComputerUseService extends Service {
           throw new Error("text (the value) is required for set_value action");
         }
         break;
+      case "accessibility_snapshot":
+        if (!params.app) {
+          throw new Error("app is required for accessibility_snapshot");
+        }
+        break;
+      case "accessibility_action":
+        if (!params.app) {
+          throw new Error("app is required for accessibility_action");
+        }
+        if (!params.axSnapshotId) {
+          throw new Error("axSnapshotId is required for accessibility_action");
+        }
+        if (!params.axElementId) {
+          throw new Error("axElementId is required for accessibility_action");
+        }
+        if (!params.axAction) {
+          throw new Error("axAction is required for accessibility_action");
+        }
+        if (
+          params.axAction === "set_value" &&
+          typeof params.text !== "string"
+        ) {
+          throw new Error(
+            "text (the value) is required for accessibility set_value",
+          );
+        }
+        break;
       case "open":
         if (!params.target) {
           throw new Error("target is required for open action");
@@ -2685,6 +2826,52 @@ export class ComputerUseService extends Service {
       action !== "ocr"
       ? this.cuConfig.screenshotAfterAction
       : false;
+  }
+
+  private async runCoordinateFallback(
+    operation: () => Promise<void>,
+    expectedPath: Array<{ x: number; y: number }>,
+  ): Promise<
+    Pick<
+      ComputerActionResult,
+      | "controlMode"
+      | "physicalPointerBorrowed"
+      | "fallbackDisclosure"
+      | "message"
+    >
+  > {
+    if (currentPlatform() === "darwin") {
+      await runRestoredPointerFallback({
+        operation,
+        readCursor: () => driverGetCursorPosition(),
+        restoreCursor: (point) => driverMouseMove(point.x, point.y),
+        expectedPath,
+      });
+    } else {
+      await operation();
+    }
+    return {
+      controlMode: "coordinate_fallback",
+      physicalPointerBorrowed: true,
+      fallbackDisclosure:
+        "Coordinate fallback borrowed the physical pointer briefly; macOS restored it after the action.",
+      message:
+        "Completed through disclosed coordinate fallback. Prefer a fresh accessibility_snapshot and accessibility_action for ordinary controls.",
+    };
+  }
+
+  private unrestoredCoordinateFallbackMetadata(): Pick<
+    ComputerActionResult,
+    "controlMode" | "physicalPointerBorrowed" | "fallbackDisclosure" | "message"
+  > {
+    return {
+      controlMode: "coordinate_fallback",
+      physicalPointerBorrowed: true,
+      fallbackDisclosure:
+        "Granular mouse hold/release is a physical-pointer fallback and cannot restore the pointer until the sequence completes.",
+      message:
+        "Completed a disclosed physical hold/release fallback. Prefer Accessibility actions when the target supports them.",
+    };
   }
 
   private createEntry(

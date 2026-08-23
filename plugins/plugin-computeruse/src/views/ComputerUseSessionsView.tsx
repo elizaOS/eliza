@@ -52,6 +52,9 @@ export interface SessionSnapshot {
     physicalPointerMoved: boolean;
   };
   lastCommand?: string;
+  lastControlMode?: "accessibility" | "coordinate_fallback" | "keyboard";
+  lastPhysicalPointerBorrowed?: boolean;
+  lastFallbackDisclosure?: string;
   lastError?: string;
   lastObservation?: ObservationProvenance;
   lastOutcome?: {
@@ -553,8 +556,9 @@ export function ComputerUseSessionsView({
           {!shortLandscape ? (
             <p className="text-xs text-muted-foreground">
               macOS has one true system pointer. Orange target boxes are an
-              agent-only overlay and do not move it; guarded coordinate actions
-              may use the physical pointer only after policy approval.
+              agent-only overlay and do not move it. App-scoped Accessibility
+              runs first; guarded coordinate fallback is disclosed and restores
+              the one physical pointer after bounded use when possible.
             </p>
           ) : null}
         </div>
@@ -728,6 +732,16 @@ export function ComputerUseSessionsView({
                       : " · physical pointer unchanged"}
                   </p>
                 ) : null}
+                {selected.lastControlMode ? (
+                  <p className="truncate" title={selected.lastFallbackDisclosure}>
+                    {selected.lastControlMode === "coordinate_fallback"
+                      ? (selected.lastFallbackDisclosure ??
+                        "Coordinate fallback · physical pointer borrowed")
+                      : selected.lastControlMode === "accessibility"
+                        ? "Accessibility · physical pointer untouched"
+                        : "Keyboard input"}
+                  </p>
+                ) : null}
                 {frames[selected.id]?.provenance ? (
                   <p
                     className="truncate"
@@ -841,6 +855,23 @@ export function ComputerUseSessionsView({
                             ? `Last: ${session.lastCommand}`
                             : "Waiting for first action"}
                       </span>
+                      {session.lastControlMode ? (
+                        <span
+                          className={`col-span-2 truncate ${
+                            session.lastControlMode === "coordinate_fallback"
+                              ? "text-amber-500"
+                              : "text-emerald-500"
+                          }`}
+                          title={session.lastFallbackDisclosure}
+                        >
+                          {session.lastControlMode === "coordinate_fallback"
+                            ? (session.lastFallbackDisclosure ??
+                              "Coordinate fallback · physical pointer borrowed")
+                            : session.lastControlMode === "accessibility"
+                              ? "Accessibility · physical pointer untouched"
+                              : "Keyboard input"}
+                        </span>
+                      ) : null}
                       {frames[session.id]?.provenance ? (
                         <span
                           className="col-span-2 truncate"
