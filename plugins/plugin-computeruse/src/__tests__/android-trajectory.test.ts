@@ -64,6 +64,28 @@ describe("emitAndroidAction", () => {
     }
   });
 
+  it.each([undefined, "", "short bridge failure"])(
+    "preserves absent, empty, and short action errors exactly: %s",
+    (errorMessage) => {
+      const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+      try {
+        const event = {
+          kind: "tap" as const,
+          success: false,
+          ...(errorMessage === undefined ? {} : { errorMessage }),
+        };
+        const payload = emitAndroidAction(event);
+        const structured = spy.mock.calls[0]?.[0] as Record<string, unknown>;
+        expect(payload).toEqual(event);
+        expect("errorMessage" in payload).toBe(errorMessage !== undefined);
+        expect("errorMessage" in structured).toBe(errorMessage !== undefined);
+        expect(structured.errorMessage).toBe(errorMessage);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
   it("preserves every well-formed action text field and leaves the input unchanged", () => {
     const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
     try {
