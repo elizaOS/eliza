@@ -679,7 +679,12 @@ describe("renderGroundedActionReply", () => {
       }) as IAgentRuntime["useModel"],
     });
     runtime.getMemories = vi.fn(async () => [
-      { id: "stored-turn", content: { text: "User: repeat this" } },
+      {
+        id: "stored-turn",
+        entityId: "entity-1",
+        roomId: "room-1",
+        content: { text: "User: repeat this" },
+      } as Memory,
     ]) as IAgentRuntime["getMemories"];
 
     await renderGroundedActionReply({
