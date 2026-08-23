@@ -42,6 +42,8 @@ export function blooioFetch(
 }
 
 export class BlooioApiResponseError extends PlatformDeliveryError {
+  override readonly name: string = "BlooioApiResponseError";
+
   constructor(
     readonly status: number,
     message: string,
@@ -53,12 +55,11 @@ export class BlooioApiResponseError extends PlatformDeliveryError {
       status === 429,
       status,
     );
-    this.name = "BlooioApiResponseError";
   }
 }
 
 export class BlooioConfigurationError extends PlatformDeliveryError {
-  readonly context: Readonly<{ setting: string; chatId: string }>;
+  override readonly name: string = "BlooioConfigurationError";
 
   constructor(chatId: string) {
     super(
@@ -66,12 +67,9 @@ export class BlooioConfigurationError extends PlatformDeliveryError {
       "failed",
       "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING",
       false,
+      undefined,
+      { context: { setting: "fromNumber", chatId } },
     );
-    this.name = "BlooioConfigurationError";
-    this.context = {
-      setting: "fromNumber",
-      chatId,
-    };
   }
 }
 

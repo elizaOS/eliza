@@ -1,5 +1,5 @@
 /** Exercises index behavior with deterministic cloud-shared lib fixtures. */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
 
 // Load SQL metadata projections before this suite installs process-global
@@ -21,6 +21,7 @@ const loggerInfo = mock();
 const loggerDebug = mock();
 const loggerWarn = mock();
 const loggerError = mock();
+const originalFetch = globalThis.fetch;
 
 const insertBuilder = {
   values: insertValues,
@@ -127,6 +128,10 @@ mock.module("../../utils/logger", () => ({
 const { messageRouterService } = await import("./index");
 
 describe("MessageRouterService contact recording", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   beforeEach(() => {
     blooioApiRequest.mockReset();
     secretsGet.mockReset();
@@ -349,6 +354,7 @@ describe("MessageRouterService contact recording", () => {
       provider: "blooio",
       code: "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
       retryable: false,
+      providerStatus: 503,
     });
     expect(blooioApiRequest).toHaveBeenCalledTimes(1);
   });
@@ -378,6 +384,32 @@ describe("MessageRouterService contact recording", () => {
       providerStatus: 429,
     });
     expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves a Twilio 500 as uncertain with its provider status", async () => {
+    secretsGet.mockResolvedValueOnce("twilio-account-sid");
+    secretsGet.mockResolvedValueOnce("twilio-auth-token");
+    const fetchMock = mock(
+      async () => new Response("accepted before upstream error", { status: 500 }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "twilio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "twilio",
+      code: "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+      retryable: false,
+      providerStatus: 500,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test("fails closed for an unsupported runtime provider", async () => {
