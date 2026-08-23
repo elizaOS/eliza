@@ -33,10 +33,11 @@ describe("cerebras-judge surrogate-safe truncation", () => {
   });
 
   it("handles lone surrogate at boundary without producing invalid JSON", () => {
-    const loneAtBoundary = "a".repeat(299) + String.fromCharCode(0xd800) + "b".repeat(200);
+    const loneAtBoundary =
+      "a".repeat(299) + String.fromCharCode(0xd800) + "b".repeat(200);
     const result = truncateWellFormed(toWellFormedUnicode(loneAtBoundary), 300);
     expect(result.length).toBeLessThanOrEqual(300);
-    expect(result.isWellFormed?.() ?? !result.includes("\uD800")).toBe(true);
+    expect(toWellFormedUnicode(result)).toBe(result);
     expect(() => JSON.stringify(result)).not.toThrow();
   });
 });
