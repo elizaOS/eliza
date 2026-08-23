@@ -22,6 +22,7 @@ describe("formatCliBannerLine", () => {
   beforeEach(() => {
     mocks.isRich.mockReset();
     mocks.isRich.mockReturnValue(true);
+    mocks.resolveCommitHash.mockReset();
   });
 
   it("formats a themed banner on rich tty", async () => {
@@ -33,18 +34,19 @@ describe("formatCliBannerLine", () => {
 
   it("formats a plain banner off rich tty", async () => {
     const { formatCliBannerLine } = await import("./banner.ts");
-    expect(formatCliBannerLine("1.0.0", { richTty: false, commit: null })).toBe(
+    mocks.resolveCommitHash.mockReturnValue(null);
+    expect(formatCliBannerLine("1.0.0", { richTty: false })).toBe(
       "Eliza 1.0.0 (unknown)",
     );
   });
 
   it("uppercases the configured app name", async () => {
     const { formatCliBannerLine } = await import("./banner.ts");
+    mocks.resolveCommitHash.mockReturnValue(null);
     expect(
       formatCliBannerLine("2.0.0", {
         env: { APP_CLI_NAME: "hermes" },
         richTty: false,
-        commit: null,
       }),
     ).toBe("Hermes 2.0.0 (unknown)");
   });
