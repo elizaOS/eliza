@@ -16,12 +16,13 @@ describe("truncateMessageForDisplay — behavioral maxLen & surrogate (real)", (
     expect(truncateMessageForDisplay("a".repeat(6100), 0)).toBe("");
     expect(truncateMessageForDisplay("👋hello", 0)).toBe("");
   });
-  it("max 1 survives astral boundary well-formed", () => {
+  it("max 1 survives astral boundary as a single well-formed ellipsis", () => {
     const emoji = String.fromCharCode(0xD83D, 0xDE00);
     const out = truncateMessageForDisplay(`${emoji}${"a".repeat(10)}`, 1);
     expect(isWellFormed(out)).toBe(true);
     expect((out as any).isWellFormed()).toBe(true);
-    expect(out.startsWith("…")).toBe(true);
+    expect(out).toBe("…");
+    expect(out.length).toBe(1);
   });
   it("short input under max returns well-formed unchanged", () => {
     const text = "short message";
