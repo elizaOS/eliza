@@ -36,19 +36,15 @@
  */
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";
 import type {
-	AccessContext,
 	ArtifactShareGrant,
 	ArtifactShareGrantMode,
 	MemoryScope,
 	UUID,
 } from "../types";
-import { resolveArtifactDisclosure } from "./artifact-disclosure";
 import {
 	type AudienceAdmission,
 	attestedAudienceViewerResolver,
-	type DisclosureLevel,
 	type DisclosureSubject,
-	disclosureSubjectRecord,
 	resolveAudienceAdmission,
 } from "./audience-disclosure";
 

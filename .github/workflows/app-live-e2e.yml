@@ -527,7 +527,8 @@ jobs:
           name: app-live-e2e-cloud-staging
           path: |
             artifacts/app-live-e2e/cloud-staging-receipt.json
-            packages/app/test-results/**/privacy-safe-*-history-network-diagnostics.json
+            packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json
+            packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json
           if-no-files-found: error
           retention-days: 7
 

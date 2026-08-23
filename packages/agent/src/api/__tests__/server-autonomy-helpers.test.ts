@@ -13,7 +13,7 @@ vi.mock("./server-helpers-swarm.ts", () => ({
 import {
   isLifeOpsCloudPluginRoute,
   maybeRouteAutonomyEventToConversation,
-} from "./server-autonomy-helpers.ts";
+} from "../server-autonomy-helpers.ts";
 
 describe("isLifeOpsCloudPluginRoute", () => {
   it("matches cloud plugin routes", () => {

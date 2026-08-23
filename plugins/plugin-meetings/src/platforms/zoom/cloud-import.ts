@@ -6,7 +6,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { fetchWithSsrfGuard } from "@elizaos/core";
+import {
+  fetchWithSsrfGuard,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   assertValidMeetingArtifact,
   MEETING_ARTIFACT_SCHEMA_VERSION,
@@ -489,11 +493,15 @@ async function readErrorSnippet(response: Response): Promise<string> {
         break;
       }
     }
-    return Buffer.concat(chunks, total)
-      .toString("utf8")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 300);
+    return truncateWellFormed(
+      toWellFormedUnicode(
+        Buffer.concat(chunks, total)
+          .toString("utf8")
+          .replace(/\s+/g, " ")
+          .trim(),
+      ),
+      300,
+    );
   } catch {
     // error-policy:J7 The HTTP status remains authoritative if optional
     // provider diagnostics cannot be read.

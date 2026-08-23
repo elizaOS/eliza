@@ -4,7 +4,7 @@ vi.mock("@elizaos/core", () => ({
   logger: { debug: vi.fn() },
 }));
 
-import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
+import { deduplicatePluginActions } from "../plugin-action-dedupe.ts";
 
 describe("deduplicatePluginActions", () => {
   it("keeps the first occurrence of each action name", () => {

@@ -136,9 +136,7 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   const allowFrom = readCsvSetting(runtime, "WHATSAPP_ALLOW_FROM");
   const groupAllowFrom = readCsvSetting(runtime, "WHATSAPP_GROUP_ALLOW_FROM");
 
-  const authDir =
-    readStringSetting(runtime, "WHATSAPP_AUTH_DIR") ??
-    readStringSetting(runtime, "WHATSAPP_SESSION_PATH");
+  const authDir = readStringSetting(runtime, "WHATSAPP_AUTH_DIR");
   if (authDir) {
     return {
       accountId: DEFAULT_ACCOUNT_ID,
@@ -980,6 +978,7 @@ export class WhatsAppConnectorService extends Service {
         config.transport === "baileys"
           ? new BaileysClient({
               authMethod: "baileys",
+              accountId: config.accountId,
               authDir: config.authDir,
               printQRInTerminal: false,
             } satisfies BaileysConfig)
@@ -1819,7 +1818,21 @@ export class WhatsAppConnectorService extends Service {
         }
         return true;
       })
-      .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
+      .sort((left, right) => {
+        const r =
+          typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+            ? right.createdAt
+            : Number.isFinite(Number(right.createdAt))
+              ? Number(right.createdAt)
+              : 0;
+        const l =
+          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+            ? left.createdAt
+            : Number.isFinite(Number(left.createdAt))
+              ? Number(left.createdAt)
+              : 0;
+        return r - l;
+      })
       .slice(0, limit);
   }
 
@@ -1920,7 +1933,17 @@ export class WhatsAppConnectorService extends Service {
     const normalizedAccountId = accountId ? this.resolveAccountId(accountId) : null;
     return Array.from(this.knownTargets.values())
       .filter((target) => !normalizedAccountId || target.accountId === normalizedAccountId)
-      .sort((left, right) => right.lastMessageAt - left.lastMessageAt);
+      .sort((left, right) => {
+        const r =
+          typeof right.lastMessageAt === "number" && Number.isFinite(right.lastMessageAt)
+            ? right.lastMessageAt
+            : 0;
+        const l =
+          typeof left.lastMessageAt === "number" && Number.isFinite(left.lastMessageAt)
+            ? left.lastMessageAt
+            : 0;
+        return r - l;
+      });
   }
 
   getKnownTarget(chatId: string, accountId?: string | null): KnownWhatsAppTarget | null {

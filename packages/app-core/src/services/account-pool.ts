@@ -1212,7 +1212,11 @@ function loadAllAccounts(
   for (const provider of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
     const records = listProviderAccounts(provider);
     let priorityCounter = 0;
-    const sorted = [...records].sort((a, b) => a.createdAt - b.createdAt);
+    const sorted = [...records].sort((a, b) => {
+      const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+      const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+      return aTime - bTime;
+    });
     for (const record of sorted) {
       const providerMeta = meta[provider]?.[record.id];
       out[poolRecordKey(provider, record.id)] = recordToLinked(
@@ -1449,7 +1453,12 @@ export async function applyAccountPoolApiCredentials(
         providerId,
         sessionKey: `env:${providerId}`,
         ...selectionForProvider(providerId),
-      })) ?? accounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
+      })) ??
+      accounts.slice().sort((a, b) => {
+        const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+        const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+        return aTime - bTime;
+      })[0];
     if (!account) continue;
 
     const token = await getAccountAccessToken(providerId, account.id, {

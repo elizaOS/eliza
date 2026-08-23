@@ -74,7 +74,7 @@ export type WhatsAppAccountConfig = {
   sendReadReceipts?: boolean;
   /** Inbound message prefix override for this account (WhatsApp only). */
   messagePrefix?: string;
-  /** Override auth directory (Baileys multi-file auth state). */
+  /** Exact connector-owned account directory for the atomic Baileys auth snapshot. */
   authDir?: string;
   /** Direct message access policy (default: pairing). */
   dmPolicy?: DmPolicy;

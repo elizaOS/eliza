@@ -4048,9 +4048,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).toContain(
 			"Never send a status update, a progress note, or a description of your own process",
 		);
-		// The policy is planner-scoped: Stage 1 already has the group-triage
-		// tier for ambient turns and its prompt stays byte-identical.
-		expect(stage1Content).not.toContain("ambient_turn_policy");
+		// Stage 1 carries the same policy in shouldRespond terms (the planner
+		// wording names the IGNORE tool, which Stage 1 cannot call): an
+		// ambient-mode group forwards every message, and without this the
+		// shouldRespond field guidance alone read as RESPOND on nearly all of
+		// them (live five-room evaluation: 7-10 unsolicited replies per room).
+		expect(stage1Content).toContain("ambient_turn_policy:");
+		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).not.toContain(
+			"end the turn by calling the IGNORE tool",
+		);
 		// Deliberate planner silence records as a terminal IGNORE — the same
 		// observable outcome a Stage-1 IGNORE gets — not a silent drop.
 		expect(result.kind).toBe("terminal");

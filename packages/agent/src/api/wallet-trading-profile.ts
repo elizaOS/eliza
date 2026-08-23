@@ -653,7 +653,15 @@ export function buildWalletTradingProfile(
     }));
 
   const recentSwaps = [...filtered]
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .sort((a, b) => {
+      const aTime = Number.isFinite(Date.parse(a.createdAt))
+        ? Date.parse(a.createdAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.createdAt))
+        ? Date.parse(b.createdAt)
+        : 0;
+      return bTime - aTime;
+    })
     .slice(0, 20)
     .map(toRecentSwap);
 
