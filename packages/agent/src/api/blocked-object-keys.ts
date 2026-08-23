@@ -183,6 +183,12 @@ function cloneWithoutBlockedObjectKeysWalk<T>(
   }
   if (!visitAlreadyReserved) reserveBlockedObjectVisits(ctx, 1);
   if (value === null || value === undefined) return value;
+  if (typeof value === "function") {
+    // Walk clone drops function values: a function-typed property value is
+    // never retained in the sanitized clone (mirrors JSON semantics and
+    // closes prototype-pollution exfiltration via function-bearing payloads).
+    return undefined as unknown as T;
+  }
   if (typeof value !== "object") return value;
 
   enterBlockedObjectContainer(value, ctx);
@@ -195,6 +201,7 @@ function cloneWithoutBlockedObjectKeysWalk<T>(
       for (let index = 0; index < length; index += 1) {
         const descriptor = ownArrayElement(value, index);
         if (!descriptor) continue;
+        if (typeof descriptor.value === "function") continue;
         next[index] = cloneWithoutBlockedObjectKeysWalk(
           descriptor.value,
           depth + 1,
@@ -219,6 +226,7 @@ function cloneWithoutBlockedObjectKeysWalk<T>(
       }
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (!descriptor || !("value" in descriptor)) continue;
+      if (typeof descriptor.value === "function") continue;
       out[key] = cloneWithoutBlockedObjectKeysWalk(
         descriptor.value,
         depth + 1,

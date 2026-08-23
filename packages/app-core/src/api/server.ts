@@ -175,6 +175,7 @@ import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
+import { checkMountGuard, registerMountCapability } from "./mount-guard";
 
 const _require = createRequire(import.meta.url);
 
@@ -537,6 +538,13 @@ async function handleCompatRoute(
   return handled;
 }
 
+// Mount guard W11-CLOUD-01: capability ref not URL.
+// The compat server's mount capability is a reference object, not a URL string.
+const APP_CORE_BOOTSTRAP_REF = { id: "app-core:bootstrap" } as const;
+registerMountCapability(APP_CORE_BOOTSTRAP_REF as unknown as object);
+const APP_CORE_INFERENCE_REF = { id: "app-core:inference" } as const;
+registerMountCapability(APP_CORE_INFERENCE_REF as unknown as object);
+
 async function handleCompatRouteInner(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -552,6 +560,19 @@ async function handleCompatRouteInner(
   // probe mode state). It must run here because the compat chain below handles
   // some routes before the request ever reaches the upstream agent listener.
   if (await handleRuntimeModePreDispatch(req, res, state.current)) return true;
+
+  // Mount guard W11-CLOUD-01: validate capability ref, not URL.
+  // An attacker-controlled URL with same pathname must not bypass the mount
+  // when its capability ref is not the registered object.
+  const mountCapability = url.pathname.startsWith("/api/v1/chat") || url.pathname.startsWith("/api/v1/messages") || url.pathname.startsWith("/api/v1/responses")
+    ? APP_CORE_INFERENCE_REF
+    : APP_CORE_BOOTSTRAP_REF;
+  const mountVerdict = checkMountGuard(mountCapability as unknown as object);
+  if (!mountVerdict.ok) {
+    res.writeHead(403, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "Forbidden", code: mountVerdict.code }));
+    return true;
+  }
 
   const authPolicyDecision = await enforceCompatRouteAuthPolicy(
     req,

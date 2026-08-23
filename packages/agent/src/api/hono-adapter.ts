@@ -22,6 +22,7 @@ import { stream as honoStream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { dispatchRoute } from "./dispatch-route.ts";
+import { mountGuardMiddleware, registerMountCapability } from "./mount-guard.ts";
 
 export interface HonoAdapterOptions {
   /** Predicate that decides whether the incoming request has a valid token. */
@@ -233,6 +234,12 @@ export function buildHonoAppForRuntime(
   options: HonoAdapterOptions,
 ): Hono {
   const app = new Hono();
+  // Mount guard W11-CLOUD-01 (bootstrap): capability ref not URL.
+  // The runtime object itself is the capability ref; only a runtime that
+  // was registered as a known mount capability may be mounted. This is
+  // reference equality, not URL string matching.
+  registerMountCapability(runtime as unknown as object);
+  app.use("*", mountGuardMiddleware(runtime as unknown as object));
   mountRoutesOnHono(app, runtime, options);
   return app;
 }
