@@ -2,7 +2,7 @@
  * Unit coverage for the same-origin post-authentication return contract.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { safeReturnTo } from "../src/lib/auth-return";
 import {
   getTelegramLinkDestination,
