@@ -3,7 +3,13 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import * as coordinatorActual from "@/lib/services/shared-runtime/conversation-coordinator";
 
-const coordinateSharedBridge = mock(async () => ({ result: { text: "ok" } }));
+const coordinateSharedBridge = mock(
+  async (
+    _agent: Parameters<typeof coordinatorActual.coordinateSharedBridge>[0],
+    _rpc: Parameters<typeof coordinatorActual.coordinateSharedBridge>[1],
+    _options: Parameters<typeof coordinatorActual.coordinateSharedBridge>[2],
+  ) => ({ result: { text: "ok" } }),
+);
 
 mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
   ...coordinatorActual,
