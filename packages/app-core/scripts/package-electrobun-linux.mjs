@@ -90,6 +90,20 @@ export const DEBIAN_RUNTIME_DEPENDS = [
   "libasound2t64 | libasound2",
   "libvulkan1",
   "libgomp1",
+  "libnss3",
+  "libnspr4",
+  "libx11-6",
+  "libxcomposite1",
+  "libxdamage1",
+  "libxext6",
+  "libxfixes3",
+  "libxrandr2",
+  "libatk1.0-0t64 | libatk1.0-0",
+  "libatk-bridge2.0-0t64 | libatk-bridge2.0-0",
+  "libcups2t64 | libcups2",
+  "libgbm1",
+  "libdrm2",
+  "libxkbcommon0",
   "ca-certificates",
   "xdg-utils",
 ];
@@ -117,6 +131,20 @@ export const RPM_RUNTIME_REQUIRES = [
   "alsa-lib",
   "vulkan-loader",
   "libgomp",
+  "nss",
+  "nspr",
+  "libX11",
+  "libXcomposite",
+  "libXdamage",
+  "libXext",
+  "libXfixes",
+  "libXrandr",
+  "atk",
+  "at-spi2-atk",
+  "cups-libs",
+  "mesa-libgbm",
+  "libdrm",
+  "libxkbcommon",
   "ca-certificates",
   "xdg-utils",
 ];
@@ -336,6 +364,7 @@ export function renderAppImageLauncher(relativeExecutable = "bin/launcher") {
   const bundleRoot = path.posix.dirname(path.posix.dirname(posixExecutable));
   const payloadRoot = path.posix.join(optDir, bundleRoot);
   const nativeWrapper = path.posix.join(payloadRoot, "bin/libNativeWrapper.so");
+  const cefLibrary = path.posix.join(payloadRoot, "cef/libcef.so");
   const inferenceLibrary = path.posix.join(
     payloadRoot,
     "Resources/app/eliza-dist/local-inference/lib/libelizainference.so",
@@ -347,7 +376,7 @@ export function renderAppImageLauncher(relativeExecutable = "bin/launcher") {
     'INFERENCE_LIB="$PAYLOAD_ROOT/Resources/app/eliza-dist/local-inference/lib"',
     `export LD_LIBRARY_PATH="$PAYLOAD_ROOT/bin:$INFERENCE_LIB\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"`,
     "if command -v ldd >/dev/null 2>&1; then",
-    `  for library in "$HERE"/${posixShellQuote(nativeWrapper)} "$HERE"/${posixShellQuote(inferenceLibrary)}; do`,
+    `  for library in "$HERE"/${posixShellQuote(nativeWrapper)} "$HERE"/${posixShellQuote(cefLibrary)} "$HERE"/${posixShellQuote(inferenceLibrary)}; do`,
     '    [ -f "$library" ] || continue',
     '    missing="$(ldd "$library" 2>/dev/null | awk \'/=> not found/{print $1}\' | sort -u)"',
     '    if [ -n "$missing" ]; then',
@@ -440,7 +469,8 @@ export async function stagePackageRoot(buildDir, destRoot) {
   await cp(buildDir, path.join(destRoot, optDir), {
     recursive: true,
     force: true,
-    dereference: true,
+    dereference: false,
+    verbatimSymlinks: true,
   });
 
   const executable = findElectrobunLauncher(path.join(destRoot, optDir));

@@ -9,8 +9,10 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -270,6 +272,10 @@ describe("direct Debian payload hardening", () => {
       mode: 0o664,
     });
     chmodSync(path.join(permissiveDir, "group-writable"), 0o664);
+    const cefDir = path.join(buildDir, "cef");
+    mkdirSync(cefDir);
+    writeFileSync(path.join(cefDir, "libcef.so"), "cef fixture\n");
+    symlinkSync("cef/libcef.so", path.join(buildDir, "libcef.so"));
 
     expect(findElectrobunLauncher(buildDir)).toBe(executable);
 
@@ -293,6 +299,9 @@ describe("direct Debian payload hardening", () => {
     expect(statSync(wrapper).mode & 0o777).toBe(0o755);
     expect(statSync(desktop).mode & 0o777).toBe(0o644);
     expect(statSync(icon).mode & 0o777).toBe(0o644);
+    const stagedCefLink = path.join(packageRoot, "opt/eliza/libcef.so");
+    expect(lstatSync(stagedCefLink).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(stagedCefLink)).toBe("cef/libcef.so");
     expectHardenedTree(packageRoot);
 
     const localWrapper = path.join(tempDir(), "quoted-launcher");
