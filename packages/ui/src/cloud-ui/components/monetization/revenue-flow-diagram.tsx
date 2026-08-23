@@ -72,8 +72,8 @@ export function RevenueFlowDiagram({
             icon={<Wallet className="h-5 w-5" />}
             label="You"
             value={`Earn $${markup.toFixed(2)}`}
-            color="text-txt-strong"
-            bgColor="bg-muted"
+            color="text-accent"
+            bgColor="bg-accent-subtle"
             highlight
           />
         </div>
@@ -160,7 +160,7 @@ function FlowNode({
     <div
       className={cn(
         "flex flex-col items-center gap-2 p-3 rounded-sm border transition-colors w-[90px]",
-        highlight ? "border-border" : "border-white/10",
+        highlight ? "border-accent/40" : "border-white/10",
         bgColor,
       )}
     >
@@ -220,7 +220,9 @@ function FlowNodeMobile({
     <div
       className={cn(
         "flex items-center justify-between p-3 rounded-sm border",
-        highlight ? "border-border bg-muted" : "border-white/10 bg-black/30",
+        highlight
+          ? "border-accent/40 bg-accent-subtle"
+          : "border-white/10 bg-black/30",
       )}
     >
       <div className="flex items-center gap-2">

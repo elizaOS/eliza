@@ -45,7 +45,9 @@ export function DevicesPanel({
           >
             <span
               className={`inline-flex h-2 w-2 rounded-full ${
-                device.isPrimary ? "bg-emerald-500" : "bg-muted-foreground/60"
+                device.isPrimary
+                  ? "bg-status-success"
+                  : "bg-muted-foreground/60"
               }`}
               aria-hidden
             />

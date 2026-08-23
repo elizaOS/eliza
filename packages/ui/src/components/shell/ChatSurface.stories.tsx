@@ -3,6 +3,7 @@
  * banner, and overlay contexts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { ChatSurface } from "./ChatSurface";
 import type { ShellMessage } from "./shell-state";
 
@@ -45,10 +46,14 @@ const meta = {
   component: ChatSurface,
   parameters: { layout: "fullscreen" },
   decorators: [
+    // MockAppProvider seeds the useAppSelector store for the message-row
+    // composites (InlineWidgetText / FormSubmitReceipt read selector state).
     (Story) => (
-      <div style={{ height: 420, width: 360, margin: "0 auto" }}>
-        <Story />
-      </div>
+      <MockAppProvider>
+        <div style={{ height: 420, width: 360, margin: "0 auto" }}>
+          <Story />
+        </div>
+      </MockAppProvider>
     ),
   ],
   args: {

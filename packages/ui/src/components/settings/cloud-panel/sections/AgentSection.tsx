@@ -87,7 +87,7 @@ function statusDotClass(status: string): string {
   switch (status.toLowerCase()) {
     case "running":
     case "ready":
-      return "text-emerald-500";
+      return "text-status-success";
     case "sleeping":
     case "suspended":
     case "suspending":

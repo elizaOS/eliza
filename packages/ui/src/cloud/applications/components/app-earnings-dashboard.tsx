@@ -364,7 +364,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 ${data.total.toFixed(2)}
               </p>
               <div className="flex gap-3 text-xs mt-2">
-                <span className="text-purple-400 flex items-center gap-1">
+                <span className="text-accent flex items-center gap-1">
                   <Zap className="h-3 w-3" />$
                   {data.inferenceEarnings.toFixed(2)}
                 </span>
@@ -419,7 +419,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               <Legend />
               <Bar
                 dataKey="inferenceEarnings"
-                fill="#a855f7"
+                fill="var(--accent)"
                 name="Inference Markup"
                 stackId="a"
                 radius={[4, 4, 0, 0]}
@@ -512,7 +512,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
 function TransactionIcon({ type }: { type: string }) {
   switch (type) {
     case "inference_markup":
-      return <Zap className="h-4 w-4 text-purple-400" />;
+      return <Zap className="h-4 w-4 text-accent" />;
     case "purchase_share":
       return <Coins className="h-4 w-4 text-yellow-400" />;
     case "withdrawal":
@@ -526,7 +526,7 @@ function TransactionBadge({ type }: { type: string }) {
   switch (type) {
     case "inference_markup":
       return (
-        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">
+        <Badge className="bg-accent/20 text-accent border-accent/30 text-[10px]">
           Inference
         </Badge>
       );
