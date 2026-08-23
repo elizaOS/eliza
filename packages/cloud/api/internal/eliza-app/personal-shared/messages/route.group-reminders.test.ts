@@ -217,7 +217,7 @@ describe("personal Shared group reminder destinations", () => {
         ownerLabel: "Nubs",
         authority: blooioGroupAuthority,
       },
-      undefined,
+      ownerBlooioGroupTurn.message,
       { type: "GROUP", source: "blooio" },
     );
     // The response's delivery authority and the stored reminder destination
