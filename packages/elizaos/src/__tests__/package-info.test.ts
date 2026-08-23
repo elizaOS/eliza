@@ -3,7 +3,7 @@ import {
   getCliVersion,
   getPackageRoot,
   readPackageJson,
-} from "./package-info.ts";
+} from "../package-info.ts";
 
 describe("package-info", () => {
   it("getPackageRoot resolves to the package parent", () => {

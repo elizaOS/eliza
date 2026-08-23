@@ -24,8 +24,8 @@ vi.mock("./boundary-role-resolver.ts", () => ({
   resolveRegisteredTokenRoleAccess: vi.fn(),
 }));
 
-import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
-import { resolveHttpAccessContext } from "./http-access-context.ts";
+import { resolveRegisteredTokenRoleAccess } from "../boundary-role-resolver.ts";
+import { resolveHttpAccessContext } from "../http-access-context.ts";
 
 const mockResolve = vi.mocked(resolveRegisteredTokenRoleAccess);
 const req = {} as http.IncomingMessage;

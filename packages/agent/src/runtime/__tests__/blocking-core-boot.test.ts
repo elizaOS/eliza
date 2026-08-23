@@ -36,7 +36,7 @@ vi.mock("./runtime-action-ownership.ts", () => ({
 import {
   initializeBlockingCoreRuntimeForBoot,
   preregisterCorePluginsInDependencyWaves,
-} from "./runtime/blocking-core-boot.ts";
+} from "../blocking-core-boot.ts";
 
 function makeRuntime(registeredPlugins: Array<{ name: string }> = []) {
   const registerOrder: string[] = [];

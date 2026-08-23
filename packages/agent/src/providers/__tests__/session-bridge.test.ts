@@ -10,7 +10,7 @@ vi.mock("@elizaos/core", () => {
     DM: "dm",
     SELF: "self",
     GROUP: "group",
-    CHANNEL: "channel",
+    FEED: "feed",
   };
   return {
     ChannelType,
@@ -33,7 +33,7 @@ import { ChannelType } from "@elizaos/core";
 import {
   createSessionKeyProvider,
   resolveSessionKeyFromRoom,
-} from "./session-bridge.ts";
+} from "../session-bridge.ts";
 
 function makeRoom(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -82,7 +82,7 @@ describe("resolveSessionKeyFromRoom", () => {
 
   it("maps a channel room to agent:{id}:{channel}:channel:{channelId}", () => {
     const room = makeRoom({
-      type: ChannelType.CHANNEL,
+      type: ChannelType.FEED,
       source: "slack",
       channelId: "c-42",
     });

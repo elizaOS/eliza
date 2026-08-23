@@ -2,20 +2,25 @@
  * Unit coverage for the cold reload strategy — restart closure delegation,
  * success/failure phase reporting, and intent description.
  */
-import { describe, expect, it, vi } from "vitest";
-import { createColdStrategy } from "./runtime/operations/cold-strategy.ts";
 
-function makeCtx(overrides: Partial<Record<string, unknown>> = {}) {
+import type { AgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { createColdStrategy } from "../cold-strategy.ts";
+import type { ReloadContext } from "../types.ts";
+
+function makeCtx(
+  overrides: Partial<Record<string, unknown>> = {},
+): ReloadContext {
   return {
     intent: { kind: "restart", reason: "manual" },
     reportPhase: vi.fn(),
     ...overrides,
-  } as never;
+  } as unknown as ReloadContext;
 }
 
 describe("createColdStrategy", () => {
   it("reports a succeeded phase and returns the new runtime", async () => {
-    const newRuntime = { id: "rt-2" };
+    const newRuntime = { id: "rt-2" } as unknown as AgentRuntime;
     const restartRuntime = vi.fn(async () => newRuntime);
     const ctx = makeCtx();
     const strategy = createColdStrategy({ restartRuntime });
@@ -52,7 +57,9 @@ describe("createColdStrategy", () => {
   });
 
   it("describes a provider-switch intent in the restart reason", async () => {
-    const restartRuntime = vi.fn(async () => ({ id: "rt" }));
+    const restartRuntime = vi.fn(
+      async () => ({ id: "rt" }) as unknown as AgentRuntime,
+    );
     const ctx = makeCtx({
       intent: { kind: "provider-switch", provider: "anthropic" },
     });
@@ -62,7 +69,9 @@ describe("createColdStrategy", () => {
   });
 
   it("describes config-reload intent", async () => {
-    const restartRuntime = vi.fn(async () => ({ id: "rt" }));
+    const restartRuntime = vi.fn(
+      async () => ({ id: "rt" }) as unknown as AgentRuntime,
+    );
     const ctx = makeCtx({ intent: { kind: "config-reload" } });
     const strategy = createColdStrategy({ restartRuntime });
     await strategy.apply(ctx);
@@ -70,7 +79,9 @@ describe("createColdStrategy", () => {
   });
 
   it("describes plugin enable/disable intents", async () => {
-    const restartRuntime = vi.fn(async () => ({ id: "rt" }));
+    const restartRuntime = vi.fn(
+      async () => ({ id: "rt" }) as unknown as AgentRuntime,
+    );
     const strategy = createColdStrategy({ restartRuntime });
     await strategy.apply(
       makeCtx({ intent: { kind: "plugin-enable", pluginId: "p1" } }),
@@ -92,7 +103,9 @@ describe("createColdStrategy", () => {
   });
 
   it("has the cold tier", () => {
-    const strategy = createColdStrategy({ restartRuntime: vi.fn() });
+    const strategy = createColdStrategy({
+      restartRuntime: vi.fn(async () => null),
+    });
     expect(strategy.tier).toBe("cold");
   });
 });
