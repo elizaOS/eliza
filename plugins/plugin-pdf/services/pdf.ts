@@ -137,12 +137,73 @@ function normalizeExtractionOptions(
   };
 }
 
-function parseMetadataDate(value: unknown): Date | undefined {
-  if (typeof value !== "string" && !(value instanceof Date)) {
+/**
+ * PDF spec (ISO 32000-1, 7.9.4) date string: `D:YYYYMMDDHHmmSSOHH'mm'` where
+ * every component after the year is optional and `O` is the UT relation
+ * (`+`, `-`, or `Z`). This is what `pdf.js`/`unpdf` actually surface in
+ * `info.CreationDate`/`info.ModDate`, not an ISO-8601 string. The groups mirror
+ * `PDFDateString.toDateObject` in pdf.js so real-world documents round-trip.
+ */
+const PDF_SPEC_DATE_REGEX =
+  /^D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?([Z+-])?(\d{2})?'?(\d{2})?'?$/;
+
+function clampInt(value: string | undefined, min: number, max: number, fallback: number): number {
+  const parsed = value === undefined ? Number.NaN : Number.parseInt(value, 10);
+  return parsed >= min && parsed <= max ? parsed : fallback;
+}
+
+/**
+ * Parses the PDF-spec `D:` date string into a UTC {@link Date}, applying the
+ * document's declared UT offset so the returned instant is absolute. Returns
+ * undefined for any string that is not a spec date so an unparseable value is
+ * dropped rather than surfaced as an Invalid Date.
+ */
+function parsePdfSpecDate(value: string): Date | undefined {
+  const matches = PDF_SPEC_DATE_REGEX.exec(value);
+  if (!matches) {
     return undefined;
   }
 
-  const date = value instanceof Date ? value : new Date(value);
+  const year = Number.parseInt(matches[1], 10);
+  const monthIndex = clampInt(matches[2], 1, 12, 1) - 1;
+  const day = clampInt(matches[3], 1, 31, 1);
+  let hour = clampInt(matches[4], 0, 23, 0);
+  let minute = clampInt(matches[5], 0, 59, 0);
+  const second = clampInt(matches[6], 0, 59, 0);
+  const relation = matches[7] ?? "Z";
+  const offsetHour = clampInt(matches[8], 0, 23, 0);
+  const offsetMinute = clampInt(matches[9], 0, 59, 0);
+
+  // Convert the document's local wall-clock time to UTC using its UT relation:
+  // `-05'00'` means local is 5h behind UTC, so add the offset to reach UTC.
+  if (relation === "-") {
+    hour += offsetHour;
+    minute += offsetMinute;
+  } else if (relation === "+") {
+    hour -= offsetHour;
+    minute -= offsetMinute;
+  }
+
+  const date = new Date(Date.UTC(year, monthIndex, day, hour, minute, second));
+  return Number.isFinite(date.getTime()) ? date : undefined;
+}
+
+function parseMetadataDate(value: unknown): Date | undefined {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value : undefined;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  // Real unpdf/pdf.js output is the PDF-spec `D:` format; only fall back to the
+  // permissive `new Date()` path for actual ISO-8601 / RFC strings.
+  if (value.startsWith("D:")) {
+    return parsePdfSpecDate(value);
+  }
+
+  const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date : undefined;
 }
 
