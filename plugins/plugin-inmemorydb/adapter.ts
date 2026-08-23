@@ -1309,8 +1309,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }): Promise<Memory[]> {
     return this.withDocumentMutationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
-      const limit = params.count ?? params.limit;
+      const limit = params.count ?? params.limit ?? 10;
       const offset = params.offset ?? 0;
+      if (!Number.isSafeInteger(offset) || offset < 0) {
+        throw new Error("searchMemories offset must be a non-negative safe integer");
+      }
+      if (!Number.isSafeInteger(limit) || limit < 0) {
+        throw new Error("searchMemories limit must be a non-negative safe integer");
+      }
+      if (offset > Number.MAX_SAFE_INTEGER - limit) {
+        throw new Error("searchMemories page boundary is not representable");
+      }
 
       // Scope eligibility must be applied BEFORE the top-K cut so the result is
       // "top K among eligible memories". Mirrors the plugin-sql adapter, whose
@@ -1348,15 +1357,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const memoriesById = new Map(
         readableMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
       );
-      const requestedCount = limit === undefined ? memoriesById.size : limit + offset;
       const results = await this.vectorIndex.searchExact(
         params.embedding,
-        requestedCount,
+        offset + limit,
         threshold,
         new Set(memoriesById.keys())
       );
 
-      return results.slice(offset).flatMap((result) => {
+      return results.slice(offset, offset + limit).flatMap((result) => {
         const memory = memoriesById.get(result.id);
         return memory ? [{ ...memory, similarity: result.similarity }] : [];
       });
