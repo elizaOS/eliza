@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { wrapUntrustedEmailContent } from "./wrap-untrusted-email-content.ts";
+import { wrapUntrustedEmailContent } from "../wrap-untrusted-email-content.ts";
 
 describe("wrapUntrustedEmailContent", () => {
   it("fences content with the untrusted boundary", () => {
