@@ -2,7 +2,7 @@
  * Agents page (`/cloud/agents`) — the hosted agent management table.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { AgentListItemDto } from "@elizaos/cloud-sdk";
 import {
   ContainersSkeleton,
   DashboardErrorState,

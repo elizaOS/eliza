@@ -13,7 +13,7 @@ import {
   type ApiEndpoint,
   type EndpointParameter,
   formatEndpointPrice,
-} from "@elizaos/cloud-shared/lib/swagger/endpoint-discovery";
+} from "@elizaos/cloud-sdk/api-explorer";
 import {
   CheckIcon,
   CodeIcon,

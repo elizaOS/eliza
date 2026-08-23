@@ -19,8 +19,8 @@ import type {
   AdminModerationViolationsResponse,
   AdminRole,
   AdminUserDto,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
-import { isAdminRole } from "@elizaos/cloud-shared/lib/types/cloud-api";
+} from "@elizaos/cloud-sdk";
+import { isAdminRole } from "@elizaos/cloud-sdk";
 import {
   Badge,
   Button,

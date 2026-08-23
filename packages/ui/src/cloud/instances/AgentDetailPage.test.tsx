@@ -1,7 +1,7 @@
 /** Verifies agent detail rendering rejects malformed API timestamps and avoids duplicate dates. */
 // @vitest-environment jsdom
 
-import type { AgentDetailDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { AgentDetailDto } from "@elizaos/cloud-sdk";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

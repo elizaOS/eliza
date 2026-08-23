@@ -1,7 +1,7 @@
 /**
  * API Explorer cloud domain — the single surface for generation/media/API
  * testing. The static endpoint catalog + OpenAPI generator come from
- * `@elizaos/cloud-shared/lib/swagger/*`; the live pricing overlay is
+ * `@elizaos/cloud-sdk/api-explorer`; the live pricing overlay is
  * `GET /api/v1/pricing/summary`; the explorer key is auto-minted via
  * `GET /api/v1/api-keys/explorer`; the tester runs REAL, BILLED calls (hence
  * the "API calls are billed" banner). Auth-gated, never public.

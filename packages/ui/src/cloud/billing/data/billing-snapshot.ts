@@ -11,7 +11,7 @@ import type {
   ActiveComputeResourceSnapshot,
   ExactBillingValue,
   Observed,
-} from "@elizaos/cloud-shared/types/account-billing-snapshot";
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
 import { useSessionAuth } from "../../lib/use-session-auth";

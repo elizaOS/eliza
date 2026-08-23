@@ -5,8 +5,8 @@
 
 "use client";
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import {
+  AGENT_PRICING,
   estimateHoursRemaining,
   formatDuration,
   formatHourlyRate,
@@ -14,7 +14,7 @@ import {
   formatUSD,
   MONTHLY_IDLE_COST,
   MONTHLY_RUNNING_COST,
-} from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { Badge, BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
 import { useT } from "../lib/i18n";

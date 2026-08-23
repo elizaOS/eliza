@@ -2,11 +2,11 @@
  * Agent detail page (`/cloud/agents/:id`).
  */
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import {
+  AGENT_PRICING,
   formatHourlyRate,
   formatMonthlyEstimate,
-} from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   Badge,
   DashboardErrorState,

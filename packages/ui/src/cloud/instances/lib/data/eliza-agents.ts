@@ -8,7 +8,7 @@ import type {
   AgentListItemDto,
   AgentResponse,
   AgentSandboxStatus,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
+} from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../lib/api-client";
 import {

@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/gateway-discord",
+  "private": true,
   "version": "1.0.0",
   "description": "Multi-tenant Discord gateway service for Eliza Cloud",
   "type": "module",

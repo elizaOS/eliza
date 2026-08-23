@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/container-control-plane",
+  "private": true,
   "version": "1.0.0",
   "description": "Node/Bun control plane for Eliza Cloud user containers",
   "type": "module",

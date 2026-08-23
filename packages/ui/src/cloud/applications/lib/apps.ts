@@ -1,7 +1,7 @@
 /**
  * React-Query data hooks + typed mutation helpers for cloud OAuth applications.
  *
- * The `App` type narrows the canonical `AppDto` from `@elizaos/cloud-shared`
+ * The `App` type narrows the canonical `AppDto` from `@elizaos/cloud-sdk`
  * (the legacy user-database fields are optional here).
  *
  * Mutations go through the same typed `api<T>` client as the reads so that the
@@ -9,7 +9,7 @@
  * Each mutation invalidates the relevant query key.
  */
 
-import type { AppDto } from "@elizaos/cloud-shared/types";
+import type { AppDto } from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
 import {

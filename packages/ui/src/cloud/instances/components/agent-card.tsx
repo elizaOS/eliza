@@ -7,7 +7,7 @@
 import {
   ensureAvatarUrl,
   isBuiltInAvatar,
-} from "@elizaos/cloud-shared/lib/utils/default-avatar";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
   AlertDialogAction,

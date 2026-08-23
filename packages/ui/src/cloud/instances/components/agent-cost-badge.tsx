@@ -8,12 +8,12 @@
 
 "use client";
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
+import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 import {
+  AGENT_PRICING,
   formatHourlyRate,
   formatMonthlyEstimate,
-} from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
-import type { AgentExecutionTier } from "@elizaos/cloud-shared/lib/types/cloud-api";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui/cloud-ui";
 import { useT } from "../lib/i18n";
 

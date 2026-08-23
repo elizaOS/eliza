@@ -8,7 +8,7 @@
  *   (no page reload) and firing a "now running" callback on transitions.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { AgentListItemDto } from "@elizaos/cloud-sdk";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api-client";
 import { parseAgentsResponse } from "./data/eliza-agents";

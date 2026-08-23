@@ -6,7 +6,7 @@ import {
   ADMIN_ROLE_RANK,
   adminRoleRank,
   isAdminRole,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
+} from "@elizaos/cloud-sdk";
 import { describe, expect, it } from "vitest";
 
 /**

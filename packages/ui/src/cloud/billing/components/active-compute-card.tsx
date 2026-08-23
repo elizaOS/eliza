@@ -2,7 +2,7 @@
 
 "use client";
 
-import type { Observed } from "@elizaos/cloud-shared/types/account-billing-snapshot";
+import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
 import { BrandCard, Button } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,

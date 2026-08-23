@@ -10,7 +10,7 @@
  * action, and the deactivate confirm dialog's billing-transparency copy.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { AgentListItemDto } from "@elizaos/cloud-sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,

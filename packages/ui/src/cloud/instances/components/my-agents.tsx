@@ -4,7 +4,7 @@
  * The My Agents surface: lists the user's cloud agent instances with sort/view
  * controls and the create entry point.
  */
-import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { logger } from "@elizaos/logger";
 import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui/cloud-ui";
 import {
   ArrowRight,
@@ -319,7 +319,7 @@ export function MyAgentsClient() {
 
       setCharacters([...ownedAgents, ...savedAgents]);
     } catch (error) {
-      logger.error("[MyAgents] Failed to fetch characters:", error);
+      logger.error({ error }, "[MyAgents] Failed to fetch characters");
       toast.error("Failed to load your agents");
     } finally {
       setIsLoading(false);
@@ -377,7 +377,10 @@ export function MyAgentsClient() {
         }
       })
       .catch((error) => {
-        logger.error("[MyAgents] Failed to claim affiliate characters:", error);
+        logger.error(
+          { error },
+          "[MyAgents] Failed to claim affiliate characters",
+        );
       });
   }, [fetchCharacters, t]);
 

@@ -4,7 +4,7 @@
 
 "use client";
 
-import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-shared/types";
+import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-sdk";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import {

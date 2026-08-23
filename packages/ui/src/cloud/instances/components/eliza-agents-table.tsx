@@ -4,12 +4,11 @@
  */
 "use client";
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
-import { formatHourlyRate } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
-import type {
-  AgentListItemDto,
-  AgentSandboxStatus,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { AgentListItemDto, AgentSandboxStatus } from "@elizaos/cloud-sdk";
+import {
+  AGENT_PRICING,
+  formatHourlyRate,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
   AlertDialogCancel,

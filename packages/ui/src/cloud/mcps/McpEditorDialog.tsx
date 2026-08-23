@@ -14,7 +14,7 @@
 import {
   formatOrganizationCreditUsd,
   legacyMcpPointsToOrganizationCredits,
-} from "@elizaos/cloud-shared/billing";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
