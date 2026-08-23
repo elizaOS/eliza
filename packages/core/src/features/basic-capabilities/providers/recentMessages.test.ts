@@ -16,7 +16,12 @@ const revalidateOwnerExclusiveDisclosure = vi.hoisted(() =>
 );
 
 vi.mock("../../../access-context.ts", () => ({
-	buildAccessContext: vi.fn(async () => ({ requesterEntityId: "00000000-0000-0000-0000-000000000003", worldId: undefined, role: undefined, isOwner: false })),
+	buildAccessContext: vi.fn(async () => ({
+		requesterEntityId: "00000000-0000-0000-0000-000000000003",
+		worldId: undefined,
+		role: undefined,
+		isOwner: false,
+	})),
 }));
 
 vi.mock(
@@ -35,6 +40,7 @@ vi.mock(
 	},
 );
 
+import { buildAccessContext } from "../../../access-context.ts";
 import {
 	ChannelType,
 	type IAgentRuntime,
@@ -536,10 +542,14 @@ describe("recentMessagesProvider", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
+		expect(buildAccessContext).toHaveBeenCalled();
 		expect(runtime.getMemories).toHaveBeenCalledWith(
 			expect.objectContaining({
 				roomId: ROOM_ID,
 				tableName: "messages",
+				accessContext: expect.objectContaining({
+					requesterEntityId: expect.any(String),
+				}),
 			}),
 		);
 		expect(runtime.getMemories).toHaveBeenCalledWith(
@@ -585,7 +595,15 @@ describe("recentMessagesProvider", () => {
 
 		expect(runtime.getRoomsForParticipants).toHaveBeenCalledWith([USER_ID]);
 		expect(runtime.getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
-		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalled();
+		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tableName: "messages",
+				accessContext: expect.objectContaining({
+					requesterEntityId: expect.any(String),
+				}),
+			}),
+		);
+		expect(buildAccessContext).toHaveBeenCalled();
 		expect(result.values?.recentMessageInteractions).toContain(
 			"the blue key is under the mat",
 		);
@@ -652,8 +670,12 @@ describe("recentMessagesProvider", () => {
 			expect.objectContaining({
 				tableName: "messages",
 				roomIds: [OTHER_ROOM_ID],
+				accessContext: expect.objectContaining({
+					requesterEntityId: expect.any(String),
+				}),
 			}),
 		);
+		expect(buildAccessContext).toHaveBeenCalled();
 		expect(result.data?.recentInteractions).toHaveLength(1);
 		expect(result.values?.recentMessageInteractions).toContain(
 			"the blue key is under the mat",
