@@ -6,6 +6,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { PaymentRequestRow } from "@/lib/services/payment-requests";
+import {
+  expectedPaymentRequestDto,
+  INTERNAL_PAYMENT_REQUEST_CANARIES,
+  paymentRequestRow,
+} from "../payment-request-route-test-fixtures";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
@@ -54,32 +59,7 @@ mock.module("@/lib/utils/logger", () => ({
 const { default: route } = await import("./route");
 const app = new Hono().route("/:id", route);
 
-const paymentRequest: PaymentRequestRow = {
-  id: "pr-1",
-  organizationId: "org-1",
-  agentId: "agent-1",
-  appId: "app-1",
-  provider: "stripe" as const,
-  amountCents: 2500,
-  currency: "USD",
-  reason: "Premium plan",
-  paymentContext: { kind: "any_payer" as const },
-  payerIdentityId: "payer-identity-1",
-  payerUserId: "payer-user-1",
-  payerOrganizationId: "payer-org-1",
-  status: "pending" as const,
-  hostedUrl: "https://checkout.example.test/session",
-  callbackUrl: "https://merchant.example.test/callback",
-  callbackSecret: "callback-secret",
-  providerIntent: { secretSessionId: "provider-secret" },
-  settledAt: null,
-  settlementTxRef: "provider-tx-ref",
-  settlementProof: { signature: "proof-secret" },
-  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  metadata: { internal: "do-not-expose" },
-};
+const paymentRequest = paymentRequestRow();
 
 describe("GET /api/v1/payment-requests/:id", () => {
   beforeEach(() => {
@@ -149,15 +129,15 @@ describe("GET /api/v1/payment-requests/:id", () => {
     const response = await app.request("/pr-1");
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    const body = await response.json();
+    expect(body).toEqual({
       success: true,
-      paymentRequest: {
-        ...paymentRequest,
-        createdAt: paymentRequest.createdAt.toISOString(),
-        expiresAt: paymentRequest.expiresAt.toISOString(),
-        updatedAt: paymentRequest.updatedAt.toISOString(),
-      },
+      paymentRequest: expectedPaymentRequestDto(paymentRequest),
     });
+    const serialized = JSON.stringify(body);
+    for (const canary of INTERNAL_PAYMENT_REQUEST_CANARIES) {
+      expect(serialized).not.toContain(canary);
+    }
     expect(getMock).toHaveBeenCalledWith("pr-1", "org-1");
     expect(getPublicMock).not.toHaveBeenCalled();
   });
