@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core/edge";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
@@ -12153,7 +12153,7 @@ export class ElizaSandboxService {
         });
         return "";
       });
-      throw new Error(`State restore failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(`State restore failed: HTTP ${res.status} ${truncateWellFormed(toWellFormedUnicode(text), 200)}`);
     }
   }
 }
