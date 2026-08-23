@@ -2,8 +2,9 @@
  * Unit coverage for resolveHttpAccessContext — boundary principal → core
  * AccessContext mapping, UUID normalization, and the undefined owner path.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import type http from "node:http";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", () => {
   const UUID_RE =
@@ -23,8 +24,8 @@ vi.mock("./boundary-role-resolver.ts", () => ({
   resolveRegisteredTokenRoleAccess: vi.fn(),
 }));
 
-import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
+import { resolveHttpAccessContext } from "./http-access-context.ts";
 
 const mockResolve = vi.mocked(resolveRegisteredTokenRoleAccess);
 const req = {} as http.IncomingMessage;
