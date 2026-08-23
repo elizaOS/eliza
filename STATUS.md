@@ -63,7 +63,7 @@ Updated: 2026-08-23 (America/Los_Angeles)
 
 ## Doing
 
-- Draft PR #25738 is published at `https://github.com/elizaOS/eliza/pull/25738`. Maintainer P0 review identified the first-response-loss orphaning risk; code checkpoint `0470865a57` resolves it with hash-only admission recovery and no repeated provider mutation. The PR remains draft pending the ledger/push update, serialized disposable hosted proof, and independent review. No deployment or hosted provider operation was part of this work.
+- Draft PR #25738 is published at `https://github.com/elizaOS/eliza/pull/25738`; its ledger-only branch tip follows response-loss code checkpoint `0470865a57` and evidence commit `ae315bb078`. Maintainer P0 review identified the first-response-loss orphaning risk; the code checkpoint resolves it with hash-only admission recovery and no repeated provider mutation. The PR body and review response now carry the current base, migration, contract, and test evidence. It remains draft pending serialized disposable hosted proof and independent review. No deployment or hosted provider operation was part of this work.
 
 ## Next / exact external gates
 
