@@ -1,10 +1,10 @@
 # Progressive content access research and test report
 
-Date: 2026-08-22
+Date: 2026-08-23
 
 Third-pass research snapshot: `b82b9f4ca37e19036eb2f0282364b9f2a3382d14`; exact-head implementation evidence lives on each PR because `develop` is moving continuously
 
-Canonical tracking issue: [#24286](https://github.com/elizaOS/eliza/issues/24286)
+Canonical implementation issue: [#26645](https://github.com/elizaOS/eliza/issues/26645). Earlier design issue [#24286](https://github.com/elizaOS/eliza/issues/24286) is closed; [#26634](https://github.com/elizaOS/eliza/issues/26634) separately owns removal of lossy prompt transforms.
 
 ## Executive finding
 
@@ -13,6 +13,16 @@ The problem is not that elizaOS sometimes shows a 10K-character preview. The pro
 The best elizaOS v1 is smaller: keep native FILE, DOCUMENT, ATTACHMENT, email/message, memory, and SHELL actions; give them one `ReadSlice` continuation envelope; and unify prompt projection around the existing model-input budget. Native services retain identifiers and authorization. A generic action/URI and private raw-output spill layer come later only if measured need and lifecycle requirements justify them.
 
 This pass concentrated on proof: generated corpora, fault models, scenario/E2E architecture, live-model behavior, and speed/memory measurements. It also looked for architecture that can be deleted or unified rather than adding another framework.
+
+### Fourth-pass implementation and test audit
+
+The 2026-08-23 pass refreshed `origin/develop`, the open PR/issue queue, every current production source seam, and the evidence/test orchestration. PRs [#24020](https://github.com/elizaOS/eliza/pull/24020) and [#24017](https://github.com/elizaOS/eliza/pull/24017) are closed with changes requested. They made fixed email/inbox previews Unicode-safe but preserved irreversible 800/200/100-character model-facing loss, so they are useful hygiene examples rather than an architecture to revive.
+
+The implementation now has immutable document source segments and bounded SQL seeks, restart-safe ordered continuity shards, a 1 MiB/10 MiB six-family corpus, central planner continuity, protected owner-bound rejected requests, GPT-5.6 model limits, and exact prepared-request admission for OpenAI. The audit still finds honest P0 gaps: Gmail rematerializes/refetches provider bodies; MESSAGE/ATTACHMENT native segmentation and private shell streaming are not yet merged; non-OpenAI providers are not guarded at their final wire seams; the authenticated inspector, real PostgreSQL matrix, five-repetition live lane, and production soak have no passing artifacts. A bounded return shape is not counted as success for any of those gaps.
+
+Testing was simplified around one shared stress contract rather than per-adapter scripts. It runs production adapter factories at concurrency 1/8/32/64, records p50/p95/p99/maximum latency, throughput, source reads/bytes/rows/parent scans, RSS/heap/external/array-buffer/FD deltas, and feeds the same contract into the soak. The canonical success gate requires at least six hours and 100,000 operations plus a deliberately leaking positive control that the detector catches.
+
+The strict named producer now requires these exact sub-artifacts: `corpus-manifest.json`, `native-realization-ledger.json`, `conformance.json`, `mutant-kills.json`, `source-work.json`, `benchmark.json`, `cleanup.json`, `page-ledger.jsonl`, `prompt-tokens.json`, `faults.json`, `stress.json`, `soak.json`, `postgres.json`, `scenario.json`, `scenario-native.jsonl`, `trajectories.jsonl`, and `e2e.json`. It publishes `content-context-result.json` and `completeness-manifest.json` atomically. Its producer-to-bundle regression executes the real producer, baseline-filtered canonical ingestor, and bundle finalization together; the matrix assigns the unique run root and remains the only bundle owner.
 
 ## Implementation pass result
 
