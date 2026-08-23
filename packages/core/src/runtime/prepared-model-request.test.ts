@@ -91,11 +91,26 @@ describe("createPreparedModelRequestGuard", () => {
 			outputReserveTokens: 100,
 		});
 		guard.assertBeforeAttempt();
-		expect(guard.budget.countSource).toBe("model-family-estimator");
+		expect(guard.budget.countSource).toBe("utf8-upper-bound");
 		body = '{"model":"fixture", "input":"complete"}';
 		expect(() => guard.assertBeforeAttempt()).toThrow(
 			expect.objectContaining({ code: "MODEL_PREPARED_REQUEST_MUTATED" }),
 		);
+	});
+
+	it("uses a UTF-8 upper bound when no provider tokenizer is available", () => {
+		let dispatches = 0;
+		expect(() => {
+			createPreparedModelRequestGuard({
+				provider: "fixture",
+				model: "fixture",
+				serializeRequest: () => "界".repeat(50),
+				contextWindowTokens: 10_150,
+				outputReserveTokens: 20,
+			});
+			dispatches += 1;
+		}).toThrow(expect.objectContaining({ code: "MODEL_INPUT_OVER_BUDGET" }));
+		expect(dispatches).toBe(0);
 	});
 
 	it("rejects values JSON would silently omit", () => {
