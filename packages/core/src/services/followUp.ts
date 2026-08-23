@@ -202,9 +202,10 @@ export class FollowUpService extends Service {
 		for (const task of tasks) {
 			if (task.metadata?.status !== "pending") continue;
 
-			const scheduledAt = task.metadata.scheduledAt
+			const scheduledAtRaw = task.metadata.scheduledAt
 				? new Date(task.metadata.scheduledAt as string).getTime()
 				: 0;
+			const scheduledAt = Number.isFinite(scheduledAtRaw) ? scheduledAtRaw : 0;
 
 			// Check if task is within the time range
 			if (includeOverdue && scheduledAt < now) {
@@ -228,12 +229,14 @@ export class FollowUpService extends Service {
 
 		// Sort by scheduled date
 		upcomingFollowUps.sort((a, b) => {
-			const aScheduled = a.task.metadata?.scheduledAt
+			const aRaw = a.task.metadata?.scheduledAt
 				? new Date(a.task.metadata.scheduledAt as string).getTime()
 				: 0;
-			const bScheduled = b.task.metadata?.scheduledAt
+			const bRaw = b.task.metadata?.scheduledAt
 				? new Date(b.task.metadata.scheduledAt as string).getTime()
 				: 0;
+			const aScheduled = Number.isFinite(aRaw) ? aRaw : 0;
+			const bScheduled = Number.isFinite(bRaw) ? bRaw : 0;
 			return aScheduled - bScheduled;
 		});
 
