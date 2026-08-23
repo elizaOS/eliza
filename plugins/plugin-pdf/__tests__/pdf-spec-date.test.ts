@@ -10,7 +10,7 @@ vi.mock("unpdf", () => ({
   getDocumentProxy: vi.fn(),
 }));
 
-import { parsePdfSpecDate } from "../services/pdf";
+import { parsePdfSpecDate } from "../services/pdf-date";
 
 describe("parsePdfSpecDate years 0-99", () => {
   it("UTC year 10 stays 10, not 1910", () => {
