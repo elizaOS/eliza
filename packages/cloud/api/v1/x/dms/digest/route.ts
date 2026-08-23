@@ -5,7 +5,7 @@
  *   - connectionRole: "owner" | "agent" (default "owner")
  */
 
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getXDmDigest } from "@/lib/services/x";
@@ -37,16 +37,14 @@ app.get("/", async (c) => {
       );
     }
     const connectionRole = requestedRole === "agent" ? "agent" : "owner";
-    const hasMaxResults = Boolean(rawMaxResults?.trim());
-    const maxResults = hasMaxResults
-      ? parsePositiveInteger(rawMaxResults)
-      : undefined;
-    if (hasMaxResults && maxResults === undefined) {
+    const parsedMaxResults = parseCanonicalInteger(rawMaxResults, { min: 1 });
+    if (parsedMaxResults === "invalid") {
       return c.json(
         { success: false, error: "maxResults must be a positive integer" },
         400,
       );
     }
+    const maxResults = parsedMaxResults;
 
     const result = await getXDmDigest({
       organizationId: user.organization_id,
