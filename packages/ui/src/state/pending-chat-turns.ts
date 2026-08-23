@@ -29,8 +29,15 @@ function isReceipt(value: unknown): value is PendingChatTurnReceipt {
     typeof record?.conversationId === "string" &&
     typeof record.clientMessageId === "string" &&
     typeof record.text === "string" &&
-    typeof record.sentAt === "number" &&
-    typeof record.restoreAt === "number" &&
+    // Number.isFinite, not typeof: these come back from localStorage, which is
+    // untrusted persisted input, and `typeof NaN === "number"` while JSON's
+    // `1e999` parses to Infinity. A non-finite stamp survives to break the
+    // sentAt ordering (Infinity - Infinity is NaN), the settle comparison in
+    // clearSettledPendingChatTurns (`timestamp >= sentAt - 60_000` never holds,
+    // so the receipt is never cleared), and the restore delay derived from
+    // restoreAt. Rejecting it here keeps that guard in one place.
+    Number.isFinite(record.sentAt) &&
+    Number.isFinite(record.restoreAt) &&
     record.conversationId.length > 0 &&
     record.clientMessageId.length > 0
   );
