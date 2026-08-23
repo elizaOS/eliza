@@ -128,7 +128,7 @@ describe("memory access-context enforcement", () => {
       embedding: vector(1, 0),
       metadata: { type: "custom", scope: "private" },
     });
-    await create("needle denied legacy private", 600, {
+    await create("needle allowed unstamped participant", 600, {
       entityId: stranger,
       embedding: vector(1, 0),
       metadata: { type: "custom" },
@@ -156,7 +156,7 @@ describe("memory access-context enforcement", () => {
       limit: 1,
     });
 
-    expect(rows.map((row) => row.content.text)).toEqual(["needle allowed private"]);
+    expect(rows.map((row) => row.content.text)).toEqual(["needle allowed unstamped participant"]);
   });
 
   it("intersects requested rooms with the authorized-room set", async () => {
@@ -167,6 +167,7 @@ describe("memory access-context enforcement", () => {
     });
 
     expect(rows.map((row) => row.content.text)).toEqual([
+      "needle allowed unstamped participant",
       "needle allowed private",
       "needle allowed legacy private",
       "needle allowed global",
@@ -194,7 +195,7 @@ describe("memory access-context enforcement", () => {
       limit: 1,
     });
 
-    expect(rows.map((row) => row.content.text)).toEqual(["needle allowed private"]);
+    expect(rows.map((row) => row.content.text)).toEqual(["needle allowed unstamped participant"]);
   });
 
   it("treats an explicit empty authorized-room set as deny-all", async () => {

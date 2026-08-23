@@ -176,12 +176,17 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
  * also used after explicitly authorized cross-world recall, this variant
  * treats `worldId` and `authorizedRoomIds` as storage-query intersections and
  * rejects rows stamped for another agent. Adapters call it before any
- * ordering, ranking, cursor, offset, or limit operation.
+ * ordering, ranking, cursor, offset, or limit operation. Message-table callers
+ * with an explicit authorized-room set may pass `room` for `unstampedScope`:
+ * legacy transcript rows predate disclosure stamps, and verified room
+ * membership is their read boundary. Other tables retain author-private
+ * fail-closed behavior.
  */
 export function filterMemoryReadByAccessContext<T extends AccessScopedRecord>(
 	memories: T[],
 	ctx: AccessContext,
 	agentId: UUID,
+	unstampedScope: MemoryScope = "private",
 ): T[] {
 	const authorizedRoomIds =
 		ctx.authorizedRoomIds === undefined
@@ -195,5 +200,19 @@ export function filterMemoryReadByAccessContext<T extends AccessScopedRecord>(
 			return false;
 		return memory.roomId !== undefined && authorizedRoomIds.has(memory.roomId);
 	});
-	return filterByAccessContext(located, ctx, agentId);
+	if (unstampedScope === "private") {
+		return filterByAccessContext(located, ctx, agentId);
+	}
+	return filterByAccessContext(
+		located.map((memory) =>
+			memory.metadata?.scope === undefined
+				? {
+						...memory,
+						metadata: { ...memory.metadata, scope: unstampedScope },
+					}
+				: memory,
+		),
+		ctx,
+		agentId,
+	) as T[];
 }

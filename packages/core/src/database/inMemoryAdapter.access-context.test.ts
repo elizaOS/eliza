@@ -94,6 +94,16 @@ async function seededAdapter(): Promise<InMemoryDatabaseAdapter> {
 					embedding: vector(1, 0),
 				},
 			),
+			memory(
+				"30000000-0000-0000-0000-000000000006",
+				"needle allowed unstamped participant",
+				600,
+				{
+					entityId: STRANGER,
+					embedding: vector(1, 0),
+					metadata: { type: "custom" },
+				},
+			),
 		].map((entry) => ({ memory: entry, tableName: "messages" })),
 	);
 	return adapter;
@@ -109,7 +119,7 @@ describe("InMemoryDatabaseAdapter access context", () => {
 		});
 
 		expect(rows.map((row) => row.content.text)).toEqual([
-			"needle allowed private",
+			"needle allowed unstamped participant",
 		]);
 	});
 
@@ -122,6 +132,7 @@ describe("InMemoryDatabaseAdapter access context", () => {
 		});
 
 		expect(rows.map((row) => row.content.text)).toEqual([
+			"needle allowed unstamped participant",
 			"needle allowed private",
 			"needle allowed global",
 		]);
@@ -145,7 +156,9 @@ describe("InMemoryDatabaseAdapter access context", () => {
 		});
 
 		expect(textRows[0]?.memory.content.text).toMatch(/^needle allowed /);
-		expect(vectorRows[0]?.content.text).toBe("needle allowed private");
+		expect(vectorRows[0]?.content.text).toBe(
+			"needle allowed unstamped participant",
+		);
 	});
 
 	it("denies every room-backed row for an explicit empty authorization", async () => {
