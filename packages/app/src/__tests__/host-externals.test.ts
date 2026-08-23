@@ -5,8 +5,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/ui/app-shell-registry", () => ({
-  registerHostExternalImporter: (...a: unknown[]) =>
-    mocks.registerHostExternalImporter(...a),
+  registerHostExternalImporter: (
+    specifier: string,
+    importer: () => Promise<Record<string, unknown>>,
+  ) => mocks.registerHostExternalImporter(specifier, importer),
 }));
 
 describe("registerAppHostExternalImporters", () => {
@@ -17,7 +19,7 @@ describe("registerAppHostExternalImporters", () => {
 
   it("registers the plugin-browser and health specifiers once", async () => {
     const { registerAppHostExternalImporters } = await import(
-      "./host-externals.ts"
+      "../host-externals.ts"
     );
     registerAppHostExternalImporters();
     registerAppHostExternalImporters(); // second call is a no-op
@@ -31,12 +33,8 @@ describe("registerAppHostExternalImporters", () => {
   });
 
   it("registers thunks that return promises", async () => {
-    const { registerAppHostExternalImporter } = await import(
-      "./host-externals.ts"
-    );
-    void registerAppHostExternalImporter;
     const { registerAppHostExternalImporters } = await import(
-      "./host-externals.ts"
+      "../host-externals.ts"
     );
     registerAppHostExternalImporters();
     for (const call of mocks.registerHostExternalImporter.mock.calls) {

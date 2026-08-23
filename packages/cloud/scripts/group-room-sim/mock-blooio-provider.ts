@@ -68,24 +68,34 @@ export function isMessageSend(method: string, path: string): boolean {
  */
 export function captureFromOutbox(jsonl: string): CapturedSend[] {
   const out: CapturedSend[] = [];
-  for (const line of jsonl.split("\n")) {
+  for (const [index, line] of jsonl.split("\n").entries()) {
     if (!line.trim()) continue;
     let entry: Partial<OutboxEntry>;
     try {
       entry = JSON.parse(line);
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing: a corrupt outbox line is
-      // skipped; it can never become a fabricated send.
-      continue;
+    } catch (error) {
+      // error-policy:J3 untrusted-input sanitizing: capture corruption is a
+      // harness error, never silently converted into apparent model silence.
+      throw new Error(`corrupt mock Blooio outbox JSON at line ${index + 1}`, {
+        cause: error,
+      });
     }
     if (entry.method !== "POST" || typeof entry.path !== "string") continue;
     let parsedBody: Record<string, unknown> = {};
     if (typeof entry.body === "string") {
       try {
         parsedBody = JSON.parse(entry.body);
-      } catch {
-        // error-policy:J3 untrusted-input sanitizing: a non-JSON body has no
-        // text/to, so the entry drops out below as a non-send.
+      } catch (error) {
+        if (isMessageSend(entry.method, entry.path)) {
+          // error-policy:J3 untrusted-input sanitizing: a corrupt message-send
+          // body could hide model output, so the capture must fail closed.
+          throw new Error(
+            `corrupt mock Blooio message body at line ${index + 1}`,
+            {
+              cause: error,
+            },
+          );
+        }
       }
     }
     let chat: string | undefined;
@@ -135,8 +145,10 @@ function startMockBlooioProvider(options: {
         method: req.method,
         path: url.pathname,
         headers: {
-          authorization: req.headers.get("authorization"),
-          "idempotency-key": req.headers.get("idempotency-key"),
+          authorization: req.headers.has("authorization") ? "[REDACTED]" : null,
+          "idempotency-key": req.headers.has("idempotency-key")
+            ? "[REDACTED]"
+            : null,
           "x-from-number": req.headers.get("x-from-number"),
         },
         body: body || null,
@@ -152,7 +164,9 @@ function startMockBlooioProvider(options: {
 }
 
 if (import.meta.main) {
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: direct CLI env documented in README, outside Turbo tasks
   const port = Number(process.env.PORT ?? DEFAULT_MOCK_BLOOIO_PORT);
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: direct CLI env documented in README, outside Turbo tasks
   const outboxPath = process.env.ROOM_SIM_OUTBOX ?? DEFAULT_OUTBOX_PATH;
   startMockBlooioProvider({ port, outboxPath });
   console.log(

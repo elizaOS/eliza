@@ -2,9 +2,9 @@
  * Verifies safe sorting and NaN-handling in wallet inventory helpers and components.
  */
 
+import type { WalletBalancesResponse } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { parseUsd, summarizeWalletBalances } from "./InventoryView.helpers.js";
-import type { WalletBalancesResponse } from "@elizaos/shared";
 
 describe("wallet inventory safe sort", () => {
   it("parses USD values safely for NaN and Infinity", () => {

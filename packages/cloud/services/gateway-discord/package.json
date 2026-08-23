@@ -26,7 +26,7 @@
     "deploy:railway": "bash scripts/deploy-railway.sh"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
+    "@discordjs/opus": "0.10.0",
     "@discordjs/voice": "^0.19.2",
     "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/core": "workspace:*",

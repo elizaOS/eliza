@@ -340,12 +340,24 @@ export function HomePill({
       onWheel={() => setPreviewHover(false)}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
-        "group pointer-events-auto relative flex items-center justify-center rounded-full border border-white/20 bg-[#181a20]/95 p-0 shadow-none backdrop-blur-xl",
+        // The resting launcher is deliberately transparent: only the white
+        // handle (shell-home-pill-mark) paints, so the pill reads as a
+        // floating handle over the desktop. The button still fills the 64x44
+        // native window, so the #21876 hit-bounds contract (native bounds ==
+        // interactive surface) is preserved without an opaque backdrop.
+        // When a run must prove the window itself composited (packaged pixel
+        // proofs, manual QA on hard-to-read wallpapers), temporarily swap in a
+        // painted surface — e.g. "border border-white/20 bg-[#181a20]/95"
+        // plus a frosted blur utility — instead of asserting on transparent
+        // pixels. The shipped default stays transparent, and a permanent blur
+        // here would fail the battery gate (see the blur allowlist test in
+        // packages/ui/src).
+        "group pointer-events-auto relative flex items-center justify-center rounded-full bg-transparent p-0 shadow-none",
         composerSized ? "h-16 w-[36rem]" : "h-11 w-16",
         "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
-        "hover:bg-[#202228]/95",
+        "hover:bg-transparent",
         needsAuth ? "active:scale-[0.96]" : "active:scale-95",
-        "focus-visible:bg-[#181a20]/95 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+        "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
     >
       <span

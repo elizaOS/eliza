@@ -19,7 +19,7 @@ The room script is read at runtime from
 `landingDemoStepText`, the `UNSUPPORTED_CLAIM_RULES` matcher and its
 per-capability allow-list), so the rooms cannot drift from what the homepage
 animates; there is no frozen copy to regenerate. Only the per-room key facts
-and their word-bounded matchers (`room-facts.ts`) are hand-written, and the
+and their relation/attribution/polarity matchers (`room-facts.ts`) are hand-written, and the
 tests fail if the homepage gains a room that has no entry there.
 
 The driver mirrors the real product flow in
@@ -38,7 +38,7 @@ The driver mirrors the real product flow in
    for replies; after every other line it holds a bounded `SILENCE_MS`
    window and anything that arrives counts as **unsolicited**.
 
-Seven assertions, all of which must pass for a PASS verdict:
+Eight assertions, all of which must pass for a PASS verdict:
 
 | Assertion | Rule |
 | --- | --- |
@@ -46,8 +46,9 @@ Seven assertions, all of which must pass for a PASS verdict:
 | `silentUntilLinked` | zero group sends during the pre-link probe window |
 | `restraintAtUnscriptedPoints` | unsolicited sends across all silent windows plus a trailing sweep are at most `UNSOLICITED_MAX` (default 2) |
 | `noEchoedHumanText` | no Eliza output is a near-copy of a human line already sent (exact, containment of a 4+ token line, or token-Jaccard >= 0.8 against a 3+ token line) |
-| `keyFactsReferenced` | at least `FACTS_MIN` distinct room facts appear across non-echo replies (default 2, floor 1) |
-| `zeroForbiddenClaims` | no output (link/ambient acks included) trips a homepage forbidden-claim rule inside a first-person span, outside the categories the room's scripted capabilities allow (for example `reminder` in Community, `web-search` in Friends and Trip). A span is where Eliza asserts or offers her own capability: "I can", "I'll", "I could", "let me", "want me to", "shall I", "I'm able", "I sent", "I checked", "I booked", "I added it to your order". Rule vocabulary in a human's clause ("if you send the address", "you could buy", "set up your personal workspace"), in a todo or quoted line ("Created: [ ] Buy coffee"), or under a negation ("I can't book") does not count; "Want me to check if any of these take reservations?" does. `first-person-claims.ts` documents the markers, the subject switches that end a span and the accepted blind spots (elided "Booked.", third-person self-reference) |
+| `keyFactsReferenced` | at least `FACTS_MIN` distinct relation/attribution/polarity matchers appear at at least `FACTS_MIN` expected beats; a fact is eligible only where the homepage's expected beat contains the same structured evidence (default 2, floor 1) |
+| `distinctExpectedReplies` | every non-echo expected reply is textually distinct, so one canned response cannot satisfy several beats |
+| `noDetectedUnsupportedFirstPersonClaims` | no output (link/ambient acks included) trips the scoped first-person detector outside the categories the room's scripted capabilities allow. This is deliberately named as detection, not proof of absence: the parser handles explicit offers, completed acts, selected elided/passive completions, attribution switches and negation, while documented third-person/unlisted-verb blind spots remain. |
 | `speakerAwareness` | some non-echo reply names a room member |
 
 Anti-gaming rules, adversarially reviewed so a broken, echoing or
@@ -57,7 +58,7 @@ ever scored and human text never enters a matcher; acks are scanned for
 forbidden claims; the first-person filter narrows where the homepage rules
 run, never what they match (the rule set is imported untouched); `FACTS_MIN`
 and `MIN_RESPONSES` cannot be zeroed. A
-canned-reply bot, an echo bot and a chatty bot all fail in the test suite, and
+a noun-stuffing bot, a repeated-canned-reply bot, an echo bot and a chatty bot all fail in the test suite, and
 a spec-faithful bot passes every room (the positive control).
 
 ## Files
@@ -91,7 +92,7 @@ need none of it and make no network calls.
 | --- | --- |
 | `BASE_URL` | required. Webhook endpoint the synthetic Blooio deliveries are POSTed to, e.g. `http://127.0.0.1:48803/api/eliza-app/webhook/blooio` (through the cloud API) or `http://127.0.0.1:3002/webhook/eliza-app/blooio` (straight at the gateway). |
 | `SIGNING` | how to sign `x-blooio-signature`: `env:<VAR>` (HMAC secret read from that env var; header `t=<unix>,v1=<hex hmac-sha256 of "<t>.<body>">`, the shape `_forward.ts` and the gateway adapter verify), `cmd:<shell template>` (run via `sh -c` with the raw body in `$BODY`; stdout is the header), `none`/unset (no header), anything else is used directly as the secret. |
-| `OUTBOUND_CAPTURE` | required. Where Eliza's outbound sends land: an http(s) URL whose GET returns a JSON array (or `{messages:[...]}`), or a file path (JSON array or JSONL). Entries carry text under `text|body|message` and a chat id under `chat_id|chatId|chat|to`. Entries without a chat id are ignored and counted (the DM and group streams must be distinguishable or the scoring is unsound); entries with `direction:"inbound"` or whose `sender|from` is one of the run's synthetic human handles are ignored, so only Eliza outputs are scored. |
+| `OUTBOUND_CAPTURE` | required. Where Eliza's outbound sends land: an http(s) URL whose GET returns a JSON array (or `{messages:[...]}`), or a file path (JSON array or JSONL). Entries carry text under `text|body|message` and a chat id under `chat_id|chatId|chat|to`. Entries without a chat id are ignored and counted (the DM and group streams must be distinguishable or the scoring is unsound); entries with `direction:"inbound"` or whose `sender|from` is one of the run's synthetic human handles are ignored, so only Eliza outputs are scored. Invalid payload/JSONL/message-send JSON is a harness error rather than silence, and common credential forms are redacted before text reaches logs or result artifacts. |
 | `LINK_CODE_REGEX` | optional override (first capture group = code) for parsing the link code out of the `/group` DM reply. Default matches the product command `Eliza link <8 chars of 2-9A-HJ-NP-Z>`. |
 | `WAIT_MS` | bounded wait per expected Eliza point (default 45000). |
 | `POLL_MS` | capture poll interval (default 1500). |
