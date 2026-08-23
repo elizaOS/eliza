@@ -14,6 +14,11 @@ import { secureHeaders } from "hono/secure-headers";
 import { setHttpTelemetryHeaders } from "../observability/http-telemetry";
 import { corsMiddleware, isFirstPartyOrigin, isPublicTokenApiPath } from "./cloud-api-hono-cors";
 
+const SUBSCRIPTION_PLAN_PATHS = [
+  "/api/v1/subscriptions/plans",
+  "/api/v1/subscriptions/plans/",
+] as const;
+
 function appWithCors() {
   const app = new Hono();
   app.use("*", corsMiddleware);
@@ -48,12 +53,18 @@ function appWithOuterTelemetry() {
   return app;
 }
 
-async function req(method: string, origin: string | null, isPreflight = false, path = "/ping") {
+async function req(
+  method: string,
+  origin: string | null,
+  isPreflight = false,
+  path = "/ping",
+  requestedMethod = "POST",
+) {
   const app = appWithCors();
   const headers: Record<string, string> = {};
   if (origin) headers.Origin = origin;
   if (isPreflight) {
-    headers["Access-Control-Request-Method"] = "POST";
+    headers["Access-Control-Request-Method"] = requestedMethod;
     headers["Access-Control-Request-Headers"] = "authorization,x-app-id";
   }
   return app.request(path, { method, headers });
@@ -158,7 +169,10 @@ describe("isPublicTokenApiPath", () => {
   test("recognizes explicit public token API paths", () => {
     expect(isPublicTokenApiPath("/api/v1/chat/completions")).toBe(true);
     expect(isPublicTokenApiPath("/api/auth/pair")).toBe(true);
-    expect(isPublicTokenApiPath("/api/v1/subscriptions/plans")).toBe(true);
+    for (const path of SUBSCRIPTION_PLAN_PATHS) {
+      expect(isPublicTokenApiPath(path)).toBe(true);
+    }
+    expect(isPublicTokenApiPath("/api/v1/subscriptions/plans/private")).toBe(false);
     // Native pairing carries a user/org Cloud bearer and must remain limited
     // to first-party app origins rather than the wildcard token-API policy.
     expect(isPublicTokenApiPath("/api/auth/pair/native")).toBe(false);
@@ -245,27 +259,59 @@ describe("corsMiddleware — Eliza app WebView origin (credentialed SSE)", () =>
 });
 
 describe("corsMiddleware — third-party app origins (open, NO credentials)", () => {
-  test("allows third-party browser reads of the public subscription catalog", async () => {
+  test("allows third-party browser GET/HEAD reads of both public subscription catalog paths", async () => {
+    for (const path of SUBSCRIPTION_PLAN_PATHS) {
+      for (const method of ["GET", "HEAD"]) {
+        const res = await req(method, "https://thirdparty.example.com", false, path);
+        expect(res.headers.get("access-control-allow-origin")).toBe("*");
+        expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+      }
+    }
+  });
+
+  test("allows only GET/HEAD preflight for both public subscription catalog paths", async () => {
+    for (const path of SUBSCRIPTION_PLAN_PATHS) {
+      for (const requestedMethod of ["GET", "HEAD"]) {
+        const res = await req(
+          "OPTIONS",
+          "https://thirdparty.example.com",
+          true,
+          path,
+          requestedMethod,
+        );
+        expect(res.headers.get("access-control-allow-origin")).toBe("*");
+        expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+        expect(res.headers.get("access-control-allow-methods")).toBe("GET,HEAD,OPTIONS");
+      }
+    }
+  });
+
+  test("keeps mutable methods off the wildcard policy for both catalog paths", async () => {
+    for (const path of SUBSCRIPTION_PLAN_PATHS) {
+      for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+        const res = await req(method, "https://thirdparty.example.com", false, path);
+        expect(res.headers.get("access-control-allow-origin")).toBeNull();
+
+        const preflight = await req(
+          "OPTIONS",
+          "https://thirdparty.example.com",
+          true,
+          path,
+          method,
+        );
+        expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
+      }
+    }
+  });
+
+  test("keeps private subscription descendants off the wildcard policy", async () => {
     const res = await req(
       "GET",
       "https://thirdparty.example.com",
       false,
-      "/api/v1/subscriptions/plans",
+      "/api/v1/subscriptions/plans/private",
     );
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
-    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
-  });
-
-  test("allows GET preflight for the public subscription catalog", async () => {
-    const res = await req(
-      "OPTIONS",
-      "https://thirdparty.example.com",
-      true,
-      "/api/v1/subscriptions/plans",
-    );
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
-    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
-    expect(res.headers.get("access-control-allow-methods")).toContain("GET");
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 
   test("allows the origin (wildcard) WITHOUT credentials so the browser permits it", async () => {
