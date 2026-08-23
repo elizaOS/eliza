@@ -351,6 +351,19 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/music-player/status"), body: { available: false } },
   // instances/ — canonical agent-list DTO plus detail.
   {
+    match: path_("/api/v1/eliza/personal"),
+    body: {
+      success: true,
+      data: {
+        identity: {
+          id: "personal:00000000-0000-5000-8000-000000000001",
+          displayName: "Eliza",
+          runtime: "dedicated",
+        },
+      },
+    },
+  },
+  {
     match: path_("/api/v1/eliza/agents"),
     body: {
       success: true,
@@ -371,7 +384,8 @@ const STUB_RULES: StubRule[] = [
           token_ticker: null,
           dockerImage: null,
           executionTier: "dedicated-lazy",
-          webUiUrl: null,
+          webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
+          activeJob: null,
         },
       ],
     },
@@ -386,7 +400,7 @@ const STUB_RULES: StubRule[] = [
         status: "running",
         executionTier: "dedicated-lazy",
         databaseStatus: "ready",
-        webUiUrl: null,
+        webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
         bridgeUrl: null,
         errorMessage: null,
         createdAt: NOW_ISO,
