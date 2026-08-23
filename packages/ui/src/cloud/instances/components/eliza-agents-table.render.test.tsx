@@ -10,7 +10,7 @@
  * action, and the deactivate confirm dialog's billing-transparency copy.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
@@ -29,7 +29,9 @@ vi.mock("../lib/i18n", () => ({
     options?.defaultValue ?? _key,
 }));
 
-function row(overrides: Partial<AgentListItemDto>): AgentListItemDto {
+function row(
+  overrides: Partial<NormalizedAgentListItemDto>,
+): NormalizedAgentListItemDto {
   return {
     activeJob: null,
     id: "00000000-1111-2222-3333-444444444444",
@@ -53,7 +55,7 @@ function row(overrides: Partial<AgentListItemDto>): AgentListItemDto {
 }
 
 function derive(
-  overrides: Partial<AgentListItemDto>,
+  overrides: Partial<NormalizedAgentListItemDto>,
   {
     active = false,
     actionInProgress = null,

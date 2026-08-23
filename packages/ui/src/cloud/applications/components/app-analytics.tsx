@@ -4,7 +4,7 @@
  * client.
  */
 
-import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
+import { toRatePercent } from "@elizaos/cloud-sdk/browser-contracts";
 import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
