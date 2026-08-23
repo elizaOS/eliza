@@ -105,12 +105,29 @@ describe("createPreparedModelRequestGuard", () => {
 				provider: "fixture",
 				model: "fixture",
 				serializeRequest: () => "界".repeat(50),
-				contextWindowTokens: 10_150,
+				contextWindowTokens: 170,
 				outputReserveTokens: 20,
 			});
 			dispatches += 1;
 		}).toThrow(expect.objectContaining({ code: "MODEL_INPUT_OVER_BUDGET" }));
 		expect(dispatches).toBe(0);
+	});
+
+	it("honors an explicit native output reserve below the generic fallback", () => {
+		const guard = createPreparedModelRequestGuard({
+			provider: "native-ios",
+			model: "local-4k",
+			serializeRequest: () => "small request",
+			contextWindowTokens: 4_096,
+			outputReserveTokens: 512,
+		});
+		expect(guard.budget).toMatchObject({
+			contextWindowTokens: 4_096,
+			outputReserveTokens: 512,
+			dispatchThresholdTokens: 3_584,
+		});
+		guard.assertBeforeAttempt();
+		expect(guard.attempts).toBe(1);
 	});
 
 	it("rejects values JSON would silently omit", () => {
