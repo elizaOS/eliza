@@ -47,7 +47,7 @@ interface ModelCardProps {
 }
 
 const FIT_STYLES: Record<FitLevel, string> = {
-  fits: "text-emerald-500 border-emerald-500/40 bg-emerald-500/10",
+  fits: "text-status-success border-status-success/40 bg-status-success-bg",
   tight: "text-amber-500 border-amber-500/40 bg-amber-500/10",
   wontfit: "text-rose-500 border-rose-500/40 bg-rose-500/10",
 };

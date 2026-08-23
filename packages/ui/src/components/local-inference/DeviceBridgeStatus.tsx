@@ -19,7 +19,7 @@ export function DeviceBridgeStatusBar({
   if (!status) return null;
 
   const dotClass = status.connected
-    ? "bg-emerald-500"
+    ? "bg-status-success"
     : status.pendingRequests > 0
       ? "bg-amber-500"
       : "bg-muted-foreground/40";
