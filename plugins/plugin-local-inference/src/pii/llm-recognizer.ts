@@ -20,6 +20,8 @@ import {
 	type EntitySpan,
 	logger,
 	type PiiEntityRecognizer,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 
 /** Local-only text generation seam the recognizer runs its prompt through. */
@@ -95,7 +97,7 @@ export function parseReportedEntities(completion: string): ReportedEntity[] {
 	const end = completion.lastIndexOf("]");
 	if (start === -1 || end === -1 || end < start) {
 		throw new Error(
-			`[LocalPii] model output contains no JSON array: ${JSON.stringify(completion.slice(0, 200))}`,
+			`[LocalPii] model output contains no JSON array: ${JSON.stringify(truncateWellFormed(toWellFormedUnicode(completion), 200))}`,
 		);
 	}
 	let parsed: unknown;
