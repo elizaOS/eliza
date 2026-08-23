@@ -6,7 +6,7 @@ import {
   getVercelOidcToken,
   getVercelOidcTokenSync,
   getVercelToken,
-} from "./vercel-oidc.ts";
+} from "../vercel-oidc.ts";
 
 describe("vercel-oidc browser stub", () => {
   it("returns an empty context", () => {
