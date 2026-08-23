@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type CloudSecretsModule = {
   _resetCloudSecretsForTesting: () => void;
   clearCloudSecrets: () => void;
-  getCloudSecret: (key: string) => string | undefined;
+  getCloudSecret: typeof import("./cloud-secrets.ts").getCloudSecret;
   scrubCloudSecretsFromEnv: () => void;
 };
 

@@ -68,9 +68,25 @@ let seededDocumentId: UUID | null = null;
 // processing (it is merged per source key), unlike world-metadata role grants
 // which each processed message clobbers.
 const GUEST_STABLE_ID = `${SCENARIO_ID}-guest-admin`;
-const GUEST_ROOM_ID = stringToUuid(
-  `scenario-room:${SCENARIO_ID}:guest`,
-) as UUID;
+
+/**
+ * The guest room's runtime identity, read from the executor-published topology
+ * rather than re-derived here. The executor alone owns the
+ * `scenario-account:<scenarioId>:<account>` recipe and has already changed it
+ * once (#24842 namespaced accounts per scenario); a scenario that spells it out
+ * a second time stamps its roles onto an entity nobody speaks as the moment the
+ * executor moves. One derivation, one seam.
+ */
+function guestIdentity(
+  ctx: ScenarioContext,
+): { entityId: UUID; roomId: UUID } | string {
+  const entityId = ctx.roomEntityIds?.guest;
+  const roomId = ctx.roomIds?.guest;
+  if (!entityId || !roomId) {
+    return "executor did not publish the guest room identity (ctx.roomEntityIds/ctx.roomIds)";
+  }
+  return { entityId: entityId as UUID, roomId: roomId as UUID };
+}
 
 function getDocumentService(ctx: ScenarioContext): DocumentService | null {
   const runtime = ctx.runtime as ScenarioRuntime;
@@ -250,6 +266,8 @@ export default scenario({
         if (!ctx.primaryRoomId || !ctx.primaryUserId) {
           return "primary room/user were not set by the executor";
         }
+        const guest = guestIdentity(ctx);
+        if (typeof guest === "string") return guest;
         const room = await runtime.getRoom(ctx.primaryRoomId as UUID);
         if (!room?.worldId) return "primary room world was not created";
         const stored = await service.addDocument({
@@ -258,7 +276,7 @@ export default scenario({
           // global record in the guest room so the non-owner can identify the
           // target without widening that privacy boundary; OWNER still has
           // global visibility and performs the successful delete later.
-          roomId: GUEST_ROOM_ID,
+          roomId: guest.roomId,
           entityId: ctx.primaryUserId as UUID,
           clientDocumentId: stringToUuid(`${SCENARIO_ID}:doc`) as UUID,
           contentType: "text/markdown",
@@ -279,11 +297,11 @@ export default scenario({
       name: "whitelist the guest entity as a connector admin",
       apply: async (ctx) => {
         const runtime = ctx.runtime as ScenarioRuntime;
-        const guestId = stringToUuid(
-          `scenario-account:${SCENARIO_ID}:guest`,
-        ) as UUID;
+        const guest = guestIdentity(ctx);
+        if (typeof guest === "string") return guest;
         setConnectorAdminWhitelist(runtime, { telegram: [GUEST_STABLE_ID] });
-        const entity = (await runtime.getEntitiesByIds([guestId]))[0] ?? null;
+        const entity =
+          (await runtime.getEntitiesByIds([guest.entityId]))[0] ?? null;
         if (!entity) return "guest entity was not created by the executor";
         entity.metadata = {
           ...entity.metadata,
