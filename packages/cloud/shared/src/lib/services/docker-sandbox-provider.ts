@@ -50,12 +50,17 @@ import {
   buildDockerContainerEnvTransport,
   buildDockerCreateWithSecretEnvCommand,
   buildEnsureNetworkCmd,
+  buildReplacementCandidateObservedCommand,
+  buildReplacementSecretArtifactsCleanupCommand,
   CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
   ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
   getContainerSecretEnvPath,
+  getReplacementCandidateObservedReceipt,
+  getReplacementDockerCreateQuiescentReceipt,
+  getReplacementSecretArtifactsCleanupReceipt,
   getVolumePath,
   getVolumeVaultPassphrasePath,
   parseDockerNodes,
@@ -78,7 +83,13 @@ import {
   TS_AUTHKEY_EXPIRED_MARKER_BASENAME,
 } from "./headscale-auth-status";
 import { headscaleClient } from "./headscale-client";
-import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
+import {
+  assertCanonicalHeadscaleNode,
+  DEFAULT_REGISTRATION_TIMEOUT_MS,
+  headscaleIntegration,
+  isCanonicalHeadscaleNodeId,
+  isCanonicalHeadscaleTailnetIpv4,
+} from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import type {
@@ -91,7 +102,9 @@ import type {
 } from "./sandbox-provider-types";
 import {
   assertContainerBackedExecutionTier,
+  assertSandboxReplacementAttemptId,
   SandboxReplacementCleanupUnresolvedError,
+  SandboxReplacementCreateSettlementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
 import {
   ensureStewardTenant,
@@ -109,6 +122,12 @@ export interface DockerSandboxMetadata {
   provider: "docker";
   nodeId: string;
   hostname: string;
+  /** Exact DB record + SSH authority used by replacement cleanup. */
+  nodeRecordId?: string;
+  nodeSshPort?: number;
+  nodeSshUser?: string;
+  nodeHostKeyFingerprint?: string;
+  replacementSecretCleanupVersion?: 1;
   containerName: string;
   bridgePort: number;
   webUiPort: number;
@@ -165,6 +184,10 @@ interface ContainerMeta {
   hostKeyFingerprint?: string;
 }
 
+interface RemoteCompletionTracker {
+  readonly causes: unknown[];
+}
+
 type DockerNodeConnection = Pick<
   DockerNode,
   "node_id" | "hostname" | "ssh_port" | "ssh_user" | "host_key_fingerprint"
@@ -199,11 +222,7 @@ class ReplacementPlacementPersistenceError extends Error {
   }
 }
 
-/**
- * Keeps the durable intent on the happens-before side of Docker create. The
- * remote command may commit and then lose its SSH response, so persisting only
- * after it returns cannot provide a recoverable placement fence.
- */
+/** Keeps the durable cleanup intent on the happens-before side of Docker create. */
 export async function createDockerContainerAfterReplacementIntent<T>({
   persistIntent,
   createContainer,
@@ -217,11 +236,137 @@ export async function createDockerContainerAfterReplacementIntent<T>({
   return createContainer();
 }
 
+function optionalLocatorString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function optionalLocatorNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isCanonicalNodeAuthorityUuid(value: string | null | undefined): value is string {
+  return Boolean(
+    value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value),
+  );
+}
+
+function isCanonicalReplacementContainerName(value: string): boolean {
+  if (!value.startsWith("agent-")) return false;
+  try {
+    return getContainerName(value.slice("agent-".length)) === value;
+  } catch {
+    // error-policy:J3 canonical validation translates rejected input to false.
+    return false;
+  }
+}
+
+function replacementCleanupLocatorFromHandle(
+  handle: SandboxHandle,
+): SandboxReplacementCleanupLocator | null {
+  const metadata = handle.metadata;
+  if (
+    typeof handle.sandboxId !== "string" ||
+    !metadata ||
+    typeof metadata.nodeId !== "string" ||
+    typeof metadata.containerName !== "string" ||
+    typeof metadata.replacementAttemptId !== "string"
+  ) {
+    return null;
+  }
+  return {
+    sandboxId: handle.sandboxId,
+    nodeId: metadata.nodeId,
+    containerName: metadata.containerName,
+    nodeRecordId: optionalLocatorString(metadata.nodeRecordId),
+    nodeHostname: optionalLocatorString(metadata.hostname),
+    nodeSshPort: optionalLocatorNumber(metadata.nodeSshPort),
+    nodeSshUser: optionalLocatorString(metadata.nodeSshUser),
+    nodeHostKeyFingerprint: optionalLocatorString(metadata.nodeHostKeyFingerprint),
+    replacementSecretCleanupVersion: metadata.replacementSecretCleanupVersion === 1 ? 1 : null,
+    replacementAttemptId: metadata.replacementAttemptId,
+    containerId: optionalLocatorString(metadata.containerId),
+    vpnNodeId: optionalLocatorString(metadata.vpnNodeId),
+    vpnNodeName: optionalLocatorString(metadata.vpnNodeName),
+    previousVpnNodeId: optionalLocatorString(metadata.previousVpnNodeId),
+    vpnRegistrationStartedAt: optionalLocatorString(metadata.vpnRegistrationStartedAt),
+    allocationCounted:
+      typeof metadata.allocationCounted === "boolean" ? metadata.allocationCounted : null,
+  };
+}
+
 function dockerContainerIdsMatch(expected: string, actual: string): boolean {
   if (!/^[a-f0-9]{12,64}$/i.test(expected) || !/^[a-f0-9]{12,64}$/i.test(actual)) {
     return false;
   }
   return expected.startsWith(actual) || actual.startsWith(expected);
+}
+
+function isCanonicalDockerContainerId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{12,64}$/.test(value);
+}
+
+function isCanonicalReplacementLocatorCore(
+  locator: SandboxReplacementCleanupLocator,
+  expectedReplacementAttemptId?: string,
+): boolean {
+  const vpnNodeName = locator.vpnNodeName ?? null;
+  const vpnRegistrationStartedAt = locator.vpnRegistrationStartedAt ?? null;
+  const vpnNodeId = locator.vpnNodeId ?? null;
+  const previousVpnNodeId = locator.previousVpnNodeId ?? null;
+  const containerId = locator.containerId ?? null;
+
+  return (
+    locator.sandboxId.trim().length > 0 &&
+    locator.sandboxId === locator.containerName &&
+    locator.nodeId.trim().length > 0 &&
+    locator.containerName.trim().length > 0 &&
+    typeof locator.replacementAttemptId === "string" &&
+    (expectedReplacementAttemptId === undefined ||
+      locator.replacementAttemptId === expectedReplacementAttemptId) &&
+    typeof locator.allocationCounted === "boolean" &&
+    (containerId === null || isCanonicalDockerContainerId(containerId)) &&
+    (vpnNodeName === null) === (vpnRegistrationStartedAt === null) &&
+    (vpnNodeName === null || vpnNodeName.trim().length > 0) &&
+    (vpnRegistrationStartedAt === null || Number.isFinite(Date.parse(vpnRegistrationStartedAt))) &&
+    (previousVpnNodeId === null ||
+      (vpnNodeName !== null && isCanonicalHeadscaleNodeId(previousVpnNodeId))) &&
+    (vpnNodeId === null || isCanonicalHeadscaleNodeId(vpnNodeId)) &&
+    (vpnNodeId === null || vpnNodeId !== previousVpnNodeId)
+  );
+}
+
+function isCanonicalExactReplacementLocator(
+  locator: SandboxReplacementCleanupLocator,
+  expected?: { readonly containerName?: string; readonly replacementAttemptId?: string },
+): boolean {
+  const vpnNodeName = locator.vpnNodeName ?? null;
+  const vpnRegistrationStartedAt = locator.vpnRegistrationStartedAt ?? null;
+  const vpnNodeId = locator.vpnNodeId ?? null;
+  const previousVpnNodeId = locator.previousVpnNodeId ?? null;
+  const containerId = locator.containerId ?? null;
+  const hasVpnRegistrationPair = vpnNodeName !== null && vpnRegistrationStartedAt !== null;
+
+  return (
+    isCanonicalReplacementLocatorCore(locator, expected?.replacementAttemptId) &&
+    isCanonicalReplacementContainerName(locator.containerName) &&
+    (expected?.containerName === undefined || locator.containerName === expected.containerName) &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      locator.replacementAttemptId ?? "",
+    ) &&
+    isCanonicalNodeAuthorityUuid(locator.nodeRecordId) &&
+    Boolean(locator.nodeHostname?.trim()) &&
+    typeof locator.nodeSshPort === "number" &&
+    Number.isSafeInteger(locator.nodeSshPort) &&
+    locator.nodeSshPort >= 1 &&
+    locator.nodeSshPort <= 65_535 &&
+    Boolean(locator.nodeSshUser?.trim()) &&
+    Boolean(locator.nodeHostKeyFingerprint?.trim()) &&
+    locator.replacementSecretCleanupVersion === 1 &&
+    locator.allocationCounted === true &&
+    (previousVpnNodeId === null || hasVpnRegistrationPair) &&
+    (vpnNodeId === null ||
+      (containerId !== null && hasVpnRegistrationPair && vpnNodeId !== previousVpnNodeId))
+  );
 }
 
 /** Default SSH port when not specified by DB node record. */
@@ -1306,6 +1451,8 @@ export async function registerAgentWithSteward(
 // ---------------------------------------------------------------------------
 
 export class DockerSandboxProvider implements SandboxProvider {
+  readonly replacementCreateSettlementCapability = "exact-success" as const;
+
   /**
    * In-memory container metadata cache.
    * On Workers/serverless this cache is per-request and starts empty — the DB
@@ -1345,23 +1492,374 @@ export class DockerSandboxProvider implements SandboxProvider {
    */
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
     assertContainerBackedExecutionTier(config.executionTier);
-    const MAX_ATTEMPTS = 3;
-    let lastError: Error | undefined;
-    // This is the last caller-visible boundary before remote placement. Stored
-    // rows, warm claims, and image replays may carry historical values, but no
-    // remote create attempt may opt back into the container-owned pair relay.
+    const requestedReplacementAttemptId = config.replacementAttemptId;
+    if (requestedReplacementAttemptId !== undefined) {
+      assertSandboxReplacementAttemptId(requestedReplacementAttemptId);
+    }
+    const hasAttemptStartedCallback = Boolean(config.onReplacementCreateAttemptStarted);
+    const hasSettlementCallback = Boolean(config.onReplacementCreateSettled);
+    if (hasAttemptStartedCallback !== hasSettlementCallback) {
+      throw new ElizaError(
+        "Exact sandbox replacement start and settlement callbacks must be supplied together",
+        {
+          code: "SANDBOX_REPLACEMENT_CREATE_SETTLEMENT_PAIR_REQUIRED",
+          context: { replacementAttemptId: requestedReplacementAttemptId ?? null },
+          severity: "fatal",
+        },
+      );
+    }
+    const exactSuccessMode = hasAttemptStartedCallback && hasSettlementCallback;
+    if (exactSuccessMode && requestedReplacementAttemptId === undefined) {
+      throw new ElizaError(
+        "Exact sandbox replacement settlement requires a caller-owned attempt ID",
+        {
+          code: "SANDBOX_REPLACEMENT_CALLER_ATTEMPT_ID_REQUIRED",
+          severity: "fatal",
+        },
+      );
+    }
+    // Legacy callers retain the provider-generated default. Exact-success
+    // callers are admitted above only with their already durable identity.
+    const replacementAttemptId = requestedReplacementAttemptId ?? crypto.randomUUID();
+    if (
+      (config.onReplacementCreated ||
+        config.onReplacementVpnRegistered ||
+        config.onReplacementCreateSettled) &&
+      !config.onReplacementCreateIntent
+    ) {
+      throw new ElizaError(
+        "Sandbox replacement enrichment and settlement callbacks require a durable create intent callback",
+        {
+          code: "SANDBOX_REPLACEMENT_CREATE_INTENT_REQUIRED",
+          context: { replacementAttemptId },
+          severity: "fatal",
+        },
+      );
+    }
+    if (config.onReplacementCreateSettled && !config.onReplacementCreated) {
+      throw new ElizaError(
+        "Exact sandbox replacement settlement requires pre-start Docker create enrichment",
+        {
+          code: "SANDBOX_REPLACEMENT_CREATED_ENRICHMENT_REQUIRED",
+          context: { replacementAttemptId },
+          severity: "fatal",
+        },
+      );
+    }
+
+    // Freeze one attempt identity at the public boundary. It is one-shot: an
+    // exact cleanup tombstones this id remotely, so any later retry is a new
+    // caller-owned invocation rather than a replay behind durable authority.
+    const persistReplacementAttemptStarted = config.onReplacementCreateAttemptStarted;
+    const persistReplacementIntent = config.onReplacementCreateIntent;
+    const persistCreatedReplacement = config.onReplacementCreated;
+    const persistRegisteredVpnReplacement = config.onReplacementVpnRegistered;
+    const persistReplacementSettlement = config.onReplacementCreateSettled;
+    let durableReplacementLocator: SandboxReplacementCleanupLocator | null = null;
+    let completedIntentLocator: SandboxReplacementCleanupLocator | null = null;
+    let completedCreatedLocator: SandboxReplacementCleanupLocator | null = null;
+    let completedVpnLocator: SandboxReplacementCleanupLocator | null = null;
+    let intentCompleted = false;
+    let createdCompleted = false;
+    let vpnCompleted = false;
+    const exactStageInvoked = { intent: false, created: false, vpn: false };
+    const exactReplacementLocator = (
+      handle: SandboxHandle,
+      stage: "intent" | "created" | "vpn" | "final",
+    ): SandboxReplacementCleanupLocator => {
+      const locator = replacementCleanupLocatorFromHandle(handle);
+      const hasContainerId = Boolean(locator?.containerId?.trim());
+      const hasCanonicalContainerId = isCanonicalDockerContainerId(locator?.containerId);
+      const hasVpnNodeId = Boolean(locator?.vpnNodeId?.trim());
+      const coreInvalid =
+        !locator ||
+        handle.sandboxId.trim().length === 0 ||
+        !isCanonicalReplacementLocatorCore(locator, replacementAttemptId) ||
+        (exactSuccessMode &&
+          !isCanonicalExactReplacementLocator(locator, {
+            containerName: getContainerName(config.agentId),
+            replacementAttemptId,
+          }));
+      const stageInvalid =
+        (stage === "intent" && (locator?.containerId !== null || locator?.vpnNodeId !== null)) ||
+        ((stage === "created" || stage === "vpn" || stage === "final") &&
+          !hasCanonicalContainerId) ||
+        (stage === "created" && locator?.vpnNodeId !== null) ||
+        (stage === "vpn" && !hasVpnNodeId);
+      if (coreInvalid || stageInvalid) {
+        throw new ElizaError(
+          "Docker replacement callback metadata does not match its exact provider attempt",
+          {
+            code: "SANDBOX_REPLACEMENT_CALLBACK_IDENTITY_INVALID",
+            context: {
+              stage,
+              replacementAttemptId,
+              callbackReplacementAttemptId: locator?.replacementAttemptId ?? null,
+              callbackSandboxId: handle.sandboxId || null,
+              callbackNodeId: locator?.nodeId || null,
+              callbackContainerName: locator?.containerName || null,
+              callbackHasContainerId: hasContainerId,
+              callbackHasVpnNodeId: hasVpnNodeId,
+              callbackAllocationCounted: locator?.allocationCounted ?? null,
+              callbackNodeRecordId: locator?.nodeRecordId ?? null,
+              callbackNodeHostname: locator?.nodeHostname ?? null,
+              callbackNodeSshPort: locator?.nodeSshPort ?? null,
+              callbackHasPinnedHostKey: Boolean(locator?.nodeHostKeyFingerprint?.trim()),
+              callbackSecretCleanupVersion: locator?.replacementSecretCleanupVersion ?? null,
+            },
+            severity: "fatal",
+          },
+        );
+      }
+      return locator;
+    };
+    const immutableReplacementKeys = [
+      "sandboxId",
+      "nodeId",
+      "containerName",
+      "replacementAttemptId",
+      "allocationCounted",
+      "nodeRecordId",
+      "nodeHostname",
+      "nodeSshPort",
+      "nodeSshUser",
+      "nodeHostKeyFingerprint",
+      "replacementSecretCleanupVersion",
+      "vpnNodeName",
+      "vpnRegistrationStartedAt",
+      "previousVpnNodeId",
+    ] as const satisfies readonly (keyof SandboxReplacementCleanupLocator)[];
+    const assertSameReplacementIdentity = (
+      expected: SandboxReplacementCleanupLocator,
+      actual: SandboxReplacementCleanupLocator,
+      stage: "created" | "vpn" | "final",
+    ): void => {
+      const driftedKey = immutableReplacementKeys.find(
+        (key) => (expected[key] ?? null) !== (actual[key] ?? null),
+      );
+      if (driftedKey) {
+        throw new ElizaError("Docker replacement identity changed across durable stages", {
+          code: "SANDBOX_REPLACEMENT_CALLBACK_IDENTITY_DRIFT",
+          context: {
+            stage,
+            driftedKey,
+            replacementAttemptId,
+            expected: expected[driftedKey] ?? null,
+            actual: actual[driftedKey] ?? null,
+          },
+          severity: "fatal",
+        });
+      }
+    };
+    const assertExactStageContinuity = (
+      locator: SandboxReplacementCleanupLocator,
+      stage: "created" | "vpn" | "final",
+    ): void => {
+      if (!exactSuccessMode) return;
+      if (!intentCompleted || !completedIntentLocator) {
+        throw new ElizaError("Exact replacement create intent did not complete", {
+          code: "SANDBOX_REPLACEMENT_INTENT_NOT_COMPLETED",
+          context: { stage, replacementAttemptId },
+          severity: "fatal",
+        });
+      }
+      assertSameReplacementIdentity(completedIntentLocator, locator, stage);
+      if (stage === "created") return;
+      if (!createdCompleted || !completedCreatedLocator) {
+        throw new ElizaError("Exact replacement Docker create enrichment did not complete", {
+          code: "SANDBOX_REPLACEMENT_CREATED_NOT_COMPLETED",
+          context: { stage, replacementAttemptId },
+          severity: "fatal",
+        });
+      }
+      if (completedCreatedLocator.containerId !== locator.containerId) {
+        throw new ElizaError("Docker replacement container ID changed after create enrichment", {
+          code: "SANDBOX_REPLACEMENT_CONTAINER_ID_DRIFT",
+          context: { stage, replacementAttemptId },
+          severity: "fatal",
+        });
+      }
+      if (stage === "vpn") return;
+      const finalVpnNodeId = locator.vpnNodeId ?? null;
+      if (vpnCompleted && completedVpnLocator) {
+        if (completedVpnLocator.vpnNodeId !== locator.vpnNodeId) {
+          throw new ElizaError("Docker replacement VPN node ID changed after enrichment", {
+            code: "SANDBOX_REPLACEMENT_VPN_NODE_ID_DRIFT",
+            context: { stage, replacementAttemptId },
+            severity: "fatal",
+          });
+        }
+      } else if (finalVpnNodeId !== null) {
+        throw new ElizaError("Exact replacement VPN identity was not durably enriched", {
+          code: "SANDBOX_REPLACEMENT_VPN_NOT_COMPLETED",
+          context: { stage, replacementAttemptId },
+          severity: "fatal",
+        });
+      }
+    };
+    const claimExactStageInvocation = (stage: "intent" | "created" | "vpn"): void => {
+      if (!exactSuccessMode) return;
+      if (exactStageInvoked[stage]) {
+        throw new ElizaError("Exact replacement callback stage was invoked more than once", {
+          code: "SANDBOX_REPLACEMENT_CALLBACK_STAGE_DUPLICATED",
+          context: { stage, replacementAttemptId },
+          severity: "fatal",
+        });
+      }
+      // Claim synchronously before the callback's first await. Completion is a
+      // separate state: two concurrent invocations must not both observe false.
+      exactStageInvoked[stage] = true;
+    };
+    const attemptStarted = Object.freeze({ replacementAttemptId });
+    // This is the durable pre-effect fence for exact-success. A thrown or lost
+    // callback response cannot permit placement or remote provider work, and
+    // deliberately receives no success callback.
+    if (persistReplacementAttemptStarted) {
+      await persistReplacementAttemptStarted(attemptStarted);
+    }
     const createConfig: SandboxCreateConfig = {
       ...config,
+      replacementAttemptId,
       environmentVars: applyRemoteDockerRuntimeMode(config.environmentVars),
+      ...(persistReplacementIntent
+        ? {
+            onReplacementCreateIntent: async (handle: SandboxHandle) => {
+              const locator = exactReplacementLocator(handle, "intent");
+              claimExactStageInvocation("intent");
+              durableReplacementLocator = locator;
+              await persistReplacementIntent(handle);
+              completedIntentLocator = locator;
+              intentCompleted = true;
+            },
+          }
+        : {}),
+      ...(persistCreatedReplacement
+        ? {
+            onReplacementCreated: async (handle: SandboxHandle) => {
+              const locator = exactReplacementLocator(handle, "created");
+              claimExactStageInvocation("created");
+              assertExactStageContinuity(locator, "created");
+              durableReplacementLocator = locator;
+              try {
+                await persistCreatedReplacement(handle);
+              } catch (cause) {
+                // error-policy:J2 never trust a callback-supplied typed error's
+                // locator: rewrap it with the provider-validated candidate.
+                throw new SandboxReplacementCleanupUnresolvedError(locator, cause);
+              }
+              completedCreatedLocator = locator;
+              createdCompleted = true;
+            },
+          }
+        : {}),
+      ...(persistRegisteredVpnReplacement
+        ? {
+            onReplacementVpnRegistered: async (handle: SandboxHandle) => {
+              const locator = exactReplacementLocator(handle, "vpn");
+              claimExactStageInvocation("vpn");
+              assertExactStageContinuity(locator, "vpn");
+              durableReplacementLocator = locator;
+              await persistRegisteredVpnReplacement(handle);
+              completedVpnLocator = locator;
+              vpnCompleted = true;
+            },
+          }
+        : {}),
     };
+    const remoteCompletionTracker = persistReplacementSettlement
+      ? ({ causes: [] } satisfies RemoteCompletionTracker)
+      : undefined;
+    let handle: SandboxHandle;
+    try {
+      handle = await this.createWithRetries(createConfig, remoteCompletionTracker);
+    } catch (error) {
+      // error-policy:J2 translate any post-intent provider failure into the
+      // durable exact-locator fence, while preserving the pre-create CAS abort.
+      if (
+        durableReplacementLocator &&
+        !(error instanceof ReplacementPlacementPersistenceError) &&
+        !(error instanceof SandboxReplacementCleanupUnresolvedError)
+      ) {
+        throw new SandboxReplacementCleanupUnresolvedError(durableReplacementLocator, error);
+      }
+      throw error;
+    }
+    if (!persistReplacementSettlement) {
+      return handle;
+    }
+
+    let locator: SandboxReplacementCleanupLocator;
+    try {
+      locator = exactReplacementLocator(handle, "final");
+      assertExactStageContinuity(locator, "final");
+      durableReplacementLocator = locator;
+    } catch (error) {
+      // error-policy:J2 a malformed success cannot discard an already durable
+      // cleanup locator; without one, preserve the typed validation failure.
+      if (durableReplacementLocator) {
+        throw new SandboxReplacementCleanupUnresolvedError(durableReplacementLocator, error);
+      }
+      throw error;
+    }
+    if (remoteCompletionTracker && remoteCompletionTracker.causes.length > 0) {
+      throw new SandboxReplacementCleanupUnresolvedError(
+        locator,
+        new AggregateError(
+          [...remoteCompletionTracker.causes],
+          "Remote replacement completion remained unresolved on an otherwise successful create",
+        ),
+      );
+    }
+
+    try {
+      // Re-read the immutable placement record on primary immediately before
+      // reporting provider success. The consumer's settlement transaction is
+      // still the final CAS authority, but the provider must not knowingly
+      // settle after a delete/reinsert or SSH-route mutation observed here.
+      await this.resolveReplacementCleanupNode(locator);
+    } catch (authorityError) {
+      // error-policy:J2 retain the exact successful handle behind its locator.
+      throw new SandboxReplacementCleanupUnresolvedError(locator, authorityError);
+    }
+
+    if (persistReplacementSettlement) {
+      const settlement = Object.freeze({
+        replacementAttemptId,
+        outcome: "succeeded" as const,
+      });
+      try {
+        // Only a proven success reaches this callback. Rejections and ambiguous
+        // remote completion intentionally leave durable authority in flight.
+        await persistReplacementSettlement(settlement);
+      } catch (persistenceError) {
+        // error-policy:J2 preserve the successful handle, exact locator, and
+        // failed success-persistence write without retrying remote creation.
+        throw new SandboxReplacementCreateSettlementCleanupUnresolvedError({
+          settlement,
+          locator,
+          providerHandle: handle,
+          persistenceError,
+        });
+      }
+    }
+
+    return handle;
+  }
+
+  private async createWithRetries(
+    config: SandboxCreateConfig,
+    remoteCompletionTracker?: RemoteCompletionTracker,
+  ): Promise<SandboxHandle> {
+    const MAX_ATTEMPTS = 3;
+    let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return await this._createOnce(createConfig);
+        return await this._createOnce(config, remoteCompletionTracker);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (
-          createConfig.onReplacementCreateIntent ||
+          config.onReplacementCreateIntent ||
           lastError instanceof SandboxReplacementCleanupUnresolvedError
         ) {
           throw lastError;
@@ -1399,9 +1897,14 @@ export class DockerSandboxProvider implements SandboxProvider {
    * sandboxes, so a duplicate will fail at INSERT time. The public `create()`
    * method wraps this in a retry loop to handle port collisions automatically.
    */
-  private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
+  private async _createOnce(
+    config: SandboxCreateConfig,
+    remoteCompletionTracker?: RemoteCompletionTracker,
+  ): Promise<SandboxHandle> {
     const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
       config;
+    assertSandboxReplacementAttemptId(config.replacementAttemptId);
+    const replacementAttemptId = config.replacementAttemptId;
 
     // Resolve Docker image: per-agent DB override > operator env override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
@@ -1420,14 +1923,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     for (const [key, value] of Object.entries(environmentVars)) {
       validateEnvKey(key);
       validateEnvValue(key, value);
-    }
-    if (
-      (config.onReplacementCreated || config.onReplacementVpnRegistered) &&
-      !config.onReplacementCreateIntent
-    ) {
-      throw new Error(
-        "[docker-sandbox] replacement enrichment callbacks require onReplacementCreateIntent",
-      );
     }
     const providerManagesCapacity = !config.onReplacementCreateIntent;
 
@@ -1464,10 +1959,39 @@ export class DockerSandboxProvider implements SandboxProvider {
       ...(containerMemoryMb > 0 ? { requiredMemoryMb: containerMemoryMb } : {}),
     });
     if (!dbNode) {
-      dbNode = await this.provisionAutoscaledNodeForAgent({
-        image: resolvedImage,
-        platform: imagePlatform,
-      });
+      dbNode = await this.provisionAutoscaledNodeForAgent(
+        {
+          image: resolvedImage,
+          platform: imagePlatform,
+        },
+        remoteCompletionTracker,
+      );
+    }
+
+    if (remoteCompletionTracker) {
+      const selectedNodeId = dbNode?.node_id ?? null;
+      const selectedRecordId = dbNode?.id ?? null;
+      // Selection may have read a replica snapshot before TOFU persisted its
+      // pin, or the logical node id may have been deleted and reused. Resolve
+      // the selected immutable record on primary before candidate effects and
+      // never adopt a replacement row merely because node_id still matches.
+      dbNode = selectedRecordId
+        ? await dockerNodesRepository.findByIdOnPrimary(selectedRecordId)
+        : null;
+      if (
+        dbNode?.id !== selectedRecordId ||
+        dbNode?.node_id !== selectedNodeId ||
+        !dbNode.host_key_fingerprint?.trim()
+      ) {
+        throw new ElizaError(
+          "Exact-success Docker replacement requires a durably pinned database node",
+          {
+            code: "SANDBOX_EXACT_SUCCESS_SSH_PIN_REQUIRED",
+            context: { nodeId: selectedNodeId, nodeRecordId: selectedRecordId },
+            severity: "fatal",
+          },
+        );
+      }
     }
 
     let nodeId: string;
@@ -1532,6 +2056,22 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    // Freeze the database record and SSH authority used for this invocation.
+    // Logical node_id is operator-facing and reusable; it is not sufficient to
+    // recover a candidate after delete/recreate or host-tuple mutation.
+    const nodePlacementMetadata = dbNode
+      ? {
+          nodeRecordId: dbNode.id,
+          nodeSshPort: sshPort,
+          nodeSshUser: sshUser,
+          nodeHostKeyFingerprint: hostKeyFingerprint,
+        }
+      : {};
+    const replacementPlacementMetadata = {
+      ...nodePlacementMetadata,
+      ...(remoteCompletionTracker ? { replacementSecretCleanupVersion: 1 as const } : {}),
+    };
+
     logger.info(
       `[docker-sandbox] Creating container for agent ${agentId} on node ${nodeId} (${hostname})`,
     );
@@ -1544,7 +2084,31 @@ export class DockerSandboxProvider implements SandboxProvider {
     const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
     const containerName = getContainerName(agentId);
     const volumePath = getVolumePath(agentId);
-    const replacementAttemptId = crypto.randomUUID();
+    let headscaleIp: string | null = null;
+    let previousVpnNodeId: string | undefined;
+    let vpnNodeId: string | undefined;
+    let vpnRegistrationStartedAt: string | undefined;
+    let replacementIntentPersisted = false;
+    let createdContainerId: string | undefined;
+    let vpnEnvVars: Record<string, string> = {};
+    const markRemoteCompletionUnresolved = (cause: unknown): void => {
+      remoteCompletionTracker?.causes.push(cause);
+    };
+
+    const currentCleanupLocator = (): SandboxReplacementCleanupLocator => ({
+      sandboxId: containerName,
+      nodeId,
+      containerName,
+      ...replacementPlacementMetadata,
+      replacementAttemptId,
+      containerId: createdContainerId,
+      vpnNodeId,
+      vpnNodeName: vpnRegistrationStartedAt ? vpnEnvVars.TS_HOSTNAME : undefined,
+      previousVpnNodeId,
+      vpnRegistrationStartedAt,
+      allocationCounted: Boolean(dbNode),
+    });
+
     // Auto-provision the Steward tenant for this org if it doesn't have one
     // yet. Without this step, fresh organizations fall through to
     // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
@@ -1554,18 +2118,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     // every newly-signed-in user. When `STEWARD_PLATFORM_KEYS` is not
     // configured (non-prod environments) this is a no-op that leaves the
     // compatibility fallback behavior intact.
-    const stewardTenant = organizationId
+    const stewardTenant: StewardTenantCredentials = organizationId
       ? await ensureStewardTenant(organizationId)
       : await resolveStewardTenantCredentials({ organizationId });
 
     // 4. Optionally prepare Headscale VPN
-    let headscaleIp: string | null = null;
-    let previousVpnNodeId: string | undefined;
-    let vpnNodeId: string | undefined;
-    let vpnRegistrationStartedAt: string | undefined;
-
-    // Collect VPN env vars separately to avoid mutating the caller's environmentVars
-    let vpnEnvVars: Record<string, string> = {};
+    // Collect VPN env vars separately to avoid mutating the caller's environmentVars.
     if (headscaleEnabled) {
       try {
         const vpnSetup = await headscaleIntegration.prepareContainerVPN({
@@ -1575,6 +2133,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           // Blue/green passes false: the same-name node is LIVE and serving;
           // it is recorded here and deleted by id only after cutover (#16565).
           reclaimStaleNode: config.reclaimStaleVpnNode !== false,
+          requireExactNodeRetirement: Boolean(remoteCompletionTracker),
         });
         vpnEnvVars = vpnSetup.envVars;
         previousVpnNodeId = vpnSetup.previousNodeId;
@@ -1590,6 +2149,9 @@ export class DockerSandboxProvider implements SandboxProvider {
           }
           throw err;
         }
+        // error-policy:J4 optional local Headscale setup has an explicit
+        // bridge-host degraded mode; required routing takes the branch above.
+        markRemoteCompletionUnresolved(err);
         logger.warn(
           `[docker-sandbox] Headscale VPN preparation failed for ${agentId}: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -1688,8 +2250,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       ssh_user: sshUser,
       host_key_fingerprint: hostKeyFingerprint ?? null,
     };
-    let replacementIntentPersisted = false;
-    let createdContainerId: string | undefined;
 
     try {
       // Ensure volume directory exists
@@ -1698,32 +2258,21 @@ export class DockerSandboxProvider implements SandboxProvider {
         DOCKER_CMD_TIMEOUT_MS,
       );
 
-      // Resolve the per-agent vault master passphrase BEFORE building the
-      // container env. The key persisted on the agent volume is the single
-      // source of truth so a replacement container derives the SAME master
-      // key and can decrypt the vault ciphertext it inherits (#18080 /
-      // #19225). A caller-injected ELIZA_VAULT_PASSPHRASE does not bypass
-      // that lifecycle: it seeds the persisted key on first provision and
-      // must match it afterwards (fail-closed on mismatch), so a later
-      // replacement launched without the override still reads the same key.
-      await ensureVolumeVaultPassphrase(
-        (cmd, input, timeoutMs) => ssh.execStdin(cmd, input, timeoutMs),
-        volumePath,
-        DOCKER_CMD_TIMEOUT_MS,
-        environmentVars.ELIZA_VAULT_PASSPHRASE,
-      );
-
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
       try {
-        await ensureRegistryAccess(ssh, resolvedImage);
+        const registryAccess = await ensureRegistryAccess(ssh, resolvedImage);
+        if (registryAccess.outcome === "unresolved") {
+          markRemoteCompletionUnresolved(registryAccess.cause);
+        }
         await ssh.exec(
           ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(" "),
           PULL_TIMEOUT_MS,
         );
         logger.info(`[docker-sandbox] Image pulled successfully on ${nodeId}`);
       } catch (pullErr) {
+        markRemoteCompletionUnresolved(pullErr);
         logger.warn(
           `[docker-sandbox] Image pull failed on ${nodeId} (will use cached): ${pullErr instanceof Error ? pullErr.message : String(pullErr)}`,
         );
@@ -1910,9 +2459,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         dockerCreateCommand: dockerCreateCmd,
         secretEnvPath,
         vaultPassphrasePath: getVolumeVaultPassphrasePath(volumePath),
+        ...(remoteCompletionTracker
+          ? { exactReplacement: { containerName, replacementAttemptId } }
+          : {}),
       });
-
-      const persistReplacementIntent = config.onReplacementCreateIntent;
 
       // Self-heal nodes missing the shared bridge network (Robot cores never
       // run the cloud-init bootstrap; the network can also be pruned away).
@@ -1920,10 +2470,11 @@ export class DockerSandboxProvider implements SandboxProvider {
       // "network not found" and the provision retries forever.
       await ssh.exec(buildEnsureNetworkCmd(DOCKER_NETWORK), DOCKER_CMD_TIMEOUT_MS);
 
-      // This clock starts the durable uncertainty window. Keep it adjacent to
-      // intent/create rather than tenant setup or image pull so recovery does
-      // not widen correlation with unrelated old Headscale registrations.
+      // A VPN candidate cannot register before Docker starts this container.
+      // Arm the correlation window beside create, after successful Headscale
+      // preparation has identified any preserved node.
       vpnRegistrationStartedAt = headscaleEnabled ? new Date(this.now()).toISOString() : undefined;
+      const persistReplacementIntent = config.onReplacementCreateIntent;
       const containerId = extractDockerCreateContainerId(
         await createDockerContainerAfterReplacementIntent({
           persistIntent: persistReplacementIntent
@@ -1937,6 +2488,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                       provider: "docker",
                       nodeId,
                       hostname,
+                      ...replacementPlacementMetadata,
                       containerName,
                       bridgePort,
                       webUiPort,
@@ -1952,19 +2504,31 @@ export class DockerSandboxProvider implements SandboxProvider {
                     } satisfies DockerSandboxMetadata,
                   });
                   replacementIntentPersisted = true;
-                } catch (callbackError) {
-                  // error-policy:J2 context-adding rethrow — durable intent failure must
-                  // retain its replacement-placement phase for the caller's cleanup fence.
-                  throw new ReplacementPlacementPersistenceError(callbackError);
+                } catch (cause) {
+                  // error-policy:J2 the cleanup-intent transaction may have
+                  // committed, but Docker create is still strictly downstream
+                  // and is never invoked after this callback rejects.
+                  throw new ReplacementPlacementPersistenceError(cause);
                 }
               }
             : undefined,
-          createContainer: () =>
-            ssh.execStdin(
+          createContainer: async () => {
+            // No plaintext temporary file is written until the durable intent
+            // callback above has committed. Exact mode coordinates both vault
+            // and Docker env producers with the remote attempt tombstone.
+            await ensureVolumeVaultPassphrase(
+              (cmd, input, timeoutMs) => ssh.execStdin(cmd, input, timeoutMs),
+              volumePath,
+              DOCKER_CMD_TIMEOUT_MS,
+              environmentVars.ELIZA_VAULT_PASSPHRASE,
+              remoteCompletionTracker ? replacementAttemptId : undefined,
+            );
+            return ssh.execStdin(
               dockerCreateWithSecretEnvCmd,
               envTransport.secretInput,
               DOCKER_CMD_TIMEOUT_MS,
-            ),
+            );
+          },
         }),
       );
       createdContainerId = containerId;
@@ -1978,6 +2542,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             provider: "docker",
             nodeId,
             hostname,
+            ...replacementPlacementMetadata,
             containerName,
             bridgePort,
             webUiPort,
@@ -2009,6 +2574,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           logger.info(`[docker-sandbox] Pre-seeded eliza.json on host volume for ${containerName}`);
         }
       } catch (preSeedErr) {
+        markRemoteCompletionUnresolved(preSeedErr);
         logger.warn(
           `[docker-sandbox] Failed to pre-seed eliza.json (post-start write will retry): ${
             preSeedErr instanceof Error ? preSeedErr.message : String(preSeedErr)
@@ -2026,6 +2592,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           await ssh.exec(buildStewardPluginInstallCommand(containerName), PULL_TIMEOUT_MS);
           logger.info(`[docker-sandbox] Steward Eliza plugin installed in ${containerName}`);
         } catch (pluginErr) {
+          markRemoteCompletionUnresolved(pluginErr);
           logger.warn(
             `[docker-sandbox] Failed to install Steward Eliza plugin in ${containerName}: ${pluginErr instanceof Error ? pluginErr.message : String(pluginErr)}`,
           );
@@ -2037,6 +2604,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           await startStewardRefreshSidecar(ssh, containerName, agentId, stewardRefreshServiceToken);
           logger.info(`[docker-sandbox] Steward JWT refresh sidecar started in ${containerName}`);
         } catch (refreshErr) {
+          markRemoteCompletionUnresolved(refreshErr);
           logger.warn(
             `[docker-sandbox] Failed to start Steward JWT refresh sidecar in ${containerName}: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
           );
@@ -2060,6 +2628,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         await writeManagedElizaRuntimeConfig(ssh, { kind: "container", containerName }, allEnv);
         logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
       } catch (configErr) {
+        markRemoteCompletionUnresolved(configErr);
         logger.warn(
           `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
         );
@@ -2079,20 +2648,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      const cleanupLocator = {
-        sandboxId: containerName,
-        nodeId,
-        containerName,
-        replacementAttemptId,
-        containerId: createdContainerId,
-        vpnNodeId,
-        // Before the adjacent timestamp is captured, the container has not
-        // been created and therefore cannot have committed a VPN registration.
-        vpnNodeName: vpnRegistrationStartedAt ? vpnEnvVars.TS_HOSTNAME : undefined,
-        previousVpnNodeId,
-        vpnRegistrationStartedAt,
-        allocationCounted: Boolean(dbNode),
-      };
+      if (err instanceof SandboxReplacementCleanupUnresolvedError) {
+        throw err;
+      }
+      const cleanupLocator = currentCleanupLocator();
       if (err instanceof ReplacementPlacementPersistenceError) {
         throw err;
       }
@@ -2154,7 +2713,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // inferTailscaleHostname), NOT the bare agentId — Headscale only knows the
         // node by that hostname, so polling by agentId never matched and the node
         // "timed out" registering despite being online.
-        const registration = await headscaleIntegration.waitForVPNRegistration(
+        let registration = await headscaleIntegration.waitForVPNRegistration(
           vpnEnvVars.TS_HOSTNAME ?? agentId,
           // 180s default (env-overridable via VPN_REGISTRATION_TIMEOUT_MS), not
           // a hardcoded 60s: a cold container needs >1 min to boot + register,
@@ -2167,6 +2726,95 @@ export class DockerSandboxProvider implements SandboxProvider {
           // container, the race the reclaim-mode deletion used to guard (#16565).
           previousVpnNodeId ? { excludeNodeId: previousVpnNodeId } : undefined,
         );
+        if (registration && remoteCompletionTracker) {
+          try {
+            if (!createdContainerId) {
+              throw new ElizaError("Docker container identity is missing for Headscale binding", {
+                code: "SANDBOX_HEADSCALE_DOCKER_IDENTITY_MISSING",
+                context: { containerName, replacementAttemptId },
+                severity: "fatal",
+              });
+            }
+            const containerTailnetOutput = await ssh.exec(
+              `docker exec ${shellQuote(createdContainerId)} tailscale --socket=/tmp/tailscaled.sock ip -4`,
+              DOCKER_CMD_TIMEOUT_MS,
+            );
+            const containerTailnetLines = containerTailnetOutput
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .filter(Boolean);
+            const containerTailnetIp = containerTailnetLines[0];
+            if (
+              containerTailnetLines.length !== 1 ||
+              !isCanonicalHeadscaleTailnetIpv4(containerTailnetIp) ||
+              !isCanonicalHeadscaleTailnetIpv4(registration.ip) ||
+              containerTailnetIp !== registration.ip ||
+              !isCanonicalHeadscaleNodeId(registration.nodeId)
+            ) {
+              throw new ElizaError(
+                "Headscale registration does not match the exact Docker candidate",
+                {
+                  code: "SANDBOX_HEADSCALE_DOCKER_IDENTITY_MISMATCH",
+                  context: {
+                    containerName,
+                    containerId: createdContainerId,
+                    headscaleNodeId: registration.nodeId,
+                    headscaleIp: registration.ip,
+                    containerTailnetIp: containerTailnetIp ?? null,
+                    containerTailnetLineCount: containerTailnetLines.length,
+                  },
+                  severity: "fatal",
+                },
+              );
+            }
+          } catch (bindingError) {
+            // error-policy:J2 exact settlement consumes this explicit
+            // unresolved completion instead of treating degraded routing as success.
+            markRemoteCompletionUnresolved(bindingError);
+            registration = null;
+          }
+        }
+        if (registration && remoteCompletionTracker) {
+          const rename = (
+            registration as unknown as {
+              rename?: { outcome?: unknown; cause?: unknown };
+            }
+          ).rename;
+          switch (rename?.outcome) {
+            case "not-needed":
+            case "succeeded":
+            case "conflict-proven":
+              break;
+            case "unresolved":
+              markRemoteCompletionUnresolved(
+                rename.cause ??
+                  new ElizaError("Headscale rename completion has no inspectable cause", {
+                    code: "HEADSCALE_RENAME_COMPLETION_CAUSE_MISSING",
+                    severity: "ephemeral",
+                  }),
+              );
+              break;
+            default:
+              markRemoteCompletionUnresolved(
+                new ElizaError("Headscale rename completion outcome is missing or unknown", {
+                  code: "HEADSCALE_RENAME_COMPLETION_UNKNOWN",
+                  context: {
+                    outcome: typeof rename?.outcome === "string" ? rename.outcome : null,
+                  },
+                  severity: "ephemeral",
+                }),
+              );
+          }
+        }
+        if (registration === null) {
+          markRemoteCompletionUnresolved(
+            new ElizaError("Headscale registration did not reach an exact observable completion", {
+              code: "HEADSCALE_REGISTRATION_COMPLETION_UNRESOLVED",
+              context: { containerName },
+              severity: "ephemeral",
+            }),
+          );
+        }
         headscaleIp = registration?.ip ?? null;
         vpnNodeId = registration?.nodeId;
         if (headscaleIp) {
@@ -2179,6 +2827,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         }
       } catch (err) {
+        markRemoteCompletionUnresolved(err);
         logger.warn(
           `[docker-sandbox] VPN registration failed for ${containerName}: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -2199,6 +2848,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                 provider: "docker",
                 nodeId,
                 hostname,
+                ...replacementPlacementMetadata,
                 containerName,
                 bridgePort,
                 webUiPort,
@@ -2220,18 +2870,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             // error-policy:J2 context-adding rethrow — a committed VPN identity
             // must remain attached to the durable cleanup failure.
             throw new SandboxReplacementCleanupUnresolvedError(
-              {
-                sandboxId: containerName,
-                nodeId,
-                containerName,
-                replacementAttemptId,
-                containerId: createdContainerId,
-                vpnNodeId,
-                vpnNodeName: vpnEnvVars.TS_HOSTNAME,
-                previousVpnNodeId,
-                vpnRegistrationStartedAt,
-                allocationCounted: Boolean(dbNode),
-              },
+              currentCleanupLocator(),
               callbackError,
             );
           }
@@ -2262,33 +2901,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         });
       if (replacementIntentPersisted) {
         throw new SandboxReplacementCleanupUnresolvedError(
-          {
-            sandboxId: containerName,
-            nodeId,
-            containerName,
-            replacementAttemptId,
-            containerId: createdContainerId,
-            vpnNodeId,
-            vpnNodeName: vpnEnvVars.TS_HOSTNAME,
-            previousVpnNodeId,
-            vpnRegistrationStartedAt,
-            allocationCounted: Boolean(dbNode),
-          },
+          currentCleanupLocator(),
           new Error(errorMessage),
         );
       }
-      const cleanupLocator = {
-        sandboxId: containerName,
-        nodeId,
-        containerName,
-        replacementAttemptId,
-        containerId: createdContainerId,
-        vpnNodeId,
-        vpnNodeName: vpnEnvVars.TS_HOSTNAME,
-        previousVpnNodeId,
-        vpnRegistrationStartedAt,
-        allocationCounted: Boolean(dbNode),
-      };
+      const cleanupLocator = currentCleanupLocator();
       const cleanupNode: DockerNodeConnection = {
         node_id: nodeId,
         hostname,
@@ -2323,6 +2940,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       provider: "docker",
       nodeId,
       hostname,
+      ...replacementPlacementMetadata,
       containerName,
       bridgePort,
       webUiPort,
@@ -2361,13 +2979,16 @@ export class DockerSandboxProvider implements SandboxProvider {
     return handle;
   }
 
-  private async provisionAutoscaledNodeForAgent({
-    image,
-    platform,
-  }: {
-    image: string;
-    platform?: string;
-  }): Promise<DockerNode | null> {
+  private async provisionAutoscaledNodeForAgent(
+    {
+      image,
+      platform,
+    }: {
+      image: string;
+      platform?: string;
+    },
+    remoteCompletionTracker?: RemoteCompletionTracker,
+  ): Promise<DockerNode | null> {
     const env = getCloudAwareEnv();
     const hcloudToken = containersEnv.hetznerCloudToken();
     const publicKey = env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
@@ -2418,8 +3039,18 @@ export class DockerSandboxProvider implements SandboxProvider {
         nodeId: provisioned.nodeId,
         hostname: provisioned.hostname,
       });
+      remoteCompletionTracker?.causes.push(
+        new ElizaError("Autoscaled Docker node readiness did not reach exact completion", {
+          code: "DOCKER_AUTOSCALE_READINESS_UNRESOLVED",
+          context: { nodeId: provisioned.nodeId },
+          severity: "ephemeral",
+        }),
+      );
       return null;
     } catch (error) {
+      // error-policy:J4 legacy provisioning keeps its best-effort fallback;
+      // exact-success retains the ambiguous provisioning cause in its tracker.
+      remoteCompletionTracker?.causes.push(error);
       logger.warn("[docker-sandbox] Autoscaled Docker node provisioning failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -2469,14 +3100,83 @@ export class DockerSandboxProvider implements SandboxProvider {
       containerName,
       vpnNodeId,
     };
-    const node = await dockerNodesRepository.findByNodeId(nodeId);
-    if (!node) {
-      throw new SandboxReplacementCleanupUnresolvedError(
-        locator,
-        new Error(`[docker-sandbox] Node ${nodeId} is not registered`),
-      );
+    let node: DockerNodeConnection;
+    try {
+      node = await this.resolveReplacementCleanupNode(locator);
+    } catch (error) {
+      // error-policy:J2 preserve the caller's exact locator for reconciliation.
+      throw new SandboxReplacementCleanupUnresolvedError(locator, error);
     }
     await this.retireReplacementCandidateOnNode(locator, node);
+  }
+
+  private async resolveReplacementCleanupNode(
+    locator: SandboxReplacementCleanupLocator,
+  ): Promise<DockerNodeConnection> {
+    const exactAuthorityValues = [
+      locator.nodeRecordId,
+      locator.nodeHostname,
+      locator.nodeSshPort,
+      locator.nodeSshUser,
+      locator.nodeHostKeyFingerprint,
+      locator.replacementSecretCleanupVersion,
+    ];
+    const hasAnyExactAuthority = exactAuthorityValues.some(
+      (value) => value !== undefined && value !== null,
+    );
+    if (!hasAnyExactAuthority) {
+      const legacyNode = await dockerNodesRepository.findByNodeId(locator.nodeId);
+      if (!legacyNode) {
+        throw new ElizaError(`[docker-sandbox] Node ${locator.nodeId} is not registered`, {
+          code: "SANDBOX_REPLACEMENT_NODE_NOT_REGISTERED",
+          context: { nodeId: locator.nodeId, containerName: locator.containerName },
+          severity: "fatal",
+        });
+      }
+      return legacyNode;
+    }
+
+    assertSandboxReplacementAttemptId(locator.replacementAttemptId);
+
+    const nodeRecordId = locator.nodeRecordId;
+    if (
+      !isCanonicalExactReplacementLocator(locator) ||
+      !isCanonicalNodeAuthorityUuid(nodeRecordId)
+    ) {
+      throw new ElizaError("Exact replacement cleanup node authority is incomplete", {
+        code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_INVALID",
+        context: { nodeId: locator.nodeId, nodeRecordId: locator.nodeRecordId ?? null },
+        severity: "fatal",
+      });
+    }
+
+    const node = await dockerNodesRepository.findByIdOnPrimary(nodeRecordId);
+    if (!node) {
+      throw new ElizaError("Exact replacement cleanup node record is no longer registered", {
+        code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_MISSING",
+        context: { nodeId: locator.nodeId, nodeRecordId },
+        severity: "fatal",
+      });
+    }
+    const drifted = [
+      ["nodeId", node.node_id, locator.nodeId],
+      ["nodeHostname", node.hostname, locator.nodeHostname],
+      ["nodeSshPort", node.ssh_port, locator.nodeSshPort],
+      ["nodeSshUser", node.ssh_user, locator.nodeSshUser],
+      ["nodeHostKeyFingerprint", node.host_key_fingerprint, locator.nodeHostKeyFingerprint],
+    ].find(([, actual, expected]) => actual !== expected);
+    if (drifted) {
+      throw new ElizaError("Exact replacement cleanup node authority changed", {
+        code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_DRIFT",
+        context: {
+          nodeId: locator.nodeId,
+          nodeRecordId: locator.nodeRecordId,
+          driftedKey: drifted[0],
+        },
+        severity: "fatal",
+      });
+    }
+    return node;
   }
 
   private async stopOnSpecificNodeWithPolicy(
@@ -2562,20 +3262,214 @@ export class DockerSandboxProvider implements SandboxProvider {
     node: DockerNodeConnection,
   ): Promise<void> {
     try {
+      let observedCandidateId: string | null = null;
+      let dockerCreateQuiescent = false;
+      let exactCleanupSsh: DockerSSHClient | null = null;
+      if (locator.replacementSecretCleanupVersion === 1 && locator.replacementAttemptId) {
+        const ssh = DockerSSHClient.getClient(
+          node.hostname,
+          node.ssh_port ?? DEFAULT_SSH_PORT,
+          node.host_key_fingerprint ?? undefined,
+          node.ssh_user ?? DEFAULT_SSH_USERNAME,
+        );
+        exactCleanupSsh = ssh;
+        // Tombstone first, under the same remote flock used by both plaintext
+        // producers. The receipt proves the attempt cannot start again and its
+        // plaintext files are absent. It intentionally does NOT claim that an
+        // already-submitted Docker daemon request cannot materialize later;
+        // id-less absence settles only with a quiescent producer marker or a
+        // durable exact candidate observation from an earlier cleanup pass.
+        const cleanupReceipt = await ssh.exec(
+          buildReplacementSecretArtifactsCleanupCommand(
+            locator.containerName,
+            locator.replacementAttemptId,
+          ),
+          DOCKER_CMD_TIMEOUT_MS,
+        );
+        const expectedReceipt = getReplacementSecretArtifactsCleanupReceipt(
+          locator.replacementAttemptId,
+        );
+        const expectedQuiescentReceipt = getReplacementDockerCreateQuiescentReceipt(
+          locator.replacementAttemptId,
+        );
+        const receiptLines = cleanupReceipt.trim().split(/\r?\n/).filter(Boolean);
+        if (receiptLines.shift() !== expectedReceipt) {
+          throw new ElizaError(
+            `[docker-sandbox] Replacement secret cleanup receipt was missing or malformed for ${locator.containerName}`,
+            {
+              code: "SANDBOX_REPLACEMENT_SECRET_CLEANUP_RECEIPT_INVALID",
+              context: {
+                containerName: locator.containerName,
+                replacementAttemptId: locator.replacementAttemptId,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        for (const receiptLine of receiptLines) {
+          if (receiptLine === expectedQuiescentReceipt && !dockerCreateQuiescent) {
+            dockerCreateQuiescent = true;
+            continue;
+          }
+          const candidatePrefix = `ELIZA_REPLACEMENT_CANDIDATE_OBSERVED_V1 ${locator.replacementAttemptId} `;
+          const candidateId = receiptLine.startsWith(candidatePrefix)
+            ? receiptLine.slice(candidatePrefix.length)
+            : null;
+          if (
+            candidateId &&
+            observedCandidateId === null &&
+            isCanonicalDockerContainerId(candidateId) &&
+            receiptLine ===
+              getReplacementCandidateObservedReceipt(locator.replacementAttemptId, candidateId)
+          ) {
+            observedCandidateId = candidateId;
+            continue;
+          }
+          throw new ElizaError(
+            `[docker-sandbox] Replacement cleanup state receipt was malformed for ${locator.containerName}`,
+            {
+              code: "SANDBOX_REPLACEMENT_CLEANUP_STATE_RECEIPT_INVALID",
+              context: {
+                containerName: locator.containerName,
+                replacementAttemptId: locator.replacementAttemptId,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        if (
+          locator.containerId &&
+          observedCandidateId &&
+          !dockerContainerIdsMatch(locator.containerId, observedCandidateId)
+        ) {
+          throw new ElizaError(
+            `[docker-sandbox] Replacement candidate proof conflicts with the persisted Docker id for ${locator.containerName}`,
+            {
+              code: "SANDBOX_REPLACEMENT_CANDIDATE_PROOF_CONFLICT",
+              context: {
+                containerName: locator.containerName,
+                replacementAttemptId: locator.replacementAttemptId,
+                persistedContainerId: locator.containerId,
+                observedCandidateId,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+      }
       const cleanupTarget = locator.replacementAttemptId
-        ? await this.resolveReplacementContainerForCleanup(locator, node)
+        ? await this.resolveReplacementContainerForCleanup(locator, node, {
+            observedCandidateId,
+            dockerCreateQuiescent,
+          })
         : locator.containerName;
       if (cleanupTarget) {
+        if (
+          locator.replacementSecretCleanupVersion === 1 &&
+          locator.replacementAttemptId &&
+          !locator.containerId &&
+          !observedCandidateId
+        ) {
+          if (!exactCleanupSsh) {
+            throw new ElizaError(
+              `[docker-sandbox] Exact replacement cleanup SSH authority is unavailable for ${locator.containerName}`,
+              {
+                code: "SANDBOX_REPLACEMENT_CLEANUP_SSH_AUTHORITY_UNAVAILABLE",
+                context: {
+                  nodeId: locator.nodeId,
+                  containerName: locator.containerName,
+                  replacementAttemptId: locator.replacementAttemptId,
+                },
+                severity: "fatal",
+              },
+            );
+          }
+          const observationReceipt = await exactCleanupSsh.exec(
+            buildReplacementCandidateObservedCommand(locator.replacementAttemptId, cleanupTarget),
+            DOCKER_CMD_TIMEOUT_MS,
+          );
+          const expectedObservationReceipt = getReplacementCandidateObservedReceipt(
+            locator.replacementAttemptId,
+            cleanupTarget,
+          );
+          if (observationReceipt.trim() !== expectedObservationReceipt) {
+            throw new ElizaError(
+              `[docker-sandbox] Replacement candidate observation receipt was missing or malformed for ${locator.containerName}`,
+              {
+                code: "SANDBOX_REPLACEMENT_CANDIDATE_OBSERVATION_RECEIPT_INVALID",
+                context: {
+                  containerName: locator.containerName,
+                  replacementAttemptId: locator.replacementAttemptId,
+                  observedCandidateId: cleanupTarget,
+                },
+                severity: "fatal",
+              },
+            );
+          }
+        }
         await this.stopOnSpecificNodeWithPolicy(node, cleanupTarget, 10, false, false);
       }
       if (locator.vpnNodeId) {
+        if (!isCanonicalHeadscaleNodeId(locator.vpnNodeId)) {
+          throw new ElizaError(
+            `[docker-sandbox] Cannot clean invalid Headscale node id ${JSON.stringify(locator.vpnNodeId)}`,
+            {
+              code: "SANDBOX_REPLACEMENT_HEADSCALE_NODE_ID_INVALID",
+              context: {
+                containerName: locator.containerName,
+                vpnNodeId: locator.vpnNodeId,
+              },
+              severity: "fatal",
+            },
+          );
+        }
         await withTimeout(
           headscaleClient.deleteNode(locator.vpnNodeId),
           HEADSCALE_CLEANUP_TIMEOUT_MS,
           "replacement headscale cleanup",
         );
+        const remainingNodes = await withTimeout(
+          headscaleClient.listNodesStrict(),
+          HEADSCALE_CLEANUP_TIMEOUT_MS,
+          "replacement headscale cleanup proof",
+        );
+        for (const node of remainingNodes) assertCanonicalHeadscaleNode(node);
+        if (remainingNodes.some((node) => node.id === locator.vpnNodeId)) {
+          throw new ElizaError(
+            `[docker-sandbox] Cannot prove Headscale node ${locator.vpnNodeId} absent after cleanup`,
+            {
+              code: "SANDBOX_REPLACEMENT_HEADSCALE_RETIREMENT_UNPROVEN",
+              context: {
+                containerName: locator.containerName,
+                vpnNodeId: locator.vpnNodeId,
+              },
+              severity: "fatal",
+            },
+          );
+        }
       } else if (locator.vpnNodeName) {
-        await this.retireReplacementVpnByRegistration(locator);
+        if (locator.replacementSecretCleanupVersion === 1 && locator.containerId) {
+          throw new ElizaError(
+            "Exact replacement VPN cleanup requires a durable Headscale node ID",
+            {
+              code: "SANDBOX_REPLACEMENT_VPN_NODE_ID_UNRESOLVED",
+              context: {
+                containerName: locator.containerName,
+                replacementAttemptId: locator.replacementAttemptId ?? null,
+                vpnNodeName: locator.vpnNodeName,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        // An id-less exact Docker intent cannot have reached `docker start`:
+        // start happens only after create returns an id and the created-stage
+        // callback completes. Once its stopped candidate is retired above,
+        // there is therefore no Headscale registration to reclaim. Legacy
+        // locators lack that sequencing contract and keep the bounded lookup.
+        if (locator.replacementSecretCleanupVersion !== 1) {
+          await this.retireReplacementVpnByRegistration(locator);
+        }
       }
     } catch (error) {
       // error-policy:J2 context-adding rethrow — the exact persisted locator is
@@ -2587,6 +3481,10 @@ export class DockerSandboxProvider implements SandboxProvider {
   private async resolveReplacementContainerForCleanup(
     locator: SandboxReplacementCleanupLocator,
     node: DockerNodeConnection,
+    remoteProof: {
+      observedCandidateId: string | null;
+      dockerCreateQuiescent: boolean;
+    },
   ): Promise<string | null> {
     const ssh = DockerSSHClient.getClient(
       node.hostname,
@@ -2598,7 +3496,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     // When Docker returned the create id before a later phase failed, inspect
     // that immutable object directly. A same-name replacement can never make
     // the old id look present or authorize deleting the newer occupant.
-    const inspectTarget = locator.containerId ?? locator.containerName;
+    const inspectTarget =
+      locator.containerId ?? remoteProof.observedCandidateId ?? locator.containerName;
     let output: string;
     try {
       output = await ssh.exec(
@@ -2610,6 +3509,25 @@ export class DockerSandboxProvider implements SandboxProvider {
       // container absence becomes null; every ambiguous transport failure rethrows.
       const message = error instanceof Error ? error.message : String(error);
       if (isContainerAbsentMessage(message)) {
+        if (
+          locator.replacementSecretCleanupVersion === 1 &&
+          !locator.containerId &&
+          !remoteProof.observedCandidateId &&
+          !remoteProof.dockerCreateQuiescent
+        ) {
+          throw new ElizaError(
+            `[docker-sandbox] Cannot prove id-less replacement ${locator.containerName} absent: an interrupted Docker create may still materialize`,
+            {
+              code: "SANDBOX_REPLACEMENT_DOCKER_CREATE_UNRESOLVED",
+              context: {
+                nodeId: locator.nodeId,
+                containerName: locator.containerName,
+                replacementAttemptId: locator.replacementAttemptId ?? null,
+              },
+              severity: "fatal",
+            },
+          );
+        }
         return null;
       }
       throw error;
@@ -2639,7 +3557,38 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: invalid Docker id`,
       );
     }
+    if (
+      remoteProof.observedCandidateId &&
+      !dockerContainerIdsMatch(remoteProof.observedCandidateId, containerId)
+    ) {
+      throw new ElizaError(
+        `[docker-sandbox] Replacement candidate proof id mismatch for ${locator.containerName}`,
+        {
+          code: "SANDBOX_REPLACEMENT_CANDIDATE_ID_MISMATCH",
+          context: {
+            containerName: locator.containerName,
+            observedCandidateId: remoteProof.observedCandidateId,
+            inspectedContainerId: containerId,
+          },
+          severity: "fatal",
+        },
+      );
+    }
     if (attemptId !== locator.replacementAttemptId) {
+      if (locator.replacementSecretCleanupVersion === 1) {
+        throw new ElizaError(
+          `[docker-sandbox] Exact replacement attempt label mismatch for ${locator.containerName}`,
+          {
+            code: "SANDBOX_REPLACEMENT_EXACT_ATTEMPT_LABEL_MISMATCH",
+            context: {
+              containerName: locator.containerName,
+              expectedAttemptId: locator.replacementAttemptId ?? null,
+              observedAttemptId: attemptId || null,
+            },
+            severity: "fatal",
+          },
+        );
+      }
       // A timeout before Docker returned an id leaves only the deterministic
       // name + attempt label as identity. If that name is now occupied by a
       // DIFFERENT attempt, Docker's name uniqueness proves the unknown target
@@ -2733,6 +3682,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         HEADSCALE_CLEANUP_TIMEOUT_MS,
         "replacement headscale lookup",
       );
+      for (const node of nodes) assertCanonicalHeadscaleNode(node);
       const candidates = nodes.filter((node) => {
         if (node.id === locator.previousVpnNodeId) {
           return false;
