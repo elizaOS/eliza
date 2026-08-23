@@ -2,8 +2,8 @@
  * Tests the createQueryClient factory defaults and instance independence behind the embedded public surfaces.
  */
 
-import { describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
+import { describe, expect, test } from "vitest";
 import { createQueryClient } from "../src/lib/query-client";
 
 describe("createQueryClient", () => {
