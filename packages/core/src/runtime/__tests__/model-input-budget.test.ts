@@ -67,13 +67,13 @@ describe("buildModelInputBudget", () => {
 			expect(budget.dispatchThresholdTokens).toBe(100_000);
 		});
 
-		it("flags shouldReject at or above the dispatch threshold", () => {
+		it("keeps estimates diagnostic at or above the dispatch threshold", () => {
 			// 800_000 chars → 800_000/3.5 ≈ 228_572 estimated tokens → above
 			// the 118k default threshold.
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(800_000)],
 			});
-			expect(budget.shouldReject).toBe(true);
+			expect(budget.shouldReject).toBe(false);
 		});
 
 		it("leaves shouldReject off when estimate is below threshold", () => {

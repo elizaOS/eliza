@@ -49,7 +49,8 @@ export interface ModelInputBudget {
 	contextWindowTokens: number;
 	reserveTokens: number;
 	dispatchThresholdTokens: number;
-	shouldReject: boolean;
+	/** @deprecated Estimates are diagnostic only and never authorize rejection. */
+	shouldReject: false;
 	/** @deprecated Alias of dispatchThresholdTokens for source compatibility. */
 	compactionThresholdTokens: number;
 	/** @deprecated Always false; automatic compaction is retired. */
@@ -313,7 +314,10 @@ export function buildModelInputBudget(args: {
 		contextWindowTokens,
 		reserveTokens,
 		dispatchThresholdTokens,
-		shouldReject: estimatedInputTokens >= dispatchThresholdTokens,
+		// Token estimates are not provider tokenization. Rejecting from them can
+		// discard valid complete requests, so only the provider's authoritative
+		// boundary may fail this call.
+		shouldReject: false,
 		compactionThresholdTokens: dispatchThresholdTokens,
 		shouldCompact: false,
 		estimationMode,

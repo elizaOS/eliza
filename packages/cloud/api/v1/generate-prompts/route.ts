@@ -7,6 +7,7 @@
  */
 
 import { openai } from "@ai-sdk/openai";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
@@ -78,6 +79,13 @@ Random seed: ${promptSeed}`,
       temperature: 1.5,
       maxOutputTokens: 500,
       topP: 0.95,
+      onFinish: ({ finishReason }) => {
+        assertModelOutputComplete({
+          finishReason,
+          provider: "openai",
+          model: "gpt-4o",
+        });
+      },
     });
 
     // Bill actual gpt-4o token usage once the stream settles. This route

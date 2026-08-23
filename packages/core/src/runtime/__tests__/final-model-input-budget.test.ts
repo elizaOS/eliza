@@ -1,8 +1,9 @@
 /**
  * Exercises AgentRuntime final prepared-request budgeting with real routing,
  * pre-model hooks, failover, and provider handlers. Deterministic fake handlers
- * prove every text-generation slot rejects complete oversized input before
- * dispatch and that a later large-context registration can accept it unchanged.
+ * prove every text-generation slot dispatches complete input unchanged. Only
+ * an authoritative provider failure may reject or trigger failover; token
+ * estimates remain diagnostic because they are not provider tokenization.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -24,10 +25,10 @@ describe("AgentRuntime final model-input budget", () => {
 		ModelType.ACTION_PLANNER,
 		ModelType.TEXT_SMALL,
 	])(
-		"rejects complete oversized %s input before its handler",
+		"dispatches complete estimated-large %s input to its handler",
 		async (modelType) => {
 			const runtime = makeRuntime();
-			const handler = vi.fn(async () => "must not run");
+			const handler = vi.fn(async () => "complete");
 			runtime.registerModel(modelType, handler, "tiny", 10, {
 				contextWindowTokens: 20_000,
 				displayModel: "tiny-final-wire",
@@ -39,23 +40,19 @@ describe("AgentRuntime final model-input budget", () => {
 						{ role: "user", content: `HEAD${"x".repeat(15_000)}TAIL` },
 					],
 				}),
-			).rejects.toMatchObject({
-				code: "MODEL_INPUT_OVER_BUDGET",
-				context: expect.objectContaining({
-					provider: "tiny",
-					modelName: "tiny-final-wire",
-					contextWindowTokens: 20_000,
-					estimationMode: "utf8-upper-bound",
-					contextWindowSource: "registration-metadata",
-				}),
+			).resolves.toBe("complete");
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][1]).toMatchObject({
+				providerOptions: {
+					eliza: { modelInputBudget: { shouldReject: false } },
+				},
 			});
-			expect(handler).not.toHaveBeenCalled();
 		},
 	);
 
-	it("checks content added by pre-model hooks", async () => {
+	it("dispatches content added by pre-model hooks unchanged", async () => {
 		const runtime = makeRuntime();
-		const handler = vi.fn(async () => "must not run");
+		const handler = vi.fn(async () => "complete");
 		runtime.registerModel(ModelType.TEXT_SMALL, handler, "tiny", 10, {
 			contextWindowTokens: 20_000,
 		});
@@ -76,13 +73,16 @@ describe("AgentRuntime final model-input budget", () => {
 
 		await expect(
 			runtime.useModel(ModelType.TEXT_SMALL, { prompt: "small initially" }),
-		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
-		expect(handler).not.toHaveBeenCalled();
+		).resolves.toBe("complete");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0][1]).toMatchObject({
+			prompt: `small initially${"y".repeat(15_000)}`,
+		});
 	});
 
-	it("rejects an oversized provider-options-only payload before dispatch", async () => {
+	it("dispatches an estimated-large provider-options payload unchanged", async () => {
 		const runtime = makeRuntime();
-		const handler = vi.fn(async () => "must not run");
+		const handler = vi.fn(async () => "complete");
 		runtime.registerModel(ModelType.TEXT_SMALL, handler, "tiny", 10, {
 			contextWindowTokens: 20_000,
 		});
@@ -92,8 +92,11 @@ describe("AgentRuntime final model-input budget", () => {
 				prompt: "small",
 				providerOptions: { custom: { blob: "x".repeat(15_000) } },
 			}),
-		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
-		expect(handler).not.toHaveBeenCalled();
+		).resolves.toBe("complete");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0][1]).toMatchObject({
+			providerOptions: { custom: { blob: "x".repeat(15_000) } },
+		});
 	});
 
 	it("dispatches an immutable clone without mutating caller-owned data", async () => {
@@ -132,9 +135,9 @@ describe("AgentRuntime final model-input budget", () => {
 		}).not.toThrow();
 	});
 
-	it("reserves the caller's requested output before dispatch", async () => {
+	it("does not reject from an estimated output reserve", async () => {
 		const runtime = makeRuntime();
-		const handler = vi.fn(async () => "must not run");
+		const handler = vi.fn(async () => "complete");
 		runtime.registerModel(ModelType.TEXT_SMALL, handler, "tiny", 10, {
 			contextWindowTokens: 20_000,
 		});
@@ -144,11 +147,16 @@ describe("AgentRuntime final model-input budget", () => {
 				prompt: "x".repeat(5_000),
 				maxTokens: 16_000,
 			}),
-		).rejects.toMatchObject({
-			code: "MODEL_INPUT_OVER_BUDGET",
-			context: expect.objectContaining({ reserveTokens: 16_000 }),
+		).resolves.toBe("complete");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0][1]).toMatchObject({
+			maxTokens: 16_000,
+			providerOptions: {
+				eliza: {
+					modelInputBudget: { reserveTokens: 16_000, shouldReject: false },
+				},
+			},
 		});
-		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("rejects an unserializable final request before dispatch", async () => {
@@ -166,14 +174,12 @@ describe("AgentRuntime final model-input budget", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it("skips a small registration and dispatches the same complete request to a fitting failover", async () => {
+	it("surfaces an authoritative provider rejection after complete dispatch", async () => {
 		const runtime = makeRuntime();
-		const small = vi.fn(async () => "must not run");
-		let captured: Record<string, unknown> | undefined;
-		const large = vi.fn(async (_runtime, params: Record<string, unknown>) => {
-			captured = params;
-			return "ok";
+		const small = vi.fn(async () => {
+			throw new Error("authoritative provider context rejection");
 		});
+		const large = vi.fn(async () => "ok");
 		runtime.registerModel(ModelType.TEXT_SMALL, small, "small", 100, {
 			contextWindowTokens: 20_000,
 			displayModel: "small-window",
@@ -184,17 +190,19 @@ describe("AgentRuntime final model-input budget", () => {
 		});
 		const sentinel = `HEAD${"z".repeat(15_000)}TAIL`;
 
-		await runtime.useModel(ModelType.TEXT_SMALL, {
-			messages: [{ role: "user", content: sentinel }],
-		});
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				messages: [{ role: "user", content: sentinel }],
+			}),
+		).rejects.toThrow("authoritative provider context rejection");
 
-		expect(small).not.toHaveBeenCalled();
-		expect(large).toHaveBeenCalledTimes(1);
-		expect(JSON.stringify(captured?.messages)).toContain(sentinel);
-		expect(captured?.providerOptions).toMatchObject({
+		expect(small).toHaveBeenCalledTimes(1);
+		expect(large).not.toHaveBeenCalled();
+		expect(JSON.stringify(small.mock.calls[0][1].messages)).toContain(sentinel);
+		expect(small.mock.calls[0][1].providerOptions).toMatchObject({
 			eliza: {
 				modelInputBudget: {
-					contextWindowTokens: 100_000,
+					contextWindowTokens: 20_000,
 					estimationMode: "utf8-upper-bound",
 					shouldReject: false,
 				},

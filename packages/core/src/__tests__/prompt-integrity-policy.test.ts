@@ -52,6 +52,61 @@ const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
 	],
 };
 
+const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
+	"packages/cloud/api/agents/[id]/a2a/route.ts": [
+		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
+	],
+	"packages/cloud/api/agents/[id]/mcp/route.ts": [
+		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
+	],
+	"packages/cloud/api/v1/chat/route.ts": [
+		/onFinish:\s*async\s*\(\{\s*text,\s*usage,\s*finishReason\s*\}\)/,
+		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
+	],
+	"packages/cloud/api/v1/generate-prompts/route.ts": [
+		/onFinish:\s*\(\{\s*finishReason\s*\}\)/,
+		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
+	],
+	"packages/cloud/shared/src/lib/api/a2a/skills.ts": [
+		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/discord-automation/app-automation.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/app-promotion-assets.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/app-promotion.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/memory.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}await result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/room-title.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/seo.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/twitter-automation/app-automation.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
+		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
+	"plugins/plugin-anthropic/models/image.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}response\.finishReason/,
+	],
+};
+
 const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
@@ -59,6 +114,18 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/cloud/shared/src/db/schemas/conversations.ts": [
 		/maxTokens:\s*2000/,
 	],
+	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
+		/capped at 20/,
+		/\.slice\([^)]*20/,
+	],
+	"packages/cloud/shared/src/lib/services/room-title.ts": [
+		/result\.text[\s\S]{0,240}\.slice\(/,
+		/result\.text[\s\S]{0,240}\.split\("\\n"\)/,
+	],
+	"packages/cloud/shared/src/lib/services/twitter-automation/app-automation.ts":
+		[/text\.trim\(\)\.slice\(0,\s*280\)/],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
+		[/maxOutputTokens:\s*512/],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
@@ -66,6 +133,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/maxTokens\s*:/,
 		/retryMaxTokens/,
 		/contentProjection/,
+	],
+	"packages/core/src/runtime.ts": [
+		/if\s*\(finalBudget\.shouldReject\)/,
+		/code:\s*"MODEL_INPUT_OVER_BUDGET"/,
+	],
+	"packages/core/src/runtime/model-input-budget.ts": [
+		/shouldReject:\s*estimatedInputTokens\s*[><=]/,
 	],
 	"packages/core/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
@@ -325,6 +399,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
+	"plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts": [
+		/maxTokens:\s*args\.maxTokens\s*\?\?\s*2048/,
+	],
+	"plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts": [
+		/maxTokens:\s*args\.maxTokens\s*\?\?\s*512/,
+	],
+	"plugins/plugin-native-llama/src/capacitor-llama-adapter.ts": [
+		/Math\.min\(Math\.floor\(requested\),\s*MOBILE_MAX_TOKENS_CAP\)/,
+	],
 	"plugins/plugin-sql/src/services/advanced-memory-storage.ts": [
 		/entityId\.slice\(0,\s*8\)/,
 	],
@@ -585,6 +668,22 @@ describe("prompt integrity policy", () => {
 	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
 		for (const [relativePath, requiredPatterns] of Object.entries(
 			computerUseTrajectoryBoundaryCalls,
+		)) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			for (const pattern of requiredPatterns) {
+				expect(source, `${relativePath} must match ${pattern}`).toMatch(
+					pattern,
+				);
+			}
+		}
+	});
+
+	it("keeps direct AI SDK outputs behind completeness checks", () => {
+		for (const [relativePath, requiredPatterns] of Object.entries(
+			outputCompletenessBoundaryCalls,
 		)) {
 			const source = readFileSync(
 				resolve(repositoryRoot, relativePath),

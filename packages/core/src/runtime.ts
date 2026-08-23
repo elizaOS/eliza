@@ -7022,7 +7022,6 @@ export class AgentRuntime implements IAgentRuntime {
 			// live mutable object, not this placeholder.
 			let recordingStateRef: { recorded: boolean } = { recorded: false };
 			let attemptPreparationFailed = false;
-			let inputBudgetRejected = false;
 			let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined;
 
 			try {
@@ -7537,50 +7536,6 @@ export class AgentRuntime implements IAgentRuntime {
 							}
 							finalBudget = measuredWithMetadata;
 						}
-					}
-					if (finalBudget.shouldReject) {
-						const paramsRecord = isPlainObject(modelParams)
-							? (modelParams as Record<string, unknown>)
-							: {};
-						const modelName =
-							typeof paramsRecord.model === "string" &&
-							paramsRecord.model.trim()
-								? paramsRecord.model.trim()
-								: this.resolveRegistrationModelName(resolvedModel.metadata);
-						const error = new ElizaError(
-							"Complete model input exceeds the resolved provider context budget",
-							{
-								code: "MODEL_INPUT_OVER_BUDGET",
-								context: {
-									requestedModelType: String(modelType),
-									resolvedModelType: String(resolvedModelKey),
-									provider: resolvedModel.provider ?? "unknown",
-									modelName: modelName ?? "unknown",
-									estimatedInputTokens: finalBudget.estimatedInputTokens,
-									dispatchThresholdTokens: finalBudget.dispatchThresholdTokens,
-									contextWindowTokens: finalBudget.contextWindowTokens,
-									reserveTokens: finalBudget.reserveTokens,
-									estimationMode: finalBudget.estimationMode,
-									contextWindowSource: finalBudget.resolvedModelKey
-										? "model-lookup"
-										: resolvedModel.metadata?.contextWindowTokens !== undefined
-											? "registration-metadata"
-											: "runtime-default",
-								},
-							},
-						);
-						inputBudgetRejected = true;
-						modelParamsRef = modelParams;
-						await this.recordFailedModelTrajectory({
-							modelType: String(modelType),
-							resolvedModelKey: String(resolvedModelKey),
-							provider: resolvedModel.provider,
-							modelParams,
-							promptContent,
-							error,
-							elapsedTime: Date.now() - preprocessingStartedAt,
-						});
-						throw error;
 					}
 					this.freezeAdmittedModelRequest(modelParams);
 				}
@@ -8119,25 +8074,6 @@ export class AgentRuntime implements IAgentRuntime {
 					streamCallbackResult.error !== error
 				) {
 					throw streamCallbackResult.error;
-				}
-				if (inputBudgetRejected) {
-					recordInferenceSpan(
-						`model-preprocess:${String(modelType)}`,
-						Date.now() - preprocessingStartedAt,
-						{ ...attemptMeta, outcome: "error" },
-					);
-					lastModelError = error;
-					const nextAfterRejection = resolvedModels[resolvedIndex + 1];
-					if (requestedProvider !== undefined || !nextAfterRejection) {
-						throw error;
-					}
-					this.logModelProviderFailover({
-						requestedModelKey,
-						failedModel: resolvedModel,
-						nextModel: nextAfterRejection,
-						error,
-					});
-					continue;
 				}
 				if (attemptPreparationFailed) {
 					recordInferenceSpan(
