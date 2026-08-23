@@ -73,6 +73,7 @@ export interface TwilioOperatorPlan {
   expectedPayload: string;
   idempotencyKey: string;
   confirmationIngressUrl: string;
+  statusCallbackUrl: string;
   exactConfirmationBody: string;
   consent: {
     sourceNumberOperatorOwned: true;
@@ -240,6 +241,7 @@ function parsePlan(value: unknown): TwilioOperatorPlan {
     "expectedPayload",
     "idempotencyKey",
     "confirmationIngressUrl",
+    "statusCallbackUrl",
     "exactConfirmationBody",
     "consent",
     "deploymentEvidence",
@@ -338,6 +340,10 @@ function parsePlan(value: unknown): TwilioOperatorPlan {
     confirmationIngressUrl: parseHttpsUrl(
       plan.confirmationIngressUrl,
       "plan.confirmationIngressUrl",
+    ),
+    statusCallbackUrl: parseHttpsUrl(
+      plan.statusCallbackUrl,
+      "plan.statusCallbackUrl",
     ),
     exactConfirmationBody: exactConfirmation,
     consent: Object.freeze({

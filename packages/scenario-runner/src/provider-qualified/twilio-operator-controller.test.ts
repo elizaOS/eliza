@@ -122,6 +122,8 @@ function plan(
     idempotencyKey,
     confirmationIngressUrl:
       "https://agent.example.test/provider-canary/twilio/confirmation",
+    statusCallbackUrl:
+      "https://agent.example.test/provider-canary/twilio/status",
     exactConfirmationBody: canonicalConfirmation({
       channel,
       payload: contract.payload,
