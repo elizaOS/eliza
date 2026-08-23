@@ -125,8 +125,12 @@ canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
 
 Foreground host SHELL capture has no one-million-character kill boundary. Raw
 streams are independently AES-GCM encrypted while the process runs, with keys
-kept only in process memory; exact runtime and pattern redaction runs before
-atomic immutable publication, so plaintext secrets are not persisted. The model
+kept only in process memory. Finalization decrypts through bounded redaction
+windows into 64 KiB publication segments, so neither source nor redacted output
+is materialized as one string. Exact runtime and pattern redaction runs before
+atomic immutable publication, so plaintext secrets are not persisted. A
+sensitive record that cannot be separated safely within the bounded window
+fails the unpublished capture atomically instead of exposing a prefix. The model
 projection is capped at 20,000 characters and explicitly reports that it is a
 projection, never source loss. `action=read_output_artifact` retrieves bounded
 pages from the unexpired opaque artifact only when its persisted agent and

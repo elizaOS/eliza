@@ -2,8 +2,8 @@
  * Captures foreground shell streams without source-sized runtime buffers.
  *
  * Raw bytes are written only as authenticated AES-GCM ciphertext. Finalization
- * decrypts each complete stream in memory solely to apply the runtime's exact
- * redaction contract, then atomically publishes immutable redacted segments.
+ * decrypts through a bounded redaction window into incremental immutable
+ * segments; no source-sized plaintext or redacted string is materialized.
  * Crash residue has no persisted key and is swept before later captures.
  */
 import {
@@ -21,10 +21,13 @@ import {
   resolveStateDir,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { redactShellText } from "../shell/redaction.js";
 import {
-  persistShellOutputArtifact,
+  redactShellText,
+  resolveShellRedactionOverlapChars,
+} from "../shell/redaction.js";
+import {
   type ShellOutputArtifact,
+  ShellOutputArtifactWriter,
   type ShellStreamMetrics,
 } from "./shell-output-artifact.js";
 
@@ -37,6 +40,11 @@ const AES_KEY_BYTES = 32;
 const AES_IV_BYTES = 12;
 const AES_TAG_BYTES = 16;
 const MODEL_PROJECTION_LIMIT_CHARS = 20_000;
+const REDACTION_TARGET_CHARS = 512 * 1024;
+const REDACTION_OVERLAP_CHARS = 64 * 1024;
+const REDACTION_MAX_PENDING_CHARS = 4 * 1024 * 1024;
+const SUSPICIOUS_PATTERN_START =
+  /(?:-----BEGIN |(?:Proxy-)?Authorization\s*[:=]|\bBearer\s+|--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)|(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]|["'](?:apiKey|token|secret|password|passwd|accessToken|refreshToken|privateKey|clientSecret)["']\s*[:=]|\b[a-z][a-z0-9+.-]*:\/\/|\b(?:sk-|csk-|ghp_|github_pat_|xox|xapp-|gsk_|AIza|pplx-|npm_))/i;
 
 type CaptureStreamName = "stdout" | "stderr";
 
@@ -156,34 +164,53 @@ function awaitEvent(
   });
 }
 
-function projectStream(
-  text: string,
-  budget: number,
-): { text: string; complete: boolean } {
-  if (text.length <= budget) return { text, complete: true };
-  const marker =
-    "\n[model projection omitted content; read the artifact for exact continuation]\n";
-  const contentBudget = Math.max(2, budget - marker.length);
-  const headBudget = Math.floor(contentBudget / 2);
-  const tailBudget = contentBudget - headBudget;
-  let head = text.slice(0, headBudget);
-  let tail = text.slice(text.length - tailBudget);
-  if (/^[\uDC00-\uDFFF]/.test(tail)) tail = tail.slice(1);
-  if (/[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1);
-  return {
-    text: `${head}${marker}${tail}`,
-    complete: false,
-  };
+class ProjectionAccumulator {
+  private head = "";
+  private tail = "";
+  characters = 0;
+
+  append(text: string): void {
+    this.characters += text.length;
+    if (this.head.length < MODEL_PROJECTION_LIMIT_CHARS) {
+      this.head += text.slice(
+        0,
+        MODEL_PROJECTION_LIMIT_CHARS - this.head.length,
+      );
+    }
+    this.tail = `${this.tail}${text}`.slice(-MODEL_PROJECTION_LIMIT_CHARS);
+  }
+
+  project(budget: number): { text: string; complete: boolean } {
+    if (this.characters <= budget) {
+      return { text: this.head.slice(0, this.characters), complete: true };
+    }
+    const marker =
+      "\n[model projection omitted content; read the artifact for exact continuation]\n";
+    const contentBudget = Math.max(2, budget - marker.length);
+    const headBudget = Math.floor(contentBudget / 2);
+    const tailBudget = contentBudget - headBudget;
+    let head = this.head.slice(0, headBudget);
+    let tail = this.tail.slice(-tailBudget);
+    if (/^[\uDC00-\uDFFF]/.test(tail)) tail = tail.slice(1);
+    if (/[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1);
+    return {
+      text: `${head}${marker}${tail}`,
+      complete: false,
+    };
+  }
 }
 
-function projectionFor(stdout: string, stderr: string): ShellCaptureProjection {
-  const active = Number(stdout.length > 0) + Number(stderr.length > 0);
+function projectionFor(
+  stdout: ProjectionAccumulator,
+  stderr: ProjectionAccumulator,
+): ShellCaptureProjection {
+  const active = Number(stdout.characters > 0) + Number(stderr.characters > 0);
   const perStream =
     active > 1
       ? Math.floor(MODEL_PROJECTION_LIMIT_CHARS / 2)
       : MODEL_PROJECTION_LIMIT_CHARS;
-  const projectedStdout = projectStream(stdout, perStream);
-  const projectedStderr = projectStream(stderr, perStream);
+  const projectedStdout = stdout.project(perStream);
+  const projectedStderr = stderr.project(perStream);
   return {
     stdout: projectedStdout.text,
     stderr: projectedStderr.text,
@@ -193,7 +220,105 @@ function projectionFor(stdout: string, stderr: string): ShellCaptureProjection {
   };
 }
 
-async function decryptStream(state: StreamState): Promise<string> {
+function configuredSecretValues(runtime: IAgentRuntime): string[] {
+  const configured = runtime.character?.settings?.secrets;
+  if (!configured || typeof configured !== "object") return [];
+  return Object.values(configured).filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+}
+
+class StreamingShellRedactor {
+  private pending = "";
+  private readonly secrets: string[];
+  private readonly overlap: number;
+  private readonly maximumPending: number;
+
+  constructor(
+    private readonly runtime: IAgentRuntime,
+    private readonly emit: (text: string) => Promise<void>,
+  ) {
+    this.secrets = configuredSecretValues(runtime);
+    this.overlap = resolveShellRedactionOverlapChars(
+      runtime,
+      REDACTION_OVERLAP_CHARS,
+    );
+    this.maximumPending = Math.max(
+      REDACTION_MAX_PENDING_CHARS,
+      this.overlap * 2,
+    );
+  }
+
+  async write(text: string): Promise<void> {
+    if (toWellFormedUnicode(text) !== text)
+      throw new Error("shell capture contains malformed Unicode");
+    this.pending += text;
+    while (this.pending.length > REDACTION_TARGET_CHARS + this.overlap) {
+      const target = this.pending.length - this.overlap;
+      let boundary = this.pending.lastIndexOf("\n", target - 1) + 1;
+      if (boundary <= 0) boundary = this.safeLongRecordBoundary(target);
+      boundary = this.moveBeforeCrossingSecret(boundary);
+      const lastBegin = this.pending.lastIndexOf("-----BEGIN ", boundary);
+      const lastEnd = this.pending.lastIndexOf("-----END ", boundary);
+      if (lastBegin > lastEnd) boundary = Math.min(boundary, lastBegin);
+      if (boundary <= 0) {
+        if (this.pending.length > this.maximumPending) {
+          throw new Error(
+            "shell output contains an unbounded sensitive record that cannot be redacted safely",
+          );
+        }
+        return;
+      }
+      const ready = this.pending.slice(0, boundary);
+      this.pending = this.pending.slice(boundary);
+      await this.emit(redactShellText(this.runtime, ready));
+    }
+  }
+
+  async finish(): Promise<void> {
+    const ready = this.pending;
+    this.pending = "";
+    await this.emit(redactShellText(this.runtime, ready));
+  }
+
+  private moveBeforeCrossingSecret(boundary: number): number {
+    let safe = boundary;
+    for (const secret of this.secrets) {
+      const start = this.pending.lastIndexOf(
+        secret,
+        Math.min(boundary, this.pending.length),
+      );
+      if (start >= 0 && start < safe && start + secret.length > safe)
+        safe = start;
+    }
+    return safe;
+  }
+
+  private safeLongRecordBoundary(target: number): number {
+    let boundary = target;
+    if (
+      boundary > 0 &&
+      boundary < this.pending.length &&
+      /[\uD800-\uDBFF]/.test(this.pending[boundary - 1] ?? "") &&
+      /[\uDC00-\uDFFF]/.test(this.pending[boundary] ?? "")
+    ) {
+      boundary -= 1;
+    }
+    const contextStart = Math.max(0, boundary - this.overlap);
+    const context = this.pending.slice(contextStart, boundary + this.overlap);
+    const recordStart = this.pending.lastIndexOf("\n", boundary - 1) + 1;
+    const left = this.pending.slice(recordStart, boundary);
+    if (
+      SUSPICIOUS_PATTERN_START.test(left) ||
+      redactShellText(this.runtime, context) !== context
+    ) {
+      return 0;
+    }
+    return boundary;
+  }
+}
+
+async function sealStream(state: StreamState): Promise<void> {
   if (state.failed) throw state.failed;
   const cipherEnded = awaitEvent(state.cipher, "end");
   state.cipher.end();
@@ -203,7 +328,12 @@ async function decryptStream(state: StreamState): Promise<string> {
   state.output.write(tag);
   state.output.end();
   await outputClosed;
+}
 
+async function decryptStream(
+  state: StreamState,
+  consume: (text: string) => Promise<void>,
+): Promise<void> {
   const stat = await fs.stat(state.filePath);
   if (stat.size < AES_IV_BYTES + AES_TAG_BYTES) {
     throw new Error("encrypted shell capture is incomplete");
@@ -218,23 +348,26 @@ async function decryptStream(state: StreamState): Promise<string> {
   await ivFile.close();
   const decipher = createDecipheriv("aes-256-gcm", state.key, iv);
   decipher.setAuthTag(storedTag);
-  const chunks: Buffer[] = [];
-  decipher.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
-  const decipherEnded = awaitEvent(decipher, "end");
+  const source =
+    stat.size === AES_IV_BYTES + AES_TAG_BYTES
+      ? null
+      : createReadStream(state.filePath, {
+          start: AES_IV_BYTES,
+          end: stat.size - AES_TAG_BYTES - 1,
+          highWaterMark: 64 * 1024,
+        });
   if (stat.size === AES_IV_BYTES + AES_TAG_BYTES) {
     decipher.end();
   } else {
-    createReadStream(state.filePath, {
-      start: AES_IV_BYTES,
-      end: stat.size - AES_TAG_BYTES - 1,
-    }).pipe(decipher);
+    source?.pipe(decipher);
   }
-  await decipherEnded;
-  const text = Buffer.concat(chunks).toString("utf8");
-  if (toWellFormedUnicode(text) !== text) {
-    throw new Error("shell capture contains malformed Unicode");
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  for await (const chunk of decipher) {
+    const text = decoder.decode(chunk as Buffer, { stream: true });
+    if (text.length > 0) await consume(text);
   }
-  return text;
+  const tail = decoder.decode();
+  if (tail.length > 0) await consume(tail);
 }
 
 export class ForegroundShellCapture {
@@ -262,6 +395,8 @@ export class ForegroundShellCapture {
 
   write(stream: CaptureStreamName, chunk: string): boolean {
     if (this.finalized) throw new Error("shell capture is already finalized");
+    if (toWellFormedUnicode(chunk) !== chunk)
+      throw new Error("shell capture contains malformed Unicode");
     const state = this.streams[stream];
     state.endedWithNewline = updateMetrics(
       state.metrics,
@@ -281,28 +416,45 @@ export class ForegroundShellCapture {
   ): Promise<FinalizedShellCapture> {
     if (this.finalized) throw new Error("shell capture is already finalized");
     this.finalized = true;
+    let writer: ShellOutputArtifactWriter | undefined;
     try {
-      const [rawStdout, rawStderr] = await Promise.all([
-        decryptStream(this.streams.stdout),
-        decryptStream(this.streams.stderr),
+      await Promise.all([
+        sealStream(this.streams.stdout),
+        sealStream(this.streams.stderr),
       ]);
-      const stdout = redactShellText(runtime, rawStdout);
-      const stderr = redactShellText(runtime, rawStderr);
-      const projection = projectionFor(stdout, stderr);
-      const artifact = await persistShellOutputArtifact({
-        stdout,
-        stderr,
+      writer = await ShellOutputArtifactWriter.create({
         exitCode: outcome.exitCode,
         timedOut: outcome.timedOut,
         signal: outcome.signal,
         modelCharacterLimit: MODEL_PROJECTION_LIMIT_CHARS,
-        modelCharacters: projection.modelCharacters,
         ownerAgentId: outcome.ownerAgentId,
         ownerConversationId: outcome.ownerConversationId,
         sourceStdout: this.streams.stdout.metrics,
         sourceStderr: this.streams.stderr.metrics,
       });
+      const projections = {
+        stdout: new ProjectionAccumulator(),
+        stderr: new ProjectionAccumulator(),
+      };
+      const activeWriter = writer;
+      await Promise.all(
+        (["stdout", "stderr"] as const).map(async (stream) => {
+          const redactor = new StreamingShellRedactor(runtime, async (text) => {
+            projections[stream].append(text);
+            await activeWriter.write(stream, text);
+          });
+          await decryptStream(this.streams[stream], (text) =>
+            redactor.write(text),
+          );
+          await redactor.finish();
+        }),
+      );
+      const projection = projectionFor(projections.stdout, projections.stderr);
+      const artifact = await writer.finalize(projection.modelCharacters);
       return { artifact, projection };
+    } catch (error) {
+      if (writer) await writer.abort();
+      throw error;
     } finally {
       for (const state of Object.values(this.streams)) state.key.fill(0);
       await fs.rm(this.directory, { recursive: true, force: true });
