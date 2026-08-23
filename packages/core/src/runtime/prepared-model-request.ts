@@ -13,7 +13,6 @@ import {
 import {
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
 	DEFAULT_INPUT_RESERVE_TOKENS,
-	estimateTokensFromChars,
 } from "./model-input-budget";
 
 export interface PreparedModelRequestBudget {
@@ -23,7 +22,7 @@ export interface PreparedModelRequestBudget {
 	contextWindowTokens: number;
 	outputReserveTokens: number;
 	dispatchThresholdTokens: number;
-	countSource: "provider-tokenizer" | "model-family-estimator";
+	countSource: "provider-tokenizer" | "utf8-upper-bound";
 	resolvedModelKey: string | null;
 }
 
@@ -189,8 +188,8 @@ function countPreparedInputTokens(
 ): { count: number; source: PreparedModelRequestBudget["countSource"] } {
 	if (!counter) {
 		return {
-			count: estimateTokensFromChars(serialized.length),
-			source: "model-family-estimator",
+			count: new TextEncoder().encode(serialized).byteLength,
+			source: "utf8-upper-bound",
 		};
 	}
 	let count: number;
