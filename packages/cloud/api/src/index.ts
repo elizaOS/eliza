@@ -621,12 +621,17 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
     hasExactStagingSessionUuidList(
       env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
     );
+  const e2eRunReceipt =
+    env.NODE_ENV === "test" && env.CLOUD_E2E === "1"
+      ? env.CLOUD_E2E_RUN_RECEIPT?.trim() || null
+      : null;
   return Response.json(
     {
       status: "ok",
       timestamp: Date.now(),
       region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
       commit: env.ELIZA_DEPLOY_COMMIT ?? null,
+      ...(e2eRunReceipt ? { e2eRunReceipt } : {}),
       // Self-identify which deployment env answered. Production and staging
       // share the eliza.app zone. Staging claims its
       // exact control-plane names and `*.cloud-staging.eliza.app` before the
