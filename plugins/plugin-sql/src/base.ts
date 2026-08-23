@@ -16,6 +16,7 @@ import {
   type AppendConnectorAccountAuditEventParams,
   type AtomicMemoryPublicationParams,
   type AtomicMemoryPublicationResult,
+  authorizeMessageContentRead,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -25,6 +26,7 @@ import {
   type ConnectorOwnerBindingRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
+  canonicalAttachmentText,
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
@@ -52,6 +54,7 @@ import {
   encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
+  hashAttachmentIdForLocator,
   type IDatabaseAdapter,
   type JsonValue,
   type ListConnectorAccountCredentialRefsParams,
@@ -59,6 +62,8 @@ import {
   type Log,
   type LogBody,
   logger,
+  MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+  MESSAGE_CONTENT_READ_MAX_SEGMENTS,
   type Memory,
   type MemoryMetadata,
   type MessageContentPublicationParams,
@@ -86,13 +91,8 @@ import {
   type Room,
   type RunStatus,
   readDocumentSourceProjection,
-  requireDocumentSourceReadMetadata,
-  authorizeMessageContentRead,
-  canonicalAttachmentText,
-  hashAttachmentIdForLocator,
-  MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
-  MESSAGE_CONTENT_READ_MAX_SEGMENTS,
   readMessageContentProjection,
+  requireDocumentSourceReadMetadata,
   resolveMessageContentSourceDescriptor,
   type SetConnectorAccountCredentialRefParams,
   type Task,
@@ -2190,38 +2190,54 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const normalizedQuery = params.query?.trim();
       let queryCondition: SQL = sql`true`;
       if (normalizedQuery) {
-        const sourceMetadata = sql.raw('"document_source_search_segment"."metadata"');
-        const sourceContent = sql.raw('"document_source_search_segment"."content"');
+        const searchDocumentId = sql.raw('"document_search_candidate"."id"');
+        const searchDocumentType = sql.raw('"document_search_candidate"."type"');
+        const searchDocumentAgentId = sql.raw('"document_search_candidate"."agent_id"');
+        const searchDocumentContent = sql.raw('"document_search_candidate"."content"');
+        const searchDocumentMetadata = sql.raw('"document_search_candidate"."metadata"');
+        const searchSegmentType = sql.raw('"document_source_search_candidate"."type"');
+        const searchSegmentAgentId = sql.raw('"document_source_search_candidate"."agent_id"');
+        const searchSegmentContent = sql.raw('"document_source_search_candidate"."content"');
+        const searchSegmentMetadata = sql.raw('"document_source_search_candidate"."metadata"');
         const queryLexemes = portableDocumentSearchTokens(normalizedQuery);
         queryCondition =
           and(
-            ...queryLexemes.map((lexeme) =>
-              or(
-                sql`${documentSearchTokensExpression(
-                  memoryTable.content,
-                  memoryTable.metadata
-                )} @> ARRAY[${lexeme}]::text[]`,
-                sql`EXISTS (
-                  SELECT 1
-                  FROM ${memoryTable} AS document_source_search_segment
-                  WHERE document_source_search_segment.type = 'document_fragments'
-                    AND document_source_search_segment.agent_id = ${memoryTable.agentId}
-                    AND document_source_search_segment.metadata->>'type' = 'fragment'
-                    AND document_source_search_segment.metadata->>'fragmentRole' = 'source-segment'
-                    AND document_source_search_segment.metadata->>'documentId' = ${memoryTable.id}::text
-                    AND ${documentRevisionExpression(sourceMetadata)}
-                      = ${documentRevisionExpression(memoryTable.metadata)}
-                    AND (
-                      NOT (${memoryTable.metadata} ? 'revisionAttemptId')
-                      OR document_source_search_segment.metadata->>'revisionAttemptId'
-                        = ${memoryTable.metadata}->>'revisionAttemptId'
-                    )
-                    AND ${documentSearchTokensExpression(
-                      sourceContent,
-                      sourceMetadata
-                    )} @> ARRAY[${lexeme}]::text[]
-                )`
-              )
+            ...queryLexemes.map(
+              (lexeme) =>
+                sql`${memoryTable.id} IN (
+                SELECT ${searchDocumentId}
+                FROM ${memoryTable} AS document_search_candidate
+                WHERE ${searchDocumentType} = 'documents'
+                  AND ${searchDocumentAgentId} = ${params.agentId}
+                  AND ${searchDocumentMetadata}->>'type' = 'document'
+                  AND ${documentSearchTokensExpression(
+                    searchDocumentContent,
+                    searchDocumentMetadata
+                  )} @> ARRAY[${lexeme}]::text[]
+                UNION
+                SELECT ${searchDocumentId}
+                FROM ${memoryTable} AS document_search_candidate
+                INNER JOIN ${memoryTable} AS document_source_search_candidate
+                  ON ${searchSegmentAgentId} = ${searchDocumentAgentId}
+                  AND ${searchSegmentMetadata}->>'documentId' = ${searchDocumentId}::text
+                  AND ${documentRevisionExpression(searchSegmentMetadata)}
+                    = ${documentRevisionExpression(searchDocumentMetadata)}
+                  AND (
+                    NOT (${searchDocumentMetadata} ? 'revisionAttemptId')
+                    OR ${searchSegmentMetadata}->>'revisionAttemptId'
+                      = ${searchDocumentMetadata}->>'revisionAttemptId'
+                  )
+                WHERE ${searchDocumentType} = 'documents'
+                  AND ${searchDocumentAgentId} = ${params.agentId}
+                  AND ${searchDocumentMetadata}->>'type' = 'document'
+                  AND ${searchSegmentType} = 'document_fragments'
+                  AND ${searchSegmentMetadata}->>'type' = 'fragment'
+                  AND ${searchSegmentMetadata}->>'fragmentRole' = 'source-segment'
+                  AND ${documentSearchTokensExpression(
+                    searchSegmentContent,
+                    searchSegmentMetadata
+                  )} @> ARRAY[${lexeme}]::text[]
+              )`
             )
           ) ?? sql`false`;
       }

@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildMessageContentProjection, type Agent, type Memory, type UUID } from "@elizaos/core";
+import { type Agent, buildMessageContentProjection, type Memory, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
