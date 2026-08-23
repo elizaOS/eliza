@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubOctokitClient } from "../types.js";
 import {
+  compareTriagedNotifications,
   fetchAllUnreadNotifications,
   formatTriageSummary,
 } from "./notification-triage.js";
@@ -127,5 +128,65 @@ describe("formatTriageSummary", () => {
     expect(formatTriageSummary(25, 1000, true)).toBe(
       "Triaged 25 of at least 1000 unread notification(s)",
     );
+  });
+
+  it("handles NaN scores safely when sorting triaged notifications", () => {
+    const triaged = [
+      {
+        id: "n-1",
+        reason: "mention",
+        repo: "a/b",
+        title: "t1",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: NaN,
+      },
+      {
+        id: "n-2",
+        reason: "mention",
+        repo: "a/b",
+        title: "t2",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 100,
+      },
+    ];
+
+    triaged.sort(compareTriagedNotifications);
+
+    expect(triaged[0]?.id).toBe("n-2");
+    expect(triaged[1]?.id).toBe("n-1");
+  });
+
+  it("tie-breaks equal scores by id deterministically", () => {
+    const triaged = [
+      {
+        id: "z-id",
+        reason: "mention",
+        repo: "a/b",
+        title: "t1",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 10,
+      },
+      {
+        id: "a-id",
+        reason: "mention",
+        repo: "a/b",
+        title: "t2",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 10,
+      },
+    ];
+
+    triaged.sort(compareTriagedNotifications);
+
+    expect(triaged[0]?.id).toBe("a-id");
+    expect(triaged[1]?.id).toBe("z-id");
   });
 });
