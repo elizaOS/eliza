@@ -4827,7 +4827,12 @@ export class ElizaSandboxService {
               const nextHistory: SharedTurnMessage[] = [
                 ...history,
                 { role: "user", content: text.trim(), createdAt: sentAt },
-                { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
+                {
+                  role: "assistant",
+                  content: finalReply,
+                  createdAt: sentAt + 1,
+                  ...(turn.internalGrounding ? { grounding: turn.internalGrounding } : {}),
+                },
               ];
               await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
               if (billingContext) {
