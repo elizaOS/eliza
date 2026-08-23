@@ -9,6 +9,7 @@ import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { resolveWhatsAppAuthDirectory } from "../baileys/auth.js";
 import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing.js";
 
 export type WhatsAppPairingEventLike = WhatsAppPairingEvent;
@@ -49,8 +50,8 @@ type WhatsAppPluginConfig = Record<string, unknown> & {
 
 export interface WhatsAppRouteDeps {
   sanitizeAccountId: (accountId: string) => string;
-  whatsappAuthExists: (workspaceDir: string, accountId: string) => boolean;
-  whatsappLogout: (workspaceDir: string, accountId: string) => Promise<void>;
+  whatsappAuthExists: (accountId: string) => boolean | Promise<boolean>;
+  whatsappLogout: (accountId: string) => Promise<void>;
   createWhatsAppPairingSession: (options: {
     authDir: string;
     accountId: string;
@@ -214,29 +215,19 @@ function resolveSessionKey(authScope: WhatsAppAuthScope, accountId: string): str
 }
 
 function resolveAuthDir(
-  workspaceDir: string,
+  _workspaceDir: string,
   accountId: string,
-  authScope: WhatsAppAuthScope
+  _authScope: WhatsAppAuthScope
 ): string {
-  return path.join(
-    workspaceDir,
-    authScope === "lifeops" ? "lifeops-whatsapp-auth" : "whatsapp-auth",
-    accountId
-  );
+  return resolveWhatsAppAuthDirectory(accountId);
 }
 
-function authExistsForScope(
-  state: WhatsAppRouteState,
+async function authExistsForScope(
   deps: WhatsAppRouteDeps,
   accountId: string,
-  authScope: WhatsAppAuthScope
-): boolean {
-  if (authScope === "platform") {
-    return deps.whatsappAuthExists(state.workspaceDir, accountId);
-  }
-  return fs.existsSync(
-    path.join(resolveAuthDir(state.workspaceDir, accountId, authScope), "creds.json")
-  );
+  _authScope: WhatsAppAuthScope
+): Promise<boolean> {
+  return await deps.whatsappAuthExists(accountId);
 }
 
 export async function handleWhatsAppRoute(
@@ -440,7 +431,7 @@ export async function handleWhatsAppRoute(
       accountId,
       authScope,
       status: session?.getStatus() ?? "idle",
-      authExists: authExistsForScope(state, deps, accountId, authScope),
+      authExists: await authExistsForScope(deps, accountId, authScope),
       serviceConnected,
       servicePhone,
     });
@@ -500,26 +491,17 @@ export async function handleWhatsAppRoute(
     try {
       await stopPairingSession(state.whatsappPairingSessions, sessionKey);
 
-      const authDir = resolveAuthDir(state.workspaceDir, accountId, authScope);
       try {
-        if (authScope === "platform") {
-          await deps.whatsappLogout(state.workspaceDir, accountId);
-        } else {
-          fs.rmSync(authDir, { recursive: true, force: true });
-        }
+        await deps.whatsappLogout(accountId);
       } catch (logoutErr) {
         logger.warn(
           {
             accountId,
             error: logoutErr instanceof Error ? logoutErr.message : String(logoutErr),
           },
-          "[whatsapp] Logout failed, deleting auth files directly"
+          "[whatsapp] Logout failed"
         );
-        try {
-          fs.rmSync(authDir, { recursive: true, force: true });
-        } catch {
-          /* may not exist */
-        }
+        throw logoutErr;
       }
 
       if (configurePlugin && state.config.connectors) {
@@ -548,10 +530,10 @@ export function applyWhatsAppQrOverride(
     configured: boolean;
     qrConnected?: boolean;
   }[],
-  workspaceDir: string
+  _workspaceDir: string
 ): void {
   try {
-    const waCredsPath = path.join(workspaceDir, "whatsapp-auth", "default", "creds.json");
+    const waCredsPath = path.join(resolveWhatsAppAuthDirectory("default"), "auth-state.json");
     if (fs.existsSync(waCredsPath)) {
       const waPlugin = plugins.find((plugin) => plugin.id === "whatsapp");
       if (waPlugin) {

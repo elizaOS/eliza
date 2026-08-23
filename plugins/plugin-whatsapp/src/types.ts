@@ -19,9 +19,9 @@ export interface CloudAPIConfig {
 
 export interface BaileysConfig {
   authMethod?: "baileys";
+  accountId: string;
   authDir: string;
   printQRInTerminal?: boolean;
-  sessionPath?: string;
 }
 
 /**
