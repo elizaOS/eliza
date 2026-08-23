@@ -161,6 +161,89 @@ export function findAnchoredLiveTurn(lines, { anchorToken } = {}) {
 }
 
 /**
+ * Reduce the first assistant row owned by an anchored user turn to a
+ * privacy-safe diagnostic. This deliberately returns no text, token, indices,
+ * IDs, or failure value. It mirrors {@link findAnchoredLiveTurn}'s ownership
+ * boundary so a hosted failure can distinguish a missing anchor, a missing
+ * assistant row, and an ineligible owner row without persisting conversation
+ * content.
+ *
+ * @param {Array<{
+ *   role?: string,
+ *   text?: string,
+ *   failureKind?: string,
+ *   hasRetry?: boolean,
+ *   interrupted?: boolean,
+ *   hasMessageText?: boolean | null,
+ *   phase?: string | null,
+ * }>} lines ordered thread rows
+ * @param {{ anchorToken?: string }} [options]
+ * @returns {{
+ *   anchorUserPresent: boolean,
+ *   assistantRowPresent: boolean,
+ *   assistantFailurePresent: boolean,
+ *   assistantRetryPresent: boolean,
+ *   assistantInterrupted: boolean,
+ *   assistantHasMessageText: boolean | null,
+ *   assistantPhase: "status" | "reply" | "other" | null,
+ *   assistantHasText: boolean,
+ * }}
+ */
+export function describeAnchoredLiveTurnState(lines, { anchorToken } = {}) {
+  const unavailable = {
+    anchorUserPresent: false,
+    assistantRowPresent: false,
+    assistantFailurePresent: false,
+    assistantRetryPresent: false,
+    assistantInterrupted: false,
+    assistantHasMessageText: null,
+    assistantPhase: null,
+    assistantHasText: false,
+  };
+  const token = String(anchorToken ?? "")
+    .trim()
+    .toLowerCase();
+  if (!token || !Array.isArray(lines)) return unavailable;
+
+  const userLineIndex = lines.findIndex(
+    (line) =>
+      line?.role === "user" &&
+      String(line.text ?? "")
+        .toLowerCase()
+        .includes(token),
+  );
+  if (userLineIndex < 0) return unavailable;
+  const anchorOnly = { ...unavailable, anchorUserPresent: true };
+  for (
+    let assistantLineIndex = userLineIndex + 1;
+    assistantLineIndex < lines.length;
+    assistantLineIndex += 1
+  ) {
+    const line = lines[assistantLineIndex];
+    if (line?.role === "user") return anchorOnly;
+    if (line?.role !== "assistant") continue;
+    const phase = String(line.phase ?? "").trim();
+    return {
+      anchorUserPresent: true,
+      assistantRowPresent: true,
+      assistantFailurePresent: Boolean(String(line.failureKind ?? "").trim()),
+      assistantRetryPresent: line.hasRetry === true,
+      assistantInterrupted: line.interrupted === true,
+      assistantHasMessageText:
+        typeof line.hasMessageText === "boolean" ? line.hasMessageText : null,
+      assistantPhase:
+        phase === "status" || phase === "reply"
+          ? phase
+          : phase
+            ? "other"
+            : null,
+      assistantHasText: Boolean(String(line.text ?? "").trim()),
+    };
+  }
+  return anchorOnly;
+}
+
+/**
  * The challenge suffix shared by every liveness lane that binds the reply to
  * the exact run. The token after the colon is what the harness generates fresh
  * per run and what the reply must echo back. Kept as the one literal so the
