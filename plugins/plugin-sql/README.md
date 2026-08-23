@@ -33,18 +33,21 @@ audit evidence and never create canonical redirects or merge-journal rows.
 ## Membership authority
 
 `SqlMembershipService` is the durable authority for connector-account room
-membership. Commands are fenced by both the scope generation and the
-connector's monotonically increasing source version, with account-scoped
-idempotency receipts so duplicate or out-of-order evidence cannot resurrect a
-newer revocation. Authorization permits only an active canonical principal in
-a scope whose reconciliation health is `current`; missing, stale, unavailable,
-and unsupported authority all deny explicitly.
+membership. Each scope first registers a publisher instance, generation, and
+evidence mode. Only an atomic explicitly complete roster snapshot, an ordered
+delta following a complete snapshot in the same publisher generation, or a
+bounded point-query proof can make evidence current. Durable cursor continuity,
+scope generations, and exact idempotency receipts prevent duplicate or
+out-of-order evidence from resurrecting a newer revocation.
 
-The service commits security state before clearing its internal decision cache,
-running registered cache invalidators synchronously, and notifying runtime
-observers. Connector event and roster-reconciliation adapters are responsible
-for supplying typed commands; the membership service has no model-callable
-mutation action.
+Every authorization rechecks persisted `validUntil` values against the trusted
+service clock. Missing, expired, stale, unavailable, and unsupported authority
+deny explicitly. Complete snapshots atomically upsert observed members and
+retain absent active members as revoked facts; incomplete or failed pagination
+changes no roster. Point proof for one principal creates no fact about another.
+The service invalidates registered dependent caches before notifying observers.
+Connector composition and document authorization remain separate slices, and
+the service exposes no model-callable mutation action.
 
 ## Database Schema
 

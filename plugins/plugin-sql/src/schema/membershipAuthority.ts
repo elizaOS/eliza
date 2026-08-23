@@ -1,9 +1,4 @@
-/**
- * Durable connector-room membership authority tables. Scope rows serialize
- * ordered evidence and expose reconciliation health; current rows retain the
- * latest principal state; the journal makes command retries exact and
- * conflicting idempotency-key reuse detectable.
- */
+/** Durable publisher-fenced membership scopes, retained facts, and exact command receipts. */
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -31,16 +26,19 @@ function scopeColumns() {
     externalRoomId: text("external_room_id").notNull(),
   };
 }
-
 export const membershipAuthorityScopeTable = pgTable(
   "membership_authority_scopes",
   {
     ...scopeColumns(),
     health: text("health").notNull().default("stale"),
-    reason: text("reason").notNull().default("awaiting_reconciliation"),
+    reason: text("reason").notNull().default("publisher_not_registered"),
     generation: bigint("generation", { mode: "number" }).notNull().default(0),
     sourceVersion: bigint("source_version", { mode: "number" }).notNull().default(-1),
     sourceCursor: text("source_cursor"),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    publisherInstanceId: text("publisher_instance_id"),
+    publisherGeneration: bigint("publisher_generation", { mode: "number" }),
+    evidenceMode: text("evidence_mode"),
     observedAt: timestamp("observed_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
@@ -68,18 +66,19 @@ export const membershipAuthorityScopeTable = pgTable(
     }).onDelete("cascade"),
     check(
       "membership_authority_scope_health_check",
-      sql`${table.health} IN ('current', 'stale', 'unavailable', 'unsupported')`
+      sql`${table.health} IN ('current','stale','unavailable','unsupported')`
     ),
-    check("membership_authority_scope_generation_check", sql`${table.generation} >= 0`),
-    check("membership_authority_scope_version_check", sql`${table.sourceVersion} >= -1`),
     check(
-      "membership_authority_scope_ids_check",
-      sql`
-      length(trim(${table.connectorId})) > 0 AND
-      length(trim(${table.externalWorldId})) > 0 AND
-      length(trim(${table.externalRoomId})) > 0 AND
-      length(trim(${table.reason})) > 0
-    `
+      "membership_authority_scope_generation_check",
+      sql`${table.generation} >= 0 AND ${table.sourceVersion} >= -1`
+    ),
+    check(
+      "membership_authority_scope_publisher_check",
+      sql`(${table.publisherInstanceId} IS NULL AND ${table.publisherGeneration} IS NULL AND ${table.evidenceMode} IS NULL) OR (${table.publisherInstanceId} IS NOT NULL AND ${table.publisherGeneration} >= 0 AND ${table.evidenceMode} IN ('complete_snapshot','ordered_delta','point_query'))`
+    ),
+    check(
+      "membership_authority_scope_current_check",
+      sql`${table.health} <> 'current' OR (${table.validUntil} IS NOT NULL AND ${table.publisherInstanceId} IS NOT NULL AND ${table.sourceCursor} IS NOT NULL)`
     ),
   ]
 );
@@ -91,18 +90,19 @@ export const membershipAuthorityTable = pgTable(
     canonicalPrincipalId: uuid("canonical_principal_id").notNull(),
     state: text("state").notNull(),
     reason: text("reason").notNull(),
-    roles: jsonb("roles").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-    permissionSnapshot: jsonb("permission_snapshot")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
+    roles: jsonb("roles").$type<string[]>().notNull(),
+    permissionSnapshot: jsonb("permission_snapshot").$type<Record<string, unknown>>().notNull(),
     runtimeWorldId: uuid("runtime_world_id"),
     runtimeRoomId: uuid("runtime_room_id"),
     runtimeEntityId: uuid("runtime_entity_id"),
+    publisherInstanceId: text("publisher_instance_id").notNull(),
+    publisherGeneration: bigint("publisher_generation", { mode: "number" }).notNull(),
+    evidenceMode: text("evidence_mode").notNull(),
     generation: bigint("generation", { mode: "number" }).notNull(),
     sourceVersion: bigint("source_version", { mode: "number" }).notNull(),
-    sourceCursor: text("source_cursor"),
+    sourceCursor: text("source_cursor").notNull(),
     observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    validUntil: timestamp("valid_until", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
@@ -119,7 +119,6 @@ export const membershipAuthorityTable = pgTable(
       ],
     }),
     index("membership_authority_principal_idx").on(table.agentId, table.canonicalPrincipalId),
-    index("membership_authority_state_idx").on(table.agentId, table.state),
     foreignKey({
       name: "fk_membership_authority_agent",
       columns: [table.agentId],
@@ -135,13 +134,19 @@ export const membershipAuthorityTable = pgTable(
       columns: [table.canonicalPrincipalId, table.agentId],
       foreignColumns: [entityTable.id, entityTable.agentId],
     }).onDelete("restrict"),
-    check("membership_authority_state_check", sql`${table.state} IN ('active', 'revoked')`),
+    check("membership_authority_state_check", sql`${table.state} IN ('active','revoked')`),
     check(
       "membership_authority_reason_check",
-      sql`${table.reason} IN ('joined', 'reconciled_present', 'permission_restored', 'left', 'kicked', 'banned', 'permission_lost', 'account_removed', 'reconciled_absent')`
+      sql`${table.reason} IN ('joined','reconciled_present','permission_restored','left','kicked','banned','permission_lost','account_removed','reconciled_absent')`
     ),
-    check("membership_authority_generation_check", sql`${table.generation} > 0`),
-    check("membership_authority_version_check", sql`${table.sourceVersion} >= 0`),
+    check(
+      "membership_authority_evidence_check",
+      sql`${table.evidenceMode} IN ('complete_snapshot','ordered_delta','point_query') AND ${table.publisherGeneration} >= 0`
+    ),
+    check(
+      "membership_authority_version_check",
+      sql`${table.generation} > 0 AND ${table.sourceVersion} >= 0`
+    ),
   ]
 );
 
@@ -151,13 +156,10 @@ export const membershipAuthorityJournalTable = pgTable(
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`).notNull(),
     ...scopeColumns(),
     operation: text("operation").notNull(),
-    canonicalPrincipalId: uuid("canonical_principal_id"),
     idempotencyKey: text("idempotency_key").notNull(),
     requestDigest: text("request_digest").notNull(),
     expectedGeneration: bigint("expected_generation", { mode: "number" }).notNull(),
     committedGeneration: bigint("committed_generation", { mode: "number" }).notNull(),
-    sourceVersion: bigint("source_version", { mode: "number" }).notNull(),
-    sourceCursor: text("source_cursor"),
     result: jsonb("result").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
@@ -169,6 +171,7 @@ export const membershipAuthorityJournalTable = pgTable(
     ),
     index("membership_authority_journal_scope_idx").on(
       table.agentId,
+      table.connectorId,
       table.connectorAccountId,
       table.externalWorldId,
       table.externalRoomId,
@@ -186,16 +189,11 @@ export const membershipAuthorityJournalTable = pgTable(
     }).onDelete("cascade"),
     check(
       "membership_authority_journal_operation_check",
-      sql`${table.operation} IN ('membership', 'health')`
+      sql`${table.operation} IN ('publisher','snapshot','membership','health')`
     ),
     check(
       "membership_authority_journal_generation_check",
       sql`${table.expectedGeneration} >= 0 AND ${table.committedGeneration} = ${table.expectedGeneration} + 1`
-    ),
-    check("membership_authority_journal_version_check", sql`${table.sourceVersion} >= 0`),
-    check(
-      "membership_authority_journal_idempotency_check",
-      sql`length(trim(${table.idempotencyKey})) > 0`
     ),
   ]
 );

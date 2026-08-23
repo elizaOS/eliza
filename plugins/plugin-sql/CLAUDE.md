@@ -14,7 +14,7 @@ The exported `plugin` object (`src/index.ts` / `src/index.node.ts` / `src/index.
 |------|------|-------------|
 | Service | `AdvancedMemoryStorageService` (`serviceType = "memoryStorage"`) | Implements `MemoryStorageProvider`; persists long-term memories and session summaries to dedicated SQL tables via the runtime memory API |
 | Service | `SqlPrincipalService` (`serviceType = "principal"`) | Canonical generation-fenced identity authority for claims, person-link attestations, reversible redirects, merge/split journals, and owner-binding reads |
-| Service | `SqlMembershipService` (`serviceType = "membership"`) | Canonical generation- and source-version-fenced connector-room membership authority with durable reconciliation health, exact idempotent receipts, and fail-closed authorization |
+| Service | `SqlMembershipService` (`serviceType = "membership"`) | Canonical publisher-generation and cursor-fenced connector-room authority with atomic complete snapshots, bounded freshness, exact idempotency, and fail-closed authorization |
 | Route | `POST /api/identity/person-links/attest` | Private OWNER/ADMIN ingress; requires an authenticated `AccessContext`, derives actor authority from it, and records immutable same-person evidence without merging principals |
 | Route | `GET /api/identity/person-links/verify` | Private exact-generation verification; also requires OWNER/ADMIN `AccessContext` |
 | Schema | `schema` (all tables) | Passed as `plugin.schema` so `DatabaseMigrationService` can auto-migrate at startup |

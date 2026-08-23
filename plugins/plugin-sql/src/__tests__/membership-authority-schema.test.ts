@@ -35,7 +35,7 @@ describe("canonical membership authority schema", () => {
       expect.arrayContaining([
         "membership_authority_state_check",
         "membership_authority_reason_check",
-        "membership_authority_generation_check",
+        "membership_authority_evidence_check",
         "membership_authority_version_check",
       ])
     );
@@ -44,14 +44,23 @@ describe("canonical membership authority schema", () => {
     ).toHaveLength(3);
   });
 
-  it("persists explicit scope health and exact idempotent command receipts", () => {
+  it("persists publisher fencing, bounded freshness, and exact command receipts", () => {
     const scope = getTableConfig(membershipAuthorityScopeTable);
     const journal = getTableConfig(membershipAuthorityJournalTable);
     expect(scope.checks.map((constraint) => constraint.name)).toContain(
       "membership_authority_scope_health_check"
     );
     expect(scope.columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["health", "reason", "generation", "source_version", "source_cursor"])
+      expect.arrayContaining([
+        "health",
+        "generation",
+        "source_version",
+        "source_cursor",
+        "valid_until",
+        "publisher_instance_id",
+        "publisher_generation",
+        "evidence_mode",
+      ])
     );
     expect(journal.uniqueConstraints.map((constraint) => constraint.name)).toContain(
       "membership_authority_journal_idempotency_unique"
@@ -60,7 +69,12 @@ describe("canonical membership authority schema", () => {
       expect.arrayContaining([
         "membership_authority_journal_operation_check",
         "membership_authority_journal_generation_check",
-        "membership_authority_journal_version_check",
+      ])
+    );
+    expect(scope.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        "membership_authority_scope_publisher_check",
+        "membership_authority_scope_current_check",
       ])
     );
   });
