@@ -1,9 +1,11 @@
-// Pins the fail-closed contract of inbound-media vision enrichment: the flag
-// and provider gates throw the typed disabled error, every fetch/size/type/
-// model failure throws the typed description error (so callers degrade instead
-// of dropping the turn), and a truncated or empty completion is rejected, never
-// returned. Deterministic mocks stand in for safe-fetch, the provider factory,
-// and the AI SDK — no network.
+/**
+ * Pins the fail-closed contract of inbound-media vision enrichment: the flag
+ * and provider gates throw the typed disabled error, every fetch/size/type/
+ * model failure throws the typed description error (so callers degrade instead
+ * of dropping the turn), and a truncated or empty completion is rejected, never
+ * returned. Deterministic mocks stand in for safe-fetch, the provider factory,
+ * and the AI SDK — no network.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 class FakeProviderConfigurationError extends Error {

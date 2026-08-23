@@ -49,6 +49,16 @@ const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
 // running a vision description before the model turn; the plain 30s ceiling
 // would abort those turns mid-flight and re-run them.
 const PERSONAL_SHARED_MEDIA_TIMEOUT_MS = 90_000;
+// Mirrors the Worker binding of the same name. Both sides must be enabled
+// together: the gateway only forwards Blooio media URLs (and adopts the
+// long-turn timeout/retry posture they require) when this is exactly "true",
+// so a dark Worker never receives media it would not describe and a dark
+// gateway never trades retries for a vision stage that does not run.
+const INBOUND_MEDIA_VISION_ENV = "ELIZA_APP_INBOUND_MEDIA_VISION";
+
+function inboundMediaVisionEnabled(): boolean {
+  return process.env[INBOUND_MEDIA_VISION_ENV]?.trim() === "true";
+}
 const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
@@ -1079,10 +1089,14 @@ async function sendPersonalSharedReply(
   // Media turns mirror voice: the cloud route may spend fetch + vision + the
   // model turn, so a re-POST can overlap a still-running route execution and
   // re-run the unbilled vision call. Group Blooio events carry mediaUrls too
-  // but are never forwarded as media (no vision runs), so they keep the plain
-  // text-turn retry/timeout posture.
+  // but are never forwarded as media (no vision runs), and with the vision
+  // flag off no media is forwarded at all, so both keep the plain text-turn
+  // retry/timeout posture.
   const isMediaTurn =
-    adapter.platform === "blooio" && !isGroup && !!event.mediaUrls?.length;
+    inboundMediaVisionEnabled() &&
+    adapter.platform === "blooio" &&
+    !isGroup &&
+    !!event.mediaUrls?.length;
   // Voice and media turns can spend most of the 120-second processing lease in
   // STT/vision + the model. Only a stale-auth retry is safe inline; provider/
   // transport failures reopen the webhook for the platform's durable retry

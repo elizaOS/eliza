@@ -3,18 +3,24 @@
  * additive mediaUrls schema (allowlist re-validation), the flag-off/disabled
  * path staying byte-identical to the current media-URL text, the flag-on
  * described turn, and the degrade contract — a typed enrichment failure keeps
- * the user's turn instead of failing the delivery. Collaborators are mocked;
- * the describe helper's real typed errors are used so the route's instanceof
+ * the user's turn instead of failing the delivery, and a dedicated-runtime
+ * turn bypassing pooled-key vision entirely. Collaborators are mocked; the
+ * describe helper's real typed errors are used so the route's instanceof
  * branches are the code under test.
  */
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { logger } from "@/lib/utils/logger";
 
+let activeTarget: {
+  id: string;
+  status: "running";
+  bridge_url: string;
+} | null = null;
 const resolvePersonalDelivery = mock(async () => ({
   userId: "00000000-0000-4000-8000-000000000002",
   organizationId: "00000000-0000-4000-8000-000000000001",
-  dedicatedTarget: null,
+  dedicatedTarget: activeTarget,
   isNew: false,
   resolution: "single-query-repeat" as const,
 }));
@@ -22,7 +28,18 @@ const sharedRestMessageSend = mock(async (..._args: unknown[]) => ({
   text: "hello from Eliza",
 }));
 const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
-const findActivePersonalDedicatedTarget = mock(async () => null);
+const findActivePersonalDedicatedTarget = mock(async () => activeTarget);
+const bridge = mock(
+  async (
+    _agentId: string,
+    _organizationId: string,
+    _request: { params: { text: string } },
+  ) => ({
+    jsonrpc: "2.0" as const,
+    id: "blooio:eliza-app:message-42",
+    result: { text: "hello from Dedicated" },
+  }),
+);
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
 };
@@ -87,7 +104,7 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
 }));
 mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: {
-    bridge: mock(async () => ({ jsonrpc: "2.0", id: "x", result: {} })),
+    bridge,
     importCanonicalConversation: mock(async () => null),
   },
 }));
@@ -166,10 +183,12 @@ function deliveredMessage(): string {
 
 describe("blooio inbound media enrichment at the messaging route", () => {
   beforeEach(() => {
+    activeTarget = null;
     resolvePersonalDelivery.mockClear();
     sharedRestMessageSend.mockClear();
     prewarmPersonalSharedAgentTurnCaches.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
+    bridge.mockClear();
     describeInboundImageMedia.mockReset();
     describeInboundImageMedia.mockImplementation(async () => {
       throw new InboundMediaVisionDisabledError(
@@ -254,6 +273,30 @@ describe("blooio inbound media enrichment at the messaging route", () => {
       `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n` +
         "A tabby cat sitting on a mechanical keyboard.",
     );
+  });
+
+  test("a dedicated-runtime turn skips pooled-key vision and bridges the raw media text", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    describeInboundImageMedia.mockResolvedValue(
+      "A tabby cat sitting on a mechanical keyboard.",
+    );
+    const response = await request(blooioDelivery());
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        identity: { runtime: "dedicated", activeAgentId: activeTarget.id },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(describeInboundImageMedia).not.toHaveBeenCalled();
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledTimes(1);
+    expect(bridge.mock.calls[0]?.[2].params.text).toBe(RAW_MEDIA_MESSAGE);
   });
 
   test("a typed enrichment failure degrades to the raw text without dropping the turn", async () => {

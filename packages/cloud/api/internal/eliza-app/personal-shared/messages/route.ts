@@ -905,16 +905,20 @@ app.post("/", async (c) => {
         },
       );
     }
+    // A dedicated runtime describes images itself through its own metered
+    // IMAGE_DESCRIPTION model, so pooled-key vision runs only for turns the
+    // shared runtime (text-only) will answer.
     if (
       parsed.data.platform === "blooio" &&
       !isGroupMessage(parsed.data) &&
-      parsed.data.mediaUrls
+      parsed.data.mediaUrls &&
+      !dedicated
     ) {
       stage = "media_description";
       // Unmetered pooled-key spend (same posture as the Whisper voice path
       // above, but reachable by any inbound sender): production enablement of
       // ELIZA_APP_INBOUND_MEDIA_VISION requires a per-sender/per-connector
-      // rate limit or billing-meter gate here first — see the PR rollout plan.
+      // rate limit or billing-meter gate at this stage first.
       try {
         const description = await describeInboundImageMedia(
           c.env,

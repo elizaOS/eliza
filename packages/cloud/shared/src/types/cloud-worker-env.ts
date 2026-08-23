@@ -480,6 +480,8 @@ export interface Bindings {
   /**
    * Exactly `"true"` enables vision descriptions of inbound Blooio image media
    * on Personal Shared turns; any other value keeps the raw media-URL text.
+   * The gateway-webhook service reads the same variable to decide whether to
+   * forward media URLs at all, so enable both deployments together.
    */
   ELIZA_APP_INBOUND_MEDIA_VISION?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */

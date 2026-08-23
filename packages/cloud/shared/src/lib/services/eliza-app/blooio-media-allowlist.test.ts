@@ -1,6 +1,8 @@
-// Pins the canonical Blooio media-URL allowlist: https-only, Blooio-owned
-// hosts (including subdomains), and rejection of lookalike/suffix-attack
-// hosts. Pure deterministic predicate — no network or mocks.
+/**
+ * Pins the canonical Blooio media-URL allowlist: https-only, Blooio-owned
+ * hosts (including subdomains), and rejection of lookalike/suffix-attack
+ * hosts. Pure deterministic predicate — no network or mocks.
+ */
 import { describe, expect, test } from "bun:test";
 import { ALLOWED_BLOOIO_MEDIA_DOMAINS, isAllowedBlooioMediaUrl } from "./blooio-media-allowlist";
 

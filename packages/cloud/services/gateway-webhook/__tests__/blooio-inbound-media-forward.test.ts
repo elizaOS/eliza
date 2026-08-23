@@ -1,12 +1,14 @@
 /**
- * Pins the Blooio inbound-media forward: allowlisted media URLs ride the
- * personal-Shared POST body only for Blooio one-to-one turns, media turns take
- * the voice-style long-turn retry posture (no status/transport re-POST that
- * could overlap a still-running vision route), group media events keep the
- * plain text-turn posture, and the gateway's runtime-local media allowlist
- * stays byte-identical to the canonical cloud-shared copy the Worker route
- * validates against. Deterministic fixtures with a mocked cloud fetch — no
- * live services.
+ * Pins the Blooio inbound-media forward: with ELIZA_APP_INBOUND_MEDIA_VISION
+ * set to "true", allowlisted media URLs ride the personal-Shared POST body only
+ * for Blooio one-to-one turns and those turns take the voice-style long-turn
+ * retry posture (no status/transport re-POST that could overlap a still-running
+ * vision route); with the flag unset the same image turn is byte-identical to a
+ * plain text turn (no mediaUrls, full retry budget); group media events keep
+ * the plain text-turn posture either way; and the gateway's runtime-local media
+ * allowlist stays byte-identical to the canonical cloud-shared copy the Worker
+ * route validates against. Deterministic fixtures with a mocked cloud fetch —
+ * no live services.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
@@ -95,6 +97,12 @@ function createAdapter(
         adapter.replies.push(text);
       },
     ),
+    sendReplyWithReceipt: mock(
+      async (config: WebhookConfig, replyEvent: ChatEvent, text: string) => {
+        await adapter.sendReply(config, replyEvent, text);
+        return { providerMessageIds: [`reply-${replyEvent.messageId}`] };
+      },
+    ),
     sendTypingIndicator: mock(async () => {}),
   };
   return adapter;
@@ -102,6 +110,7 @@ function createAdapter(
 
 const originalFetch = globalThis.fetch;
 const envKeys = [
+  "ELIZA_APP_INBOUND_MEDIA_VISION",
   "ELIZA_APP_BLOOIO_API_KEY",
   "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
   "ELIZA_APP_BLOOIO_PHONE_NUMBER",
@@ -111,7 +120,12 @@ const envKeys = [
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
-function configureEnv(): void {
+function configureEnv(options: { mediaVision?: boolean } = {}): void {
+  if (options.mediaVision === false) {
+    delete process.env.ELIZA_APP_INBOUND_MEDIA_VISION;
+  } else {
+    process.env.ELIZA_APP_INBOUND_MEDIA_VISION = "true";
+  }
   process.env.ELIZA_APP_BLOOIO_API_KEY = "bl_live_test";
   process.env.ELIZA_APP_BLOOIO_WEBHOOK_SECRET = "whsec_test";
   process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550001111";
@@ -219,6 +233,22 @@ describe("blooio inbound media forward", () => {
     expect("mediaUrls" in sharedBody).toBe(false);
   });
 
+  test("with the vision flag unset a Blooio image turn forwards no mediaUrls", async () => {
+    configureEnv({ mediaVision: false });
+    const event = createEvent("blooio", { mediaUrls: [MEDIA_URL] });
+
+    const sharedBody = await deliverToPersonalShared(event);
+
+    expect(sharedBody).toEqual({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+15550001111",
+      phoneNumber: "+15551234567",
+      messageId: `blooio:eliza-app:${event.messageId}`,
+      message: `[media: ${MEDIA_URL}]`,
+    });
+  });
+
   test("a Twilio turn never forwards mediaUrls even when the event has them", async () => {
     configureEnv();
     const event = createEvent("twilio", { mediaUrls: [MEDIA_URL] });
@@ -303,6 +333,18 @@ describe("blooio media turn retry posture", () => {
     expect(posts()).toBe(1);
   });
 
+  test("with the vision flag unset an image turn keeps the full text-turn retry budget", async () => {
+    configureEnv({ mediaVision: false });
+    const event = createEvent("blooio", { mediaUrls: [MEDIA_URL] });
+
+    const { posts, bodies } = await countFailingPersonalSharedPosts(event);
+
+    await waitFor(() => posts() === 3, "dark image-turn status retries");
+    for (const body of bodies) {
+      expect("mediaUrls" in body).toBe(false);
+    }
+  });
+
   test("a group media event keeps the plain-turn posture and drops mediaUrls", async () => {
     configureEnv();
     const event = createEvent("blooio", {
@@ -310,9 +352,7 @@ describe("blooio media turn retry posture", () => {
       mediaUrls: [MEDIA_URL],
     });
 
-    const { posts, bodies } = await countFailingPersonalSharedPosts(event, {
-      sendReplyWithReceipt: mock(async () => ({ providerMessageIds: ["p1"] })),
-    });
+    const { posts, bodies } = await countFailingPersonalSharedPosts(event);
 
     await waitFor(() => posts() === 3, "group-turn status retries");
     for (const body of bodies) {
