@@ -235,4 +235,103 @@ describe("MemoryService searchLongTermMemories similarity comparator", () => {
 		expect(results[1]?.id).toBe("00000000-0000-0000-0000-000000000002");
 		expect(results[2]?.id).toBe("00000000-0000-0000-0000-000000000003");
 	});
+
+	it("withholds NaN and infinite scores after the result set reaches its limit", async () => {
+		const candidates = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				agentId: ENTITY_ID,
+				entityId: ENTITY_ID,
+				type: "fact" as const,
+				content: "exact",
+				embedding: [1, 0],
+				createdAt: 1000,
+				updatedAt: 1000,
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				agentId: ENTITY_ID,
+				entityId: ENTITY_ID,
+				type: "fact" as const,
+				content: "finite",
+				embedding: [0.8, 0.6],
+				createdAt: 2000,
+				updatedAt: 2000,
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000013" as UUID,
+				agentId: ENTITY_ID,
+				entityId: ENTITY_ID,
+				type: "fact" as const,
+				content: "nan",
+				embedding: [Number.NaN, 1],
+				createdAt: 3000,
+				updatedAt: 3000,
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000014" as UUID,
+				agentId: ENTITY_ID,
+				entityId: ENTITY_ID,
+				type: "fact" as const,
+				content: "infinite",
+				embedding: [Number.POSITIVE_INFINITY, 1],
+				createdAt: 4000,
+				updatedAt: 4000,
+			},
+		];
+		const mockStorage = {
+			storeLongTermMemory: vi.fn(),
+			storeSessionSummary: vi.fn(),
+			getLongTermMemories: vi.fn(async () => candidates),
+		};
+		const reportError = vi.fn();
+		const runtime = createMockRuntime({
+			getSetting: vi.fn((key: string) =>
+				key === "MEMORY_LONG_TERM_VECTOR_SEARCH_ENABLED" ||
+				key === "MEMORY_VECTOR_SEARCH_ENABLED"
+					? "true"
+					: undefined,
+			),
+			hasService: (name: string) => name === "memoryStorage",
+			getService: (name: string) =>
+				name === "memoryStorage" ? mockStorage : null,
+			getServiceLoadPromise: vi.fn(async () => mockStorage),
+			reportError,
+		});
+		const service = new MemoryService(runtime);
+		await service.initialize(runtime);
+		(
+			service as unknown as {
+				memoryConfig: { longTermVectorSearchEnabled: boolean };
+			}
+		).memoryConfig.longTermVectorSearchEnabled = true;
+
+		const results = await service.searchLongTermMemories(
+			ENTITY_ID,
+			[1, 0],
+			2,
+			0,
+		);
+
+		expect(results.map((result) => result.id)).toEqual([
+			"00000000-0000-0000-0000-000000000011",
+			"00000000-0000-0000-0000-000000000012",
+		]);
+		expect(results.every((result) => Number.isFinite(result.similarity))).toBe(
+			true,
+		);
+		expect(reportError).toHaveBeenCalledOnce();
+		expect(reportError).toHaveBeenCalledWith(
+			"MemoryService.vectorSearch.invalidSimilarity",
+			expect.objectContaining({
+				code: "MEMORY_VECTOR_SIMILARITY_NON_FINITE",
+			}),
+			expect.objectContaining({
+				memoryIds: expect.arrayContaining([
+					"00000000-0000-0000-0000-000000000013",
+					"00000000-0000-0000-0000-000000000014",
+				]),
+			}),
+		);
+	});
 });
