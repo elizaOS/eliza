@@ -12,9 +12,7 @@
 
 import {
   type IAgentRuntime,
-  resolveCanonicalOwnerId,
-  stringToUuid,
-  validateUuid,
+  resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
 import type {
   LifeOpsContextPolicy,
@@ -45,18 +43,17 @@ export function fail(status: number, message: string, code?: string): never {
 }
 
 /**
- * The single owner-entity derivation for LifeOps scoping. Every surface that
- * reads, writes, or schedules owner-scoped LifeOps rows must resolve the owner
- * through this precedence — configured canonical owner (a UUID under
- * `ELIZA_ADMIN_ENTITY_ID` / owner contacts) first, then the deterministic
- * agent-id seed — or rows written on one surface become invisible to the
- * others (the write/read/scheduler `subject_id` fork).
+ * Owner-entity scope for LifeOps rows: the core `resolveOwnerEntityIdOrDefault`
+ * precedence (configured canonical owner, else the agent-id seed), guarded by
+ * `requireAgentId` so a runtime without an id fails as a 500 instead of scoping
+ * rows under a seed derived from `undefined`. Every LifeOps surface that reads,
+ * writes, or schedules owner-scoped rows must go through this — the chat write
+ * path, pendant and PA routes, and the scheduler share the same core helper —
+ * or rows written on one surface become invisible to the others.
  */
 export function defaultOwnerEntityId(runtime: IAgentRuntime): string {
-  const canonicalOwnerId = validateUuid(resolveCanonicalOwnerId(runtime));
-  return (
-    canonicalOwnerId ?? stringToUuid(`${requireAgentId(runtime)}-admin-entity`)
-  );
+  requireAgentId(runtime);
+  return resolveOwnerEntityIdOrDefault(runtime);
 }
 
 export function normalizeLifeOpsDomain(
