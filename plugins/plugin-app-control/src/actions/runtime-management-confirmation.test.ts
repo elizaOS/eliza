@@ -18,17 +18,19 @@ describe("runtime mutation confirmation", () => {
 	});
 
 	it.each([
-		"yes",
-		"Yes, please",
-		"confirm",
-		"proceed",
-		"go ahead",
-		"do it",
 		"confirm the revocation",
 		"yes, confirm revoke",
+		"proceed with the revocation",
 	])("accepts an unambiguous complete confirmation: %s", (text) => {
 		expect(isUnambiguousRuntimeConfirmation(text, "revoke")).toBe(true);
 	});
+
+	it.each(["yes", "Yes, please", "confirm", "proceed", "go ahead", "do it"])(
+		"rejects generic approval that is not bound to the requested operation: %s",
+		(text) => {
+			expect(isUnambiguousRuntimeConfirmation(text, "revoke")).toBe(false);
+		},
+	);
 
 	it("binds subject-bearing confirmation to the requested operation", () => {
 		expect(isUnambiguousRuntimeConfirmation("confirm pairing", "pair")).toBe(
