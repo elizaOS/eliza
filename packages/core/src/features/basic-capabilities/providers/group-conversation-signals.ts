@@ -124,7 +124,12 @@ export async function loadDialogueWindow(
 	}
 	const window = source
 		.filter(isDialogueMessage)
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+		.sort((a, b) => {
+		const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
+		const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
+		if (bSafe !== aSafe) return bSafe - aSafe;
+		return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+	})
 		.slice(-GROUP_SIGNAL_WINDOW);
 	const hasInbound =
 		message.id !== undefined && window.some((entry) => entry.id === message.id);
