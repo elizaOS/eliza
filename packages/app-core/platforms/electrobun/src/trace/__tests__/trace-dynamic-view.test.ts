@@ -23,7 +23,7 @@ vi.mock("node:url", () => ({
 import {
   createTraceDynamicViewManifest,
   TRACE_DYNAMIC_VIEW_ID,
-} from "./trace-dynamic-view.ts";
+} from "../trace-dynamic-view.ts";
 
 describe("createTraceDynamicViewManifest", () => {
   it("builds the trace view manifest with resolved entrypoint", () => {
