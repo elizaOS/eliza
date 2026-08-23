@@ -688,4 +688,40 @@ describe("catalog pagination parameter parsing", () => {
     expect(body.page).toBe(3);
     expect(body.perPage).toBe(25);
   });
+
+  it("sorts registry skills safely when downloads, stars, or updatedAt contain NaN", () => {
+    const items = [
+      { slug: "skill-nan", displayName: "Skill NaN", stats: { downloads: NaN, stars: NaN }, updatedAt: NaN },
+      { slug: "skill-valid", displayName: "Skill Valid", stats: { downloads: 100, stars: 50 }, updatedAt: 1000 },
+    ];
+
+    items.sort((a, b) => {
+      const bDownloads =
+        typeof b.stats.downloads === "number" &&
+        Number.isFinite(b.stats.downloads)
+          ? b.stats.downloads
+          : 0;
+      const aDownloads =
+        typeof a.stats.downloads === "number" &&
+        Number.isFinite(a.stats.downloads)
+          ? a.stats.downloads
+          : 0;
+      const bUpdated =
+        typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+          ? b.updatedAt
+          : 0;
+      const aUpdated =
+        typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+          ? a.updatedAt
+          : 0;
+      return (
+        bDownloads - aDownloads ||
+        bUpdated - aUpdated ||
+        a.slug.localeCompare(b.slug)
+      );
+    });
+
+    expect(items[0]?.slug).toBe("skill-valid");
+    expect(items[1]?.slug).toBe("skill-nan");
+  });
 });
