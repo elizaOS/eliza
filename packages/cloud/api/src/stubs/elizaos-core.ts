@@ -506,6 +506,79 @@ export function createUniqueUuid(
   return stringToUuid(`${baseUserId}:${runtime?.agentId ?? ""}`);
 }
 
+export function validateUuid(value: unknown): string | null {
+  return typeof value === "string" && UUID_RE.test(value) ? value : null;
+}
+
+interface OwnerResolutionRuntime {
+  getSetting?: (key: string) => unknown;
+}
+
+interface OwnerResolutionWorldMetadata {
+  ownership?: { ownerId?: unknown };
+}
+
+function getOwnerRuntimeSettingString(
+  runtime: OwnerResolutionRuntime,
+  key: string,
+): string | undefined {
+  if (typeof runtime.getSetting !== "function") return undefined;
+  const value = runtime.getSetting(key);
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseOwnerContactEntityIds(raw: string | undefined): string[] {
+  if (!raw) return [];
+  // error-policy:J2 owner contacts participate in authorization; preserve the
+  // invalid setting rather than treating it as no configured owners.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error("Failed to parse configured owner contacts", {
+      cause: error,
+    });
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+  return Object.values(parsed as Record<string, { entityId?: unknown }>)
+    .map((entry) =>
+      entry && typeof entry.entityId === "string" ? entry.entityId.trim() : "",
+    )
+    .filter((entityId) => entityId.length > 0);
+}
+
+export function getConfiguredOwnerEntityIds(
+  runtime: OwnerResolutionRuntime,
+): string[] {
+  const configuredAdminEntityId = getOwnerRuntimeSettingString(
+    runtime,
+    "ELIZA_ADMIN_ENTITY_ID",
+  );
+  const ownerContactsRaw = getOwnerRuntimeSettingString(
+    runtime,
+    "ELIZA_OWNER_CONTACTS_JSON",
+  );
+  const deduped = new Set<string>();
+  if (configuredAdminEntityId) deduped.add(configuredAdminEntityId);
+  for (const entityId of parseOwnerContactEntityIds(ownerContactsRaw)) {
+    deduped.add(entityId);
+  }
+  return [...deduped];
+}
+
+export function resolveCanonicalOwnerId(
+  runtime: OwnerResolutionRuntime,
+  metadata?: OwnerResolutionWorldMetadata,
+): string | null {
+  const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+  if (configuredOwnerIds.length > 0) {
+    return configuredOwnerIds[0] ?? null;
+  }
+  return validateUuid(metadata?.ownership?.ownerId);
+}
+
 const workerLogger = {
   log: () => {},
   info: () => {},
