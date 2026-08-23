@@ -25,3 +25,24 @@ export function publishAgentApiBase(
     apiBaseOwner.pushToWindow(win);
   }
 }
+
+/**
+ * Publish an embedded/local agent only after resolving its canonical desktop
+ * bearer.  The local bearer is minted by the native agent authority and is
+ * not guaranteed to have originated in `process.env`.  Re-reading only the
+ * environment here can therefore replace a valid startup token with an empty
+ * string, leaving every subsequently-created detached window unauthorized.
+ */
+export function publishLocalAgentApiBase(
+  rendererBase: string,
+  resolveLocalApiToken: () => string,
+  targets: Iterable<PushableWindow> = [],
+): void {
+  const apiToken = resolveLocalApiToken().trim();
+  if (!apiToken) {
+    throw new Error(
+      "Local desktop API token authority returned an empty token",
+    );
+  }
+  publishAgentApiBase(rendererBase, apiToken, targets);
+}

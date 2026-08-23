@@ -6,7 +6,10 @@ vi.mock("./api-base-owner", () => ({
   pushToWindow: vi.fn(),
 }));
 
-import { publishAgentApiBase } from "./agent-ready-publish";
+import {
+  publishAgentApiBase,
+  publishLocalAgentApiBase,
+} from "./agent-ready-publish";
 import * as apiBaseOwner from "./api-base-owner";
 
 describe("publishAgentApiBase", () => {
@@ -46,6 +49,28 @@ describe("publishAgentApiBase", () => {
       "http://127.0.0.1:9",
       "",
     );
+    expect(apiBaseOwner.pushToWindow).not.toHaveBeenCalled();
+  });
+
+  it("resolves the canonical local token before publishing detached-window HTML authority", () => {
+    const resolveToken = vi.fn(() => "  minted-desktop-token  ");
+    const target = { webview: { rpc: {} } };
+
+    publishLocalAgentApiBase("http://127.0.0.1:31337", resolveToken, [target]);
+
+    expect(resolveToken).toHaveBeenCalledOnce();
+    expect(apiBaseOwner.setCurrent).toHaveBeenCalledWith(
+      "http://127.0.0.1:31337",
+      "minted-desktop-token",
+    );
+    expect(apiBaseOwner.pushToWindow).toHaveBeenCalledWith(target);
+  });
+
+  it("fails closed rather than publishing an empty local bearer", () => {
+    expect(() =>
+      publishLocalAgentApiBase("http://127.0.0.1:31337", () => "  "),
+    ).toThrow("Local desktop API token authority returned an empty token");
+    expect(apiBaseOwner.setCurrent).not.toHaveBeenCalled();
     expect(apiBaseOwner.pushToWindow).not.toHaveBeenCalled();
   });
 });

@@ -73,7 +73,7 @@ import {
   isKioskShellMode,
   readRendererShellMode,
 } from "./kiosk-mode";
-import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
+import { publishLocalAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
   markDesktopSessionStale,
@@ -2101,10 +2101,16 @@ async function _startAgent(): Promise<void> {
         desktopSessionAgentGeneration = generation;
       }
       await primeDesktopSessionAuth(apiBase, rendererBase);
-      const apiToken = resolveApiToken(process.env) ?? "";
       // Set the source-of-truth API base FIRST (correct even with zero open
-      // windows), then push to every open window.
-      publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
+      // windows), then push to every open window. Resolve the canonical native
+      // desktop bearer rather than re-reading process.env: a detached window
+      // loads after this point and needs the same token injected into its first
+      // HTML response, before dom-ready RPC repair can run.
+      publishLocalAgentApiBase(
+        rendererBase,
+        () => configureDesktopLocalApiAuth(),
+        collectOpenRendererWindows(),
+      );
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
