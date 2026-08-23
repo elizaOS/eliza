@@ -312,6 +312,8 @@ export interface StartCloudStackOptions {
   skipMigrate?: boolean;
   /** Override API port. Default: free port. */
   apiPort?: number;
+  /** Override Wrangler's DevTools inspector port. Default: free port. */
+  inspectorPort?: number;
   /** Override frontend port. Default: free port. */
   frontendPort?: number;
   /** Override the PGlite bridge port. Default: free port. */
@@ -402,6 +404,7 @@ async function startCloudStackOwned(
   const controlPlanePort = await pickFreePort();
   const pglitePort = opts.pglitePort ?? (await pickFreePort());
   const apiPort = opts.apiPort ?? (await pickFreePort());
+  const inspectorPort = opts.inspectorPort ?? (await pickFreePort());
   const frontendPort = opts.frontendPort ?? (await pickFreePort());
 
   // 1. In-process mocks
@@ -447,6 +450,10 @@ async function startCloudStackOwned(
       STEWARD_API_URL: steward.url,
       STEWARD_PLATFORM_KEYS: "steward-e2e-platform-key",
       ...opts.env,
+      // Wrangler otherwise binds every local Worker inspector to 9229. Give
+      // each owned stack its own free port so concurrent worktrees cannot
+      // prevent the API from booting.
+      DEV_CLOUD_INSPECTOR_PORT: String(inspectorPort),
       PATH: [isAbsolute(BUN) ? dirname(BUN) : undefined, process.env.PATH]
         .filter((entry): entry is string => Boolean(entry))
         .join(delimiter),

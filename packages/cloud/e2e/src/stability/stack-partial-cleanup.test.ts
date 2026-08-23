@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
-import { createConnection, createServer } from "node:net";
+import { createConnection, createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startCloudStack } from "../fixtures/stack.ts";
@@ -39,6 +39,34 @@ async function portAcceptsConnections(port: number): Promise<boolean> {
   });
 }
 
+async function occupyPortIfFree(port: number): Promise<Server | undefined> {
+  const server = createServer();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolve);
+    });
+    return server;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "EADDRINUSE"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function closeServer(server: Server | undefined): Promise<void> {
+  if (!server) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
 test("partial startup failure removes PGlite process and data directory", async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), "cloud-stack-cleanup-"));
   const port = await freePort();
@@ -71,3 +99,28 @@ test("partial startup failure removes PGlite process and data directory", async 
     await rm(logDir, { recursive: true, force: true });
   }
 }, 10_000);
+
+test("stack assigns Wrangler an inspector port instead of fixed 9229", async () => {
+  const logDir = await mkdtemp(path.join(tmpdir(), "cloud-stack-inspector-"));
+  const legacyInspectorBlocker = await occupyPortIfFree(9229);
+  const inspectorPort = await freePort();
+  let stack: Awaited<ReturnType<typeof startCloudStack>> | undefined;
+  try {
+    expect(await portAcceptsConnections(9229)).toBe(true);
+    stack = await startCloudStack({
+      frontend: false,
+      inspectorPort,
+      logDir,
+      skipMigrate: true,
+    });
+    expect(await portAcceptsConnections(inspectorPort)).toBe(true);
+    expect(await fetch(`${stack.urls.api}/api/health`)).toHaveProperty(
+      "status",
+      200,
+    );
+  } finally {
+    await stack?.stop();
+    await closeServer(legacyInspectorBlocker);
+    await rm(logDir, { recursive: true, force: true });
+  }
+}, 180_000);
