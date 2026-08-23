@@ -233,6 +233,7 @@ const canonicalGroupBinding = {
   conversation_id: "group:00000000-0000-5000-8000-000000000030",
   state: "active",
   response_policy: "mention_only",
+  authority_version: 3,
   created_by_platform_user_id: "123456789",
 };
 
@@ -343,6 +344,7 @@ describe("adversarial Personal Shared group routing", () => {
       bindingId: blooioGroupBinding.id,
       providerMessageId: "provider-eliza-reply-0",
     });
+    expect(blooioGroupBinding.authority_version).toBe(3);
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: blooioGroupBinding.personal_agent_id }),
       blooioGroupBinding.conversation_id,
@@ -352,7 +354,23 @@ describe("adversarial Personal Shared group routing", () => {
       namespace,
       validBlooioGroup.messageId,
       "platform",
-      undefined,
+      // The replying actor is the binding owner, so the turn carries the
+      // group trusted-delivery destination (owner-scheduled group reminders,
+      // #25013) pinned to this binding generation.
+      {
+        platform: "blooio",
+        kind: "group",
+        project: "eliza-app",
+        connectorAccountId: "blooio:test-number",
+        chatId: "chat_group_123",
+        ownerLabel: "Ada",
+        authority: {
+          bindingId: blooioGroupBinding.id,
+          ownerUserId: blooioGroupBinding.owner_user_id,
+          personalAgentId: blooioGroupBinding.personal_agent_id,
+          version: blooioGroupBinding.authority_version,
+        },
+      },
       undefined,
       { type: "GROUP", source: "blooio" },
     );
