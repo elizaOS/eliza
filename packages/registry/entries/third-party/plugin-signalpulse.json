@@ -1,0 +1,18 @@
+{
+  "package": "plugin-signalpulse",
+  "repository": "github:GTCC777/plugin-signalpulse",
+  "kind": "plugin",
+  "description": "SignalPulse market intelligence for agents: trade-signal scanners and natural-language market analysis across FX, metals, indices, equities, futures, crypto, 35+ sports, horse & greyhound racing, golf, F1, fantasy, and prediction markets (Polymarket weather/politics/macro/attention ladders) \u2014 pay-per-call x402 USDC on Base, or a prepaid credit key. Free machine catalog with exact per-call prices drift-locked to what each endpoint actually charges. Quote-first: every paid call previews its exact price, asset, recipient \u2014 and for analysis, the exact question, which is hashed into the authorization \u2014 and executes only on a content-bound user confirmation, under a per-call cap, a daily budget, and an execute-once ledger. Every paid response carries the server's own agent_action verdict (allow/warn/skip/block); skip bodies are refund-honest and never settled.",
+  "homepage": "https://signalpulse.theaslangroupllc.com",
+  "version": "0.1.0",
+  "tags": [
+    "x402",
+    "micropayments",
+    "usdc",
+    "base",
+    "trading-signals",
+    "sports-betting",
+    "prediction-markets",
+    "market-analysis"
+  ]
+}
