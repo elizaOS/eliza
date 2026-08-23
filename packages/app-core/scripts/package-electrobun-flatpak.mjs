@@ -122,6 +122,27 @@ function lstatIfPresent(targetPath) {
   }
 }
 
+/** Canonicalize the stable /var alias that macOS exposes as /private/var. */
+export function canonicalizePlatformPathAlias(
+  targetPath,
+  platform = process.platform,
+) {
+  const resolved = path.resolve(targetPath);
+  if (platform !== "darwin") return resolved;
+  const aliasRoot = path.parse(resolved).root === "/" ? "/var" : null;
+  if (!aliasRoot) return resolved;
+  const relative = path.relative(aliasRoot, resolved);
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return resolved;
+  }
+  const canonicalRoot = realpathSync(aliasRoot);
+  return path.join(canonicalRoot, relative);
+}
+
 /**
  * Resolve an optional artifact directory and the existing directory whose
  * filesystem capacity represents it. Explicit paths reject symlink traversal,
@@ -164,7 +185,9 @@ export function resolveFlatpakArtifactDirectory(
 
   let capacityDirectory = artifactDirectory;
   while (true) {
-    const stats = lstatIfPresent(capacityDirectory);
+    const canonicalCapacityDirectory =
+      canonicalizePlatformPathAlias(capacityDirectory);
+    const stats = lstatIfPresent(canonicalCapacityDirectory);
     if (stats) {
       if (stats.isSymbolicLink()) {
         throw new Error(
@@ -176,7 +199,9 @@ export function resolveFlatpakArtifactDirectory(
           `Flatpak artifact directory component is not a directory: ${capacityDirectory}`,
         );
       }
-      if (realpathSync(capacityDirectory) !== capacityDirectory) {
+      if (
+        realpathSync(canonicalCapacityDirectory) !== canonicalCapacityDirectory
+      ) {
         throw new Error(
           `Flatpak artifact directory must not traverse a symlink: ${capacityDirectory}`,
         );
@@ -200,8 +225,15 @@ export function assertFlatpakArtifactDirectoryOutsideBuild(
   artifactDirectory,
   buildDirectory,
 ) {
-  const canonicalBuildDirectory = realpathSync(buildDirectory);
-  const relative = path.relative(canonicalBuildDirectory, artifactDirectory);
+  const canonicalBuildDirectory = realpathSync(
+    canonicalizePlatformPathAlias(buildDirectory),
+  );
+  const canonicalArtifactDirectory =
+    canonicalizePlatformPathAlias(artifactDirectory);
+  const relative = path.relative(
+    canonicalBuildDirectory,
+    canonicalArtifactDirectory,
+  );
   if (
     relative === "" ||
     (!relative.startsWith(`..${path.sep}`) &&

@@ -158,6 +158,13 @@ export class RemoteTargetRunner {
   private pollTail: Promise<void> = Promise.resolve();
   private loopGeneration = 0;
 
+  private stopFailedLoop(generation: number): void {
+    if (generation !== this.loopGeneration) return;
+    this.running = false;
+    this.pollTimer = null;
+    this.lastErrorCode = "REMOTE_TARGET_LOOP_FAILED";
+  }
+
   constructor(
     private readonly vault: RemoteTargetVault,
     private readonly stateStore: RemoteTargetStateStore,
@@ -834,11 +841,23 @@ export class RemoteTargetRunner {
       await this.pollOnce(generation);
       if (!this.running || generation !== this.loopGeneration) return;
       this.pollTimer = setTimeout(
-        () => void loop(),
+        () => {
+          this.pollTimer = null;
+          void loop().catch(() => {
+            // error-policy:J4 a background integrity failure becomes a
+            // distinct stopped/error status instead of an unhandled promise.
+            this.stopFailedLoop(generation);
+          });
+        },
         Math.max(250, this.options.pollIntervalMs ?? 1_000),
       );
     };
-    await loop();
+    try {
+      await loop();
+    } catch (error) {
+      this.stopFailedLoop(generation);
+      throw error;
+    }
   }
 
   async stop(): Promise<void> {
