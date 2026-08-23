@@ -3,7 +3,7 @@
  * classification (granted/denied/not-determined), non-Darwin unsupported,
  * and the request() path.
  */
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./services/permissions/probers/_bridge.js", () => ({
   IS_DARWIN: true,
@@ -22,12 +22,12 @@ vi.mock("./services/permissions/probers/_bridge.js", () => ({
   resolveBundleId: vi.fn(() => "com.example.app"),
 }));
 
-import { accessibilityProber } from "./services/permissions/probers/accessibility.ts";
 import {
   getNativeDylib,
-  queryTccStatus,
   IS_DARWIN,
+  queryTccStatus,
 } from "./services/permissions/probers/_bridge.js";
+import { accessibilityProber } from "./services/permissions/probers/accessibility.ts";
 
 const mockGetDylib = vi.mocked(getNativeDylib);
 const mockQueryTcc = vi.mocked(queryTccStatus);
