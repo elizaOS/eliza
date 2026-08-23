@@ -74,6 +74,7 @@ RUN chmod +x /usr/local/bin/cloud-agent-docker-entrypoint
 # pin). The entrypoint already tolerates their absence.
 RUN npm install --omit=dev --no-audit --no-fund --loglevel=error \
       @elizaos/core@alpha \
+      @elizaos/plugin-openai@alpha \
       @elizaos/plugin-sql@alpha \
     && npm cache clean --force
 

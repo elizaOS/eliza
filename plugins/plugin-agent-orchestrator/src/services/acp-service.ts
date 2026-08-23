@@ -391,8 +391,30 @@ function findExecutableOnPath(name: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Serialize one command part so `splitCommandLine` recovers it byte-for-byte.
+ *
+ * That parser strips a surrounding quote pair WITHOUT unescaping the contents,
+ * so its exact inverse is "wrap in a quote pair" — not `JSON.stringify`, which
+ * escapes backslashes and made a Windows path containing spaces re-parse with
+ * doubled separators (an executable the native transport cannot spawn).
+ */
 function quoteCommandPart(value: string): string {
-  return /\s/u.test(value) ? JSON.stringify(value) : value;
+  if (value.length === 0) return '""';
+  if (!/[\s"']/u.test(value)) return value;
+  if (!value.includes('"')) return `"${value}"`;
+  // A value containing a double quote cannot live inside a double-quoted span
+  // under this grammar; single quotes round-trip identically.
+  if (!value.includes("'")) return `'${value}'`;
+  // Containing both quote kinds is unrepresentable here. Fail loudly rather
+  // than emit an argv the child would silently mis-parse.
+  throw new ElizaError(
+    "Command part contains both quote characters and cannot be represented",
+    {
+      code: "ACP_COMMAND_UNQUOTABLE",
+      context: { valueLength: value.length },
+    },
+  );
 }
 
 /**
@@ -2785,7 +2807,7 @@ export class AcpService extends Service {
         }
       }
       this.log("info", "resuming orphaned sub-agent after restart", {
-        sessionId: session.id.slice(0, 8),
+        sessionId: session.id,
         status: session.status,
         transportMode,
         label:
@@ -2798,7 +2820,7 @@ export class AcpService extends Service {
       void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT).catch(
         (err: unknown) =>
           this.log("warn", "orphan resume sendPrompt failed", {
-            sessionId: session.id.slice(0, 8),
+            sessionId: session.id,
             err: err instanceof Error ? err.message : String(err),
           }),
       );

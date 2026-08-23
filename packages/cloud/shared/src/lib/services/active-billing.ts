@@ -206,7 +206,7 @@ class ActiveBillingService {
       return {
         resourceType: "agent_sandbox",
         resourceId: agent.id,
-        name: agent.agent_name ?? agent.id.slice(0, 8),
+        name: agent.agent_name ?? agent.id,
         status: agent.status,
         billingStatus: agent.billing_status,
         unitPrice,
@@ -419,7 +419,7 @@ class ActiveBillingService {
             resource: {
               resourceType: "agent_sandbox",
               resourceId: agent.id,
-              name: agent.agent_name ?? agent.id.slice(0, 8),
+              name: agent.agent_name ?? agent.id,
               status: "deleted",
               billingStatus: "suspended",
               unitPrice,
@@ -492,7 +492,7 @@ class ActiveBillingService {
             resource: {
               resourceType: "agent_sandbox",
               resourceId: agent.id,
-              name: agent.agent_name ?? agent.id.slice(0, 8),
+              name: agent.agent_name ?? agent.id,
               status: "deleted",
               billingStatus: "suspended",
               unitPrice,
@@ -523,7 +523,7 @@ class ActiveBillingService {
           resource: {
             resourceType: "agent_sandbox",
             resourceId: updated.id,
-            name: updated.agent_name ?? updated.id.slice(0, 8),
+            name: updated.agent_name ?? updated.id,
             status: updated.status,
             billingStatus: updated.billing_status,
             unitPrice,

@@ -59,6 +59,16 @@ export default {
 | `tick` | Invokes the lifeops scheduler at a logical clock time |
 | `wait` | Waits for `durationMs`, or polls a bounded `until(ctx)` state predicate |
 
+### Multi-world rooms and linked accounts
+
+`rooms[].world` names a logical world and `rooms[].entity` names a canonical
+logical entity. Distinct connector `account` values can use the same `entity`
+to model verified linked accounts across platforms. Omitting both fields keeps
+the legacy single-world, account-derived identity behavior. Seeds and custom
+checks receive deterministic runtime IDs through `ctx.roomIds`, `ctx.worldIds`,
+`ctx.entityIds`, `ctx.accountEntityIds`, `ctx.roomWorldIds`, and
+`ctx.roomEntityIds`. A memory seed may set `roomId` to a logical room name.
+
 ### Assertions
 
 **Per-turn:**

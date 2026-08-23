@@ -84,6 +84,16 @@ function chargeText(
 	options: WalkOptions,
 	kind: "keyBytes" | "stringBytes",
 ): BoundedResult | undefined {
+	// UTF-8 never encodes a JS string to fewer bytes than its UTF-16 code-unit
+	// length (every unit costs at least one byte, and an unpaired surrogate
+	// becomes a 3-byte U+FFFD), so a string longer than the byte ceiling is
+	// already over budget. Rejecting on .length first avoids forcing a
+	// proportional UTF-8 allocation and full scan for a value whose rejection is
+	// certain (#24778). Strings that might still fit fall through to the precise
+	// byte check below, so multibyte values on the boundary stay accepted.
+	if (value.length > MAX_CONNECTOR_JSON_STRING_BYTES) {
+		return overflow(options, "leaf", { [kind]: value.length });
+	}
 	const bytes = utf8Encoder.encode(value).byteLength;
 	if (bytes > MAX_CONNECTOR_JSON_STRING_BYTES) {
 		return overflow(options, "leaf", { [kind]: bytes });
