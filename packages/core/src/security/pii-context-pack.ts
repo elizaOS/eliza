@@ -40,6 +40,7 @@
  */
 
 import { ElizaError } from "../errors.js";
+import { BM25 } from "../search.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import type { Memory, UUID } from "../types/index.js";
 import type {
@@ -290,6 +291,23 @@ async function readStableCompletePrefix<T>(
 		}
 		limit *= 2;
 	}
+}
+
+function rerankCompleteMemories(
+	query: string,
+	memories: readonly Memory[],
+): Memory[] {
+	const docs = memories.map((memory) => ({
+		title: memory.id,
+		content: memory.content.text,
+	}));
+	const results = new BM25(docs).search(query, memories.length);
+	const rankedIndexes = new Set(results.map((result) => result.index));
+	const reranked = results.map((result) => memories[result.index]);
+	for (let index = 0; index < memories.length; index++) {
+		if (!rankedIndexes.has(index)) reranked.push(memories[index]);
+	}
+	return reranked;
 }
 
 function assertWellFormedContextText(value: string, field: string): void {
@@ -581,17 +599,20 @@ export function sourcesFromRuntime(
 				ModelType.TEXT_EMBEDDING,
 				params,
 			);
-			const memories = await readStableCompletePrefix(
+			const completeMemories = await readStableCompletePrefix(
 				"memories",
 				async ({ limit, offset }) =>
 					runtime.searchMemories({
 						embedding,
-						query,
 						tableName: "messages",
 						count: limit,
 						offset,
 					}),
 			);
+			// AgentRuntime's query reranker is intentionally applied once to the
+			// complete vector-ordered corpus. Applying it independently to growing
+			// prefixes changes earlier order and looks like a source mutation.
+			const memories = rerankCompleteMemories(query, completeMemories);
 			return memories
 				.filter((memory) => typeof memory.content.text === "string")
 				.map((memory) => ({
