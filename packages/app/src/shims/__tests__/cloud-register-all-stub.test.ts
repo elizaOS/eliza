@@ -4,7 +4,7 @@ import {
   registerAllCloudSurfaces,
   registerPrivateCloudSurfaces,
   registerPublicCloudSurfaces,
-} from "./cloud-register-all-stub.ts";
+} from "../cloud-register-all-stub.ts";
 
 describe("cloud-register-all-stub", () => {
   it("sync registrations are no-ops", () => {
