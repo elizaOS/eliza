@@ -3,7 +3,7 @@ import {
 	__resetDirectActionRoutingRulesForTests,
 	getDirectActionRoutingRules,
 	registerDirectActionRoutingRule,
-} from "./direct-action-routing.ts";
+} from "../direct-action-routing.ts";
 
 function runtime() {
 	return {} as never;
