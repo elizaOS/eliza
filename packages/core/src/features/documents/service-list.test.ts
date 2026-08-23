@@ -350,6 +350,19 @@ describe("DocumentService list semantics", () => {
 			metadata: { pinned: true, scope: "owner-private" },
 		});
 		await seedDocuments(runtime, [...documents, privatePinned]);
+		// The requester role must resolve to a real tier: an unresolvable world
+		// leaves the requester UNRESOLVED, which the storage authorization
+		// boundary denies outright (#24255).
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
 
 		const composed = await service.composeProviderDocuments(userMessage(), {
 			limit: 25,
@@ -509,10 +522,10 @@ describe("DocumentService list semantics", () => {
 			metadata: { roles: { [USER_ID]: "USER" } },
 		} as World);
 
-		await expect(
-			service.deleteDocument(hiddenDocument.id as UUID, userMessage()),
-		).rejects.toMatchObject({ code: "DOCUMENT_MUTATION_FORBIDDEN" });
-		for (const memory of [foreignDocument, nonDocument]) {
+		// A document this requester cannot see is indistinguishable from a missing
+		// UUID: the delete path reports DOCUMENT_NOT_FOUND rather than confirming
+		// the row exists through a forbidden-mutation error (#24272).
+		for (const memory of [hiddenDocument, foreignDocument, nonDocument]) {
 			await expect(
 				service.deleteDocument(memory.id as UUID, userMessage()),
 			).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
@@ -618,6 +631,19 @@ describe("DocumentService list semantics", () => {
 				},
 			}),
 		]);
+		// Same requirement as the pinned-composition case: without a resolvable
+		// world the requester stays UNRESOLVED and nothing is visible, so the
+		// visibility-before-filter classification could never be exercised.
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
 
 		const result = await service.listDocumentsDetailed(userMessage(), {
 			tags: ["missing-tag"],
