@@ -9,10 +9,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTaskAgentFrameworkStateCache,
+  compareScoredFrameworkCandidates,
   getTaskAgentFrameworkState,
   getTaskAgentModelPrefs,
   type TaskAgentFrameworkProbe,
-  compareScoredFrameworkCandidates,
 } from "../../src/services/task-agent-frameworks.js";
 
 const ENV_KEYS = [
