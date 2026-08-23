@@ -1,113 +1,111 @@
 /**
- * Coverage for model-resolution helpers: primary model id extraction,
- * provider id resolution across transport/backend combinations, and plugin
- * name mapping. @elizaos/shared helpers are mocked to keep the suite
- * deterministic and dependency-free.
+ * Coverage for the model-resolution helpers in ./model-resolution.ts: primary
+ * model id extraction, provider id resolution across transport/backend
+ * combinations, and the provider-to-plugin mapping. Runs against the real
+ * @elizaos/shared first-run provider catalog and service-routing resolver —
+ * those helpers are pure config readers, so no mocking is needed.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  getFirstRunProviderOption: vi.fn(),
-  normalizeFirstRunProviderId: vi.fn(),
-  resolveServiceRoutingInConfig: vi.fn(),
-}));
-
-vi.mock("@elizaos/shared", () => ({
-  getFirstRunProviderOption: mocks.getFirstRunProviderOption,
-  normalizeFirstRunProviderId: mocks.normalizeFirstRunProviderId,
-  resolveServiceRoutingInConfig: mocks.resolveServiceRoutingInConfig,
-}));
-
-type ModelResolutionModule = {
-  resolvePreferredProviderId: (config: unknown) => string | undefined;
-  resolvePreferredProviderPluginName: (config: unknown) => string | undefined;
-  resolvePrimaryModel: (config: unknown) => string | undefined;
-};
-
-async function loadModelResolution(): Promise<ModelResolutionModule> {
-  vi.resetModules();
-  return import("./model-resolution.ts");
-}
-
-beforeEach(() => {
-  mocks.getFirstRunProviderOption.mockReset();
-  mocks.normalizeFirstRunProviderId.mockReset();
-  mocks.resolveServiceRoutingInConfig.mockReset();
-});
+import type { ElizaConfig } from "@elizaos/shared";
+import { describe, expect, it } from "vitest";
+import {
+  resolvePreferredProviderId,
+  resolvePreferredProviderPluginName,
+  resolvePrimaryModel,
+} from "./model-resolution.ts";
 
 describe("resolvePrimaryModel", () => {
-  it("returns undefined when no model config exists", async () => {
-    const mod = await loadModelResolution();
-    expect(mod.resolvePrimaryModel({})).toBeUndefined();
-    expect(mod.resolvePrimaryModel({ agents: {} })).toBeUndefined();
+  it("returns undefined when no model config exists", () => {
+    expect(resolvePrimaryModel({})).toBeUndefined();
+    expect(resolvePrimaryModel({ agents: {} })).toBeUndefined();
+    expect(resolvePrimaryModel({ agents: { defaults: {} } })).toBeUndefined();
   });
 
-  it("returns the primary model id when configured", async () => {
-    const mod = await loadModelResolution();
-    const config = {
+  it("returns the primary model id when configured", () => {
+    const config: ElizaConfig = {
       agents: { defaults: { model: { primary: "deepseek-chat" } } },
     };
-    expect(mod.resolvePrimaryModel(config)).toBe("deepseek-chat");
+    expect(resolvePrimaryModel(config)).toBe("deepseek-chat");
   });
 });
 
 describe("resolvePreferredProviderId", () => {
-  it("returns elizacloud for a cloud-proxy transport", async () => {
-    mocks.resolveServiceRoutingInConfig.mockReturnValue({
-      llmText: { transport: "cloud-proxy", backend: "elizacloud" },
-    });
-    mocks.normalizeFirstRunProviderId.mockImplementation((v: string) => v);
-    const mod = await loadModelResolution();
-    expect(mod.resolvePreferredProviderId({})).toBe("elizacloud");
+  it("returns elizacloud for a cloud-proxy transport onto the cloud backend", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: { transport: "cloud-proxy", backend: "elizacloud" },
+      },
+    };
+    expect(resolvePreferredProviderId(config)).toBe("elizacloud");
   });
 
-  it("returns the direct backend when not elizacloud", async () => {
-    mocks.resolveServiceRoutingInConfig.mockReturnValue({
-      llmText: { transport: "direct", backend: "anthropic" },
-    });
-    mocks.normalizeFirstRunProviderId.mockImplementation((v: string) => v);
-    const mod = await loadModelResolution();
-    expect(mod.resolvePreferredProviderId({})).toBe("anthropic");
+  it("returns the direct backend when it is not elizacloud", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: { transport: "direct", backend: "anthropic" },
+      },
+    };
+    expect(resolvePreferredProviderId(config)).toBe("anthropic");
   });
 
-  it("falls back to the model-name hint for a direct transport without backend", async () => {
-    mocks.resolveServiceRoutingInConfig.mockReturnValue({
-      llmText: { transport: "direct", primaryModel: "openai/gpt-4o" },
-    });
-    mocks.normalizeFirstRunProviderId.mockImplementation((v: string) =>
-      v === "openai/gpt-4o" ? "openai" : undefined,
-    );
-    const mod = await loadModelResolution();
-    expect(mod.resolvePreferredProviderId({})).toBe("openai");
+  it("falls back to the model-name hint for a direct transport without a backend", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: { transport: "direct", primaryModel: "openai/gpt-4o" },
+      },
+    };
+    expect(resolvePreferredProviderId(config)).toBe("openai");
   });
 
-  it("returns undefined when nothing is configured", async () => {
-    mocks.resolveServiceRoutingInConfig.mockReturnValue(undefined);
-    mocks.normalizeFirstRunProviderId.mockReturnValue(undefined);
-    const mod = await loadModelResolution();
-    expect(mod.resolvePreferredProviderId({})).toBeUndefined();
+  it("falls back to the model-name hint for a remote transport without a backend", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: { transport: "remote", primaryModel: "anthropic/claude" },
+      },
+    };
+    expect(resolvePreferredProviderId(config)).toBe("anthropic");
+  });
+
+  it("ignores an elizacloud backend on a direct transport and uses the hint", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: {
+          transport: "direct",
+          backend: "elizacloud",
+          primaryModel: "openai/gpt-4o",
+        },
+      },
+    };
+    expect(resolvePreferredProviderId(config)).toBe("openai");
+  });
+
+  it("derives the provider from the configured primary model when routing is absent", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {},
+      agents: { defaults: { model: { primary: "anthropic/claude" } } },
+    };
+    expect(resolvePreferredProviderId(config)).toBe("anthropic");
+  });
+
+  it("returns undefined when nothing is configured", () => {
+    expect(resolvePreferredProviderId({ serviceRouting: {} })).toBeUndefined();
   });
 });
 
 describe("resolvePreferredProviderPluginName", () => {
-  it("maps a resolved provider id to its plugin name", async () => {
-    mocks.resolveServiceRoutingInConfig.mockReturnValue({
-      llmText: { transport: "direct", backend: "anthropic" },
-    });
-    mocks.normalizeFirstRunProviderId.mockImplementation((v: string) => v);
-    mocks.getFirstRunProviderOption.mockReturnValue({
-      pluginName: "@elizaos/plugin-anthropic",
-    });
-    const mod = await loadModelResolution();
-    expect(mod.resolvePreferredProviderPluginName({})).toBe(
+  it("maps a resolved provider id to its plugin package name", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: { transport: "direct", backend: "anthropic" },
+      },
+    };
+    expect(resolvePreferredProviderPluginName(config)).toBe(
       "@elizaos/plugin-anthropic",
     );
   });
 
-  it("returns undefined when no provider is resolved", async () => {
-    mocks.resolveServiceRoutingInConfig.mockReturnValue(undefined);
-    mocks.normalizeFirstRunProviderId.mockReturnValue(undefined);
-    const mod = await loadModelResolution();
-    expect(mod.resolvePreferredProviderPluginName({})).toBeUndefined();
+  it("returns undefined when no provider is resolved", () => {
+    expect(
+      resolvePreferredProviderPluginName({ serviceRouting: {} }),
+    ).toBeUndefined();
   });
 });
