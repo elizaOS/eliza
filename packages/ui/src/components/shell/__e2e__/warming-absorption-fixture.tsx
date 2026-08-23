@@ -5,7 +5,8 @@
 // (`client.setRequestTransport`) so the production retry loop, SSE parsing,
 // and error classification all execute in a real browser. Scenarios via
 // `?scenario=`: default replays the issue's exact first-turn sequence
-// (`agent_cache_warming` 503 → `shared_runtime_cache_warming` 503 → reply);
+// (`agent_cache_warming` 503 → `shared_runtime_cache_warming` 503 → reply →
+// temporarily stale history refresh);
 // `credits` answers the send with the canonical `insufficient_credits` 402.
 // Paired with run-warming-absorption-e2e.mjs.
 
@@ -39,6 +40,8 @@ const CONVERSATION: Conversation = {
 // `Retry-After: 1` — and the third attempt streams the real first reply.
 
 const REPLY = "Here — caches warmed while your send stayed pending.";
+const OLDER_USER = "Earlier shared-agent question";
+const OLDER_REPLY = "Earlier shared-agent answer";
 const CREDITS_MESSAGE =
   "You're out of credits. Add funds to keep chatting with your agent.";
 
@@ -66,6 +69,7 @@ function sseReply(): Response {
     agentName: "Eliza",
     messageId: "srv-a-1",
     userMessageId: "srv-u-1",
+    historyRefreshRequired: true,
   });
   return new Response(`data: ${done}\n\n`, {
     status: 200,
@@ -112,11 +116,14 @@ function Harness(): React.JSX.Element {
   const setConversationMessages = React.useCallback<
     UseChatSendDeps["setConversationMessages"]
   >((value) => {
-    setMessagesState((prev) => {
-      const next = typeof value === "function" ? value(prev) : value;
-      conversationMessagesRef.current = next;
-      return next;
-    });
+    // Mirror useChatState's production contract: callbacks read and update the
+    // ref synchronously before React schedules the visual state commit.
+    const next =
+      typeof value === "function"
+        ? value(conversationMessagesRef.current)
+        : value;
+    conversationMessagesRef.current = next;
+    setMessagesState(next);
   }, []);
 
   const [chatSending, setChatSending] = React.useState(false);
@@ -161,7 +168,25 @@ function Harness(): React.JSX.Element {
     chatSendBusyRef: React.useRef(false),
     chatSendNonceRef: React.useRef(0),
     loadConversations: async () => conversationsRef.current,
-    loadConversationMessages: async () => ({ ok: true as const }),
+    loadConversationMessages: async () => {
+      if (scenario === "warming") {
+        setConversationMessages([
+          {
+            id: "srv-u-older",
+            role: "user",
+            text: OLDER_USER,
+            timestamp: Date.now() - 60_000,
+          },
+          {
+            id: "srv-a-older",
+            role: "assistant",
+            text: OLDER_REPLY,
+            timestamp: Date.now() - 59_000,
+          },
+        ]);
+      }
+      return { ok: true as const };
+    },
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     pollCloudCredits: async () => true,
@@ -274,7 +299,7 @@ function Harness(): React.JSX.Element {
         <p style={{ opacity: 0.7, marginTop: 12, lineHeight: 1.6 }}>
           {scenario === "credits"
             ? "The agent behind this fixture answers the send with the canonical insufficient_credits 402."
-            : "The agent behind this fixture 503s the first two sends with the named warming barriers, then replies — the #18045 repro sequence."}
+            : "The agent behind this fixture 503s the first two sends with the named warming barriers, replies, then returns a temporarily stale history view — the hosted regression sequence."}
         </p>
       </div>
       {notice ? (
