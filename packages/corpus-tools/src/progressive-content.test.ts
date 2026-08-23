@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   generateProgressiveContentCorpus,
   PROGRESSIVE_CONTENT_BOUNDARY_BYTES,
+  planProgressiveContentByteLengths,
   progressiveContentObjectId,
   verifyProgressiveContentCorpus,
 } from "./progressive-content.ts";
@@ -192,22 +193,11 @@ describe("progressive content corpus", () => {
   }, 30_000);
 
   it("plans every required byte boundary in non-micro profiles", async () => {
-    const root = await makeRoot();
-    const manifest = await generateProgressiveContentCorpus({
-      outDir: root,
-      profile: "pr",
-      rootSeed: "boundary-plan-seed",
-      generatorRevision: "test-revision",
-    });
-    const fileSizes = new Set(
-      manifest.objects
-        .filter((object) => object.family === "file")
-        .map((object) => object.byteLength),
-    );
+    const fileSizes = new Set(planProgressiveContentByteLengths("pr", "file"));
     for (const boundary of PROGRESSIVE_CONTENT_BOUNDARY_BYTES) {
       expect(fileSizes.has(boundary)).toBe(true);
     }
-  }, 60_000);
+  });
 
   it("changes manifest identity when the root seed changes", async () => {
     const first = await generateProgressiveContentCorpus({
