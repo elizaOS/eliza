@@ -181,6 +181,17 @@ export interface AgentListItemDto {
   token_chain: string | null;
   token_name: string | null;
   token_ticker: string | null;
+  dockerImage?: string | null;
+  executionTier?: string;
+  webUiUrl?: string | null;
+}
+
+/**
+ * Strict projection produced after validating the current agents-list payload.
+ * Keep {@link AgentListItemDto} permissive for existing SDK consumers.
+ */
+export interface NormalizedAgentListItemDto
+  extends Omit<AgentListItemDto, "dockerImage" | "executionTier" | "webUiUrl"> {
   dockerImage: string | null;
   executionTier: AgentExecutionTier;
   webUiUrl: string | null;
@@ -209,8 +220,21 @@ export interface AgentDetailDto extends AgentListItemDto {
   adminDetails: AgentAdminDetailsDto | null;
 }
 
+/** Strict current-response projection for validated agent detail payloads. */
+export interface NormalizedAgentDetailDto
+  extends Omit<AgentDetailDto, "dockerImage" | "executionTier" | "webUiUrl"> {
+  dockerImage: string | null;
+  executionTier: AgentExecutionTier;
+  webUiUrl: string | null;
+}
+
 export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;
+export type NormalizedAgentsResponse = ApiSuccessEnvelope<
+  NormalizedAgentListItemDto[]
+>;
+export type NormalizedAgentResponse =
+  ApiSuccessEnvelope<NormalizedAgentDetailDto>;
 
 export type AnalyticsTimeGranularity = "hour" | "day" | "week" | "month";
 export type AnalyticsTimeRange = "daily" | "weekly" | "monthly";

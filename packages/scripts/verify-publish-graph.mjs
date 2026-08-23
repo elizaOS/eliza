@@ -3,8 +3,9 @@
 /**
  * Verifies that every publishable workspace dependency can be installed from
  * the registry. `workspace:*` is rewritten to a concrete version in package
- * artifacts, so a reference to a private or missing workspace becomes an npm
- * 404 for downstream consumers even when every in-repository test is green.
+ * artifacts, so a dependency, optional dependency, or peer reference to a
+ * private/missing workspace becomes an npm resolution failure for downstream
+ * consumers even when every in-repository test is green.
  *
  * This is a direct invariant: there is no baseline or grandfathered edge.
  */
@@ -13,7 +14,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listPackages } from "./lib/workspaces.mjs";
 
-const INSTALLED_DEPENDENCY_FIELDS = ["dependencies", "optionalDependencies"];
+const REGISTRY_RESOLVED_DEPENDENCY_FIELDS = [
+  "dependencies",
+  "optionalDependencies",
+  "peerDependencies",
+];
 
 function isWorkspaceSpec(spec) {
   return typeof spec === "string" && spec.startsWith("workspace:");
@@ -36,7 +41,7 @@ export function findUnpublishableWorkspaceDependencies(packages) {
   const violations = [];
   for (const pkg of packages) {
     if (!isPublishable(pkg.packageJson)) continue;
-    for (const field of INSTALLED_DEPENDENCY_FIELDS) {
+    for (const field of REGISTRY_RESOLVED_DEPENDENCY_FIELDS) {
       for (const [dependency, spec] of Object.entries(
         pkg.packageJson[field] ?? {},
       )) {

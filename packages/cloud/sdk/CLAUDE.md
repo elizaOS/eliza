@@ -176,6 +176,9 @@ Implement the five methods on the interface in `src/cloud-setup-session/service-
 - `src/types.cloud-api.ts` contains DTOs mirrored from the Cloud API schema. These must stay in sync with the actual API — do not add computed fields to them.
 - Public browser packages must depend only on this SDK's browser-safe exports,
   never on private `@elizaos/cloud-shared` runtime dependencies.
+- `AgentListItemDto` remains the backward-compatible permissive SDK shape;
+  validated current-response consumers may use `NormalizedAgentListItemDto`
+  and `NormalizedAgentDetailDto` for required current Cloud fields.
 
 ## Verification
 

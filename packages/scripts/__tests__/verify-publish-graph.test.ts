@@ -53,7 +53,32 @@ describe("publishable workspace graph", () => {
     ]);
   });
 
-  test("ignores private owners, peer/dev dependencies, and registry specs", () => {
+  test("rejects private and missing peer workspace targets", () => {
+    const graph = [
+      pkg("@x/public", {
+        peerDependencies: {
+          "@x/private": "workspace:*",
+          "@x/missing": "workspace:^",
+        },
+      }),
+      pkg("@x/private", { private: true }),
+    ];
+
+    expect(findUnpublishableWorkspaceDependencies(graph)).toEqual([
+      expect.objectContaining({
+        dependency: "@x/private",
+        field: "peerDependencies",
+        reason: "private",
+      }),
+      expect.objectContaining({
+        dependency: "@x/missing",
+        field: "peerDependencies",
+        reason: "missing",
+      }),
+    ]);
+  });
+
+  test("ignores private owners, dev dependencies, and registry specs", () => {
     const graph = [
       pkg("@x/private-owner", {
         private: true,
@@ -62,7 +87,6 @@ describe("publishable workspace graph", () => {
       pkg("@x/public", {
         dependencies: { react: "^19.0.0" },
         devDependencies: { "@x/private": "workspace:*" },
-        peerDependencies: { "@x/private": "workspace:*" },
       }),
       pkg("@x/private", { private: true }),
     ];
