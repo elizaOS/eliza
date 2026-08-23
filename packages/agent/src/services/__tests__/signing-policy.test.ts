@@ -5,10 +5,10 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  SigningPolicyEvaluator,
-  SigningPolicy,
-  SigningRequest,
   createDefaultPolicy,
+  SigningPolicy,
+  SigningPolicyEvaluator,
+  type SigningRequest,
 } from "./signing-policy.ts";
 
 function makeRequest(overrides: Partial<SigningRequest> = {}): SigningRequest {
