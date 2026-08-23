@@ -10,12 +10,14 @@ import {
   StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
+import { client } from "../../api";
 import {
   removeManagedSharedCloudAgentProfiles,
   scrubPersistedAgentProfileTokens,
 } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { clearSharedCloudAccountBinding } from "../../state/shared-cloud-account-binding";
+import { clearElizaApiToken } from "../../utils/eliza-globals";
 import { decodeJwtPayload } from "../lib/jwt";
 import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
@@ -179,6 +181,14 @@ export async function clearStaleStewardSession(): Promise<void> {
     // then rethrow the original storage error with its stack intact.
     storedTokenClearError = error;
   }
+  // `ElizaClient` mirrors its live bearer into boot config, while native and
+  // desktop hosts can independently inject the same owner key through the
+  // window-scoped API token. Both are canonical request-authority sources and
+  // must end in the same teardown transaction as the Steward JWT. Clearing
+  // only persisted profiles would leave the running renderer authenticated
+  // until reload (and native Cloud calls could keep using the injected key).
+  client.setToken(null);
+  clearElizaApiToken();
   // Every shared-agent profile belongs to the ending Steward account, even
   // when a dedicated or self-hosted target happens to be active at sign-out.
   removeManagedSharedCloudAgentProfiles();

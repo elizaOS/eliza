@@ -11,7 +11,10 @@ export default function AccountDeletionPage() {
   const session = useSessionAuth();
 
   return (
-    <div className="theme-cloud min-h-[100dvh] bg-bg px-6 py-16 font-sans text-txt sm:px-8">
+    <div
+      className="theme-cloud h-[100dvh] overflow-y-auto bg-bg px-6 py-16 font-sans text-txt sm:px-8"
+      data-scroll-cert-scroller
+    >
       <main className="mx-auto max-w-3xl space-y-8">
         <div className="space-y-3 border-b border-border pb-6">
           <p className="text-sm font-medium text-accent">
