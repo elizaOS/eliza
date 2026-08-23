@@ -161,6 +161,46 @@ final class BootCaptureUITests: XCTestCase {
         )
     }
 
+    func testReplyCandidateRejectsTechnicalProbesAndRequiresExpectedText() {
+        let baseline: Set<String> = ["Existing transcript"]
+        let promptPrefix = "SIM-C51-0215 Reply"
+
+        XCTAssertFalse(
+            isReplyCandidate(
+                "chat-glass-tier:native chat-glass-diag:native-anchored",
+                baseline: baseline,
+                promptPrefix: promptPrefix,
+                minimumLength: 8
+            )
+        )
+        XCTAssertFalse(
+            isReplyCandidate(
+                "chat-detent:half",
+                baseline: baseline,
+                promptPrefix: promptPrefix,
+                minimumLength: 8
+            )
+        )
+        XCTAssertFalse(
+            isReplyCandidate(
+                "A plausible but wrong assistant response",
+                baseline: baseline,
+                promptPrefix: promptPrefix,
+                minimumLength: 8,
+                expectedText: "ios-c51-gemma-ok"
+            )
+        )
+        XCTAssertTrue(
+            isReplyCandidate(
+                "ios-c51-gemma-ok",
+                baseline: baseline,
+                promptPrefix: promptPrefix,
+                minimumLength: 8,
+                expectedText: "ios-c51-gemma-ok"
+            )
+        )
+    }
+
     /// Drive one REAL chat exchange end-to-end on the device: tap the
     /// composer, type a prompt, press Return (the composer's Enter-to-send
     /// path in ChatSurface/glass-composer), then watch the screen for an
@@ -169,9 +209,10 @@ final class BootCaptureUITests: XCTestCase {
     /// Preconditions skip (same philosophy as testComposerAcceptsTypedText);
     /// the hard assertions are that the send actually left the composer (its
     /// AX value no longer holds the prompt) and that the app survived the
-    /// reply wait. Reply arrival is detected as any NEW static-text label
-    /// (absent before the send, not the prompt echo, ≥ 12 chars) and is
-    /// recorded in the final screenshot name + a `reply-text` attachment —
+    /// reply wait. Reply arrival is detected as a NEW non-probe static-text
+    /// label. When `ELIZA_EXPECTED_REPLY` is provided, only text containing
+    /// that exact marker is accepted. The result is recorded in the final
+    /// screenshot name + a `reply-text` attachment —
     /// on local-inference devices this reply leg is the entire point of the
     /// run (issue #11612 on-device generation).
     ///
@@ -180,6 +221,7 @@ final class BootCaptureUITests: XCTestCase {
     ///   ELIZA_SEND_PROMPT                       prompt (default below)
     ///   ELIZA_REPLY_TIMEOUT_SECONDS             reply budget (default 300)
     ///   ELIZA_REPLY_SCREENSHOT_INTERVAL_SECONDS filmstrip cadence (default 15)
+    ///   ELIZA_EXPECTED_REPLY                     required reply marker (optional)
     func testComposerSendsPromptAndWaitsForReply() throws {
         let env = ProcessInfo.processInfo.environment
         let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
@@ -187,9 +229,13 @@ final class BootCaptureUITests: XCTestCase {
         let replyTimeout = Double(env["ELIZA_REPLY_TIMEOUT_SECONDS"] ?? "") ?? 300
         let shotInterval = max(1, Double(env["ELIZA_REPLY_SCREENSHOT_INTERVAL_SECONDS"] ?? "") ?? 15)
         let requireReply = envFlag("ELIZA_REQUIRE_REPLY", env: env)
+        let expectedReply = env["ELIZA_EXPECTED_REPLY"]?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
 
         let app = XCUIApplication()
         launchWithRetry(app)
+        try connectRemoteAgentFromClipboardIfRequested(app, env: env)
 
         let bootDeadline = Date().addingTimeInterval(bootTimeout)
         var reachedHome = false
@@ -287,13 +333,28 @@ final class BootCaptureUITests: XCTestCase {
         let promptPrefix = String(prompt.prefix(24))
         while Date() < deadline {
             if app.state == .notRunning { break }
-            for text in app.staticTexts.allElementsBoundByIndex.prefix(120) {
-                let label = text.label
-                if label.count >= 12,
-                   !baseline.contains(label),
-                   !label.contains(promptPrefix) {
-                    replyLabel = label
-                    break
+            if let expectedReply, !expectedReply.isEmpty {
+                // WebKit can expose transcript rows as generic AX descendants
+                // rather than XCUIElementTypeStaticText. An exact label keeps
+                // the user's prompt from masquerading as the requested reply.
+                let markerText = app.descendants(matching: .any).matching(
+                    NSPredicate(format: "label ==[c] %@", expectedReply)
+                ).firstMatch
+                if markerText.exists {
+                    replyLabel = markerText.label
+                }
+            } else {
+                for text in app.staticTexts.allElementsBoundByIndex.prefix(120) {
+                    let label = text.label
+                    if isReplyCandidate(
+                        label,
+                        baseline: baseline,
+                        promptPrefix: promptPrefix,
+                        minimumLength: 12
+                    ) {
+                        replyLabel = label
+                        break
+                    }
                 }
             }
             if replyLabel != nil { break }
@@ -787,10 +848,12 @@ final class BootCaptureUITests: XCTestCase {
                 if app.state == .notRunning { break attemptLoop }
                 for text in app.staticTexts.allElementsBoundByIndex.prefix(120) {
                     let label = text.label
-                    if label.count >= 8, !baseline.contains(label),
-                        !label.contains(promptPrefix),
-                        !label.localizedCaseInsensitiveContains("highlighted option")
-                    {
+                    if isReplyCandidate(
+                        label,
+                        baseline: baseline,
+                        promptPrefix: promptPrefix,
+                        minimumLength: 8
+                    ) {
                         candidate = label
                         break
                     }
@@ -1042,12 +1105,6 @@ final class BootCaptureUITests: XCTestCase {
         ), !rawApiBase.isEmpty else {
             return
         }
-        let pairingCode = (env["ELIZA_TEST_PAIRING_CODE"] ?? "")
-            .filter { $0.isLetter || $0.isNumber }
-            .uppercased()
-        guard pairingCode.count == 12 else {
-            throw StrictGateFailure(message: "the one-time pairing code did not have 12 characters")
-        }
         guard var components = URLComponents(string: "elizaos://first-run/runtime/remote") else {
             throw StrictGateFailure(message: "could not construct the remote-agent deep link")
         }
@@ -1078,6 +1135,16 @@ final class BootCaptureUITests: XCTestCase {
 
         if hasAuthenticatedChatComposer(app) {
             return
+        }
+
+        let pairingCode = (env["ELIZA_TEST_PAIRING_CODE"] ?? "")
+            .filter { $0.isLetter || $0.isNumber }
+            .uppercased()
+        guard pairingCode.count == 12 else {
+            throw StrictGateFailure(
+                message:
+                    "the remote server requires pairing but the one-time code did not have 12 characters"
+            )
         }
 
         let pairingField = app.textFields.matching(
@@ -1367,6 +1434,38 @@ final class BootCaptureUITests: XCTestCase {
         let value = (env[name] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         return value == "1" || value == "true" || value == "yes" || value == "on"
+    }
+
+    private func isReplyCandidate(
+        _ label: String,
+        baseline: Set<String>,
+        promptPrefix: String,
+        minimumLength: Int,
+        expectedText: String? = nil
+    ) -> Bool {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= minimumLength,
+              !baseline.contains(label),
+              !trimmed.contains(promptPrefix),
+              !trimmed.localizedCaseInsensitiveContains("highlighted option")
+        else { return false }
+
+        let normalized = trimmed.lowercased()
+        let technicalProbePrefixes = [
+            "chat-glass-tier:",
+            "chat-glass-diag:",
+            "chat-glass-gate:",
+            "chat-detent:",
+            "chat-maximized:",
+            "home-launcher-page:",
+            "onboarding-state:",
+        ]
+        guard !technicalProbePrefixes.contains(where: normalized.hasPrefix) else {
+            return false
+        }
+
+        let required = expectedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return required.isEmpty || trimmed.localizedCaseInsensitiveContains(required)
     }
 
     private func strictNoSkips(_ env: [String: String]) -> Bool {
