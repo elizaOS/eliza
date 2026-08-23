@@ -84,6 +84,58 @@ describe("RUNTIMES action", () => {
 		expect(manageRuntime).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		"No, don't do it",
+		"Yes, but do not proceed",
+		"I did not confirm",
+		"Never revoke it",
+		"Confirm after I check",
+		"Wait, yes",
+	])("rejects negated or ambiguous confirmation text: %s", async (text) => {
+		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+			ok: true,
+			op: request.op,
+		}));
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text } } as Memory,
+			undefined,
+			{ op: "revoke", targetId: "host:mac", confirm: "true" },
+			callback(),
+		);
+		expect(result?.values).toEqual(
+			expect.objectContaining({ awaitingConfirmation: true }),
+		);
+		expect(manageRuntime).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"yes",
+		"Yes, please",
+		"confirm",
+		"proceed",
+		"go ahead",
+		"do it",
+		"confirm the revocation",
+		"yes, confirm revoke",
+	])("accepts an unambiguous complete confirmation: %s", async (text) => {
+		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+			ok: true,
+			op: request.op,
+		}));
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text } } as Memory,
+			undefined,
+			{ op: "revoke", targetId: "host:mac", confirm: "true" },
+			callback(),
+		);
+		expect(result?.success).toBe(true);
+		expect(manageRuntime).toHaveBeenCalledTimes(1);
+	});
+
 	it("dispatches a confirmed pairing and narrates the one-use receipt", async () => {
 		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
 			ok: true,
