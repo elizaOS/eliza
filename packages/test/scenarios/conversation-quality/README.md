@@ -33,6 +33,19 @@ scenario could see, because the agent picked the right action (usually just
   multi-sentence pattern-sermon the user didn't ask for.
 - **verbosity** — an emotional or banter beat gets a wall of text instead of a
   short, human reply.
+- **register-literalism** — a playful roll call or obvious bit gets answered
+  dead-literal ("I'm awake, how can I help?") instead of one light line back;
+  a shitpost that hides a real idea gets either an earnest feasibility essay
+  or a joke-explanation instead of the-joke-plus-one-beat.
+- **reply-guy default** — the agent treats every human beat as an invitation:
+  answering rhetorical questions nobody asked it, dropping fun-facts into
+  other people's riffs, replying to closers ("lol", a bare emoji) with a
+  paragraph. The register skill on the LOW end: knowing when a reaction or
+  silence beats a message.
+- **multi-agent pile-on** — with several assistants in one channel, every human
+  beat draws two or three bot replies, and bots start replying to each other's
+  replies with no new human input, until the channel reverbs with agent
+  chatter. One speaker per human message is the contract.
 
 These are all *character-register* failures. This directory makes each one a
 native, reproducible scenario so it can't silently regress.
