@@ -233,13 +233,16 @@ function replyUrls(value: string): string[] {
 type ClaimToken = { kind: "number"; value: number } | { kind: "word"; value: string };
 
 function claimTokens(value: string): ClaimToken[] {
-  return [...value.toLowerCase().matchAll(/-?\d[\d,]*(?:\.\d+)?|[\p{L}]+/gu)].flatMap(([token]) => {
+  const tokens: ClaimToken[] = [];
+  for (const [token] of value.toLowerCase().matchAll(/-?\d[\d,]*(?:\.\d+)?|[\p{L}]+/gu)) {
     if (/^-?\d/u.test(token)) {
       const number = Number(token.replaceAll(",", ""));
-      return Number.isFinite(number) ? [{ kind: "number" as const, value: number }] : [];
+      if (Number.isFinite(number)) tokens.push({ kind: "number", value: number });
+    } else if (!CLAIM_STOP_WORDS.has(token)) {
+      tokens.push({ kind: "word", value: token });
     }
-    return CLAIM_STOP_WORDS.has(token) ? [] : [{ kind: "word" as const, value: token }];
-  });
+  }
+  return tokens;
 }
 
 function tokensSupportedInOrder(
@@ -252,12 +255,13 @@ function tokensSupportedInOrder(
     while (cursor < evidence.length) {
       const candidate = evidence[cursor];
       cursor += 1;
-      if (
-        expected.kind === candidate.kind &&
-        (expected.kind === "word"
+      const matches =
+        expected.kind === "word" && candidate.kind === "word"
           ? expected.value === candidate.value
-          : numericSupported(expected.value, [candidate.value]))
-      ) {
+          : expected.kind === "number" && candidate.kind === "number"
+            ? numericSupported(expected.value, [candidate.value])
+            : false;
+      if (matches) {
         found = true;
         break;
       }
