@@ -17,6 +17,8 @@ import {
   SECRETS_SERVICE_TYPE,
   Service,
   SsrfBlockedError,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
 // Runtime error classes come from the dependency-light calendar subpath so
@@ -363,10 +365,13 @@ function providerResponseErrorContext(
   }
   const body = shaped.response?.data;
   if (typeof body === "string") {
-    context.providerBody = body.slice(0, 2000);
+    context.providerBody = truncateWellFormed(toWellFormedUnicode(body), 2000);
   } else if (body !== undefined && body !== null) {
     try {
-      context.providerBody = JSON.stringify(body).slice(0, 2000);
+      context.providerBody = truncateWellFormed(
+        toWellFormedUnicode(JSON.stringify(body)),
+        2000,
+      );
     } catch {
       // error-policy:J3 a non-serializable provider body degrades to its type
       // tag; the raw error object still travels with the report.
