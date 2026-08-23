@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLoopbackUrl, toRecord } from "./utils.ts";
+import { isLoopbackUrl, toRecord } from "../utils.ts";
 
 describe("toRecord", () => {
   it("narrows plain objects", () => {
