@@ -67,9 +67,9 @@ import {
 import { redactForScenarioReport } from "./redaction.ts";
 import {
   assertProviderQualifiedPluginPackages,
-  isResolvablePluginPackage,
   loadScenarioRequiredPlugin,
   pluginPackageIsRegistered,
+  resolveRequiredFixturePlugins,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 import { waitForScenarioRequiredServices } from "./required-services.ts";
@@ -192,11 +192,18 @@ export function providerQualifiedScenarioProblems(
   scenario: ScenarioDefinition,
 ): string[] {
   const problems: string[] = [];
-  const requiredPlugins = resolveRequiredPluginPackages(scenario);
+  let requiredPlugins: string[] = [];
+  const requiredFixturePlugins = resolveRequiredFixturePlugins(scenario);
   try {
+    requiredPlugins = resolveRequiredPluginPackages(scenario);
     assertProviderQualifiedPluginPackages(requiredPlugins);
   } catch (error) {
     problems.push(error instanceof Error ? error.message : String(error));
+  }
+  if (requiredFixturePlugins.length > 0) {
+    problems.push(
+      `provider-qualified scenarios cannot declare seed fixture plugins: ${requiredFixturePlugins.join(", ")}`,
+    );
   }
   if ((scenario.seed?.length ?? 0) > 0) {
     problems.push(
@@ -2879,16 +2886,16 @@ export async function runScenario(
       return report;
     }
 
-    // Seeds may register fixture plugins, so check declared plugin requirements
-    // after seeding and try to load package-named requirements that are present.
-    const requiredPlugins = resolveRequiredPluginPackages(scenario);
+    // Seeds may register fixture plugins, so verify both requirement classes
+    // after seeding while importing only the explicitly declared packages.
+    const requiredPluginPackages = resolveRequiredPluginPackages(scenario);
+    const requiredFixturePlugins = resolveRequiredFixturePlugins(scenario);
     // Track packages we successfully auto-loaded: a plugin's internal
     // `plugin.name` often differs from its package name (e.g. "plugin-health",
     // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
     // it as missing and skip a scenario whose required plugin is in fact loaded.
     const autoLoaded = new Set<string>();
-    for (const pkg of requiredPlugins) {
-      if (!isResolvablePluginPackage(pkg)) continue;
+    for (const pkg of requiredPluginPackages) {
       if (pluginPackageIsRegistered(runtime, pkg)) continue;
       try {
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
@@ -2905,9 +2912,16 @@ export async function runScenario(
         });
       }
     }
-    const missing = requiredPlugins.filter(
-      (p) => !pluginPackageIsRegistered(runtime, p) && !autoLoaded.has(p),
-    );
+    const missing = [
+      ...requiredPluginPackages.filter(
+        (plugin) =>
+          !pluginPackageIsRegistered(runtime, plugin) &&
+          !autoLoaded.has(plugin),
+      ),
+      ...requiredFixturePlugins.filter(
+        (plugin) => !pluginPackageIsRegistered(runtime, plugin),
+      ),
+    ];
     if (missing.length > 0) {
       report.status = "skipped";
       report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;

@@ -357,6 +357,10 @@ describe("provider-qualified data boundary", () => {
     const unsafe = {
       ...trustedScenario,
       isolation: "shared-runtime",
+      requires: {
+        ...trustedScenario.requires,
+        fixturePlugins: ["forged-provider-fixture"],
+      },
       rooms: [{ id: "forged-owner", account: "admin" }],
       mockoon: ["google"],
       seed: [{ type: "advanceClock", by: "PT1H" }],
@@ -380,6 +384,7 @@ describe("provider-qualified data boundary", () => {
 
     const problems = providerQualifiedScenarioProblems(unsafe).join("\n");
     expect(problems).toContain("seed steps");
+    expect(problems).toContain("seed fixture plugins");
     expect(problems).toContain("isolation=per-scenario");
     expect(problems).toContain("Mockoon");
     expect(problems).toContain("operator-signed run manifest");
