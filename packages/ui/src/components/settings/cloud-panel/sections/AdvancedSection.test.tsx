@@ -30,8 +30,8 @@ vi.mock("../../../../state", () => ({
   useIsPreviewMode: () => false,
 }));
 
-vi.mock("../nuphy-settings-primitives", () => ({
-  NuphyActionButton: ({
+vi.mock("../cloud-settings-primitives", () => ({
+  CloudActionButton: ({
     buttonLabel,
     onActivate,
   }: {
@@ -42,7 +42,7 @@ vi.mock("../nuphy-settings-primitives", () => ({
       {buttonLabel}
     </button>
   ),
-  NuphySwitchRow: () => null,
+  CloudSwitchRow: () => null,
   SettingsGroup: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
