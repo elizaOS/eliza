@@ -285,6 +285,89 @@ describe("FileMessageInteractionSessionStore", () => {
     await expect(Promise.all([publisher, contender])).resolves.toEqual([0, 0]);
   });
 
+  it("re-observes the lock after a publisher completes and releases inside the two-link read window", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const publication = barrier();
+    const publisher = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        afterLockPublishBeforeCandidateCleanup: publication.hook,
+      },
+    }).deleteExpired(now);
+    await publication.entered;
+
+    const candidateValidation = barrier();
+    const contender = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforePublicationCandidateValidation: candidateValidation.hook,
+      },
+    }).deleteExpired(now);
+    await candidateValidation.entered;
+    publication.release();
+    await expect(publisher).resolves.toBe(0);
+    await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+
+    candidateValidation.release();
+    await expect(contender).resolves.toBe(0);
+  });
+
+  it("re-observes a successor lock linked inside the two-link read window", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const publication = barrier();
+    const publisher = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        afterLockPublishBeforeCandidateCleanup: publication.hook,
+      },
+    }).deleteExpired(now);
+    await publication.entered;
+
+    const candidateValidation = barrier();
+    const contender = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforePublicationCandidateValidation: candidateValidation.hook,
+      },
+    }).deleteExpired(now);
+    await candidateValidation.entered;
+    publication.release();
+    await expect(publisher).resolves.toBe(0);
+
+    const successorRelease = barrier();
+    const successor = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: { beforeReleaseRetire: successorRelease.hook },
+    }).deleteExpired(now);
+    await successorRelease.entered;
+    const successorIdentity = await lockIdentity(lockPath);
+
+    candidateValidation.release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await lockIdentity(lockPath)).toBe(successorIdentity);
+    successorRelease.release();
+    await expect(Promise.all([successor, contender])).resolves.toEqual([0, 0]);
+  });
+
   it("a delayed creator cannot publish over a successor owner", async () => {
     const stateDirectory = await temporaryDirectory();
     const now = Date.parse("2026-08-21T00:00:00.000Z");
@@ -421,11 +504,121 @@ describe("FileMessageInteractionSessionStore", () => {
         committed: false,
         lockPath,
         markerPath: `${lockPath}.transition`,
+        published: true,
         recoveryRequired: false,
         retrySafeAfterRecovery: true,
         retrySafeNow: true,
       },
     });
+    await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fs.lstat(
+        path.join(stateDirectory, "message-interaction-sessions.v1.json"),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("types candidate cleanup failure when an existing lock blocks publication", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const holderRelease = barrier();
+    const holder = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: { beforeReleaseRetire: holderRelease.hook },
+    }).deleteExpired(now);
+    await holderRelease.entered;
+    const holderIdentity = await lockIdentity(lockPath);
+
+    const contender = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforeOwnerCandidateCleanup: async () => {
+          throw new Error("simulated owner candidate cleanup failure");
+        },
+      },
+    });
+    const failure = await contender.deleteExpired(now).then(
+      () => {
+        throw new Error("contender must not acquire the held lock");
+      },
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({
+      code: "INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED",
+      context: {
+        committed: false,
+        lockPath,
+        markerPath: `${lockPath}.transition`,
+        published: false,
+        recoveryRequired: false,
+        retrySafeAfterRecovery: true,
+        retrySafeNow: true,
+      },
+    });
+    const candidatePath = (failure as { context: { candidatePath: string } })
+      .context.candidatePath;
+    expect(candidatePath.startsWith(`${lockPath}.owner-${process.pid}-`)).toBe(
+      true,
+    );
+    expect((failure as { cause?: unknown }).cause).toMatchObject({
+      message: "simulated owner candidate cleanup failure",
+    });
+    expect(await lockIdentity(lockPath)).toBe(holderIdentity);
+
+    holderRelease.release();
+    await expect(holder).resolves.toBe(0);
+  });
+
+  it("types candidate cleanup failure when a transition marker defers publication", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await fs.mkdir(stateDirectory, { recursive: true });
+    await fs.writeFile(
+      `${lockPath}.transition`,
+      JSON.stringify({
+        pid: 2_000_000_000,
+        processIdentity: null,
+        token: "in-flight-transition",
+      }),
+      { mode: 0o600 },
+    );
+    const marker = await fs.readFile(`${lockPath}.transition`, "utf8");
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforeOwnerCandidateCleanup: async () => {
+          throw new Error("simulated owner candidate cleanup failure");
+        },
+      },
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED",
+      context: {
+        committed: false,
+        lockPath,
+        markerPath: `${lockPath}.transition`,
+        published: false,
+        recoveryRequired: false,
+        retrySafeAfterRecovery: true,
+        retrySafeNow: true,
+      },
+    });
+    expect(await fs.readFile(`${lockPath}.transition`, "utf8")).toBe(marker);
     await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(
       fs.lstat(
@@ -758,7 +951,17 @@ describe("FileMessageInteractionSessionStore", () => {
     // Stay well beyond the ceiling so filesystem timestamp precision cannot
     // turn this into a boundary assertion on platforms with rounded mtimes.
     await fs.utimes(lockPath, new Date(now - 1_000), new Date(now - 1_000));
-    await expect(store.deleteExpired(now)).resolves.toBe(0);
+    // Recovery publishes and fsyncs a transition marker before the retry, so
+    // the acquiring store needs a timeout that is not bounded by disk latency.
+    const recoverer = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      staleLockMs: 1,
+      hardStaleLockMs: 100,
+      pollMs: 1,
+    });
+    await expect(recoverer.deleteExpired(now)).resolves.toBe(0);
   });
 
   it("fences two delayed stale recoverers from the fresh winner generation", async () => {

@@ -702,11 +702,17 @@ export class FileMessageInteractionSessionStore
         if (!names.includes(expectedCandidate)) {
           const completed = await existsLstat(this.lockPath);
           if (
-            completed &&
-            completed.dev === entry.dev &&
-            completed.ino === entry.ino &&
-            completed.nlink === 1
+            !completed ||
+            completed.dev !== entry.dev ||
+            completed.ino !== entry.ino
           ) {
+            // The publisher finished its candidate cleanup, transaction, and
+            // release (and a successor may already have linked a new owner)
+            // inside the read window. The inode this reader opened grants no
+            // authority any more; the caller re-observes the current lock.
+            return null;
+          }
+          if (completed.nlink === 1) {
             return {
               ...(value as LockOwner),
               processIdentity: value.processIdentity ?? null,
@@ -715,6 +721,10 @@ export class FileMessageInteractionSessionStore
           storeError(
             "UNSAFE_INTERACTION_STORE_LOCK",
             "Interaction store lock has an unexpected hardlink.",
+            {
+              linkCount: completed.nlink,
+              lockPath: this.lockPath,
+            },
           );
         }
         let candidate: Awaited<ReturnType<typeof fs.lstat>>;
@@ -838,6 +848,8 @@ export class FileMessageInteractionSessionStore
       const candidate = `${this.lockPath}.owner-${process.pid}-${token}.tmp`;
       let owner: LockOwner | null = null;
       let published = false;
+      let transitionObserved = false;
+      let publicationError: unknown;
       let candidateCleanupError: unknown;
       try {
         const handle = await fs.open(
@@ -867,17 +879,26 @@ export class FileMessageInteractionSessionStore
         // semantics. A delayed creator never writes through the shared path.
         await this.lockRaceHooks.beforeLockPublish?.();
         if (await existsLstat(`${this.lockPath}.transition`)) {
-          await delay(this.pollMs);
-          continue;
+          // A transition is in flight; this candidate is discarded and a
+          // fresh one is written on the next attempt. Candidate cleanup still
+          // runs below so a cleanup failure cannot be swallowed by the retry.
+          transitionObserved = true;
+        } else {
+          await this.lockRaceHooks.afterTransitionCheckBeforeLockPublish?.();
+          await fs.link(candidate, this.lockPath);
+          published = true;
+          await this.lockRaceHooks.afterLockPublishBeforeCandidateCleanup?.();
         }
-        await this.lockRaceHooks.afterTransitionCheckBeforeLockPublish?.();
-        await fs.link(candidate, this.lockPath);
-        published = true;
-        await this.lockRaceHooks.afterLockPublishBeforeCandidateCleanup?.();
       } catch (error) {
-        if (!isErrno(error, "EEXIST")) throw error;
-        await this.recoverStaleLock(now);
-        await delay(this.pollMs);
+        // error-policy:J2 EEXIST is the designed contention signal and runs
+        // stale recovery; any other publication failure is rethrown after
+        // candidate cleanup so a cleanup failure is reported beside it.
+        if (!isErrno(error, "EEXIST")) {
+          publicationError = error;
+        } else {
+          await this.recoverStaleLock(now);
+          await delay(this.pollMs);
+        }
       } finally {
         try {
           await this.lockRaceHooks.beforeOwnerCandidateCleanup?.();
@@ -939,6 +960,7 @@ export class FileMessageInteractionSessionStore
                 committed: false,
                 lockPath: this.lockPath,
                 markerPath: `${this.lockPath}.transition`,
+                published: true,
                 recoveryRequired: Boolean(releaseError),
                 retrySafeAfterRecovery: true,
                 retrySafeNow: !releaseError,
@@ -956,7 +978,38 @@ export class FileMessageInteractionSessionStore
         }
         return owner;
       }
-      if (candidateCleanupError) throw candidateCleanupError;
+      if (candidateCleanupError) {
+        // The candidate never became the canonical owner, so nothing was
+        // mutated and no release is owed; the leftover candidate inode is the
+        // only residue and a retry publishes a fresh one.
+        throw new ElizaError(
+          "Interaction lock owner candidate cleanup failed before publication.",
+          {
+            code: "INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED",
+            cause: candidateCleanupError,
+            context: {
+              candidatePath: candidate,
+              committed: false,
+              lockPath: this.lockPath,
+              markerPath: `${this.lockPath}.transition`,
+              published: false,
+              recoveryRequired: false,
+              retrySafeAfterRecovery: true,
+              retrySafeNow: true,
+              ...(publicationError instanceof ElizaError
+                ? {
+                    publicationErrorCode: publicationError.code,
+                    publicationErrorContext: publicationError.context,
+                  }
+                : publicationError
+                  ? { publicationError: String(publicationError) }
+                  : {}),
+            },
+          },
+        );
+      }
+      if (publicationError) throw publicationError;
+      if (transitionObserved) await delay(this.pollMs);
     }
     if (await existsLstat(`${this.lockPath}.transition`)) {
       const marker = `${this.lockPath}.transition`;

@@ -64,7 +64,10 @@ context. If publication sees a transition marker after linking its complete
 owner, no transaction starts. Offline recovery must additionally verify the
 reported owner token/inode, remove both the exact marker and owner paths, fsync
 the parent directory, and restart. Owner-candidate cleanup failure is likewise
-typed as pre-mutation and safely detaches its published owner when possible.
+typed as pre-mutation (`INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED`,
+`committed: false`) whether or not the candidate was published; a published
+owner is safely detached when possible and `context.published` records which
+case occurred.
 After the state temp is renamed, a parent-directory sync failure reports
 `INTERACTION_STORE_COMMIT_AMBIGUOUS` with `committed: "unknown"`; a close
 failure after successful sync uses the same code with `committed: true`.
