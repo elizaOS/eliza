@@ -208,7 +208,21 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 
 ## Cerebras compatibility
 
-Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for reasoning-capable models (to prevent empty responses), and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
+Point `OPENAI_BASE_URL` at a Cerebras endpoint or set
+`ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured
+output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for
+reasoning-capable models, and `CEREBRAS_API_KEY` is accepted as an alias for
+`OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no
+explicit embedding URL is set.
+
+Cerebras image description uses the current verified `gemma-4-31b`
+chat-completions image-input path. It accepts one base64 PNG or JPEG data URL;
+external image URLs are rejected before dispatch. Set
+`CEREBRAS_IMAGE_DESCRIPTION_MODEL` only when the selected model is verified to
+advertise vision support. Unsupported Cerebras media endpoints—image
+generation, transcription, and speech—remain unregistered. A separate
+`OPENAI_IMAGE_DESCRIPTION_BASE_URL` retains the existing per-capability route
+to another compatible provider.
 
 ## EvoLink compatibility
 

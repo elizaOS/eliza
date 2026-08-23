@@ -399,7 +399,12 @@ export function getEmbeddingModel(runtime: IAgentRuntime): string {
 }
 
 export function getImageDescriptionModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_MODEL") ?? "gpt-5-mini";
+  return (
+    getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_MODEL") ??
+    (isCerebrasMode(runtime)
+      ? (getSetting(runtime, "CEREBRAS_IMAGE_DESCRIPTION_MODEL") ?? DEFAULT_CEREBRAS_TEXT_MODEL)
+      : "gpt-5-mini")
+  );
 }
 
 export function getTranscriptionModel(runtime: IAgentRuntime): string {
