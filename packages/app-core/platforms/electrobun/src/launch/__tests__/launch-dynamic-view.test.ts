@@ -23,7 +23,7 @@ vi.mock("node:url", () => ({
 import {
   createLaunchDiagnosticsViewManifest,
   LAUNCH_DIAGNOSTICS_VIEW_ID,
-} from "./launch-dynamic-view.ts";
+} from "../launch-dynamic-view.ts";
 
 describe("createLaunchDiagnosticsViewManifest", () => {
   it("builds the launch diagnostics manifest with resolved entrypoint", () => {
