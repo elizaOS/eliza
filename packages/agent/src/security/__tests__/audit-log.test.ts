@@ -3,13 +3,13 @@
  * append-only recording, trimming, query filters, subscriptions, and the
  * token-replacement/capability/policy helpers.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  SandboxAuditLog,
-  queryAuditFeed,
-  subscribeAuditFeed,
-  getAuditFeedSize,
   __resetAuditFeedForTests,
+  getAuditFeedSize,
+  queryAuditFeed,
+  SandboxAuditLog,
+  subscribeAuditFeed,
 } from "./audit-log.ts";
 
 describe("SandboxAuditLog", () => {
