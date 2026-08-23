@@ -181,6 +181,28 @@ describe("shared runtime long-term transcript context", () => {
     });
   });
 
+  test("rejects persisted grounding that points at private network hosts", () => {
+    for (const url of [
+      "http://127.0.0.1/admin",
+      "http://[::1]/admin",
+      "http://169.254.169.254/latest/meta-data",
+      "https://localhost/internal",
+    ]) {
+      expect(
+        parseSharedPublicWebGrounding({
+          kind: "web_search",
+          query: "private source",
+          provider: "parallel",
+          text: "untrusted",
+          observedAt: 123,
+          sourceUrls: [url],
+          sources: [{ url, text: "untrusted" }],
+          truncated: false,
+        }),
+      ).toBeUndefined();
+    }
+  });
+
   test("preserves complete astral code points beyond the retired byte cap", () => {
     const grounding = parseSharedPublicWebGrounding({
       kind: "web_search",

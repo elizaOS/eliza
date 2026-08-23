@@ -13,7 +13,7 @@ import type {
     Plugin,
     State,
 } from "@elizaos/core/edge";
-import { searchKeylessWeb } from "@elizaos/core/edge";
+import { isBlockedHostname, isPrivateIpAddress, searchKeylessWeb } from "@elizaos/core/edge";
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",
@@ -61,7 +61,9 @@ function publicHttpUrl(value: unknown): string | undefined {
         if (
             (parsed.protocol === "https:" || parsed.protocol === "http:") &&
             !parsed.username &&
-            !parsed.password
+            !parsed.password &&
+            !isBlockedHostname(parsed.hostname) &&
+            !isPrivateIpAddress(parsed.hostname)
         ) {
             return parsed.toString();
         }
@@ -99,17 +101,23 @@ export function webSearchSourceEvidence(text: string): {
             }
             if (!value || typeof value !== "object") continue;
             const record = value as Record<string, unknown>;
-            let recordUrl: string | undefined;
+            const recordUrls = new Set<string>();
+            const scalarRecord: Record<string, unknown> = {};
             for (const [key, item] of Object.entries(record)) {
                 if (SOURCE_URL_KEYS.has(key)) {
                     const parsed = publicHttpUrl(item);
-                    if (parsed) recordUrl = parsed;
+                    if (parsed) recordUrls.add(parsed);
                 }
-                if (item && typeof item === "object") pending.push(item);
+                if (item && typeof item === "object") {
+                    pending.push(item);
+                } else {
+                    scalarRecord[key] = item;
+                }
             }
-            if (recordUrl) {
-                sourceUrls.add(recordUrl);
-                sourceTextByUrl.set(recordUrl, JSON.stringify(record));
+            for (const url of recordUrls) sourceUrls.add(url);
+            if (recordUrls.size === 1) {
+                const [recordUrl] = recordUrls;
+                sourceTextByUrl.set(recordUrl, JSON.stringify(scalarRecord));
             }
         }
     } catch {
