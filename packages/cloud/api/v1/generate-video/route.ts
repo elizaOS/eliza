@@ -13,6 +13,7 @@ import {
   failureResponse,
   jsonError,
 } from "@/lib/api/cloud-worker-errors";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   collectVideoProviderApiKeys,
   getConfiguredVideoProviderCandidates,
@@ -145,8 +146,8 @@ function providerFailureDetails(options: {
         ? options.error
         : "";
   if (message.trim()) {
-    details.upstreamMessage = redactProviderErrorMessage(message.trim()).slice(
-      0,
+    details.upstreamMessage = truncateWellFormed(
+      toWellFormedUnicode(redactProviderErrorMessage(message.trim())),
       500,
     );
   }
@@ -574,7 +575,7 @@ app.post("/", async (c) => {
           provider: unknownAttempt.provider,
           prompt: unknownAttempt.prompt,
           status: "failed",
-          error: redactProviderErrorMessage(error.message).slice(0, 500),
+          error: truncateWellFormed(toWellFormedUnicode(redactProviderErrorMessage(error.message)), 500),
           parameters: unknownAttempt.parameters,
           metadata: { ...settlement },
           dimensions: { duration: unknownAttempt.durationSeconds },
