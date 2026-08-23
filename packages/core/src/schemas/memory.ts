@@ -143,6 +143,29 @@ export const memorySchema: SchemaTable = {
 			where:
 				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
 		},
+		idx_message_content_byte_seek: {
+			name: "idx_message_content_byte_seek",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "((metadata->>'messageId'))", isExpression: true },
+				{ expression: "((metadata->>'sourceKind'))", isExpression: true },
+				{
+					expression: "((metadata->>'attachmentIdHash'))",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'sourceRevision'))",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'byteEnd')::bigint)",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'message_content_segments' AND metadata->>'type' = 'message-content-segment'",
+		},
 		idx_document_source_line_seek: {
 			name: "idx_document_source_line_seek",
 			columns: [

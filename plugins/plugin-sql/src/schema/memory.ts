@@ -108,6 +108,18 @@ export const memoryTable = pgTable(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`
     ),
+    index("idx_message_content_byte_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'messageId'))`,
+        sql`((metadata->>'sourceKind'))`,
+        sql`((metadata->>'attachmentIdHash'))`,
+        sql`((metadata->>'sourceRevision'))`,
+        sql`((metadata->>'byteEnd')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'message_content_segments' AND ${table.metadata}->>'type' = 'message-content-segment'`
+      ),
     check(
       "fragment_metadata_check",
       sql`

@@ -38,6 +38,10 @@ import {
 	aliasRecallQuery,
 	embedRecallQuery,
 } from "../features/documents/recall-embed";
+import {
+	canonicalAttachmentText,
+	MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+} from "../features/messaging/content-segments";
 import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
@@ -1488,6 +1492,62 @@ function sanitizeAttachmentsForStorage(
 		} = attachment as MediaWithInlineData;
 		return rest;
 	});
+}
+
+function contentNeedsNativeSegments(content: Content): boolean {
+	const encoder = new TextEncoder();
+	if (
+		typeof content.text === "string" &&
+		encoder.encode(content.text).length >
+			MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+	) {
+		return true;
+	}
+	return (content.attachments ?? []).some(
+		(attachment) =>
+			encoder.encode(canonicalAttachmentText(attachment)).length >
+			MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+	);
+}
+
+async function persistMessageMemory(
+	runtime: IAgentRuntime,
+	memory: Memory,
+): Promise<UUID> {
+	if (runtime.createMessageMemory) {
+		return runtime.createMessageMemory(memory);
+	}
+	if (contentNeedsNativeSegments(memory.content)) {
+		throw new ElizaError(
+			"Runtime cannot atomically publish oversized message content",
+			{
+				code: "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE",
+				context: { messageId: memory.id ?? null },
+			},
+		);
+	}
+	return runtime.createMemory(memory, "messages");
+}
+
+async function replaceStoredMessageContent(
+	runtime: IAgentRuntime,
+	messageId: UUID,
+	content: Content,
+): Promise<void> {
+	if (runtime.replaceMessageMemoryContent) {
+		await runtime.replaceMessageMemoryContent(messageId, content);
+		return;
+	}
+	if (contentNeedsNativeSegments(content)) {
+		throw new ElizaError(
+			"Runtime cannot atomically replace oversized message content",
+			{
+				code: "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE",
+				context: { messageId },
+			},
+		);
+	}
+	await runtime.updateMemory({ id: messageId, content });
 }
 
 function _resolvePromptAttachments(
@@ -13714,16 +13774,16 @@ export class DefaultMessageService implements IMessageService {
 			const persistableMessage = stripAugmentationForPersistence(message);
 
 			if (message.id) {
-				const createdMemoryId = await runtime.createMemory(
+				const createdMemoryId = await persistMessageMemory(
+					runtime,
 					persistableMessage,
-					"messages",
 				);
 				memoryToQueue = { ...persistableMessage, id: createdMemoryId };
 				await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
 			} else {
-				const memoryId = await runtime.createMemory(
+				const memoryId = await persistMessageMemory(
+					runtime,
 					persistableMessage,
-					"messages",
 				);
 				message.id = memoryId;
 				memoryToQueue = { ...persistableMessage, id: memoryId };
@@ -13996,17 +14056,18 @@ export class DefaultMessageService implements IMessageService {
 				// instructions. Preserve the canonical persisted text when available.
 				const canonicalMessage = await runtime.getMemoryById(message.id);
 				const canonicalText = canonicalMessage?.content?.text;
-				await runtime.updateMemory({
-					id: message.id,
-					content: {
-						...message.content,
-						...(typeof canonicalText === "string"
-							? { text: canonicalText }
+				const canonicalTextSource =
+					canonicalMessage?.content?.messageTextSource;
+				await replaceStoredMessageContent(runtime, message.id, {
+					...message.content,
+					...(typeof canonicalText === "string"
+						? { text: canonicalText }
+						: canonicalTextSource
+							? { text: undefined, messageTextSource: canonicalTextSource }
 							: {}),
-						attachments: sanitizeAttachmentsForStorage(
-							message.content.attachments,
-						),
-					},
+					attachments: sanitizeAttachmentsForStorage(
+						message.content.attachments,
+					),
 				});
 			}
 		}
@@ -14052,10 +14113,11 @@ export class DefaultMessageService implements IMessageService {
 				});
 			}
 			if (message.id) {
-				await runtime.updateMemory({
-					id: message.id,
-					content: message.content,
-				});
+				await replaceStoredMessageContent(
+					runtime,
+					message.id,
+					message.content,
+				);
 				await runtime.queueEmbeddingGeneration(
 					{ ...message, id: message.id },
 					"normal",
@@ -14208,7 +14270,7 @@ export class DefaultMessageService implements IMessageService {
 						roomId: message.roomId,
 						createdAt: Date.now(),
 					};
-					await runtime.createMemory(earlyMemory, "messages");
+					await persistMessageMemory(runtime, earlyMemory);
 					await this.emitMessageSent(
 						runtime,
 						earlyMemory,
@@ -14550,10 +14612,11 @@ export class DefaultMessageService implements IMessageService {
 		) {
 			message.content.text = joinedTranslation;
 			if (message.id) {
-				await runtime.updateMemory({
-					id: message.id,
-					content: message.content,
-				});
+				await replaceStoredMessageContent(
+					runtime,
+					message.id,
+					message.content,
+				);
 				await runtime.queueEmbeddingGeneration(
 					{ ...message, id: message.id },
 					"normal",
@@ -14702,7 +14765,7 @@ export class DefaultMessageService implements IMessageService {
 						"Saving response to memory",
 					);
 					await timeInferenceSpan("message:delivery:persistence", () =>
-						runtime.createMemory(responseMemory, "messages"),
+						persistMessageMemory(runtime, responseMemory),
 					);
 					if (responseMemory.id) {
 						persistedResponseMessageIds.add(responseMemory.id);
@@ -14809,7 +14872,7 @@ export class DefaultMessageService implements IMessageService {
 										"Saving response to memory",
 									);
 									await timeInferenceSpan("message:delivery:persistence", () =>
-										runtime.createMemory(responseMemory, "messages"),
+									persistMessageMemory(runtime, responseMemory),
 									);
 									if (responseMemory.id) {
 										persistedResponseMessageIds.add(responseMemory.id);
@@ -14954,7 +15017,7 @@ export class DefaultMessageService implements IMessageService {
 				createdAt: Date.now(),
 			};
 			await timeInferenceSpan("message:delivery:persistence", () =>
-				runtime.createMemory(terminalMemory, "messages"),
+				persistMessageMemory(runtime, terminalMemory),
 			);
 			await timeInferenceSpan("message:delivery:event", () =>
 				this.emitMessageSent(

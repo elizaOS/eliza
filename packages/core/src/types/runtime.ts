@@ -1491,6 +1491,9 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		tableName: string,
 		unique?: boolean,
 	): Promise<UUID>;
+	/** Atomic manifest-last storage for oversized native MESSAGE/ATTACHMENT text. */
+	createMessageMemory?(memory: Memory, unique?: boolean): Promise<UUID>;
+	replaceMessageMemoryContent?(id: UUID, content: Content): Promise<void>;
 	updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean>;

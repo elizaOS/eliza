@@ -23,6 +23,7 @@ import {
 	readResponseWithLimit,
 } from "../../media/fetch.ts";
 import { describeImageCached } from "../../media/index.ts";
+import { hashAttachmentIdForLocator } from "../messaging/content-segments.ts";
 import {
 	trustedLocalMediaUrl,
 	VISION_IMAGE_FETCH_TIMEOUT_MS,
@@ -51,6 +52,18 @@ type ReadAttachmentResult = {
 	content: string;
 	autoSelected: boolean;
 };
+
+const NATIVE_ATTACHMENT_REFERENCE =
+	/^attachment:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9a-f]{64})$/i;
+
+function parseNativeAttachmentReference(
+	value: string,
+): { messageId: UUID; attachmentIdHash: string } | null {
+	const match = NATIVE_ATTACHMENT_REFERENCE.exec(value);
+	return match?.[1] && match[2]
+		? { messageId: match[1] as UUID, attachmentIdHash: match[2].toLowerCase() }
+		: null;
+}
 
 function attachmentLocator(attachment: Media): string {
 	return attachment.title?.trim() || attachment.url || attachment.id;
@@ -424,6 +437,29 @@ export async function readAttachmentRecords(
 	attachmentId?: string | null,
 ): Promise<ReadAttachmentResult[]> {
 	const trimmedId = attachmentId?.trim() || "";
+	const nativeReference = parseNativeAttachmentReference(trimmedId);
+	if (nativeReference) {
+		const parent = await runtime.getMemoryById(nativeReference.messageId);
+		const attachment = (
+			(parent?.content.attachments ?? []) as AttachmentWithInlineData[]
+		).find(
+			(candidate) =>
+				hashAttachmentIdForLocator(candidate.id) ===
+				nativeReference.attachmentIdHash,
+		);
+		if (!parent || !attachment) return [];
+		return [
+			{
+				attachment: {
+					...attachment,
+					_messageId: parent.id,
+					_createdAt: parent.createdAt,
+				},
+				content: attachmentStoredContent(attachment),
+				autoSelected: false,
+			},
+		];
+	}
 	const currentAttachments = (message.content.attachments ??
 		[]) as AttachmentWithInlineData[];
 

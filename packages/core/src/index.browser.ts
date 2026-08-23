@@ -53,6 +53,7 @@ export * from "./entities";
 export * from "./env-utils";
 export * from "./errors";
 export * from "./features/advanced-memory";
+export * from "./features/messaging/content-segments";
 export { AutonomyService } from "./features/autonomy/index";
 export type { DocumentSourceReadMetadata } from "./features/documents/index";
 export {

@@ -15,6 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { buildAccessContext } from "../../access-context.ts";
 import { ElizaError } from "../../errors.ts";
 import {
 	fetchRemoteMedia,
@@ -47,6 +48,10 @@ import {
 	deriveDocumentTitle,
 } from "../documents/naming.ts";
 import type { DocumentService } from "../documents/service.ts";
+import {
+	attachmentTextSourceDescriptor,
+	hashAttachmentIdForLocator,
+} from "../messaging/content-segments.ts";
 import {
 	listConversationAttachments,
 	readAttachmentRecords,
@@ -89,6 +94,9 @@ export function completeAttachmentContent(content: string): string {
 	return content;
 }
 
+const ATTACHMENT_READ_TOTAL_PAGE_BYTES = 16 * 1024;
+const ATTACHMENT_READ_MAX_ITEM_BYTES = 64 * 1024;
+
 type PagedAttachmentRecord = AttachmentRecord & {
 	readView: ReadView;
 };
@@ -110,14 +118,6 @@ function readNonnegativeInteger(
 	return value as number;
 }
 
-function readOptionalPositiveInteger(
-	params: Record<string, unknown>,
-	key: string,
-): number | undefined {
-	if (params[key] === undefined) return undefined;
-	return readNonnegativeInteger(params, key, 1, 1);
-}
-
 function attachmentRevision(record: AttachmentRecord): string {
 	return `attachment:${createHash("sha256")
 		.update(record.attachment.id)
@@ -126,12 +126,140 @@ function attachmentRevision(record: AttachmentRecord): string {
 		.digest("hex")}`;
 }
 
-function pageAttachmentRecord(params: {
+async function pageAttachmentRecord(params: {
+	runtime: IAgentRuntime;
+	message: Memory;
 	record: AttachmentRecord;
 	offset: number;
-	limit?: number;
-}): PagedAttachmentRecord {
+	limit: number;
+	expectedRevision?: string;
+}): Promise<PagedAttachmentRecord> {
+	const messageId = params.record.attachment._messageId;
+	const adapter = (params.runtime as Partial<IAgentRuntime>).adapter;
+	if (messageId && adapter) {
+		if (
+			adapter.messageContentSegmentCapability !== 1 ||
+			!adapter.readMessageContentRange
+		) {
+			throw new ElizaError(
+				"The message store cannot perform a bounded attachment read",
+				{ code: "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE" },
+			);
+		}
+		const attachmentIdHash = hashAttachmentIdForLocator(
+			params.record.attachment.id,
+		);
+		const accessContext = await buildAccessContext(
+			params.runtime,
+			params.message,
+		);
+		const read = await adapter.readMessageContentRange({
+			agentId: params.runtime.agentId,
+			messageId,
+			authorizedRoomId: params.message.roomId,
+			accessContext,
+			source: { kind: "attachment-text", attachmentIdHash },
+			offset: params.offset,
+			limit: params.limit,
+			...(params.expectedRevision
+				? { expectedRevision: params.expectedRevision }
+				: {}),
+		});
+		if (read.status === "not_found" || read.status === "forbidden") {
+			throw new ElizaError(
+				"The attachment is unavailable or no longer authorized",
+				{
+					code:
+						read.status === "forbidden"
+							? "ATTACHMENT_READ_ACCESS_DENIED"
+							: "ATTACHMENT_READ_NOT_FOUND",
+				},
+			);
+		}
+		let page;
+		if (read.status === "ok") {
+			page = read.page;
+		} else {
+			const source = Buffer.from(read.text, "utf8");
+			if (params.offset > source.length) {
+				throw new ElizaError("Attachment byte offset exceeds the source", {
+					code: "ATTACHMENT_READ_INVALID_OFFSET",
+				});
+			}
+			if (
+				params.offset < source.length &&
+				(source[params.offset] & 0xc0) === 0x80
+			) {
+				throw new ElizaError(
+					"Attachment byte offset splits a UTF-8 code point",
+					{ code: "ATTACHMENT_READ_INVALID_OFFSET" },
+				);
+			}
+			let end = Math.min(params.offset + params.limit, source.length);
+			while (
+				end > params.offset &&
+				end < source.length &&
+				(source[end] & 0xc0) === 0x80
+			) {
+				end--;
+			}
+			const sourceSha256 = createHash("sha256").update(source).digest("hex");
+			const revision = `rev:${sourceSha256}`;
+			if (params.offset > 0 && !params.expectedRevision) {
+				throw new ElizaError(
+					"An attachment revision is required to continue reading",
+					{ code: "ATTACHMENT_READ_EXPECTED_REVISION_REQUIRED" },
+				);
+			}
+			if (params.expectedRevision && params.expectedRevision !== revision) {
+				throw new ElizaError(
+					"The attachment changed before this page could be read",
+					{ code: "ATTACHMENT_READ_STALE_REVISION" },
+				);
+			}
+			const pageBuffer = source.subarray(params.offset, end);
+			page = {
+				text: pageBuffer.toString("utf8"),
+				start: params.offset,
+				end,
+				total: source.length,
+				revision,
+				sourceSha256,
+				sliceSha256: createHash("sha256").update(pageBuffer).digest("hex"),
+			};
+		}
+		return {
+			...params.record,
+			content: page.text,
+			readView: {
+				reference: buildContentReference({
+					kind: "attachment",
+					ref: `attachment:${messageId}:${attachmentIdHash}`,
+					revision: page.revision,
+				}),
+				slice: buildReadSlice({
+					range: {
+						unit: "byte",
+						start: page.start,
+						end: page.end,
+						total: page.total,
+					},
+					completeness:
+						page.end < page.total ? "partial-recoverable" : "complete",
+					revision: page.revision,
+					sliceSha256: page.sliceSha256,
+					sourceSha256: page.sourceSha256,
+				}),
+			},
+		};
+	}
 	const source = Buffer.from(params.record.content, "utf8");
+	if (source.length > ATTACHMENT_READ_MAX_ITEM_BYTES) {
+		throw new ElizaError(
+			"This legacy attachment must be reindexed before bounded reads",
+			{ code: "ATTACHMENT_REINDEX_REQUIRED" },
+		);
+	}
 	if (params.offset > source.length) {
 		throw new ElizaError("Attachment byte offset exceeds the source", {
 			code: "ATTACHMENT_READ_INVALID_OFFSET",
@@ -148,10 +276,7 @@ function pageAttachmentRecord(params: {
 			context: { attachmentId: params.record.attachment.id, offset: start },
 		});
 	}
-	let end =
-		params.limit === undefined
-			? source.length
-			: Math.min(start + params.limit, source.length);
+	let end = Math.min(start + params.limit, source.length);
 	while (end > start && end < source.length && (source[end] & 0xc0) === 0x80) {
 		end -= 1;
 	}
@@ -187,14 +312,44 @@ function pageAttachmentRecord(params: {
 	};
 }
 
-function pageAttachmentRecords(
+async function pageAttachmentRecords(
+	runtime: IAgentRuntime,
+	message: Memory,
 	records: AttachmentRecord[],
 	params: Record<string, unknown>,
-): PagedAttachmentRecord[] {
+): Promise<PagedAttachmentRecord[]> {
 	const offset = readNonnegativeInteger(params, "offset", 0);
-	const limit = readOptionalPositiveInteger(params, "limit");
-	return records.map((record) =>
-		pageAttachmentRecord({ record, offset, limit }),
+	const requestedLimit = readNonnegativeInteger(params, "limit", 0, 1);
+	const fairLimit = Math.max(
+		1,
+		Math.floor(ATTACHMENT_READ_TOTAL_PAGE_BYTES / Math.max(records.length, 1)),
+	);
+	const limit = Math.min(
+		requestedLimit > 0 ? requestedLimit : fairLimit,
+		ATTACHMENT_READ_MAX_ITEM_BYTES,
+	);
+	if (requestedLimit > ATTACHMENT_READ_MAX_ITEM_BYTES) {
+		throw new ElizaError(
+			"Attachment read limit exceeds the maximum page size",
+			{
+				code: "ATTACHMENT_READ_INVALID_RANGE",
+				context: { maximum: ATTACHMENT_READ_MAX_ITEM_BYTES },
+			},
+		);
+	}
+	const expectedRevision =
+		readStringParam(params, "expectedRevision") ?? undefined;
+	return await Promise.all(
+		records.map((record) =>
+			pageAttachmentRecord({
+				runtime,
+				message,
+				record,
+				offset,
+				limit,
+				expectedRevision,
+			}),
+		),
 	);
 }
 
@@ -576,7 +731,11 @@ function contentForRecords(records: AttachmentRecord[]): string {
 }
 
 function hasReadableContent(records: AttachmentRecord[]): boolean {
-	return records.some((record) => record.content.trim().length > 0);
+	return records.some(
+		(record) =>
+			record.content.trim().length > 0 ||
+			attachmentTextSourceDescriptor(record.attachment) !== null,
+	);
 }
 
 function attachmentSourceType(
@@ -605,7 +764,7 @@ function responseRecordText(params: {
 			: "",
 		params.clipboardStatusText,
 		params.clipboardResult.requested && params.clipboardResult.stored
-			? `Clipboard contains ${params.clipboardResult.snapshot.items.length} complete item(s).`
+			? `Clipboard usage: ${params.clipboardResult.snapshot.items.length}/${params.clipboardResult.snapshot.maxItems}.`
 			: "",
 		params.clipboardResult.requested && params.clipboardResult.stored
 			? "Clear unused clipboard state when it is no longer needed."
@@ -676,7 +835,7 @@ function getActionParams(
 }
 
 function readAttachmentId(params: Record<string, unknown>): string | null {
-	const value = params.attachmentId ?? params.id;
+	const value = params.attachmentId ?? params.reference ?? params.id;
 	return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
@@ -996,6 +1155,18 @@ export const readAttachmentAction: Action = {
 			if (!hasContent && (await transcribeMediaOnDemand(runtime, records))) {
 				hasContent = hasReadableContent(records);
 			}
+			if (
+				action === "save_as_document" &&
+				records.some(
+					(record) =>
+						attachmentTextSourceDescriptor(record.attachment) !== null,
+				)
+			) {
+				throw new ElizaError(
+					"Segmented attachments must be read page by page before document import",
+					{ code: "ATTACHMENT_SAVE_REQUIRES_PAGED_READ" },
+				);
+			}
 			const completeStoredContent = hasContent
 				? contentForRecords(records)
 				: "";
@@ -1010,7 +1181,12 @@ export const readAttachmentAction: Action = {
 				});
 			}
 
-			const pagedRecords = pageAttachmentRecords(records, params);
+			const pagedRecords = await pageAttachmentRecords(
+				runtime,
+				messageWithParams,
+				records,
+				params,
+			);
 			const expectedRevision = readStringParam(params, "expectedRevision");
 			if (
 				pagedRecords.some((record) => record.readView.slice.range.start > 0) &&
@@ -1198,7 +1374,7 @@ export const readAttachmentAction: Action = {
 		{
 			name: "attachmentId",
 			description:
-				"Optional attachment ID to read. Omit to read current or recent attachments.",
+				"Optional attachment ID or owner-bound reference from a prior read. Omit to read current or recent attachments.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -1211,11 +1387,12 @@ export const readAttachmentAction: Action = {
 		{
 			name: "limit",
 			description:
-				"Optional UTF-8 byte page size per selected attachment. Omit to read the complete content.",
+				"Maximum UTF-8 bytes per selected attachment. Multiple attachments each receive the same fair page allowance.",
 			required: false,
 			schema: {
 				type: "number" as const,
 				minimum: 1,
+				maximum: ATTACHMENT_READ_MAX_ITEM_BYTES,
 			},
 		},
 		{

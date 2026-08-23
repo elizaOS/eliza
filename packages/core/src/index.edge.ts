@@ -125,6 +125,7 @@ export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export * from "./utils/well-formed";
 export * from "./validation";
+export * from "./features/messaging/content-segments";
 
 export const isBrowser = false;
 export const isNode = false;
