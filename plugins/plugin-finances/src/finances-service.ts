@@ -338,8 +338,10 @@ function buildTransactionId(args: {
   sourceId: string;
   parsed: ParsedCsvTransaction;
 }): string {
-  // Deterministic id so re-importing the same CSV is idempotent under the
-  // unique (agent, source, posted_at, amount, merchant) constraint.
+  // Deterministic per-row id (and, via `csv:<id>`, the row's external id) so
+  // re-importing the same CSV replays onto the same keys and stays idempotent,
+  // while two genuinely distinct same-day/same-amount/same-merchant rows get
+  // distinct ids through `rowIndex` instead of colliding on the content tuple.
   const key = [
     args.agentId,
     args.sourceId,
@@ -644,15 +646,23 @@ export class FinancesService {
     let inserted = 0;
     let skipped = 0;
     for (const txn of parsed.transactions) {
-      const record: LifeOpsPaymentTransaction = {
-        id: buildTransactionId({
-          agentId: this.agentId(),
-          sourceId,
-          parsed: txn,
-        }),
+      const transactionId = buildTransactionId({
         agentId: this.agentId(),
         sourceId,
-        externalId: txn.externalId,
+        parsed: txn,
+      });
+      const record: LifeOpsPaymentTransaction = {
+        id: transactionId,
+        agentId: this.agentId(),
+        sourceId,
+        // Give every CSV row a stable, per-row-unique external id (the
+        // deterministic hash folds in rowIndex). Two genuinely distinct
+        // same-day/same-amount/same-merchant charges then get distinct keys
+        // and are both stored, while re-importing the identical CSV replays
+        // onto the same external id and stays idempotent. Without a non-null
+        // external id the row falls into the content-only legacy tuple index
+        // and the second real charge is silently dropped.
+        externalId: txn.externalId ?? `csv:${transactionId}`,
         postedAt: txn.postedAt,
         amountUsd: Number(txn.amountUsd.toFixed(2)),
         direction: txn.direction,

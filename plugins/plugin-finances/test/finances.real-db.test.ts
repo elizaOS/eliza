@@ -1196,6 +1196,127 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       expect(replayData.receipt).toBeUndefined();
     });
 
+    it("records two genuinely distinct identical charges instead of dropping the second (regression #26540)", async () => {
+      const source = await service.addPaymentSource({
+        kind: "csv",
+        label: "Duplicate-charge account",
+      });
+      // Two real purchases that happen to share date, amount, and merchant —
+      // e.g. two identical $4.50 coffees at the same shop on the same day.
+      // The content-only legacy tuple used to collapse these into one row,
+      // silently undercounting the owner's real spend.
+      const recentDate = new Date(Date.now() - 3 * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const csvText = `Date,Description,Amount\n${recentDate},Blue Bottle Coffee,-4.50\n${recentDate},Blue Bottle Coffee,-4.50\n`;
+
+      const before = await service.getSpendingSummary({ sourceId: source.id });
+      expect(before.totalSpendUsd).toBe(0);
+
+      const result = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText,
+      });
+      // Both legitimate charges are inserted; neither is skipped as a false
+      // content-duplicate.
+      expect(result.rowsRead).toBe(2);
+      expect(result.inserted).toBe(2);
+      expect(result.skipped).toBe(0);
+      expect(result.errors).toEqual([]);
+
+      const storedCount = await repository.countPaymentTransactionsForSource(
+        runtime.agentId,
+        source.id,
+      );
+      expect(storedCount).toBe(2);
+
+      // Each stored row carries a distinct, non-null external id derived from
+      // its CSV row index, so both real charges have durable identity.
+      const stored = await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      });
+      expect(stored).toHaveLength(2);
+      const externalIds = stored.map((row) => row.externalId);
+      expect(
+        externalIds.every((id) => typeof id === "string" && id.length > 0),
+      ).toBe(true);
+      expect(new Set(externalIds).size).toBe(2);
+
+      // The corrected spend now reflects BOTH purchases ($9.00), not one.
+      const after = await service.getSpendingSummary({ sourceId: source.id });
+      expect(after.transactionCount).toBe(2);
+      expect(after.totalSpendUsd).toBeCloseTo(9.0, 2);
+
+      // Re-importing the identical CSV is idempotent: the same external ids
+      // replay in place, so nothing new is inserted and the totals hold.
+      const replay = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText,
+      });
+      expect(replay.inserted).toBe(0);
+      expect(replay.skipped).toBe(2);
+      const afterReplayCount =
+        await repository.countPaymentTransactionsForSource(
+          runtime.agentId,
+          source.id,
+        );
+      expect(afterReplayCount).toBe(2);
+      const afterReplay = await service.getSpendingSummary({
+        sourceId: source.id,
+      });
+      expect(afterReplay.totalSpendUsd).toBeCloseTo(9.0, 2);
+
+      // Upgrade path: a row imported before this fix carries a NULL external_id
+      // but the same deterministic primary-key id. Only ONE such row can exist
+      // per content tuple (the partial legacy_tuple_unique index forbade the
+      // second — that was the original drop bug), so reconstruct exactly that
+      // survivor: keep the first CSV row with a NULL external_id and remove the
+      // second so the legacy single-row state is reproduced deterministically.
+      const [rowOne, rowTwo] = stored;
+      await repository.deletePaymentTransactionById(runtime.agentId, rowTwo.id);
+      await executeRawSql(
+        runtime,
+        `UPDATE app_finances.life_payment_transactions
+            SET external_id = NULL
+          WHERE agent_id = '${runtime.agentId}'
+            AND id = '${rowOne.id}'`,
+      );
+      const legacyRows = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(legacyRows).toHaveLength(1);
+      expect(legacyRows[0].externalId).toBeNull();
+
+      // Re-importing the two-row CSV must NOT raise a primary-key violation on
+      // the legacy row (matched by its deterministic id) and must RECOVER the
+      // previously dropped second charge, restoring the true count of two.
+      const upgradeReplay = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText,
+      });
+      expect(upgradeReplay.inserted).toBe(1);
+      expect(upgradeReplay.skipped).toBe(1);
+      const upgradeCount = await repository.countPaymentTransactionsForSource(
+        runtime.agentId,
+        source.id,
+      );
+      expect(upgradeCount).toBe(2);
+      const upgradedRows = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      // Every row now carries a durable, distinct csv external id.
+      expect(
+        upgradedRows.every(
+          (row) =>
+            typeof row.externalId === "string" &&
+            row.externalId.startsWith("csv:"),
+        ),
+      ).toBe(true);
+      expect(new Set(upgradedRows.map((row) => row.externalId)).size).toBe(2);
+    });
+
     it("balances derives per-source figures with freshness metadata", async () => {
       const source = await service.addPaymentSource({
         kind: "manual",

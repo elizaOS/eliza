@@ -967,12 +967,20 @@ export class FinancesRepository {
         if (source.length === 0) {
           throw new Error("Payment transaction source does not exist.");
         }
+        // Match on the external id (the normal idempotency key) OR the row's
+        // deterministic primary-key id. The id fallback replaces a legacy row
+        // that predates external ids on this row (e.g. a CSV row imported when
+        // external_id was still NULL) so the immediately following INSERT of
+        // the same deterministic id does not raise a primary-key violation.
         const existing = await executeRawSqlTx(
           tx,
           `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
             WHERE agent_id = ${sqlQuote(transaction.agentId)}
               AND source_id = ${sqlQuote(transaction.sourceId)}
-              AND external_id = ${sqlQuote(externalId)}
+              AND (
+                external_id = ${sqlQuote(externalId)}
+                OR id = ${sqlQuote(transaction.id)}
+              )
             RETURNING id`,
         );
         await executeRawSqlTx(tx, paymentTransactionInsertSql(transaction));
