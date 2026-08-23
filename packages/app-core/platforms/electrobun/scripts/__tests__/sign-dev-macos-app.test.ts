@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../electrobun.config", () => ({
+vi.mock("../../electrobun.config", () => ({
 	default: { app: { identifier: "x" } },
 }));
-vi.mock("./local-adhoc-sign-macos", () => ({ signLocalAppBundle: vi.fn() }));
-vi.mock("./postwrap-diagnostics", () => ({
+vi.mock("../local-adhoc-sign-macos", () => ({ signLocalAppBundle: vi.fn() }));
+vi.mock("../postwrap-diagnostics", () => ({
 	resolveWrapperBundlePath: () => "/tmp/bundle.app",
 }));
 
-import { shouldSignDevMacApp } from "./sign-dev-macos-app.ts";
+import { shouldSignDevMacApp } from "../sign-dev-macos-app.ts";
 
 const DEV_ENV = {
 	ELECTROBUN_BUILD_ENV: "dev",
