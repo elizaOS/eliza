@@ -1471,6 +1471,27 @@ describe("remote target durable runner", () => {
     }
   });
 
+  it("drops a terminal staged activation without wedging an active session", async () => {
+    const harness = await createHarness();
+    const runner = await createRunner(harness, () => undefined);
+    const stagedSessionId = "11111111-2222-4111-8111-111111111111";
+    await runner.installActivation({
+      ...harness.activation,
+      sessionId: stagedSessionId,
+      grantId: "11111111-3333-4111-8111-111111111111",
+    });
+    harness.relay.commitFailure = new RemoteTargetTransportError(
+      "HTTP_410",
+      410,
+    );
+
+    await expect(runner.pollOnce()).resolves.toBe("empty");
+    const state = await harness.state.read();
+    expect(state.sessions[stagedSessionId]).toBeUndefined();
+    expect(state.sessions[SESSION_ID]?.activationState).toBe("active");
+    expect(harness.relay.claimRequests).toBe(1);
+  });
+
   it("keeps finalization queued through local-failure compensation", async () => {
     const harness = await createHarness();
     const relay = new DeferredCompensationRelay(harness.activation);
