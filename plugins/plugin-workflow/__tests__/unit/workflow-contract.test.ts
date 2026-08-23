@@ -1,5 +1,6 @@
 /** Exercises Smithers workflow normalization through the public persistence service contract. */
 import { describe, expect, test } from 'bun:test';
+import { compareWorkflowSearchCandidates } from '../../src/services/workflow-service.js';
 import { validateSmithersSource } from '../../src/services/smithers-runtime';
 import type { WorkflowDefinition } from '../../src/types/index';
 
@@ -33,5 +34,29 @@ describe('workflow contract', () => {
     expect(definition.widgets?.[0]?.surface).toBe('both');
     expect('nodes' in definition).toBe(false);
     expect('connections' in definition).toBe(false);
+  });
+
+  test('sorts searched workflow candidates safely when score contains NaN', () => {
+    const candidates = [
+      { workflow: { id: 'wf-nan' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: NaN },
+      { workflow: { id: 'wf-valid' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: 5 },
+    ];
+
+    candidates.sort(compareWorkflowSearchCandidates);
+
+    expect(candidates[0]?.workflow.id).toBe('wf-valid');
+    expect(candidates[1]?.workflow.id).toBe('wf-nan');
+  });
+
+  test('tie-breaks candidates with equal scores by workflow id', () => {
+    const candidates = [
+      { workflow: { id: 'z-wf' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: 5 },
+      { workflow: { id: 'a-wf' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: 5 },
+    ];
+
+    candidates.sort(compareWorkflowSearchCandidates);
+
+    expect(candidates[0]?.workflow.id).toBe('a-wf');
+    expect(candidates[1]?.workflow.id).toBe('z-wf');
   });
 });
