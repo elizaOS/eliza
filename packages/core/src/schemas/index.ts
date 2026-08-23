@@ -5,8 +5,8 @@
  * database-agnostic format. Use buildBaseTables(adapter) to convert them
  * into concrete Drizzle table objects for a specific dialect.
  *
- * This module also exports advanced memory schemas (longTermMemories,
- * sessionSummaries, memoryAccessLogs) which are part of the enhanced
+ * This module also exports advanced memory schemas (longTermMemories and
+ * memoryAccessLogs) which are part of the enhanced
  * memory subsystem.
  */
 
@@ -14,7 +14,6 @@
 import {
 	longTermMemories,
 	memoryAccessLogs,
-	sessionSummaries,
 } from "../features/advanced-memory/schemas/index.ts";
 import type { BuildTableFn, DialectAdapter } from "../types/schema-builder.ts";
 import { agentSchema } from "./agent.ts";
@@ -88,7 +87,6 @@ export {
 	relationshipSchema,
 	roomSchema,
 	serverSchema,
-	sessionSummaries,
 	taskSchema,
 	worldSchema,
 };

@@ -126,13 +126,6 @@
       "descriptionCompressed": "Persistent user facts/preferences across conversations."
     },
     {
-      "name": "SUMMARIZED_CONTEXT",
-      "description": "Provides summarized context from previous conversations for optimized context usage",
-      "position": 96,
-      "dynamic": false,
-      "descriptionCompressed": "Summarized context from prior conversations."
-    },
-    {
       "name": "AGENT_SETTINGS",
       "description": "Provides the agent's current configuration settings (filtered for security)",
       "dynamic": true,

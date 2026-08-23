@@ -916,10 +916,7 @@ export class DocumentService extends Service {
 	}
 
 	/** Runs the DOCUMENTS provider's search and inventory reads on one snapshot. */
-	async composeProviderDocuments(
-		message: Memory,
-		listOptions: DocumentListOptions,
-	): Promise<{
+	async composeProviderDocuments(message: Memory): Promise<{
 		relevantFragments: StoredDocument[];
 		documents: Memory[];
 		pinnedDocuments: Memory[];
@@ -928,7 +925,7 @@ export class DocumentService extends Service {
 			this.runtime,
 			message,
 		);
-		const [relevantFragments, listResult, pinnedDocuments] = await Promise.all([
+		const [relevantFragments, documents] = await Promise.all([
 			this.searchDocumentsWithRequester(
 				message,
 				undefined,
@@ -937,21 +934,27 @@ export class DocumentService extends Service {
 				undefined,
 				resolveRequester,
 			),
-			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
-			this.listPinnedDocumentsWithRequester(resolveRequester),
+			this.listAllDocumentsWithRequester(resolveRequester),
 		]);
 		return {
 			relevantFragments,
-			documents: listResult.documents,
-			pinnedDocuments,
+			documents,
+			pinnedDocuments: documents.filter((document) => {
+				const metadata = document.metadata as
+					| DocumentMemoryMetadata
+					| undefined;
+				return (
+					metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
+				);
+			}),
 		};
 	}
 
-	/** Lists every pinned document visible to the provider's requester. */
-	private async listPinnedDocumentsWithRequester(
+	/** Lists every document visible to the provider's requester. */
+	private async listAllDocumentsWithRequester(
 		resolveRequester: DocumentRequesterResolver,
 	): Promise<Memory[]> {
-		const pinnedDocuments: Memory[] = [];
+		const documents: Memory[] = [];
 		let cursor: DocumentListCursor | undefined;
 		const seenCursors = new Set<string>();
 		do {
@@ -962,16 +965,7 @@ export class DocumentService extends Service {
 				},
 				resolveRequester,
 			);
-			pinnedDocuments.push(
-				...page.documents.filter((document) => {
-					const metadata = document.metadata as
-						| DocumentMemoryMetadata
-						| undefined;
-					return (
-						metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
-					);
-				}),
-			);
+			documents.push(...page.documents);
 			if (!page.hasMore) break;
 			if (!page.nextCursor) {
 				throw new ElizaError(
@@ -997,7 +991,7 @@ export class DocumentService extends Service {
 			seenCursors.add(serializedCursor);
 			cursor = page.nextCursor;
 		} while (cursor);
-		return pinnedDocuments;
+		return documents;
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {

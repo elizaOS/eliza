@@ -20,6 +20,8 @@ const removedCompactionModules = [
 	"packages/agent/src/runtime/conversation-compactor.ts",
 	"packages/agent/src/runtime/prompt-compaction.ts",
 	"packages/core/src/runtime/conversation-compaction-hook.ts",
+	"packages/core/src/features/advanced-memory/providers/context-summary.ts",
+	"packages/cloud/shared/src/lib/eliza/shared/providers/recent-messages.ts",
 	"packages/training/scripts/transform_drop_oversized.py",
 ];
 
@@ -38,6 +40,8 @@ const removedPromptCapCloneTests = [
 	"packages/core/src/runtime/evaluator.surrogate.test.ts",
 	"packages/core/src/runtime/planner-loop.surrogate.test.ts",
 	"packages/core/src/services/trajectory-json.surrogate.test.ts",
+	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/character.surrogate.test.ts",
+	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/action-state.surrogate.test.ts",
 ];
 
 const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
@@ -108,6 +112,50 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/core/src/action-docs.ts": [
+		/import\s*\{\s*compressPromptDescription/,
+		/source\.descriptionCompressed\s*\?\?/,
+	],
+	"packages/core/src/actions/resolve-action-args.ts": [
+		/RECENT_CONTEXT_LIMIT/,
+		/spec\.descriptionCompressed/,
+	],
+	"packages/core/src/actions/to-tool.ts": [
+		/action\.descriptionCompressed\s*\?\?/,
+		/action\.compressedDescription/,
+	],
+	"packages/core/src/runtime/sub-planner.ts": [
+		/action\.descriptionCompressed\s*\?\?/,
+		/action\.compressedDescription/,
+	],
+	"packages/core/src/features/advanced-memory/evaluators/memory-items.ts": [
+		/summaryEvaluator/,
+		/Extract up to \d+/,
+		/rolling summar/i,
+	],
+	"packages/core/src/features/advanced-memory/types.ts": [
+		/SessionSummary/,
+		/shortTermSummarization/,
+		/summaryMaxTokens/,
+	],
+	"packages/core/src/types/memory-storage.ts": [/SessionSummary/],
+	"packages/core/src/features/advanced-memory/services/memory-service.ts": [
+		/shouldSummarize/,
+		/SessionSummary/,
+		/MEMORY_SUMMARIZATION/,
+		/MEMORY_RETAIN_RECENT/,
+	],
+	"packages/core/src/features/advanced-memory/index.ts": [
+		/contextSummaryProvider/,
+		/summaryEvaluator/,
+	],
+	"packages/prompts/src/index.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
@@ -161,6 +209,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
 	],
+	"packages/core/src/features/documents/provider.ts": [
+		/PINNED_DOCUMENT_(?:TOKEN_BUDGET|TRUNCATION_MARKER)/,
+		/truncateWellFormed/,
+		/composeProviderDocuments\([^)]*limit:/,
+	],
+	"packages/cloud/shared/src/lib/eliza/plugin-web-search/src/services/keyless-search.ts":
+		[/MCP_MAX_ANSWER_CHARS/, /(?:parallel|exa)\.slice\(/],
+	"packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.surrogate.test.ts":
+		[/MCP_TOOL_OUTPUT_MAX_CHARS/, /truncateMcpToolOutput/],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
@@ -231,6 +288,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/actions/message.ts": [
 		/sorted\s*\.slice\(0,\s*8\)/,
 		/room\.id\.slice\(0,\s*8\)/,
+		/formatCandidates[\s\S]{0,300}\.slice\(0,/,
+	],
+	"packages/cloud/shared/src/lib/eliza/plugin-oauth/actions/oauth.ts": [
+		/active\.slice\(0,/,
 	],
 	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
 		/truncateWellFormed/,
@@ -414,6 +475,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-sql/src/services/advanced-memory-storage.ts": [
 		/entityId\.slice\(0,\s*8\)/,
+		/session_summary/,
+		/opts\?\.limit\s*\?\?\s*20/,
 	],
 	"plugins/plugin-elizacloud/src/cloud/managed-payment-clients.ts": [
 		/text\.slice\(/,

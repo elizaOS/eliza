@@ -4,7 +4,7 @@
  * context, rendered as "What I Know About You" with a per-category count. Reads
  * the memories from `MemoryService` via `runtime.getService("memory")`, formats
  * the already-fetched rows (rather than re-querying, to keep the count and text
- * in agreement), and bounds the rendered text length; contributes nothing for
+ * in agreement), and preserves the complete rendered text; contributes nothing for
  * the agent's own entity or when no service/memories exist.
  */
 import type {
@@ -113,7 +113,7 @@ export const longTermMemoryProvider: Provider = {
 				data: {
 					memoryCount: memories.length,
 					categories: categoryList,
-					truncated: false,
+					complete: true,
 				},
 				values: {
 					longTermMemories: text,
