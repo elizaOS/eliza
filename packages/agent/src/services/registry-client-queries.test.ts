@@ -180,14 +180,14 @@ describe("getPluginInfoFromRegistry", () => {
     );
   });
 
-  it("does not apply @elizaos prefix tries when the lookup already starts with @", () => {
+  it("does not cross scopes when the lookup already starts with @", () => {
     const elizaos = plugin({ name: "@elizaos/plugin-discord" });
+    const registry = new Map([[elizaos.name, elizaos]]);
+
     expect(
-      getPluginInfoFromRegistry(
-        new Map([[elizaos.name, elizaos]]),
-        "@other/plugin-discord",
-      ),
-    ).toBe(elizaos);
+      getPluginInfoFromRegistry(registry, "@other/plugin-discord"),
+    ).toBeNull();
+    expect(getPluginInfoFromRegistry(registry, "plugin-discord")).toBe(elizaos);
   });
 
   it("matches a case-insensitive key suffix and npm.package / name aliases", () => {
