@@ -74,11 +74,14 @@ describe("retired transport registration", () => {
   });
 
   it("does not advertise or activate the retired Signal transport", () => {
-    expect(
-      existsSync(
-        path.join(repositoryRoot, "plugins/plugin-signal/src/index.ts"),
-      ),
-    ).toBe(true);
+    for (const removedPackageSurface of [
+      "plugins/plugin-signal/package.json",
+      "plugins/plugin-signal/src/index.ts",
+    ]) {
+      expect(existsSync(path.join(repositoryRoot, removedPackageSurface))).toBe(
+        false,
+      );
+    }
     expect(channelPluginMap).not.toHaveProperty("signal");
     expect(shortIdPluginMap).not.toHaveProperty("signal");
     expect(
@@ -99,7 +102,14 @@ describe("retired transport registration", () => {
       "packages/app-core/packaging/snap/snapcraft.yaml",
       "packages/app-core/scripts/docker-ci-smoke.sh",
       "packages/app-core/scripts/generate-plugin-index.js",
+      "packages/app-core/scripts/i18n-dynamic-keys.json",
+      "packages/app-core/test/benchmarks/action-selection-cases.ts",
       "packages/app-core/vitest.config.ts",
+      "packages/cloud/shared/src/db/schemas/voice-imprints.ts",
+      "packages/core/src/features/advanced-capabilities/actions/connectorActionUtils.ts",
+      "packages/core/src/features/advanced-capabilities/actions/message.ts",
+      "packages/core/src/messaging/interactions/profile-catalog.ts",
+      "packages/core/src/messaging/interactions/CAPABILITY_MATRIX.md",
       "packages/scripts/vitest/default.config.ts",
       "packages/registry/src/first-party/channel-plugin-map.json",
       "packages/registry/src/first-party/generated.json",
@@ -119,27 +129,52 @@ describe("retired transport registration", () => {
       expect(
         readFileSync(path.join(repositoryRoot, authority), "utf8"),
       ).not.toMatch(
-        /@elizaos\/plugin-signal|SIGNAL_HTTP_URL|SIGNAL_CLI_PATH|signal-cli|signald/i,
+        /@elizaos\/plugin-signal|plugin-signal|SIGNAL_HTTP_URL|SIGNAL_CLI_PATH|signal-cli|signald|signalqroverlay|signal:\s*["']#signal|Connector source:[^\n]*\bsignal\b|cross-send-signal|send a Signal message/i,
       );
     }
 
-    const tombstoneSource = readFileSync(
-      path.join(repositoryRoot, "plugins/plugin-signal/src/index.ts"),
-      "utf8",
-    );
-    expect(tombstoneSource).toContain("SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE");
-    expect(tombstoneSource).not.toMatch(
-      /node:child_process|\bspawn\s*\(|\bfetch\s*\(/,
-    );
+    for (const trainingSurface of [
+      "packages/training/fixtures/eliza1-smoke-source.jsonl",
+      "packages/training/data/final-eliza1-smoke/train.jsonl",
+      "packages/training/data/final-eliza1-smoke/val.jsonl",
+      "packages/training/data/final-eliza1-smoke/test.jsonl",
+    ]) {
+      expect(
+        readFileSync(path.join(repositoryRoot, trainingSurface), "utf8"),
+      ).not.toMatch(
+        /cross-send-signal|send a Signal message|outbound Telegram\/Signal/i,
+      );
+    }
 
-    const statusTombstone = readFileSync(
+    for (const retiredEvidenceSurface of [
+      ".github/issue-evidence/gpt55-training-pipeline/s4-data-nebius/assembled/train.jsonl",
+      ".github/issue-evidence/gpt55-training-pipeline/s4-data-nebius/assembled/val.jsonl",
+      ".github/issue-evidence/gpt55-training-pipeline/s4-data-nebius/assembled/test.jsonl",
+    ]) {
+      expect(
+        existsSync(path.join(repositoryRoot, retiredEvidenceSurface)),
+      ).toBe(false);
+    }
+
+    for (const staleClaimAuthority of [
+      "packages/cloud/shared/src/db/schemas/voice-imprints.ts",
+      "packages/ui/src/components/chat/MessageContent.connector-modes.test.tsx",
+      "plugins/plugin-meetings/src/events.ts",
+      "plugins/plugin-inbox/src/inbox/channel-deep-links.test.ts",
+    ]) {
+      expect(
+        readFileSync(path.join(repositoryRoot, staleClaimAuthority), "utf8"),
+      ).not.toMatch(/\bSignal\b/i);
+    }
+
+    const unsupportedStatusDeclaration = readFileSync(
       path.join(
         repositoryRoot,
         "packages/agent/src/api/absent-plugin-route-stubs.ts",
       ),
       "utf8",
     );
-    expect(statusTombstone).toMatch(
+    expect(unsupportedStatusDeclaration).toMatch(
       /capabilityId:\s*["']signal-unsupported["'][\s\S]+?statusCode:\s*501[\s\S]+?status:\s*["']unsupported["'][\s\S]+?SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE/,
     );
 
@@ -281,6 +316,15 @@ describe("retired transport registration", () => {
         "packages/scenario-runner/src/production-manifest.ts",
         /["']signal["']/i,
       ],
+      ["packages/app-core/src/api/dev-route-catalog.ts", /signal-qr/i],
+      [
+        "plugins/plugin-health/src/sleep/source-reliability.ts",
+        /\|\s*["']signal["']|signal:\s*0\.8|normalized\.includes\(["']signal["']\)/i,
+      ],
+      [
+        "plugins/plugin-personal-assistant/test/connector-config-card.test.ts",
+        /getSignalConnectorStatus/i,
+      ],
     ];
     for (const [authority, forbidden] of inactiveAuthorities) {
       expect(
@@ -289,6 +333,8 @@ describe("retired transport registration", () => {
     }
 
     for (const removedSurface of [
+      "plugins/plugin-signal/package.json",
+      "plugins/plugin-signal/src/index.ts",
       "plugins/plugin-signal/src/local-client.ts",
       "plugins/plugin-signal/src/pairing-service.ts",
       "plugins/plugin-signal/src/rpc.ts",

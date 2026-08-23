@@ -15,7 +15,3 @@ This generated baseline is conservative. Each runtime registration materializes 
 | wechat | <account> | room:<target> | choice:conversational→signed-hosted<br>form:conversational→signed-hosted<br>followups:conversational<br>task:signed-hosted→conversational<br>secret:sensitive-request | 0 | none |
 | whatsapp | <account> | phone:<target> | choice:conversational→signed-hosted<br>form:conversational→signed-hosted<br>followups:conversational<br>task:signed-hosted→conversational<br>secret:sensitive-request | 0 | none |
 | x | <account> | user:<target> | choice:conversational→signed-hosted<br>form:conversational→signed-hosted<br>followups:conversational<br>task:signed-hosted→conversational<br>secret:sensitive-request | 0 | none |
-
-## Explicit exclusions
-
-- plugin-signal: Signal is intentionally unsupported and throws SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE; it registers no message connector.

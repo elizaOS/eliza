@@ -8,7 +8,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT,
-	FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS,
 	renderFirstPartyInteractionCapabilityMatrix,
 } from "./profile-catalog";
 
@@ -69,20 +68,6 @@ describe("first-party interaction capability matrix", () => {
 			.sort()
 			.map((site) => ({ site, registrations: 1 }));
 		expect(await productionRegistrationSites()).toEqual(declared);
-	});
-
-	it("keeps deliberate unsupported connectors visible and unregistered", async () => {
-		expect(FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS).toContainEqual(
-			expect.objectContaining({ plugin: "plugin-signal" }),
-		);
-		const files = await sourceFiles(
-			path.join(repositoryRoot, "plugins/plugin-signal"),
-		);
-		const combined = (
-			await Promise.all(files.map((file) => fs.readFile(file, "utf8")))
-		).join("\n");
-		expect(combined).not.toContain("registerMessageConnector");
-		expect(combined).toContain("SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE");
 	});
 
 	it("matches the committed reviewer-readable golden artifact", async () => {

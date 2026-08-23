@@ -61,7 +61,6 @@ describe("resolveSourceReliability", () => {
       "x_dm",
       "discord",
       "telegram",
-      "signal",
       "whatsapp",
       "sms",
     ];
