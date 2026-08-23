@@ -202,7 +202,25 @@ function evidenceValues() {
         "tool-output",
       ],
     },
-    "scenario-native.jsonl": `${JSON.stringify({ type: "tool_call" })}\n${JSON.stringify({ type: "final" })}\n`,
+    "scenario-native.jsonl": `${JSON.stringify({
+      format: "eliza_native_v1",
+      scenarioStatus: "passed",
+      stepType: "planner",
+      privacyAttestation: { passed: true },
+      response: { text: "", toolCalls: [{ toolName: "FILE", input: {} }] },
+    })}\n${JSON.stringify({
+      format: "eliza_native_v1",
+      scenarioStatus: "passed",
+      stepType: "evaluator",
+      privacyAttestation: { passed: true },
+      response: {
+        text: JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          messageToUser: "Done.",
+        }),
+      },
+    })}\n`,
     "trajectories.jsonl": Array.from({ length: 5 }, (_, repetition) =>
       JSON.stringify({
         repetition,
