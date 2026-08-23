@@ -10,7 +10,7 @@ The plugin registers three focused file actions, three umbrella actions, and a s
 |---|---|---|
 | **READ / WRITE / EDIT** | one operation each | Pi-shaped strict schemas for direct coding loops. They reuse FILE's sandbox, stale-file, secret, and size guards. |
 | **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
-| **SHELL** | `run`, `read_output_artifact`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Accepted foreground results return complete redacted stdout/stderr; results above the explicit one-million-character capture ceiling fail without partial output. `read_output_artifact` remains for scoped artifacts retained by earlier runtimes. Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
+| **SHELL** | `run`, `read_output_artifact`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Host stdout/stderr stream independently into encrypted private capture, then exact redaction precedes atomic immutable publication. The action returns a bounded head/tail model projection and owner/conversation-scoped artifact handle; `read_output_artifact` pages either stream later. Full-string router/sandbox backends must attest an exact bounded capture or fail with typed source loss. Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
 | **WORKTREE** | `enter`, `exit` | Creates and tears down git worktrees, updating the agent's session cwd and sandbox roots automatically. |
 
 Supporting services (automatically started):
@@ -67,13 +67,16 @@ plugin only where the OWNER role and host/container boundary are trusted for
 that access. Static command analysis and the command denylist are safety checks,
 not filesystem confinement.
 
-Foreground SHELL results accepted by the one-million-character complete-capture
-boundary are returned in full after redaction. Larger results fail explicitly
-without exposing a partial prefix, and model-facing tool results are never
-replaced by a preview or optional artifact handle. For compatibility,
-`action=read_output_artifact` can still page an unexpired opaque artifact issued
-by an earlier runtime when its agent and conversation scope match the requesting
-turn; state-root paths remain private.
+Foreground host shell output is not killed at a content-size boundary. Raw
+stdout/stderr are independently encrypted while streaming, redacted exactly,
+and atomically published as signed immutable segments with source/stored metrics,
+expiry, revision, and owner scope. The planner receives at most 20,000 projected
+characters with an explicit continuation notice; this is prompt projection, not
+source truncation. The opaque artifact survives process restart until expiry and
+can only be paged by the same agent and conversation. A capability-router or
+sandbox backend that returns only full strings must provide a bounded capture
+attestation with exact byte counts; otherwise SHELL returns
+`SHELL_UPSTREAM_CAPTURE_UNVERIFIED` and exposes no prefix.
 
 The folded `ShellService` retains these compatibility settings for external
 callers of `runtime.getService("shell").exec()` / `executeCommand()`; the

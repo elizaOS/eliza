@@ -1925,7 +1925,15 @@ export const shellAction: Action = {
 
     let result: ShellResult;
     try {
-      result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
+      result = await runShell(runtime, {
+        command,
+        cwd,
+        timeoutMs: timeout,
+        captureScope: {
+          ownerAgentId: String(runtime.agentId),
+          ownerConversationId: String(message.roomId),
+        },
+      });
     } catch (err) {
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so
@@ -1941,14 +1949,19 @@ export const shellAction: Action = {
     }
 
     const took = Date.now() - startedAt;
-    if (result.outputLimitExceeded) {
+    if (result.sourceLoss) {
       return failureToActionResult(
         {
-          reason: "internal",
-          message:
-            "command output exceeded the 1,000,000-character complete-capture safety limit; no partial output is available",
+          reason: "source_loss",
+          message: result.sourceLoss.message,
         },
-        { command: redactShellText(runtime, command), cwd: redactedCwd },
+        {
+          command: redactShellText(runtime, command),
+          cwd: redactedCwd,
+          source_loss: true,
+          source_loss_code: result.sourceLoss.code,
+          source_loss_backend: result.sourceLoss.backend,
+        },
       );
     }
     const timedOut = result.timedOut;
@@ -1959,6 +1972,20 @@ export const shellAction: Action = {
     const head = timedOut
       ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${redactedCwd}, took=${took}ms)`
       : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${redactedCwd}, took=${took}ms)`;
+    const artifact = result.artifact;
+    if (!artifact || !result.projection) {
+      return failureToActionResult({
+        reason: "internal",
+        message:
+          "host shell capture completed without a private output artifact",
+      });
+    }
+    const artifactNotice = [
+      `[private output artifact ${artifact.handle}; expires=${artifact.expiresAt}; revision=${artifact.contentRevision}]`,
+      `stdout source=${artifact.source.stdout.bytes} bytes/${artifact.source.stdout.lines} lines, stored=${artifact.stdout.bytes} bytes/${artifact.stdout.lines} lines, completeInModel=${result.projection.stdoutComplete}`,
+      `stderr source=${artifact.source.stderr.bytes} bytes/${artifact.source.stderr.lines} lines, stored=${artifact.stderr.bytes} bytes/${artifact.stderr.lines} lines, completeInModel=${result.projection.stderrComplete}`,
+      "Use SHELL action=read_output_artifact with handle, artifact_stream, and artifact_offset for exact continuation.",
+    ].join("\n");
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
@@ -1966,7 +1993,10 @@ export const shellAction: Action = {
     // this boundary. Every accepted result therefore remains complete after
     // redaction; the planner must never receive a preview or optional handle
     // in place of stdout/stderr it would otherwise reason over.
-    const text = streams.length > 0 ? `${head}\n${streams}` : head;
+    const text =
+      streams.length > 0
+        ? `${head}\n${artifactNotice}\n${streams}`
+        : `${head}\n${artifactNotice}`;
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
@@ -1984,6 +2014,11 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: false,
+          output_projected:
+            !result.projection.stdoutComplete ||
+            !result.projection.stderrComplete,
+          output_artifact_handle: artifact.handle,
+          output_artifact_revision: artifact.contentRevision,
         },
       );
     }
@@ -1999,6 +2034,11 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: false,
+          output_projected:
+            !result.projection.stdoutComplete ||
+            !result.projection.stderrComplete,
+          output_artifact_handle: artifact.handle,
+          output_artifact_revision: artifact.contentRevision,
         },
       );
     }
@@ -2010,6 +2050,16 @@ export const shellAction: Action = {
       sandbox_backend: result.sandbox,
       signal,
       output_truncated: false,
+      output_projected:
+        !result.projection.stdoutComplete || !result.projection.stderrComplete,
+      source_loss: false,
+      output_artifact_handle: artifact.handle,
+      output_artifact_revision: artifact.contentRevision,
+      output_artifact_expires_at: artifact.expiresAt,
+      stdout_source_bytes: artifact.source.stdout.bytes,
+      stdout_source_lines: artifact.source.stdout.lines,
+      stderr_source_bytes: artifact.source.stderr.bytes,
+      stderr_source_lines: artifact.source.stderr.lines,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is
