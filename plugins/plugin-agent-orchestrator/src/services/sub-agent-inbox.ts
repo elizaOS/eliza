@@ -25,7 +25,6 @@ export type InboxOverflowObserver = (
 export class SubAgentInbox {
   private readonly pending = new Map<string, string[]>();
   private readonly droppedTotals = new Map<string, number>();
-  private onOverflow: InboxOverflowObserver | undefined;
 
   constructor(cap: number = DEFAULT_CAP) {
     void cap;
@@ -37,7 +36,9 @@ export class SubAgentInbox {
    * hookup happens later, in plugin init.
    */
   setOverflowObserver(observer: InboxOverflowObserver | undefined): void {
-    this.onOverflow = observer;
+    // Compatibility no-op: the queue is lossless and therefore never emits an
+    // overflow event. Keep the hook until all callers migrate off the old cap.
+    void observer;
   }
 
   /** Queue a message for a session without evicting earlier input. */

@@ -564,9 +564,7 @@ describe("AcpService", () => {
   });
 
   it("leaves the managed default Codex command unanchored (#24683)", async () => {
-    const service = new AcpService(
-      runtime({ ELIZA_ACP_TRANSPORT: "native" }),
-    );
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     const inspect = service as unknown as {
       nativeAgentCommand(agentType: string): string;
     };
