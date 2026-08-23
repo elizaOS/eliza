@@ -12,6 +12,7 @@ import {
   getTaskAgentFrameworkState,
   getTaskAgentModelPrefs,
   type TaskAgentFrameworkProbe,
+  compareScoredFrameworkCandidates,
 } from "../../src/services/task-agent-frameworks.js";
 
 const ENV_KEYS = [
@@ -534,5 +535,23 @@ describe("getTaskAgentModelPrefs", () => {
     expect(getTaskAgentModelPrefs(stale, "claude")?.powerful).toBe(
       "claude-opus-4-7",
     );
+  });
+
+  it("handles NaN scores safely when selecting preferred framework", () => {
+    const scoredCandidates = [
+      {
+        score: NaN,
+        framework: { id: "framework-a", label: "Framework A" },
+      },
+      {
+        score: 10,
+        framework: { id: "framework-b", label: "Framework B" },
+      },
+    ];
+
+    const sorted = [...scoredCandidates].sort(compareScoredFrameworkCandidates);
+
+    expect(sorted[0]?.framework.id).toBe("framework-b");
+    expect(sorted[1]?.framework.id).toBe("framework-a");
   });
 });
