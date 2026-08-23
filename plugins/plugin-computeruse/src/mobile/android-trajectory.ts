@@ -24,7 +24,12 @@
  * log-capture pipeline.
  */
 
-import { logger } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 
 export type AndroidActionKind =
   | "tap"
@@ -76,8 +81,26 @@ export function emitAndroidAction(
   event: AndroidTrajectoryActionEvent,
 ): AndroidTrajectoryActionEvent {
   const trimmed: AndroidTrajectoryActionEvent = { ...event };
-  if (trimmed.errorMessage) {
-    trimmed.errorMessage = trimmed.errorMessage.slice(0, MAX_ERROR_MSG);
+  if (trimmed.errorMessage !== undefined) {
+    // Trajectory fidelity: reject malformed Unicode outright so a corrupted
+    // payload can never masquerade as a clean one (a naive replacement would
+    // silently log U+FFFD where the operator needs the real text).
+    if (toWellFormedUnicode(trimmed.errorMessage) !== trimmed.errorMessage) {
+      throw new ElizaError(
+        "Android trajectory action error contains malformed Unicode",
+        {
+          code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+          context: { field: "error" },
+        },
+      );
+    }
+    // Surrogate-safe truncation: a naive slice can split a surrogate pair
+    // (e.g. an emoji straddling the 256-char boundary) and emit malformed
+    // Unicode into the structured log stream.
+    trimmed.errorMessage = truncateWellFormed(
+      trimmed.errorMessage,
+      MAX_ERROR_MSG,
+    );
   }
   logger.info(
     {
