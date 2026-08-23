@@ -7,9 +7,9 @@
 // suites (scrollback paging, polish, markdown, narrow-terminal), which own
 // those behaviors; cases here pin the branches they do not.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { TUI, visibleWidth } from "@elizaos/tui";
 import chalk from "chalk";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { useStore } from "../lib/store.js";
 import { VirtualTerminal } from "../testing/virtual-terminal.test.js";
 import type { Message } from "../types.js";
