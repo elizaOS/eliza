@@ -584,7 +584,7 @@ describe("AcpService", () => {
       const service = new AcpService(
         runtime({
           ELIZA_ACP_TRANSPORT: "native",
-          ELIZA_CODEX_ACP_COMMAND: `"${relative}" --stdio`,
+          ELIZA_CODEX_ACP_COMMAND: `"${relative}" --stdio ""`,
         }),
       );
       const inspect = service as unknown as {
@@ -597,7 +597,7 @@ describe("AcpService", () => {
       const anchored = inspect.nativeAgentCommand("codex");
       expect(splitCommandLine(anchored)).toEqual({
         command: executable,
-        args: ["--stdio"],
+        args: ["--stdio", ""],
       });
       expect(inspect.agentCommandAvailability("codex")).toEqual({
         available: true,
