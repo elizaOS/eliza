@@ -17,6 +17,8 @@ import {
 
 const apiMock = vi.hoisted(() => vi.fn());
 const apiFetchMock = vi.hoisted(() => vi.fn());
+const statusCredential = "s".repeat(43);
+const recoveryCredential = "r".repeat(43);
 
 vi.mock("../../lib/api-client", () => ({
   api: apiMock,
@@ -40,6 +42,7 @@ const request = {
   irreversibleAt: null,
   completedAt: null,
   identityDeactivated: true,
+  accessState: "fenced" as const,
   canCancel: true,
   nextAction: "download_export_or_cancel" as const,
   export: null,
@@ -55,8 +58,8 @@ describe("account deletion capability client", () => {
   it("stores separate status and recovery capabilities before session revocation", async () => {
     apiMock.mockResolvedValueOnce({
       request,
-      statusCredential: "status-capability",
-      recoveryCredential: "recovery-capability",
+      statusCredential,
+      recoveryCredential,
     });
 
     await submitAccountDeletion();
@@ -67,37 +70,43 @@ describe("account deletion capability client", () => {
     });
     expect(
       window.sessionStorage.getItem("eliza.account-deletion.status.v1"),
-    ).toBe("status-capability");
+    ).toBe(statusCredential);
     expect(
       window.sessionStorage.getItem("eliza.account-deletion.recovery.v1"),
-    ).toBe("recovery-capability");
+    ).toBe(recoveryCredential);
   });
 
   it("reads post-session status only through the header capability", async () => {
     window.sessionStorage.setItem(
       "eliza.account-deletion.status.v1",
-      "status-capability",
+      statusCredential,
     );
     apiMock.mockResolvedValueOnce({ request });
 
     await expect(readAccountDeletionStatus()).resolves.toEqual(request);
     expect(apiMock).toHaveBeenCalledWith("/api/public/account-deletion", {
       skipAuth: true,
-      headers: { "X-Account-Deletion-Status": "status-capability" },
+      headers: { "X-Account-Deletion-Status": statusCredential },
     });
   });
 
   it("uses and consumes the separate recovery capability for exact undo", async () => {
     window.sessionStorage.setItem(
       "eliza.account-deletion.status.v1",
-      "status-capability",
+      statusCredential,
     );
     window.sessionStorage.setItem(
       "eliza.account-deletion.recovery.v1",
-      "recovery-capability",
+      recoveryCredential,
     );
     apiMock.mockResolvedValueOnce({
-      request: { ...request, status: "canceled", canCancel: false },
+      request: {
+        ...request,
+        status: "canceled",
+        accessState: "active",
+        canCancel: false,
+        nextAction: "none",
+      },
     });
 
     await cancelAccountDeletion();
@@ -105,7 +114,7 @@ describe("account deletion capability client", () => {
     expect(apiMock).toHaveBeenCalledWith("/api/public/account-deletion", {
       method: "DELETE",
       skipAuth: true,
-      headers: { "X-Account-Deletion-Recovery": "recovery-capability" },
+      headers: { "X-Account-Deletion-Recovery": recoveryCredential },
       json: { confirmation: "CANCEL DELETION" },
     });
     expect(
@@ -113,13 +122,13 @@ describe("account deletion capability client", () => {
     ).toBeNull();
     expect(
       window.sessionStorage.getItem("eliza.account-deletion.status.v1"),
-    ).toBe("status-capability");
+    ).toBe(statusCredential);
   });
 
   it("downloads export bytes with the recovery capability and verifies the digest header", async () => {
     window.sessionStorage.setItem(
       "eliza.account-deletion.recovery.v1",
-      "recovery-capability",
+      recoveryCredential,
     );
     apiFetchMock.mockResolvedValueOnce(
       new Response('{"export":true}', {
@@ -139,7 +148,7 @@ describe("account deletion capability client", () => {
       {
         method: "POST",
         skipAuth: true,
-        headers: { "X-Account-Deletion-Recovery": "recovery-capability" },
+        headers: { "X-Account-Deletion-Recovery": recoveryCredential },
         json: { confirmation: "EXPORT MY DATA" },
       },
     );
@@ -153,7 +162,7 @@ describe("account deletion capability client", () => {
   it("fails closed when export bytes do not match the receipt digest", async () => {
     window.sessionStorage.setItem(
       "eliza.account-deletion.recovery.v1",
-      "recovery-capability",
+      recoveryCredential,
     );
     apiFetchMock.mockResolvedValueOnce(
       new Response('{"export":true}', {
@@ -167,6 +176,61 @@ describe("account deletion capability client", () => {
     await expect(downloadAccountDeletionExport()).rejects.toThrow(
       "do not match the server receipt",
     );
+  });
+
+  it("rejects malformed accepted receipts before persisting either capability", async () => {
+    apiMock.mockResolvedValueOnce({
+      request: { ...request, requestedAt: "not-an-iso-timestamp" },
+      statusCredential,
+      recoveryCredential,
+    });
+
+    await expect(submitAccountDeletion()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.status.v1"),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.recovery.v1"),
+    ).toBeNull();
+  });
+
+  it("rejects incompatible terminal cancellation projections", async () => {
+    window.sessionStorage.setItem(
+      "eliza.account-deletion.status.v1",
+      statusCredential,
+    );
+    apiMock.mockResolvedValueOnce({
+      request: {
+        ...request,
+        status: "canceled",
+        accessState: "fenced",
+        canCancel: false,
+        nextAction: "wait_for_reconciliation",
+      },
+    });
+
+    await expect(readAccountDeletionStatus()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
+  });
+
+  it("retains recovery authority when cancellation response validation fails", async () => {
+    window.sessionStorage.setItem(
+      "eliza.account-deletion.recovery.v1",
+      recoveryCredential,
+    );
+    apiMock.mockResolvedValueOnce({
+      request: { ...request, status: "unknown" },
+    });
+
+    await expect(cancelAccountDeletion()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.recovery.v1"),
+    ).toBe(recoveryCredential);
   });
 });
 
