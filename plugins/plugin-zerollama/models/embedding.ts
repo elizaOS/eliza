@@ -157,7 +157,10 @@ export async function handleTextEmbedding(
       typeof (error as { responseBody?: unknown }).responseBody === "string"
         ? {
             message: error.message,
-            responseBody: truncateWellFormed(toWellFormedUnicode((error as { responseBody: string }).responseBody), 400),
+            responseBody: truncateWellFormed(
+              toWellFormedUnicode((error as { responseBody: string }).responseBody),
+              400
+            ),
           }
         : error;
     logger.error({ error: detail }, "Error in TEXT_EMBEDDING model");
