@@ -3969,19 +3969,31 @@ function buildV5PlannerActionSurface(params: {
 	const normalizedCandidates = new Set(
 		candidateActions.map(normalizeActionIdentifier),
 	);
+	const catalogChildNames = new Set(
+		tieredSurface.tierAParents.flatMap((parent) =>
+			parent.childNames.map(normalizeActionIdentifier),
+		),
+	);
 	for (const action of params.actions) {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		const candidateAliasMatch = (action.similes ?? []).some((simile) =>
 			normalizedCandidates.has(normalizeActionIdentifier(simile)),
 		);
-		const actionMatchesSelectedSpecificContext = mergeAgentContexts(
-			action.contexts,
-			action.contextGate?.contexts,
-			action.contextGate?.anyOf,
-			action.contextGate?.allOf,
-		).some((context) =>
-			specificSelectedContexts.has(String(context).trim().toLowerCase()),
-		);
+		// A selected context eagerly exposes its routers and standalone actions,
+		// but not every child of those routers. Broad Stage-1 labels such as
+		// documents/connectors otherwise recreate the full-schema dump that the
+		// discovery protocol is meant to avoid. A child remains reachable through
+		// its parent, an exact candidate hint, or same-turn capability discovery.
+		const actionMatchesSelectedSpecificContext =
+			!catalogChildNames.has(normalizedName) &&
+			mergeAgentContexts(
+				action.contexts,
+				action.contextGate?.contexts,
+				action.contextGate?.anyOf,
+				action.contextGate?.allOf,
+			).some((context) =>
+				specificSelectedContexts.has(String(context).trim().toLowerCase()),
+			);
 		if (
 			normalizedCandidates.has(normalizedName) ||
 			candidateAliasMatch ||

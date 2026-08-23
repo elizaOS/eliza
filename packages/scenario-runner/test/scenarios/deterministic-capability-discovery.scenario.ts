@@ -13,7 +13,8 @@ import { matchesScenarioInput } from "@elizaos/core/testing";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-const input = "Get the thing I mentioned from the other system.";
+const input =
+  "Retrieve the sealed Atlas record from the cold archive. Find the right capability if it is not currently visible.";
 const targetActionName = "SCENARIO_ARCHIVE_LOOKUP";
 const siblingActionName = "SCENARIO_ARCHIVE_DELETE";
 const parentActionName = "SCENARIO_ARCHIVE";

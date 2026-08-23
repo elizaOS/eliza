@@ -511,7 +511,7 @@ describe("v5 tiered action surface", () => {
 		const createEvent = makeAction({
 			name: "CREATE_EVENT",
 			description: "Create a calendar event.",
-			contexts: ["calendar_write" as AgentContext],
+			contexts: ["calendar" as AgentContext],
 		});
 		const calendar = makeAction({
 			name: "CALENDAR",
@@ -542,6 +542,8 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("CALENDAR");
+		// Selecting a broad context expands its parent and standalone actions,
+		// while children stay deferred until named or discovered.
 		expect(prompt).not.toContain("CREATE_EVENT");
 		expect(prompt).toContain("CHAT_MESSAGE");
 	});
