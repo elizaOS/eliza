@@ -80,16 +80,28 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   organization_id: "00000000-0000-4000-8000-000000000001",
 }));
 
-const fetchManagedGoogleGmailTriage = mock(async () => ({ messages: [] }));
-const fetchManagedGoogleGmailSearch = mock(async () => ({ messages: [] }));
-const fetchManagedGoogleGmailSubscriptionHeaders = mock(async () => ({
-  headers: [],
+type MaxResultsArgs = { maxResults: number };
+type OptionalMaxResultsArgs = { maxResults?: number };
+
+const fetchManagedGoogleGmailTriage = mock(async (_args: MaxResultsArgs) => ({
+  messages: [],
 }));
-const getXFeed = mock(async () => ({ feed: [] }));
-const getXDmDigest = mock(async () => ({ digest: [] }));
+const fetchManagedGoogleGmailSearch = mock(async (_args: MaxResultsArgs) => ({
+  messages: [],
+}));
+const fetchManagedGoogleGmailSubscriptionHeaders = mock(
+  async (_args: MaxResultsArgs) => ({ headers: [] }),
+);
+const getXFeed = mock(async (_args: OptionalMaxResultsArgs) => ({ feed: [] }));
+const getXDmDigest = mock(async (_args: OptionalMaxResultsArgs) => ({
+  digest: [],
+}));
 
 class MockXServiceError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -124,8 +136,12 @@ mock.module("@/lib/services/x", () => ({
   getXDmDigest,
 }));
 
-const { default: triageApp } = await import("./eliza/google/gmail/triage/route");
-const { default: searchApp } = await import("./eliza/google/gmail/search/route");
+const { default: triageApp } = await import(
+  "./eliza/google/gmail/triage/route"
+);
+const { default: searchApp } = await import(
+  "./eliza/google/gmail/search/route"
+);
 const { default: subscriptionHeadersApp } = await import(
   "./eliza/google/gmail/subscription-headers/route"
 );
@@ -146,20 +162,26 @@ describe("gmail triage maxResults strict via parseCanonicalInteger (real Hono)",
     const res = await triageApp.request("/", { method: "GET" });
     expect(res.status).toBe(200);
     expect(fetchManagedGoogleGmailTriage).toHaveBeenCalledTimes(1);
-    const args = fetchManagedGoogleGmailTriage.mock.calls[0]?.[0] as { maxResults: number };
-    expect(args.maxResults).toBe(12);
+    const args = fetchManagedGoogleGmailTriage.mock.calls[0]?.[0];
+    expect(args?.maxResults).toBe(12);
   });
 
   test("blank empty → fallback 12", async () => {
     const res = await triageApp.request("/?maxResults=", { method: "GET" });
     expect(res.status).toBe(200);
-    expect((fetchManagedGoogleGmailTriage.mock.calls[0]?.[0] as { maxResults: number }).maxResults).toBe(12);
+    expect(fetchManagedGoogleGmailTriage.mock.calls[0]?.[0]?.maxResults).toBe(
+      12,
+    );
   });
 
   test("blank spaces → fallback 12", async () => {
-    const res = await triageApp.request("/?maxResults=%20%20%20", { method: "GET" });
+    const res = await triageApp.request("/?maxResults=%20%20%20", {
+      method: "GET",
+    });
     expect(res.status).toBe(200);
-    expect((fetchManagedGoogleGmailTriage.mock.calls[0]?.[0] as { maxResults: number }).maxResults).toBe(12);
+    expect(fetchManagedGoogleGmailTriage.mock.calls[0]?.[0]?.maxResults).toBe(
+      12,
+    );
   });
 
   test('"0" with min1 → 400 and not called', async () => {
@@ -168,10 +190,24 @@ describe("gmail triage maxResults strict via parseCanonicalInteger (real Hono)",
     expect(fetchManagedGoogleGmailTriage).not.toHaveBeenCalled();
   });
 
-  for (const v of ["012", "0x10", "1e3", "00", "01", " 1", "1 ", "+1", "-1", "1.0", " 20 "]) {
+  for (const v of [
+    "012",
+    "0x10",
+    "1e3",
+    "00",
+    "01",
+    " 1",
+    "1 ",
+    "+1",
+    "-1",
+    "1.0",
+    " 20 ",
+  ]) {
     test(`${JSON.stringify(v)} → 400 and not called`, async () => {
       const encoded = encodeURIComponent(v);
-      const res = await triageApp.request(`/?maxResults=${encoded}`, { method: "GET" });
+      const res = await triageApp.request(`/?maxResults=${encoded}`, {
+        method: "GET",
+      });
       expect(res.status).toBe(400);
       expect(fetchManagedGoogleGmailTriage).not.toHaveBeenCalled();
     });
@@ -181,7 +217,9 @@ describe("gmail triage maxResults strict via parseCanonicalInteger (real Hono)",
     const res = await triageApp.request("/?maxResults=20", { method: "GET" });
     expect(res.status).toBe(200);
     expect(fetchManagedGoogleGmailTriage).toHaveBeenCalledTimes(1);
-    expect((fetchManagedGoogleGmailTriage.mock.calls[0]?.[0] as { maxResults: number }).maxResults).toBe(20);
+    expect(fetchManagedGoogleGmailTriage.mock.calls[0]?.[0]?.maxResults).toBe(
+      20,
+    );
   });
 });
 
@@ -189,17 +227,24 @@ describe("gmail search maxResults strict via parseCanonicalInteger", () => {
   test("blank → fallback 12", async () => {
     const res = await searchApp.request("/?query=hello", { method: "GET" });
     expect(res.status).toBe(200);
-    expect((fetchManagedGoogleGmailSearch.mock.calls[0]?.[0] as { maxResults: number }).maxResults).toBe(12);
+    expect(fetchManagedGoogleGmailSearch.mock.calls[0]?.[0]?.maxResults).toBe(
+      12,
+    );
   });
   for (const v of ["012", "0x10", "1e3"]) {
     test(`${JSON.stringify(v)} → 400 not called`, async () => {
-      const res = await searchApp.request(`/?query=hello&maxResults=${encodeURIComponent(v)}`, { method: "GET" });
+      const res = await searchApp.request(
+        `/?query=hello&maxResults=${encodeURIComponent(v)}`,
+        { method: "GET" },
+      );
       expect(res.status).toBe(400);
       expect(fetchManagedGoogleGmailSearch).not.toHaveBeenCalled();
     });
   }
   test('valid "20" → 200', async () => {
-    const res = await searchApp.request("/?query=hello&maxResults=20", { method: "GET" });
+    const res = await searchApp.request("/?query=hello&maxResults=20", {
+      method: "GET",
+    });
     expect(res.status).toBe(200);
     expect(fetchManagedGoogleGmailSearch).toHaveBeenCalledTimes(1);
   });
@@ -207,19 +252,29 @@ describe("gmail search maxResults strict via parseCanonicalInteger", () => {
 
 describe("gmail subscription-headers maxResults strict", () => {
   test("blank → fallback 200", async () => {
-    const res = await subscriptionHeadersApp.request("/?query=hello", { method: "GET" });
+    const res = await subscriptionHeadersApp.request("/?query=hello", {
+      method: "GET",
+    });
     expect(res.status).toBe(200);
-    expect((fetchManagedGoogleGmailSubscriptionHeaders.mock.calls[0]?.[0] as { maxResults: number }).maxResults).toBe(200);
+    expect(
+      fetchManagedGoogleGmailSubscriptionHeaders.mock.calls[0]?.[0]?.maxResults,
+    ).toBe(200);
   });
   for (const v of ["012", "0x10", "1e3"]) {
     test(`${JSON.stringify(v)} → 400 not called`, async () => {
-      const res = await subscriptionHeadersApp.request(`/?query=hello&maxResults=${encodeURIComponent(v)}`, { method: "GET" });
+      const res = await subscriptionHeadersApp.request(
+        `/?query=hello&maxResults=${encodeURIComponent(v)}`,
+        { method: "GET" },
+      );
       expect(res.status).toBe(400);
       expect(fetchManagedGoogleGmailSubscriptionHeaders).not.toHaveBeenCalled();
     });
   }
   test('valid "200" → 200', async () => {
-    const res = await subscriptionHeadersApp.request("/?query=hello&maxResults=200", { method: "GET" });
+    const res = await subscriptionHeadersApp.request(
+      "/?query=hello&maxResults=200",
+      { method: "GET" },
+    );
     expect(res.status).toBe(200);
     expect(fetchManagedGoogleGmailSubscriptionHeaders).toHaveBeenCalledTimes(1);
   });
@@ -230,20 +285,22 @@ describe("x feed maxResults strict via parseCanonicalInteger", () => {
     const res = await xFeedApp.request("/", { method: "GET" });
     expect(res.status).toBe(200);
     expect(getXFeed).toHaveBeenCalledTimes(1);
-    const args = getXFeed.mock.calls[0]?.[0] as { maxResults?: number };
-    expect(args.maxResults).toBeUndefined();
+    const args = getXFeed.mock.calls[0]?.[0];
+    expect(args?.maxResults).toBeUndefined();
   });
 
   test("blank empty → undefined", async () => {
     const res = await xFeedApp.request("/?maxResults=", { method: "GET" });
     expect(res.status).toBe(200);
-    expect((getXFeed.mock.calls[0]?.[0] as { maxResults?: number }).maxResults).toBeUndefined();
+    expect(getXFeed.mock.calls[0]?.[0]?.maxResults).toBeUndefined();
   });
 
   test("blank spaces → undefined", async () => {
-    const res = await xFeedApp.request("/?maxResults=%20%20%20", { method: "GET" });
+    const res = await xFeedApp.request("/?maxResults=%20%20%20", {
+      method: "GET",
+    });
     expect(res.status).toBe(200);
-    expect((getXFeed.mock.calls[0]?.[0] as { maxResults?: number }).maxResults).toBeUndefined();
+    expect(getXFeed.mock.calls[0]?.[0]?.maxResults).toBeUndefined();
   });
 
   test('"0" with min1 → 400 not called', async () => {
@@ -252,9 +309,24 @@ describe("x feed maxResults strict via parseCanonicalInteger", () => {
     expect(getXFeed).not.toHaveBeenCalled();
   });
 
-  for (const v of ["012", "0x10", "1e3", "00", "01", " 1", "1 ", "+1", "-1", "1.0", " 20 "]) {
+  for (const v of [
+    "012",
+    "0x10",
+    "1e3",
+    "00",
+    "01",
+    " 1",
+    "1 ",
+    "+1",
+    "-1",
+    "1.0",
+    " 20 ",
+  ]) {
     test(`${JSON.stringify(v)} → 400 not called`, async () => {
-      const res = await xFeedApp.request(`/?maxResults=${encodeURIComponent(v)}`, { method: "GET" });
+      const res = await xFeedApp.request(
+        `/?maxResults=${encodeURIComponent(v)}`,
+        { method: "GET" },
+      );
       expect(res.status).toBe(400);
       expect(getXFeed).not.toHaveBeenCalled();
     });
@@ -264,7 +336,7 @@ describe("x feed maxResults strict via parseCanonicalInteger", () => {
     const res = await xFeedApp.request("/?maxResults=20", { method: "GET" });
     expect(res.status).toBe(200);
     expect(getXFeed).toHaveBeenCalledTimes(1);
-    expect((getXFeed.mock.calls[0]?.[0] as { maxResults?: number }).maxResults).toBe(20);
+    expect(getXFeed.mock.calls[0]?.[0]?.maxResults).toBe(20);
   });
 });
 
@@ -273,11 +345,14 @@ describe("x digest maxResults strict via parseCanonicalInteger", () => {
     const res = await xDigestApp.request("/", { method: "GET" });
     expect(res.status).toBe(200);
     expect(getXDmDigest).toHaveBeenCalledTimes(1);
-    expect((getXDmDigest.mock.calls[0]?.[0] as { maxResults?: number }).maxResults).toBeUndefined();
+    expect(getXDmDigest.mock.calls[0]?.[0]?.maxResults).toBeUndefined();
   });
   for (const v of ["012", "0x10", "1e3"]) {
     test(`${JSON.stringify(v)} → 400 not called`, async () => {
-      const res = await xDigestApp.request(`/?maxResults=${encodeURIComponent(v)}`, { method: "GET" });
+      const res = await xDigestApp.request(
+        `/?maxResults=${encodeURIComponent(v)}`,
+        { method: "GET" },
+      );
       expect(res.status).toBe(400);
       expect(getXDmDigest).not.toHaveBeenCalled();
     });
