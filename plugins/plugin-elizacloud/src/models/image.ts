@@ -1,3 +1,9 @@
+/**
+ * Eliza Cloud image generation and description handlers. Requests preserve
+ * caller output-budget intent and reject malformed operator limits before any
+ * provider dispatch.
+ */
+
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
 import { ElizaError, logger, ModelType } from "@elizaos/core";
 import {
@@ -124,7 +130,9 @@ export async function handleImageDescription(
   const maxTokens = configuredMaxTokens === "" ? undefined : Number(configuredMaxTokens);
   if (
     maxTokens !== undefined &&
-    (!Number.isSafeInteger(maxTokens) || maxTokens <= 0)
+    (!/^[1-9]\d*$/.test(configuredMaxTokens) ||
+      !Number.isSafeInteger(maxTokens) ||
+      maxTokens <= 0)
   ) {
     throw new ElizaError(
       "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS must be a positive safe integer",
