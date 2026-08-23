@@ -8,9 +8,9 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Branch: `codex/lifeops-pr24809-reconcile-20260823`
 - Preserved reviewed PR head: `48febe9553787c62db7f045287ad9eaef5716eea`
 - Preserved local acceptance head: `fa638da16bfbee0637775b293da2b49f60f04ace`, tag `lifeops-google-oauth-authority-audit-20260823`
-- Current `origin/develop` merged without conflict: `16f07124d5e11dc0679557d86e916f0ab7b9dfd0`
+- Current `origin/develop` merged without conflict: `beeaa92f7f50759ffec1dc2a6014c3d7ec1f28e3`
 - Review-fix commit: `fce5adfebe4151dc4949de9b9927c6949d658730`
-- Reconciled code head before this ledger commit: `9c0946f73af8210f340a764b349845f764bb2d08`
+- Reconciled code head before this ledger update: `640841cbb0bdff015d70ec0c5c6ba0feeacb2707`
 - Git author: `nubs <nubs@nubs.site>`
 - The macOS native owner file `packages/app-core/platforms/electrobun/native/macos/window-effects.mm` was not edited.
 
