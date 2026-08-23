@@ -85,6 +85,33 @@ describe("buildModelInputBudget", () => {
 	});
 
 	describe("per-model lookup (modelName passed)", () => {
+		it("reserves both estimation headroom and the GPT-5.6 output ceiling", () => {
+			for (const modelName of [
+				"gpt-5.6-sol",
+				"gpt-5.6-terra",
+				"gpt-5.6-luna",
+			]) {
+				const budget = buildModelInputBudget({
+					messages: [userMessageOfChars(100)],
+					modelName,
+				});
+				expect(budget.contextWindowTokens).toBe(1_050_000);
+				expect(budget.resolvedModelKey).toBe(modelName);
+				expect(budget.reserveTokens).toBe(210_000);
+				expect(budget.dispatchThresholdTokens).toBe(840_000);
+			}
+		});
+
+		it("honors an explicit requested output reserve for GPT-5.6", () => {
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(100)],
+				modelName: "gpt-5.6-luna",
+				reserveTokens: 32_000,
+			});
+			expect(budget.reserveTokens).toBe(32_000);
+			expect(budget.dispatchThresholdTokens).toBe(1_018_000);
+		});
+
 		it("resolves Cerebras gpt-oss-120b to its 131k window", () => {
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],

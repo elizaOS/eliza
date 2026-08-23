@@ -68,6 +68,92 @@ const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
 const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
 const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
+const openaiTextModelMetadata = {
+  [TEXT_NANO_MODEL_TYPE]: {
+    displayModelSettings: [
+      "OPENAI_NANO_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "NANO_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: "gpt-5.6-luna",
+  },
+  [ModelType.TEXT_SMALL]: {
+    displayModelSettings: [
+      "OPENAI_SMALL_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: "gpt-5.6-luna",
+  },
+  [TEXT_MEDIUM_MODEL_TYPE]: {
+    displayModelSettings: [
+      "OPENAI_MEDIUM_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "MEDIUM_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: "gpt-5.6-luna",
+  },
+  [ModelType.TEXT_LARGE]: {
+    displayModelSettings: [
+      "OPENAI_LARGE_MODEL",
+      "CEREBRAS_LARGE_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "LARGE_MODEL",
+    ],
+    displayModelDefault: "gpt-5.6-sol",
+  },
+  [TEXT_MEGA_MODEL_TYPE]: {
+    displayModelSettings: [
+      "OPENAI_MEGA_MODEL",
+      "MEGA_MODEL",
+      "OPENAI_LARGE_MODEL",
+      "CEREBRAS_LARGE_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "LARGE_MODEL",
+    ],
+    displayModelDefault: "gpt-5.6-sol",
+  },
+  [RESPONSE_HANDLER_MODEL_TYPE]: {
+    displayModelSettings: [
+      "OPENAI_RESPONSE_HANDLER_MODEL",
+      "OPENAI_SHOULD_RESPOND_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "RESPONSE_HANDLER_MODEL",
+      "SHOULD_RESPOND_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: "gpt-5.6-luna",
+  },
+  [ACTION_PLANNER_MODEL_TYPE]: {
+    displayModelSettings: [
+      "OPENAI_ACTION_PLANNER_MODEL",
+      "OPENAI_PLANNER_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_MODEL",
+      "EVOLINK_MODEL",
+      "ACTION_PLANNER_MODEL",
+      "PLANNER_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "SMALL_MODEL",
+    ],
+    displayModelDefault: "gpt-5.6-luna",
+  },
+} satisfies NonNullable<Plugin["modelMetadata"]>;
 
 function hasExplicitCapabilityOverride(
   runtime: IAgentRuntime,
@@ -157,6 +243,7 @@ export const openaiPlugin: Plugin = {
   autoEnable: {
     envKeys: ["OPENAI_API_KEY", "CEREBRAS_API_KEY", "EVOLINK_API_KEY"],
   },
+  modelMetadata: openaiTextModelMetadata,
 
   config: {
     OPENAI_API_KEY: env.OPENAI_API_KEY ?? null,
