@@ -52,35 +52,20 @@ describe("inferSpeakerName borrowed-device precedence", () => {
     expect(result.bindingPlan.action).toBe("create_entity");
   });
 
-  it("sorts speaker name candidates deterministically with score and candidateName tiebreaker", () => {
-    const candidates = [
-      { candidateName: "B Speaker", score: 0.8, confidence: 0.8 },
-      { candidateName: "A Speaker", score: 0.8, confidence: 0.8 },
-      { candidateName: "C Speaker", score: 0.9, confidence: 0.9 },
-    ];
-
-    candidates.sort((a, b) => {
-      const bScore =
-        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
-      const aScore =
-        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
-      const bConf =
-        typeof b.confidence === "number" && Number.isFinite(b.confidence)
-          ? b.confidence
-          : 0;
-      const aConf =
-        typeof a.confidence === "number" && Number.isFinite(a.confidence)
-          ? a.confidence
-          : 0;
-      return (
-        bScore - aScore ||
-        bConf - aConf ||
-        a.candidateName.localeCompare(b.candidateName)
-      );
+  it("sorts equal-score candidates deterministically by normalized name", () => {
+    const result = inferSpeakerName({
+      speakerId: "speaker-1",
+      evidence: [
+        { source: "platform_roster", confidence: 0.8, name: "B Speaker" },
+        { source: "platform_roster", confidence: 0.8, name: "A Speaker" },
+        { source: "platform_roster", confidence: 0.9, name: "C Speaker" },
+      ],
     });
 
-    expect(candidates[0]?.candidateName).toBe("C Speaker");
-    expect(candidates[1]?.candidateName).toBe("A Speaker");
-    expect(candidates[2]?.candidateName).toBe("B Speaker");
+    expect(result.candidateNames.map((candidate) => candidate.name)).toEqual([
+      "C Speaker",
+      "A Speaker",
+      "B Speaker",
+    ]);
   });
 });
