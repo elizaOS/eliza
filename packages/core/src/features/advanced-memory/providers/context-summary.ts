@@ -14,6 +14,11 @@ import type {
 } from "../../../types/index.ts";
 import { addHeader } from "../../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import {
+	loadSessionSummaryContentLedger,
+	parseSessionSummaryContentEnvelope,
+	renderSessionSummaryContentLedger,
+} from "../session-summary-content-manifest.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
 export const contextSummaryProvider: Provider = {
@@ -74,9 +79,22 @@ export const contextSummaryProvider: Provider = {
 
 			const summary = currentSummary.summary;
 			const topics = currentSummary.topics ?? [];
+			const contentEnvelope = parseSessionSummaryContentEnvelope(
+				currentSummary.metadata,
+			);
+			const contentReferences = contentEnvelope
+				? renderSessionSummaryContentLedger(
+						await loadSessionSummaryContentLedger(
+							runtime,
+							contentEnvelope,
+							currentSummary.roomId,
+						),
+					)
+				: "";
 
 			let summaryOnly = `**Previous Conversation** (${messageRange}, ${timeRange})\n`;
 			summaryOnly += summary;
+			if (contentReferences) summaryOnly += `\n\n${contentReferences}`;
 
 			let summaryWithTopics = summaryOnly;
 			if (topics.length > 0) {

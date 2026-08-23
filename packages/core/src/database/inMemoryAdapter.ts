@@ -26,6 +26,8 @@ import type {
 	AccessContext,
 	Agent,
 	AppendConnectorAccountAuditEventParams,
+	AtomicMemoryPublicationParams,
+	AtomicMemoryPublicationResult,
 	Component,
 	ConnectorAccountAuditEventRecord,
 	ConnectorAccountAuditOutcome,
@@ -1483,6 +1485,69 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	// Batch memory methods
+	async compareAndSwapMemoryPublication(
+		params: AtomicMemoryPublicationParams,
+	): Promise<AtomicMemoryPublicationResult> {
+		const headId = params.head.memory.id;
+		if (!headId)
+			throw new TypeError("atomic memory publication head requires an id");
+		const existingHead = this.memoriesById.get(String(headId));
+		const existingRevision = (
+			existingHead?.metadata as Record<string, unknown> | undefined
+		)?.revision;
+		if (
+			(params.expectedRevision === null && existingHead) ||
+			(params.expectedRevision !== null &&
+				existingRevision !== params.expectedRevision)
+		)
+			return { status: "conflict" };
+
+		for (const dependency of params.dependencies) {
+			const dependencyId = dependency.memory.id;
+			if (!dependencyId)
+				throw new TypeError("atomic memory dependency requires an id");
+			const existing = this.memoriesById.get(String(dependencyId));
+			if (
+				existing &&
+				JSON.stringify(existing.content) !==
+					JSON.stringify(dependency.memory.content)
+			) {
+				throw new ElizaError(
+					"Immutable memory dependency id has different content",
+					{
+						code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+						context: { memoryId: dependencyId },
+					},
+				);
+			}
+		}
+		const insertDirect = (memory: Memory, tableName: string): Memory => {
+			const stored = { ...memory, id: memory.id as UUID, unique: true };
+			this.memoriesById.set(String(stored.id), stored);
+			const key = roomTableKey(tableName, stored.roomId);
+			this.memoriesByRoom.set(key, [
+				...(this.memoriesByRoom.get(key) ?? []),
+				stored,
+			]);
+			return stored;
+		};
+		for (const dependency of params.dependencies) {
+			if (!this.memoriesById.has(String(dependency.memory.id))) {
+				insertDirect(dependency.memory, dependency.tableName);
+			}
+		}
+		let storedHead: Memory;
+		if (existingHead) {
+			storedHead = { ...existingHead, ...params.head.memory, id: headId };
+			this.memoriesById.set(String(headId), storedHead);
+			for (const list of this.memoriesByRoom.values()) {
+				const index = list.findIndex((memory) => memory.id === headId);
+				if (index >= 0) list[index] = storedHead;
+			}
+		} else storedHead = insertDirect(params.head.memory, params.head.tableName);
+		return { status: "published", head: storedHead };
+	}
+
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
