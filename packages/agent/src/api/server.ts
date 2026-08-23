@@ -101,6 +101,7 @@ import {
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
+import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
@@ -3509,6 +3510,33 @@ async function handleRequest(
 
   if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
     return;
+  }
+
+  // The context inspector owns a stricter boundary than the general trajectory
+  // viewer: resolve the host principal again for this request and project only
+  // allowlisted content metadata. Direct API-token callers are the standalone
+  // owner's equivalent authority; scoped boundary-role tokens are deliberately
+  // not promoted to inspector access.
+  if (pathname === "/api/context-inspector") {
+    const hostAuthorization = await resolveHostSessionAuthorization();
+    const inspectorAuthorization = hostAuthorization.ok
+      ? hostAuthorization
+      : isAuthorized(req)
+        ? ({ ok: true, role: "OWNER" } as const)
+        : ({ ok: false, role: "NONE" } as const);
+    if (
+      await handleContextInspectorRoute({
+        req,
+        res,
+        pathname,
+        method,
+        url,
+        runtime: state.runtime,
+        authorization: inspectorAuthorization,
+      })
+    ) {
+      return;
+    }
   }
 
   // ── LifeOps inbox compatibility fallback ────────────────────────────────

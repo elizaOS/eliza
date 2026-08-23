@@ -983,3 +983,41 @@ export interface WorkflowDefinitionWriteRequest {
   schedule?: { cron: string; timezone: string; enabled: boolean };
   metadata?: Record<string, string | number | boolean>;
 }
+
+/** Redacted context-inspector row. No source body or native locator crosses the wire. */
+export interface ContextInspectorEntry {
+  reference: string;
+  kind: "file" | "document" | "attachment" | "email" | "memory" | "tool-result";
+  range: {
+    unit: "line" | "fragment" | "byte";
+    start: number;
+    end: number;
+    total?: number;
+  };
+  completeness:
+    | "complete"
+    | "partial-recoverable"
+    | "partial-source-loss"
+    | "unavailable";
+  omissionReason: string | null;
+  retentionState: "policy-managed" | "expires" | "expired" | "unavailable";
+}
+
+export interface ContextInspectorResponse {
+  schemaVersion: "elizaos.context-inspector/v1";
+  entries: ContextInspectorEntry[];
+  tokenBudgets: Array<{
+    usedTokens: number;
+    limitTokens: number;
+    reservedTokens: number;
+    state: "within-budget" | "rejected" | "unavailable";
+  }>;
+  page: {
+    offset: number;
+    limit: number;
+    hasPrevious: boolean;
+    hasMore: boolean;
+    nextOffset: number | null;
+  };
+  state: "available" | "empty";
+}

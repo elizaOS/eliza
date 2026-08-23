@@ -35,6 +35,7 @@ import "@elizaos/ui/styles";
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
 // the same surfaces.
 import "./cloud-apps-view";
+import "./context-inspector-page";
 // Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";
