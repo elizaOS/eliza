@@ -168,6 +168,115 @@ describe("SandboxDriver", () => {
   });
 });
 
+// ── SandboxDriver — lazy-boot idempotency + lifecycle races (#26516) ───────
+//
+// The driver documents its lazy boot as "Idempotent" and lets callers fire ops
+// without pre-starting. These cases pin the concurrency contract: one boot for
+// N racing first ops, no backend left running when dispose() races an in-flight
+// boot, a retry after a failed boot, and dispose-before-any-op as a no-op.
+
+/**
+ * Backend whose `start()` awaits a real (timer-backed) boot before flipping
+ * itself to running — mirrors `docker run` taking seconds. Tracks how many
+ * starts/stops were called and how many backends are currently "running" so a
+ * boot that completes after dispose() shows up as a leak.
+ */
+function makeDelayedBackend(options: {
+  bootMs?: number;
+  failStartOnce?: boolean;
+}): SandboxBackend & {
+  startCount: number;
+  stopCount: number;
+  running: number;
+} {
+  let failNext = options.failStartOnce ?? false;
+  const bootMs = options.bootMs ?? 20;
+  return {
+    name: "delayed",
+    startCount: 0,
+    stopCount: 0,
+    running: 0,
+    async start() {
+      this.startCount++;
+      await new Promise((r) => setTimeout(r, bootMs));
+      if (failNext) {
+        failNext = false;
+        throw new Error("boot failed");
+      }
+      this.running++;
+    },
+    async stop() {
+      this.stopCount++;
+      if (this.running > 0) this.running--;
+    },
+    async invoke<TResult>(op: SandboxOp): Promise<TResult> {
+      if (op.kind === "screenshot") {
+        return { base64Png: "" } as TResult;
+      }
+      return undefined as TResult;
+    },
+  };
+}
+
+describe("SandboxDriver lazy-boot idempotency (#26516)", () => {
+  it("boots exactly once when three first ops race the initial boot", async () => {
+    const backend = makeDelayedBackend({ bootMs: 20 });
+    const driver = new SandboxDriver(backend);
+
+    await Promise.all([
+      driver.mouseMove(1, 1),
+      driver.screenshot(),
+      driver.keyboardType("hi"),
+    ]);
+
+    // Before the fix each op observed started=false and called start() → 3.
+    expect(backend.startCount).toBe(1);
+    expect(backend.running).toBe(1);
+  });
+
+  it("tears the backend down when dispose() races an in-flight boot (no leak)", async () => {
+    const backend = makeDelayedBackend({ bootMs: 50 });
+    const driver = new SandboxDriver(backend);
+
+    const op = driver.mouseMove(1, 1); // triggers the 50ms boot
+    await new Promise((r) => setTimeout(r, 10)); // dispose mid-boot
+    await driver.dispose();
+    await op;
+    await new Promise((r) => setTimeout(r, 60)); // let the boot settle
+
+    // Before the fix dispose() returned early (started still false) and the
+    // in-flight boot left a backend running forever.
+    expect(backend.startCount).toBe(1);
+    expect(backend.stopCount).toBe(1);
+    expect(backend.running).toBe(0);
+  });
+
+  it("retries the boot on a later op after the first start() fails", async () => {
+    const backend = makeDelayedBackend({ bootMs: 5, failStartOnce: true });
+    const driver = new SandboxDriver(backend);
+
+    await expect(driver.mouseMove(1, 1)).rejects.toThrow("boot failed");
+    expect(backend.startCount).toBe(1);
+    expect(backend.running).toBe(0);
+
+    // The memo was cleared, so the next op starts a fresh boot that succeeds.
+    await driver.screenshot();
+    expect(backend.startCount).toBe(2);
+    expect(backend.running).toBe(1);
+  });
+
+  it("dispose() before any op never touches the backend", async () => {
+    const backend = makeDelayedBackend({ bootMs: 5 });
+    const driver = new SandboxDriver(backend);
+
+    await driver.dispose();
+
+    expect(backend.startCount).toBe(0);
+    expect(backend.stopCount).toBe(0);
+    expect(backend.running).toBe(0);
+  });
+});
+
 // ── DockerBackend — start + invoke + stop with fake spawn ───────────────
 
 describe("DockerBackend", () => {
@@ -262,6 +371,34 @@ describe("DockerBackend", () => {
     await expect(backend.start()).rejects.toBeInstanceOf(
       SandboxBackendUnavailableError,
     );
+  });
+
+  it("concurrent start() calls spawn exactly one container (#26516)", async () => {
+    let runCount = 0;
+    const runShell = async (_binary: string, args: string[]) => {
+      if (args[0] === "run") {
+        runCount++;
+        // Mirror `docker run` taking time to resolve, widening the race
+        // window that used to spawn (and leak) N containers.
+        await new Promise((r) => setTimeout(r, 20));
+        return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+    const child = new FakeChildProcess();
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell,
+      spawnExec: () => child as unknown as ReturnType<typeof spawnExecSentinel>,
+    });
+
+    await Promise.all([backend.start(), backend.start(), backend.start()]);
+
+    // Before the fix each concurrent start observed containerId=null and ran
+    // `docker run`, leaking two of the three containers.
+    expect(runCount).toBe(1);
+
+    await backend.stop();
   });
 
   it("invoke before start throws SandboxInvocationError", async () => {

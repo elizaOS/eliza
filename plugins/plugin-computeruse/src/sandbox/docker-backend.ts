@@ -257,6 +257,14 @@ async function defaultRunShell(
 export class DockerBackend implements SandboxBackend {
   readonly name = "docker";
   private containerId: string | null = null;
+  /**
+   * Memoized in-flight boot. `docker run` takes seconds; the old guard on
+   * `this.containerId` (set only after `run` resolves) let N concurrent
+   * starts each spawn a container and leak all but the last. Sharing one boot
+   * promise makes `start()` idempotent under concurrency even when the driver
+   * above is bypassed. Cleared on boot failure so a retry can start fresh.
+   */
+  private startPromise: Promise<void> | null = null;
   private helper: ChildProcessWithoutNullStreams | null = null;
   private pending: {
     resolve: (value: unknown) => void;
@@ -285,7 +293,20 @@ export class DockerBackend implements SandboxBackend {
 
   async start(): Promise<void> {
     if (this.containerId) return;
+    if (this.startPromise) return this.startPromise;
+    const boot = this.boot();
+    this.startPromise = boot;
+    try {
+      await boot;
+    } catch (err) {
+      // error-policy:J2 boot failed — clear the memo so a later start() can
+      // retry, then rethrow the typed SandboxBackendUnavailableError.
+      if (this.startPromise === boot) this.startPromise = null;
+      throw err;
+    }
+  }
 
+  private async boot(): Promise<void> {
     const envFlags = Object.entries(this.env).flatMap(([k, v]) => [
       "-e",
       `${k}=${v}`,
@@ -359,6 +380,7 @@ export class DockerBackend implements SandboxBackend {
     }
     const id = this.containerId;
     this.containerId = null;
+    this.startPromise = null;
     if (id) {
       await this.runShell(this.dockerBinary, ["rm", "-f", id]);
     }

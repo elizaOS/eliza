@@ -36,17 +36,42 @@ interface ListProcessesResponse {
 
 export class SandboxDriver implements Driver {
   readonly name: string;
-  private started = false;
+  /**
+   * Memoized in-flight (or resolved) boot. `null` means "never booted".
+   * We store the promise itself — not a `started` boolean that only flips
+   * after `start()` resolves — so concurrent first ops share one boot and a
+   * `dispose()` that races the boot can still await and tear it down. Reset to
+   * `null` only when the boot rejects (so a later op can retry) or after a
+   * successful `dispose()`.
+   */
+  private startPromise: Promise<void> | null = null;
 
   constructor(private readonly backend: SandboxBackend) {
     this.name = `sandbox:${backend.name}`;
   }
 
-  /** Lazily boots the backend on first op. Idempotent. */
+  /**
+   * Lazily boots the backend on first op. Idempotent and concurrency-safe:
+   * N ops racing the first boot all await the same `backend.start()` call, so
+   * the backend is started exactly once. If the boot rejects, the memo is
+   * cleared so the next op retries instead of awaiting a permanently failed
+   * promise.
+   */
   private async ensureStarted(): Promise<void> {
-    if (this.started) return;
-    await this.backend.start();
-    this.started = true;
+    if (!this.startPromise) {
+      const boot = this.backend.start();
+      this.startPromise = boot;
+      try {
+        await boot;
+      } catch (err) {
+        // error-policy:J2 boot failed — clear the memo so a later op can retry
+        // a fresh start(), then rethrow the typed backend error to the caller.
+        if (this.startPromise === boot) this.startPromise = null;
+        throw err;
+      }
+      return;
+    }
+    await this.startPromise;
   }
 
   // ── Mouse ────────────────────────────────────────────────────────────────
@@ -186,9 +211,25 @@ export class SandboxDriver implements Driver {
     });
   }
 
+  /**
+   * Tears down the backend. Safe to call at any point in the lifecycle,
+   * including while a first-op boot is still in flight: it awaits the pending
+   * boot (so a `docker run` that is mid-flight is not orphaned) and then stops
+   * the backend. A dispose before any op ever ran is a no-op. If the boot
+   * itself failed there is nothing running to stop.
+   */
   async dispose(): Promise<void> {
-    if (!this.started) return;
-    this.started = false;
+    const pending = this.startPromise;
+    if (!pending) return;
+    this.startPromise = null;
+    try {
+      await pending;
+    } catch {
+      // error-policy:J4 the boot rejected; the backend never came up, so there
+      // is nothing to stop. The original start() error was already surfaced to
+      // whichever op triggered the boot.
+      return;
+    }
     await this.backend.stop();
   }
 }
