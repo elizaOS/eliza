@@ -1,7 +1,8 @@
 /**
  * Runs the credentialed Cloud trajectory against the canonical staging Pages
  * branch alias. This configuration starts no local server and retains no browser
- * recording, screenshot, trace, or report artifact.
+ * recording, screenshot, or trace; failed tests may retain only the smoke's
+ * closed-schema privacy-safe diagnostic output.
  */
 import { defineConfig, devices } from "@playwright/test";
 
@@ -15,7 +16,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["line"]],
-  preserveOutput: "never",
+  preserveOutput: "failures-only",
   timeout: 900_000,
   expect: { timeout: 30_000 },
   use: {
