@@ -9,6 +9,7 @@
 import type { IAgentRuntime, ModelTypeName, TextStreamResult } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
+  createPreparedModelRequestGuard,
   ElizaError,
   logger,
   toWellFormedUnicode,
@@ -265,6 +266,13 @@ export async function generateViaCli(
   );
   logger.debug(`[Anthropic CLI] ${modelType} → ${modelName}`);
 
+  const preparedRequest = createPreparedModelRequestGuard({
+    provider: "anthropic-cli",
+    model: modelName,
+    projectRequest: () => ({ argv: args }),
+    outputReserveTokens: maxTokens,
+  });
+  preparedRequest.assertBeforeAttempt();
   const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
   const { output, stderr, exitCode } = await collectClaudeCliOutput(proc);
 
@@ -332,6 +340,13 @@ export function streamViaCli(
   );
   logger.debug(`[Anthropic CLI] streaming ${modelType} → ${modelName}`);
 
+  const preparedRequest = createPreparedModelRequestGuard({
+    provider: "anthropic-cli",
+    model: modelName,
+    projectRequest: () => ({ argv: args }),
+    outputReserveTokens: maxTokens,
+  });
+  preparedRequest.assertBeforeAttempt();
   const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
   const deadline = createClaudeCliDeadline(proc, CLAUDE_CLI_TIMEOUT_MS);
   const stderrOutcome = settle(

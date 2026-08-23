@@ -580,8 +580,11 @@ async function handleTextWithModelType(
     const tools = normalizeNativeTools(extended.tools);
 
     const baseURL = getBaseURL(runtime);
-    const customFetch = resolveOllamaFetch(runtime);
     const model = getModelNameForType(runtime, modelType);
+    const customFetch = resolveOllamaFetch(runtime, {
+      model,
+      outputReserveTokens: maxTokens,
+    });
     modelIdForLog = model;
     await ensureModelAvailable(model, baseURL, customFetch, params.signal);
 

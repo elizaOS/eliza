@@ -1412,7 +1412,10 @@ async function generateTextWithModel(
     return result.text;
   }
 
-  const anthropic = createAnthropicClientWithTopPSupport(runtime);
+  const anthropic = createAnthropicClientWithTopPSupport(runtime, {
+    model: modelName,
+    outputReserveTokens: resolved.maxTokens,
+  });
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
 
   logger.log(`[Anthropic] Using ${modelType} model: ${modelName}`);

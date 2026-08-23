@@ -400,7 +400,7 @@ describe("codex CLI variant", () => {
     }
   });
 
-  it("keeps a million-character prompt intact and out of argv", async () => {
+  it("rejects an over-context prompt without spawning or truncating it", async () => {
     const jsonl = `{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}\n`;
     const { calls, fn } = recordingSpawn({ stdout: jsonl });
     const restore = __setCodexSpawn(fn);
@@ -408,10 +408,10 @@ describe("codex CLI variant", () => {
       const cli = new CodexCli({ env: { PATH: process.env.PATH }, binaryPath: FAKE_CODEX });
       const system = `SYSTEM-${"s".repeat(1_100_000)}`;
       const body = `BODY-${"b".repeat(1_100_000)}`;
-      await cli.generate({ system, prompt: body });
-      expect(calls[0].stdinText).toBe(`${system}\n\n${body}`);
-      expect(calls[0].argv.join(" ")).not.toContain(system);
-      expect(calls[0].argv.join(" ")).not.toContain(body);
+      await expect(cli.generate({ system, prompt: body })).rejects.toMatchObject({
+        code: "MODEL_INPUT_OVER_BUDGET",
+      });
+      expect(calls).toHaveLength(0);
     } finally {
       restore();
     }

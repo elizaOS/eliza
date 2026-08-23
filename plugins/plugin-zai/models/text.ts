@@ -10,7 +10,13 @@
  * expects a top-level `thinking` body field the SDK does not natively emit.
  */
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger, ModelType } from "@elizaos/core";
+import {
+  createPreparedModelRequestGuard,
+  ElizaError,
+  logger,
+  ModelType,
+  type PreparedModelRequestGuard,
+} from "@elizaos/core";
 import { generateText } from "ai";
 import { createZaiClient, type ZaiFetch } from "../providers";
 import { createModelName, type ModelName, type ModelSize } from "../types";
@@ -86,11 +92,13 @@ function resolveTextParams(
   };
 }
 
-function createZaiRequestFetch(thinking: ZaiThinkingConfig | null, baseFetch: ZaiFetch): ZaiFetch {
-  if (!thinking) {
-    return baseFetch;
-  }
-
+export function createZaiRequestFetch(
+  thinking: ZaiThinkingConfig | null,
+  baseFetch: ZaiFetch,
+  admission: { model: string; outputReserveTokens?: number }
+): ZaiFetch {
+  let admittedBody: string | undefined;
+  let guard: PreparedModelRequestGuard | undefined;
   const wrapped = async (input: RequestInfo | URL, init?: RequestInit) => {
     if (init && typeof init.body === "string") {
       try {
@@ -105,6 +113,20 @@ function createZaiRequestFetch(thinking: ZaiThinkingConfig | null, baseFetch: Za
         // through unchanged rather than being replaced with a fabricated one.
       }
     }
+    if (!init || typeof init.body !== "string") {
+      throw new ElizaError("z.ai model request has no serialized JSON body", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+        context: { provider: "zai", model: admission.model },
+      });
+    }
+    admittedBody = init.body;
+    guard ??= createPreparedModelRequestGuard({
+      provider: "zai",
+      model: admission.model,
+      serializeRequest: () => admittedBody as string,
+      outputReserveTokens: admission.outputReserveTokens,
+    });
+    guard.assertBeforeAttempt();
     return baseFetch(input, init);
   };
   return Object.assign(wrapped, baseFetch) as ZaiFetch;
@@ -128,7 +150,10 @@ async function generateTextWithModel(
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const thinking = getThinkingConfig(runtime, modelSize);
   const resolved = resolveTextParams(params, modelName, thinking);
-  const requestFetch = createZaiRequestFetch(thinking, (runtime.fetch ?? fetch) as ZaiFetch);
+  const requestFetch = createZaiRequestFetch(thinking, (runtime.fetch ?? fetch) as ZaiFetch, {
+    model: modelName,
+    outputReserveTokens: resolved.maxTokens,
+  });
   const zai = createZaiClient(runtime, { fetch: requestFetch });
 
   logger.log(`[z.ai] Using ${modelType} model: ${modelName}`);

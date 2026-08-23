@@ -81,6 +81,23 @@ describe("createPreparedModelRequestGuard", () => {
 		expect(guard.attempts).toBe(1);
 	});
 
+	it("guards an already serialized final-wire body byte for byte", () => {
+		let body = '{"model":"fixture","input":"complete"}';
+		const guard = createPreparedModelRequestGuard({
+			provider: "fixture",
+			model: "fixture",
+			serializeRequest: () => body,
+			contextWindowTokens: 100_000,
+			outputReserveTokens: 100,
+		});
+		guard.assertBeforeAttempt();
+		expect(guard.budget.countSource).toBe("model-family-estimator");
+		body = '{"model":"fixture", "input":"complete"}';
+		expect(() => guard.assertBeforeAttempt()).toThrow(
+			expect.objectContaining({ code: "MODEL_PREPARED_REQUEST_MUTATED" }),
+		);
+	});
+
 	it("rejects values JSON would silently omit", () => {
 		expect(() =>
 			createPreparedModelRequestGuard({

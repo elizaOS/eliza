@@ -13,6 +13,7 @@ import {
 import {
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
 	DEFAULT_INPUT_RESERVE_TOKENS,
+	estimateTokensFromChars,
 } from "./model-input-budget";
 
 export interface PreparedModelRequestBudget {
@@ -22,7 +23,7 @@ export interface PreparedModelRequestBudget {
 	contextWindowTokens: number;
 	outputReserveTokens: number;
 	dispatchThresholdTokens: number;
-	countSource: "provider-tokenizer" | "utf8-upper-bound";
+	countSource: "provider-tokenizer" | "model-family-estimator";
 	resolvedModelKey: string | null;
 }
 
@@ -41,7 +42,12 @@ export interface CreatePreparedModelRequestGuardArgs {
 	 * object. The projection must contain every model-visible field, but omit
 	 * transport-only collaborators such as fetch functions and AbortSignal.
 	 */
-	projectRequest: () => unknown;
+	projectRequest?: () => unknown;
+	/**
+	 * Return the exact already-serialized transport body. Use this at fetch and
+	 * SDK seams where re-projecting JSON would not prove wire-byte identity.
+	 */
+	serializeRequest?: () => string;
 	/** Provider/model hard ceiling when it is known more precisely than lookup. */
 	contextWindowTokens?: number;
 	/** Actual requested output cap, or the model maximum when the field is omitted. */
@@ -183,8 +189,8 @@ function countPreparedInputTokens(
 ): { count: number; source: PreparedModelRequestBudget["countSource"] } {
 	if (!counter) {
 		return {
-			count: new TextEncoder().encode(serialized).byteLength,
-			source: "utf8-upper-bound",
+			count: estimateTokensFromChars(serialized.length),
+			source: "model-family-estimator",
 		};
 	}
 	let count: number;
@@ -222,10 +228,31 @@ export function createPreparedModelRequestGuard(
 			},
 		);
 	}
+	if (Boolean(args.projectRequest) === Boolean(args.serializeRequest)) {
+		throw new ElizaError(
+			"Prepared model request needs exactly one request serializer",
+			{ code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED" },
+		);
+	}
 
-	const initialRequest = args.projectRequest();
-	const serialized = serializePreparedRequest(initialRequest);
-	freezePreparedJsonGraph(initialRequest);
+	const readSerializedRequest = (): string => {
+		if (args.serializeRequest) {
+			const body = args.serializeRequest();
+			if (typeof body !== "string") {
+				throw new ElizaError(
+					"Prepared model request serializer did not return a string",
+					{ code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED" },
+				);
+			}
+			return body;
+		}
+		return serializePreparedRequest(args.projectRequest?.());
+	};
+	const initialRequest = args.projectRequest?.();
+	const serialized = args.projectRequest
+		? serializePreparedRequest(initialRequest)
+		: readSerializedRequest();
+	if (args.projectRequest) freezePreparedJsonGraph(initialRequest);
 	const counted = countPreparedInputTokens(serialized, args.countInputTokens);
 	const contextLookup = lookupModelContextWindow(model);
 	const outputLookup = lookupModelMaxOutputTokens(model);
@@ -277,8 +304,7 @@ export function createPreparedModelRequestGuard(
 			return attempts;
 		},
 		assertBeforeAttempt(): void {
-			const attemptRequest = args.projectRequest();
-			const attemptSerialized = serializePreparedRequest(attemptRequest);
+			const attemptSerialized = readSerializedRequest();
 			if (attemptSerialized !== serialized) {
 				throw new ElizaError(
 					"Provider-prepared model request changed after admission",

@@ -3,7 +3,7 @@ import { closeSync, openSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger, toWellFormedUnicode } from "@elizaos/core";
+import { createPreparedModelRequestGuard, logger, toWellFormedUnicode } from "@elizaos/core";
 import { flattenPrompt } from "./prompt-flatten";
 import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 import { filterEnv, redactStderr, resolveSafeBinary, resolveSafeCwd } from "./sandbox";
@@ -265,6 +265,13 @@ export class ClaudeCli {
       // in the #16939 CHOICE runs: "waiting on your file-write approval" from
       // a planner call). No tools ⇒ the only reachable output is text.
       argv.push("--tools", "", "--output-format", "text", "--model", this.model);
+
+      const preparedRequest = createPreparedModelRequestGuard({
+        provider: "claude-cli",
+        model: this.model,
+        projectRequest: () => ({ argv, system, body }),
+      });
+      preparedRequest.assertBeforeAttempt();
 
       const result = await spawnImpl(argv, {
         cwd,

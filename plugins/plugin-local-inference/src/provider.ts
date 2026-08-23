@@ -17,6 +17,7 @@
 import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,
+	createPreparedModelRequestGuard,
 	EventType,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -612,6 +613,28 @@ function createTextHandler(modelType: string) {
 			args.maxTokens = budgetedArgs.maxTokens;
 			lockWaitMs = budget.lockWaitMs;
 		}
+		const configuredModel = runtime.getSetting?.(
+			modelType === ModelType.TEXT_SMALL
+				? "LOCAL_SMALL_MODEL"
+				: "LOCAL_LARGE_MODEL",
+		);
+		const model =
+			typeof configuredModel === "string" && configuredModel.trim()
+				? configuredModel.trim()
+				: `${LOCAL_INFERENCE_PROVIDER_ID}:${modelType}`;
+		const preparedRequest = createPreparedModelRequestGuard({
+			provider: LOCAL_INFERENCE_PROVIDER_ID,
+			model,
+			projectRequest: () => ({
+				prompt: args.prompt,
+				stopSequences: args.stopSequences,
+				maxTokens: args.maxTokens,
+				temperature: args.temperature,
+				topP: args.topP,
+				stream: typeof args.onTextChunk === "function",
+			}),
+			outputReserveTokens: args.maxTokens,
+		});
 		return getInferencePriorityGate().runExclusive(
 			{
 				priority,
@@ -619,7 +642,10 @@ function createTextHandler(modelType: string) {
 				...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
 				...(params.signal ? { signal: params.signal } : {}),
 			},
-			() => generate.call(service, args),
+			() => {
+				preparedRequest.assertBeforeAttempt();
+				return generate.call(service, args);
+			},
 		);
 	};
 }
