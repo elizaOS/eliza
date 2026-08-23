@@ -200,6 +200,7 @@
     "test:chat-latency": "node --test packages/cloud/scripts/chat-latency.test.mjs",
     "cloud:inference-auth-latency": "node packages/cloud/scripts/inference-auth-latency.mjs",
     "test:inference-auth-latency": "node --test packages/cloud/scripts/inference-auth-latency.test.mjs",
+    "cloud:group-room-sim": "bun packages/cloud/scripts/group-room-sim/run-room-sim.ts",
     "cloud:e2e": "bun run --cwd packages/cloud/e2e test",
     "cloud:e2e:headed": "bun run --cwd packages/cloud/e2e test:headed",
     "cloud:e2e:ui": "bun run --cwd packages/cloud/e2e test:ui",
