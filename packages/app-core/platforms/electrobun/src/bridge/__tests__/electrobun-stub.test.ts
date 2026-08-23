@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { ensureElectrobunGlobal } from "./electrobun-stub.ts";
+import { ensureElectrobunGlobal } from "../electrobun-stub.ts";
 
 afterEach(() => {
   // @ts-expect-error cleanup
