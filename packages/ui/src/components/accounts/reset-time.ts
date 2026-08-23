@@ -69,7 +69,7 @@ export function weeklyResetAt(
  * null checks.
  */
 function finiteOrZeroTimestamp(value: number | undefined): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 export function bySoonestReset(
@@ -80,9 +80,7 @@ export function bySoonestReset(
   const br = accountResetAt(b);
   if (ar != null && br != null) {
     if (ar !== br) {
-      return (
-        (Number.isFinite(ar) ? ar : 0) - (Number.isFinite(br) ? br : 0)
-      );
+      return (Number.isFinite(ar) ? ar : 0) - (Number.isFinite(br) ? br : 0);
     }
   } else if (ar != null) {
     return -1;

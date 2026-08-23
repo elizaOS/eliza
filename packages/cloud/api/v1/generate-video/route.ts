@@ -1,4 +1,6 @@
 /** Handles authenticated video generation, billing, and pending-job reconciliation. */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -13,7 +15,6 @@ import {
   failureResponse,
   jsonError,
 } from "@/lib/api/cloud-worker-errors";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   collectVideoProviderApiKeys,
   getConfiguredVideoProviderCandidates,
@@ -575,7 +576,10 @@ app.post("/", async (c) => {
           provider: unknownAttempt.provider,
           prompt: unknownAttempt.prompt,
           status: "failed",
-          error: truncateWellFormed(toWellFormedUnicode(redactProviderErrorMessage(error.message)), 500),
+          error: truncateWellFormed(
+            toWellFormedUnicode(redactProviderErrorMessage(error.message)),
+            500,
+          ),
           parameters: unknownAttempt.parameters,
           metadata: { ...settlement },
           dimensions: { duration: unknownAttempt.durationSeconds },
