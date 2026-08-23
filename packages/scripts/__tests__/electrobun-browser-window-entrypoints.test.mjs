@@ -1,6 +1,9 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { findElectrobunBrowserWindowEntrypoints } from "../lib/electrobun-browser-window-entrypoints.mjs";
+import {
+  classifyElectrobunLinuxNativeArtifacts,
+  findElectrobunBrowserWindowEntrypoints,
+} from "../lib/electrobun-browser-window-entrypoints.mjs";
 
 describe("Electrobun BrowserWindow entrypoint discovery", () => {
   it("accepts the clean-install layout with only the shared dist source", () => {
@@ -31,5 +34,23 @@ describe("Electrobun BrowserWindow entrypoint discovery", () => {
     expect(
       findElectrobunBrowserWindowEntrypoints(packageRoot, () => false),
     ).toEqual([]);
+  });
+});
+
+describe("Electrobun Linux native artifact discovery", () => {
+  it("distinguishes absent, partial, and complete native materialization", () => {
+    const packageRoot = path.join("node_modules", "electrobun");
+
+    expect(
+      classifyElectrobunLinuxNativeArtifacts(packageRoot, () => false).state,
+    ).toBe("absent");
+    expect(
+      classifyElectrobunLinuxNativeArtifacts(packageRoot, (candidate) =>
+        candidate.endsWith("libNativeWrapper_cef.so"),
+      ).state,
+    ).toBe("incomplete");
+    expect(
+      classifyElectrobunLinuxNativeArtifacts(packageRoot, () => true).state,
+    ).toBe("complete");
   });
 });

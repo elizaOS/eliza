@@ -36,7 +36,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findElectrobunBrowserWindowEntrypoints } from "./lib/electrobun-browser-window-entrypoints.mjs";
+import {
+  classifyElectrobunLinuxNativeArtifacts,
+  findElectrobunBrowserWindowEntrypoints,
+} from "./lib/electrobun-browser-window-entrypoints.mjs";
 
 const requirePatch = process.argv.includes("--require");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -156,6 +159,7 @@ if (packageRoots.size === 0) {
 
 let patchedCount = 0;
 let browserWindowPatchedCount = 0;
+let deferredNativeCount = 0;
 for (const packageRoot of packageRoots) {
   const browserWindowPaths =
     findElectrobunBrowserWindowEntrypoints(packageRoot);
@@ -170,11 +174,17 @@ for (const packageRoot of packageRoots) {
     }
   }
 
-  const distDir = path.join(packageRoot, "dist-linux-x64");
-  const targetPath = path.join(distDir, "libNativeWrapper_cef.so");
-  const bspatchPath = path.join(distDir, "bspatch");
-  if (!existsSync(targetPath) || !existsSync(bspatchPath)) {
-    fail(`Electrobun Linux x64 native artifacts are incomplete at ${distDir}.`);
+  const { bspatchPath, distDir, state, targetPath } =
+    classifyElectrobunLinuxNativeArtifacts(packageRoot);
+  if (state !== "complete") {
+    const message =
+      state === "absent"
+        ? `Electrobun Linux x64 native artifacts are not materialized yet at ${distDir}; deferring the native hotfix.`
+        : `Electrobun Linux x64 native artifacts are incomplete at ${distDir}.`;
+    if (requirePatch || state === "incomplete") fail(message);
+    console.warn(`[patch-electrobun-linux-cef-profile] ${message}`);
+    deferredNativeCount += 1;
+    continue;
   }
 
   const beforeHash = sha256(targetPath);
@@ -215,5 +225,5 @@ for (const packageRoot of packageRoots) {
 }
 
 console.log(
-  `[patch-electrobun-linux-cef-profile] ${patchedCount > 0 ? `Patched ${patchedCount}` : "Verified"} Electrobun Linux x64 CEF wrapper${packageRoots.size === 1 ? "" : "s"}; ${browserWindowPatchedCount > 0 ? `patched ${browserWindowPatchedCount}` : "verified"} BrowserWindow entrypoint${packageRoots.size === 1 ? "s" : " sets"}.`,
+  `[patch-electrobun-linux-cef-profile] ${deferredNativeCount === packageRoots.size ? `Deferred ${deferredNativeCount}` : patchedCount > 0 ? `Patched ${patchedCount}` : "Verified"} Electrobun Linux x64 CEF wrapper${packageRoots.size === 1 ? "" : "s"}; ${browserWindowPatchedCount > 0 ? `patched ${browserWindowPatchedCount}` : "verified"} BrowserWindow entrypoint${packageRoots.size === 1 ? "s" : " sets"}.`,
 );
