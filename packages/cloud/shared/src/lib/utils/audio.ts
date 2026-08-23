@@ -49,7 +49,12 @@ export function validateAudioFile(
     allowedTypes?: string[];
   },
 ): { valid: boolean; error?: string } {
-  const maxSize = options?.maxSize || 25 * 1024 * 1024; // 25MB default
+  // `??`, not `||`: 0 is a real limit meaning "reject everything", and `||`
+  // would treat it as an absent option and silently restore the 25MB
+  // default — admitting every file under it through a gate the caller
+  // had closed. (`allowedTypes` below is unaffected: `[]` is truthy, so an
+  // empty allowlist already rejects every type.)
+  const maxSize = options?.maxSize ?? 25 * 1024 * 1024; // 25MB default
   const allowedTypes = options?.allowedTypes || [
     "audio/mp3",
     "audio/mpeg",
