@@ -144,7 +144,9 @@ async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blo
 async function readHttpErrorDetail(response: Response): Promise<string> {
   try {
     const detail = (await response.text()).trim();
-    return detail.length > 0 ? truncateWellFormed(toWellFormedUnicode(detail), 500) : "empty response body";
+    return detail.length > 0
+      ? truncateWellFormed(toWellFormedUnicode(detail), 500)
+      : "empty response body";
   } catch (error) {
     // error-policy:J4 the status remains authoritative and the unavailable
     // diagnostic body is represented explicitly.

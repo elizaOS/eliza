@@ -241,7 +241,22 @@ function groupCandidates(
         (a, b) => SOURCE_PRIORITY[b.source] - SOURCE_PRIORITY[a.source],
       ),
     }))
-    .sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+    .sort((a, b) => {
+      const aScore = Number.isFinite(a.score)
+        ? a.score
+        : Number.NEGATIVE_INFINITY;
+      const bScore = Number.isFinite(b.score)
+        ? b.score
+        : Number.NEGATIVE_INFINITY;
+      if (aScore !== bScore) return bScore - aScore;
+      const aConf = Number.isFinite(a.confidence)
+        ? a.confidence
+        : Number.NEGATIVE_INFINITY;
+      const bConf = Number.isFinite(b.confidence)
+        ? b.confidence
+        : Number.NEGATIVE_INFINITY;
+      return bConf - aConf;
+    });
 }
 
 function hasSource(
