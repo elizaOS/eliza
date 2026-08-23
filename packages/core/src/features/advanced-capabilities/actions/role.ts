@@ -8,6 +8,7 @@
  *   - list:   returns current role assignments for the world.
  */
 
+import { buildAccessContext } from "../../../access-context.ts";
 import {
 	findKeywordTermMatch,
 	getValidationKeywordTerms,
@@ -24,6 +25,7 @@ import {
 	setEntityRole,
 } from "../../../roles.ts";
 import type {
+	AccessContext,
 	Action,
 	ActionResult,
 	HandlerCallback,
@@ -267,12 +269,14 @@ function scoreNameMatch(target: string, candidate: CandidateRecord): number {
 async function getRecentRoomActivity(
 	runtime: IAgentRuntime,
 	roomId: UUID,
+	accessContext?: AccessContext,
 ): Promise<Map<UUID, number>> {
 	const activity = new Map<UUID, number>();
 	if (typeof runtime.getMemoriesByRoomIds !== "function") return activity;
 	const memories = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: [roomId],
+		accessContext,
 	});
 	for (const memory of memories) {
 		if (!memory.entityId || typeof memory.createdAt !== "number") continue;
@@ -287,10 +291,15 @@ async function resolveTargetEntityIdByName(args: {
 	runtime: IAgentRuntime;
 	roomId: UUID;
 	targetName: string;
+	accessContext?: AccessContext;
 }): Promise<{ entityId: UUID | null; error?: string }> {
-	const { runtime, roomId, targetName } = args;
+	const { runtime, roomId, targetName, accessContext } = args;
 	const candidates = new Map<UUID, CandidateRecord>();
-	const recentActivity = await getRecentRoomActivity(runtime, roomId);
+	const recentActivity = await getRecentRoomActivity(
+		runtime,
+		roomId,
+		accessContext,
+	);
 
 	const roomEntities = await runtime.getEntitiesForRoom(roomId);
 	for (const entity of roomEntities) {
@@ -403,10 +412,12 @@ async function buildAssignmentsFromParams(args: {
 			errors.push("Could not determine target role.");
 			return { assignments, errors };
 		}
+		const accessContext = await buildAccessContext(runtime, message);
 		const resolution = await resolveTargetEntityIdByName({
 			runtime,
 			roomId: message.roomId,
 			targetName,
+			accessContext,
 		});
 		if (!resolution.entityId) {
 			errors.push(resolution.error ?? `User "${targetName}" not found.`);
