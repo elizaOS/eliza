@@ -7,7 +7,11 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("./services/permissions/probers/_bridge.js", () => ({
   IS_DARWIN: true,
-  buildState: (id: string, state: string, extra: Record<string, unknown> = {}) => ({
+  buildState: (
+    id: string,
+    state: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
     id,
     state,
     ...extra,
@@ -42,7 +46,9 @@ describe("accessibilityProber.check", () => {
   });
 
   it("returns granted when the native check is true", async () => {
-    mockGetDylib.mockResolvedValue({ checkAccessibilityPermission: () => true } as never);
+    mockGetDylib.mockResolvedValue({
+      checkAccessibilityPermission: () => true,
+    } as never);
     const state = await accessibilityProber.check();
     expect(state.state).toBe("granted");
     expect(state.canRequest).toBe(false);
@@ -58,7 +64,9 @@ describe("accessibilityProber.check", () => {
   });
 
   it("reports denied when native false and TCC says denied", async () => {
-    mockGetDylib.mockResolvedValue({ checkAccessibilityPermission: () => false } as never);
+    mockGetDylib.mockResolvedValue({
+      checkAccessibilityPermission: () => false,
+    } as never);
     mockQueryTcc.mockResolvedValue("denied" as never);
     const state = await accessibilityProber.check();
     expect(state.state).toBe("denied");
@@ -66,7 +74,9 @@ describe("accessibilityProber.check", () => {
   });
 
   it("reports granted when TCC disagrees (granted despite native false)", async () => {
-    mockGetDylib.mockResolvedValue({ checkAccessibilityPermission: () => false } as never);
+    mockGetDylib.mockResolvedValue({
+      checkAccessibilityPermission: () => false,
+    } as never);
     mockQueryTcc.mockResolvedValue("granted" as never);
     const state = await accessibilityProber.check();
     expect(state.state).toBe("granted");
