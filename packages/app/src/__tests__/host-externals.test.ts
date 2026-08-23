@@ -17,7 +17,7 @@ describe("registerAppHostExternalImporters", () => {
 
   it("registers the plugin-browser and health specifiers once", async () => {
     const { registerAppHostExternalImporters } = await import(
-      "./host-externals.ts"
+      "../host-externals.ts"
     );
     registerAppHostExternalImporters();
     registerAppHostExternalImporters(); // second call is a no-op
@@ -32,11 +32,11 @@ describe("registerAppHostExternalImporters", () => {
 
   it("registers thunks that return promises", async () => {
     const { registerAppHostExternalImporter } = await import(
-      "./host-externals.ts"
+      "../host-externals.ts"
     );
     void registerAppHostExternalImporter;
     const { registerAppHostExternalImporters } = await import(
-      "./host-externals.ts"
+      "../host-externals.ts"
     );
     registerAppHostExternalImporters();
     for (const call of mocks.registerHostExternalImporter.mock.calls) {
