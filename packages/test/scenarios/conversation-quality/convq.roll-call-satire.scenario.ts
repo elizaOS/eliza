@@ -76,7 +76,9 @@ export default scenario({
       kind: "message",
       name: "roll-call",
       room: "porch",
-      text: "[Toph] ROLL CALL @agent @Quill @Marble who is ALIVE in this chat right now",
+      sender: { id: "toph-11", name: "Toph", kind: "human" },
+      content: { mentionContext: { isMention: true } },
+      text: "ROLL CALL @Eliza @Quill @Marble who is ALIVE in this chat right now",
       responseExcludes: [LITERAL_STATUS],
       assertResponse: (text: string) => {
         if (!text || text.trim().length === 0) {
@@ -94,7 +96,8 @@ export default scenario({
       kind: "message",
       name: "bit-continues",
       room: "porch",
-      text: "[Marcus] lmaooo the bots really answered the roll call",
+      sender: { id: "marcus-4", name: "Marcus", kind: "human" },
+      text: "lmaooo the bots really answered the roll call",
       // Humans laughing at the bit is not an invitation to explain or pivot.
       responseExcludes: [LITERAL_STATUS],
       assertResponse: (text: string) => {

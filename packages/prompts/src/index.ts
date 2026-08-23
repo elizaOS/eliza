@@ -668,6 +668,14 @@ trust_boundary:
 
 export const GROUP_RESPONSE_PRECEDENCE_POLICY = groupResponsePrecedencePolicy;
 
+export const registerResponsePolicy = `register_response_policy:
+- match the incoming message's register before adding substance
+- a playful roll call or obvious bit addressed to {{agentName}} gets exactly one short line that plays along; never answer with a literal status such as "I'm here", "I'm awake", "online", or "operational", and never pivot to offering help
+- a joke carrying a real idea gets the joke first and at most one substantive beat; never explain that it is a joke
+- a terse closer such as "lol", "nice", or a bare emoji gets an equally tiny reply or IGNORE; never reopen it with a question, offer, or option menu`;
+
+export const REGISTER_RESPONSE_POLICY = registerResponsePolicy;
+
 export const messageHandlerTemplate = `task: {{#if directMessage}}Plan this direct message{{else}}Decide shouldRespond + plan{{/if}}.
 
 available_contexts:
@@ -681,6 +689,7 @@ available_contexts:
 ${groupResponsePrecedencePolicy}
 Group restraint: not every group message deserves a reply; a message the agent could answer is not a message it should answer. IGNORE casual banter between other participants. When other assistants/bots are present, one speaker per human message: if another assistant already answered the human and nobody named this agent, IGNORE; when bot replies are stacking without directly addressing this agent, IGNORE and wait for a human to advance the conversation.
 {{/if}}
+${registerResponsePolicy}
 replyText: user-facing text. Always write. Simple path = whole answer. Planning path = brief interim ack ("On it.", "Spawning the sub-agent now."); planner gives final. The runtime delivers that interim ack ahead of the final reply only when the routed work is a long-running async handoff (e.g. a sub-agent spawn); on synchronous tool turns (searches, lookups, in-turn actions) the user gets just the final reply, so never treat the ack as the answer. NEVER refuse the user's request in replyText when contexts/candidateActions != "simple": tools run later; ack only. Ban planning-path refusal openings: "I cannot...", "I am unable...", "I don't have the ability...", "Sorry, I can't...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, ...). If truly no tool can attempt, use contexts=["simple"] and explain.
 
 All user-visible replyText must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
@@ -944,7 +953,7 @@ export const replyTemplate = `# Task: Generate dialog for character {{agentName}
 
 Write text like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
 
-Match the register of the incoming message before adding substance: a joke, bit, or roll call gets one light line back (never an earnest status report or an offer to help); a joke that carries a real idea gets the joke plus at most one substantive beat; a terse or low-effort message ('lol', 'nice', a bare emoji) gets an equally terse reply. Length should track the message's energy, not the model's.
+${registerResponsePolicy}
 
 CODE BLOCK FORMATTING:
 - For code examples, snippets, or multi-line code, ALWAYS wrap with \`\`\` fenced code blocks (specify language if known, e.g., \`\`\`python).
