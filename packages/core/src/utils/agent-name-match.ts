@@ -49,9 +49,17 @@ export function distinctiveNameTokens(name: string): string[] {
 		return [];
 	}
 	const tokens = new Set<string>([candidate]);
+	// Token distinctiveness is not deterministically verifiable without a
+	// lexicon, and it does not need to be: token expansion only ADDS addressed
+	// classifications, so its failure direction is over-addressing (the agent
+	// answers more), never silence. The floor therefore only drops initials
+	// and particles (1–2 chars); real short name tokens ("Sol", "Rex", "Ana")
+	// count. Generic role words stay excluded via the closed-class guard;
+	// operators whose names contain common English words ("Will …", "The …")
+	// are matched by their full name and can extend the guard.
 	for (const token of candidate.split(/\s+/u)) {
 		if (
-			token.length >= 4 &&
+			token.length >= 3 &&
 			!NON_DISTINCTIVE_NAME_TOKENS.has(token.toLowerCase())
 		) {
 			tokens.add(token);

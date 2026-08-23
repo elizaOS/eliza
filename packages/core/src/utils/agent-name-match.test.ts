@@ -1,6 +1,6 @@
 /**
  * The shared agent-name matcher: normalization, distinctive-token expansion
- * for multi-word names (>= 4-char tokens), and boundary-anchored text
+ * for multi-word names (>= 3-char, non-generic tokens), and boundary-anchored text
  * matching. Pins the live 2026-08-22 case where a single token of a
  * multi-word agent name must count as addressing the agent.
  */
@@ -28,6 +28,18 @@ describe("escapeRegex", () => {
 });
 
 describe("distinctiveNameTokens", () => {
+	it("keeps real short name tokens: 'hey sol' addresses 'Sol Invictus'", () => {
+		expect(
+			textContainsAgentName("hey sol, chart looks good", ["Sol Invictus"]),
+		).toBe(true);
+		expect(textContainsAgentName("gmsol what a chart", ["Sol Invictus"])).toBe(
+			false,
+		);
+		expect(textContainsAgentName("console log this", ["Sol Invictus"])).toBe(
+			false,
+		);
+	});
+
 	it("returns the full name plus each token of at least 4 characters", () => {
 		expect(distinctiveNameTokens("remilio nubilio")).toEqual([
 			"remilio nubilio",

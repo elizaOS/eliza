@@ -129,7 +129,7 @@ interface ResolveTargetsArgs {
 
 /**
  * Normalized set of the agent's own names: character name, username, and
- * each distinctive (>= 4 char) token of a multi-word name, so
+ * each distinctive (>= 3 char, non-generic) token of a multi-word name, so
  * "remilio nubilio" also answers to "nubilio" (live 2026-08-22).
  */
 function agentSelfNames(runtime: IAgentRuntime): Set<string> {
