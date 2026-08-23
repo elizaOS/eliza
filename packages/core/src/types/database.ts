@@ -116,6 +116,8 @@ export interface DocumentListQueryParams extends DocumentRequesterContext {
 	timeRangeStart?: number;
 	timeRangeEnd?: number;
 	tags?: string[];
+	/** Restrict the storage scan to documents explicitly pinned for provider context. */
+	pinnedOnly?: boolean;
 }
 
 /** Authorized single-document lookup. */

@@ -30,6 +30,7 @@ import {
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
   type DocumentDirectGrantUpdateParams,
@@ -76,9 +77,12 @@ import {
   type ParticipantUpdateFields,
   type ParticipantUserState,
   type PatchOp,
+  portableDocumentSearchTokens,
   type Relationship,
   type Room,
   type RunStatus,
+  readDocumentSourceProjection,
+  requireDocumentSourceReadMetadata,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
@@ -211,6 +215,7 @@ function escapeIlikeLiteral(value: string): string {
 }
 
 const DOCUMENT_UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+const DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE = 250;
 
 function validDocumentRevision(metadata: SQLWrapper): SQL {
   return sql`(
@@ -562,7 +567,7 @@ import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
-  readonly documentRangeReadCapability = 1 as const;
+  readonly documentRangeReadCapability = 2 as const;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -1877,23 +1882,49 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           )}::jsonb`
         );
       }
+      if (params.pinnedOnly) {
+        availableConditions.push(sql`${memoryTable.metadata}->>'pinned' = 'true'`);
+      }
       const availableCondition =
         availableConditions.length > 0 ? and(...availableConditions) : sql`true`;
 
       const normalizedQuery = params.query?.trim();
       let queryCondition: SQL = sql`true`;
       if (normalizedQuery) {
-        queryCondition = sql`${documentSearchTokensExpression(
-          memoryTable.content,
-          memoryTable.metadata
-        )} @> regexp_split_to_array(
-          translate(
-            trim(${normalizedQuery}),
-            'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-            'abcdefghijklmnopqrstuvwxyz'
-          ),
-          E'[ \\t\\r\\n\\f]+'
-        )`;
+        const sourceMetadata = sql.raw('"document_source_search_segment"."metadata"');
+        const sourceContent = sql.raw('"document_source_search_segment"."content"');
+        const queryLexemes = portableDocumentSearchTokens(normalizedQuery);
+        queryCondition =
+          and(
+            ...queryLexemes.map((lexeme) =>
+              or(
+                sql`${documentSearchTokensExpression(
+                  memoryTable.content,
+                  memoryTable.metadata
+                )} @> ARRAY[${lexeme}]::text[]`,
+                sql`EXISTS (
+                  SELECT 1
+                  FROM ${memoryTable} AS document_source_search_segment
+                  WHERE document_source_search_segment.type = 'document_fragments'
+                    AND document_source_search_segment.agent_id = ${memoryTable.agentId}
+                    AND document_source_search_segment.metadata->>'type' = 'fragment'
+                    AND document_source_search_segment.metadata->>'fragmentRole' = 'source-segment'
+                    AND document_source_search_segment.metadata->>'documentId' = ${memoryTable.id}::text
+                    AND ${documentRevisionExpression(sourceMetadata)}
+                      = ${documentRevisionExpression(memoryTable.metadata)}
+                    AND (
+                      NOT (${memoryTable.metadata} ? 'revisionAttemptId')
+                      OR document_source_search_segment.metadata->>'revisionAttemptId'
+                        = ${memoryTable.metadata}->>'revisionAttemptId'
+                    )
+                    AND ${documentSearchTokensExpression(
+                      sourceContent,
+                      sourceMetadata
+                    )} @> ARRAY[${lexeme}]::text[]
+                )`
+              )
+            )
+          ) ?? sql`false`;
       }
 
       type DocumentRow = {
@@ -2235,111 +2266,89 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: DocumentRangeReadParams
   ): Promise<DocumentRangeReadResult | null> {
     validateDocumentRequesterContext(params);
-    if (params.unit === "byte") {
-      throw new ElizaError("Legacy SQL document reads do not support byte ranges", {
-        code: "DOCUMENT_RANGE_READ_UNSUPPORTED",
-      });
-    }
     if (
+      !(["line", "fragment", "byte"] as const).includes(params.unit) ||
       !Number.isSafeInteger(params.offset) ||
       params.offset < 0 ||
       !Number.isSafeInteger(params.limit) ||
-      params.limit < 1
+      params.limit < 1 ||
+      params.offset > Number.MAX_SAFE_INTEGER - params.limit
     ) {
-      throw new ElizaError(
-        "Document range read requires a non-negative offset and positive limit",
-        {
-          code: "DOCUMENT_READ_INVALID_RANGE",
-        }
-      );
+      throw new ElizaError("Document range read requires a bounded safe-integer range", {
+        code: "DOCUMENT_READ_INVALID_RANGE",
+      });
     }
     const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
-      const linePattern = "([^\\r\\n]*(?:\\r\\n|\\r|\\n)|[^\\r\\n]+$)";
-      const units =
-        params.unit === "line"
-          ? sql`line_units AS (
-              SELECT matched[1] AS unit_text, ordinal - 1 AS unit_index
-              FROM authorized
-              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
-                WITH ORDINALITY AS matches(matched, ordinal)
-            )`
-          : sql`raw_lines AS (
-              SELECT matched[1] AS unit_text, ordinal - 1 AS line_index
-              FROM authorized
-              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
-                WITH ORDINALITY AS matches(matched, ordinal)
-            ), grouped_lines AS (
-              SELECT unit_text, line_index,
-                COALESCE(SUM(
-                  CASE WHEN btrim(regexp_replace(unit_text, E'[\\r\\n]', '', 'g')) = ''
-                    THEN 1 ELSE 0 END
-                ) OVER (
-                  ORDER BY line_index
-                  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                ), 0) AS unit_index
-              FROM raw_lines
-            ), line_units AS (
-              SELECT string_agg(unit_text, '' ORDER BY line_index) AS unit_text, unit_index
-              FROM grouped_lines
-              GROUP BY unit_index
-            )`;
-      const result = await tx.execute(sql`
-        WITH authorized AS (
-          SELECT content->>'text' AS source_text, metadata
-          FROM ${memoryTable}
-          WHERE ${and(...this.documentReadConditions(params))}
-          LIMIT 1
-        ), ${units}
-        SELECT
-          COALESCE(
-            string_agg(unit_text, '' ORDER BY unit_index)
-              FILTER (
-                WHERE unit_index >= ${params.offset}
-                  AND unit_index < ${params.offset + params.limit}
-              ),
-            ''
-          ) AS text,
-          COUNT(*)::integer AS total,
-          (SELECT COALESCE((metadata->>'documentRevision')::integer, 0) FROM authorized)
-            AS document_revision,
-          (SELECT metadata->>'revisionAttemptId' FROM authorized) AS revision_attempt_id,
-          (SELECT md5(source_text) FROM authorized) AS source_fingerprint
-        FROM line_units
-      `);
-      const row = result.rows[0] as
-        | {
-            text?: unknown;
-            total?: unknown;
-            document_revision?: unknown;
-            revision_attempt_id?: unknown;
-            source_fingerprint?: unknown;
-          }
-        | undefined;
-      if (!row || typeof row.source_fingerprint !== "string") return null;
-      const total = Number(row.total);
-      const start = params.offset;
-      return {
-        unit: params.unit,
-        text: typeof row.text === "string" ? row.text : "",
-        start,
-        end: Math.min(start + params.limit, total),
-        total,
-        documentRevision: Number(row.document_revision ?? 0),
-        ...(typeof row.revision_attempt_id === "string"
-          ? { revisionAttemptId: row.revision_attempt_id }
-          : {}),
-        sourceFingerprint: `md5:${row.source_fingerprint}`,
-        examinedSourceSegments: 0,
-        sourceQueryCount: 1,
-        returnedSourceSegments: 0,
-        returnedSourceBytes: Buffer.byteLength(
-          typeof row.text === "string" ? row.text : "",
-          "utf8"
-        ),
-      };
+      const parentRows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentReadConditions(params)))
+        .limit(1);
+      if (!parentRows[0]) return null;
+      const parentMemory = memoryFromRow(parentRows[0]);
+      const parent = requireDocumentSourceReadMetadata(
+        (parentMemory.metadata ?? {}) as Record<string, unknown>,
+        params.documentId
+      );
+      const total =
+        params.unit === "byte"
+          ? parent.sourceByteLength
+          : params.unit === "line"
+            ? parent.sourceLineCount
+            : parent.sourceFragmentCount;
+      if (params.offset > total) {
+        return readDocumentSourceProjection({
+          segments: [],
+          params,
+          parent,
+          documentId: params.documentId,
+          sourceQueryCount: 1,
+        });
+      }
+      const requestedEnd = Math.min(params.offset + params.limit, total);
+      const coordinatePrefix =
+        params.unit === "byte"
+          ? "sourceByte"
+          : params.unit === "line"
+            ? "sourceLine"
+            : "sourceFragment";
+      const startExpression = sql<number>`(${memoryTable.metadata}->>${`${coordinatePrefix}Start`})::bigint`;
+      const endExpression = sql<number>`(${memoryTable.metadata}->>${`${coordinatePrefix}End`})::bigint`;
+      const segmentRows =
+        params.offset === total
+          ? []
+          : await tx
+              .select()
+              .from(memoryTable)
+              .where(
+                and(
+                  eq(memoryTable.type, "document_fragments"),
+                  eq(memoryTable.agentId, params.agentId),
+                  sql`${memoryTable.metadata}->>'type' = 'fragment'`,
+                  sql`${memoryTable.metadata}->>'fragmentRole' = 'source-segment'`,
+                  sql`${memoryTable.metadata}->>'sourceSegmentVersion' = '1'`,
+                  sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`,
+                  sql`${documentRevisionExpression(memoryTable.metadata)} = ${parent.documentRevision}`,
+                  parent.revisionAttemptId
+                    ? sql`${memoryTable.metadata}->>'revisionAttemptId' = ${parent.revisionAttemptId}`
+                    : sql`NOT (${memoryTable.metadata} ? 'revisionAttemptId')`,
+                  sql`${endExpression} > ${params.offset}`,
+                  sql`${startExpression} < ${requestedEnd}`
+                )
+              )
+              .orderBy(asc(sql`(${memoryTable.metadata}->>'sourceByteStart')::bigint`))
+              .limit(DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS);
+      return readDocumentSourceProjection({
+        segments: segmentRows.map((row) => memoryFromRow(row)),
+        params,
+        parent,
+        documentId: params.documentId,
+        examinedSourceSegments: segmentRows.length,
+        sourceQueryCount: params.offset === total ? 1 : 2,
+      });
     });
   }
 
@@ -2583,43 +2592,69 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`
           )
         );
-      const oldFragmentIds = new Set(oldFragments.map(({ id }) => String(id)));
-      const reusedFragment = params.fragments.find(({ id }) => oldFragmentIds.has(String(id)));
-      if (reusedFragment) {
+      let conflictingFragmentId: UUID | undefined;
+      for (
+        let offset = 0;
+        offset < params.fragments.length;
+        offset += DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE
+      ) {
+        const ids = params.fragments
+          .slice(offset, offset + DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE)
+          .map(({ id }) => id as UUID);
+        const collisions =
+          ids.length === 0
+            ? []
+            : await tx
+                .select({ id: memoryTable.id })
+                .from(memoryTable)
+                .where(inArray(memoryTable.id, ids))
+                .limit(1);
+        if (collisions[0]) {
+          conflictingFragmentId = collisions[0].id as UUID;
+          break;
+        }
+      }
+      if (conflictingFragmentId) {
         throw new ElizaError("Atomic document fragment id already exists", {
           code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
-          context: { documentId: params.documentId, fragmentId: reusedFragment.id },
+          context: { documentId: params.documentId, fragmentId: conflictingFragmentId },
         });
       }
       if (oldFragments.length > 0) {
-        const deleted = await tx
-          .delete(memoryTable)
-          .where(
-            inArray(
-              memoryTable.id,
-              oldFragments.map(({ id }) => id)
-            )
-          )
-          .returning();
-        if (deleted.length !== oldFragments.length) {
+        const deleted = await tx.execute(sql`
+          DELETE FROM ${memoryTable}
+          WHERE ${inArray(
+            memoryTable.id,
+            oldFragments.map(({ id }) => id)
+          )}
+          RETURNING ${memoryTable.id}
+        `);
+        if (deleted.rows.length !== oldFragments.length) {
           throw new ElizaError("Atomic document replacement did not delete every old fragment", {
             code: "DOCUMENT_REVISION_DELETE_INCOMPLETE",
             context: {
               documentId: params.documentId,
               expected: oldFragments.length,
-              deleted: deleted.length,
+              deleted: deleted.rows.length,
             },
           });
         }
       }
-      for (const fragment of params.fragments) {
-        await this.insertMemoryInTransaction(
-          tx,
-          fragment,
-          "document_fragments",
-          fragment.id as UUID,
-          true
-        );
+      for (
+        let offset = 0;
+        offset < params.fragments.length;
+        offset += DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE
+      ) {
+        const batch = params.fragments.slice(offset, offset + DOCUMENT_FRAGMENT_INSERT_BATCH_SIZE);
+        for (const fragment of batch) {
+          await this.insertMemoryInTransaction(
+            tx,
+            fragment,
+            "document_fragments",
+            fragment.id as UUID,
+            true
+          );
+        }
       }
       const replacement = params.replacement;
       const updated = await tx
@@ -2677,11 +2712,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`
           )
         );
-      const deleted = await tx
-        .delete(memoryTable)
-        .where(eq(memoryTable.id, params.documentId))
-        .returning();
-      return deleted[0] ? { status: "deleted", document: existing } : { status: "conflict" };
+      const deleted = await tx.execute(sql`
+        DELETE FROM ${memoryTable}
+        WHERE ${memoryTable.id} = ${params.documentId}
+        RETURNING ${memoryTable.id}
+      `);
+      return deleted.rows[0] ? { status: "deleted", document: existing } : { status: "conflict" };
     });
   }
 
@@ -2756,6 +2792,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
+      if (tableName === "document_fragments") {
+        conditions.push(
+          sql`COALESCE(${memoryTable.metadata}->>'fragmentRole', 'embedding-chunk') <> 'source-segment'`
+        );
+      }
 
       if (start !== undefined) {
         conditions.push(gte(memoryTable.createdAt, new Date(start)));
