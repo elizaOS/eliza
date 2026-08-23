@@ -704,12 +704,21 @@ export class CuratedCodingMemoryService {
         score: jaccard(tokens(note.text), queryTokens),
       }))
       .filter((entry) => entry.score > 0)
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          b.note.confidence - a.note.confidence ||
-          b.note.timestamp.localeCompare(a.note.timestamp),
-      );
+      .sort((a, b) => {
+        const aScore = Number.isFinite(a.score) ? a.score : 0;
+        const bScore = Number.isFinite(b.score) ? b.score : 0;
+        const scoreDiff = bScore - aScore;
+        if (scoreDiff !== 0) return scoreDiff;
+        const aConf = Number.isFinite(a.note.confidence)
+          ? a.note.confidence
+          : 0;
+        const bConf = Number.isFinite(b.note.confidence)
+          ? b.note.confidence
+          : 0;
+        const confDiff = bConf - aConf;
+        if (confDiff !== 0) return confDiff;
+        return b.note.timestamp.localeCompare(a.note.timestamp);
+      });
     void policy;
     return ranked.map(({ note }) => note);
   }
