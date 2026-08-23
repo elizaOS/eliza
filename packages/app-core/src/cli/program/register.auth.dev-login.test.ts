@@ -128,6 +128,40 @@ describe("auth dev-login (SIWE wallet)", () => {
     expect(result.message).toContain("verify failed (401)");
   });
 
+  it("truncates verify failure message with surrogate safety", async () => {
+    const longErr = `${"a".repeat(159)}😀${"b".repeat(20)}`;
+    const mock = (async (url: string | URL, _init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/nonce")) {
+        return new Response(
+          JSON.stringify({
+            nonce: "abc123nonce",
+            domain: "www.elizacloud.ai",
+            uri: "https://www.elizacloud.ai",
+            chainId: 1,
+            version: "1",
+            statement: "Sign in to Eliza Cloud",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(longErr, { status: 400 });
+    }) as unknown as typeof fetch;
+
+    const result = await runDevWalletLogin({
+      privateKey: FIXED_PK,
+      save: false,
+      log: () => {},
+      fetchImpl: mock,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("SIWE verify failed (400): ");
+    expect(result.message?.includes("😀")).toBe(false);
+    expect(result.message?.length).toBeLessThanOrEqual(
+      "SIWE verify failed (400): ".length + 160,
+    );
+  });
+
   it("a failed key persist is LOUD: warns, returns saveError, and prints manual-save instructions", async () => {
     const lines: string[] = [];
     const result = await runDevWalletLogin({
