@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyColor, colorFractionsFromRaw, round4 } from "./color-math.ts";
+import { classifyColor, colorFractionsFromRaw, round4 } from "../color-math.ts";
 
 describe("classifyColor", () => {
   it("classifies blue when blue dominates", () => {
