@@ -331,8 +331,12 @@ function tokenHasInventory(row: TokenRow): boolean {
 
 function assetAllocationRows(rows: TokenRow[]): TokenRow[] {
   return rows
-    .filter((row) => row.valueUsd > 0)
-    .sort((left, right) => right.valueUsd - left.valueUsd)
+    .filter((row) => Number.isFinite(row.valueUsd) && row.valueUsd > 0)
+    .sort(
+      (left, right) =>
+        (Number.isFinite(right.valueUsd) ? right.valueUsd : 0) -
+        (Number.isFinite(left.valueUsd) ? left.valueUsd : 0),
+    )
     .slice(0, 5);
 }
 
@@ -723,16 +727,30 @@ function PortfolioMoversPanel({
   const gainers = useMemo(
     () =>
       movers
-        .filter((mover) => mover.realizedPnlBnb > 0)
-        .sort((left, right) => right.realizedPnlBnb - left.realizedPnlBnb)
+        .filter(
+          (mover) =>
+            Number.isFinite(mover.realizedPnlBnb) && mover.realizedPnlBnb > 0,
+        )
+        .sort(
+          (left, right) =>
+            (Number.isFinite(right.realizedPnlBnb) ? right.realizedPnlBnb : 0) -
+            (Number.isFinite(left.realizedPnlBnb) ? left.realizedPnlBnb : 0),
+        )
         .slice(0, 3),
     [movers],
   );
   const losers = useMemo(
     () =>
       movers
-        .filter((mover) => mover.realizedPnlBnb < 0)
-        .sort((left, right) => left.realizedPnlBnb - right.realizedPnlBnb)
+        .filter(
+          (mover) =>
+            Number.isFinite(mover.realizedPnlBnb) && mover.realizedPnlBnb < 0,
+        )
+        .sort(
+          (left, right) =>
+            (Number.isFinite(left.realizedPnlBnb) ? left.realizedPnlBnb : 0) -
+            (Number.isFinite(right.realizedPnlBnb) ? right.realizedPnlBnb : 0),
+        )
         .slice(0, 3),
     [movers],
   );
