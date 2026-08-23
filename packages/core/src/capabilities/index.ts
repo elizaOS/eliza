@@ -16,6 +16,10 @@
  */
 import type { JsonObject, JsonValue } from "../types/primitives";
 import type { SurfaceCapability } from "../types/surface-manifest";
+import {
+	normalizeWorkspaceDeltaReceipt,
+	type WorkspaceDeltaReceipt,
+} from "../types/workspace-delta";
 
 export * from "./remote-runner";
 
@@ -155,6 +159,7 @@ export type TerminalRunResult = {
 		rootId: string;
 		executionDomainId: string;
 	};
+	workspaceDeltaReceipt?: WorkspaceDeltaReceipt;
 };
 
 export type GitStatusParams = CapabilityEndpointSelection & {
@@ -1445,6 +1450,33 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			}
 			normalizedWorkspaceExecution = { root, rootId, executionDomainId };
 		}
+		let workspaceDeltaReceipt: WorkspaceDeltaReceipt | undefined;
+		if (object.workspaceDeltaReceipt !== undefined) {
+			try {
+				workspaceDeltaReceipt = normalizeWorkspaceDeltaReceipt(
+					object.workspaceDeltaReceipt,
+				);
+			} catch (error) {
+				throw decodeError(
+					"pty.command.run",
+					`workspaceDeltaReceipt is invalid: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			if (
+				!normalizedWorkspaceExecution ||
+				workspaceDeltaReceipt.scope.root !==
+					normalizedWorkspaceExecution.root ||
+				workspaceDeltaReceipt.scope.rootId !==
+					normalizedWorkspaceExecution.rootId ||
+				workspaceDeltaReceipt.scope.executionDomainId !==
+					normalizedWorkspaceExecution.executionDomainId
+			) {
+				throw decodeError(
+					"pty.command.run",
+					"workspaceDeltaReceipt must bind exactly to the attested workspaceExecution scope.",
+				);
+			}
+		}
 		return {
 			output: requireString(object, "output", "pty.command.run"),
 			exitCode: nullableNumber(object, "exitCode", "pty.command.run"),
@@ -1452,6 +1484,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...(normalizedWorkspaceExecution
 				? { workspaceExecution: normalizedWorkspaceExecution }
 				: {}),
+			...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
 		};
 	}
 

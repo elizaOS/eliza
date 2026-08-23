@@ -3777,29 +3777,67 @@ function codingMutationRequiresVerification(
 				: undefined;
 			if (receipt.reasonCode === "BACKGROUND_RECEIPT_PENDING") {
 				const generatedHandle = String(step.result?.data?.handle ?? "");
-				if (
-					subaction !== "start_background" ||
-					!operationKey ||
-					generatedHandle !== receipt.operation?.handle
-				) {
+				const requestedHandle = String(
+					(step.toolCall?.params as Record<string, unknown> | undefined)
+						?.handle ?? "",
+				);
+				if (!operationKey) {
 					pending.set(malformedKey, { kind: "malformed" });
-				} else {
+				} else if (subaction === "start_background") {
+					if (generatedHandle !== receipt.operation?.handle) {
+						pending.set(malformedKey, { kind: "malformed" });
+						continue;
+					}
 					pending.set(operationKey, {
 						kind: "background_pending",
 						scopeKey,
 					});
+				} else if (
+					(subaction === "poll_background" ||
+						subaction === "write_background" ||
+						subaction === "kill_background") &&
+					requestedHandle === receipt.operation?.handle
+				) {
+					// A running poll/write or failed/in-flight kill can only preserve a
+					// handle established by its exact start; it never creates ownership.
+					if (!pending.has(operationKey)) {
+						pending.set(malformedKey, { kind: "malformed" });
+					}
+				} else {
+					pending.set(malformedKey, { kind: "malformed" });
 				}
 			} else if (operationKey) {
+				const generatedHandle = String(step.result?.data?.handle ?? "");
+				if (
+					subaction === "start_background" &&
+					generatedHandle === receipt.operation?.handle
+				) {
+					// Even a very fast process may finish before a throwing start callback
+					// returns. Start establishes ownership; only a later terminal poll/kill
+					// is allowed to resolve it.
+					pending.set(operationKey, {
+						kind: "background_pending",
+						scopeKey,
+					});
+					continue;
+				}
 				const requestedHandle = String(
 					(step.toolCall?.params as Record<string, unknown> | undefined)
 						?.handle ?? "",
 				);
 				const returnedHandle = String(step.result?.data?.handle ?? "");
+				const returnedStatus = String(step.result?.data?.status ?? "");
+				const terminalStatus = receipt.operation?.status;
 				if (
 					(subaction !== "poll_background" &&
 						subaction !== "kill_background") ||
 					requestedHandle !== receipt.operation?.handle ||
-					returnedHandle !== receipt.operation?.handle
+					returnedHandle !== receipt.operation?.handle ||
+					returnedStatus !== terminalStatus ||
+					(terminalStatus !== "exited" &&
+						terminalStatus !== "killed" &&
+						terminalStatus !== "error") ||
+					!pending.has(operationKey)
 				) {
 					pending.set(malformedKey, { kind: "malformed" });
 				} else {
@@ -3830,6 +3868,13 @@ function codingMutationRequiresVerification(
 		}
 	}
 	return pending.size > 0;
+}
+
+/** Test seam for the receipt lifecycle gate without invoking model retries. */
+export function __codingMutationRequiresVerificationForTests(
+	trajectory: PlannerTrajectory,
+): boolean {
+	return codingMutationRequiresVerification(trajectory);
 }
 
 function workspaceDeltaReceipt(step: PlannerStep): {

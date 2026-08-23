@@ -24,7 +24,9 @@ import {
   CapabilityError,
   getCapabilityRouter,
   type IAgentRuntime,
+  normalizeWorkspaceDeltaReceipt,
   sanitizeSpawnEnv,
+  type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
@@ -62,6 +64,7 @@ export interface ShellResult {
     rootId: string;
     executionDomainId: string;
   };
+  workspaceDeltaReceipt?: WorkspaceDeltaReceipt;
 }
 
 const COMPLETE_SHELL_CAPTURE_LIMIT_CHARS = 1_000_000;
@@ -662,6 +665,22 @@ async function runThroughCapabilityRouter(
       cwd: opts.cwd,
       timeoutMs: opts.timeoutMs,
     });
+    const workspaceDeltaReceipt = result.workspaceDeltaReceipt
+      ? normalizeWorkspaceDeltaReceipt(result.workspaceDeltaReceipt)
+      : undefined;
+    if (
+      workspaceDeltaReceipt &&
+      (!result.workspaceExecution ||
+        workspaceDeltaReceipt.scope.root !== result.workspaceExecution.root ||
+        workspaceDeltaReceipt.scope.rootId !==
+          result.workspaceExecution.rootId ||
+        workspaceDeltaReceipt.scope.executionDomainId !==
+          result.workspaceExecution.executionDomainId)
+    ) {
+      throw new Error(
+        "routed workspace receipt does not match its attested execution scope",
+      );
+    }
     return {
       exitCode: result.exitCode ?? -1,
       signal: null,
@@ -673,6 +692,7 @@ async function runThroughCapabilityRouter(
       ...(result.workspaceExecution
         ? { workspaceExecution: result.workspaceExecution }
         : {}),
+      ...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
     };
   } catch (error) {
     // error-policy:J4 only the expected "no PTY capability" shape

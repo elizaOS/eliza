@@ -53,7 +53,7 @@ export interface BackgroundShellSessionSnapshot {
   command: string;
   cwd: string;
   pid?: number;
-  status: "running" | "exited" | "killed" | "error";
+  status: "running" | "terminating" | "exited" | "killed" | "error";
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   startedAt: number;
@@ -85,7 +85,8 @@ interface BackgroundShellSession {
   cwd: string;
   process: HostShellProcess;
   pid?: number;
-  status: "running" | "exited" | "killed" | "error";
+  status: "running" | "terminating" | "exited" | "killed" | "error";
+  terminalStatusAfterClose?: "killed" | "error";
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   startedAt: number;
@@ -193,6 +194,8 @@ export class BackgroundShellService extends Service {
       if (session.killTimer) clearTimeout(session.killTimer);
       if (session.status === "running") {
         session.status = "exited";
+      } else if (session.status === "terminating") {
+        session.status = session.terminalStatusAfterClose ?? "error";
       }
       session.exitCode = code;
       session.signal = signal;
@@ -200,11 +203,10 @@ export class BackgroundShellService extends Service {
       void this.finalizeWorkspaceDelta(session);
     });
     started.process.on("error", (error) => {
-      session.status = "error";
-      session.exitCode = -1;
-      session.signal = null;
-      session.endedAt = Date.now();
-      void this.finalizeWorkspaceDelta(session);
+      session.status = "terminating";
+      session.terminalStatusAfterClose = "error";
+      session.exitCode = null;
+      this.refreshPendingWorkspaceReceipt(session);
       appendSessionOutput(
         this.runtime,
         session,
@@ -215,8 +217,9 @@ export class BackgroundShellService extends Service {
     });
     if (!started.process.stdout || !started.process.stderr) {
       signalHostProcessGroup(started.process, "SIGKILL");
-      session.status = "error";
-      session.exitCode = -1;
+      session.status = "terminating";
+      session.terminalStatusAfterClose = "error";
+      this.refreshPendingWorkspaceReceipt(session);
       throw new BackgroundShellStartError(
         "background shell process did not expose output streams",
         handle,
@@ -349,7 +352,9 @@ export class BackgroundShellService extends Service {
       await this.finalizeWorkspaceDelta(session);
       return snapshot(this.runtime, session);
     }
-    session.status = "killed";
+    session.status = "terminating";
+    session.terminalStatusAfterClose = "killed";
+    this.refreshPendingWorkspaceReceipt(session);
     signalHostProcessGroup(session.process, "SIGTERM");
     try {
       session.process.stdin?.end();
@@ -376,7 +381,9 @@ export class BackgroundShellService extends Service {
       session.process.once("close", () => resolve());
     });
     if (session.endedAt === null) {
-      session.endedAt = Date.now();
+      throw new Error(
+        `background shell did not emit close after process reap: ${session.handle}`,
+      );
     }
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} background SHELL reaped handle=${session.handle} pid=${session.pid ?? "unknown"}`,
@@ -393,6 +400,11 @@ export class BackgroundShellService extends Service {
       session.workspaceDeltaPromise = finishLocalWorkspaceDeltaObservation(
         session.workspaceObservation,
         session.handle,
+        session.status === "exited" ||
+          session.status === "killed" ||
+          session.status === "error"
+          ? session.status
+          : "error",
       ).then((receipt) => {
         session.workspaceDeltaReceipt = receipt;
         session.workspaceObservation = undefined;
@@ -402,9 +414,26 @@ export class BackgroundShellService extends Service {
     return session.workspaceDeltaPromise;
   }
 
+  private refreshPendingWorkspaceReceipt(
+    session: BackgroundShellSession,
+  ): void {
+    if (
+      !session.workspaceObservation ||
+      session.workspaceDeltaReceipt?.reasonCode !== "BACKGROUND_RECEIPT_PENDING"
+    ) {
+      return;
+    }
+    session.workspaceDeltaReceipt = indeterminateWorkspaceDeltaReceipt(
+      session.workspaceObservation,
+      "BACKGROUND_RECEIPT_PENDING",
+      session.handle,
+      session.status === "terminating" ? "terminating" : "running",
+    );
+  }
+
   private ensureCapacity(conversationId: string): void {
     const completed = [...this.sessions.values()]
-      .filter((session) => session.status !== "running")
+      .filter((session) => session.endedAt !== null)
       .sort((a, b) => (a.endedAt ?? a.startedAt) - (b.endedAt ?? b.startedAt));
     const conversationCount = () =>
       [...this.sessions.values()].filter(
@@ -479,9 +508,18 @@ function appendSessionOutput(
     cap
   ) {
     session.outputLimitExceeded = true;
-    session.status = "error";
-    session.exitCode = -1;
-    session.endedAt = Date.now();
+    session.status = "terminating";
+    session.terminalStatusAfterClose = "error";
+    session.exitCode = null;
+    session.signal = null;
+    session.workspaceDeltaReceipt = session.workspaceObservation
+      ? indeterminateWorkspaceDeltaReceipt(
+          session.workspaceObservation,
+          "BACKGROUND_RECEIPT_PENDING",
+          session.handle,
+          "terminating",
+        )
+      : session.workspaceDeltaReceipt;
     session.stdout = emptyRing();
     session.stderr = emptyRing();
     session.redaction = emptyFragmentRedactionState();

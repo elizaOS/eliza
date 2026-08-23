@@ -23,6 +23,7 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
+import { __codingMutationRequiresVerificationForTests } from "@elizaos/core/runtime/planner-loop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
@@ -258,7 +259,14 @@ async function waitForBackgroundToSettle(
     const session = service
       .list(conversationId)
       .find((candidate) => candidate.handle === handle);
-    if (session && session.status !== "running") return;
+    if (
+      session &&
+      (session.status === "exited" ||
+        session.status === "killed" ||
+        session.status === "error")
+    ) {
+      return;
+    }
     await delay(50);
   }
   throw new Error(`background shell ${handle} did not settle`);
@@ -606,6 +614,107 @@ describeIfPosix("shellAction", () => {
       reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
       scope: workspaceExecution,
     });
+  });
+
+  it("carries real routed receipts through SHELL and planner scope matching", async () => {
+    const workspaceExecution = {
+      root: "/remote/workspace",
+      rootId: "a".repeat(64),
+      executionDomainId: "b".repeat(64),
+    };
+    const receipt = (outcome: "changed" | "unchanged") => ({
+      version: 1 as const,
+      kind: "workspace_delta" as const,
+      scope: {
+        kind: "git_worktree" as const,
+        ...workspaceExecution,
+        coverage: "tracked_and_untracked_nonignored" as const,
+      },
+      outcome,
+      beforeFingerprint: "c".repeat(64),
+      afterFingerprint: (outcome === "changed" ? "d" : "c").repeat(64),
+      observedAt: "2026-08-23T12:00:00.000Z",
+    });
+    let routedCall = 0;
+    const router = makeShellRouter(async () => {
+      routedCall += 1;
+      if (routedCall === 2) {
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: "use local host",
+          capability: "pty",
+          method: "pty.command.run",
+        });
+      }
+      const workspaceDeltaReceipt = receipt(
+        routedCall === 1 ? "changed" : "unchanged",
+      );
+      return {
+        output: "remote ok\n",
+        exitCode: 0,
+        timedOut: false,
+        workspaceExecution,
+        workspaceDeltaReceipt,
+      };
+    });
+    const localRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "routed-receipt-local-domain-"),
+    );
+    await execFileAsync("git", ["init", "-q"], { cwd: localRoot });
+    const { runtime, session } = await makeRuntime({
+      capabilityRouter: router,
+    });
+    const message = makeMessage(undefined, "Mutate and verify remotely.");
+    session.setCwd(String(message.roomId), localRoot);
+    const execute = (command: string) =>
+      executePlannedToolCall(
+        runtime,
+        { message, activeContexts: ["code"], userRoles: ["OWNER"] },
+        { name: "SHELL", params: { command } },
+      );
+    const steps = [
+      {
+        toolCall: { name: "SHELL", params: { command: "node mutate.js" } },
+        result: await execute("node mutate.js"),
+      },
+    ];
+    const trajectory = { steps, archivedSteps: [] } as unknown as Parameters<
+      typeof __codingMutationRequiresVerificationForTests
+    >[0];
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+    steps.push({
+      toolCall: { name: "SHELL", params: { command: "bun test --help" } },
+      result: await execute("bun test --help"),
+    });
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+    steps.push({
+      toolCall: { name: "SHELL", params: { command: "bun test" } },
+      result: await execute("bun test"),
+    });
+    expect(steps.map((step) => step.result.success)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(
+      steps.map(
+        (step) =>
+          (step.result.data as Record<string, unknown> | undefined)
+            ?.workspaceDeltaReceipt,
+      ),
+    ).toMatchObject([
+      { outcome: "changed", scope: workspaceExecution },
+      {
+        outcome: "unchanged",
+        scope: { rootId: expect.not.stringMatching(/^a+$/) },
+      },
+      { outcome: "unchanged", scope: workspaceExecution },
+    ]);
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+      false,
+    );
+    expect(routedCall).toBe(3);
+    await fs.rm(localRoot, { recursive: true, force: true });
   });
 
   it.each([
@@ -1020,7 +1129,7 @@ describeIfPosix("shellAction", () => {
           runtime,
           message,
           undefined,
-          { action: "start_background", command: "sleep 0.05" },
+          { action: "start_background", command: "true" },
           callbackFailure,
         ),
       );
@@ -1029,7 +1138,7 @@ describeIfPosix("shellAction", () => {
         action: "start_background",
         handle: expect.stringMatching(/^bgsh_/),
         workspaceDeltaReceipt: {
-          reasonCode: "BACKGROUND_RECEIPT_PENDING",
+          operation: { handle: expect.stringMatching(/^bgsh_/) },
         },
       });
       const handle = (started.data as Record<string, unknown>).handle as string;
@@ -1095,7 +1204,7 @@ describeIfPosix("shellAction", () => {
     }
   });
 
-  it("finalizes a mutation receipt before rejecting background output overflow", async () => {
+  it("waits for overflow termination before snapshotting descendant late mutation", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-background-overflow-"),
     );
@@ -1110,10 +1219,33 @@ describeIfPosix("shellAction", () => {
       const started = requireActionResult(
         await shellAction.handler?.(runtime, message, undefined, {
           action: "start_background",
-          command: "printf changed > generated.txt; printf 123456",
+          command:
+            "trap 'sleep 0.15; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
         }),
       );
       const handle = (started.data as Record<string, unknown>).handle as string;
+      let terminating:
+        | Awaited<ReturnType<BackgroundShellService["inspect"]>>
+        | undefined;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const candidate = await backgroundShell.inspect({
+          conversationId: String(message.roomId),
+          handle,
+        });
+        if (candidate.status === "terminating") {
+          terminating = candidate;
+          break;
+        }
+        await delay(10);
+      }
+      expect(terminating).toMatchObject({
+        status: "terminating",
+        endedAt: null,
+        workspaceDeltaReceipt: {
+          reasonCode: "BACKGROUND_RECEIPT_PENDING",
+          operation: { handle, status: "terminating" },
+        },
+      });
       await waitForBackgroundToSettle(
         backgroundShell,
         String(message.roomId),
@@ -1132,7 +1264,7 @@ describeIfPosix("shellAction", () => {
         handle,
         workspaceDeltaReceipt: {
           outcome: "changed",
-          operation: { handle },
+          operation: { handle, status: "error" },
         },
       });
     } finally {

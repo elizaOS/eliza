@@ -7,12 +7,25 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  beginLocalWorkspaceDeltaObservation,
+  beginLocalWorkspaceDeltaObservation as beginObservation,
   finishLocalWorkspaceDeltaObservation,
+  type LocalWorkspaceDeltaDependencies,
+  runtimeWorkspaceExecutionDomainId,
 } from "./workspace-delta";
 
 const execFileAsync = promisify(execFile);
 const cleanup: string[] = [];
+const TEST_EXECUTION_DOMAIN_ID = "d".repeat(64);
+
+function beginLocalWorkspaceDeltaObservation(
+  cwd: string,
+  dependencies: LocalWorkspaceDeltaDependencies = {},
+) {
+  return beginObservation(cwd, {
+    executionDomainId: TEST_EXECUTION_DOMAIN_ID,
+    ...dependencies,
+  });
+}
 
 async function repository(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-delta-"));
@@ -37,6 +50,19 @@ afterEach(async () => {
 });
 
 describe("local workspace delta observation", () => {
+  it("derives distinct opaque domains from distinct runtime-owned identities on one host", () => {
+    const runtime = (instanceId: string) => ({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      getSetting: (key: string) =>
+        key === "ELIZA_RUNTIME_INSTANCE_ID" ? instanceId : undefined,
+    });
+    expect(
+      runtimeWorkspaceExecutionDomainId(runtime("installation-a") as never),
+    ).not.toBe(
+      runtimeWorkspaceExecutionDomainId(runtime("installation-b") as never),
+    );
+  });
+
   it("detects a content change when the tracked path was already dirty", async () => {
     const root = await repository();
     await fs.writeFile(
@@ -242,7 +268,7 @@ describe("local workspace delta observation", () => {
     },
   );
 
-  it("enforces one deterministic aggregate Git-output budget across serialized probes", async () => {
+  it("enforces one deterministic aggregate Git-output budget across coordinated parallel probes", async () => {
     const root = await repository();
     const observedCaps: number[] = [];
     const rootOutput = `${root}\n`;
@@ -264,6 +290,36 @@ describe("local workspace delta observation", () => {
       reasonCode: "OBSERVATION_OUTPUT_BUDGET_EXCEEDED",
     });
     expect(observedCaps).toEqual([...observedCaps].sort((a, b) => b - a));
+  });
+
+  it("charges stdout and stderr together inside disjoint multi-probe reservations", async () => {
+    const root = await repository();
+    const rootOutput = `${root}\n`;
+    const observation = await beginLocalWorkspaceDeltaObservation(root, {
+      maxGitOutputBytes: Buffer.byteLength(rootOutput) + 8_200,
+      runGit: async (_cwd, args) => {
+        if (args.includes("--show-toplevel")) {
+          return { stdout: rootOutput, stderr: "" };
+        }
+        if (args.includes("--verify")) {
+          return { stdout: "a".repeat(40), stderr: "warning" };
+        }
+        if (args.includes("symbolic-ref")) {
+          return { stdout: "refs/heads/main\n", stderr: "" };
+        }
+        if (args.includes("--others")) {
+          return { stdout: "", stderr: "stderr exceeds reservation" };
+        }
+        return { stdout: "", stderr: "" };
+      },
+    });
+
+    expect(
+      await finishLocalWorkspaceDeltaObservation(observation),
+    ).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "OBSERVATION_OUTPUT_BUDGET_EXCEEDED",
+    });
   });
 
   it("bounds stalled filesystem metadata and file-stream reads", async () => {
@@ -333,6 +389,27 @@ describe("local workspace delta observation", () => {
       maxFileBytes: 1,
     });
     expect(await finishLocalWorkspaceDeltaObservation(bounded)).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "OBSERVATION_BYTE_BUDGET_EXCEEDED",
+    });
+  });
+
+  it("streams untracked directory entries and fails closed at the entry-memory bound", async () => {
+    const root = await repository();
+    const embedded = path.join(root, "many-entries");
+    await fs.mkdir(embedded);
+    await execFileAsync("git", ["init", "-q"], { cwd: embedded });
+    await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        fs.writeFile(path.join(embedded, `entry-${index}.txt`), "x", "utf8"),
+      ),
+    );
+    const observation = await beginLocalWorkspaceDeltaObservation(root, {
+      maxDirectoryEntries: 4,
+    });
+    expect(
+      await finishLocalWorkspaceDeltaObservation(observation),
+    ).toMatchObject({
       outcome: "indeterminate",
       reasonCode: "OBSERVATION_BYTE_BUDGET_EXCEEDED",
     });
