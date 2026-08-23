@@ -3,7 +3,7 @@ import {
 	getActiveLocalAgentDispatcher,
 	requireActiveLocalAgentDispatcher,
 	setActiveLocalAgentDispatcher,
-} from "./local-agent-dispatcher-registry.ts";
+} from "../local-agent-dispatcher-registry.ts";
 
 describe("local-agent-dispatcher-registry", () => {
 	beforeEach(() => setActiveLocalAgentDispatcher(null));
