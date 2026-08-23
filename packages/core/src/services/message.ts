@@ -347,6 +347,7 @@ import { toWellFormedUnicode } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
+import { persistMessageContentContinuity } from "./message-content-continuity.ts";
 import { runBotLoopGate } from "./message/bot-loop-gate";
 import { runBotNoiseTriage } from "./message/bot-noise-triage";
 import {
@@ -10308,6 +10309,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			actionResults,
 		);
 		const terminalFailure = plannerResult.terminalFailure;
+
+		// Effects have already completed, so continuity failure is reported by the
+		// helper without throwing or replaying the turn. Await the immutable-head
+		// publication before delivery so a process exit cannot strand references.
+		await persistMessageContentContinuity({
+			runtime: args.runtime,
+			message: args.message,
+			trajectory: plannerResult.trajectory,
+		});
 
 		return {
 			kind: "planned_reply",

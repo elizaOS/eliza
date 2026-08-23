@@ -1,9 +1,12 @@
 /** Proves a second Bun process can reopen and fully traverse the PGLite ledger. */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
+const testDir = fileURLToPath(new URL(".", import.meta.url));
 const dataDir = fs.mkdtempSync(
 	path.join(os.tmpdir(), "eliza-continuity-pglite-"),
 );
@@ -11,12 +14,12 @@ afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }));
 
 function child(mode: "write" | "read", envelope?: unknown) {
 	const script = path.join(
-		import.meta.dir,
+		testDir,
 		"session-summary-content-manifest.pglite-child.ts",
 	);
-	const result = Bun.spawnSync({
-		cmd: [
-			process.execPath,
+	const result = spawnSync(
+		"bun",
+		[
 			"--conditions=eliza-source",
 			script,
 			mode,
@@ -25,15 +28,16 @@ function child(mode: "write" | "read", envelope?: unknown) {
 				? [Buffer.from(JSON.stringify(envelope)).toString("base64url")]
 				: []),
 		],
-		cwd: path.resolve(import.meta.dir, "../../../../.."),
-		env: { ...process.env, ELIZA_PGLITE_STORAGE: "disk" },
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const stdout = result.stdout.toString();
-	if (result.exitCode !== 0)
+		{
+			cwd: path.resolve(testDir, "../../../../.."),
+			env: { ...process.env, ELIZA_PGLITE_STORAGE: "disk" },
+			encoding: "utf8",
+		},
+	);
+	const stdout = result.stdout;
+	if (result.status !== 0)
 		throw new Error(
-			`continuity child failed (${mode}): ${result.stderr.toString()}\n${stdout}`,
+			`continuity child failed (${mode}): ${result.stderr}\n${stdout}`,
 		);
 	const line = stdout
 		.split("\n")
