@@ -22,6 +22,22 @@ import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
+function toRoutingPriority(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareRoutingPriority(
+  a: { priority: number; provider: string },
+  b: { priority: number; provider: string },
+): number {
+  const aScore = toRoutingPriority(a.priority);
+  const bScore = toRoutingPriority(b.priority);
+  if (bScore !== aScore) return bScore - aScore;
+  return a.provider.localeCompare(b.provider);
+}
+
+export const __testCompareRoutingPriority = compareRoutingPriority;
+
 const PREFERRED_AUTO_VALUE = "__auto__";
 
 const DEFAULT_POLICY: RoutingPolicy = "prefer-local";
@@ -255,7 +271,7 @@ export function RoutingMatrix() {
           const candidates = registrations
             .filter((r) => r.modelType === modelType)
             .filter((r) => r.provider !== "eliza-router")
-            .sort((a, b) => b.priority - a.priority);
+            .sort(compareRoutingPriority);
           const policy = preferences.policy[slot] ?? DEFAULT_POLICY;
           const preferred = preferences.preferredProvider[slot] ?? "";
           // The auto-resolution hint only applies when no provider is pinned.
