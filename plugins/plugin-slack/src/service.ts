@@ -476,6 +476,22 @@ function setBoundedCache<K, V>(cache: Map<K, V>, key: K, value: V): void {
 /**
  * SlackService class for interacting with Slack via Socket Mode
  */
+export function compareSlackConnectorTargets(
+  a: MessageConnectorTarget,
+  b: MessageConnectorTarget,
+): number {
+  const bScore =
+    typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+  const aScore =
+    typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+  return (
+    bScore - aScore ||
+    (a.label ?? a.target.channelId ?? a.target.source).localeCompare(
+      b.label ?? b.target.channelId ?? b.target.source,
+    )
+  );
+}
+
 export class SlackService extends Service implements ISlackService {
   static serviceType: string = SLACK_SERVICE_NAME;
   capabilityDescription =
@@ -2501,9 +2517,7 @@ export class SlackService extends Service implements ISlackService {
         byKey.set(key, target);
       }
     }
-    return Array.from(byKey.values()).sort(
-      (a, b) => (b.score ?? 0) - (a.score ?? 0),
-    );
+    return Array.from(byKey.values()).sort(compareSlackConnectorTargets);
   }
 
   private async resolveSlackTargetUserId(
@@ -3281,10 +3295,20 @@ export class SlackService extends Service implements ISlackService {
         ),
       );
     }
-    return memories.sort(
-      (left, right) =>
-        Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0),
-    );
+    return memories.sort((left, right) => {
+      const rightCreated =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const leftCreated =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+          ? left.createdAt
+          : 0;
+      return (
+        rightCreated - leftCreated ||
+        (left.id ?? "").localeCompare(right.id ?? "")
+      );
+    });
   }
 
   async searchConnectorMessages(
