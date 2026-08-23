@@ -151,13 +151,13 @@ describe("responseContentLength", () => {
     ).toBe(4096);
   });
 
-  it("uses parseInt base-10, so a trailing suffix still yields a prefix integer", () => {
+  it("rejects trailing suffix and decimal (strict canonical)", () => {
     expect(
       responseContentLength(new Headers({ "content-length": "12abc" })),
-    ).toBe(12);
+    ).toBeNull();
     expect(
       responseContentLength(new Headers({ "content-length": "1.9" })),
-    ).toBe(1);
+    ).toBeNull();
   });
 });
 

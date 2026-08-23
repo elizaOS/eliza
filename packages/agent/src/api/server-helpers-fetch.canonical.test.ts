@@ -24,9 +24,4 @@ describe("responseContentLength canonical", () => {
     expect(responseContentLength(headers("+123"))).toBeNull();
     expect(responseContentLength(headers("-5"))).toBeNull();
   });
-  it("old parseInt would have accepted prefix", () => {
-    expect(Number.parseInt("123junk", 10)).toBe(123);
-    expect(Number.parseInt("1e2", 10)).toBe(1);
-    expect(Number.parseInt("012", 10)).toBe(12);
-  });
 });
