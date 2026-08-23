@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	prependDevSubsystemFigletHeading,
 	renderDevSubsystemFigletHeading,
-} from "./dev-settings-figlet-heading.ts";
+} from "../dev-settings-figlet-heading.ts";
 
 describe("renderDevSubsystemFigletHeading", () => {
 	it("renders a boxed marker with the subsystem text", () => {
