@@ -118,7 +118,9 @@ describe("server-cloud-tts", () => {
 
   describe("mirrorCompatHeaders", () => {
     it("mirrors x-elizaos-* headers to x-eliza-* aliases", () => {
-      const req = {
+      const req: {
+        headers: Record<string, string | string[] | undefined>;
+      } = {
         headers: {
           "x-elizaos-token": "auth-token-123",
         },
@@ -129,7 +131,9 @@ describe("server-cloud-tts", () => {
     });
 
     it("mirrors x-eliza-* headers to x-elizaos-* aliases", () => {
-      const req = {
+      const req: {
+        headers: Record<string, string | string[] | undefined>;
+      } = {
         headers: {
           "x-eliza-client-id": "client-abc",
         },
