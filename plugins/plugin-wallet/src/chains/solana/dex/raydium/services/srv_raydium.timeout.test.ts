@@ -110,26 +110,36 @@ describe("RaydiumService fetch timeout", () => {
     }
   });
 
-  it("sorts arbitrage paths safely when expectedReturn contains NaN", () => {
-    const paths = [
-      { path: ["mintA", "mintB", "mintC", "mintA"], expectedReturn: NaN, priceImpact: 0.1 },
-      { path: ["mintA", "mintD", "mintE", "mintA"], expectedReturn: 1.5, priceImpact: 0.05 },
-    ];
+  it("orders equal-return arbitrage paths deterministically through findArbitragePaths", async () => {
+    // Every leg quotes identically, so all six paths carry the same
+    // expectedReturn. A bare `b.expectedReturn - a.expectedReturn` comparator
+    // returns 0 for every pair and leaves the discovery order; the shipped
+    // comparator breaks the tie on the joined path so the caller sees a stable
+    // ranking across runs.
+    const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const SOL = "So11111111111111111111111111111111111111112";
+    const USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+    const startingMint = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R";
 
-    paths.sort((a, b) => {
-      const bReturn =
-        typeof b.expectedReturn === "number" && Number.isFinite(b.expectedReturn)
-          ? b.expectedReturn
-          : 0;
-      const aReturn =
-        typeof a.expectedReturn === "number" && Number.isFinite(a.expectedReturn)
-          ? a.expectedReturn
-          : 0;
-      return bReturn - aReturn || a.path.join("-").localeCompare(b.path.join("-"));
-    });
+    const svc = new RaydiumService();
+    const prev = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      Response.json({ outAmount: "1500", priceImpactPct: "0" })) as unknown as typeof fetch;
+    try {
+      const paths = await svc.findArbitragePaths({ startingMint, amount: 1000 });
 
-    expect(paths[0]?.expectedReturn).toBe(1.5);
-    expect(paths[1]?.expectedReturn).toBeNaN();
+      expect(paths.map((entry) => entry.expectedReturn)).toEqual([500, 500, 500, 500, 500, 500]);
+      expect(paths.map((entry) => [entry.path[1], entry.path[2]])).toEqual([
+        [USDC, USDT],
+        [USDC, SOL],
+        [USDT, USDC],
+        [USDT, SOL],
+        [SOL, USDC],
+        [SOL, USDT],
+      ]);
+    } finally {
+      globalThis.fetch = prev;
+    }
   });
 
   it("surfaces a provider error from a completed upstream", async () => {
