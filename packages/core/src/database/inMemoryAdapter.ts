@@ -21,6 +21,7 @@ import {
 	validateTaskQueryPagination,
 } from "../database";
 import { ElizaError } from "../errors";
+import { filterByAccessContext } from "../access-control/filter";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -1213,6 +1214,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		if (params.accessContext) {
+			const agentIdForFilter = (all[0]?.agentId as any) ?? params.accessContext.requesterEntityId;
+			all = filterByAccessContext(all as any, params.accessContext, agentIdForFilter as any) as any;
+		}
+
 		// Match plugin-sql ordering: newest first, then id desc as tiebreaker.
 		// Without this, `count: N` returns the N oldest instead of the N newest,
 		// which silently diverges from plugin-sql once a room exceeds N memories.
@@ -1289,6 +1295,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		if (params.accessContext) {
+			const agentIdForFilter = (all[0]?.agentId as any) ?? params.accessContext.requesterEntityId;
+			all = filterByAccessContext(all as any, params.accessContext, agentIdForFilter as any) as any;
+		}
+
 		// Match plugin-sql ordering: newest first so LIMIT/OFFSET window the
 		// freshest matches.
 		all = all.slice().sort((a, b) => {
@@ -1331,7 +1342,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				params.until,
 			),
 		);
-		const ranked = rankMessageSearch(windowed, params.query);
+		let filteredWindowed: typeof windowed = windowed;
+		if (params.accessContext) {
+			const agentIdForFilter = (windowed[0]?.agentId as any) ?? params.accessContext.requesterEntityId;
+			filteredWindowed = filterByAccessContext(windowed as any, params.accessContext, agentIdForFilter as any) as any;
+		}
+		const ranked = rankMessageSearch(filteredWindowed, params.query);
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		const limit = params.limit ?? 20;
 		return ranked
