@@ -177,6 +177,18 @@ describe("message content segments", () => {
 		}
 	});
 
+	it("accepts deterministic elizaOS parent IDs with non-RFC version nibbles", () => {
+		const projection = buildMessageContentProjection({
+			...memory("non-rfc parent\n".repeat(20_000)),
+			id: "af14ea58-6002-0262-999b-708b87c485dd" as UUID,
+		});
+		expect(projection.segments.length).toBeGreaterThan(0);
+		expect(projection.segments.every((segment) => segment.id)).toBe(true);
+		expect(new Set(projection.segments.map((segment) => segment.id)).size).toBe(
+			projection.segments.length,
+		);
+	});
+
 	it("traverses a 1 MiB Unicode message with bounded rows and exact SHA", () => {
 		const block = "prefix🙂עברית漢字e\u0301\r\n";
 		const text = block.repeat(Math.ceil((1024 * 1024) / block.length));

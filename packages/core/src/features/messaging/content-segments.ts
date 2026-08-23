@@ -75,6 +75,13 @@ interface ReconstructedMessageContentPage {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
+// elizaOS IDs are UUID-shaped but may be deterministically derived with a
+// non-RFC version nibble. They are valid database identities, but the `uuid`
+// package rejects them as v5 namespaces. Keep one RFC namespace and include
+// the parent identity in the name so every accepted elizaOS UUID remains a
+// deterministic, collision-isolated segment owner.
+const MESSAGE_CONTENT_SEGMENT_NAMESPACE =
+	"6ba7b811-9dad-11d1-80b4-00c04fd430c8";
 
 function bytes(value: string): Uint8Array {
 	return encoder.encode(value);
@@ -141,12 +148,13 @@ function sourceSegmentId(args: {
 	return uuidv5(
 		[
 			"message-content-segment-v1",
+			args.messageId,
 			args.kind,
 			args.attachmentHash ?? "message",
 			args.revision,
 			String(args.ordinal),
 		].join(":"),
-		args.messageId,
+		MESSAGE_CONTENT_SEGMENT_NAMESPACE,
 	) as UUID;
 }
 
