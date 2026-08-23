@@ -34,6 +34,22 @@ import type { ViewSummary } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { scoreView } from "./views-search.js";
 
+function toScoreValue(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareScoredDeleteView(
+  a: { view: ViewSummary; score: number },
+  b: { view: ViewSummary; score: number },
+): number {
+  const aScore = toScoreValue(a.score);
+  const bScore = toScoreValue(b.score);
+  if (bScore !== aScore) return bScore - aScore;
+  return a.view.id.localeCompare(b.view.id);
+}
+
+export const __testCompareScoredDeleteView = compareScoredDeleteView;
+
 /** Core first-party plugins that must never be deleted via the VIEWS action. */
 const CORE_PROTECTED_PLUGIN_NAMES = new Set([
 	"@elizaos/app-core",
@@ -92,7 +108,7 @@ function resolveTargetView(
 	const scored = views
 		.map((v) => ({ view: v, score: scoreView(v, target) }))
 		.filter(({ score }) => score > 0)
-		.sort((a, b) => b.score - a.score);
+		.sort(compareScoredDeleteView);
 
 	if (scored.length === 0) return { kind: "none" };
 	if (scored.length === 1) return { kind: "match", view: scored[0].view };
