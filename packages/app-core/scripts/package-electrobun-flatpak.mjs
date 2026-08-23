@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import { normalizeAbsoluteStagedSymlinks } from "./lib/linux-artifact-symlinks.mjs";
 import {
   assertFinalizedFlatpakMetadata,
   assertFlatpakPackagingSpace,
@@ -437,8 +438,13 @@ async function main() {
     await cp(buildDir, path.join(appDir, "files/opt/eliza"), {
       recursive: true,
       force: true,
-      dereference: true,
+      dereference: false,
+      verbatimSymlinks: true,
     });
+    normalizeAbsoluteStagedSymlinks(
+      buildDir,
+      path.join(appDir, "files/opt/eliza"),
+    );
     copyBundledLibraries(path.join(appDir, "files"));
     await writeMetadata(path.join(appDir, "files"), relativeLauncher);
     run("flatpak", ["build-finish", ...FLATPAK_FINISH_ARGS, appDir]);
