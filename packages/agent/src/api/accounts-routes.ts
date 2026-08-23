@@ -55,6 +55,7 @@ import {
   type DirectAccountProvider,
   isAccountCredentialProvider,
   isCodingPlanKeySubscriptionProvider,
+  isDirectAccountProvider,
   isOAuthSubscriptionProvider,
   isSubscriptionProvider,
   isUnavailableSubscriptionProvider,
@@ -79,6 +80,7 @@ import {
   type LinkedAccountProviderId,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
+  resolveServiceRoutingInConfig,
   type ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
 import * as zod from "zod";
@@ -841,6 +843,7 @@ export async function handleAccountsRoutes(
     }
     writeAccountStrategy(ctx.state.config, providerId, parsed.data.strategy);
     ctx.saveConfig(ctx.state.config);
+    await syncDirectProviderCredentials(ctx, providerId);
     json(res, { providerId, strategy: parsed.data.strategy });
     return true;
   }
@@ -1051,25 +1054,37 @@ async function handleCreateApiKeyAccount(
     return true;
   }
 
-  // A newly stored key must prove its provider route just like a replacement.
-  // AccountPool selects only `health: "ok"`, so this authenticated preflight is
-  // the fail-closed boundary between enrollment and inference eligibility.
-  const probe =
-    accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
-      ? await probeDirectApiKey(
-          accountProvider as DirectAccountProvider,
-          parsed.data.apiKey,
-        )
-      : isCodingPlanKeySubscriptionProvider(accountProvider)
-        ? await probeCodingPlanKey(accountProvider, parsed.data.apiKey)
-        : null;
-  if (!probe?.ok) {
-    error(
-      res,
-      probe?.error ?? "Credential could not be verified against its provider",
-      400,
-    );
-    return true;
+  // Replacement keys always re-prove their route. OpenRouter and xAI keys are
+  // also proven on first enrollment: AccountPool selects only `health: "ok"`,
+  // and their adapters never see the key before the pool does, so an unverified
+  // key would sit idle under account authority with no other signal that it is
+  // wrong. Other direct providers keep their established unverified first
+  // enrollment so offline and air-gapped setups are unchanged.
+  const mustProbe =
+    Boolean(replaceAccountId) ||
+    accountProvider === "openrouter-api" ||
+    accountProvider === "xai-api";
+  if (mustProbe) {
+    const probe =
+      accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
+        ? await probeDirectApiKey(
+            accountProvider as DirectAccountProvider,
+            parsed.data.apiKey,
+          )
+        : isCodingPlanKeySubscriptionProvider(accountProvider)
+          ? await probeCodingPlanKey(accountProvider, parsed.data.apiKey)
+          : null;
+    if (!probe?.ok) {
+      error(
+        res,
+        probe?.error ??
+          (replaceAccountId
+            ? "Replacement credential could not be verified"
+            : "Credential could not be verified against its provider"),
+        400,
+      );
+      return true;
+    }
   }
 
   const priority = replacementTarget
@@ -1131,23 +1146,43 @@ async function handleCreateApiKeyAccount(
     accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
       ? DIRECT_ACCOUNT_PROVIDER_ENV[accountProvider as DirectAccountProvider]
       : null;
-  // Newly linked OpenRouter/xAI credentials stay under encrypted account
-  // authority. Their inference adapters resolve a selected account through
-  // AccountPool; reflecting either secret into the parent process would bypass
-  // per-account health, rotation, removal, and lease isolation.
-  if (
-    envKey &&
-    accountProvider !== "openrouter-api" &&
-    accountProvider !== "xai-api"
-  ) {
+  if (envKey) {
     process.env[envKey] = parsed.data.apiKey;
     if (accountProvider === "zai-api") {
       process.env.Z_AI_API_KEY ??= parsed.data.apiKey;
     }
   }
+  await syncDirectProviderCredentials(ctx, accountProvider);
 
   json(res, linkedConfig, replacementTarget ? 200 : 201);
   return true;
+}
+
+/**
+ * Re-run the host's pool-to-environment export after a direct-provider account
+ * mutation. The export pass is the same one boot runs, so a newly linked,
+ * replaced, re-enabled, re-prioritized, disabled, or deleted account changes
+ * the live provider credential (and the OpenAI-compatible route for the active
+ * backend) without a process restart, and a pool that rejects every account
+ * retracts the previously exported value. The standalone host has no pool
+ * bridge and keeps the direct `process.env` write above.
+ */
+async function syncDirectProviderCredentials(
+  ctx: Pick<AccountsRouteContext, "state">,
+  providerId: string,
+): Promise<void> {
+  if (!isDirectAccountProvider(providerId)) return;
+  const config = ctx.state.config as Record<string, unknown>;
+  const serviceRouting = resolveServiceRoutingInConfig(config);
+  const accountStrategies = config.accountStrategies;
+  await getAgentHostBridge().applyAccountPoolApiCredentials({
+    activeBackend: serviceRouting?.llmText?.backend,
+    accountStrategies:
+      accountStrategies && typeof accountStrategies === "object"
+        ? (accountStrategies as Record<string, unknown>)
+        : undefined,
+    serviceRouting,
+  });
 }
 
 async function handleOAuthRoutes(
@@ -1499,6 +1534,9 @@ async function handlePatchAccount(
       }
     }
   }
+  if (parsed.data.enabled !== undefined || parsed.data.priority !== undefined) {
+    await syncDirectProviderCredentials(ctx, providerId);
+  }
 
   json(res, next);
   return true;
@@ -1519,6 +1557,7 @@ async function handleDeleteAccount(
     deleteAccount(accountProvider, accountId, storagePolicy);
   }
   await pool.deleteMetadata(providerId, accountId);
+  await syncDirectProviderCredentials(ctx, providerId);
   json(res, { deleted: true });
   return true;
 }
@@ -1577,6 +1616,9 @@ async function handleTestAccount(
       status: probe.status,
       ...(probe.modelIds ? { modelIds: probe.modelIds } : {}),
       ...(probe.modelCatalogTruncated ? { modelCatalogTruncated: true } : {}),
+      ...(probe.modelCatalogUnavailable
+        ? { modelCatalogUnavailable: true }
+        : {}),
     });
   } else {
     json(res, {

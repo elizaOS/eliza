@@ -45,6 +45,7 @@ export interface AccountTestResult {
   /** Bounded official provider catalog sample returned by a direct-key probe. */
   modelIds?: string[];
   modelCatalogTruncated?: boolean;
+  modelCatalogUnavailable?: boolean;
 }
 
 export interface AccountRefreshUsageResult {

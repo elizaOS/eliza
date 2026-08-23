@@ -15,6 +15,7 @@ const fakes = vi.hoisted(() => ({
   poolAccounts: [] as Array<Record<string, unknown>>,
   poolAvailable: true,
   deleteAccount: vi.fn(),
+  applyAccountPoolApiCredentials: vi.fn(async () => {}),
   getAccessToken: vi.fn(async () => "access-token"),
   probeDirectApiKey: vi.fn(
     async (): Promise<{
@@ -115,6 +116,7 @@ vi.mock("@elizaos/auth/oauth-flow", () => ({
 vi.mock("../runtime/host-bridge.ts", () => ({
   getAgentHostBridge: () => ({
     getDefaultAccountPool: () => (fakes.poolAvailable ? fakes.pool : null),
+    applyAccountPoolApiCredentials: fakes.applyAccountPoolApiCredentials,
   }),
 }));
 
@@ -484,11 +486,10 @@ describe("accounts routes", () => {
     });
     await handleAccountsRoutes(created.ctx);
     expect(fakes.saveAccount).toHaveBeenCalledOnce();
-    expect(fakes.probeDirectApiKey).toHaveBeenCalledWith(
-      "openai-api",
-      "sk-test-value",
-    );
+    // First enrollment of an established direct provider stays offline-safe.
+    expect(fakes.probeDirectApiKey).not.toHaveBeenCalled();
     expect(created.jsonCalls[0]?.status).toBe(201);
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(1);
 
     fakes.poolAccounts = [{ ...linkedAccount }];
     fakes.accounts = [
@@ -509,6 +510,8 @@ describe("accounts routes", () => {
       enabled: false,
       priority: 2,
     });
+    // Disabling re-runs the pool export so the live credential follows.
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(2);
 
     const tested = makeContext(
       "POST",
@@ -539,13 +542,51 @@ describe("accounts routes", () => {
       expect.objectContaining({ owner: "runtime" }),
     );
     expect(deleted.jsonCalls[0]?.body).toEqual({ deleted: true });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(3);
+  });
+
+  it("re-exports pool credentials with the configured route after a label-only patch is skipped", async () => {
+    fakes.poolAccounts = [{ ...linkedAccount }];
+    fakes.accounts = [
+      { id: "account-1", providerId: "openai-api", label: "Primary" },
+    ];
+    const renamed = makeContext("PATCH", "/api/accounts/openai-api/account-1", {
+      label: "Only renamed",
+    });
+    await handleAccountsRoutes(renamed.ctx);
+    expect(fakes.applyAccountPoolApiCredentials).not.toHaveBeenCalled();
+
+    const created = makeContext("POST", "/api/accounts/xai-api", {
+      source: "api-key",
+      label: "Work",
+      apiKey: "xai-live-value",
+    });
+    created.ctx.state.config = {
+      accountStrategies: { "xai-api": "round-robin" },
+      serviceRouting: {
+        llmText: {
+          backend: "grok",
+          accountIds: ["pinned"],
+          strategy: "priority",
+        },
+      },
+    } as unknown as AccountsRouteContext["state"]["config"];
+    await handleAccountsRoutes(created.ctx);
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledWith({
+      activeBackend: "grok",
+      accountStrategies: { "xai-api": "round-robin" },
+      serviceRouting: expect.objectContaining({
+        llmText: expect.objectContaining({ backend: "grok" }),
+      }),
+    });
+    delete process.env.XAI_API_KEY;
   });
 
   it.each([
     ["openrouter-api", "sk-or-test-value"],
     ["xai-api", "xai-test-value"],
   ] as const)(
-    "preflights and stores %s for its inference route without reflecting the secret",
+    "preflights, stores, and live-exports %s without reflecting the secret",
     async (providerId, apiKey) => {
       const envKey =
         providerId === "openrouter-api" ? "OPENROUTER_API_KEY" : "XAI_API_KEY";
@@ -564,8 +605,12 @@ describe("accounts routes", () => {
         expect.anything(),
       );
       expect(created.jsonCalls[0]?.status).toBe(201);
-      expect(process.env[envKey]).toBeUndefined();
+      // Same live-export contract as every other direct provider: the key is
+      // exported immediately and the pool pass then reconciles selection.
+      expect(process.env[envKey]).toBe(apiKey);
+      expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(1);
       expect(JSON.stringify(created.jsonCalls)).not.toContain(apiKey);
+      delete process.env[envKey];
     },
   );
 
