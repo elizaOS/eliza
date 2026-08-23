@@ -5,7 +5,8 @@
  * Renders rows from GET /api/v1/billing/payment-states only; client redirect
  * or URL state never influences a row. Distinct loading / empty / error with
  * retry / success / unavailable states per the repo error policy; status is
- * never conveyed by color alone (icon + verbatim state text).
+ * never conveyed by color alone (icon + verbatim state text). Credit amounts
+ * are labeled as credits — never formatted as currency.
  */
 
 "use client";
@@ -40,12 +41,16 @@ export interface PaymentStateDisplay {
   amountCents: number;
   currency: string;
   eventTime: string;
-  eventTimeKind: "settlement" | "creation";
+  eventTimeKind:
+    | "provider_settlement"
+    | "server_creation"
+    | "reversal_ledger_observation";
   paymentState:
     | "pending"
     | "succeeded"
     | "failed"
     | "canceled"
+    | "expired"
     | "partially_refunded"
     | "refunded"
     | "dispute_withdrawn"
@@ -53,15 +58,19 @@ export interface PaymentStateDisplay {
     | "unavailable";
   cumulativeRefundedUsd: number;
   cumulativeDisputedUsd: number;
-  cumulativeClawbackUsd: number;
-  reinstatedUsd: number;
+  cumulativeClawbackCredits: number;
+  reinstatedCredits: number;
+  unrecoveredShortfallUsd: number;
   disputeReinstated: boolean;
   policyEffect: {
     status: "unavailable";
     reason: string;
   } | null;
   supportState: "none" | "contact_support";
-  providerTxRef: string;
+}
+
+interface PaymentStatesResponse {
+  states: PaymentStateDisplay[];
 }
 
 type FetchPhase =
@@ -87,6 +96,8 @@ function getPaymentStatePresentation(
       return { Icon: XCircle, className: "text-red-400" };
     case "canceled":
       return { Icon: Ban, className: "text-muted-strong" };
+    case "expired":
+      return { Icon: Clock, className: "text-muted-strong" };
     case "partially_refunded":
     case "refunded":
       return { Icon: RotateCcw, className: "text-amber-400" };
@@ -99,8 +110,28 @@ function getPaymentStatePresentation(
   }
 }
 
-function formatUsd(amount: number): string {
-  return `$${amount.toFixed(2)}`;
+const CURRENCY_LOCALE = "en-US";
+
+/** Formats an amount in the row's own currency; USD gets the $ sign. */
+function formatAmount(amount: number, currency: string): string {
+  const fractionDigits = Number.isInteger(amount) ? 0 : 2;
+  try {
+    return new Intl.NumberFormat(CURRENCY_LOCALE, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    // Unknown ISO code: Intl throws — fall back to a labeled plain number
+    // instead of silently rendering dollars.
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
+
+/** Credit-unit amounts are labeled as credits, never formatted as USD. */
+function formatCredits(credits: number): string {
+  return `${credits.toFixed(2)} credits`;
 }
 
 export function PaymentActivityCard() {
@@ -110,10 +141,29 @@ export function PaymentActivityCard() {
   const fetchStates = useCallback(async () => {
     setPhase({ kind: "loading" });
     try {
-      const data = await api<{ states?: PaymentStateDisplay[] }>(
+      const data = await api<PaymentStatesResponse>(
         "/api/v1/billing/payment-states",
       );
-      setPhase({ kind: "ready", rows: data.states ?? [] });
+      // A malformed success response is an error state, never a healthy
+      // empty history: `states` is required by the route contract.
+      if (
+        !data ||
+        !Array.isArray(data.states) ||
+        !data.states.every(
+          (row) =>
+            row &&
+            typeof row.id === "string" &&
+            typeof row.paymentState === "string",
+        )
+      ) {
+        // error-policy:J4 malformed transport payload becomes a visible error.
+        setPhase({
+          kind: "error",
+          message: "Payment activity response was malformed.",
+        });
+        return;
+      }
+      setPhase({ kind: "ready", rows: data.states });
     } catch (error) {
       // error-policy:J4 transport failure becomes a visible error state with
       // an explicit retry action — never a silent empty list.
@@ -210,7 +260,7 @@ export function PaymentActivityCard() {
                 row.paymentState === "dispute_withdrawn" ||
                 row.paymentState === "dispute_reinstated";
               return (
-                <div
+                <li
                   key={row.id}
                   data-testid="payment-state-row"
                   className="flex flex-col gap-2 p-3 md:p-4 border-b border-brand-surface last:border-b-0"
@@ -227,7 +277,7 @@ export function PaymentActivityCard() {
                       {row.paymentState}
                     </span>
                     <span className="text-xs md:text-sm font-mono text-txt-strong uppercase tabular-nums">
-                      {formatUsd(row.amountCents / 100)} {row.currency}
+                      {formatAmount(row.amountCents / 100, row.currency)}
                     </span>
                     <span className="text-xs font-mono text-muted-strong uppercase">
                       {row.provider}
@@ -247,33 +297,50 @@ export function PaymentActivityCard() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono text-muted-strong">
-                    <span>
+                    <span data-testid="payment-event-time-kind">
                       {t("cloud.billingTab.paymentActivityEventTime", {
                         defaultValue: "Event time",
                       })}
                       :{" "}
-                      {row.eventTimeKind === "settlement"
+                      {row.eventTimeKind === "provider_settlement"
                         ? t("cloud.billingTab.paymentTimeSettlement", {
                             defaultValue: "provider settlement",
                           })
-                        : t("cloud.billingTab.paymentTimeCreation", {
-                            defaultValue: "server creation",
-                          })}
+                        : row.eventTimeKind === "reversal_ledger_observation"
+                          ? t("cloud.billingTab.paymentTimeReversal", {
+                              defaultValue: "reversal observed",
+                            })
+                          : t("cloud.billingTab.paymentTimeCreation", {
+                              defaultValue: "server creation",
+                            })}
                     </span>
                     {row.receiptId ? (
-                      <span data-testid="payment-receipt-link">
+                      <span
+                        data-testid="payment-receipt-link"
+                        title={row.receiptId}
+                      >
                         {t("cloud.billingTab.paymentActivityReceipt", {
                           defaultValue: "receipt",
                         })}
+                        :{" "}
+                        <span className="text-txt-strong">
+                          {row.receiptId.slice(0, 8)}
+                        </span>
                       </span>
                     ) : null}
-                    {row.surface === "checkout_order" ? (
-                      <span>
-                        {t("cloud.billingTab.paymentActivityOrder", {
-                          defaultValue: "checkout order",
-                        })}
+                    <span data-testid="payment-authority-link">
+                      {row.surface === "checkout_order"
+                        ? t("cloud.billingTab.paymentActivityOrder", {
+                            defaultValue: "checkout order",
+                          })
+                        : t("cloud.billingTab.paymentActivityRequest", {
+                            defaultValue: "payment request",
+                          })}
+                      :{" "}
+                      <span className="text-txt-strong">
+                        {row.authorityId.slice(0, 8)}
                       </span>
-                    ) : null}
+                    </span>
                   </div>
 
                   {reversed ? (
@@ -288,7 +355,7 @@ export function PaymentActivityCard() {
                           })}
                           :{" "}
                           <span data-testid="refunded-amount">
-                            {formatUsd(row.cumulativeRefundedUsd)}
+                            {formatAmount(row.cumulativeRefundedUsd, "USD")}
                           </span>
                         </p>
                       ) : null}
@@ -299,32 +366,44 @@ export function PaymentActivityCard() {
                           })}
                           :{" "}
                           <span data-testid="disputed-amount">
-                            {formatUsd(row.cumulativeDisputedUsd)}
+                            {formatAmount(row.cumulativeDisputedUsd, "USD")}
                           </span>
                         </p>
                       ) : null}
-                      {row.reinstatedUsd > 0 ? (
+                      {row.reinstatedCredits > 0 ? (
                         <p className="text-xs font-mono text-txt-strong">
                           {t("cloud.billingTab.reinstatedAmount", {
                             defaultValue: "Reinstated",
                           })}
                           :{" "}
                           <span data-testid="reinstated-amount">
-                            {formatUsd(row.reinstatedUsd)}
+                            {formatCredits(row.reinstatedCredits)}
                           </span>
                         </p>
                       ) : null}
                       {/* Credits actually removed may differ from the provider
-                          amounts after consumption; both are shown honestly. */}
+                          amounts after consumption; labeled as credits, not
+                          dollars. */}
                       <p className="text-xs font-mono text-muted-strong">
                         {t("cloud.billingTab.clawedBackCredits", {
                           defaultValue: "Credits removed",
                         })}
                         :{" "}
                         <span data-testid="clawback-amount">
-                          {formatUsd(row.cumulativeClawbackUsd)}
+                          {formatCredits(row.cumulativeClawbackCredits)}
                         </span>
                       </p>
+                      {row.unrecoveredShortfallUsd > 0 ? (
+                        <p className="text-xs font-mono text-amber-300">
+                          {t("cloud.billingTab.unrecoveredShortfall", {
+                            defaultValue: "Unrecovered balance shortfall",
+                          })}
+                          :{" "}
+                          <span data-testid="shortfall-amount">
+                            {formatAmount(row.unrecoveredShortfallUsd, "USD")}
+                          </span>
+                        </p>
+                      ) : null}
                       <p
                         className="flex items-center gap-1.5 text-xs font-mono text-muted-strong"
                         data-testid="payment-policy-effect"
@@ -351,7 +430,7 @@ export function PaymentActivityCard() {
                       ) : null}
                     </div>
                   ) : null}
-                </div>
+                </li>
               );
             })}
           </ul>

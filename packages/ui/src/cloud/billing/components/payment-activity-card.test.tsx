@@ -40,16 +40,16 @@ function stateRow(
     amountCents: 2500,
     currency: "USD",
     eventTime: "2026-08-23T12:00:00.000Z",
-    eventTimeKind: "settlement",
+    eventTimeKind: "provider_settlement",
     paymentState: "succeeded",
     cumulativeRefundedUsd: 0,
     cumulativeDisputedUsd: 0,
-    cumulativeClawbackUsd: 0,
-    reinstatedUsd: 0,
+    cumulativeClawbackCredits: 0,
+    reinstatedCredits: 0,
+    unrecoveredShortfallUsd: 0,
     disputeReinstated: false,
     policyEffect: null,
     supportState: "none",
-    providerTxRef: "pi_1",
     ...overrides,
   };
 }
@@ -114,9 +114,8 @@ describe("PaymentActivityCard fetch states", () => {
         stateRow({
           id: "checkout_order:amb",
           paymentState: "unavailable",
-          eventTimeKind: "creation",
-          settledAt: undefined,
-        } as Partial<PaymentStateDisplay>),
+          eventTimeKind: "server_creation",
+        }),
       ],
     });
     render(<PaymentActivityCard />);
@@ -137,7 +136,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
           amountCents: 10000,
           paymentState: "partially_refunded",
           cumulativeRefundedUsd: 40,
-          cumulativeClawbackUsd: 25,
+          cumulativeClawbackCredits: 25,
           policyEffect: {
             status: "unavailable",
             reason: "refund_entitlement_policy_pending_22930",
@@ -149,9 +148,12 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
     render(<PaymentActivityCard />);
     await screen.findAllByTestId("payment-reversal-detail");
 
-    expect(screen.getByTestId("refunded-amount").textContent).toBe("$40.00");
-    expect(screen.getByTestId("clawback-amount").textContent).toBe("$25.00");
-    expect(screen.getByText("$25.00")).toBeTruthy();
+    // formatAmount uses 0 fraction digits for whole-dollar amounts.
+    expect(screen.getByTestId("refunded-amount").textContent).toBe("$40");
+    // Clawback is credits removed, not USD — labeled as credits.
+    expect(screen.getByTestId("clawback-amount").textContent).toBe(
+      "25.00 credits",
+    );
     // Policy effect is explicit unavailable — no invented entitlement.
     expect(screen.getByTestId("payment-policy-effect").textContent).toMatch(
       /Policy effect unavailable/i,
@@ -166,7 +168,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
           id: "checkout_order:disp1",
           paymentState: "dispute_withdrawn",
           cumulativeDisputedUsd: 80,
-          cumulativeClawbackUsd: 80,
+          cumulativeClawbackCredits: 80,
           policyEffect: {
             status: "unavailable",
             reason: "refund_entitlement_policy_pending_22930",
@@ -177,7 +179,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
           id: "checkout_order:disp2",
           paymentState: "dispute_reinstated",
           cumulativeDisputedUsd: 80,
-          reinstatedUsd: 80,
+          reinstatedCredits: 80,
           disputeReinstated: true,
           policyEffect: {
             status: "unavailable",
@@ -195,8 +197,10 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       .map((el) => el.textContent);
     expect(states).toContain("dispute_withdrawn");
     expect(states).toContain("dispute_reinstated");
-    // Reinstated amount surfaces on the reinstated row.
-    expect(screen.getByTestId("reinstated-amount").textContent).toBe("$80.00");
+    // Reinstated amount surfaces on the reinstated row — credits, not USD.
+    expect(screen.getByTestId("reinstated-amount").textContent).toBe(
+      "80.00 credits",
+    );
     // Both dispute rows carry a disputed amount — withdrawn and reinstated.
     expect(screen.getAllByTestId("disputed-amount").length).toBe(2);
   });
