@@ -235,7 +235,7 @@ describe("connector JSON projection", () => {
 		// a string longer than the byte ceiling is already over budget and must be
 		// rejected before an encode forces a proportional allocation and full scan.
 		const utf8Encode = TextEncoder.prototype.encode;
-		let encodedInputs: string[] = [];
+		const encodedInputs: string[] = [];
 		TextEncoder.prototype.encode = function encode(
 			this: TextEncoder,
 			input?: string,
@@ -247,7 +247,7 @@ describe("connector JSON projection", () => {
 		try {
 			const overLength = "a".repeat(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
 
-			encodedInputs = [];
+			encodedInputs.length = 0;
 			expect(() =>
 				cloneConnectorJsonObject({ value: overLength }),
 			).toThrowError(
@@ -255,7 +255,7 @@ describe("connector JSON projection", () => {
 			);
 			expect(encodedInputs).not.toContain(overLength);
 
-			encodedInputs = [];
+			encodedInputs.length = 0;
 			expect(() =>
 				cloneConnectorJsonObject({ [overLength]: "value" }),
 			).toThrowError(
@@ -264,7 +264,7 @@ describe("connector JSON projection", () => {
 			expect(encodedInputs).not.toContain(overLength);
 
 			// Audit mode keeps its sentinel behavior, still without encoding.
-			encodedInputs = [];
+			encodedInputs.length = 0;
 			expect(
 				redactConnectorJsonAudit({ value: overLength }, () => false),
 			).toEqual({ value: CONNECTOR_JSON_BOUNDED });
