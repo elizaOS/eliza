@@ -1104,7 +1104,14 @@ export class RelationshipsService extends Service {
 					message.entityId === sourceEntityId ||
 					message.entityId === targetEntityId,
 			)
-			.sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
+			.sort((a, b) => {
+				const aVal = Number(a.createdAt ?? 0);
+				const bVal = Number(b.createdAt ?? 0);
+				const aSafe = Number.isFinite(aVal) ? aVal : 0;
+				const bSafe = Number.isFinite(bVal) ? bVal : 0;
+				if (aSafe !== bSafe) return aSafe - bSafe;
+				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+			});
 
 		if (!relationship && interactions.length === 0) {
 			return null;
@@ -1282,17 +1289,26 @@ export class RelationshipsService extends Service {
 		}
 
 		// Sort by relevance
-		insights.strongestRelationships.sort(
-			(a, b) => b.analytics.strength - a.analytics.strength,
-		);
-		insights.needsAttention.sort(
-			(a, b) => b.daysSinceContact - a.daysSinceContact,
-		);
-		insights.recentInteractions.sort(
-			(a, b) =>
-				new Date(b.lastInteraction).getTime() -
-				new Date(a.lastInteraction).getTime(),
-		);
+		insights.strongestRelationships.sort((a, b) => {
+			const aSafe = Number.isFinite(a.analytics.strength) ? a.analytics.strength : 0;
+			const bSafe = Number.isFinite(b.analytics.strength) ? b.analytics.strength : 0;
+			if (bSafe !== aSafe) return bSafe - aSafe;
+			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+		});
+		insights.needsAttention.sort((a, b) => {
+			const aSafe = Number.isFinite(a.daysSinceContact) ? a.daysSinceContact : 0;
+			const bSafe = Number.isFinite(b.daysSinceContact) ? b.daysSinceContact : 0;
+			if (bSafe !== aSafe) return bSafe - aSafe;
+			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+		});
+		insights.recentInteractions.sort((a, b) => {
+			const aTime = new Date(a.lastInteraction).getTime();
+			const bTime = new Date(b.lastInteraction).getTime();
+			const aSafe = Number.isFinite(aTime) ? aTime : 0;
+			const bSafe = Number.isFinite(bTime) ? bTime : 0;
+			if (bSafe !== aSafe) return bSafe - aSafe;
+			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+		});
 
 		return insights;
 	}
@@ -1488,10 +1504,14 @@ export class RelationshipsService extends Service {
 			occurredAt,
 		};
 
-		const appended = [...contact.interactions, interaction].sort(
-			(a, b) =>
-				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
-		);
+		const appended = [...contact.interactions, interaction].sort((a, b) => {
+			const aTime = new Date(a.occurredAt).getTime();
+			const bTime = new Date(b.occurredAt).getTime();
+			const aSafe = Number.isFinite(aTime) ? aTime : 0;
+			const bSafe = Number.isFinite(bTime) ? bTime : 0;
+			if (aSafe !== bSafe) return aSafe - bSafe;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		});
 		const latestAt = appended[appended.length - 1]?.occurredAt;
 		const currentLatest = contact.lastInteractionAt
 			? new Date(contact.lastInteractionAt).getTime()
@@ -1570,10 +1590,14 @@ export class RelationshipsService extends Service {
 		for (const i of [...primary.interactions, ...secondary.interactions]) {
 			interactionMap.set(i.id, i);
 		}
-		const mergedInteractions = Array.from(interactionMap.values()).sort(
-			(a, b) =>
-				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
-		);
+		const mergedInteractions = Array.from(interactionMap.values()).sort((a, b) => {
+			const aTime = new Date(a.occurredAt).getTime();
+			const bTime = new Date(b.occurredAt).getTime();
+			const aSafe = Number.isFinite(aTime) ? aTime : 0;
+			const bSafe = Number.isFinite(bTime) ? bTime : 0;
+			if (aSafe !== bSafe) return aSafe - bSafe;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		});
 		const mergedCategories = Array.from(
 			new Set([...primary.categories, ...secondary.categories]),
 		);
@@ -1730,7 +1754,12 @@ export class RelationshipsService extends Service {
 			}
 		}
 
-		results.sort((a, b) => b.daysSinceInteraction - a.daysSinceInteraction);
+		results.sort((a, b) => {
+			const aSafe = Number.isFinite(a.daysSinceInteraction) ? a.daysSinceInteraction : 0;
+			const bSafe = Number.isFinite(b.daysSinceInteraction) ? b.daysSinceInteraction : 0;
+			if (bSafe !== aSafe) return bSafe - aSafe;
+			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+		});
 		return results;
 	}
 
