@@ -47,6 +47,7 @@ import {
   type GoogleGmailMessageDetail,
   type GoogleGmailMessageSummary,
   type GoogleGmailMutationReceipt,
+  type GoogleGmailSearchPage,
   type GoogleGmailSendResult,
   type GoogleGmailSubscriptionMessageHeaders,
   type GoogleGmailUnrespondedThread,
@@ -177,6 +178,18 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     }
   ): Promise<GoogleGmailMessageSummary[]> {
     return this.gmailClient.searchGmailMessages(params);
+  }
+
+  searchGmailMessagesPage(
+    params: GoogleAccountRef & {
+      query: string;
+      selfEmail?: string | null;
+      pageToken?: string | null;
+      pageSize?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailSearchPage> {
+    return this.gmailClient.searchGmailMessagesPage(params);
   }
 
   getGmailMessage(

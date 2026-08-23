@@ -82,6 +82,7 @@ import type {
   RelockLifeOpsWebsiteAccessRequest,
   ResolveLifeOpsWebsiteAccessCallbackRequest,
   RunLifeOpsWorkflowRequest,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -226,6 +227,9 @@ const LIFEOPS_RATE_LIMITS = {
   task_create: { maxRequests: 30, windowMs: 60_000 },
   task_update: { maxRequests: 30, windowMs: 60_000 },
   gmail_draft: { maxRequests: 20, windowMs: 60_000 },
+  // A range seed walks every provider page for up to 90 days of mail; keep
+  // the burst small so a retry loop cannot hammer the Gmail quota.
+  gmail_seed: { maxRequests: 4, windowMs: 60_000 },
   // Tightened from 5/min: composing and sending email is the most sensitive
   // outbound action LifeOps takes; cap the burst at 2/min so a bug or a
   // confused operator cannot machine-gun the user's contacts.
@@ -1398,6 +1402,7 @@ export async function handleLifeOpsRoutes(
     method === "GET" &&
     pathname === "/api/lifeops/connectors/google/status"
   ) {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
       json(res, {
         accounts: await service.getGoogleConnectorAccounts(
@@ -1437,6 +1442,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/gmail/sync-health") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
       const grantId = url.searchParams.get("grantId");
       if (!grantId?.trim()) {
@@ -1451,6 +1457,15 @@ export async function handleLifeOpsRoutes(
           grantId,
         }),
       );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/gmail/seed") {
+    if (rateLimitRequest(ctx, "gmail_seed")) return true;
+    const body = await ctx.readJsonBody<SeedLifeOpsGmailRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.seedGmailMessages(url, body));
     });
   }
 

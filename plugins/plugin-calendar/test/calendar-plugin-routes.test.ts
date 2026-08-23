@@ -113,6 +113,12 @@ function makeCalendarService() {
       deletedEventCount: 0,
       deletedSyncStateCount: 0,
     })),
+    seedImportedCalendarData: vi.fn(async () => ({
+      feedState: "complete",
+      selectedSourceCount: 0,
+      eventCount: 0,
+      duplicateEventCount: 0,
+    })),
   };
 }
 

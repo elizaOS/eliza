@@ -2137,6 +2137,37 @@ export interface LifeOpsGmailSyncHealth {
   syncedAt: string | null;
 }
 
+export const LIFEOPS_GMAIL_SEED_RANGE_DAYS = [7, 30, 90] as const;
+export type LifeOpsGmailSeedRangeDays =
+  (typeof LIFEOPS_GMAIL_SEED_RANGE_DAYS)[number];
+
+/**
+ * Imports every Gmail message the provider reports for the selected time
+ * range into Eliza's local projection. The owner selects a range, not a page
+ * budget, so the server walks every provider page; a seed that cannot cover
+ * the whole range fails instead of returning a receipt.
+ */
+export interface SeedLifeOpsGmailRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId: string;
+  rangeDays: LifeOpsGmailSeedRangeDays;
+}
+
+export interface LifeOpsGmailSeedReceipt {
+  provider: "google";
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
+  rangeDays: LifeOpsGmailSeedRangeDays;
+  query: string;
+  /** Every message the provider returned for the range; never a page-capped count. */
+  messageCount: number;
+  pageCount: number;
+  historyCursorPresent: boolean;
+  seededAt: string;
+}
+
 export interface PurgeLifeOpsGmailImportedDataRequest {
   side?: LifeOpsConnectorSide;
   grantId: string;
@@ -2341,9 +2372,13 @@ export interface ManageLifeOpsGmailMessagesRequest {
   query?: string;
   maxResults?: number;
   labelIds?: string[];
-  /** Approval captured immediately before any provider-side mailbox mutation. */
+  /**
+   * Approval captured immediately before a destructive provider-side mailbox
+   * mutation (`trash`, `delete`, `spam`). Non-destructive operations execute
+   * without it, matching the original contract.
+   */
   confirmAction?: boolean;
-  /** Legacy destructive-only confirmation; prefer confirmAction for new callers. */
+  /** Legacy destructive confirmation; either flag satisfies the destructive gate. */
   confirmDestructive?: boolean;
   executionMode?: LifeOpsGmailManageExecutionMode;
   reason?: string;
@@ -2356,6 +2391,11 @@ export interface ManageLifeOpsGmailMessagesRequest {
 }
 
 export interface LifeOpsGmailManageResult {
+  /**
+   * `false` only when `status` is `failed` (the provider rejected every
+   * requested message); `partial` receipts keep `ok: true` and list the
+   * failures in `providerReceipt`.
+   */
   ok: boolean;
   operation: LifeOpsGmailBulkOperation;
   messageIds: string[];
@@ -3234,6 +3274,13 @@ export interface DisconnectLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   grantId?: string;
+  /**
+   * Disconnect revokes credential use and keeps the imported Gmail and
+   * calendar projection by default. Set true to also delete that projection
+   * in the same call; `/api/lifeops/gmail/imported-data/purge` and the
+   * calendar purge remain the targeted, receipt-backed alternatives.
+   */
+  purgeImportedData?: boolean;
 }
 
 export interface UpsertLifeOpsXConnectorRequest {
