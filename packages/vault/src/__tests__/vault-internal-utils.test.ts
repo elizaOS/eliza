@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertKey, optsCaller } from "./internal-utils.ts";
+import { assertKey, optsCaller } from "../internal-utils.js";
 
 describe("assertKey", () => {
   it("accepts valid keys", () => {
