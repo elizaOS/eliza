@@ -132,7 +132,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
         >
           <span className="flex w-full min-w-0 items-center justify-center gap-2">
             {isSelected ? (
-              <Check className="h-4 w-4 shrink-0" aria-hidden />
+              <Check className="size-4 shrink-0" aria-hidden />
             ) : null}
             <span className="min-w-0 flex-1 text-center [overflow-wrap:anywhere]">
               {soleOption.label}
@@ -163,10 +163,10 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               type="button"
               aria-label="Dismiss"
               data-testid={`choice-dismiss-${id}`}
-              className="flex h-5 w-5 items-center justify-center rounded-sm text-muted transition-colors hover:text-txt"
+              className="flex  size-5 items-center justify-center rounded-sm text-muted transition-colors hover:text-txt"
               onClick={handleDismiss}
             >
-              <X className="h-3.5 w-3.5" aria-hidden />
+              <X className="size-3.5" aria-hidden />
             </button>
           )}
         </>
@@ -226,7 +226,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               >
                 <span className="inline-flex min-w-0 items-center gap-2 text-left">
                   {isSelected ? (
-                    <Check className="h-4 w-4 shrink-0" aria-hidden />
+                    <Check className="size-4 shrink-0" aria-hidden />
                   ) : null}
                   <span className="min-w-0 [overflow-wrap:anywhere]">
                     {option.label}
@@ -234,7 +234,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 </span>
                 {!isSelected ? (
                   <ChevronRight
-                    className="h-4 w-4 shrink-0 opacity-70"
+                    className="size-4 shrink-0 opacity-70"
                     aria-hidden
                   />
                 ) : null}
@@ -261,7 +261,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             >
               {isSelected ? (
                 <span className="inline-flex items-center gap-1">
-                  <Check className="h-3.5 w-3.5" aria-hidden />
+                  <Check className="size-3.5" aria-hidden />
                   <span>{option.label}</span>
                 </span>
               ) : (

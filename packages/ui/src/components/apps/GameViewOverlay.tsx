@@ -251,7 +251,7 @@ export function GameViewOverlay() {
       >
         {/* Drag handle / header */}
         <div
-          className="flex items-center gap-2 px-3 py-1.5 select-none"
+          className="flex items-center gap-2 px-3 py-2 select-none"
           style={{
             cursor: dragging ? "grabbing" : "grab",
             background: "rgba(255,255,255,0.04)",

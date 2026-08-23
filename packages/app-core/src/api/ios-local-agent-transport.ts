@@ -16,6 +16,7 @@
  * `@elizaos/ui`; both share one module-level boot-progress state.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getElizaApiBase } from "@elizaos/shared";
 import {
   handleIosLocalAgentRequest,
@@ -767,7 +768,7 @@ async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     recordIosNativeAgentBootPhase("error", message);
     appendIosBootTrace("watchdog-restart-failed", {
-      message: message.slice(0, 300),
+      message: truncateWellFormed(toWellFormedUnicode(message), 300),
     });
     throw error;
   });

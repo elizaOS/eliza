@@ -413,14 +413,43 @@ export class TwitterDiscoveryClient {
 
     // Sort by relevance score
     const sortedTweets = allTweets
-      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .sort((a, b) => {
+        const bScore =
+          typeof b.relevanceScore === "number" &&
+          Number.isFinite(b.relevanceScore)
+            ? b.relevanceScore
+            : 0;
+        const aScore =
+          typeof a.relevanceScore === "number" &&
+          Number.isFinite(a.relevanceScore)
+            ? a.relevanceScore
+            : 0;
+        return bScore - aScore || a.tweet.id.localeCompare(b.tweet.id);
+      })
       .slice(0, 50); // Top 50 tweets
 
     const sortedAccounts = Array.from(allAccounts.values())
-      .sort(
-        (a, b) =>
-          b.qualityScore * b.relevanceScore - a.qualityScore * a.relevanceScore,
-      )
+      .sort((a, b) => {
+        const bProd =
+          (typeof b.qualityScore === "number" && Number.isFinite(b.qualityScore)
+            ? b.qualityScore
+            : 0) *
+          (typeof b.relevanceScore === "number" &&
+          Number.isFinite(b.relevanceScore)
+            ? b.relevanceScore
+            : 0);
+        const aProd =
+          (typeof a.qualityScore === "number" && Number.isFinite(a.qualityScore)
+            ? a.qualityScore
+            : 0) *
+          (typeof a.relevanceScore === "number" &&
+          Number.isFinite(a.relevanceScore)
+            ? a.relevanceScore
+            : 0);
+        const bScore = Number.isFinite(bProd) ? bProd : 0;
+        const aScore = Number.isFinite(aProd) ? aProd : 0;
+        return bScore - aScore || a.user.id.localeCompare(b.user.id);
+      })
       .slice(0, 20); // Top 20 accounts
 
     return { tweets: sortedTweets, accounts: sortedAccounts };
@@ -766,9 +795,29 @@ export class TwitterDiscoveryClient {
 
     // Sort accounts by combined quality and relevance score
     const sortedAccounts = accounts.sort((a, b) => {
-      const scoreA = a.qualityScore + a.relevanceScore;
-      const scoreB = b.qualityScore + b.relevanceScore;
-      return scoreB - scoreA;
+      const qA =
+        typeof a.qualityScore === "number" && Number.isFinite(a.qualityScore)
+          ? a.qualityScore
+          : 0;
+      const rA =
+        typeof a.relevanceScore === "number" &&
+        Number.isFinite(a.relevanceScore)
+          ? a.relevanceScore
+          : 0;
+      const qB =
+        typeof b.qualityScore === "number" && Number.isFinite(b.qualityScore)
+          ? b.qualityScore
+          : 0;
+      const rB =
+        typeof b.relevanceScore === "number" &&
+        Number.isFinite(b.relevanceScore)
+          ? b.relevanceScore
+          : 0;
+      const scoreA = qA + rA;
+      const scoreB = qB + rB;
+      const validB = Number.isFinite(scoreB) ? scoreB : 0;
+      const validA = Number.isFinite(scoreA) ? scoreA : 0;
+      return validB - validA || a.user.id.localeCompare(b.user.id);
     });
 
     for (const scoredAccount of sortedAccounts) {

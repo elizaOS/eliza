@@ -540,7 +540,7 @@ export function DirectCryptoCreditCard({
         <div
           className={`flex size-9 shrink-0 items-center justify-center border ${iconBoxClassName}`}
         >
-          <Wallet className="h-4 w-4" />
+          <Wallet className="size-4" />
         </div>
         <div>
           <CardTitle className={`text-base ${titleClassName}`}>
@@ -614,7 +614,7 @@ export function DirectCryptoCreditCard({
         ) : null}
 
         {showTokenSelector ? (
-          <div className="block space-y-1">
+          <div className="space-y-1">
             <span className={`text-xs ${mutedTextClassName}`}>Pay with</span>
             <Select
               value={selectedToken?.symbol ?? ""}
@@ -668,7 +668,7 @@ export function DirectCryptoCreditCard({
           <div
             className={`flex items-center gap-2 rounded-xs border px-3 py-2 text-xs font-medium ${promoClassName}`}
           >
-            <Coins className="h-4 w-4" />
+            <Coins className="size-4" />
             BSC promotion applied: +$5 cloud credit
           </div>
         )}
@@ -711,9 +711,9 @@ export function DirectCryptoCreditCard({
             className={payButtonClassName}
           >
             {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <ShieldCheck className="h-4 w-4" />
+              <ShieldCheck className="size-4" />
             )}
             Pay and add credits
           </Button>

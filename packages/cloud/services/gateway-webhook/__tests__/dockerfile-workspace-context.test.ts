@@ -151,6 +151,30 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
     expect(installAt).toBeGreaterThan(pruneAt ?? Number.MAX_SAFE_INTEGER);
   });
 
+  test("gateway-discord selects a published N-API Opus prebuild", () => {
+    const gateway = services.find(
+      (service) => service.name === "gateway-discord",
+    );
+    expect(gateway?.dockerfile).toContain(
+      "ARG OPUS_PREBUILD_NODE_TARGET=18.4.0",
+    );
+    expect(gateway?.dockerfile).toContain(
+      'npm_config_target="$' +
+        '{OPUS_PREBUILD_NODE_TARGET}" bun install --production',
+    );
+    expect(gateway?.dockerfile).toContain(
+      "COPY $" +
+        "{SERVICE_DIR}/scripts/select-opus-prebuild.ts $" +
+        "{SERVICE_DIR}/scripts/",
+    );
+    expect(gateway?.dockerfile).toContain(
+      'bun "$' +
+        '{SERVICE_DIR}/scripts/select-opus-prebuild.ts" "$' +
+        '{SERVICE_DIR}" "$' +
+        '{TARGETARCH}"',
+    );
+  });
+
   for (const service of services.filter((s) => s.workspaceDeps.length > 0)) {
     const shouldPass = !LOCKFILE_BLIND.has(service.name);
 

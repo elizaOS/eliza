@@ -79,7 +79,7 @@ function MockView({
         }}
         defaultValue="25.00"
         placeholder="0.00"
-        className="w-full rounded border px-3 py-2 text-sm"
+        className="w-full rounded border px-3 py-2 text-base sm:text-sm"
       />
       <input
         ref={(el) => {
@@ -87,7 +87,7 @@ function MockView({
         }}
         defaultValue="alice.eth"
         placeholder="address"
-        className="w-full rounded border px-3 py-2 text-sm"
+        className="w-full rounded border px-3 py-2 text-base sm:text-sm"
       />
       <button
         type="button"

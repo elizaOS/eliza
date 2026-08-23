@@ -433,6 +433,8 @@ type TestMessage = {
         provider: "parallel" | "exa";
         text: string;
         observedAt: number;
+        sourceUrls?: string[];
+        sources?: Array<{ url: string; text: string }>;
         truncated: boolean;
       }
     | {
@@ -711,6 +713,13 @@ describe("SharedRuntimeChatService", () => {
           provider: "parallel",
           text: "Tessera validates ARC resources through an origin guard.",
           observedAt: Date.now(),
+          sourceUrls: ["https://example.com/tessera"],
+          sources: [
+            {
+              url: "https://example.com/tessera",
+              text: "Tessera validates ARC resources through an origin guard.",
+            },
+          ],
           truncated: false,
         },
       },
@@ -1114,6 +1123,21 @@ describe("SharedRuntimeChatService", () => {
     const h = harness();
     streamTurn = {
       degraded: false,
+      internalGrounding: {
+        kind: "web_search",
+        query: "NubsCarson Tessera GitHub",
+        provider: "parallel",
+        text: "Tessera validates ARC resources through an origin guard.",
+        observedAt: Date.now(),
+        sourceUrls: ["https://example.com/tessera"],
+        sources: [
+          {
+            url: "https://example.com/tessera",
+            text: "Tessera validates ARC resources through an origin guard.",
+          },
+        ],
+        truncated: false,
+      },
       parts: (async function* () {
         yield { type: "text-delta", text: "hello " };
         yield {
@@ -1123,12 +1147,13 @@ describe("SharedRuntimeChatService", () => {
           actionResults: [
             {
               success: true,
-              text: "Tessera validates ARC resources through an origin guard.",
+              text: "hello back",
               data: {
                 actionName: "WEB_SEARCH",
                 query: "NubsCarson Tessera GitHub",
                 provider: "parallel",
-                answer: "Tessera validates ARC resources through an origin guard.",
+                sourceUrls: ["https://example.com/tessera"],
+                groundingStatus: "verified",
               },
             },
           ],
@@ -1146,6 +1171,13 @@ describe("SharedRuntimeChatService", () => {
       provider: "parallel",
       text: "Tessera validates ARC resources through an origin guard.",
       observedAt: expect.any(Number),
+      sourceUrls: ["https://example.com/tessera"],
+      sources: [
+        {
+          url: "https://example.com/tessera",
+          text: "Tessera validates ARC resources through an origin guard.",
+        },
+      ],
       truncated: false,
     });
     expect(memoryPairs).toEqual([
@@ -1163,6 +1195,44 @@ describe("SharedRuntimeChatService", () => {
     expect(memoryScopes[0]?.roomKey).not.toBe(agent.id);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("terminal done frame is not held open by a stalled long-term-memory mirror (#25689)", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    // The mirror never settles: a stalled Hyperdrive/embeddings-sidecar write.
+    // Under the old inline await the body below would never complete.
+    let releaseMirror: (() => void) | undefined;
+    recordTurnPair.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseMirror = resolve;
+        }),
+    );
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: done");
+    // The landed turn stays durable on the merged history boundary.
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    releaseMirror?.();
+    await Promise.all(h.background);
+  });
+
+  test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    recordTurnPair.mockImplementationOnce(async () => {
+      throw new Error("hyperdrive write stalled");
+    });
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    expect(body).toContain("event: done");
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    // The deferred mirror task must settle cleanly (failure reported, not thrown).
+    await Promise.all(h.background);
   });
 
   test("keeps a trusted transient prompt out of history and long-term memory", async () => {
@@ -1870,6 +1940,64 @@ describe("SharedRuntimeChatService", () => {
     expect(secondDone.fullText).toBe("hello back");
     expect(secondDone.messageId).toBe(firstDone.messageId);
     expect(secondDone.userMessageId).toBe(firstDone.userMessageId);
+  });
+
+  test("never serializes internal grounding evidence into terminal or replay action results", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const observedAt = Date.now();
+    streamTurn = {
+      degraded: false,
+      internalGrounding: {
+        kind: "web_search",
+        query: "current BTC price",
+        provider: "parallel",
+        text: "RAW_PROVIDER_BODY_SHOULD_NOT_ESCAPE",
+        observedAt,
+        sourceUrls: ["https://example.com/btc"],
+        sources: [
+          {
+            url: "https://example.com/btc",
+            text: "RAW_SOURCE_EXCERPT_SHOULD_NOT_ESCAPE",
+          },
+        ],
+        truncated: false,
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "BTC is 70,000 USD. " };
+        yield {
+          type: "finish",
+          text: "BTC is 70,000 USD. Source: example.com — https://example.com/btc",
+          actionResults: [
+            {
+              success: true,
+              text: "BTC is 70,000 USD. Source: example.com — https://example.com/btc",
+              data: {
+                actionName: "WEB_SEARCH",
+                query: "current BTC price",
+                provider: "parallel",
+                observedAt,
+                sourceUrls: ["https://example.com/btc"],
+                groundingStatus: "verified",
+              },
+            },
+          ],
+        };
+      })(),
+    };
+
+    const options = { ...h, turnClaims: store };
+    const firstBody = await (await service.stream(agent, keyedRpc, options)).text();
+    const replayBody = await (await service.stream(agent, keyedRpc, options)).text();
+
+    for (const body of [firstBody, replayBody]) {
+      expect(body).toContain("https://example.com/btc");
+      expect(body).not.toContain("RAW_PROVIDER_BODY_SHOULD_NOT_ESCAPE");
+      expect(body).not.toContain("RAW_SOURCE_EXCERPT_SHOULD_NOT_ESCAPE");
+      expect(body).not.toContain("originalModelReply");
+      expect(body).not.toContain('"sources"');
+    }
   });
 
   test("claim completion failure retries to one canonical history, memory, and replay result", async () => {

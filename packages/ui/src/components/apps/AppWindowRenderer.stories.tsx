@@ -15,7 +15,7 @@ function MockOverlayComponent(props: OverlayAppContext): ReactElement {
     <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-background p-8 text-center">
       <img
         alt="mock app hero"
-        className="h-24 w-24 rounded-xl"
+        className="size-24 rounded-xl"
         src="https://placehold.co/96x96/orange/white?text=App"
       />
       <h2 className="text-xl font-semibold">Mock Overlay App</h2>

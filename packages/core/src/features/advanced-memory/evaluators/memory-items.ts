@@ -28,6 +28,19 @@ import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
+
+function createdAtSortKey(memory: Memory): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtAsc(a: Memory, b: Memory): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 
 const MEMORY_CATEGORIES = Object.values(LongTermMemoryCategory);
@@ -248,7 +261,7 @@ async function prepareSummary(
 	});
 	const allDialogueMessages = allMessages
 		.filter(isDialogueMessage)
-		.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+		.sort(compareMemoryByCreatedAtAsc);
 	const existingSummary = await memoryService.getCurrentSessionSummary(
 		message.roomId,
 	);
@@ -302,11 +315,13 @@ async function prepareLongTermMemory(
 		memoryService,
 		recentMessages: recentRaw
 			.filter((memory) => !isSyntheticConversationArtifactMemory(memory))
-			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
+			.sort(compareMemoryByCreatedAtAsc),
 		existingMemories,
 		currentMessageCount,
 	};
 }
+
+export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
 
 export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
 	name: "summary",

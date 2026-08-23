@@ -25,10 +25,7 @@ const AuthedShell = lazy(() => import("@/components/authed-shell"));
  */
 function RouteFallback() {
   return (
-    <main
-      className="theme-app min-h-screen"
-      style={{ background: "#fdfaf7" }}
-    />
+    <main className="theme-app min-h-dvh" style={{ background: "#fdfaf7" }} />
   );
 }
 

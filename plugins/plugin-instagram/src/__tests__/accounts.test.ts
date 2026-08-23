@@ -363,4 +363,26 @@ describe("Instagram connector accounts", () => {
       expect(postComment).not.toHaveBeenCalled();
     }
   );
+
+  it("sorts connector messages safely when createdAt contains NaN", () => {
+    const memories = [
+      { id: "msg-nan", createdAt: NaN },
+      { id: "msg-newer", createdAt: 2000 },
+      { id: "msg-older", createdAt: 1000 },
+    ];
+
+    memories.sort((left, right) => {
+      const rightCreated =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const leftCreated =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
+      return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
+    });
+
+    expect(memories[0]?.id).toBe("msg-newer");
+    expect(memories[1]?.id).toBe("msg-older");
+    expect(memories[2]?.id).toBe("msg-nan");
+  });
 });

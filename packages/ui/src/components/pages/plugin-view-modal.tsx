@@ -69,9 +69,9 @@ function PluginGameListCard({
             title={plugin.enabled ? enabledLabel : disabledLabel}
           >
             {plugin.enabled ? (
-              <CheckCircle2 className="h-3 w-3" />
+              <CheckCircle2 className="size-3" />
             ) : (
-              <XCircle className="h-3 w-3" />
+              <XCircle className="size-3" />
             )}
             <span className="sr-only">
               {plugin.enabled ? enabledLabel : disabledLabel}
@@ -486,7 +486,7 @@ export function PluginGameModal({
         ) : (
           <div className="plugins-game-detail-empty">
             <span className="plugins-game-detail-empty-icon">
-              <Puzzle className="h-5 w-5" />
+              <Puzzle className="size-5" />
             </span>
             <span className="plugins-game-detail-empty-text">
               {t("pluginsview.SelectA")}{" "}

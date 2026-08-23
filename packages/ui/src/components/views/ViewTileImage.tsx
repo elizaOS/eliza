@@ -130,7 +130,7 @@ export function ViewTileImage({
       >
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -right-4 -top-5 h-14 w-14 rounded-full bg-white/25"
+          className="pointer-events-none absolute -right-4 -top-5 size-14 rounded-full bg-white/25"
         />
         <span
           aria-hidden="true"

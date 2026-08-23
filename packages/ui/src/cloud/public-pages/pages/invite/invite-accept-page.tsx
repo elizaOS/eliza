@@ -186,9 +186,9 @@ export default function InviteAcceptPage() {
 
   const getRoleIcon = (role: string) =>
     role === "admin" ? (
-      <Shield className="h-4 w-4" />
+      <Shield className="size-4" />
     ) : (
-      <User className="h-4 w-4" />
+      <User className="size-4" />
     );
 
   if (isValidating) {
@@ -196,8 +196,8 @@ export default function InviteAcceptPage() {
       <div className="flex min-h-[100dvh] items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10">
+              <Loader2 className="size-6 animate-spin text-primary" />
             </div>
             <CardTitle>
               {t("cloud.invite.validating", {
@@ -220,8 +220,8 @@ export default function InviteAcceptPage() {
       <div className="flex min-h-[100dvh] items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-6 w-6 text-destructive" />
+            <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="size-6 text-destructive" />
             </div>
             <CardTitle role="heading" aria-level={1}>
               {t("cloud.invite.invalidTitle", {
@@ -257,8 +257,8 @@ export default function InviteAcceptPage() {
     <div className="flex min-h-[100dvh] items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <Mail className="h-8 w-8 text-primary" />
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-primary/10">
+            <Mail className="size-8 text-primary" />
           </div>
           <CardTitle className="text-2xl">
             {t("cloud.invite.youreInvited", {
@@ -274,7 +274,7 @@ export default function InviteAcceptPage() {
         <CardContent className="space-y-6">
           <div className="space-y-4 rounded-lg border bg-muted/50 p-4">
             <div className="flex items-start gap-3">
-              <Building2 className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <Building2 className="size-5 text-muted-foreground shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground">
                   {t("cloud.invite.organization", {
@@ -288,7 +288,7 @@ export default function InviteAcceptPage() {
             </div>
 
             <div className="flex items-start gap-3">
-              <Mail className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <Mail className="size-5 text-muted-foreground shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground">
                   {t("cloud.invite.invitedEmail", {
@@ -319,7 +319,7 @@ export default function InviteAcceptPage() {
 
             {inviteDetails.inviter_name && (
               <div className="flex items-start gap-3">
-                <User className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <User className="size-5 text-muted-foreground shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">
                     {t("cloud.invite.invitedBy", {
@@ -334,7 +334,7 @@ export default function InviteAcceptPage() {
 
           {isExpiringSoon && (
             <Alert variant="destructive">
-              <Clock className="h-4 w-4" />
+              <Clock className="size-4" />
               <AlertDescription>
                 {t("cloud.invite.expiresOn", {
                   date: formatExpiry(inviteDetails.expires_at),
@@ -353,7 +353,7 @@ export default function InviteAcceptPage() {
             >
               {isAccepting ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="size-4 mr-2 animate-spin" />
                   {authenticated
                     ? t("cloud.invite.accepting", {
                         defaultValue: "Accepting...",
@@ -364,7 +364,7 @@ export default function InviteAcceptPage() {
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  <CheckCircle2 className="size-4 mr-2" />
                   {authenticated
                     ? t("cloud.invite.acceptInvitation", {
                         defaultValue: "Accept Invitation",

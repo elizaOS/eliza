@@ -36,6 +36,7 @@ import { pathToFileURL } from "node:url";
 
 const PRIMARY_RELEASE_TAG = "pr-evidence";
 const REPO = "elizaOS/eliza";
+const TOOL_OUTPUT_MAX_BYTES = 64 * 1024 * 1024;
 // GitHub caps a single release at 1000 assets. Keep headroom below that so a
 // normal multi-file batch never straddles the boundary; roll to the next
 // overflow release before the wall. The 422 fallback in `uploadAssets` covers
@@ -57,8 +58,21 @@ const ROW_IDS = [
   "ocr-review",
 ];
 
+/**
+ * Runs a tooling child with the repository-standard 64 MiB output ceiling.
+ * Release-family inventories exceed Node's default; callers can override the
+ * bound or other child-process options deliberately through `opts`.
+ */
+export function runBufferedUtf8(file, args, opts = {}) {
+  return execFileSync(file, args, {
+    encoding: "utf8",
+    maxBuffer: TOOL_OUTPUT_MAX_BYTES,
+    ...opts,
+  });
+}
+
 function gh(args, opts = {}) {
-  return execFileSync("gh", args, { encoding: "utf8", ...opts });
+  return runBufferedUtf8("gh", args, opts);
 }
 
 function fail(message) {

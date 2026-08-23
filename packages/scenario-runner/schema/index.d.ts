@@ -576,8 +576,10 @@ export type ScenarioPersonalityExpect = {
 
 /** Runtime capabilities that must be ready before scenario turns execute. */
 export type ScenarioRequirements = {
-  /** Plugin packages that the runner may load when they are not registered. */
+  /** Import specifiers for plugin packages the runner loads before execution. */
   plugins?: readonly string[];
+  /** Plugin names that this scenario's seed registers locally. */
+  fixturePlugins?: readonly string[];
   /**
    * Service types whose startup must complete successfully before execution.
    * Services omitted here are optional even when a required plugin declares them.

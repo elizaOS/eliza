@@ -114,7 +114,11 @@ export function resolveOwnerCandidate(
     };
   }
 
-  const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+  const ranked = [...scores.entries()].sort((a, b) => {
+    const bScore = typeof b[1] === "number" && Number.isFinite(b[1]) ? b[1] : 0;
+    const aScore = typeof a[1] === "number" && Number.isFinite(a[1]) ? a[1] : 0;
+    return bScore - aScore || a[0].localeCompare(b[0]);
+  });
   const [topId, topScore] = ranked[0];
   const runnerUpScore = ranked[1]?.[1] ?? 0;
   const lead = topScore - runnerUpScore;

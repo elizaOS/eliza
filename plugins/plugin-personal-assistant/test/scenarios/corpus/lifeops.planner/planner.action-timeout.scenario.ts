@@ -129,7 +129,7 @@ export default scenario({
   tags: ["lifeops", "planner", "action-timeout", "robustness", "negative-path"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["scenario-hang-test"],
+    fixturePlugins: ["scenario-hang-test"],
   },
   rooms: [
     {

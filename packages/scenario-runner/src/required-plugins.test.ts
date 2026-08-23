@@ -1,10 +1,17 @@
-/** Tests declared production-plugin resolution and pre-initialization runtime registration. */
+/**
+ * Tests declared production-plugin resolution and pre-initialization runtime
+ * registration and the explicit package-versus-seed-fixture declaration.
+ * Real package imports against a fake runtime.
+ */
 
-import type { AgentRuntime, Plugin } from "@elizaos/core";
+import { type AgentRuntime, ElizaError, type Plugin } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertScenarioPluginPackageSpecifier,
   assertSharedRuntimePluginBatchSafe,
   registerScenarioRequiredPlugins,
+  resolveRequiredFixturePlugins,
+  resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 
 describe("scenario required plugin registration", () => {
@@ -30,6 +37,151 @@ describe("scenario required plugin registration", () => {
     expect(plugins[0]?.actions?.map((action) => action.name)).toContain(
       "MAPS_SAVE",
     );
+  });
+
+  it("keeps package import specifiers separate from seed fixture names", async () => {
+    const scenario = {
+      id: "fixture-plugin",
+      title: "fixture plugin",
+      domain: "other",
+      turns: [],
+      requires: {
+        plugins: [
+          "unscoped-plugin",
+          "@elizaos/plugin-maps",
+          "@elizaos/plugin-meetings/test-support",
+          "unscoped-plugin/test-support",
+        ],
+        fixturePlugins: ["echo-test", "orchestrator-watchdog-scenario"],
+      },
+    } as const;
+    const plugins: Plugin[] = [];
+    const registerPlugin = vi.fn(async (plugin: Plugin) => {
+      plugins.push(plugin);
+    });
+    const runtime = { plugins, registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    expect(resolveRequiredPluginPackages(scenario)).toEqual([
+      "unscoped-plugin",
+      "@elizaos/plugin-maps",
+      "@elizaos/plugin-meetings/test-support",
+      "unscoped-plugin/test-support",
+    ]);
+    expect(resolveRequiredFixturePlugins(scenario)).toEqual([
+      "echo-test",
+      "orchestrator-watchdog-scenario",
+    ]);
+    await expect(
+      registerScenarioRequiredPlugins(
+        runtime,
+        ["@elizaos/plugin-maps"],
+        "simulated",
+      ),
+    ).resolves.toEqual(["@elizaos/plugin-maps"]);
+    expect(registerPlugin).toHaveBeenCalledOnce();
+    expect(plugins.map((plugin) => plugin.name)).toEqual(["maps"]);
+  });
+
+  it.each([
+    "./scenario-plugin.ts",
+    "../scenario-plugin.ts",
+    "/tmp/scenario-plugin.mjs",
+    "file:///tmp/scenario-plugin.mjs",
+    "workspace:@example/scenario-plugin",
+  ])("typed-rejects unsupported package specifier %s", (packageName) => {
+    expect(() => assertScenarioPluginPackageSpecifier(packageName)).toThrow(
+      ElizaError,
+    );
+    try {
+      assertScenarioPluginPackageSpecifier(packageName);
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "SCENARIO_PLUGIN_PACKAGE_SPECIFIER_INVALID",
+        context: { packageName },
+      });
+    }
+  });
+
+  it.each([
+    "unscoped-plugin",
+    "unscoped-plugin/test-support",
+    "@example/plugin",
+    "@example/plugin/test-support",
+    "@example/plugin/exports/feature+node",
+  ])("accepts portable npm package specifier %s", (packageName) => {
+    expect(() =>
+      assertScenarioPluginPackageSpecifier(packageName),
+    ).not.toThrow();
+  });
+
+  it("still fails clearly on a genuinely missing package plugin", async () => {
+    const registerPlugin = vi.fn(async (_plugin: Plugin) => undefined);
+    const runtime = { plugins: [], registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    await expect(
+      registerScenarioRequiredPlugins(
+        runtime,
+        ["@elizaos/plugin-does-not-exist"],
+        "simulated",
+      ),
+    ).rejects.toThrow(/@elizaos\/plugin-does-not-exist/u);
+    expect(registerPlugin).not.toHaveBeenCalled();
+  });
+
+  it("attempts unscoped package imports instead of silently treating them as fixtures", async () => {
+    const registerPlugin = vi.fn(async (_plugin: Plugin) => undefined);
+    const runtime = { plugins: [], registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    await expect(
+      registerScenarioRequiredPlugins(
+        runtime,
+        ["unscoped-plugin-does-not-exist"],
+        "simulated",
+      ),
+    ).rejects.toThrow(/unscoped-plugin-does-not-exist/u);
+    expect(registerPlugin).not.toHaveBeenCalled();
+  });
+
+  it("resolves installed unscoped packages before validating their Plugin export", async () => {
+    const registerPlugin = vi.fn(async (_plugin: Plugin) => undefined);
+    const runtime = { plugins: [], registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    await expect(
+      registerScenarioRequiredPlugins(runtime, ["ws"], "simulated"),
+    ).rejects.toThrow(/ws did not export a Plugin/u);
+    expect(registerPlugin).not.toHaveBeenCalled();
+  });
+
+  it("loads an exported package subpath", async () => {
+    const plugins: Plugin[] = [];
+    const registerPlugin = vi.fn(async (plugin: Plugin) => {
+      plugins.push(plugin);
+    });
+    const runtime = { plugins, registerPlugin } as unknown as Pick<
+      AgentRuntime,
+      "plugins" | "registerPlugin"
+    >;
+
+    await expect(
+      registerScenarioRequiredPlugins(
+        runtime,
+        ["@elizaos/plugin-maps/plugin"],
+        "simulated",
+      ),
+    ).resolves.toEqual(["@elizaos/plugin-maps/plugin"]);
+    expect(plugins.map((plugin) => plugin.name)).toEqual(["maps"]);
   });
 
   it("does not register an already-present declared plugin twice", async () => {

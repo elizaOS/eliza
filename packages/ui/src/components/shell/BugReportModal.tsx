@@ -646,7 +646,7 @@ export function BugReportModal() {
                   aria-controls="bug-report-logs-panel"
                 >
                   <ChevronRight
-                    className={`h-3.5 w-3.5 transition-transform ${showLogs ? "rotate-90" : ""}`}
+                    className={`size-3.5 transition-transform ${showLogs ? "rotate-90" : ""}`}
                   />
                   {showLogs
                     ? t("bugreportmodal.HideLogs", {
@@ -670,7 +670,7 @@ export function BugReportModal() {
                           type="checkbox"
                           checked={attachLogs}
                           onChange={(e) => setAttachLogs(e.target.checked)}
-                          className="h-4 w-4 shrink-0 border-border p-0 accent-accent"
+                          className="size-4 shrink-0 border-border p-0 accent-accent"
                         />
                         {t("bugreportmodal.attachLogs")}
                       </label>
@@ -685,7 +685,7 @@ export function BugReportModal() {
                           onChange={(e) =>
                             setAttachSystemInfo(e.target.checked)
                           }
-                          className="h-4 w-4 shrink-0 border-border p-0 accent-accent"
+                          className="size-4 shrink-0 border-border p-0 accent-accent"
                         />
                         {t("bugreportmodal.attachSystemInfo")}
                       </label>

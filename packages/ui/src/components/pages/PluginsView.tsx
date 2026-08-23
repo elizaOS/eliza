@@ -387,7 +387,7 @@ function PluginListView({
           aria-pressed={isActive}
           onClick={() => setSubgroupFilter(tag.id)}
         >
-          <Icon className="h-3.5 w-3.5 shrink-0" />
+          <Icon className="size-3.5 shrink-0" />
           {tag.label}
           <span
             className={`ml-0.5 rounded-full px-1.5 py-0.5 text-3xs font-mono leading-none ${
@@ -931,7 +931,7 @@ function PluginListView({
     ) => {
       const icon = resolveIcon(plugin);
       if (!icon) {
-        return <Puzzle className={options?.className ?? "w-5 h-5"} />;
+        return <Puzzle className={options?.className ?? "size-5"} />;
       }
       if (typeof icon === "string") {
         const imageSrc = iconImageSource(icon);
@@ -939,19 +939,17 @@ function PluginListView({
           <img
             src={imageSrc}
             alt=""
-            className={
-              options?.className ?? "w-5 h-5 rounded-sm object-contain"
-            }
+            className={options?.className ?? "size-5 rounded-sm object-contain"}
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
             }}
           />
         ) : (
-          <Puzzle className={options?.className ?? "w-5 h-5"} />
+          <Puzzle className={options?.className ?? "size-5"} />
         );
       }
       const IconComponent = icon;
-      return <IconComponent className={options?.className ?? "w-5 h-5"} />;
+      return <IconComponent className={options?.className ?? "size-5"} />;
     },
     [],
   );

@@ -47,7 +47,7 @@ export function PendingInvitesList({
   if (pendingInvites.length === 0) {
     return (
       <div className="bg-surface border border-brand-surface p-6 text-center">
-        <Mail className="h-10 w-10 mx-auto text-muted mb-3" />
+        <Mail className="size-10 mx-auto text-muted mb-3" />
         <p className="text-sm font-mono text-muted">No pending invitations</p>
       </div>
     );
@@ -56,9 +56,9 @@ export function PendingInvitesList({
   const getRoleIcon = (role: string) => {
     switch (role) {
       case "admin":
-        return <Shield className="h-3.5 w-3.5" />;
+        return <Shield className="size-3.5" />;
       default:
-        return <User className="h-3.5 w-3.5" />;
+        return <User className="size-3.5" />;
     }
   };
 
@@ -69,7 +69,7 @@ export function PendingInvitesList({
     if (invite.status === "pending" && nowDate > expiresAt) {
       return (
         <span className="px-2 py-0.5 border border-danger/40 bg-danger/20 text-danger flex items-center gap-1 text-xs font-mono">
-          <XCircle className="h-3 w-3" />
+          <XCircle className="size-3" />
           Expired
         </span>
       );
@@ -79,21 +79,21 @@ export function PendingInvitesList({
       case "pending":
         return (
           <span className="px-2 py-0.5 border border-border-strong bg-surface text-txt-strong flex items-center gap-1 text-xs font-mono">
-            <Clock className="h-3 w-3" />
+            <Clock className="size-3" />
             Pending
           </span>
         );
       case "accepted":
         return (
           <span className="px-2 py-0.5 border border-green-500/40 bg-green-500/20 text-green-700 dark:text-green-300 flex items-center gap-1 text-xs font-mono">
-            <CheckCircle2 className="h-3 w-3" />
+            <CheckCircle2 className="size-3" />
             Accepted
           </span>
         );
       case "revoked":
         return (
           <span className="px-2 py-0.5 border border-border bg-surface text-muted flex items-center gap-1 text-xs font-mono">
-            <XCircle className="h-3 w-3" />
+            <XCircle className="size-3" />
             Revoked
           </span>
         );
@@ -126,7 +126,7 @@ export function PendingInvitesList({
               <div className="flex-1 min-w-0 w-full space-y-2">
                 {/* Email */}
                 <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted flex-shrink-0" />
+                  <Mail className="size-4 text-muted shrink-0" />
                   <span className="font-mono font-medium text-sm md:text-base text-txt-strong truncate">
                     {invite.email}
                   </span>
@@ -155,7 +155,7 @@ export function PendingInvitesList({
                 {/* Expiration Warning */}
                 {isExpiringSoon && (
                   <div className="flex items-center gap-1.5 text-xs font-mono text-txt-strong">
-                    <Clock className="h-3.5 w-3.5" />
+                    <Clock className="size-3.5" />
                     <span>
                       Expires{" "}
                       {formatDistanceToNow(expiresAt, { addSuffix: true })}
@@ -171,12 +171,13 @@ export function PendingInvitesList({
                     <Button
                       variant="ghost"
                       type="button"
+                      aria-label={`Revoke invitation for ${invite.email}`}
                       className="p-2 hover:bg-surface transition-colors border border-border"
                     >
-                      <X className="h-4 w-4 text-danger" />
+                      <X className="size-4 text-danger" />
                     </Button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-popover border border-brand-surface">
+                  <AlertDialogContent className="bg-bg border border-brand-surface">
                     <AlertDialogHeader>
                       <AlertDialogTitle className="text-txt-strong font-mono">
                         Revoke Invitation
@@ -227,7 +228,7 @@ export function PendingInvitesList({
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted flex-shrink-0" />
+                        <Mail className="size-4 text-muted shrink-0" />
                         <span className="font-mono font-medium text-sm text-txt-strong truncate">
                           {invite.email}
                         </span>

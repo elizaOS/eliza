@@ -109,6 +109,10 @@ function makeRuntimeWithContexts(
 		actions: [],
 		providers: [],
 		getRoom: vi.fn(async () => null),
+		// Stage 1 resolves the structural always-respond bypass through
+		// `runtime.getSetting`, which every real runtime implements; the fake
+		// answers "unconfigured" so only the built-in bypass list applies.
+		getSetting: vi.fn(() => undefined),
 		reportError: vi.fn(),
 		contexts: registry,
 		responseHandlerFieldRegistry,
@@ -240,6 +244,7 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 			actions: [],
 			providers: [],
 			getRoom: vi.fn(async () => null),
+			getSetting: vi.fn(() => undefined),
 			reportError: vi.fn(),
 			contexts: undefined,
 			responseHandlerFieldRegistry,

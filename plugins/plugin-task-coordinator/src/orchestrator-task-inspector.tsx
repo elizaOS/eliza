@@ -232,7 +232,7 @@ export function WorkbenchHeader({
 }) {
   const title = (
     <div className="flex shrink-0 items-center gap-2">
-      <Layers className="h-4 w-4 text-accent" />
+      <Layers className="size-4 text-accent" />
       <span className="text-sm font-semibold text-txt-strong">
         {t("orchestrator.title", { defaultValue: "Orchestrator" })}
       </span>
@@ -283,7 +283,7 @@ export function WorkbenchHeader({
         className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted"
         title={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
       >
-        <Gauge className="h-3 w-3 text-muted/70" />
+        <Gauge className="size-3 text-muted/70" />
         {renderTokens(status.usage, t, locale)}
         <span className="text-muted/50">·</span>
         {renderCost(status.usage, t, locale)}
@@ -314,14 +314,14 @@ export function WorkbenchHeader({
       variant="ghost"
       size="sm"
       onClick={onToggleAccounts}
-      className="h-7 w-7 shrink-0 p-0"
+      className="size-7 shrink-0 p-0"
       aria-label={accountsLabel}
       aria-pressed={accountsOpen}
       title={accountsLabel}
       data-testid="orchestrator-accounts-toggle"
       {...accountsAgentProps}
     >
-      <Gauge className="h-3.5 w-3.5" />
+      <Gauge className="size-3.5" />
     </Button>
   );
   // Pause-all / resume-all only surface while there is something to act on, so a
@@ -336,14 +336,14 @@ export function WorkbenchHeader({
             size="sm"
             disabled={busy}
             onClick={onPauseAll}
-            className="h-7 w-7 p-0"
+            className="size-7 p-0"
             aria-label={pauseAllLabel}
             title={pauseAllLabel}
             data-testid="orchestrator-pause-all"
             data-agent-authority="human"
             data-agent-human-id="header-pause-all"
           >
-            <Pause className="h-3.5 w-3.5" />
+            <Pause className="size-3.5" />
           </Button>
         ) : null}
         {status?.pausedTaskCount ? (
@@ -352,14 +352,14 @@ export function WorkbenchHeader({
             size="sm"
             disabled={busy}
             onClick={onResumeAll}
-            className="h-7 w-7 p-0"
+            className="size-7 p-0"
             aria-label={resumeAllLabel}
             title={resumeAllLabel}
             data-testid="orchestrator-resume-all"
             data-agent-authority="human"
             data-agent-human-id="header-resume-all"
           >
-            <Play className="h-3.5 w-3.5" />
+            <Play className="size-3.5" />
           </Button>
         ) : null}
       </div>
@@ -449,7 +449,7 @@ function SubAgentCard({
           title={inspectLabel}
           {...inspectAgentProps}
         >
-          <PanelRightOpen className="h-3 w-3" />
+          <PanelRightOpen className="size-3" />
         </Button>
         {stoppable ? (
           <Button
@@ -463,7 +463,7 @@ function SubAgentCard({
             data-agent-authority="human"
             data-agent-human-id={`sub-agent-stop-${session.sessionId}`}
           >
-            <CircleStop className="h-3 w-3" />
+            <CircleStop className="size-3" />
           </Button>
         ) : null}
       </div>
@@ -625,9 +625,9 @@ function EditedPlanRestartSection({
           {...toggleAgentProps}
         >
           {open ? (
-            <ChevronUp className="h-3 w-3" />
+            <ChevronUp className="size-3" />
           ) : (
-            <ChevronDown className="h-3 w-3" />
+            <ChevronDown className="size-3" />
           )}
           {toggleLabel}
         </Button>
@@ -671,7 +671,7 @@ function EditedPlanRestartSection({
               data-agent-authority="human"
               data-agent-human-id="inspector-restart-edited-plan"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="size-3" />
               {restartLabel}
             </Button>
           </div>
@@ -699,7 +699,7 @@ function AcceptanceSection({
             key={`${criterion}-${index}`}
             className="flex items-start gap-1.5 text-xs-tight text-txt"
           >
-            <span className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent/60" />
+            <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full bg-accent/60" />
             <span>{criterion}</span>
           </li>
         ))}
@@ -1219,9 +1219,17 @@ export function TaskInspector({
   locale?: string;
 }) {
   const plan = normalizePlan(detail.currentPlan);
-  const sessions = [...detail.sessions].sort(
-    (a, b) => b.lastActivityAt - a.lastActivityAt,
-  );
+  const sessions = [...detail.sessions].sort((a, b) => {
+    const bTime =
+      typeof b.lastActivityAt === "number" && Number.isFinite(b.lastActivityAt)
+        ? b.lastActivityAt
+        : 0;
+    const aTime =
+      typeof a.lastActivityAt === "number" && Number.isFinite(a.lastActivityAt)
+        ? a.lastActivityAt
+        : 0;
+    return bTime - aTime || a.id.localeCompare(b.id);
+  });
   // The real git change set the latest sub-agent produced, mirrored onto its
   // session record's metadata at task_complete and served by the existing
   // task-detail route. Read-only review surface; absent for in-flight or
@@ -1282,7 +1290,7 @@ export function TaskInspector({
             data-testid="orchestrator-close-inspector"
             {...closeAgentProps}
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         </div>
       ) : null}
@@ -1292,7 +1300,7 @@ export function TaskInspector({
             <ControlButton
               agentId="inspector-approve"
               description="Approve the task validation"
-              icon={<Check className="h-3 w-3" />}
+              icon={<Check className="size-3" />}
               label={t("orchestrator.action.approve", {
                 defaultValue: "Approve",
               })}
@@ -1303,7 +1311,7 @@ export function TaskInspector({
             <ControlButton
               agentId="inspector-reject"
               description="Reject the task validation"
-              icon={<X className="h-3 w-3" />}
+              icon={<X className="size-3" />}
               label={t("orchestrator.action.reject", {
                 defaultValue: "Reject",
               })}
@@ -1318,7 +1326,7 @@ export function TaskInspector({
           <ControlButton
             agentId="inspector-reopen"
             description="Reopen this archived task"
-            icon={<RotateCcw className="h-3 w-3" />}
+            icon={<RotateCcw className="size-3" />}
             label={t("orchestrator.action.reopen", { defaultValue: "Reopen" })}
             onClick={onReopen}
             disabled={busy}
@@ -1328,7 +1336,7 @@ export function TaskInspector({
           <ControlButton
             agentId="inspector-resume"
             description="Resume this paused task"
-            icon={<Play className="h-3 w-3" />}
+            icon={<Play className="size-3" />}
             label={t("orchestrator.action.resume", { defaultValue: "Resume" })}
             onClick={onResume}
             disabled={busy}
@@ -1338,7 +1346,7 @@ export function TaskInspector({
           <ControlButton
             agentId="inspector-pause"
             description="Pause this task"
-            icon={<Pause className="h-3 w-3" />}
+            icon={<Pause className="size-3" />}
             label={t("orchestrator.action.pause", { defaultValue: "Pause" })}
             onClick={onPause}
             disabled={busy}
@@ -1349,7 +1357,7 @@ export function TaskInspector({
           <ControlButton
             agentId="inspector-archive"
             description="Archive this task"
-            icon={<Archive className="h-3 w-3" />}
+            icon={<Archive className="size-3" />}
             label={t("orchestrator.action.archive", {
               defaultValue: "Archive",
             })}
@@ -1362,7 +1370,7 @@ export function TaskInspector({
           <ControlButton
             agentId="inspector-fork"
             description="Fork this task into a new task"
-            icon={<GitFork className="h-3 w-3" />}
+            icon={<GitFork className="size-3" />}
             label={t("orchestrator.action.fork", { defaultValue: "Fork" })}
             onClick={onFork}
             disabled={busy}
@@ -1373,7 +1381,7 @@ export function TaskInspector({
           <ControlButton
             agentId="inspector-restart"
             description="Restart this task with a fresh worker"
-            icon={<RotateCcw className="h-3 w-3" />}
+            icon={<RotateCcw className="size-3" />}
             label={t("orchestrator.action.restart", {
               defaultValue: "Restart",
             })}
@@ -1386,7 +1394,7 @@ export function TaskInspector({
           <AgentLocalControlButton
             agentId="inspector-add-agent"
             description="Open the add-agent form for this task"
-            icon={<UserPlus className="h-3 w-3" />}
+            icon={<UserPlus className="size-3" />}
             label={t("orchestrator.action.addAgent", {
               defaultValue: "Add agent",
             })}
@@ -1398,7 +1406,7 @@ export function TaskInspector({
         <AgentLocalControlButton
           agentId="inspector-copy-link"
           description="Copy a deep link to this task"
-          icon={<Copy className="h-3 w-3" />}
+          icon={<Copy className="size-3" />}
           label={t("orchestrator.action.copyLink", {
             defaultValue: "Copy link",
           })}
@@ -1417,7 +1425,7 @@ export function TaskInspector({
           >
             <SelectTrigger
               aria-label={setPriorityLabel}
-              className="border-border/35 h-auto w-auto border-b bg-transparent px-1 py-1 text-2xs text-muted transition-colors hover:border-accent/60 hover:text-txt disabled:opacity-50"
+              className="border-border/35 h-auto w-auto border-b bg-transparent p-1 text-2xs text-muted transition-colors hover:border-accent/60 hover:text-txt disabled:opacity-50"
               data-testid="orchestrator-priority-select"
               data-agent-authority="human"
               data-agent-human-id="inspector-priority"
@@ -1441,7 +1449,7 @@ export function TaskInspector({
             <ControlButton
               agentId="inspector-delete"
               description="Delete this task"
-              icon={<Trash2 className="h-3 w-3" />}
+              icon={<Trash2 className="size-3" />}
               label={t("orchestrator.action.delete", {
                 defaultValue: "Delete",
               })}

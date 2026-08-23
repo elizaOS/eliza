@@ -6,6 +6,7 @@
  * or an appropriate error/auth event.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
@@ -1026,7 +1027,7 @@ export async function runPollingBackend(
           baseUrl: client.getBaseUrl(),
           status: ae?.status ?? null,
           path: ae?.path ?? null,
-          message: failureMessage.slice(0, 300),
+          message: truncateWellFormed(toWellFormedUnicode(failureMessage), 300),
           agentBootInProgress: isIosNativeAgentBootInProgress(),
         });
       }
@@ -1049,7 +1050,10 @@ export async function runPollingBackend(
         );
         appendIosBootTrace("agent-error-terminal", {
           baseUrl: client.getBaseUrl(),
-          message: terminalMessage.slice(0, 300),
+          message: truncateWellFormed(
+            toWellFormedUnicode(terminalMessage),
+            300,
+          ),
           path: ae?.path ?? null,
         });
         deps.setStartupError({

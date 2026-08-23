@@ -81,6 +81,83 @@ const SECONDARY_STYLE: CSSProperties = {
   lineHeight: 1.45,
 };
 
+// Static fragments of the per-day cell / header controls, hoisted so month
+// re-renders only allocate the selection-dependent fields.
+const DAY_CELL_BASE_STYLE: CSSProperties = {
+  boxSizing: "border-box",
+  minWidth: 0,
+  minHeight: "clamp(38px, 7vw, 62px)",
+  border: 0,
+  borderRadius: 11,
+  padding: "6px clamp(4px, .8vw, 8px)",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  gap: 5,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  textAlign: "start",
+  transition:
+    "background-color 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease",
+};
+
+const DAY_EVENT_BADGE_STYLE: CSSProperties = {
+  alignSelf: "flex-start",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 3,
+  color: "var(--muted-strong, rgba(255,255,255,.76))",
+  fontSize: 9,
+  fontVariantNumeric: "tabular-nums",
+  fontWeight: 700,
+  lineHeight: 1,
+};
+
+const YEAR_SELECT_STYLE: CSSProperties = {
+  minHeight: 36,
+  border: "1px solid var(--border, rgba(255,255,255,.14))",
+  borderRadius: 10,
+  padding: "0 28px 0 12px",
+  background: "var(--surface, #171717)",
+  color: "var(--txt, #f5f5f5)",
+  fontFamily: "inherit",
+  fontSize: 16,
+  fontWeight: 720,
+  cursor: "pointer",
+};
+
+const TODAY_BUTTON_STYLE: CSSProperties = {
+  gridColumn: "2",
+  justifySelf: "center",
+  border: 0,
+  borderRadius: 9999,
+  padding: "4px 10px",
+  background: "transparent",
+  color: "var(--muted-strong, rgba(255,255,255,.76))",
+  fontFamily: "inherit",
+  fontSize: 11,
+  fontWeight: 650,
+  cursor: "pointer",
+};
+
+const MONTH_PICKER_TRIGGER_STYLE: CSSProperties = {
+  minWidth: 0,
+  minHeight: 44,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  border: 0,
+  borderRadius: 13,
+  background: "transparent",
+  color: "var(--txt, #f5f5f5)",
+  fontFamily: "inherit",
+  fontSize: 17,
+  lineHeight: 1.25,
+  fontWeight: 760,
+  cursor: "pointer",
+};
+
 function localDateKey(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
@@ -205,12 +282,7 @@ function CalendarDay({
       aria-pressed={selected}
       aria-current={today ? "date" : undefined}
       style={{
-        boxSizing: "border-box",
-        minWidth: 0,
-        minHeight: "clamp(38px, 7vw, 62px)",
-        border: 0,
-        borderRadius: 11,
-        padding: "6px clamp(4px, .8vw, 8px)",
+        ...DAY_CELL_BASE_STYLE,
         background: selected
           ? "color-mix(in srgb, var(--accent, #ff6a1f) 22%, var(--surface, rgba(255,255,255,.08)))"
           : currentMonth
@@ -222,15 +294,6 @@ function CalendarDay({
         boxShadow: selected
           ? "inset 0 0 0 2px color-mix(in srgb, var(--accent, #ff6a1f) 82%, white), 0 8px 20px rgba(0,0,0,.18)"
           : "none",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        gap: 5,
-        cursor: "pointer",
-        fontFamily: "inherit",
-        textAlign: "start",
-        transition:
-          "background-color 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease",
       }}
     >
       <span
@@ -260,17 +323,7 @@ function CalendarDay({
         <span
           role="img"
           aria-label={`${dayEvents.length} ${dayEvents.length === 1 ? "event" : "events"} on ${formatSelectedDate(key)}`}
-          style={{
-            alignSelf: "flex-start",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 3,
-            color: "var(--muted-strong, rgba(255,255,255,.76))",
-            fontSize: 9,
-            fontVariantNumeric: "tabular-nums",
-            fontWeight: 700,
-            lineHeight: 1,
-          }}
+          style={DAY_EVENT_BADGE_STYLE}
         >
           <span
             aria-hidden
@@ -393,23 +446,7 @@ function MonthControls({
             {...monthPickerControl.agentProps}
             type="button"
             aria-label={`Choose month and year. Current month is ${month}`}
-            style={{
-              minWidth: 0,
-              minHeight: 44,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              border: 0,
-              borderRadius: 13,
-              background: "transparent",
-              color: "var(--txt, #f5f5f5)",
-              fontFamily: "inherit",
-              fontSize: 17,
-              lineHeight: 1.25,
-              fontWeight: 760,
-              cursor: "pointer",
-            }}
+            style={MONTH_PICKER_TRIGGER_STYLE}
           >
             <span>{month}</span>
             <ChevronDown size={15} aria-hidden />
@@ -440,18 +477,7 @@ function MonthControls({
               aria-label="Calendar year"
               value={pickerYear}
               onChange={(event) => setPickerYear(Number(event.target.value))}
-              style={{
-                minHeight: 36,
-                border: "1px solid var(--border, rgba(255,255,255,.14))",
-                borderRadius: 10,
-                padding: "0 28px 0 12px",
-                background: "var(--surface, #171717)",
-                color: "var(--txt, #f5f5f5)",
-                fontFamily: "inherit",
-                fontSize: 14,
-                fontWeight: 720,
-                cursor: "pointer",
-              }}
+              style={YEAR_SELECT_STYLE}
             >
               {yearOptions.map((year) => (
                 <option key={year} value={year}>
@@ -522,19 +548,7 @@ function MonthControls({
         {...todayControl.agentProps}
         type="button"
         onClick={onToday}
-        style={{
-          gridColumn: "2",
-          justifySelf: "center",
-          border: 0,
-          borderRadius: 9999,
-          padding: "4px 10px",
-          background: "transparent",
-          color: "var(--muted-strong, rgba(255,255,255,.76))",
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 650,
-          cursor: "pointer",
-        }}
+        style={TODAY_BUTTON_STYLE}
       >
         Today
       </button>

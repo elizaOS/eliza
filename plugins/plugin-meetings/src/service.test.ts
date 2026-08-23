@@ -24,6 +24,45 @@ import { readTranscriptRow } from "./transcripts/meeting-transcript-writer.js";
 
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
 
+/** Sortable-by-id session ids: LOW sorts before HIGH under localeCompare. */
+const LOW_SESSION_ID = "00000000-0000-4000-8000-000000000000";
+const HIGH_SESSION_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+/**
+ * Pin `Date.now()` and the next `crypto.randomUUID()` so `requestJoin` produces
+ * sessions with a chosen `requestedAt` and a chosen session id. `sessionId` is
+ * the first `randomUUID()` call inside `requestJoin`; every other call falls
+ * through to the real implementation.
+ */
+function stubClockAndSessionIds() {
+  let now = Date.now();
+  let nextSessionId: string | null = null;
+  const realUuid = globalThis.crypto.randomUUID.bind(globalThis.crypto);
+  const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+  const uuidSpy = vi
+    .spyOn(globalThis.crypto, "randomUUID")
+    .mockImplementation(() => {
+      if (nextSessionId !== null) {
+        const value = nextSessionId;
+        nextSessionId = null;
+        return value as ReturnType<typeof realUuid>;
+      }
+      return realUuid();
+    });
+  return {
+    setNow: (value: number) => {
+      now = value;
+    },
+    setNextSessionId: (value: string) => {
+      nextSessionId = value;
+    },
+    restore: () => {
+      uuidSpy.mockRestore();
+      nowSpy.mockRestore();
+    },
+  };
+}
+
 function makeService(
   adapters: ScriptedAdapter[] = [new ScriptedAdapter("google_meet")],
   billingSessions: FakeMeetingBillingSession[] = [],
@@ -997,5 +1036,67 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect(active).toHaveLength(1);
     expect(active[0].platform).toBe("zoom");
     expect(service.listSessions().map((s) => s.id)).toContain(first.id);
+  });
+
+  it("breaks requestedAt ties deterministically by session id", async () => {
+    const fixedNow = 1_700_000_000_000;
+    const { restore, setNow, setNextSessionId } = stubClockAndSessionIds();
+    try {
+      setNow(fixedNow);
+      const meet = new ScriptedAdapter("google_meet");
+      const zoom = new ScriptedAdapter("zoom");
+      const { service } = makeService([meet, zoom]);
+      setNextSessionId(HIGH_SESSION_ID);
+      const later = await service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+      });
+      setNextSessionId(LOW_SESSION_ID);
+      const earlier = await service.requestJoin({
+        platform: "zoom",
+        meetingUrl: "https://zoom.us/j/1234567890",
+      });
+      expect(later.id).toBe(HIGH_SESSION_ID);
+      expect(earlier.id).toBe(LOW_SESSION_ID);
+
+      const listed = service.listSessions();
+      // Both sessions really do tie, so only the id tiebreak can order them.
+      expect(listed.map((s) => s.requestedAt)).toEqual([fixedNow, fixedNow]);
+      expect(listed.map((s) => s.id)).toEqual([
+        LOW_SESSION_ID,
+        HIGH_SESSION_ID,
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("orders a session with a non-finite requestedAt last", async () => {
+    const { restore, setNow, setNextSessionId } = stubClockAndSessionIds();
+    try {
+      const meet = new ScriptedAdapter("google_meet");
+      const zoom = new ScriptedAdapter("zoom");
+      const { service } = makeService([meet, zoom]);
+      setNow(Number.NaN);
+      setNextSessionId(LOW_SESSION_ID);
+      const broken = await service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+      });
+      setNow(1_700_000_000_000);
+      setNextSessionId(HIGH_SESSION_ID);
+      const healthy = await service.requestJoin({
+        platform: "zoom",
+        meetingUrl: "https://zoom.us/j/1234567890",
+      });
+
+      const listed = service.listSessions();
+      expect(listed.find((s) => s.id === broken.id)?.requestedAt).toBeNaN();
+      // The NaN timestamp must not poison the comparator: the session with a
+      // real timestamp still sorts ahead of it.
+      expect(listed.map((s) => s.id)).toEqual([healthy.id, broken.id]);
+    } finally {
+      restore();
+    }
   });
 });

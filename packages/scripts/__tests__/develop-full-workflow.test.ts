@@ -80,7 +80,11 @@ describe("Develop Full workflow authority", () => {
     for (const name of delegatedJobs) {
       const job = workflow.jobs?.[name];
       expect(job?.uses).toMatch(/^\.\/\.github\/workflows\/.+\.yml$/);
-      expect(job?.secrets).toBe("inherit");
+      if (name === "platform-smoke") {
+        expect(job?.secrets).toBeUndefined();
+      } else {
+        expect(job?.secrets).toBe("inherit");
+      }
       expect(job?.permissions).toBeUndefined();
       expect(job?.needs).toBe("plan");
       expect(job?.if).toContain("needs.plan.outputs.run_");

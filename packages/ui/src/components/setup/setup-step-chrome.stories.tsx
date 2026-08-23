@@ -15,7 +15,7 @@ const meta = {
           padding: 24,
           background: "#111",
           // Provide the CSS var the divider references.
-          ["--first-run-divider" as string]: "rgba(240,185,11,0.6)",
+          ["--first-run-divider" as string]: "rgba(var(--accent-rgb), 0.6)",
         }}
       >
         <Story />

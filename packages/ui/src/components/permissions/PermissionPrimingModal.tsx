@@ -157,7 +157,7 @@ function PermissionPrimingModalView({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-accent" aria-hidden />
+            <ShieldCheck className="size-5 text-accent" aria-hidden />
             {headerTitle}
           </DialogTitle>
           <DialogDescription id="permission-priming-subtitle">
@@ -272,8 +272,8 @@ function PrimingCard({
   return (
     <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
       <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border bg-bg-accent text-accent">
-          <Icon className="h-5 w-5" aria-hidden />
+        <span className="flex  size-10 shrink-0 items-center justify-center rounded-sm border border-border bg-bg-accent text-accent">
+          <Icon className="size-5" aria-hidden />
         </span>
         <div className="min-w-0">
           <div className="text-base font-semibold text-txt-strong">{title}</div>

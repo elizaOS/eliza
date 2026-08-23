@@ -90,7 +90,7 @@ export function RotationStrategyPicker({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted">
+      <span className="text-2xs font-medium uppercase tracking-wider text-muted">
         {t("accounts.strategy.label", { defaultValue: "Strategy" })}
       </span>
       <Select
@@ -155,9 +155,9 @@ export function RotationStrategyPicker({
                       })}
                     </span>
                   </div>
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                  <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
                     <SelectPrimitive.ItemIndicator>
-                      <Check className="h-3 w-3" />
+                      <Check className="size-3" />
                     </SelectPrimitive.ItemIndicator>
                   </span>
                 </SelectPrimitive.Item>

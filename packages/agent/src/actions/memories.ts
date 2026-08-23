@@ -35,8 +35,8 @@ type MemoryType = (typeof MEMORY_TYPES)[number];
  * facts — so a typed miss widens only across those two. Chat transcripts
  * (messages) and ingested documents are NEVER pulled into scope by a typed
  * miss: deleting from those tables requires the caller to name them via an
- * explicit `type` parameter (the untyped path, which scans every table, is
- * likewise an explicit caller choice of full scope).
+ * explicit `type` parameter. An omitted type scans only these same two forget
+ * tables; it is never implicit authority over transcripts or documents.
  */
 const FORGET_WIDENING_TABLES: readonly MemoryType[] = ["memories", "facts"];
 
@@ -219,10 +219,11 @@ interface MemoryCandidate {
 }
 
 /**
- * A candidate set plus the shape of the window it was read from. The read is
- * always windowed — `perTable` most-recent rows per memory table — and the
+ * A candidate set plus the shape of the read it came from. Search reads are
+ * windowed — `perTable` most-recent rows per memory table — and their
  * query/entity filters run in memory over that window, so the surviving count
- * is a count of matches INSIDE the window and never a total.
+ * is never presented as a total. Destructive resolution instead cursor-scans
+ * the complete scoped tables before it decides what to delete.
  *
  * Saturation is MEASURED by reading one row past the window: a table holding
  * exactly `perTable` rows fills it without hiding anything, and is

@@ -22,15 +22,15 @@ import type { ReactNode } from "react";
  * renders the same iconography (#10697).
  */
 export const CATEGORY_ICON: Record<NotificationCategory, ReactNode> = {
-  reminder: <Clock className="h-4 w-4" />,
-  task: <Check className="h-4 w-4" />,
-  workflow: <Workflow className="h-4 w-4" />,
-  agent: <Bot className="h-4 w-4" />,
-  approval: <FileWarning className="h-4 w-4" />,
-  message: <MessageSquare className="h-4 w-4" />,
-  health: <HeartPulse className="h-4 w-4" />,
-  system: <Settings2 className="h-4 w-4" />,
-  general: <CircleAlert className="h-4 w-4" />,
+  reminder: <Clock className="size-4" />,
+  task: <Check className="size-4" />,
+  workflow: <Workflow className="size-4" />,
+  agent: <Bot className="size-4" />,
+  approval: <FileWarning className="size-4" />,
+  message: <MessageSquare className="size-4" />,
+  health: <HeartPulse className="size-4" />,
+  system: <Settings2 className="size-4" />,
+  general: <CircleAlert className="size-4" />,
 };
 
 /** Resolve a category to its icon, falling back to the `general` icon. */

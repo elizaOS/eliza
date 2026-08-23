@@ -409,4 +409,29 @@ describe("BUILTIN_VIEWS", () => {
       platforms: ["web", "desktop", "ios", "android"],
     });
   });
+
+  it("keeps every manager-visible view directly navigable", () => {
+    const managerViews = BUILTIN_VIEWS.filter(
+      (view) => view.visibleInManager === true,
+    );
+
+    expect(managerViews.length).toBeGreaterThan(0);
+    for (const view of managerViews) {
+      expect(view.path, view.id).toMatch(/^\//);
+    }
+  });
+
+  it("uses unique non-empty identifiers within capabilities and scoped actions", () => {
+    for (const view of BUILTIN_VIEWS) {
+      const capabilityIds = (view.capabilities ?? []).map(
+        (capability) => capability.id,
+      );
+      const actionNames = (view.scopedActions ?? []).map((action) => action.name);
+
+      expect(capabilityIds.every((id) => id.length > 0), view.id).toBe(true);
+      expect(new Set(capabilityIds).size, view.id).toBe(capabilityIds.length);
+      expect(actionNames.every((name) => name.length > 0), view.id).toBe(true);
+      expect(new Set(actionNames).size, view.id).toBe(actionNames.length);
+    }
+  });
 });

@@ -579,5 +579,32 @@ describe("InboxUnsubscribeService", () => {
         /Brand <news@brand.com>: 3 msgs, http_one_click/,
       );
     });
+
+    it("sorts unsubscribe sender candidates safely when messageCount contains NaN", () => {
+      const senders = [
+        { senderEmail: "b@brand.com", messageCount: NaN },
+        { senderEmail: "a@brand.com", messageCount: 5 },
+      ];
+
+      senders.sort((left, right) => {
+        const rightCount =
+          typeof right.messageCount === "number" &&
+          Number.isFinite(right.messageCount)
+            ? right.messageCount
+            : 0;
+        const leftCount =
+          typeof left.messageCount === "number" &&
+          Number.isFinite(left.messageCount)
+            ? left.messageCount
+            : 0;
+        return (
+          rightCount - leftCount ||
+          left.senderEmail.localeCompare(right.senderEmail)
+        );
+      });
+
+      expect(senders[0]?.senderEmail).toBe("a@brand.com");
+      expect(senders[1]?.senderEmail).toBe("b@brand.com");
+    });
   });
 });

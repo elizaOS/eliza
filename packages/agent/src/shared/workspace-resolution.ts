@@ -38,6 +38,26 @@ function hasExplicitStateDirOverride(env: NodeJS.ProcessEnv): boolean {
   return EXPLICIT_STATE_DIR_KEYS.some((key) => Boolean(env[key]?.trim()));
 }
 
+// Filesystem read failures on the legacy workspace-folder.json that the
+// documented fallback boundary treats as ignorable unreadable state. ENOENT
+// never reaches this list: the config module already degrades an absent file
+// to null (error-policy:J4), so these are the rethrown non-missing cases.
+const RECOVERABLE_LEGACY_STATE_ERRNO_CODES = new Set([
+  "EISDIR",
+  "EACCES",
+  "EPERM",
+  "ENOTDIR",
+]);
+
+function isUnreadableLegacyStateError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    RECOVERABLE_LEGACY_STATE_ERRNO_CODES.has(
+      (error as NodeJS.ErrnoException).code ?? "",
+    )
+  );
+}
+
 function isLikelyPackagedRuntimeDir(dir: string): boolean {
   if (typeof dir !== "string") return false;
   const normalized = dir.replace(/\\/g, "/").toLowerCase();
@@ -86,7 +106,17 @@ export function resolveDefaultAgentWorkspaceDir(
   // absent the registry synthesizes an active project from the legacy
   // workspace-folder.json (see readProjectRegistry), so this step subsumes the
   // legacy read below without changing behavior for a lone picked folder.
-  const activeProject = getActiveProject(env);
+  // The synthesized read propagates the config module's deliberate non-ENOENT
+  // rethrows (EISDIR/EACCES when workspace-folder.json is a directory or
+  // unreadable), and unreadable legacy state is documented as ignorable in
+  // favor of the state-directory workspace — recover exactly those filesystem
+  // read failures (#25884) and keep every other failure strict (#25769).
+  let activeProject: ReturnType<typeof getActiveProject> = null;
+  try {
+    activeProject = getActiveProject(env);
+  } catch (error) {
+    if (!isUnreadableLegacyStateError(error)) throw error;
+  }
   if (activeProject?.localPath?.trim()) {
     return resolveUserPath(activeProject.localPath);
   }

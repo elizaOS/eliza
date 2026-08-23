@@ -581,7 +581,7 @@ export function AppsManagementSection() {
                   {isCreating ? (
                     <span className="inline-flex items-center gap-1">
                       <Loader2
-                        className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                        className="size-3.5 animate-spin motion-reduce:animate-none"
                         aria-hidden
                       />
                       <span>
@@ -656,7 +656,7 @@ export function AppsManagementSection() {
                   {isLoading ? (
                     <span className="inline-flex items-center gap-1">
                       <Loader2
-                        className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                        className="size-3.5 animate-spin motion-reduce:animate-none"
                         aria-hidden
                       />
                       <span>
@@ -698,7 +698,7 @@ export function AppsManagementSection() {
             aria-live="polite"
           >
             <Loader2
-              className="h-4 w-4 animate-spin motion-reduce:animate-none"
+              className="size-4 animate-spin motion-reduce:animate-none"
               aria-hidden
             />
             <span>
@@ -811,7 +811,7 @@ export function AppsManagementSection() {
                             disabled={busy}
                             onClick={() => void handleLaunch(app)}
                           >
-                            <Play className="h-3.5 w-3.5" aria-hidden />
+                            <Play className="size-3.5" aria-hidden />
                           </AppRowActionButton>
                           <AppRowActionButton
                             agentId={`apps-relaunch-${app.name}`}
@@ -820,7 +820,7 @@ export function AppsManagementSection() {
                             disabled={busy}
                             onClick={() => void handleRelaunch(app)}
                           >
-                            <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                            <RotateCw className="size-3.5" aria-hidden />
                           </AppRowActionButton>
                           <AppRowActionButton
                             agentId={`apps-edit-${app.name}`}
@@ -842,7 +842,7 @@ export function AppsManagementSection() {
                               disabled={busy}
                               onClick={() => void handleStop(app)}
                             >
-                              <Square className="h-3.5 w-3.5" aria-hidden />
+                              <Square className="size-3.5" aria-hidden />
                             </AppRowActionButton>
                           ) : null}
                         </div>

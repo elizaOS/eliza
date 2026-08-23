@@ -54,7 +54,17 @@ function mergeById<T extends { id: string; timestamp: number }>(
   const byId = new Map<string, T>();
   for (const item of previous) byId.set(item.id, item);
   for (const item of incoming) byId.set(item.id, item);
-  return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
+  return [...byId.values()].sort((a, b) => {
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    return aTime - bTime || a.id.localeCompare(b.id);
+  });
 }
 
 function splitTimelineItems(items: CodingAgentTaskTimelineItem[]): {

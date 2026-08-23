@@ -85,7 +85,7 @@ export function CredentialsList({
   if (credentials.length === 0) {
     return (
       <div className="bg-surface border border-brand-surface p-8 text-center">
-        <KeyRound className="h-12 w-12 mx-auto text-muted mb-4" />
+        <KeyRound className="size-12 mx-auto text-muted mb-4" />
         <p className="text-sm font-mono text-muted">
           {t("cloud.credentialsList.empty", {
             defaultValue:
@@ -127,7 +127,7 @@ export function CredentialsList({
               <div className="flex-1 min-w-0 w-full space-y-2">
                 {/* Label + provider badge */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <KeyRound className="h-4 w-4 text-muted flex-shrink-0" />
+                  <KeyRound className="size-4 text-muted shrink-0" />
                   <span className="font-mono font-semibold text-sm md:text-base text-txt-strong truncate">
                     {credential.label}
                   </span>
@@ -145,7 +145,7 @@ export function CredentialsList({
                     <span
                       data-testid={`health-dot-${credential.id}`}
                       data-health={credential.health}
-                      className={`inline-block w-2 h-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-muted"}`}
+                      className={`inline-block size-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-muted"}`}
                     />
                     <span className="capitalize">
                       {healthLabel(credential)}
@@ -170,7 +170,7 @@ export function CredentialsList({
                     <>
                       <span className="hidden sm:inline">•</span>
                       <span className="flex items-center gap-1">
-                        <User className="h-3 w-3" />
+                        <User className="size-3" />
                         {credential.contributedBy.name ||
                           t("cloud.credentialsList.unknownContributor", {
                             defaultValue: "Unknown",
@@ -223,10 +223,10 @@ export function CredentialsList({
                         })}
                         className="p-2 hover:bg-surface transition-colors border border-border"
                       >
-                        <Trash2 className="h-4 w-4 text-danger" />
+                        <Trash2 className="size-4 text-danger" />
                       </Button>
                     </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-popover border border-brand-surface">
+                    <AlertDialogContent className="bg-bg border border-brand-surface">
                       <AlertDialogHeader>
                         <AlertDialogTitle className="text-txt-strong font-mono">
                           {t("cloud.credentialsList.removeTitle", {

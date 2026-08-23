@@ -23,6 +23,7 @@ import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
+import { waitForWorkerHealth } from "./_helpers/worker-health";
 import { ensureFixtureSandbox } from "./fixture-sandbox";
 
 for (const envPath of [
@@ -202,12 +203,17 @@ if (process.env.REQUIRE_E2E_SERVER !== "0") {
     process.env.TEST_API_BASE_URL?.trim() ||
     process.env.TEST_BASE_URL?.trim() ||
     "http://localhost:8787";
-  const response = await fetch(`${baseUrl}/api/health`, {
-    signal: AbortSignal.timeout(10_000),
+  const serverPid = Number(process.env.CLOUD_E2E_SERVER_PID);
+  const result = await waitForWorkerHealth({
+    baseUrl,
+    expectedReceipt: process.env.CLOUD_E2E_RUN_RECEIPT?.trim() || undefined,
+    serverPid:
+      Number.isInteger(serverPid) && serverPid > 0 ? serverPid : undefined,
   });
-  if (!response.ok) {
-    throw new Error(
-      `Worker e2e target is not healthy: GET ${baseUrl}/api/health -> ${response.status}`,
+  if (result.attempts.length > 1) {
+    console.warn(
+      `[api-e2e] Worker health recovered after ${result.attempts.length} attempts; ` +
+        "the accepted response matched the current run receipt",
     );
   }
 }

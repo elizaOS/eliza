@@ -114,7 +114,7 @@ export function DashboardSidebarNavigationSection({
         </h3>
         <ChevronDown
           className={cn(
-            "h-3.5 w-3.5 text-white/54 transition-transform duration-200",
+            "size-3.5 text-white/54 transition-transform duration-200",
             isOpen && "rotate-180",
           )}
         />

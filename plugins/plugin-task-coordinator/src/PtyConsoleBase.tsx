@@ -149,7 +149,7 @@ export function PtyConsoleBase({
       data-testid="pty-console-base"
     >
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3">
-        <Terminal className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+        <Terminal className="size-4 shrink-0 text-muted" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-semibold text-txt">
             {activeSession?.label ?? "Terminal"}
@@ -167,7 +167,7 @@ export function PtyConsoleBase({
           aria-label="Interrupt terminal"
           {...interruptAgentProps}
         >
-          <Square className="h-4 w-4" aria-hidden />
+          <Square className="size-4" aria-hidden />
         </Button>
         <Button
           ref={stopRef}
@@ -178,7 +178,7 @@ export function PtyConsoleBase({
           aria-label="Stop terminal session"
           {...stopAgentProps}
         >
-          <Square className="h-4 w-4 fill-current" aria-hidden />
+          <Square className="size-4 fill-current" aria-hidden />
         </Button>
         {onClose ? <PtyCloseButton onClose={onClose} /> : null}
       </header>
@@ -211,7 +211,7 @@ export function PtyConsoleBase({
           aria-label="Send terminal input"
           {...sendAgentProps}
         >
-          <Send className="h-4 w-4" aria-hidden />
+          <Send className="size-4" aria-hidden />
         </Button>
       </footer>
     </section>
@@ -237,7 +237,7 @@ function PtyCloseButton({ onClose }: { onClose: () => void }) {
       aria-label="Close terminal"
       {...agentProps}
     >
-      <X className="h-4 w-4" aria-hidden />
+      <X className="size-4" aria-hidden />
     </Button>
   );
 }

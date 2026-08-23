@@ -1,7 +1,8 @@
 /** Exercises Smithers workflow normalization through the public persistence service contract. */
 import { describe, expect, test } from 'bun:test';
 import { validateSmithersSource } from '../../src/services/smithers-runtime';
-import type { WorkflowDefinition } from '../../src/types/index';
+import { compareWorkflowSearchCandidates } from '../../src/services/workflow-service.js';
+import type { WorkflowDefinition, WorkflowDefinitionResponse } from '../../src/types/index';
 
 function workflow(): WorkflowDefinition {
   return {
@@ -33,5 +34,17 @@ describe('workflow contract', () => {
     expect(definition.widgets?.[0]?.surface).toBe('both');
     expect('nodes' in definition).toBe(false);
     expect('connections' in definition).toBe(false);
+  });
+
+  test('orders search candidates by score and breaks ties on workflow id', () => {
+    const candidate = (id: string, score: number) => ({
+      workflow: { id } as unknown as WorkflowDefinitionResponse,
+      score,
+    });
+    const candidates = [candidate('z-wf', 5), candidate('a-wf', 5), candidate('m-wf', 9)];
+
+    candidates.sort(compareWorkflowSearchCandidates);
+
+    expect(candidates.map(({ workflow }) => workflow.id)).toEqual(['m-wf', 'a-wf', 'z-wf']);
   });
 });

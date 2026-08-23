@@ -22,7 +22,14 @@ function provider(overrides: Partial<Provider> & { name: string }): Provider {
 }
 
 function makeRuntime(providers: Provider[]): IAgentRuntime {
-	return { providers } as unknown as IAgentRuntime;
+	// `getSetting` is a required IAgentRuntime collaborator: ambient-turn
+	// selection reads the response-bypass channel/source settings before it can
+	// decide whether a turn is ambient. The fixture answers "nothing configured"
+	// so selection exercises the built-in bypass set only.
+	return {
+		providers,
+		getSetting: () => undefined,
+	} as unknown as IAgentRuntime;
 }
 
 function msg(): Memory {

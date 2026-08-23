@@ -166,7 +166,7 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
       try {
         const body = await response.text();
         errorBodyPreview = truncateWellFormed(toWellFormedUnicode(body), 200);
-      } catch (error) {
+      } catch (_error) {
         // error-policy:J1 translate body-read failure explicitly without fabricating an empty body.
         errorBodyPreview = "[unreadable]";
       }

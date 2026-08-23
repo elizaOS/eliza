@@ -37,7 +37,11 @@ export const filesListRoute: Route = {
       return { status: 503, body: { error: "file storage unavailable" } };
     }
     const files = await storage.list();
-    files.sort((a, b) => b.createdAt - a.createdAt);
+    files.sort((a, b) => {
+      const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+      const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+      return bTime - aTime;
+    });
     const body = selectFilesForViewer(
       files,
       ctx.accessContext,

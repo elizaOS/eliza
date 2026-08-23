@@ -981,9 +981,31 @@ function recommendedChatModel(): CatalogModel | null {
 	const totalRamGb = os.totalmem() / 1024 ** 3;
 	const candidates = chatModels()
 		.filter((model) => totalRamGb >= model.minRamGb)
-		.sort((left, right) => right.sizeGb - left.sizeGb);
+		.sort((left, right) => {
+			const rightSize =
+				typeof right.sizeGb === "number" && Number.isFinite(right.sizeGb)
+					? right.sizeGb
+					: 0;
+			const leftSize =
+				typeof left.sizeGb === "number" && Number.isFinite(left.sizeGb)
+					? left.sizeGb
+					: 0;
+			return rightSize - leftSize || left.id.localeCompare(right.id);
+		});
 	return (
-		candidates[0] ?? chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0] ?? null
+		candidates[0] ??
+		chatModels().sort((a, b) => {
+			const aSize =
+				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
+					? a.sizeGb
+					: 0;
+			const bSize =
+				typeof b.sizeGb === "number" && Number.isFinite(b.sizeGb)
+					? b.sizeGb
+					: 0;
+			return aSize - bSize || a.id.localeCompare(b.id);
+		})[0] ??
+		null
 	);
 }
 
@@ -1145,7 +1167,17 @@ async function resolveDefaultChatModel(
 			CATALOG.find((model) => model.id === entry.id && model.role === "chat"),
 		)
 		.filter((model): model is CatalogModel => Boolean(model))
-		.sort((a, b) => a.sizeGb - b.sizeGb)[0];
+		.sort((a, b) => {
+			const aSize =
+				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
+					? a.sizeGb
+					: 0;
+			const bSize =
+				typeof b.sizeGb === "number" && Number.isFinite(b.sizeGb)
+					? b.sizeGb
+					: 0;
+			return aSize - bSize || a.id.localeCompare(b.id);
+		})[0];
 	return installedCatalog ?? recommendedChatModel();
 }
 

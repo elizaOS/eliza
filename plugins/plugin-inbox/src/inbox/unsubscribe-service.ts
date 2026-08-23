@@ -328,7 +328,22 @@ export class InboxUnsubscribeService {
       }
     }
     const senderList = [...senders.values()]
-      .sort((left, right) => right.messageCount - left.messageCount)
+      .sort((left, right) => {
+        const rightCount =
+          typeof right.messageCount === "number" &&
+          Number.isFinite(right.messageCount)
+            ? right.messageCount
+            : 0;
+        const leftCount =
+          typeof left.messageCount === "number" &&
+          Number.isFinite(left.messageCount)
+            ? left.messageCount
+            : 0;
+        return (
+          rightCount - leftCount ||
+          left.senderEmail.localeCompare(right.senderEmail)
+        );
+      })
       .slice(0, MAX_SENDERS_RETURNED);
     return {
       syncedAt: search.syncedAt ?? new Date().toISOString(),

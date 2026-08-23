@@ -232,6 +232,35 @@ describe("hasContextSignalSyncForKey", () => {
       }),
     ).toBe(false);
   });
+
+  it.each([
+    ["values.language", { values: { language: "zh-CN" } }],
+    ["top-level preferredLanguage", { preferredLanguage: "zh-CN" }],
+    ["config.ui.language", { config: { ui: { language: "zh-CN" } } }],
+  ])("resolves the locale from state %s", (_source, stateShape) => {
+    expect(
+      hasContextSignalSyncForKey(
+        messageWith("邮件"),
+        stateShape as unknown as State,
+        "gmail",
+        { includeAllLocales: false },
+      ),
+    ).toBe(true);
+  });
+
+  it("uses the first non-blank state locale candidate", () => {
+    const state = {
+      values: { preferredLanguage: "   ", language: "zh-CN" },
+      preferredLanguage: "en",
+      config: { ui: { language: "en" } },
+    } as unknown as State;
+
+    expect(
+      hasContextSignalSyncForKey(messageWith("邮件"), state, "gmail", {
+        includeAllLocales: false,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("hasSelectedActionContext", () => {

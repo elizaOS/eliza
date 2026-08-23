@@ -11,24 +11,32 @@ function isWellFormed(value: string): boolean {
   return toWellFormedUnicode(value) === value;
 }
 
+function requireNormalizedOwnerName(value: string): string {
+  const normalized = normalizeOwnerName(value);
+  if (normalized === null) {
+    throw new Error("expected a non-empty owner name");
+  }
+  return normalized;
+}
+
 describe("owner-name surrogate safety", () => {
   test("preserves a long name and its surrogate pair", () => {
     const fox = "🦊";
     const name = `${"a".repeat(59)}${fox}${"b".repeat(20)}`;
-    const out = normalizeOwnerName(name)!;
+    const out = requireNormalizedOwnerName(name);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe(name);
     expect(() => JSON.stringify(out)).not.toThrow();
   });
   test("short name passthrough", () => {
-    const out = normalizeOwnerName("Bob 🦊")!;
+    const out = requireNormalizedOwnerName("Bob 🦊");
     expect(out).toBe("Bob 🦊");
     expect(isWellFormed(out)).toBe(true);
   });
   test("emoji and suffix beyond the former cap remain", () => {
     const fox = "🦊";
     const name = `${"a".repeat(58)}${fox}${"b".repeat(100)}`;
-    const out = normalizeOwnerName(name)!;
+    const out = requireNormalizedOwnerName(name);
     expect(out).toBe(name);
     expect(isWellFormed(out)).toBe(true);
   });
@@ -38,7 +46,7 @@ describe("owner-name surrogate safety", () => {
   });
   test("lone surrogate sanitized", () => {
     const lone = `owner ${String.fromCharCode(0xd800)} ${"x".repeat(100)}`;
-    const out = normalizeOwnerName(lone)!;
+    const out = requireNormalizedOwnerName(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);
   });
@@ -46,7 +54,7 @@ describe("owner-name surrogate safety", () => {
     const fox = "🦊";
     for (let n = 55; n <= 65; n++) {
       const name = `${"a".repeat(n)}${fox}${"b".repeat(10)}`;
-      const out = normalizeOwnerName(name)!;
+      const out = requireNormalizedOwnerName(name);
       expect(isWellFormed(out)).toBe(true);
       expect(() => JSON.stringify(out)).not.toThrow();
     }

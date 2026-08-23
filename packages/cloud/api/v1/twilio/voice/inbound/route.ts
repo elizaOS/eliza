@@ -29,7 +29,6 @@ import {
 import {
   buildRealtimeVoiceTwiML,
   buildTerminalVoiceTwiML,
-  ELIZA_AI_CALL_DISCLOSURE,
 } from "../lib/twilio-voice-twiml";
 import {
   claimInboundCallOpeningContext,
@@ -393,7 +392,6 @@ app.post("/", async (c) => {
       streamUrl: publicUrl.toString(),
       sessionId: minted.claims.sessionId,
       token: minted.token,
-      disclosure: ELIZA_AI_CALL_DISCLOSURE,
     }),
     {
       headers: { "Content-Type": "text/xml" },

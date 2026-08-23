@@ -249,6 +249,63 @@ describe("accounts routes", () => {
     });
   });
 
+  it("sorts linked accounts safely when priority contains NaN", async () => {
+    // Listed with the finite-priority account first so a naive
+    // `a.priority - b.priority` comparator (which yields NaN and is treated as
+    // 0 by Array#sort) would leave the input order untouched.
+    fakes.poolAccounts = [
+      {
+        ...linkedAccount,
+        id: "account-finite",
+        priority: 1,
+      },
+      {
+        ...linkedAccount,
+        id: "account-nan",
+        priority: NaN,
+      },
+    ];
+    fakes.accounts = [{ id: "account-finite" }, { id: "account-nan" }];
+    const request = makeContext("GET", "/api/accounts");
+    await handleAccountsRoutes(request.ctx);
+    const response = request.jsonCalls[0]?.body as {
+      providers: Array<{
+        providerId: string;
+        accounts: Array<{ id: string }>;
+      }>;
+    };
+    const openAi = response.providers.find(
+      (p) => p.providerId === "openai-api",
+    );
+    expect(openAi?.accounts.map((account) => account.id)).toEqual([
+      "account-nan",
+      "account-finite",
+    ]);
+  });
+
+  it("breaks equal-priority ties by account id", async () => {
+    fakes.poolAccounts = [
+      { ...linkedAccount, id: "account-b", priority: 2 },
+      { ...linkedAccount, id: "account-a", priority: 2 },
+    ];
+    fakes.accounts = [{ id: "account-b" }, { id: "account-a" }];
+    const request = makeContext("GET", "/api/accounts");
+    await handleAccountsRoutes(request.ctx);
+    const response = request.jsonCalls[0]?.body as {
+      providers: Array<{
+        providerId: string;
+        accounts: Array<{ id: string }>;
+      }>;
+    };
+    const openAi = response.providers.find(
+      (p) => p.providerId === "openai-api",
+    );
+    expect(openAi?.accounts.map((account) => account.id)).toEqual([
+      "account-a",
+      "account-b",
+    ]);
+  });
+
   it("lists pool metadata with credentials and runtime capabilities", async () => {
     fakes.poolAccounts = [linkedAccount];
     fakes.accounts = [{ id: "account-1" }];

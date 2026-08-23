@@ -90,10 +90,7 @@ import {
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import {
-  sharedPublicWebGrounding,
-  sharedRuntimeModelHistoryMessages,
-} from "./shared-runtime-history-policy";
+import { sharedRuntimeModelHistoryMessages } from "./shared-runtime-history-policy";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
@@ -1722,13 +1719,31 @@ export class SharedRuntimeChatService {
           options.historyStore,
         );
         if (streamMemoryStore && !isProviderFreeTurn(turn)) {
-          await streamMemoryStore.recordTurnPair({
-            userMessage: text.trim(),
-            assistantReply: reply,
-            messageIds,
-            messageRole,
-            interrupted,
-            channel: options.channel,
+          // The long-term-memory mirror is secondary to the durability boundary
+          // above (merged history) and the claim completion below: a stalled
+          // Hyperdrive or embeddings-sidecar write must not hold the terminal
+          // done frame open (#25689). settleOffResponsePath defers it under
+          // waitUntil and runs it inline only without an executionCtx.
+          await settleOffResponsePath(options.executionCtx, async () => {
+            try {
+              await streamMemoryStore.recordTurnPair({
+                userMessage: text.trim(),
+                assistantReply: reply,
+                messageIds,
+                messageRole,
+                interrupted,
+                channel: options.channel,
+              });
+            } catch (error) {
+              // error-policy:J4 the mirror is an enhancement on the landed turn;
+              // report the storage fault instead of failing a reply whose
+              // history and claim already committed.
+              logger.warn("[SharedRuntimeChat] long-term-memory mirror failed", {
+                agentId: agent.id,
+                roomId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
           });
         }
         if (!interrupted && messageRole === "user" && reply.trim()) {
@@ -1874,7 +1889,7 @@ export class SharedRuntimeChatService {
                   );
                 }
               },
-              sharedPublicWebGrounding(actionResults),
+              turn.internalGrounding,
             );
             const done = actionResults
               ? {

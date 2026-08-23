@@ -12,6 +12,10 @@ Single private workspace package (`@elizaos/cloud-shared`) consumed by the rest 
 
 Consumers use subpath exports for billing, database, service-library, and type
 surfaces; keep those boundaries explicit rather than importing internal files.
+Legacy browser-safe contract paths re-export their canonical implementations
+from public `@elizaos/cloud-sdk` subpaths. New browser consumers must import the
+SDK directly; do not add another runtime edge from a public package to this
+private package.
 
 ## Layout
 

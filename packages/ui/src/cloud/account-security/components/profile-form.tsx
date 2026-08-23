@@ -203,10 +203,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 {isUpdatingEmail ? (
                   <>
                     <Loader2
-                      className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                      className="size-4 animate-spin motion-reduce:animate-none"
                       aria-hidden
                     />
-                    Adding email...
+                    Adding email…
                   </>
                 ) : (
                   "Add email address"
@@ -297,10 +297,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
               {isPending ? (
                 <>
                   <Loader2
-                    className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                    className="size-4 animate-spin motion-reduce:animate-none"
                     aria-hidden
                   />
-                  Saving...
+                  Saving…
                 </>
               ) : (
                 "Save changes"

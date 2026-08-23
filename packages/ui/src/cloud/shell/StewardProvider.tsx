@@ -117,7 +117,7 @@ function StewardRuntimeLoading() {
         color: "rgba(255,255,255,0.55)",
         display: "flex",
         justifyContent: "center",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         padding: "24px",
       }}
     >
@@ -166,7 +166,7 @@ function StewardConfigError() {
         background: "#f8f4ef",
         color: "#2f261f",
         display: "flex",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         padding: "24px",
       }}
     >

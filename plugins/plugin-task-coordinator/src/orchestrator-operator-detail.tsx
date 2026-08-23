@@ -60,7 +60,7 @@ function OperatorTabButton({
       role="tab"
       aria-selected={active === tab.id}
       onClick={() => onSelect(tab.id)}
-      className={`flex-1 px-1 py-1 text-xs font-medium transition-colors ${
+      className={`flex-1 p-1 text-xs font-medium transition-colors ${
         active === tab.id ? "text-accent" : "text-muted hover:text-txt"
       }`}
       {...agentProps}
@@ -367,7 +367,7 @@ function OperatorDrawerShell({
           data-testid="orchestrator-close-operator-detail"
           {...closeAgentProps}
         >
-          <X className="h-4 w-4" />
+          <X className="size-4" />
         </Button>
       </div>
       {children}
@@ -408,7 +408,17 @@ function EventList({
       timestamp: event.timestamp,
       record: event,
     })),
-  ].sort((a, b) => a.timestamp - b.timestamp);
+  ].sort((a, b) => {
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    return aTime - bTime || a.id.localeCompare(b.id);
+  });
   return (
     <div className="space-y-1.5">
       {timeline.map((item) => {
@@ -579,7 +589,7 @@ export function OperatorDetailDrawer({
         key="retry-session"
         agentId="operator-retry-session"
         description="Retry this session's work in a new worker"
-        icon={<RotateCcw className="h-3 w-3" />}
+        icon={<RotateCcw className="size-3" />}
         label={retryLabel}
         onClick={() =>
           onRetry({
@@ -598,7 +608,7 @@ export function OperatorDetailDrawer({
         key="retry-message"
         agentId="operator-retry-message"
         description="Retry this selected turn in a new worker"
-        icon={<RotateCcw className="h-3 w-3" />}
+        icon={<RotateCcw className="size-3" />}
         label={retryLabel}
         onClick={() =>
           onRetry({
@@ -619,7 +629,7 @@ export function OperatorDetailDrawer({
         key="rerun-event"
         agentId="operator-rerun-event"
         description="Rerun from this selected event without rewriting history"
-        icon={<ChevronsUp className="h-3 w-3" />}
+        icon={<ChevronsUp className="size-3" />}
         label={rerunLabel}
         onClick={() =>
           onRerun({

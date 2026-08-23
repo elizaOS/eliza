@@ -262,15 +262,20 @@ function windowsFromSignals(
   return windows;
 }
 
-function mergeActivityWindows(
+export function mergeActivityWindows(
   windows: LifeOpsActivityWindow[],
 ): LifeOpsActivityWindow[] {
   if (windows.length === 0) {
     return [];
   }
-  const sorted = [...windows].sort(
-    (left, right) => left.startMs - right.startMs,
-  );
+  const sorted = [...windows].sort((left, right) => {
+    const leftStart = Number.isFinite(left.startMs) ? left.startMs : 0;
+    const rightStart = Number.isFinite(right.startMs) ? right.startMs : 0;
+    if (leftStart !== rightStart) return leftStart - rightStart;
+    const leftEnd = Number.isFinite(left.endMs) ? left.endMs : 0;
+    const rightEnd = Number.isFinite(right.endMs) ? right.endMs : 0;
+    return leftEnd - rightEnd;
+  });
   const merged: LifeOpsActivityWindow[] = [];
   for (const window of sorted) {
     const previous = merged[merged.length - 1];
@@ -290,7 +295,7 @@ function mergeActivityWindows(
   return merged;
 }
 
-function inferMealCandidates(args: {
+export function inferMealCandidates(args: {
   windows: LifeOpsActivityWindow[];
   wakeAtMs: number | null;
   timezone: string;
@@ -360,7 +365,12 @@ function inferMealCandidates(args: {
         label,
         score: roundConfidence(score),
       }))
-      .sort((left, right) => right.score - left.score)[0];
+      .sort((left, right) => {
+        const leftScore = Number.isFinite(left.score) ? left.score : 0;
+        const rightScore = Number.isFinite(right.score) ? right.score : 0;
+        if (leftScore !== rightScore) return rightScore - leftScore;
+        return left.label.localeCompare(right.label);
+      })[0];
     if (!winner || winner.score < 0.45) {
       continue;
     }
@@ -376,7 +386,16 @@ function inferMealCandidates(args: {
   }
 
   return [...bestByLabel.values()]
-    .sort((left, right) => left.detectedAtMs - right.detectedAtMs)
+    .sort((left, right) => {
+      const leftDetected = Number.isFinite(left.detectedAtMs)
+        ? left.detectedAtMs
+        : 0;
+      const rightDetected = Number.isFinite(right.detectedAtMs)
+        ? right.detectedAtMs
+        : 0;
+      if (leftDetected !== rightDetected) return leftDetected - rightDetected;
+      return left.label.localeCompare(right.label);
+    })
     .map((candidate) => ({
       label: candidate.label,
       detectedAt: new Date(candidate.detectedAtMs).toISOString(),
@@ -874,9 +893,12 @@ function analyzeLifeOpsScheduleInsight(args: {
     },
   });
 
-  const circadianRuleFirings = [...scorerResult.firings].sort(
-    (left, right) => right.weight - left.weight,
-  );
+  const circadianRuleFirings = [...scorerResult.firings].sort((left, right) => {
+    const leftWeight = Number.isFinite(left.weight) ? left.weight : 0;
+    const rightWeight = Number.isFinite(right.weight) ? right.weight : 0;
+    if (leftWeight !== rightWeight) return rightWeight - leftWeight;
+    return left.name.localeCompare(right.name);
+  });
   return {
     insight: {
       effectiveDayKey,

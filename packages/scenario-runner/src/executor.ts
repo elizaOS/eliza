@@ -34,6 +34,7 @@ import {
   postDeliveryTaskQuarantineReason,
   revalidateOwnerExclusiveDisclosure,
   stringToUuid,
+  validateUuid,
 } from "@elizaos/core";
 import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
@@ -69,9 +70,11 @@ import {
   assertProviderQualifiedPluginPackages,
   loadScenarioRequiredPlugin,
   pluginPackageIsRegistered,
+  resolveRequiredFixturePlugins,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
 import { waitForScenarioRequiredServices } from "./required-services.ts";
+import { enterScenarioActionScope } from "./scenario-action-scope.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -115,6 +118,20 @@ export interface ExecutorOptions {
   worldId?: string;
   /** Maximum time to reach post-delivery quiescence before quarantining the runtime. */
   postDeliveryTimeoutMs?: number;
+  /**
+   * Every plugin package declared by *any* scenario sharing this runtime. The
+   * CLI registers that union before the first scenario runs, so the executor
+   * needs it to hide a peer's actions and keep each scenario's tool surface
+   * independent of batch composition. Omit it for a single-scenario runtime.
+   */
+  batchPluginPackages?: readonly string[];
+  /**
+   * Action names present only because a scenario declared the contributing
+   * package, from `createScenarioRuntime`. Without it every peer-declared
+   * package's actions are hidden, including baseline ones an undeclaring
+   * scenario legitimately drives.
+   */
+  scenarioDeclaredActionNames?: readonly string[];
 }
 
 /**
@@ -191,11 +208,18 @@ export function providerQualifiedScenarioProblems(
   scenario: ScenarioDefinition,
 ): string[] {
   const problems: string[] = [];
-  const requiredPlugins = resolveRequiredPluginPackages(scenario);
+  let requiredPlugins: string[] = [];
+  const requiredFixturePlugins = resolveRequiredFixturePlugins(scenario);
   try {
+    requiredPlugins = resolveRequiredPluginPackages(scenario);
     assertProviderQualifiedPluginPackages(requiredPlugins);
   } catch (error) {
     problems.push(error instanceof Error ? error.message : String(error));
+  }
+  if (requiredFixturePlugins.length > 0) {
+    problems.push(
+      `provider-qualified scenarios cannot declare seed fixture plugins: ${requiredFixturePlugins.join(", ")}`,
+    );
   }
   if ((scenario.seed?.length ?? 0) > 0) {
     problems.push(
@@ -404,6 +428,22 @@ async function attestScenarioTurnAudience(
   await restoreScenarioConnectorTopology(runtime, room);
   await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
   if (room.channelType !== ChannelType.DM) return;
+  // Owner-exclusive disclosure is an invariant of the OWNER's DM only. A room
+  // authored as a different principal — a guest, a second account, the
+  // counterparty of an owner-only wall — is *supposed* to be denied
+  // (`owner_mismatch`); that denial is the behaviour under test, not a harness
+  // fault, and raising on it would make a non-owner DM unmodellable. The owner
+  // identity is read back from the same setting the roles system resolves
+  // against, so this can never disagree with who the runtime calls the owner.
+  const configuredOwnerEntityId = validateUuid(
+    runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"),
+  );
+  if (
+    configuredOwnerEntityId !== null &&
+    room.canonicalEntityId !== configuredOwnerEntityId
+  ) {
+    return;
+  }
   const decision = await revalidateOwnerExclusiveDisclosure(runtime, message);
   if (!decision.allowed) {
     throw new ElizaError("Scenario connector DM failed audience attestation", {
@@ -1949,6 +1989,7 @@ async function executeActionTurn(
   room: ScenarioRoomDefinition,
   currentNow: Date,
   turnTimeoutMs: number,
+  hiddenActionNames: readonly string[] = [],
 ): Promise<{
   validation: NonNullable<ScenarioTurnExecution["validation"]>;
   responseText: string;
@@ -1973,6 +2014,15 @@ async function executeActionTurn(
     (candidate: Action) => candidate.name === actionName,
   );
   if (!action) {
+    // Distinguish "this action does not exist" from "per-scenario action
+    // scoping hid it because only a batch peer declared the owning package".
+    // The second reads as a missing action but is a declaration gap, and
+    // saying so is the difference between a one-line fix and an afternoon.
+    if (hiddenActionNames.includes(actionName)) {
+      throw new Error(
+        `[executor] action turn '${turn.name}' requested '${actionName}', which is hidden from this scenario because only another scenario in this run declared the plugin that provides it; add that package to this scenario's requires.plugins`,
+      );
+    }
     throw new Error(
       `[executor] action turn '${turn.name}' requested unknown action '${actionName}'`,
     );
@@ -2067,11 +2117,37 @@ async function executeActionTurn(
   ) {
     responseText = actionResult.userFacingText;
   }
-  if (!responseText && typeof actionResult?.text === "string") {
+  // `responseText` is the report's claim about what the user saw, so it must
+  // not carry a machine receipt the runtime would never deliver. Core marks a
+  // reply that merely restates an internal action result
+  // `transcriptVisibility: "internal"` (`resolveActionResultTranscriptVisibility`)
+  // and drops it before egress (`message.ts`), so an internal receipt is
+  // exactly the text a user does not see. Mirror that instead of inventing a
+  // rule: skip the receipt, prefer any explicitly user-facing prose, and fall
+  // back to the action's own vetted `modelReplyFallback` — the prose the
+  // runtime delivers when no model reply is synthesized, which is always the
+  // case on an action turn because it invokes the handler directly. When the
+  // action offers neither, the turn genuinely has no user-visible reply and
+  // `responseText` stays empty. The receipt itself is never discarded: the
+  // complete ActionResult remains on `responseBody` for assertions that mean
+  // to check it.
+  const receiptIsInternal = actionResult?.transcriptVisibility === "internal";
+  if (
+    !responseText &&
+    !receiptIsInternal &&
+    typeof actionResult?.text === "string"
+  ) {
     responseText = actionResult.text;
   }
   if (!responseText && typeof actionResult?.userFacingText === "string") {
     responseText = actionResult.userFacingText;
+  }
+  if (
+    !responseText &&
+    receiptIsInternal &&
+    typeof actionResult?.modelReplyFallback === "string"
+  ) {
+    responseText = actionResult.modelReplyFallback;
   }
   return {
     validation: {
@@ -2813,6 +2889,20 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
+  // Scope the shared runtime's action list to this scenario before anything can
+  // observe it. Restoring in `finally` also drops actions the seed registers, so
+  // neither a peer's plugin nor this scenario's own leaks across the batch.
+  const actionScope = enterScenarioActionScope(
+    runtime,
+    scenario,
+    opts.batchPluginPackages ?? [],
+    opts.scenarioDeclaredActionNames,
+  );
+  if (actionScope.hiddenActionNames.length > 0) {
+    logger.info(
+      `[scenario-runner] ${scenario.id}: hiding ${actionScope.hiddenActionNames.length} action(s) declared only by batch peers: ${actionScope.hiddenActionNames.join(", ")}`,
+    );
+  }
   try {
     beginScenarioModelFixtureAttempt(
       runtime,
@@ -2827,14 +2917,28 @@ export async function runScenario(
       primaryRoom.canonicalEntityId,
       false,
     );
+    // Owner contacts are the owner's *linked* connector accounts — the
+    // per-platform principals that resolve back to the same canonical entity as
+    // the primary room (#24842's linked-identity model). Publishing every room
+    // here instead would make every configured entity a canonical owner
+    // (roles.ts `getConfiguredOwnerEntityIds` unions the contacts with
+    // ELIZA_ADMIN_ENTITY_ID and grants OWNER to the whole set), so a scenario's
+    // deliberately non-owner room — a guest, a second account, any owner-only
+    // wall's counterparty — would silently resolve as OWNER and every
+    // owner-only refusal in the corpus would pass vacuously.
     runtime.setSetting(
       "ELIZA_OWNER_CONTACTS_JSON",
       JSON.stringify(
         Object.fromEntries(
-          rooms.map((room) => [
-            room.accountId,
-            { entityId: room.userId, source: room.source },
-          ]),
+          rooms
+            .filter(
+              (room) =>
+                room.canonicalEntityId === primaryRoom.canonicalEntityId,
+            )
+            .map((room) => [
+              room.accountId,
+              { entityId: room.userId, source: room.source },
+            ]),
         ),
       ),
       false,
@@ -2878,16 +2982,16 @@ export async function runScenario(
       return report;
     }
 
-    // Seeds may register fixture plugins, so check declared plugin requirements
-    // after seeding and try to load package-named requirements that are present.
-    const requiredPlugins = resolveRequiredPluginPackages(scenario);
+    // Seeds may register fixture plugins, so verify both requirement classes
+    // after seeding while importing only the explicitly declared packages.
+    const requiredPluginPackages = resolveRequiredPluginPackages(scenario);
+    const requiredFixturePlugins = resolveRequiredFixturePlugins(scenario);
     // Track packages we successfully auto-loaded: a plugin's internal
     // `plugin.name` often differs from its package name (e.g. "plugin-health",
     // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
     // it as missing and skip a scenario whose required plugin is in fact loaded.
     const autoLoaded = new Set<string>();
-    for (const pkg of requiredPlugins) {
-      if (!pkg.startsWith("@")) continue;
+    for (const pkg of requiredPluginPackages) {
       if (pluginPackageIsRegistered(runtime, pkg)) continue;
       try {
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
@@ -2904,9 +3008,16 @@ export async function runScenario(
         });
       }
     }
-    const missing = requiredPlugins.filter(
-      (p) => !pluginPackageIsRegistered(runtime, p) && !autoLoaded.has(p),
-    );
+    const missing = [
+      ...requiredPluginPackages.filter(
+        (plugin) =>
+          !pluginPackageIsRegistered(runtime, plugin) &&
+          !autoLoaded.has(plugin),
+      ),
+      ...requiredFixturePlugins.filter(
+        (plugin) => !pluginPackageIsRegistered(runtime, plugin),
+      ),
+    ];
     if (missing.length > 0) {
       report.status = "skipped";
       report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;
@@ -2985,6 +3096,7 @@ export async function runScenario(
                       resolveTurnRoom(turn, rooms),
                       logicalNow,
                       opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                      actionScope.hiddenActionNames,
                     )),
                   }
                 : kind === "wait"
@@ -3188,6 +3300,7 @@ export async function runScenario(
     if (apiServer) {
       await apiServer.close();
     }
+    actionScope.restore();
     report.durationMs = Date.now() - startedAt;
   }
 

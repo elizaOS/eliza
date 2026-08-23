@@ -385,10 +385,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         <SettingsRow
           label={
             <span className="flex items-center gap-2">
-              <Mic
-                className="h-[18px] w-[18px] shrink-0 text-accent"
-                aria-hidden
-              />
+              <Mic className="size-[18px] shrink-0 text-accent" aria-hidden />
               {selection.cloudRuntimeLocked
                 ? t("providerswitcher.cloudVoiceRowLabel", {
                     defaultValue: "Eliza Cloud voice",
@@ -544,10 +541,7 @@ export function ActiveProviderSummary({
     <SettingsRow
       label={
         <span className="flex items-center gap-2">
-          <Icon
-            className="h-[18px] w-[18px] shrink-0 text-accent"
-            aria-hidden
-          />
+          <Icon className="size-[18px] shrink-0 text-accent" aria-hidden />
           {entry.label}
         </span>
       }

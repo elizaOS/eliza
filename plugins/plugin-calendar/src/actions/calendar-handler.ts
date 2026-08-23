@@ -1734,7 +1734,9 @@ export function parseExplicitLocalDate(
     // Range-check and round-trip through Date.UTC so impossible dates
     // (month 25, Feb 30) fall through to the later branches instead of
     // rolling over (#21941).
-    const candidate = new Date(Date.UTC(parsedYear, month - 1, day));
+    const dCand = new Date(0);
+    dCand.setUTCFullYear(parsedYear, month - 1, day);
+    const candidate = dCand;
     const isRealDate =
       month >= 1 &&
       month <= 12 &&
@@ -1758,16 +1760,10 @@ export function parseExplicitLocalDate(
     const weekdayKey = normalizeLookupKey(weekdayMatch[2] ?? "");
     const targetWeekday = WEEKDAY_MAP[weekdayKey];
     if (targetWeekday !== undefined) {
-      const currentWeekday = new Date(
-        Date.UTC(
-          localToday.year,
-          Math.max(0, localToday.month - 1),
-          localToday.day,
-          12,
-          0,
-          0,
-        ),
-      ).getUTCDay();
+      const dCur = new Date(0);
+      dCur.setUTCFullYear(localToday.year, Math.max(0, localToday.month - 1), localToday.day);
+      dCur.setUTCHours(12, 0, 0, 0);
+      const currentWeekday = dCur.getUTCDay();
       let delta = (targetWeekday - currentWeekday + 7) % 7;
       if (qualifier === "next") {
         delta = delta === 0 ? 7 : delta + 7;
@@ -5353,9 +5349,11 @@ const calendarAction: CalendarHandlerAction = {
             if (right.score !== left.score) {
               return right.score - left.score;
             }
-            return (
-              Date.parse(left.event.startAt) - Date.parse(right.event.startAt)
-            );
+            const aTime = Date.parse(left.event.startAt);
+            const bTime = Date.parse(right.event.startAt);
+            const aSafe = Number.isFinite(aTime) ? aTime : 0;
+            const bSafe = Number.isFinite(bTime) ? bTime : 0;
+            return aSafe - bSafe;
           });
         const strongestScore = rankedEvents[0]?.score ?? 0;
         const strongestThreshold =

@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+
+/**
+ * Coordinates deterministic development-server ports across worktrees through
+ * a lock-protected registry. Runtime liveness and reservation identities keep
+ * concurrent launchers from duplicating servers or overwriting newer owners.
+ */
+
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -8,6 +16,7 @@ export const DEFAULT_UI_PORT_BASE = 2100;
 export const DEFAULT_UI_PORT_SPAN = 900;
 export const DEFAULT_API_PORT_OFFSET = 10_000;
 export const REGISTRY_VERSION = 1;
+const STARTUP_RESERVATION_GRACE_MS = 120_000;
 
 export function defaultRegistryPath(env = process.env) {
   return (
@@ -111,6 +120,18 @@ export async function getEntryRuntime(entry) {
     portOpen,
     running: pidAlive || portOpen,
   };
+}
+
+function canReuseEntry(entry, runtime, now = Date.now()) {
+  if (!runtime.pidAlive) return false;
+  if (runtime.portOpen) return true;
+  if (typeof entry.reservationId !== "string" || !entry.reservationId) {
+    return false;
+  }
+  const startedAt = Date.parse(entry.startedAt);
+  if (!Number.isFinite(startedAt)) return false;
+  const reservationAge = now - startedAt;
+  return reservationAge >= 0 && reservationAge <= STARTUP_RESERVATION_GRACE_MS;
 }
 
 export async function listRegistryEntries({
@@ -229,20 +250,37 @@ export async function reservePortsForWorktree(
   worktreePath,
   { registryPath = defaultRegistryPath(), base, span } = {},
 ) {
+  const worktree = normalizeWorktreePath(worktreePath);
   return await withRegistryLock(
     async () => {
       const current = readRegistry(registryPath);
+      for (const existing of current.entries ?? []) {
+        if (existing.worktree !== worktree || existing.stoppedAt) continue;
+        const runtime = await getEntryRuntime(existing);
+        // A fresh launcher owns the reservation before Vite opens its port.
+        // After that bounded window, require both the owner PID and listener so
+        // one recycled PID or unrelated process on the port cannot mask Vite.
+        if (canReuseEntry(existing, runtime)) {
+          return { entry: existing, reused: true };
+        }
+      }
+
       const blockedUiPorts = new Set();
       while (true) {
-        const allocated = allocatePortsForWorktree(worktreePath, {
+        const allocated = allocatePortsForWorktree(worktree, {
           registry: current,
           base,
           span,
           blockedUiPorts,
         });
         if (!(await isPortOpen(allocated.entry.uiPort))) {
+          const startedAt = new Date().toISOString();
+          allocated.entry.pid = process.pid;
+          allocated.entry.reservationId = randomUUID();
+          allocated.entry.startedAt = startedAt;
+          allocated.entry.updatedAt = startedAt;
           writeRegistry(allocated.registry, registryPath);
-          return allocated.entry;
+          return { entry: allocated.entry, reused: false };
         }
         blockedUiPorts.add(allocated.entry.uiPort);
       }
@@ -254,7 +292,7 @@ export async function reservePortsForWorktree(
 export async function updateRegistryEntry(
   worktreePath,
   patch,
-  { registryPath = defaultRegistryPath() } = {},
+  { registryPath = defaultRegistryPath(), expectedReservationId } = {},
 ) {
   const worktree = normalizeWorktreePath(worktreePath);
   return await withRegistryLock(
@@ -263,6 +301,12 @@ export async function updateRegistryEntry(
       const entries = registry.entries ?? [];
       const index = entries.findIndex((entry) => entry.worktree === worktree);
       if (index === -1) return null;
+      if (
+        expectedReservationId !== undefined &&
+        entries[index].reservationId !== expectedReservationId
+      ) {
+        return null;
+      }
       const updated = {
         ...entries[index],
         ...patch,

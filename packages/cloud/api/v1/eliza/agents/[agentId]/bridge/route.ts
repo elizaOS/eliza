@@ -86,10 +86,17 @@ async function __hono_POST(
     }
 
     const rpcRequest = parsed.data as BridgeRequest;
+    const trustedUserUtterance =
+      rpcRequest.method === "message.send" &&
+      typeof rpcRequest.params?.text === "string" &&
+      rpcRequest.params.text.trim()
+        ? rpcRequest.params.text
+        : undefined;
     const response = await coordinateSharedBridge(resolved.agent, rpcRequest, {
       executionCtx: resolved.executionCtx,
       namespace: resolved.namespace,
       agentKind: resolved.agentKind,
+      ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
     });
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);

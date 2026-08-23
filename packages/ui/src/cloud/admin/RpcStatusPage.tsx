@@ -73,9 +73,9 @@ export default function RpcStatusPage(): React.JSX.Element {
         </div>
         <Button onClick={() => refetch()} disabled={isFetching}>
           {isFetching ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="size-4 animate-spin" />
           ) : (
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="size-4" />
           )}
           <span className="ml-2">
             {t("cloud.admin.rpcStatus.refresh", { defaultValue: "Refresh" })}
@@ -97,7 +97,7 @@ export default function RpcStatusPage(): React.JSX.Element {
 
       {isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
           {t("cloud.admin.rpcStatus.probing", {
             defaultValue: "Probing RPCs…",
           })}

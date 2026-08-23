@@ -9,6 +9,7 @@
  * with credentials stored in the secrets service.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import crypto from "crypto";
 import { timingSafeEqualSecret } from "../../auth/cron";
 import { cache } from "../../cache/client";
@@ -107,7 +108,7 @@ class WhatsAppAutomationService {
         }
         logger.warn("[WhatsAppAutomation] Token validation failed", {
           status: response.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return {
           valid: false,

@@ -58,7 +58,17 @@ the previously compared base at the mutation boundary. An advanced develop tip
 is a neutral stale reconciliation; a behind or divergent main fails instead of
 creating an untested merge commit.
 The delegated `platform-smoke.yml` family preserves macOS and Windows core
-proof without a separate periodic authority.
+proof without a separate periodic authority. Its additional manual dispatch
+lets an authorized maintainer collect pre-merge watchdog/core evidence from
+both hosted platforms for an exact pull-request head SHA. Resolve that immutable
+SHA (for example, `gh pr view <number> --json headRefOid -q .headRefOid`), then
+run `gh workflow run platform-smoke.yml --ref develop -f source_sha=<40-hex-sha>`.
+The `--ref develop` argument is mandatory: it selects the trusted workflow
+definition, while `source_sha` selects only the candidate checkout. The job is
+read-only, references no repository or environment secrets, persists no
+checkout credential, and grants no deploy authority. This is supplemental
+evidence, not a replacement for PR Static Smoke or the automatic Develop Full
+validation of the merged tip.
 
 `.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
 manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`

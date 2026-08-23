@@ -1,7 +1,6 @@
 /**
- * Guards the SSRF check on outbound media links: both the Cloud API client and
- * the Baileys message adapter must reject file://, data:, javascript:, and
- * malformed URLs before dispatch. Deterministic — stubs global fetch, no network.
+ * Guards Cloud media URLs and proves the personal Baileys adapter requires
+ * connector-verified canonical bytes instead of initiating its own download.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageAdapter } from "../src/baileys/message-adapter";
@@ -66,11 +65,9 @@ describe("WhatsApp media URL validation", () => {
     );
   });
 
-  it.each([
-    "file:///tmp/secret.jpg",
-    "ftp://example.com/file.mp3",
-    "https://u:p@example.com/a.mp3",
-  ])("rejects hostile Baileys media links: %s", (link) => {
+  it.each(["file:///tmp/secret.jpg", "https://example.com/a.mp3"])(
+    "rejects Baileys media links without canonical bytes: %s",
+    (link) => {
     const adapter = new MessageAdapter();
 
     expect(() =>
@@ -79,6 +76,19 @@ describe("WhatsApp media URL validation", () => {
         to: "14155552671@s.whatsapp.net",
         content: { link },
       })
-    ).toThrow("audio message requires a valid http(s) media link");
+    ).toThrow("requires canonical local bytes");
+    }
+  );
+
+  it("passes exact canonical bytes to Baileys without a URL payload", () => {
+    const adapter = new MessageAdapter();
+    const bytes = new Uint8Array([1, 2, 3]);
+    expect(
+      adapter.toBaileys({
+        type: "audio",
+        to: "14155552671@s.whatsapp.net",
+        content: { link: "/api/media/hash.mp3", bytes },
+      })
+    ).toEqual({ audio: Buffer.from(bytes) });
   });
 });

@@ -1405,7 +1405,7 @@ describe("ChatOverlay", () => {
     });
     const className = screen.getByTestId("chat-composer-textarea").className;
     expect(className).toContain("text-sm");
-    expect(className).toContain("pointer-coarse:text-[16px]");
+    expect(className).toContain("pointer-coarse:text-base");
   });
 
   it("renders composer controls icon-only — no capsule/border/fill, neutral when active (#10711)", () => {
@@ -4618,6 +4618,25 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
     // Thread stays mounted, but with no in-flight load there is no spinner.
     expect(document.getElementById("continuous-thread")).not.toBeNull();
     expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
+  });
+
+  it("reads as loading, not designed-empty, when opened during boot-time hydration", () => {
+    // A programmatic open (boot-recovery, deep link) can expand the sheet
+    // before the server transcript has hydrated. An empty sheet there is a
+    // loading state, never a broken empty box.
+    const { rerender } = render(<ChatOverlay controller={makeController()} />);
+    openSheetToHalf();
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "booting",
+          messages: [],
+          conversationLoading: false,
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
   });
 });
 

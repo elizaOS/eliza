@@ -137,7 +137,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
     <div className="grid gap-2">
       <div className="relative">
         <Search
-          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
+          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted"
           aria-hidden
         />
         <input
@@ -148,7 +148,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
           placeholder={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}
-          className="h-9 w-full rounded-md border border-border/60 bg-bg-accent/40 pl-8 pr-3 text-sm text-txt-strong outline-none placeholder:text-muted"
+          className="h-9 w-full rounded-md border border-border/60 bg-bg-accent/40 pl-8 pr-3 text-base text-txt-strong outline-none sm:text-sm placeholder:text-muted"
           aria-label={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}
@@ -179,7 +179,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
             return (
               <div key={option.id}>
                 {showHeader ? (
-                  <div className="px-1 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted first:pt-0">
+                  <div className="px-1 pb-1 pt-2 text-2xs font-semibold uppercase tracking-[0.16em] text-muted first:pt-0">
                     {CATEGORY_LABEL[option.category]}
                   </div>
                 ) : null}
@@ -191,14 +191,14 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                   onMouseMove={() => setActiveIndex(index)}
                   onClick={() => onPick(option.id)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors",
+                    "flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors",
                     active ? "bg-bg-accent" : "hover:bg-bg-accent/60",
                     option.unavailable && "bg-bg-muted",
                   )}
                 >
                   <span
                     className={cn(
-                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border",
+                      "flex size-8 shrink-0 items-center justify-center rounded-md border",
                       active
                         ? "border-txt/25 bg-card text-txt-strong"
                         : "border-border/50 bg-bg-accent/60 text-muted-strong",
@@ -206,7 +206,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                   >
                     <ProviderMark
                       providerId={option.id}
-                      className="h-4 w-4"
+                      className="size-4"
                       title={option.name}
                     />
                   </span>
@@ -214,12 +214,12 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                     <span className="truncate text-sm font-medium text-txt-strong">
                       {option.name}
                     </span>
-                    <span className="truncate text-[11px] text-muted">
+                    <span className="truncate text-xs-tight text-muted">
                       {capabilityLine(option)}
                     </span>
                   </span>
                   {active ? (
-                    <kbd className="shrink-0 rounded border border-border/50 bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                    <kbd className="shrink-0 rounded border border-border/50 bg-card px-1.5 py-0.5 text-2xs font-medium text-muted">
                       {t("accounts.add.enterHint", { defaultValue: "\u21b5" })}
                     </kbd>
                   ) : null}

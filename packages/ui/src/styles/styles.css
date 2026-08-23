@@ -4,9 +4,19 @@
 @import "@fontsource/poppins/700.css";
 @import "@fontsource/poppins/800.css";
 @import "tailwindcss";
-/* NuPhy tokens and its package-specific utilities remain inside the settings
-   container; no NuPhy @theme or :root declarations enter the shared app. */
-@import "./nuphy-scope.css";
+
+/* Tailwind v4 defaults bare `border` utilities to currentColor, which paints
+   near-white text-colored frames on dark surfaces. Restore the themed default
+   so an unqualified border always means the subtle `--border` token. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border, currentColor);
+  }
+}
 @import "./shadcn-utilities.css";
 @import "./base.css";
 @import "./tailwind-theme.css";
@@ -39,10 +49,6 @@ electrobun-wgpu {
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
 @source "../../../../plugins/plugin-maps/src";
-/* Scan NuPhy UI component dist files so Tailwind v4 generates the utility
-   classes used by @extrastu/nuphy-ui components (bg-fill, bg-fill-strong,
-   ring-ring, text-popover-foreground, etc.). */
-@source "../../../ui/node_modules/@extrastu/nuphy-ui/dist";
 
 /* Memories sits beside a persistent filter rail in short landscape, where the
    default feature-empty stack falls behind the assistant overlay. Compact only
@@ -81,6 +87,19 @@ electrobun-wgpu {
     font-size: 0.6875rem;
     line-height: 1rem;
   }
+}
+
+/* Detached settings windows are standalone shells, so they do not inherit the
+   main window's whole-body drag fallback. Keep a clear client-area strip above
+   the sidebar and content that Chromium/CEF can hand to the native window. */
+.settings-window-drag-strip {
+  -webkit-app-region: drag;
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 32px;
 }
 
 /* ── Global resets ──────────────────────────────────────────────────── */

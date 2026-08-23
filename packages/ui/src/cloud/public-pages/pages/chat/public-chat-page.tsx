@@ -116,7 +116,7 @@ export default function PublicChatPage() {
     return (
       <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg text-txt">
         <div className="flex items-center gap-3 text-muted">
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <Loader2 className="size-5 animate-spin" />
           {t("cloud.publicChat.loadingAgent", {
             defaultValue: "Loading agent...",
           })}
@@ -159,10 +159,10 @@ export default function PublicChatPage() {
           <img
             src={character.avatarUrl}
             alt=""
-            className="mx-auto h-20 w-20 rounded-full border border-border object-cover"
+            className="mx-auto  size-20 rounded-full border border-border object-cover"
           />
         ) : (
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-border bg-bg-elevated text-2xl font-semibold text-muted">
+          <div className="mx-auto flex size-20 items-center justify-center rounded-full border border-border bg-bg-elevated text-2xl font-semibold text-muted">
             {character.name.slice(0, 2).toUpperCase()}
           </div>
         )}

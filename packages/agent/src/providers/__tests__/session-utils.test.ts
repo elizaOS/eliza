@@ -6,14 +6,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
-  getSessionProviders: (...a: unknown[]) => mocks.getSessionProviders(...a),
-  resolveStateDir: (...a: unknown[]) => mocks.resolveStateDir(...a),
+  getSessionProviders: () => mocks.getSessionProviders(),
+  resolveStateDir: () => mocks.resolveStateDir(),
 }));
 
 import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
-} from "./session-utils.ts";
+} from "../session-utils.ts";
 
 describe("resolveDefaultSessionStorePath", () => {
   it("resolves the sessions.json path under the state dir", () => {

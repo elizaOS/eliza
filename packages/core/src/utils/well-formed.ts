@@ -398,3 +398,256 @@ export function deepToWellFormedUnicode<T>(value: T): T {
 		return failUnsafeValue("reflection", error);
 	}
 }
+
+/**
+ * JSON-schema keywords whose values are arbitrary caller JSON data rather than
+ * sub-schemas. The Cerebras normalizer and `sanitizeJsonSchema` both leave
+ * these untouched, so the schema-shaped Unicode walk below carries them by
+ * reference as well: annotation getters are never observed, and annotation
+ * depth never consumes the schema walk budget.
+ */
+const SCHEMA_ANNOTATION_KEYS = new Set(["default", "examples", "const"]);
+function isAnnotationKey(key: string): boolean {
+	return SCHEMA_ANNOTATION_KEYS.has(key) || key.startsWith("x-");
+}
+
+type SchemaWalkCtx = WalkCtx & { maxDepth: number };
+
+/**
+ * Well-formed-Unicode pass that follows ONLY the JSON-schema keyword structure.
+ *
+ * `deepToWellFormedUnicode` counts every intermediate container (`properties`
+ * maps, array wrappers) toward its depth budget, so a legal schema at the
+ * Cerebras walk boundary (~64 nested schema nodes) exceeds it long before the
+ * provider contract does. This walker instead uses the SAME accounting as the
+ * Cerebras normalizer: one depth unit per schema node reached through a
+ * schema-bearing keyword, annotation subtrees skipped entirely (carried by
+ * reference), string keys and values sanitized along the walked structure.
+ *
+ * Cycles, accessor properties on walked nodes, reflection failures on revoked
+ * proxies, and exceeding `maxDepth` fail closed with the same typed errors as
+ * {@link deepToWellFormedUnicode} (`WELL_FORMED_UNBOUNDED` /
+ * `WELL_FORMED_UNSAFE_VALUE`) so callers keep one failure contract.
+ */
+export function wellFormedUnicodeSchemaStructure<T>(
+	value: T,
+	options: { maxDepth?: number } = {},
+): T {
+	const ctx: SchemaWalkCtx = {
+		visits: 0,
+		visiting: new WeakSet<object>(),
+		maxDepth: options.maxDepth ?? MAX_WELL_FORMED_DEPTH,
+	};
+	try {
+		return walkSchemaStrings(value, 0, ctx);
+	} catch (error) {
+		if (error instanceof ElizaError) throw error;
+		return failUnsafeValue("reflection", error);
+	}
+}
+
+function failSchemaDepth(depth: number, ctx: SchemaWalkCtx): never {
+	throw new ElizaError("deepToWellFormedUnicode: nesting exceeds cap", {
+		code: "WELL_FORMED_UNBOUNDED",
+		context: { reason: "depth", depth, max: ctx.maxDepth },
+		severity: "fatal",
+	});
+}
+
+const SCHEMA_MAP_KEYWORDS = new Set([
+	"properties",
+	"patternProperties",
+	"$defs",
+	"definitions",
+	"dependentSchemas",
+	"dependencies",
+]);
+const SCHEMA_ARRAY_WRAPPER_KEYWORDS = new Set([
+	"anyOf",
+	"oneOf",
+	"allOf",
+	"prefixItems",
+]);
+
+function walkSchemaStrings<T>(value: T, depth: number, ctx: SchemaWalkCtx): T {
+	reserveVisits(ctx, 1);
+	if (typeof value === "string") {
+		return toWellFormedUnicode(value) as unknown as T;
+	}
+	if (!value || typeof value !== "object") {
+		return value;
+	}
+	if (depth > ctx.maxDepth) {
+		failSchemaDepth(depth, ctx);
+	}
+	if (ctx.visiting.has(value)) {
+		failUnbounded("cycle", { depth });
+	}
+	ctx.visiting.add(value);
+	try {
+		if (Array.isArray(value)) {
+			let changed = false;
+			const next = new Array<unknown>(value.length);
+			for (let index = 0; index < value.length; index += 1) {
+				const descriptor = Object.getOwnPropertyDescriptor(value, index);
+				if (!descriptor || !("value" in descriptor)) continue;
+				const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
+				if (walked !== descriptor.value) changed = true;
+				next[index] = walked;
+			}
+			return (changed ? next : value) as unknown as T;
+		}
+		let changed = false;
+		const next = Object.create(Object.getPrototypeOf(value)) as Record<
+			string,
+			unknown
+		>;
+		for (const key of Reflect.ownKeys(value)) {
+			if (typeof key !== "string") continue;
+			const descriptor = Object.getOwnPropertyDescriptor(value, key);
+			if (!descriptor?.enumerable) continue;
+			if (!("value" in descriptor)) {
+				failUnsafeValue("accessor", undefined, key);
+			}
+			const sanitizedKey = toWellFormedUnicode(key);
+			// Annotation data is opaque caller JSON: carried by reference, never
+			// descended into, never observed.
+			if (isAnnotationKey(sanitizedKey)) {
+				next[sanitizedKey] = descriptor.value;
+				continue;
+			}
+			// Mirror the Cerebras normalizer depth accounting: a MAP keyword's
+			// container and an ARRAY keyword wrapper consume no level; their
+			// member schemas get depth + 1 directly.
+			let walked: unknown;
+			if (
+				SCHEMA_MAP_KEYWORDS.has(sanitizedKey) &&
+				descriptor.value &&
+				typeof descriptor.value === "object" &&
+				!Array.isArray(descriptor.value)
+			) {
+				walked = walkSchemaMapEntry(descriptor.value as object, depth, ctx);
+			} else if (
+				(SCHEMA_ARRAY_WRAPPER_KEYWORDS.has(sanitizedKey) ||
+					sanitizedKey === "items" ||
+					sanitizedKey === "prefixItems") &&
+				Array.isArray(descriptor.value)
+			) {
+				walked = walkSchemaArrayEntry(descriptor.value, depth, ctx);
+			} else {
+				walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
+			}
+			if (sanitizedKey !== key || walked !== descriptor.value) changed = true;
+			next[sanitizedKey] = walked;
+		}
+		return (changed ? next : value) as unknown as T;
+	} finally {
+		ctx.visiting.delete(value);
+	}
+}
+
+/**
+ * Typed wire-boundary check for schema annotation data. Descriptor-only:
+ * accessors are detected through `Object.getOwnPropertyDescriptor` and rejected
+ * WITHOUT invocation, cycles are detected through path-local ancestry, and
+ * depth beyond `maxDepth` fails closed — so a hostile annotation cannot run
+ * caller-controlled code during a mere admissibility check. Reflection on a
+ * revoked proxy is translated into the same typed contract.
+ */
+export function assertSchemaAnnotationsSerializable(
+	value: unknown,
+	options: { maxDepth?: number } = {},
+): void {
+	const ctx: SchemaWalkCtx = {
+		visits: 0,
+		visiting: new WeakSet<object>(),
+		maxDepth: options.maxDepth ?? MAX_WELL_FORMED_DEPTH,
+	};
+	try {
+		assertAnnotationsWalk(value, 0, ctx);
+	} catch (error) {
+		if (error instanceof ElizaError) throw error;
+		failUnsafeValue("reflection", error);
+	}
+}
+
+function walkSchemaMapEntry(
+	map: object,
+	depth: number,
+	ctx: SchemaWalkCtx,
+): Record<string, unknown> {
+	if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx);
+	reserveVisits(ctx, 1);
+	let changed = false;
+	const next: Record<string, unknown> = Object.create(
+		Object.getPrototypeOf(map),
+	) as Record<string, unknown>;
+	for (const key of Reflect.ownKeys(map)) {
+		if (typeof key !== "string") continue;
+		const descriptor = Object.getOwnPropertyDescriptor(map, key);
+		if (!descriptor?.enumerable || !("value" in descriptor)) continue;
+		const sanitizedKey = toWellFormedUnicode(key);
+		const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
+		if (sanitizedKey !== key || walked !== descriptor.value) changed = true;
+		next[sanitizedKey] = walked;
+	}
+	return (changed ? next : map) as Record<string, unknown>;
+}
+
+function walkSchemaArrayEntry(
+	arr: unknown[],
+	depth: number,
+	ctx: SchemaWalkCtx,
+): unknown[] {
+	if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx);
+	reserveVisits(ctx, arr.length || 1);
+	let changed = false;
+	const next = new Array<unknown>(arr.length);
+	for (let index = 0; index < arr.length; index += 1) {
+		const descriptor = Object.getOwnPropertyDescriptor(arr, index);
+		if (!descriptor || !("value" in descriptor)) continue;
+		const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
+		if (walked !== descriptor.value) changed = true;
+		next[index] = walked;
+	}
+	return changed ? next : arr;
+}
+function assertAnnotationsWalk(
+	value: unknown,
+	depth: number,
+	ctx: SchemaWalkCtx,
+): void {
+	reserveVisits(ctx, 1);
+	if (!value || typeof value !== "object") return;
+	if (depth > ctx.maxDepth) {
+		failSchemaDepth(depth, ctx);
+	}
+	if (ctx.visiting.has(value)) {
+		failUnbounded("cycle", { depth });
+	}
+	ctx.visiting.add(value);
+	try {
+		let keys: PropertyKey[] = [];
+		try {
+			keys = Reflect.ownKeys(value);
+		} catch (cause) {
+			failUnsafeValue("reflection", cause);
+		}
+		for (const key of keys) {
+			if (typeof key !== "string") continue;
+			let descriptor: PropertyDescriptor | undefined;
+			try {
+				descriptor = Object.getOwnPropertyDescriptor(value, key);
+			} catch (cause) {
+				failUnsafeValue("reflection", cause, key);
+			}
+			if (!descriptor?.enumerable) continue;
+			if (!("value" in descriptor)) {
+				failUnsafeValue("accessor", undefined, key);
+			}
+			assertAnnotationsWalk(descriptor.value, depth + 1, ctx);
+		}
+	} finally {
+		ctx.visiting.delete(value);
+	}
+}

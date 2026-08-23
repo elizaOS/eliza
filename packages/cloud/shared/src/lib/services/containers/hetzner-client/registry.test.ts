@@ -72,16 +72,25 @@ describe("ensureRegistryAccess", () => {
 
   test("logs out the registry host when NO token is configured (clears stale cred)", async () => {
     const exec = mock(async () => "");
-    await ensureRegistryAccess({ exec } as never, "ghcr.io/elizaos/eliza:stable");
+    const completion = await ensureRegistryAccess(
+      { exec } as never,
+      "ghcr.io/elizaos/eliza:stable",
+    );
+    expect(completion).toEqual({ outcome: "exact" });
     expect(exec).toHaveBeenCalledTimes(1);
     expect(exec.mock.calls[0]?.[0]).toContain("docker logout 'ghcr.io'");
+    expect(exec.mock.calls[0]?.[0]).not.toContain("|| true");
   });
 
   test("logs in (no logout) when a registry token IS configured", async () => {
     registryUsername.mockReturnValue("robot");
     registryToken.mockReturnValue("ghp_test_token");
     const exec = mock(async () => "");
-    await ensureRegistryAccess({ exec } as never, "ghcr.io/elizaos/eliza:stable");
+    const completion = await ensureRegistryAccess(
+      { exec } as never,
+      "ghcr.io/elizaos/eliza:stable",
+    );
+    expect(completion).toEqual({ outcome: "exact" });
     expect(exec).toHaveBeenCalledTimes(1);
     expect(exec.mock.calls[0]?.[0]).toContain("docker login 'ghcr.io'");
     expect(exec.mock.calls[0]?.[0]).not.toContain("docker logout");
@@ -89,27 +98,30 @@ describe("ensureRegistryAccess", () => {
 
   test("is a no-op for implicit docker-hub refs (no registry host)", async () => {
     const exec = mock(async () => "");
-    await ensureRegistryAccess({ exec } as never, "library/nginx:latest");
+    const completion = await ensureRegistryAccess({ exec } as never, "library/nginx:latest");
+    expect(completion).toEqual({ outcome: "exact" });
     expect(exec).not.toHaveBeenCalled();
   });
 
   test("swallows a logout failure (best-effort, never blocks the pull)", async () => {
+    const failure = new Error("ssh boom");
     const exec = mock(async () => {
-      throw new Error("ssh boom");
+      throw failure;
     });
     await expect(
       ensureRegistryAccess({ exec } as never, "ghcr.io/elizaos/eliza:stable"),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ outcome: "unresolved", cause: failure });
   });
 
   test("swallows a login failure when a token is configured", async () => {
     registryUsername.mockReturnValue("robot");
     registryToken.mockReturnValue("ghp_test_token");
+    const failure = new Error("ssh boom");
     const exec = mock(async () => {
-      throw new Error("ssh boom");
+      throw failure;
     });
     await expect(
       ensureRegistryAccess({ exec } as never, "ghcr.io/elizaos/eliza:stable"),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ outcome: "unresolved", cause: failure });
   });
 });

@@ -455,4 +455,28 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
     });
     expect(useModel).toHaveBeenCalledTimes(1);
   });
+
+  it("sorts discovered tweets safely when relevanceScore contains NaN", () => {
+    const tweets = [
+      { tweet: { id: "tweet-nan" }, relevanceScore: NaN },
+      { tweet: { id: "tweet-valid" }, relevanceScore: 0.85 },
+    ];
+
+    tweets.sort((a, b) => {
+      const bScore =
+        typeof b.relevanceScore === "number" &&
+        Number.isFinite(b.relevanceScore)
+          ? b.relevanceScore
+          : 0;
+      const aScore =
+        typeof a.relevanceScore === "number" &&
+        Number.isFinite(a.relevanceScore)
+          ? a.relevanceScore
+          : 0;
+      return bScore - aScore || a.tweet.id.localeCompare(b.tweet.id);
+    });
+
+    expect(tweets[0]?.tweet.id).toBe("tweet-valid");
+    expect(tweets[1]?.tweet.id).toBe("tweet-nan");
+  });
 });

@@ -88,7 +88,7 @@ export function ConditionalWalletProviders({
   return (
     <ChunkLoadErrorBoundary
       fallback={
-        <div className="flex min-h-screen items-center justify-center p-6 text-center text-sm text-muted-foreground">
+        <div className="flex min-h-dvh items-center justify-center p-6 text-center text-sm text-muted-foreground">
           <div>
             <p>
               {t("cloud.wallet.loadFailed", {
@@ -114,7 +114,7 @@ export function ConditionalWalletProviders({
         </div>
       }
     >
-      <Suspense fallback={<div aria-busy="true" className="min-h-screen" />}>
+      <Suspense fallback={<div aria-busy="true" className="min-h-dvh" />}>
         <LazyStewardWalletProviders>{children}</LazyStewardWalletProviders>
       </Suspense>
     </ChunkLoadErrorBoundary>

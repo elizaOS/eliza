@@ -14,9 +14,8 @@
  * legacy paths without the plugin-name prefix.
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import { resolveWhatsAppAuthDirectory } from "./baileys/auth.js";
 import type { WhatsAppPairingEvent } from "./pairing-service.js";
 import {
   sanitizeAccountId,
@@ -254,8 +253,7 @@ async function handlePair(
       return;
     }
 
-    const workspaceDir = setupService?.getWorkspaceDir() ?? ".";
-    const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
+    const authDir = resolveWhatsAppAuthDirectory(accountId);
     await stopPairingSession(accountId);
 
     const session = new WhatsAppPairingSession({
@@ -328,7 +326,6 @@ async function handleStatus(
 ): Promise<void> {
   await cleanupStaleSessions();
 
-  const setupService = getSetupService(runtime);
   const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
 
   let accountId: string;
@@ -340,8 +337,6 @@ async function handleStatus(
   }
 
   const session = whatsappPairingSessions.get(accountId);
-  const workspaceDir = setupService?.getWorkspaceDir() ?? ".";
-
   let serviceConnected = false;
   let servicePhone: string | null = null;
   try {
@@ -358,7 +353,7 @@ async function handleStatus(
   res.status(200).json({
     accountId,
     status: session?.getStatus() ?? "idle",
-    authExists: whatsappAuthExists(workspaceDir, accountId),
+    authExists: await whatsappAuthExists(accountId),
     serviceConnected,
     servicePhone,
   });
@@ -419,22 +414,7 @@ async function handleDisconnect(
   try {
     await stopPairingSession(accountId);
 
-    const workspaceDir = setupService?.getWorkspaceDir() ?? ".";
-
-    try {
-      await whatsappLogout(workspaceDir, accountId);
-    } catch (logoutErr) {
-      console.warn(
-        `[whatsapp] Logout failed for ${accountId}, deleting auth files directly:`,
-        String(logoutErr)
-      );
-      const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
-      try {
-        fs.rmSync(authDir, { recursive: true, force: true });
-      } catch {
-        /* may not exist */
-      }
-    }
+    await whatsappLogout(accountId);
 
     if (setupService) {
       setupService.updateConfig((config) => {

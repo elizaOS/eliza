@@ -48,7 +48,7 @@ const Slider: React.ForwardRefExoticComponent<
                 : ariaLabel
             }
             aria-labelledby={ariaLabelledBy}
-            className="block h-5 w-5 rounded-sm border-2 border-primary bg-bg transition-colors disabled:pointer-events-none disabled:opacity-50"
+            className="block size-5 rounded-sm border-2 border-primary bg-bg transition-colors disabled:pointer-events-none disabled:opacity-50"
           />
         ))}
       </SliderPrimitive.Root>

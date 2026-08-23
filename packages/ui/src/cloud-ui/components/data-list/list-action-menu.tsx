@@ -65,10 +65,10 @@ export function ListActionMenu({
         <BrandButton
           variant="ghost"
           size="icon"
-          className={cn("h-8 w-8 shrink-0", triggerClassName)}
+          className={cn("size-8 shrink-0", triggerClassName)}
           onClick={onTriggerClick}
         >
-          <MoreHorizontal className="h-4 w-4" />
+          <MoreHorizontal className="size-4" />
           <span className="sr-only">Open actions</span>
         </BrandButton>
       </DropdownMenuTrigger>
@@ -109,7 +109,7 @@ export function ListActionMenu({
               disabled={item.disabled}
               onClick={item.onSelect}
             >
-              {Icon ? <Icon className="mr-2 h-4 w-4" /> : null}
+              {Icon ? <Icon className="mr-2  size-4" /> : null}
               {item.label}
             </DropdownMenuItem>
           );

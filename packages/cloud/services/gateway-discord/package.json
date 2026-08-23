@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/gateway-discord",
+  "private": true,
   "version": "1.0.0",
   "description": "Multi-tenant Discord gateway service for Eliza Cloud",
   "type": "module",
@@ -26,7 +27,7 @@
     "deploy:railway": "bash scripts/deploy-railway.sh"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
+    "@discordjs/opus": "0.10.0",
     "@discordjs/voice": "^0.19.2",
     "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/core": "workspace:*",

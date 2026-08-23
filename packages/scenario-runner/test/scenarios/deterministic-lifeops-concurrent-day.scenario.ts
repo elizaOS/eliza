@@ -24,13 +24,11 @@
  * Runs keylessly: no message turns, no LLM calls — the strict proxy is never
  * consulted. The seed schedules through the production
  * `ScheduledTaskRunnerService` (PA's DB-backed deps), the same path the
- * SCHEDULED_TASKS action uses, and registers a real NOTIFICATION service so
- * in_app dispatch has a live delivery surface (the dispatcher honestly
- * reports `disconnected` when no surface accepts the payload) — which also
- * yields a per-task delivery ledger this scenario asserts.
+ * SCHEDULED_TASKS action uses, and the per-task delivery ledger is read back
+ * from the production notification inbox the dispatcher actually writes to.
  */
 
-import { type IAgentRuntime, Service, ServiceType } from "@elizaos/core";
+import { ServiceType } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
@@ -173,64 +171,46 @@ interface RunnerServiceLike {
 interface RuntimeLike {
   agentId: string;
   getService?: (serviceType: string) => unknown;
-  registerService?: (serviceDef: unknown) => Promise<void>;
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------
-// Real NOTIFICATION delivery surface. The production in_app dispatcher only
-// reports `ok` when a real surface (assistant event bus or notification
-// service) accepts the payload; a bare scenario runtime has neither, so
-// every fire would honestly defer as `dispatch_deferred(disconnected)`.
-// Registering this sink makes delivery real AND gives the scenario a
-// checkable ledger of what actually reached the owner surface.
+// Real delivery ledger. The production in_app dispatcher only reports `ok`
+// when a live surface accepts the payload, and it resolves that surface
+// through `getService(ServiceType.NOTIFICATION)`. The scenario runtime boots
+// the production `eliza` plugin, which owns that slot with core's
+// `NotificationService` (packages/agent/src/runtime/eliza-plugin.ts): a
+// scenario cannot substitute its own capture service there, so the ledger is
+// the durable inbox itself, keyed by the `data.taskId` every scheduled
+// dispatch stamps.
 // ---------------------------------------------------------------------------
 
-interface CapturedNotification {
-  title?: string;
-  body?: string;
-  category?: string;
-  priority?: string;
+interface DeliveredNotification {
+  body?: unknown;
   data?: JsonRecord;
 }
 
-const deliveredNotifications: CapturedNotification[] = [];
-
-class ScenarioNotificationSink extends Service {
-  static override serviceType = ServiceType.NOTIFICATION;
-  override capabilityDescription =
-    "Scenario-owned NOTIFICATION service: captures every delivered payload so the scenario can assert real deliveries.";
-
-  static override async start(
-    runtime: IAgentRuntime,
-  ): Promise<ScenarioNotificationSink> {
-    return new ScenarioNotificationSink(runtime);
-  }
-
-  override async stop(): Promise<void> {}
-
-  async notify(input: CapturedNotification): Promise<{ ok: true }> {
-    deliveredNotifications.push(input);
-    return { ok: true };
-  }
+interface NotificationInboxLike {
+  notify: (input: JsonRecord) => Promise<unknown>;
+  listIncludingExpired: () => DeliveredNotification[];
 }
 
-async function ensureNotificationSink(
+let notificationInbox: NotificationInboxLike | null = null;
+
+function resolveNotificationInbox(
   runtime: RuntimeLike,
-): Promise<string | undefined> {
-  const existing = runtime.getService?.(ServiceType.NOTIFICATION);
-  if (existing) return undefined;
-  if (typeof runtime.registerService !== "function") {
-    return "runtime.registerService unavailable; cannot register the notification sink";
+): NotificationInboxLike | null {
+  const service = runtime.getService?.(ServiceType.NOTIFICATION) as
+    | Partial<NotificationInboxLike>
+    | null
+    | undefined;
+  if (
+    !service ||
+    typeof service.notify !== "function" ||
+    typeof service.listIncludingExpired !== "function"
+  ) {
+    return null;
   }
-  await runtime.registerService(ScenarioNotificationSink);
-  // Registration is lazy — force the instance to start so the dispatcher's
-  // synchronous getService(NOTIFICATION) sees a live surface on tick 1.
-  await runtime.getServiceLoadPromise?.(ServiceType.NOTIFICATION);
-  if (!runtime.getService?.(ServiceType.NOTIFICATION)) {
-    return "notification sink did not start; in_app dispatch would honestly report disconnected";
-  }
-  return undefined;
+  return service as NotificationInboxLike;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -253,7 +233,7 @@ async function seedConcurrentDayTasks(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
   seededTaskIds.length = 0;
-  deliveredNotifications.length = 0;
+  notificationInbox = null;
   const runtime = ctx.runtime as RuntimeLike | undefined;
   const service = runtime?.getService?.("lifeops_scheduled_task_runner") as
     | RunnerServiceLike
@@ -262,8 +242,10 @@ async function seedConcurrentDayTasks(
   if (!runtime || !service || typeof service.getRunner !== "function") {
     return "ScheduledTaskRunnerService is not registered on the scenario runtime";
   }
-  const sinkFailure = await ensureNotificationSink(runtime);
-  if (sinkFailure) return sinkFailure;
+  notificationInbox = resolveNotificationInbox(runtime);
+  if (!notificationInbox) {
+    return "no readable NOTIFICATION service is registered; in_app dispatch would honestly report disconnected and no delivery ledger exists";
+  }
   const runner = service.getRunner({ agentId: runtime.agentId });
   seededRunner = runner;
 
@@ -499,26 +481,38 @@ function assertFullLedgerAccounting(): string | undefined {
 }
 
 function assertRealDeliveries(): string | undefined {
-  // Every FIRED task delivered exactly one real notification (body = the
+  // Every FIRED task delivered exactly one real notification into the
+  // production inbox, carrying its own taskId and the owner-facing body (the
   // deterministic render stand-in's "Heads up: " prefix + promptInstructions);
   // the gate-denied task never reached the surface.
-  const bodyCounts = new Map<string, number>();
-  for (const notification of deliveredNotifications) {
-    if (typeof notification.body === "string") {
-      bodyCounts.set(
-        notification.body,
-        (bodyCounts.get(notification.body) ?? 0) + 1,
-      );
-    }
+  if (!notificationInbox) {
+    return "notification inbox was never resolved; the seed did not run";
+  }
+  const bodiesByTaskId = new Map<string, string[]>();
+  for (const notification of notificationInbox.listIncludingExpired()) {
+    const taskId = notification.data?.taskId;
+    if (typeof taskId !== "string") continue;
+    const bodies = bodiesByTaskId.get(taskId) ?? [];
+    bodies.push(
+      typeof notification.body === "string" ? notification.body : "<no body>",
+    );
+    bodiesByTaskId.set(taskId, bodies);
   }
   const problems: string[] = [];
   for (const [index, plan] of TASK_PLAN.entries()) {
-    const delivered =
-      bodyCounts.get(`Heads up: ${plan.promptInstructions}`) ?? 0;
+    const taskId = seededTaskIds[index] ?? "";
+    const delivered = bodiesByTaskId.get(taskId) ?? [];
     const expected = index === GATE_DENIED_INDEX ? 0 : 1;
-    if (delivered !== expected) {
+    if (delivered.length !== expected) {
       problems.push(
-        `${plan.key}: expected ${expected} delivered notification(s), saw ${delivered}`,
+        `${plan.key}: expected ${expected} delivered notification(s), saw ${delivered.length}`,
+      );
+      continue;
+    }
+    const expectedBody = `Heads up: ${plan.promptInstructions}`;
+    if (expected === 1 && delivered[0] !== expectedBody) {
+      problems.push(
+        `${plan.key}: expected delivered body ${JSON.stringify(expectedBody)}, saw ${JSON.stringify(delivered[0])}`,
       );
     }
   }

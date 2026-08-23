@@ -31,6 +31,11 @@ export {
 export * from "./redemption-contract.js";
 export type * from "./types.js";
 export {
+  ADMIN_ROLE_RANK,
+  adminRoleRank,
+  isAdminRole,
+} from "./types.js";
+export {
   buildWalletProvisionChallenge,
   WALLET_PROVISION_CHALLENGE_PREFIX,
   type WalletProvisionChallengeInput,
