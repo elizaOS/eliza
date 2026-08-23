@@ -1150,14 +1150,23 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(result.reply).toStartWith("A new ElizaOS public release was announced today.");
     expect(result.reply).toContain("Source: elizaos.ai — https://elizaos.ai/news");
     expect(result.reply).toContain("parallel, checked ");
-    expect(
-      result.actionResults?.filter((action) => action.data?.actionName === "WEB_SEARCH"),
-    ).toHaveLength(1);
-    expect(modelRequests).toHaveLength(3);
+    const searchResults = result.actionResults?.filter(
+      (action) => action.data?.actionName === "WEB_SEARCH",
+    );
+    expect(searchResults).toHaveLength(2);
+    expect(searchResults?.[0]).toMatchObject({
+      success: true,
+      data: { query: "What is the latest ElizaOS news?" },
+    });
+    expect(searchResults?.[1]).toMatchObject({
+      success: false,
+      data: { query: "latest ElizaOS news" },
+    });
+    expect(modelRequests).toHaveLength(4);
     expect(result.usage).toMatchObject({
-      promptTokens: 120,
-      completionTokens: 36,
-      totalTokens: 156,
+      promptTokens: 170,
+      completionTokens: 50,
+      totalTokens: 220,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
