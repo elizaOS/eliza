@@ -700,8 +700,6 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toContain("ran step");
 	});
 
-	it("skips the cross-room interactions fetch on the first compose of a turn", async () => {
-
 	it("renders authorized cross-room interactions on the first compose of a turn", async () => {
 		expect(recentMessagesProvider.alwaysInResponseState).toBe(true);
 		const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
