@@ -128,9 +128,16 @@ describe("handleHealthRoutes dispatch", () => {
 describe("handleHealthRoutes GET /api/status", () => {
   it("reports the boot snapshot, uptime, restart state, and response readiness", async () => {
     const startedAt = Date.now() - 1_500;
+    // `detectRuntimeModel` resolves the live provider first and only falls
+    // back to `state.model`. Stub the receipt it reads first
+    // (`getLastResolvedModelProvider`) so the reported label comes from the
+    // runtime rather than from whichever provider API key happens to be in
+    // the ambient environment -- without it this case only passes on a machine
+    // with OPENAI_API_KEY set.
     const runtime = {
       getModel: (modelType: string) =>
         modelType === ModelType.TEXT_LARGE ? () => undefined : undefined,
+      getLastResolvedModelProvider: () => "openai",
     } as unknown as AgentRuntime;
     const { ctx, json, error } = makeContext("/api/status", {
       state: makeState({
