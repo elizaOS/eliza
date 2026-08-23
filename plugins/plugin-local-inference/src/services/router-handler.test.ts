@@ -142,4 +142,44 @@ describe("filterUnavailableLocalInference — TEXT_EMBEDDING stays on-device", (
 			"provider-nan",
 		]);
 	});
+
+	it("sorts device summaries safely by score with deviceId tiebreak", () => {
+		const summaries = [
+			{ deviceId: "dev-nan", score: Number.NaN },
+			{ deviceId: "dev-high", score: 95 },
+			{ deviceId: "dev-low", score: 20 },
+			{ deviceId: "dev-low-2", score: 20 },
+		];
+		summaries.sort(
+			(a, b) =>
+				(Number.isFinite(b.score) ? b.score : 0) -
+					(Number.isFinite(a.score) ? a.score : 0) ||
+				a.deviceId.localeCompare(b.deviceId),
+		);
+		expect(summaries.map((d) => d.deviceId)).toEqual([
+			"dev-high",
+			"dev-low",
+			"dev-low-2",
+			"dev-nan",
+		]);
+	});
+
+	it("sorts installed models safely by sizeBytes with id tiebreak", () => {
+		const models = [
+			{ id: "mod-nan", sizeBytes: Number.NaN },
+			{ id: "mod-large", sizeBytes: 100000 },
+			{ id: "mod-small", sizeBytes: 5000 },
+		];
+		const sorted = models.sort(
+			(left, right) =>
+				(Number.isFinite(right.sizeBytes) ? right.sizeBytes : 0) -
+					(Number.isFinite(left.sizeBytes) ? left.sizeBytes : 0) ||
+				left.id.localeCompare(right.id),
+		);
+		expect(sorted.map((m) => m.id)).toEqual([
+			"mod-large",
+			"mod-small",
+			"mod-nan",
+		]);
+	});
 });
