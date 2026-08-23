@@ -18,6 +18,19 @@ import type { Task, TaskWorker } from "../types/task";
 import { stringToUuid } from "../utils";
 import type { ContactInfo, RelationshipsService } from "./relationships.ts";
 
+const FOLLOW_UP_WORKER_NAME = "follow_up";
+
+/**
+ * Keeps one-shot follow-up rows out of TaskService's orphan deletion path while
+ * the relationships plugin is disabled. This worker is deliberately stateless:
+ * it captures no service/runtime and a later FollowUpService start replaces it.
+ */
+const PARKED_FOLLOW_UP_WORKER: TaskWorker = {
+	name: FOLLOW_UP_WORKER_NAME,
+	shouldRun: async () => false,
+	execute: async () => ({ preserveTask: true }),
+};
+
 export interface FollowUpTask {
 	entityId: UUID;
 	reason: string;
@@ -42,6 +55,7 @@ export class FollowUpService extends Service {
 		"Task-based follow-up scheduling and management for contacts";
 
 	private relationshipsService!: RelationshipsService;
+	private followUpWorker: TaskWorker | null = null;
 
 	constructor(runtime?: IAgentRuntime) {
 		super();
@@ -70,6 +84,21 @@ export class FollowUpService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		const worker = this.followUpWorker;
+		if (
+			worker &&
+			this.runtime.getTaskWorker(FOLLOW_UP_WORKER_NAME) === worker
+		) {
+			// A missing worker makes TaskService delete queued one-shot follow-ups
+			// after its orphan grace period. Replace only our exact worker with a
+			// module-level parking worker: it retains no stopped service instance,
+			// never executes a reminder, and leaves every persisted task byte-for-byte
+			// intact for the next relationships-plugin start to reclaim.
+			this.runtime.unregisterTaskWorker(FOLLOW_UP_WORKER_NAME);
+			this.runtime.registerTaskWorker(PARKED_FOLLOW_UP_WORKER);
+		}
+		this.followUpWorker = null;
+
 		// relationshipsService will be cleaned up by the runtime
 		logger.info("[FollowUpService] Stopped successfully");
 	}
@@ -386,8 +415,15 @@ export class FollowUpService extends Service {
 
 	// Task Workers
 	private registerFollowUpWorker(): void {
+		if (
+			this.followUpWorker &&
+			this.runtime.getTaskWorker(FOLLOW_UP_WORKER_NAME) === this.followUpWorker
+		) {
+			return;
+		}
+
 		const worker: TaskWorker = {
-			name: "follow_up",
+			name: FOLLOW_UP_WORKER_NAME,
 			shouldRun: async (
 				runtime: IAgentRuntime,
 				task: Task,
@@ -484,6 +520,7 @@ export class FollowUpService extends Service {
 		};
 
 		this.runtime.registerTaskWorker(worker);
+		this.followUpWorker = worker;
 	}
 
 	// Helper Methods
