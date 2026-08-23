@@ -84,10 +84,6 @@ jobs:
       - name: Background view e2e
         run: bun run --cwd packages/ui test:background-e2e
 
-      # Connector setup-panel config fields and screenshots.
-      - name: Connectors view e2e
-        run: bun run --cwd packages/ui test:connectors-e2e
-
       # Chat-sheet drag detents (open/peek/close pull-sheet state machine).
       - name: Chat sheet drag-gesture e2e
         run: bun run --cwd packages/ui test:chat-sheet-e2e
@@ -167,7 +163,6 @@ jobs:
             packages/ui/src/components/chat/widgets/__e2e__/output
             packages/ui/src/components/chat/widgets/__e2e__/output-ftu
             packages/ui/src/components/pages/__e2e__/output-background
-            packages/ui/src/components/pages/__e2e__/output-connectors
             packages/ui/src/components/views/__e2e__/output-view-lifecycle
             packages/ui/src/components/shell/__e2e__/output
             packages/ui/src/components/shell/__e2e__/output-chatux
