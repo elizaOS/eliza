@@ -180,11 +180,7 @@ function resolveLearnedCadenceDays(contact: ContactInfo): number | null {
   const interactionTimes = (contact.interactions ?? [])
     .map((interaction) => new Date(interaction.occurredAt).getTime())
     .filter(Number.isFinite)
-    .sort((a, b) => {
-      const aVal = Number.isFinite(a) ? a : 0;
-      const bVal = Number.isFinite(b) ? b : 0;
-      return aVal - bVal;
-    });
+    .sort((a, b) => a - b);
   if (interactionTimes.length < 2) return null;
 
   const gaps: number[] = [];
@@ -202,11 +198,7 @@ function resolveLearnedCadenceDays(contact: ContactInfo): number | null {
   // order, not value order. Without this sort `gaps[middle]` is the middle gap
   // in time, not the statistical median, which skews the learned threshold for
   // any contact with irregular cadence (issue #22444).
-  gaps.sort((a, b) => {
-    const aVal = Number.isFinite(a) ? a : 0;
-    const bVal = Number.isFinite(b) ? b : 0;
-    return aVal - bVal;
-  });
+  gaps.sort((a, b) => a - b);
 
   const middle = Math.floor(gaps.length / 2);
   const median =
@@ -285,10 +277,11 @@ export async function computeOverdueFollowups(
     });
   }
 
+  // Ties on daysOverdue previously kept whatever order searchContacts returned,
+  // which is not stable across stores; break them on displayName so the digest
+  // is deterministic.
   overdue.sort((a, b) => {
-    const aDays = Number.isFinite(a.daysOverdue) ? a.daysOverdue : 0;
-    const bDays = Number.isFinite(b.daysOverdue) ? b.daysOverdue : 0;
-    if (aDays !== bDays) return bDays - aDays;
+    if (a.daysOverdue !== b.daysOverdue) return b.daysOverdue - a.daysOverdue;
     return a.displayName.localeCompare(b.displayName);
   });
 
