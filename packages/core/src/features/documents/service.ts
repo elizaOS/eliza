@@ -1924,8 +1924,8 @@ export class DocumentService extends Service {
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
 		const fragments: Memory[] = [];
+		const seenIds = new Set<string>();
 		let offset = 0;
-		let previousPage: readonly Memory[] = [];
 
 		for (;;) {
 			const page = await this.runtime.adapter.queryDocumentFragments({
@@ -1947,15 +1947,23 @@ export class DocumentService extends Service {
 					},
 				);
 			}
-			if (
-				offset > 0 &&
-				page.length > 0 &&
-				JSON.stringify(page) === JSON.stringify(previousPage)
-			) {
-				throw new ElizaError("Document fragment traversal did not advance", {
-					code: "DOCUMENT_SEARCH_PAGINATION_STALLED",
-					context: { offset },
-				});
+			for (const fragment of page) {
+				if (!fragment.id) {
+					throw new ElizaError(
+						"Document fragment source returned an unidentifiable row",
+						{
+							code: "DOCUMENT_SEARCH_INVALID_PAGE",
+							context: { offset },
+						},
+					);
+				}
+				if (seenIds.has(fragment.id)) {
+					throw new ElizaError("Document fragment traversal repeated a row", {
+						code: "DOCUMENT_SEARCH_SOURCE_UNSTABLE",
+						context: { offset, repeatedId: fragment.id },
+					});
+				}
+				seenIds.add(fragment.id);
 			}
 
 			fragments.push(...page);
@@ -1991,25 +1999,13 @@ export class DocumentService extends Service {
 				);
 			}
 			offset += page.length;
-			previousPage = page;
 		}
 	}
 
 	private async queryCompleteDocumentFragments(
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
-		const first = await this.scanDocumentFragments(params);
-		const verified = await this.scanDocumentFragments(params);
-		if (JSON.stringify(first) !== JSON.stringify(verified)) {
-			throw new ElizaError(
-				"Document fragment source changed during traversal",
-				{
-					code: "DOCUMENT_SEARCH_SOURCE_UNSTABLE",
-					context: { firstCount: first.length, verifiedCount: verified.length },
-				},
-			);
-		}
-		return verified;
+		return this.scanDocumentFragments(params);
 	}
 
 	/** Pure vector (cosine-similarity) search. */
@@ -2142,9 +2138,23 @@ export class DocumentService extends Service {
 			requesterRole: requester.role,
 			...filterScope,
 		});
+		const keywordDocs = keywordCandidates
+			.filter((candidate) => candidate.id && candidate.content.text)
+			.map((candidate) => ({
+				id: candidate.id as string,
+				text: candidate.content.text ?? "",
+			}));
+		const keywordScores = normalizeBm25Scores(
+			bm25Scores(queryText, keywordDocs),
+		);
+		const bm25Map = new Map(
+			keywordScores.map((score) => [score.id, score.score]),
+		);
 		const candidatesById = new Map<string, Memory>();
 		for (const candidate of keywordCandidates) {
-			if (candidate.id) candidatesById.set(candidate.id, candidate);
+			if (candidate.id && (bm25Map.get(candidate.id) ?? 0) > 0) {
+				candidatesById.set(candidate.id, candidate);
+			}
 		}
 		for (const candidate of vectorCandidates) {
 			if (candidate.id) candidatesById.set(candidate.id, candidate);
@@ -2155,7 +2165,12 @@ export class DocumentService extends Service {
 		if (valid.length === 0) return [];
 
 		// Normalise vector scores to [0, 1]
-		const rawSimilarities = valid.map((f) =>
+		const vectorIds = new Set(
+			vectorCandidates.flatMap((candidate) =>
+				candidate.id ? [candidate.id as string] : [],
+			),
+		);
+		const rawSimilarities = vectorCandidates.map((f) =>
 			typeof f.similarity === "number" ? f.similarity : 0,
 		);
 		const maxSim = Math.max(...rawSimilarities);
@@ -2163,22 +2178,17 @@ export class DocumentService extends Service {
 		const simRange = maxSim - minSim;
 
 		const normVectorScore = (raw: number): number =>
-			simRange === 0 ? 1 : (raw - minSim) / simRange;
-
-		// BM25 over candidate set
-		const docs = valid.map((f) => ({
-			id: f.id as string,
-			text: f.content.text ?? "",
-		}));
-		const rawBm25 = bm25Scores(queryText, docs);
-		const normBm25 = normalizeBm25Scores(rawBm25);
-		const bm25Map = new Map(normBm25.map((s) => [s.id, s.score]));
+			simRange === 0
+				? Math.max(0, Math.min(1, raw))
+				: (raw - minSim) / simRange;
 
 		return valid
 			.map((fragment) => {
-				const vectorNorm = normVectorScore(
-					typeof fragment.similarity === "number" ? fragment.similarity : 0,
-				);
+				const vectorNorm = vectorIds.has(fragment.id as string)
+					? normVectorScore(
+							typeof fragment.similarity === "number" ? fragment.similarity : 0,
+						)
+					: 0;
 				const bm25Norm = bm25Map.get(fragment.id as string) ?? 0;
 				const combined =
 					HYBRID_VECTOR_WEIGHT * vectorNorm + HYBRID_BM25_WEIGHT * bm25Norm;

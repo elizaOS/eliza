@@ -241,23 +241,20 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
 			expect(results).toHaveLength(1);
 			expect(results[0].id).toBe("frag-1");
 		});
 
-		it("filters out fragments with no id", async () => {
+		it("rejects fragments with no stable id", async () => {
 			const frag = makeFragment("", "orphan fragment", 0.8);
 			frag.id = undefined as UUID;
 			const rt = buildRuntime({ hasEmbedding: true, fragments: [frag] });
 			const svc = buildService(rt);
 
-			const results = await svc.searchDocuments(
-				makeMessage("orphan"),
-				undefined,
-				"vector",
-			);
-			expect(results).toHaveLength(0);
+			await expect(
+				svc.searchDocuments(makeMessage("orphan"), undefined, "vector"),
+			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_INVALID_PAGE" });
 		});
 
 		it("returns every vector match beyond the former top-20 window", async () => {
@@ -298,7 +295,7 @@ describe("DocumentService.searchDocuments", () => {
 				"keyword",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
 
 			// frag-a should score highest (both "quantum" and "computing" match)
 			expect(results[0].id).toBe("frag-a");
@@ -336,7 +333,7 @@ describe("DocumentService.searchDocuments", () => {
 
 			expect(results).toHaveLength(1_001);
 			expect(results.map((result) => result.id)).toContain("frag-1000");
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(6);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(3);
 		});
 
 		it("rejects a stable adapter-imposed page cap", async () => {
@@ -369,10 +366,30 @@ describe("DocumentService.searchDocuments", () => {
 
 			await expect(
 				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
-			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_PAGINATION_STALLED" });
+			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_SOURCE_UNSTABLE" });
 		});
 
-		it("rejects a fragment source that changes between traversals", async () => {
+		it("rejects an overlapping later page instead of duplicating and omitting rows", async () => {
+			const fragments = Array.from({ length: 1_001 }, (_, index) =>
+				makeFragment(`frag-${index}`, `needle ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				const requestedOffset = params.offset ?? 0;
+				const actualOffset = requestedOffset === 0 ? 0 : requestedOffset - 1;
+				return fragments.slice(actualOffset, actualOffset + params.limit);
+			});
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_SEARCH_SOURCE_UNSTABLE",
+				context: expect.objectContaining({ repeatedId: "frag-999" }),
+			});
+		});
+
+		it("does not reject an unrelated append after a completed traversal", async () => {
 			const rt = buildRuntime({ hasEmbedding: false });
 			let read = 0;
 			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
@@ -384,7 +401,7 @@ describe("DocumentService.searchDocuments", () => {
 
 			await expect(
 				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
-			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_SOURCE_UNSTABLE" });
+			).resolves.toHaveLength(1);
 		});
 
 		it("filters user-private fragments to the scoped user", async () => {
@@ -416,6 +433,54 @@ describe("DocumentService.searchDocuments", () => {
 	});
 
 	describe("hybrid mode", () => {
+		it("does not admit query-disjoint keyword rows when vector recall is empty", async () => {
+			const fragments = [
+				makeFragment("frag-a", "bananas and pears"),
+				makeFragment("frag-b", "unrelated weather report"),
+			];
+			const rt = buildRuntime({ hasEmbedding: true, fragments });
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				if ("embedding" in params) return [];
+				const offset = params.offset ?? 0;
+				return fragments.slice(offset, offset + params.limit);
+			});
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(makeMessage("quantum"), undefined, "hybrid"),
+			).resolves.toEqual([]);
+		});
+
+		it("keeps one semantic hit without padding it with query-disjoint corpus rows", async () => {
+			const semantic = makeFragment(
+				"frag-semantic",
+				"conceptually related evidence",
+				0.8,
+			);
+			const irrelevant = [
+				makeFragment("frag-a", "bananas and pears"),
+				makeFragment("frag-b", "unrelated weather report"),
+			];
+			const rt = buildRuntime({
+				hasEmbedding: true,
+				fragments: [semantic, ...irrelevant],
+			});
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				const rows =
+					"embedding" in params ? [semantic] : [semantic, ...irrelevant];
+				const offset = params.offset ?? 0;
+				return rows.slice(offset, offset + params.limit);
+			});
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("quantum"),
+				undefined,
+				"hybrid",
+			);
+			expect(results.map((result) => result.id)).toEqual(["frag-semantic"]);
+		});
+
 		it("BM25 lifts keyword match when vector similarities are equal", async () => {
 			// When vector similarity is identical, BM25 keyword match breaks the tie.
 			// frag-a: same vector score, no keyword match on "quantum"
@@ -438,7 +503,7 @@ describe("DocumentService.searchDocuments", () => {
 				"hybrid",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(8);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
 			expect(results).toHaveLength(2);
 
 			// frag-b should be ranked higher because BM25 breaks the vector tie

@@ -270,6 +270,34 @@ describe("searchMemories applies scope before the top-K cut", () => {
     ]);
   });
 
+  it("honors stable offsets without repeating the first page", async () => {
+    const memories: Memory[] = Array.from({ length: 6 }, (_, i) => ({
+      entityId: entityA,
+      roomId: roomA,
+      content: { text: `page ${i}` },
+      embedding: offAxis(0.01 + i * 0.01),
+    }));
+    await seed(memories);
+
+    const first = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: onAxis(),
+      match_threshold: 0,
+      count: 2,
+      offset: 0,
+    });
+    const second = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: onAxis(),
+      match_threshold: 0,
+      count: 2,
+      offset: 2,
+    });
+
+    expect(first.map((memory) => memory.content.text)).toEqual(["page 0", "page 1"]);
+    expect(second.map((memory) => memory.content.text)).toEqual(["page 2", "page 3"]);
+  });
+
   it("orders equal-distance results deterministically by memory id", async () => {
     const ids = [
       "00000000-0000-4000-8000-000000000003",

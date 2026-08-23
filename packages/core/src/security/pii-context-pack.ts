@@ -196,99 +196,100 @@ export interface AssembleContextPackRequest {
 }
 
 const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6;
-const COMPLETE_SOURCE_INITIAL_PREFIX = 64;
+const COMPLETE_SOURCE_PAGE_SIZE = 64;
 
 interface PrefixRequest {
 	readonly limit: number;
 	readonly offset: number;
 }
 
-function sameOrderedValues<T>(
-	left: readonly T[],
-	right: readonly T[],
-): boolean {
-	return JSON.stringify(left) === JSON.stringify(right);
+function requiredSourceIdentity(source: string, value: { readonly id?: UUID }): string {
+	if (value.id) return value.id;
+	throw new ElizaError(`PII context ${source} source returned an unidentifiable row`, {
+		code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
+		context: { source },
+		severity: "fatal",
+	});
 }
 
-async function readStableCompletePrefix<T>(
+async function readStableCompletePages<T>(
 	source: string,
 	fetchPrefix: (request: PrefixRequest) => Promise<readonly T[]>,
+	identity: (value: T) => string,
 ): Promise<readonly T[]> {
-	let limit = COMPLETE_SOURCE_INITIAL_PREFIX;
-	let previous: readonly T[] = [];
+	const complete: T[] = [];
+	const seen = new Set<string>();
+	let offset = 0;
 
 	for (;;) {
-		const current = await fetchPrefix({ limit, offset: 0 });
-		if (current.length > limit) {
+		const current = await fetchPrefix({
+			limit: COMPLETE_SOURCE_PAGE_SIZE,
+			offset,
+		});
+		if (current.length > COMPLETE_SOURCE_PAGE_SIZE) {
 			throw new ElizaError(
 				`PII context ${source} source exceeded its requested page`,
 				{
 					code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
-					context: { source, requested: limit, received: current.length },
+					context: {
+						source,
+						offset,
+						requested: COMPLETE_SOURCE_PAGE_SIZE,
+						received: current.length,
+					},
 					severity: "fatal",
 				},
 			);
 		}
-		if (
-			previous.length > 0 &&
-			!sameOrderedValues(current.slice(0, previous.length), previous)
-		) {
-			throw new ElizaError(
-				`PII context ${source} source changed during traversal`,
-				{
-					code: "PII_CONTEXT_SOURCE_UNSTABLE",
-					context: { source, requested: limit },
-				},
-			);
+
+		for (const value of current) {
+			const key = identity(value);
+			if (seen.has(key)) {
+				throw new ElizaError(
+					`PII context ${source} source repeated a result during traversal`,
+					{
+						code: "PII_CONTEXT_SOURCE_UNSTABLE",
+						context: { source, offset, repeatedIdentity: key },
+					},
+				);
+			}
+			seen.add(key);
+			complete.push(value);
 		}
 
-		if (current.length < limit) {
+		if (current.length < COMPLETE_SOURCE_PAGE_SIZE) {
 			const continuation = await fetchPrefix({
 				limit: 1,
-				offset: current.length,
+				offset: offset + current.length,
 			});
 			if (continuation.length > 0) {
 				throw new ElizaError(
 					`PII context ${source} source returned a capped prefix`,
 					{
 						code: "PII_CONTEXT_SOURCE_INCOMPLETE",
-						context: { source, returned: current.length, requested: limit },
+						context: {
+							source,
+							offset,
+							returned: current.length,
+							requested: COMPLETE_SOURCE_PAGE_SIZE,
+						},
 					},
 				);
 			}
-
-			const verified = await fetchPrefix({ limit, offset: 0 });
-			const verifiedContinuation = await fetchPrefix({
-				limit: 1,
-				offset: verified.length,
-			});
-			if (
-				!sameOrderedValues(current, verified) ||
-				verifiedContinuation.length > 0
-			) {
-				throw new ElizaError(
-					`PII context ${source} source changed during verification`,
-					{
-						code: "PII_CONTEXT_SOURCE_UNSTABLE",
-						context: { source, requested: limit },
-					},
-				);
-			}
-			return verified;
+			return complete;
 		}
 
-		previous = current;
-		if (limit > Math.floor(Number.MAX_SAFE_INTEGER / 2)) {
+		if (offset > Number.MAX_SAFE_INTEGER - current.length) {
 			throw new ElizaError(
 				`PII context ${source} result count is not representable`,
 				{
 					code: "PII_CONTEXT_SOURCE_TOO_LARGE",
-					context: { source, requested: limit },
+					context: { source, offset, pageSize: current.length },
 					severity: "fatal",
 				},
 			);
 		}
-		limit *= 2;
+		offset += current.length;
 	}
 }
 
@@ -581,16 +582,16 @@ export function sourcesFromRuntime(
 				ModelType.TEXT_EMBEDDING,
 				params,
 			);
-			const memories = await readStableCompletePrefix(
+			const memories = await readStableCompletePages(
 				"memories",
 				async ({ limit, offset }) =>
 					runtime.searchMemories({
 						embedding,
-						query,
 						tableName: "messages",
 						count: limit,
 						offset,
 					}),
+				(memory) => requiredSourceIdentity("memories", memory),
 			);
 			return memories
 				.filter((memory) => typeof memory.content.text === "string")
@@ -608,7 +609,7 @@ export function sourcesFromRuntime(
 	const roomIds = options.roomIds;
 	if (roomIds && roomIds.length > 0) {
 		sources.searchMessages = async (query) => {
-			const hits = await readStableCompletePrefix(
+			const hits = await readStableCompletePages(
 				"messages",
 				async ({ limit, offset }) =>
 					runtime.adapter.searchMessages({
@@ -617,6 +618,7 @@ export function sourcesFromRuntime(
 						limit,
 						offset,
 					}),
+				(hit) => requiredSourceIdentity("messages", hit.memory),
 			);
 			return hits
 				.filter((hit) => typeof hit.memory.content.text === "string")
