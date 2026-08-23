@@ -85,8 +85,6 @@
   --first-run-panel-shadow: none;
   --first-run-input-bg: rgba(255, 255, 255, 0.7);
   --first-run-input-border: transparent;
-  --first-run-text-support-bg: rgba(255, 255, 255, 0.46);
-  --first-run-text-support-shadow: none;
   --first-run-divider: rgba(31, 41, 55, 0.16);
   --first-run-footer-border: rgba(31, 41, 55, 0.14);
   --first-run-link: var(--accent);
@@ -149,8 +147,6 @@
   --first-run-panel-shadow: none;
   --first-run-input-bg: rgba(255, 255, 255, 0.7);
   --first-run-input-border: transparent;
-  --first-run-text-support-bg: rgba(255, 255, 255, 0.46);
-  --first-run-text-support-shadow: none;
 
   --first-run-divider: rgba(31, 41, 55, 0.16);
   --first-run-footer-border: rgba(31, 41, 55, 0.14);
@@ -208,7 +204,6 @@
   --first-run-text-faint: rgba(160, 160, 172, 0.76);
   --first-run-text-stroke: rgba(0, 0, 0, 0.42);
   --first-run-input-bg: rgba(255, 255, 255, 0.08);
-  --first-run-text-support-bg: rgba(255, 255, 255, 0.06);
   --first-run-card-bg: rgba(255, 255, 255, 0.05);
   --first-run-card-bg-hover: rgba(255, 255, 255, 0.09);
   --first-run-panel-bg: rgba(255, 255, 255, 0.05);
