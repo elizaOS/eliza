@@ -25,14 +25,14 @@ export function resolveWalletAddresses({
   };
 }
 
-function parseUsd(value: string | number | null | undefined): number {
+export function parseUsd(value: string | number | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value !== "string") return 0;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function summarizeWalletBalances(
+export function summarizeWalletBalances(
   walletBalances: WalletBalancesResponse | null,
 ): {
   totalUsd: number;
@@ -109,7 +109,11 @@ function summarizeWalletBalances(
     }
   }
 
-  tokens.sort((a, b) => b.valueUsd - a.valueUsd);
+  tokens.sort(
+    (a, b) =>
+      (Number.isFinite(b.valueUsd) ? b.valueUsd : 0) -
+      (Number.isFinite(a.valueUsd) ? a.valueUsd : 0),
+  );
   return {
     totalUsd: tokens.reduce((sum, token) => sum + token.valueUsd, 0),
     tokens,

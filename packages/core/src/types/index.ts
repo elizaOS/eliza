@@ -41,6 +41,7 @@ export * from "./events";
 export * from "./hook";
 export * from "./identity";
 export * from "./interactions";
+export * from "./membership";
 export * from "./memory";
 export * from "./memory-storage";
 export * from "./message-source";

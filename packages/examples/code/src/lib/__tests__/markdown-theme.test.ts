@@ -11,7 +11,7 @@ vi.mock("chalk", () => {
   return { default: new Proxy(styleFn, handler) };
 });
 
-import { createChatMarkdownTheme } from "./markdown-theme.ts";
+import { createChatMarkdownTheme } from "../markdown-theme.ts";
 
 describe("createChatMarkdownTheme", () => {
   it("builds a theme with all markdown slots", () => {

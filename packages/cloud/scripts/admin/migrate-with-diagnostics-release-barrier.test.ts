@@ -1,6 +1,8 @@
 /**
  * Proves the temporary usage-quotas release barrier pauses the destructive
- * pair before SQL, repairs ledgers already at 0282, and rejects suffix drift.
+ * pair before SQL, repairs ledgers already at 0282, rejects suffix drift, and
+ * admits an empty ledger only after a relation-free catalog proof while
+ * committing the destructive pair atomically.
  */
 
 import { describe, expect, spyOn, test } from "bun:test";
@@ -56,7 +58,13 @@ function appliedRows(
   }));
 }
 
-function migrationClient(applied: ReturnType<typeof appliedRows>): {
+function migrationClient(
+  applied: ReturnType<typeof appliedRows>,
+  options: {
+    failOnStatement?: string;
+    hasUserRelations?: boolean;
+  } = {},
+): {
   client: {
     backend: "pglite";
     query<T = unknown>(
@@ -81,8 +89,18 @@ function migrationClient(applied: ReturnType<typeof appliedRows>): {
       ): Promise<{ rows: T[] }> => {
         queries.push(text);
         queryParams.push(params ?? []);
+        if (text.includes("AS has_user_relations")) {
+          return {
+            rows: [
+              { has_user_relations: options.hasUserRelations ?? false },
+            ] as T[],
+          };
+        }
         if (text.includes(`FROM "drizzle"."__drizzle_migrations"`)) {
           return { rows: applied as T[] };
+        }
+        if (options.failOnStatement === text) {
+          throw new Error("injected migration failure");
         }
         return { rows: [] };
       },
@@ -234,6 +252,286 @@ describe("usage-quotas migration release barrier", () => {
       action: "pause",
       stopBeforeJournalIndex: 2,
     });
+  });
+
+  // The empty-ledger plan explicitly requires atomic execution of the pair;
+  // the runner separately proves the database has no application relations.
+  test("plans an atomic pair for an empty ledger but still pauses any older validated ledger", () => {
+    const migrations = barrierMigrations();
+
+    expect(evaluateMigrationReleaseBarrier(migrations, -1)).toEqual({
+      action: "continue",
+      atomicPairStartIndex: 2,
+    });
+    expect(evaluateMigrationReleaseBarrier(migrations, 0)).toEqual({
+      action: "pause",
+      stopBeforeJournalIndex: 2,
+    });
+    expect(evaluateMigrationReleaseBarrier(migrations, 1)).toEqual({
+      action: "pause",
+      stopBeforeJournalIndex: 2,
+    });
+  });
+
+  // The fresh-ledger carve-out sits behind the structural checks, so a fresh
+  // database still refuses a journal whose guarded pair is missing, duplicated,
+  // interleaved, or reversed instead of applying it without the barrier.
+  test("still validates the guarded pair's shape for an empty ledger", () => {
+    const [checkpoint, before, drop, restore] = barrierMigrations();
+
+    expect(() =>
+      evaluateMigrationReleaseBarrier(
+        [
+          checkpoint,
+          before,
+          drop,
+          migration(2825, "0282b_interleaved", "SELECT interleaved"),
+          restore,
+        ],
+        -1,
+      ),
+    ).toThrow("adjacent journal entries");
+    expect(() =>
+      evaluateMigrationReleaseBarrier([checkpoint, before, restore, drop], -1),
+    ).toThrow("adjacent journal entries");
+    expect(() =>
+      evaluateMigrationReleaseBarrier([checkpoint, before, drop], -1),
+    ).toThrow("requires exactly one of each suffix entry");
+    expect(() =>
+      evaluateMigrationReleaseBarrier(
+        [
+          checkpoint,
+          before,
+          drop,
+          restore,
+          migration(284, RESTORE_TAG, "SELECT duplicate"),
+        ],
+        -1,
+      ),
+    ).toThrow("requires exactly one of each suffix entry");
+  });
+
+  test("fails closed when an empty ledger belongs to a nonempty schema", async () => {
+    const migrations = barrierMigrations();
+    const harness = migrationClient(appliedRows(migrations, -1), {
+      hasUserRelations: true,
+    });
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+    const errorLog = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await expect(
+        runMigrations(harness.client, migrations, OPTIONS),
+      ).rejects.toThrow(
+        "ledger is empty but the database contains application relations",
+      );
+    } finally {
+      outputLog.mockRestore();
+      errorLog.mockRestore();
+    }
+
+    expect(harness.queries).not.toContain("BEGIN");
+    expect(harness.queries).not.toContain("DROP TABLE usage_quotas");
+    expect(harness.ended()).toBe(true);
+  });
+
+  test("preserves a real nonempty PGlite schema whose ledger was wiped", async () => {
+    const { PGlite } = await import("@electric-sql/pglite");
+    const db = await PGlite.create();
+    await db.exec(
+      "CREATE TABLE live_data (id integer PRIMARY KEY, value text NOT NULL); INSERT INTO live_data VALUES (1, 'preserve-me')",
+    );
+    let ended = false;
+    const client = {
+      backend: "pglite" as const,
+      query: async <T = unknown>(text: string, params?: unknown[]) => {
+        if (params && params.length > 0) {
+          const result = await db.query<T>(text, params);
+          return { rows: result.rows };
+        }
+        const results = await db.exec(text);
+        return { rows: (results.at(-1)?.rows as T[] | undefined) ?? [] };
+      },
+      end: async () => {
+        ended = true;
+      },
+    };
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+    const errorLog = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await expect(
+        runMigrations(client, barrierMigrations(), OPTIONS),
+      ).rejects.toThrow(
+        "ledger is empty but the database contains application relations",
+      );
+      const preserved = await db.query<{ value: string }>(
+        "SELECT value FROM live_data WHERE id = 1",
+      );
+      expect(preserved.rows).toEqual([{ value: "preserve-me" }]);
+      expect(ended).toBe(true);
+    } finally {
+      outputLog.mockRestore();
+      errorLog.mockRestore();
+      await db.close();
+    }
+  });
+
+  test("migrates a real relation-free PGlite database through the atomic pair", async () => {
+    const { PGlite } = await import("@electric-sql/pglite");
+    const db = await PGlite.create();
+    const client = {
+      backend: "pglite" as const,
+      query: async <T = unknown>(text: string, params?: unknown[]) => {
+        if (params && params.length > 0) {
+          const result = await db.query<T>(text, params);
+          return { rows: result.rows };
+        }
+        const results = await db.exec(text);
+        return { rows: (results.at(-1)?.rows as T[] | undefined) ?? [] };
+      },
+      end: async () => {},
+    };
+    const migrations = barrierMigrations();
+    migrations[0] = migration(194, CHECKPOINT_TAG, "SELECT 1");
+    migrations[1] = migration(
+      281,
+      "0281_before_usage_quotas_release",
+      "SELECT 2",
+    );
+    migrations[2] = migration(
+      282,
+      DROP_TAG,
+      "DROP TABLE IF EXISTS usage_quotas",
+    );
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      await runMigrations(client, migrations, OPTIONS);
+      const table = await db.query<{ exists: boolean }>(
+        "SELECT to_regclass('public.usage_quotas') IS NOT NULL AS exists",
+      );
+      expect(table.rows).toEqual([{ exists: true }]);
+      const ledger = await db.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations",
+      );
+      expect(ledger.rows).toEqual([{ count: "4" }]);
+    } finally {
+      outputLog.mockRestore();
+      await db.close();
+    }
+  });
+
+  // End to end through runMigrations: the drop, restore, and both ledger rows
+  // share one transaction. Prefix/suffix migrations keep their own commits.
+  test("applies the guarded pair atomically when a relation-free database has an empty ledger", async () => {
+    const migrations = [
+      ...barrierMigrations(),
+      migration(284, "0284_first_future_feature", "SELECT future_one"),
+      migration(285, "0285_second_future_feature", "SELECT future_two"),
+    ];
+    const harness = migrationClient(appliedRows(migrations, -1));
+    let convergenceCalls = 0;
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+    const warnings: string[] = [];
+    const warningLog = spyOn(console, "warn").mockImplementation(
+      (message: string) => {
+        warnings.push(message);
+      },
+    );
+
+    try {
+      await runMigrations(
+        harness.client,
+        migrations,
+        OPTIONS,
+        undefined,
+        undefined,
+        async () => {
+          convergenceCalls += 1;
+        },
+      );
+    } finally {
+      outputLog.mockRestore();
+      warningLog.mockRestore();
+    }
+
+    const appliedInOrder = [
+      ["SELECT checkpoint", CHECKPOINT_TAG],
+      ["SELECT before_drop", "0281_before_usage_quotas_release"],
+      ["DROP TABLE usage_quotas", DROP_TAG],
+      ["CREATE TABLE usage_quotas (id uuid)", RESTORE_TAG],
+      ["SELECT future_one", "0284_first_future_feature"],
+      ["SELECT future_two", "0285_second_future_feature"],
+    ] as const;
+    const drop = harness.queries.indexOf("DROP TABLE usage_quotas");
+    const restore = harness.queries.indexOf(
+      "CREATE TABLE usage_quotas (id uuid)",
+    );
+    const pairBegin = harness.queries.lastIndexOf("BEGIN", drop);
+    const pairCommit = harness.queries.indexOf("COMMIT", restore);
+    expect(pairBegin).toBeGreaterThanOrEqual(0);
+    expect(drop).toBeGreaterThan(pairBegin);
+    expect(restore).toBeGreaterThan(drop);
+    expect(pairCommit).toBeGreaterThan(restore);
+    expect(harness.queries.slice(drop, restore)).not.toContain("COMMIT");
+    const pairLedgerParams = harness.queryParams
+      .slice(drop, pairCommit)
+      .filter((params) => params.length > 0);
+    expect(pairLedgerParams).toContainEqual([
+      `hash-${DROP_TAG}`,
+      expect.any(Number),
+    ]);
+    expect(pairLedgerParams).toContainEqual([
+      `hash-${RESTORE_TAG}`,
+      expect.any(Number),
+    ]);
+    expect(harness.queries.filter((query) => query === "BEGIN")).toHaveLength(
+      appliedInOrder.length - 1,
+    );
+    expect(harness.queries.filter((query) => query === "COMMIT")).toHaveLength(
+      appliedInOrder.length - 1,
+    );
+    // Journal order end to end, with the restore directly after the drop.
+    const statements = new Set(migrations.flatMap((item) => item.statements));
+    expect(harness.queries.filter((query) => statements.has(query))).toEqual(
+      appliedInOrder.map(([statement]) => statement),
+    );
+    expect(
+      warnings.some((message) => message.includes("release barrier paused")),
+    ).toBe(false);
+    expect(convergenceCalls).toBe(1);
+    expect(harness.ended()).toBe(true);
+  });
+
+  test("rolls back both guarded entries when the restore fails", async () => {
+    const migrations = barrierMigrations();
+    const harness = migrationClient(appliedRows(migrations, -1), {
+      failOnStatement: "CREATE TABLE usage_quotas (id uuid)",
+    });
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+    const errorLog = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await expect(
+        runMigrations(harness.client, migrations, OPTIONS),
+      ).rejects.toThrow("injected migration failure");
+    } finally {
+      outputLog.mockRestore();
+      errorLog.mockRestore();
+    }
+
+    const drop = harness.queries.indexOf("DROP TABLE usage_quotas");
+    const restore = harness.queries.indexOf(
+      "CREATE TABLE usage_quotas (id uuid)",
+    );
+    expect(drop).toBeGreaterThanOrEqual(0);
+    expect(restore).toBeGreaterThan(drop);
+    expect(harness.queries.indexOf("ROLLBACK", restore)).toBeGreaterThan(
+      restore,
+    );
+    expect(harness.queries.slice(drop, restore)).not.toContain("COMMIT");
+    expect(harness.ended()).toBe(true);
   });
 
   test("fails closed when either guarded migration is missing or duplicated", () => {

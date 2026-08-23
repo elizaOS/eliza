@@ -11,6 +11,7 @@
  * @module services/install
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
 	InstallDependencyOptions,
 	InstallDependencyResult,
@@ -223,7 +224,7 @@ async function executeInstall(
 				onProgress?.({
 					phase: "installing",
 					progress: 50,
-					message: data.toString().trim().slice(0, 200),
+					message: truncateWellFormed(toWellFormedUnicode(data.toString().trim()), 200),
 				});
 			});
 

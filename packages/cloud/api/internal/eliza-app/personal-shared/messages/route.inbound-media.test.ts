@@ -2,14 +2,19 @@
  * Pins Blooio inbound-media enrichment at the trusted messaging route: the
  * additive mediaUrls schema (allowlist re-validation), the flag-off/disabled
  * path staying byte-identical to the current media-URL text, the flag-on
- * described turn, and the degrade contract — a typed enrichment failure keeps
- * the user's turn instead of failing the delivery, and a dedicated-runtime
- * turn bypassing pooled-key vision entirely. Collaborators are mocked; the
- * describe helper's real typed errors are used so the route's instanceof
- * branches are the code under test.
+ * described turn, the admission contract — every ledger decision other than
+ * a fresh claim (reuse, in flight, exhausted, prior failure) and a missing
+ * decision keep the raw turn without a provider call — and the degrade
+ * contract: a typed enrichment failure keeps the user's turn instead of
+ * failing the delivery, and a dedicated-runtime turn bypasses pooled-key
+ * vision entirely. Collaborators are mocked; the describe helper's real typed
+ * errors drive the real enrichment orchestrator, and the admission ledger is
+ * an in-memory fake whose decisions are the code under test at this layer
+ * (the PGlite sibling proves the real ledger).
  */
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { logger } from "@/lib/utils/logger";
 
 let activeTarget: {
@@ -52,8 +57,28 @@ const runtimeExecutionCtx = {
 const {
   InboundMediaDescriptionError,
   InboundMediaVisionDisabledError,
+  isInboundMediaVisionEnabled,
   MAX_INBOUND_MEDIA_IMAGES,
 } = await import("@/lib/services/eliza-app/describe-inbound-media");
+type LedgerAdmission =
+  import("@/db/repositories/personal-shared-inbound-media").InboundMediaDescriptionAdmission;
+type LedgerClaim =
+  import("@/db/repositories/personal-shared-inbound-media").InboundMediaDescriptionClaim;
+const LEDGER_CLAIM: LedgerClaim = {
+  id: "00000000-0000-4000-8000-0000000000aa",
+  claimToken: "00000000-0000-4000-8000-0000000000ab",
+  attempt: 1,
+};
+const ledgerAdmit = mock(
+  async (_input: unknown): Promise<LedgerAdmission> => ({
+    kind: "claimed",
+    claim: LEDGER_CLAIM,
+  }),
+);
+const ledgerComplete = mock(
+  async (_claim: LedgerClaim, _description: string) => true,
+);
+const ledgerFail = mock(async (_claim: LedgerClaim, _reason: string) => true);
 const { isAllowedBlooioMediaUrl } = await import(
   "@/lib/services/eliza-app/blooio-media-allowlist"
 );
@@ -133,7 +158,15 @@ mock.module("@/lib/services/eliza-app/describe-inbound-media", () => ({
   describeInboundImageMedia,
   InboundMediaDescriptionError,
   InboundMediaVisionDisabledError,
+  isInboundMediaVisionEnabled,
   MAX_INBOUND_MEDIA_IMAGES,
+}));
+mock.module("@/db/repositories/personal-shared-inbound-media", () => ({
+  personalSharedInboundMediaRepository: {
+    admit: ledgerAdmit,
+    complete: ledgerComplete,
+    fail: ledgerFail,
+  },
 }));
 
 const { default: app } = await import("./route");
@@ -142,7 +175,7 @@ const executionCtx = { waitUntil() {}, passThroughOnException() {}, props: {} };
 const MEDIA_URL = "https://media.blooio.com/files/photo-1.jpeg";
 const RAW_MEDIA_MESSAGE = `[media: ${MEDIA_URL}]`;
 
-function request(body: unknown) {
+function request(body: unknown, env: Record<string, unknown> = {}) {
   return app.request(
     "/",
     {
@@ -158,6 +191,7 @@ function request(body: unknown) {
       INTERNAL_SECRET: "test-secret",
       SHARED_RUNTIME_CONVERSATIONS: namespace,
       ELIZA_APP_INBOUND_MEDIA_VISION: "true",
+      ...env,
     } as never,
     executionCtx as never,
   );
@@ -181,6 +215,11 @@ function deliveredMessage(): string {
   return sharedRestMessageSend.mock.calls[0]?.[2] as string;
 }
 
+function deliveredCapabilityText(): unknown {
+  expect(sharedRestMessageSend).toHaveBeenCalledTimes(1);
+  return sharedRestMessageSend.mock.calls[0]?.[9];
+}
+
 describe("blooio inbound media enrichment at the messaging route", () => {
   beforeEach(() => {
     activeTarget = null;
@@ -189,10 +228,16 @@ describe("blooio inbound media enrichment at the messaging route", () => {
     prewarmPersonalSharedAgentTurnCaches.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
     bridge.mockClear();
+    ledgerAdmit.mockReset();
+    ledgerAdmit.mockResolvedValue({ kind: "claimed", claim: LEDGER_CLAIM });
+    ledgerComplete.mockReset();
+    ledgerComplete.mockResolvedValue(true);
+    ledgerFail.mockReset();
+    ledgerFail.mockResolvedValue(true);
     describeInboundImageMedia.mockReset();
     describeInboundImageMedia.mockImplementation(async () => {
       throw new InboundMediaVisionDisabledError(
-        "Inbound media vision is disabled for this deployment",
+        "Inbound media vision has no configured provider",
       );
     });
   });
@@ -200,6 +245,7 @@ describe("blooio inbound media enrichment at the messaging route", () => {
   test("schema accepts allowlisted https media URLs on a Blooio delivery", async () => {
     const response = await request(blooioDelivery());
     expect(response.status).toBe(200);
+    expect(ledgerAdmit).toHaveBeenCalledTimes(1);
     expect(describeInboundImageMedia).toHaveBeenCalledTimes(1);
     expect(describeInboundImageMedia.mock.calls[0]?.[1]).toEqual([MEDIA_URL]);
     const env = describeInboundImageMedia.mock.calls[0]?.[0] as Record<
@@ -253,17 +299,29 @@ describe("blooio inbound media enrichment at the messaging route", () => {
       blooioDelivery({ mediaUrls: undefined, message: "hey eliza" }),
     );
     expect(response.status).toBe(200);
+    expect(ledgerAdmit).not.toHaveBeenCalled();
     expect(describeInboundImageMedia).not.toHaveBeenCalled();
     expect(deliveredMessage()).toBe("hey eliza");
   });
 
-  test("disabled vision keeps the turn byte-identical to the raw media text", async () => {
+  test("a dark flag keeps the raw media text without touching the ledger", async () => {
+    const response = await request(blooioDelivery(), {
+      ELIZA_APP_INBOUND_MEDIA_VISION: undefined,
+    });
+    expect(response.status).toBe(200);
+    expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    expect(ledgerAdmit).not.toHaveBeenCalled();
+    expect(describeInboundImageMedia).not.toHaveBeenCalled();
+  });
+
+  test("an enabled flag without a provider keeps the turn byte-identical and records the claim", async () => {
     const response = await request(blooioDelivery());
     expect(response.status).toBe(200);
     expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    expect(ledgerFail).toHaveBeenCalledWith(LEDGER_CLAIM, "vision_disabled");
   });
 
-  test("an enabled description enriches the turn as an attached-image block", async () => {
+  test("an enabled description enriches the turn as an attached-image block and settles the claim", async () => {
     describeInboundImageMedia.mockResolvedValue(
       "A tabby cat sitting on a mechanical keyboard.",
     );
@@ -273,6 +331,112 @@ describe("blooio inbound media enrichment at the messaging route", () => {
       `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n` +
         "A tabby cat sitting on a mechanical keyboard.",
     );
+    expect(deliveredCapabilityText()).toBeUndefined();
+    expect(ledgerAdmit).toHaveBeenCalledTimes(1);
+    expect(ledgerAdmit.mock.calls[0]?.[0]).toMatchObject({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+15550001111",
+      sourceMessageId: "blooio:eliza-app:message-42",
+      organizationId: "00000000-0000-4000-8000-000000000001",
+      userId: "00000000-0000-4000-8000-000000000002",
+      imageCount: 1,
+    });
+    expect(ledgerComplete).toHaveBeenCalledWith(
+      LEDGER_CLAIM,
+      "A tabby cat sitting on a mechanical keyboard.",
+    );
+  });
+
+  test("a redelivery whose description is already stored is enriched without a provider call", async () => {
+    ledgerAdmit.mockResolvedValue({
+      kind: "reused",
+      description: "A tabby cat sitting on a mechanical keyboard.",
+    });
+    const response = await request(blooioDelivery());
+    expect(response.status).toBe(200);
+    expect(deliveredMessage()).toBe(
+      `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n` +
+        "A tabby cat sitting on a mechanical keyboard.",
+    );
+    expect(describeInboundImageMedia).not.toHaveBeenCalled();
+    expect(ledgerComplete).not.toHaveBeenCalled();
+  });
+
+  test("every denied admission keeps the raw turn and never calls the provider", async () => {
+    describeInboundImageMedia.mockResolvedValue("must not be used");
+    const denials: LedgerAdmission[] = [
+      { kind: "in_flight" },
+      { kind: "previously_failed", reason: "media_fetch_failed" },
+      { kind: "identity_mismatch" },
+      { kind: "media_mismatch" },
+      { kind: "exhausted", scope: "sender", limit: 20, used: 20, requested: 1 },
+      {
+        kind: "exhausted",
+        scope: "connector",
+        limit: 1000,
+        used: 1000,
+        requested: 1,
+      },
+    ];
+    for (const denial of denials) {
+      sharedRestMessageSend.mockClear();
+      ledgerAdmit.mockResolvedValue(denial);
+      const response = await request(blooioDelivery());
+      expect(response.status).toBe(200);
+      expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    }
+    expect(describeInboundImageMedia).not.toHaveBeenCalled();
+    expect(ledgerComplete).not.toHaveBeenCalled();
+    expect(ledgerFail).not.toHaveBeenCalled();
+  });
+
+  test("a lost settlement keeps the raw turn instead of using uncommitted OCR text", async () => {
+    describeInboundImageMedia.mockResolvedValue("must not enter the turn");
+    ledgerComplete.mockResolvedValue(false);
+    const response = await request(blooioDelivery());
+    expect(response.status).toBe(200);
+    expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    expect(ledgerComplete).toHaveBeenCalledWith(
+      LEDGER_CLAIM,
+      "must not enter the turn",
+    );
+  });
+
+  test("a missing admission decision fails closed: raw turn, no spend, no 500", async () => {
+    describeInboundImageMedia.mockResolvedValue("must not be used");
+    ledgerAdmit.mockRejectedValue(
+      new ElizaError("primary database unreachable", {
+        code: "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE",
+      }),
+    );
+    const response = await request(blooioDelivery());
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Eliza-Failure-Stage")).toBeNull();
+    expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    expect(describeInboundImageMedia).not.toHaveBeenCalled();
+  });
+
+  test("a malformed ceiling binding fails closed before the ledger is consulted", async () => {
+    describeInboundImageMedia.mockResolvedValue("must not be used");
+    const response = await request(blooioDelivery(), {
+      ELIZA_APP_INBOUND_MEDIA_VISION_CONNECTOR_DAILY_IMAGES: "unlimited",
+    });
+    expect(response.status).toBe(200);
+    expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    expect(ledgerAdmit).not.toHaveBeenCalled();
+    expect(describeInboundImageMedia).not.toHaveBeenCalled();
+  });
+
+  test("ceiling bindings reach the ledger as the admission policy", async () => {
+    describeInboundImageMedia.mockResolvedValue("described");
+    await request(blooioDelivery(), {
+      ELIZA_APP_INBOUND_MEDIA_VISION_SENDER_DAILY_IMAGES: "3",
+      ELIZA_APP_INBOUND_MEDIA_VISION_CONNECTOR_DAILY_IMAGES: "40",
+    });
+    expect(ledgerAdmit.mock.calls[0]?.[0]).toMatchObject({
+      ceilings: { senderDailyImages: 3, connectorDailyImages: 40 },
+    });
   });
 
   test("a dedicated-runtime turn skips pooled-key vision and bridges the raw media text", async () => {
@@ -294,28 +458,31 @@ describe("blooio inbound media enrichment at the messaging route", () => {
       },
     });
     expect(describeInboundImageMedia).not.toHaveBeenCalled();
+    expect(ledgerAdmit).not.toHaveBeenCalled();
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
     expect(bridge).toHaveBeenCalledTimes(1);
     expect(bridge.mock.calls[0]?.[2].params.text).toBe(RAW_MEDIA_MESSAGE);
   });
 
-  test("a typed enrichment failure degrades to the raw text without dropping the turn", async () => {
+  test("a typed enrichment failure degrades to the raw text and records the claim failure", async () => {
     const errorSpy = spyOn(logger, "error");
     describeInboundImageMedia.mockRejectedValue(
       new InboundMediaDescriptionError(
-        "Inbound media fetch failed",
-        "media_fetch_failed",
+        "Inbound media body read failed",
+        "media_read_failed",
       ),
     );
     const response = await request(blooioDelivery());
     expect(response.status).toBe(200);
     expect(deliveredMessage()).toBe(RAW_MEDIA_MESSAGE);
+    expect(ledgerFail).toHaveBeenCalledWith(LEDGER_CLAIM, "media_read_failed");
+    expect(ledgerComplete).not.toHaveBeenCalled();
     const degradeLog = errorSpy.mock.calls.find(
       ([message]) =>
         message ===
-        "[personal-shared-messaging] inbound media description failed",
+        "[inbound-media-enrichment] inbound media description failed",
     );
-    expect(degradeLog?.[1]).toMatchObject({ reason: "media_fetch_failed" });
+    expect(degradeLog?.[1]).toMatchObject({ reason: "media_read_failed" });
     errorSpy.mockRestore();
   });
 
@@ -327,5 +494,9 @@ describe("blooio inbound media enrichment at the messaging route", () => {
       "media_description",
     );
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    // The claim is left to its lease rather than recorded as a terminal
+    // outcome the bug did not actually produce.
+    expect(ledgerComplete).not.toHaveBeenCalled();
+    expect(ledgerFail).not.toHaveBeenCalled();
   });
 });

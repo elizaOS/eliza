@@ -516,7 +516,7 @@ class DiscordAutomationService {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(
-        `[Discord] Failed to fetch channels for guild ${guildId} (status ${response.status}): ${error.slice(0, 200)}`,
+        `[Discord] Failed to fetch channels for guild ${guildId} (status ${response.status}): ${truncateWellFormed(toWellFormedUnicode(error), 200)}`,
       );
     }
 

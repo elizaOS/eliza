@@ -30,6 +30,28 @@ The attestation request rejects unknown fields, including client-authored
 `confirmed`, `verified`, actor, and role values. Attestations are immutable
 audit evidence and never create canonical redirects or merge-journal rows.
 
+## Membership authority
+
+`SqlMembershipService` is the durable authority for connector-account room
+membership. Each scope first registers a publisher instance, generation, and
+evidence mode. Only an atomic explicitly complete roster snapshot, an ordered
+delta following a complete snapshot in the same publisher generation, or a
+bounded point-query proof can make evidence current. Durable cursor continuity,
+scope generations, and exact idempotency receipts prevent duplicate or
+out-of-order evidence from resurrecting a newer revocation.
+
+Every authorization rechecks persisted `validUntil` values against the trusted
+service clock. Missing, expired, stale, unavailable, and unsupported authority
+deny explicitly. Complete snapshots atomically upsert observed members and
+retain absent active members as revoked facts; incomplete or failed pagination
+atomically marks the scope stale without changing the roster or advancing its
+durable cursor. Authorization also requires a membership fact to match the
+scope's current publisher generation. Point proof for one principal creates no
+fact about another.
+The service invalidates registered dependent caches before notifying observers.
+Connector composition and document authorization remain separate slices, and
+the service exposes no model-callable mutation action.
+
 ## Database Schema
 
 The plugin uses the following main tables:

@@ -4,7 +4,7 @@
  * an in-process keyed queue over the cache-backed store.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
@@ -1547,7 +1547,9 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
         });
         return "";
       });
-      throw new Error(`memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`);
+      throw new Error(
+        `memory copy failed (${rememberResponse.status}) ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
+      );
     }
 
     return {

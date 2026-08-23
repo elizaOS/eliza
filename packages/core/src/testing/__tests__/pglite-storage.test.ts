@@ -3,7 +3,7 @@ import {
 	createTestPgliteDataDir,
 	isInMemoryPgliteDataDir,
 	testPgliteStorageMode,
-} from "./pglite-storage.ts";
+} from "../pglite-storage.ts";
 
 const KEY = "ELIZA_TEST_PGLITE_STORAGE";
 

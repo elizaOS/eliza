@@ -7,6 +7,7 @@
  */
 import {
   _resetBuildVariantForTests,
+  type ActionParameters,
   ElizaError,
   type HandlerOptions,
   type IAgentRuntime,
@@ -39,9 +40,9 @@ function message(): Memory {
 }
 
 function options(
-  parameters: Record<string, unknown> = { command: "echo hello" },
+  parameters: unknown = { command: "echo hello" },
 ): HandlerOptions {
-  return { parameters };
+  return { parameters: parameters as ActionParameters };
 }
 
 function terminalResponse(

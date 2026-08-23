@@ -480,7 +480,11 @@ export async function fetchManagedGoogleGmailTriage(args: {
     messages: messages.sort((left, right) => {
       const scoreDelta = right.triageScore - left.triageScore;
       if (scoreDelta !== 0) return scoreDelta;
-      return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+      const aTime = Date.parse(left.receivedAt);
+      const bTime = Date.parse(right.receivedAt);
+      const aSafe = Number.isFinite(aTime) ? aTime : 0;
+      const bSafe = Number.isFinite(bTime) ? bTime : 0;
+      return bSafe - aSafe;
     }),
     syncedAt: new Date().toISOString(),
   };

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   colorizeDevSettingsBanner,
   colorizeDevSettingsStartupBanner,
-} from "./dev-settings-banner-style.ts";
+} from "../dev-settings-banner-style.ts";
 
 const KEYS = ["NO_COLOR", "FORCE_COLOR"] as const;
 

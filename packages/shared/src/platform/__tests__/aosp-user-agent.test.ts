@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isAospElizaUserAgent,
   userAgentHasElizaOSMarker,
-} from "./aosp-user-agent.ts";
+} from "../aosp-user-agent.ts";
 
 describe("userAgentHasElizaOSMarker", () => {
   it("detects the ElizaOS marker", () => {

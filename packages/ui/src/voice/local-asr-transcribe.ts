@@ -12,6 +12,7 @@
  * hook swallows + cleans up state) stays at the call-site.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
@@ -337,7 +338,7 @@ export async function transcribeCloudWav(
         // not mask the HTTP status the error below already carries.
         const body = await res.text().catch(() => "");
         throw new CloudSttError(
-          `Cloud ASR ${res.status}: ${body.slice(0, 200)}`,
+          `Cloud ASR ${res.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
           {
             status: res.status,
             code: readCloudSttErrorCode(body),
@@ -444,7 +445,9 @@ export async function transcribeLocalInferenceWav(
     // error-policy:J6 the error body is diagnostic-only; a failed read must not
     // mask the real signal (the HTTP status the throw below already carries).
     const body = await res.text().catch(() => "");
-    throw new Error(`Local inference ASR ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(
+      `Local inference ASR ${res.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
+    );
   }
   // error-policy:J3 unparseable body falls through to the explicit
   // empty-transcript throw below

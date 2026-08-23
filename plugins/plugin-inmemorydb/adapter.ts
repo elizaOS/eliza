@@ -1070,8 +1070,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     const direction = params.orderDirection ?? "desc";
     memories.sort((a, b) => {
-      const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
-      const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
+      const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
+      const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";

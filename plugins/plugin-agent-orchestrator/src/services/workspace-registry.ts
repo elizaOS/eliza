@@ -224,7 +224,11 @@ export class WorkspaceRegistry {
   ): Promise<{ freed: number; count: number }> {
     const candidates = Array.from(this.records.values())
       .filter((r) => r.kind === "git-workspace" && !r.live)
-      .sort((a, b) => a.createdAt - b.createdAt);
+      .sort((a, b) => {
+        const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+        const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+        return aTime - bTime;
+      });
     let freed = 0;
     let count = 0;
     for (const record of candidates) {

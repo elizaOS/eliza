@@ -62,7 +62,19 @@ export function computeAwakeProbability(args: {
       ): candidate is { signal: LifeOpsActivitySignal; observedAtMs: number } =>
         candidate.observedAtMs !== null,
     )
-    .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
+    .sort((left, right) => {
+      const rightTime =
+        typeof right.observedAtMs === "number" &&
+        Number.isFinite(right.observedAtMs)
+          ? right.observedAtMs
+          : 0;
+      const leftTime =
+        typeof left.observedAtMs === "number" &&
+        Number.isFinite(left.observedAtMs)
+          ? left.observedAtMs
+          : 0;
+      return rightTime - leftTime;
+    })[0];
 
   const hasConcurrentOwnerInteraction = args.signals.some((signal) => {
     const observedAt = parseIsoMs(signal.observedAt);

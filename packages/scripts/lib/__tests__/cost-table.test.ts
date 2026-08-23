@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUsd } from "./cost-table.ts";
+import { formatUsd } from "../cost-table.ts";
 
 describe("formatUsd", () => {
   it("formats finite amounts with 4 fractional digits", () => {

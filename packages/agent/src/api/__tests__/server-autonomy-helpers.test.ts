@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/core", () => ({
-  MESSAGE_SOURCE_CLIENT_CHAT: "client-chat",
-}));
-
-const routeAutonomyTextToUser = vi.fn(async () => undefined);
-vi.mock("./server-helpers-swarm.ts", () => ({
-  routeAutonomyTextToUser: (...args: unknown[]) =>
-    routeAutonomyTextToUser(...args),
+const routeAutonomyTextToUser = vi.fn(
+  async (_state: unknown, _text: string, _source: string) => undefined,
+);
+vi.mock("../server-helpers-swarm.ts", () => ({
+  routeAutonomyTextToUser: (state: unknown, text: string, source: string) =>
+    routeAutonomyTextToUser(state, text, source),
 }));
 
 import {
@@ -51,7 +49,7 @@ describe("maybeRouteAutonomyEventToConversation", () => {
   it("drops client-chat echoes", async () => {
     await maybeRouteAutonomyEventToConversation(state, {
       stream: "assistant",
-      data: { text: "hi", source: "client-chat" },
+      data: { text: "hi", source: "client_chat" },
     } as never);
     expect(routeAutonomyTextToUser).not.toHaveBeenCalled();
   });

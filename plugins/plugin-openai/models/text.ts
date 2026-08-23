@@ -31,6 +31,7 @@ import {
   resolveEffectiveSystemPrompt,
   sanitizeFunctionNameForCerebras,
   toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   generateText,
@@ -1950,7 +1951,7 @@ function providerErrorBodyMessage(error: unknown): string | undefined {
         // error-policy:J3 untrusted-input sanitizing — a non-JSON error body is
         // still diagnostic; return a bounded excerpt instead of dropping it.
       }
-      return body.replace(/\s+/g, " ").trim().slice(0, 300);
+      return truncateWellFormed(toWellFormedUnicode(body.replace(/\s+/g, " ").trim()), 300);
     }
     node = record.cause;
   }

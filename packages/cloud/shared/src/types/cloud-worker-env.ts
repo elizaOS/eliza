@@ -487,8 +487,22 @@ export interface Bindings {
    * on Personal Shared turns; any other value keeps the raw media-URL text.
    * The gateway-webhook service reads the same variable to decide whether to
    * forward media URLs at all, so enable both deployments together.
+   * Keep this unset outside tests until the retention, real-PostgreSQL
+   * concurrency, signed Blooio/provider, and edge-egress promotion gates in
+   * `docs/inbound-media-vision-promotion.md` are complete.
    */
   ELIZA_APP_INBOUND_MEDIA_VISION?: string;
+  /**
+   * Per-UTC-day image ceilings for pooled-key inbound media vision, consumed
+   * atomically from the primary-database ledger before any provider call: one
+   * for the resolved sending account and one across every sender of a
+   * connector account. Unset keeps the conservative defaults in
+   * `inbound-media-enrichment.ts`; "0" denies every description; any value
+   * that is not a non-negative integer fails closed (no vision, raw media
+   * text kept) and is logged as a configuration error.
+   */
+  ELIZA_APP_INBOUND_MEDIA_VISION_SENDER_DAILY_IMAGES?: string;
+  ELIZA_APP_INBOUND_MEDIA_VISION_CONNECTOR_DAILY_IMAGES?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */

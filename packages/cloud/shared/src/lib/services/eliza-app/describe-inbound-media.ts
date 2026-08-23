@@ -11,11 +11,13 @@
  * compromised or spoofed gateway payload cannot make this Worker read
  * arbitrary or unbounded bytes.
  *
- * Every enrichment failure is a typed `InboundMediaDescriptionError`; callers
- * degrade to the raw media-URL text on it and must never fabricate a
- * description. A truncated completion is rejected, not returned: a clipped
- * description entering conversation history as if complete violates the
- * repository prompt-integrity rule.
+ * Every enrichment failure is a typed `InboundMediaDescriptionError` — the
+ * fetch, the body stream (timeout, disconnect, stream error), body
+ * cancellation, and the vision call alike; callers degrade to the raw
+ * media-URL text on it and must never fabricate a description. A truncated
+ * completion is rejected, not returned: a clipped description entering
+ * conversation history as if complete violates the repository
+ * prompt-integrity rule.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -56,6 +58,7 @@ export class InboundMediaVisionDisabledError extends ElizaError {
 
 export type InboundMediaDescriptionFailureReason =
   | "media_fetch_failed"
+  | "media_read_failed"
   | "unsupported_media_type"
   | "media_too_large"
   | "vision_model_failed"
@@ -87,10 +90,27 @@ interface FetchedInboundImage {
   mediaType: string;
 }
 
+/**
+ * Best-effort release of a body this helper will not read further. The body
+ * is being discarded because of a failure already typed for the caller, so a
+ * cancel that itself fails (stream already errored, socket gone) must neither
+ * mask that typed error nor escape as an untyped one.
+ */
+async function discardBody(
+  body: ReadableStream<Uint8Array> | ReadableStreamDefaultReader<Uint8Array> | null,
+): Promise<void> {
+  try {
+    await body?.cancel();
+  } catch {
+    // error-policy:J7 the typed failure that triggered the discard is the
+    // caller's signal; a failed cancel of an already-dead body adds nothing.
+  }
+}
+
 async function readImageBytesWithCap(response: Response, url: string): Promise<Uint8Array> {
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_INBOUND_IMAGE_BYTES) {
-    await response.body?.cancel();
+    await discardBody(response.body);
     throw new InboundMediaDescriptionError(
       "Inbound media declares a size above the image ceiling",
       "media_too_large",
@@ -110,11 +130,27 @@ async function readImageBytesWithCap(response: Response, url: string): Promise<U
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    let chunk: Awaited<ReturnType<typeof reader.read>>;
+    try {
+      chunk = await reader.read();
+    } catch (error) {
+      // error-policy:J2 the fetch timeout, a provider disconnect, or a stream
+      // error surfaces here rather than from safeFetch; retype it so the
+      // caller degrades instead of treating a transport fault as a bug.
+      throw new InboundMediaDescriptionError(
+        "Inbound media body read failed",
+        "media_read_failed",
+        {
+          cause: error,
+          context: { url, bytesRead: total },
+        },
+      );
+    }
+    const { done, value } = chunk;
     if (done) break;
     total += value.byteLength;
     if (total > MAX_INBOUND_IMAGE_BYTES) {
-      await reader.cancel();
+      await discardBody(reader);
       throw new InboundMediaDescriptionError(
         "Inbound media exceeds the image ceiling",
         "media_too_large",
@@ -160,7 +196,7 @@ async function fetchInboundImage(url: string): Promise<FetchedInboundImage> {
     });
   }
   if (!response.ok) {
-    await response.body?.cancel();
+    await discardBody(response.body);
     throw new InboundMediaDescriptionError(
       `Inbound media fetch returned HTTP ${response.status}`,
       "media_fetch_failed",
@@ -169,7 +205,7 @@ async function fetchInboundImage(url: string): Promise<FetchedInboundImage> {
   }
   const mediaType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
   if (!mediaType.startsWith("image/")) {
-    await response.body?.cancel();
+    await discardBody(response.body);
     throw new InboundMediaDescriptionError(
       "Inbound media is not an image",
       "unsupported_media_type",
@@ -177,6 +213,13 @@ async function fetchInboundImage(url: string): Promise<FetchedInboundImage> {
     );
   }
   return { bytes: await readImageBytesWithCap(response, url), mediaType };
+}
+
+/** The activation switch: exactly "true" enables pooled-key vision for this deployment. */
+export function isInboundMediaVisionEnabled(
+  env: Pick<Bindings, "ELIZA_APP_INBOUND_MEDIA_VISION">,
+): boolean {
+  return env.ELIZA_APP_INBOUND_MEDIA_VISION?.trim() === "true";
 }
 
 /**
@@ -189,7 +232,7 @@ export async function describeInboundImageMedia(
   env: Pick<Bindings, "ELIZA_APP_INBOUND_MEDIA_VISION">,
   urls: readonly string[],
 ): Promise<string> {
-  if (env.ELIZA_APP_INBOUND_MEDIA_VISION?.trim() !== "true") {
+  if (!isInboundMediaVisionEnabled(env)) {
     throw new InboundMediaVisionDisabledError(
       "Inbound media vision is disabled for this deployment",
     );
