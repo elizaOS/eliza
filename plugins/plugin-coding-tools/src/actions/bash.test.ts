@@ -686,7 +686,10 @@ describeIfPosix("shellAction", () => {
     process.env.SHELL_JOB_TTL_MS = "60000";
     const artifactRoot = path.join(stateDir, "coding-tools", "shell-output");
     const workspace = path.join(stateDir, "workspace");
-    const staleArtifact = path.join(artifactRoot, "shell_stale");
+    const staleArtifact = path.join(
+      artifactRoot,
+      ".pending-00000000-0000-4000-8000-000000000001",
+    );
     const secret = "marigold9-artifact-secret";
     try {
       await fs.mkdir(workspace, { recursive: true });
@@ -717,32 +720,47 @@ describeIfPosix("shellAction", () => {
       const handle = artifact.handle;
       const artifactDirectory = path.join(artifactRoot, handle);
       const manifestPath = path.join(artifactDirectory, "manifest.json");
-      const stdoutPath = path.join(artifactDirectory, "stdout.txt");
-      const stderrPath = path.join(artifactDirectory, "stderr.txt");
-      expect(await fs.readFile(stdoutPath, "utf8")).toBe(stdout);
-      expect(await fs.readFile(stderrPath, "utf8")).toBe(stderr);
       const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
-        stdout: { bytes: number; lines: number };
-        stderr: { bytes: number; lines: number };
-        truncation: { modelCharacterLimit: number; completeBytes: number };
+        version: number;
+        stdout: {
+          bytes: number;
+          lines: number;
+          characters: number;
+          sha256: string;
+          segments: Array<{ file: string; bytes: number }>;
+        };
+        stderr: {
+          bytes: number;
+          lines: number;
+          characters: number;
+          sha256: string;
+          segments: Array<{ file: string; bytes: number }>;
+        };
+        projection: { modelCharacterLimit: number };
+        contentRevision: string;
+        mac: string;
       };
 
       expect(await fs.readFile(manifestPath, "utf8")).not.toContain(secret);
-      expect(manifest.stdout).toEqual({
-        path: stdoutPath,
+      expect(manifest.version).toBe(2);
+      expect(manifest.stdout).toMatchObject({
         characters: stdout.length,
         bytes: Buffer.byteLength(stdout),
         lines: 14001,
       });
-      expect(manifest.stderr).toEqual({
-        path: stderrPath,
+      expect(manifest.stderr).toMatchObject({
         characters: stderr.length,
         bytes: Buffer.byteLength(stderr),
         lines: 1,
       });
-      expect(manifest.truncation.modelCharacterLimit).toBe(50_000);
-      expect(manifest.truncation.completeBytes).toBe(
-        Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
+      expect(manifest.stdout.segments.length).toBeGreaterThan(0);
+      expect(manifest.stderr.segments.length).toBeGreaterThan(0);
+      expect(manifest.projection.modelCharacterLimit).toBe(50_000);
+      expect(manifest.contentRevision).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(manifest.mac).toMatch(/^[0-9a-f]{64}$/);
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(workspace);
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(
+        "legacy large command",
       );
       await expect(
         sandbox.validatePath(String(message.roomId), manifestPath),
