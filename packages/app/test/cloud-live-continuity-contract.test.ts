@@ -369,6 +369,27 @@ describe("forbidden Cloud agent mutations", () => {
     });
   });
 
+  it("does not report an anchored assistant when the user anchor is absent", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const history = "/api/conversations/private/messages";
+    audit.setHistoryAnchorToken("missing-private-anchor");
+    audit.observeRequest("GET", history);
+    audit.observeResponse(
+      "GET",
+      history,
+      200,
+      boundedJsonBody({
+        messages: [{ role: "assistant", text: "unrelated older assistant" }],
+      }).responseBody,
+    );
+
+    expect(await audit.snapshot()).toMatchObject({
+      inspectedHistoryResponseCount: 1,
+      historyResponseWithAnchorUserCount: 0,
+      historyResponseWithAnchoredAssistantCount: 0,
+    });
+  });
+
   it("reports unreadable or oversized history bodies as uninspectable", async () => {
     const audit = createCloudLiveNetworkAudit();
     const history = "/api/conversations/private/messages";

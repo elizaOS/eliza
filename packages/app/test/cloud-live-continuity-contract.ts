@@ -439,7 +439,11 @@ async function inspectHistoryAnchor(
       }
     }
     let anchoredAssistantPresent = false;
-    for (let index = anchorUserIndex + 1; index < messages.length; index += 1) {
+    for (
+      let index = anchorUserIndex >= 0 ? anchorUserIndex + 1 : messages.length;
+      index < messages.length;
+      index += 1
+    ) {
       const message = messages[index];
       if (!message || typeof message !== "object" || Array.isArray(message)) {
         continue;
