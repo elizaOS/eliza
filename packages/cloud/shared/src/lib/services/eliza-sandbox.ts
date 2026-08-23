@@ -4604,6 +4604,7 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        capabilityText: text,
         execution: {
           agentKey: rec.id,
           roomKey: channelId,
@@ -4771,6 +4772,7 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        capabilityText: text,
         execution: {
           agentKey: rec.id,
           roomKey: channelId,
@@ -12153,7 +12155,9 @@ export class ElizaSandboxService {
         });
         return "";
       });
-      throw new Error(`State restore failed: HTTP ${res.status} ${truncateWellFormed(toWellFormedUnicode(text), 200)}`);
+      throw new Error(
+        `State restore failed: HTTP ${res.status} ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
+      );
     }
   }
 }

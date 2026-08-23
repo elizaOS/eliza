@@ -1135,6 +1135,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       history: [],
       message: "What is the latest ElizaOS news?",
+      capabilityText: "What is the latest ElizaOS news?",
       messageIds: {
         user: "6328e4cb-4a1f-4d9c-a2fd-769e5fd33aa1",
         assistant: "059e33bc-8215-49f4-841f-7642e7505bc7",
@@ -1160,15 +1161,13 @@ describe("Shared Eliza Workerd runtime", () => {
     const searchResults = result.actionResults?.filter(
       (action) => action.data?.actionName === "WEB_SEARCH",
     );
-    expect(searchResults).toHaveLength(2);
+    expect(searchResults).toHaveLength(1);
     expect(searchResults?.[0]).toMatchObject({
       success: true,
       data: { query: "What is the latest ElizaOS news?" },
     });
-    expect(searchResults?.[1]).toMatchObject({
-      success: false,
-      data: { query: "latest ElizaOS news" },
-    });
+    expect(JSON.stringify(searchResults)).not.toContain('"sources"');
+    expect(JSON.stringify(searchResults)).not.toContain("search_id");
     expect(modelRequests).toHaveLength(5);
     expect(result.usage).toMatchObject({
       promptTokens: 220,

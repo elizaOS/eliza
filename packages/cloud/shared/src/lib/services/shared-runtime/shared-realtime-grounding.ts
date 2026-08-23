@@ -20,13 +20,16 @@ type SourceEvidence = { url: string; text: string };
 
 const FRESHNESS =
   /\b(?:now|rn|right now|current|currently|today|tonight|latest|live|recent|recently|up[- ]?to[- ]?date|this (?:morning|afternoon|evening|week|month|year))\b/i;
-const WEB_VERIFICATION =
-  /\b(?:check|search|browse|look(?:ed)? up|verify|fact[- ]?check)(?:\s+(?:it|that|this|again|online|the))?(?:\s+(?:web|internet|source|sources|news))?\b|\b(?:source|sources|citation|citations)\??$/i;
 const CORRECTION =
   /\b(?:wrong|incorrect|not right|made that up|hallucinat(?:e|ed|ion)|check again|try again|prove it|where did (?:that|you) (?:come|get) from)\b|^\s*\?+\s*$/i;
 const PRIVATE_STATE =
   /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts|password|passcode|secret|api[- ]?key|credential|ssn|social security|credit card|bank balance|phone number|home address|location)\b/i;
 const SENSITIVE_LITERAL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b\d{3}[- ]\d{2}[- ]\d{4}\b/i;
+const PHONE_LITERAL =
+  /(?:^|[^\p{L}\p{N}])(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)|\d{2,4})[ .-]\d{3,4}[ .-]\d{3,4}(?:$|[^\p{L}\p{N}])/u;
+const STREET_ADDRESS_LITERAL =
+  /\b\d{1,6}\s+(?:[\p{L}\p{N}.'’-]+\s+){0,5}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|way|parkway|pkwy|highway|hwy)\b/iu;
+const COORDINATE_LITERAL = /[+-]?\d{1,2}\.\d{3,}\s*,\s*[+-]?\d{1,3}\.\d{3,}/u;
 const MARKETS =
   /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
 const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
@@ -136,29 +139,25 @@ function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefine
 
 /** Denies Shared public-network tools when the authenticated utterance is private or sensitive. */
 export function isSharedPublicSearchSafe(message: string): boolean {
-  return !PRIVATE_STATE.test(message) && !SENSITIVE_LITERAL.test(message);
+  return (
+    !PRIVATE_STATE.test(message) &&
+    !SENSITIVE_LITERAL.test(message) &&
+    !PHONE_LITERAL.test(message) &&
+    !STREET_ADDRESS_LITERAL.test(message) &&
+    !COORDINATE_LITERAL.test(message)
+  );
 }
 
-/** Identifies public current-data turns and corrections that inherit that exact public topic. */
+/** Identifies current public data solely from this authenticated raw utterance. */
 export function resolveSharedRealtimeRequirement(
   message: string,
-  history: readonly SharedTurnMessage[],
+  _history: readonly SharedTurnMessage[],
 ): SharedRealtimeRequirement | undefined {
   const normalized = message.trim();
   const direct = classifyPublicStandalone(normalized);
   const correction = CORRECTION.test(normalized);
   if (direct) return { domain: direct, query: normalized, correction };
-  if (PRIVATE_STATE.test(normalized) || (!correction && !WEB_VERIFICATION.test(normalized))) {
-    return undefined;
-  }
-  const prior = [...history].reverse().find((turn) => turn.role === "user");
-  const priorDomain = prior ? classifyPublicStandalone(prior.content) : undefined;
-  if (!prior || !priorDomain) return undefined;
-  return {
-    domain: priorDomain,
-    query: `${prior.content}\n${normalized}\nVerify against current public sources.`,
-    correction: true,
-  };
+  return undefined;
 }
 
 function canonicalPublicUrl(value: unknown): string | undefined {

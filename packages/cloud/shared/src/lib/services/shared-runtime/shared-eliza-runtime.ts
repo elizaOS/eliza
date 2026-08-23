@@ -736,7 +736,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const actionsEnabled = input.messageRole !== "system";
   const webSearchEnabled =
     actionsEnabled &&
-    Boolean(resolveSharedRealtimeRequirement(input.capabilityText ?? input.message, input.history));
+    Boolean(
+      input.capabilityText && resolveSharedRealtimeRequirement(input.capabilityText, input.history),
+    );
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({

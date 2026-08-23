@@ -206,6 +206,13 @@ describe("shared runtime long-term transcript context", () => {
         truncated: false,
       }),
     ).toBeUndefined();
+    expect(
+      parseSharedPublicWebGrounding({
+        kind: "web_search_unavailable",
+        query: "current value",
+        observedAt: Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS + 60_000,
+      }),
+    ).toBeUndefined();
   });
 
   test("encodes result injection as data-only JSON", () => {

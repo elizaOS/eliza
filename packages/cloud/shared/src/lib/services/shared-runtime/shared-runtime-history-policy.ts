@@ -106,7 +106,8 @@ export function parseSharedPublicWebGrounding(
     typeof candidate.query === "string" &&
     typeof candidate.observedAt === "number" &&
     Number.isSafeInteger(candidate.observedAt) &&
-    candidate.observedAt >= 0
+    candidate.observedAt >= 0 &&
+    candidate.observedAt <= Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
   ) {
     const query = candidate.query.trim();
     return query

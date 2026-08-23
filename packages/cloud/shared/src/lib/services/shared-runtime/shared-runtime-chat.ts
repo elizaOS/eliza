@@ -90,10 +90,7 @@ import {
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import {
-  sharedPublicWebGrounding,
-  sharedRuntimeModelHistoryMessages,
-} from "./shared-runtime-history-policy";
+import { sharedRuntimeModelHistoryMessages } from "./shared-runtime-history-policy";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
@@ -1874,7 +1871,7 @@ export class SharedRuntimeChatService {
                   );
                 }
               },
-              sharedPublicWebGrounding(actionResults),
+              turn.internalGrounding,
             );
             const done = actionResults
               ? {

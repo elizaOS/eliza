@@ -50,7 +50,6 @@ import {
 import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
-  isMatchingRealtimeSearchResult,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
@@ -211,6 +210,8 @@ export interface RunSharedAgentTurnResult {
   usage?: SharedAgentTurnUsage;
   /** Genuine plugin results, including applied effect receipts, for clients and replay. */
   actionResults?: ActionResult[];
+  /** Complete current-turn evidence for internal persistence; transports must never serialize it. */
+  internalGrounding?: SharedRuntimePublicGrounding;
   /** Typed refusal for a tool or device action Shared cannot execute. */
   capabilityWall?: SharedCapabilityWall;
   /** Privacy-bounded provider timing exposed to Shared transports. */
@@ -239,6 +240,8 @@ export interface RunSharedAgentTurnStreamResult {
   history?: SharedTurnMessage[];
   /** Genuine plugin results preserved on the terminal SSE frame and replay. */
   actionResults?: ActionResult[];
+  /** Complete current-turn evidence for internal persistence; transports must never serialize it. */
+  internalGrounding?: SharedRuntimePublicGrounding;
   parts?: AsyncIterable<SharedAgentTurnStreamPart>;
   /** Cancels the AI SDK response reader in addition to aborting provider I/O. */
   cancel?: (reason?: unknown) => Promise<void>;
@@ -372,6 +375,43 @@ function hasRequiredActionResult(
   return Boolean(turn.actionResults?.some((result) => result.data?.actionName === actionName));
 }
 
+function isWebSearchActionResult(result: ActionResult): boolean {
+  return result.data?.actionName === "WEB_SEARCH";
+}
+
+function sharedRealtimeTransportReceipt(
+  grounding: SharedRuntimePublicGrounding,
+  deliveredReply: string,
+): ActionResult {
+  if (grounding.kind === "web_search_unavailable") {
+    return {
+      success: false,
+      text: deliveredReply,
+      error: "Live public data is temporarily unavailable.",
+      data: {
+        actionName: "WEB_SEARCH",
+        query: grounding.query,
+        observedAt: grounding.observedAt,
+        deliveredReply,
+        groundingStatus: "unavailable",
+      },
+    };
+  }
+  return {
+    success: true,
+    text: deliveredReply,
+    data: {
+      actionName: "WEB_SEARCH",
+      query: grounding.query,
+      provider: grounding.provider,
+      observedAt: grounding.observedAt,
+      sourceUrls: grounding.sourceUrls ?? [],
+      deliveredReply,
+      groundingStatus: "verified",
+    },
+  };
+}
+
 export function appendSharedTurn(
   history: SharedTurnMessage[],
   userMessage: string,
@@ -481,7 +521,7 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
-  const publicSearchText = (input.capabilityText ?? message).trim();
+  const publicSearchText = input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -507,9 +547,10 @@ export async function runSharedAgentTurn(
     };
   }
 
-  const realtimeRequirement = actionsEnabled
-    ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
-    : undefined;
+  const realtimeRequirement =
+    actionsEnabled && publicSearchText
+      ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
+      : undefined;
   let realtimeActionResults: ActionResult[] | undefined;
   let realtimeGrounding: SharedRuntimePublicGrounding | undefined;
   if (realtimeRequirement) {
@@ -574,7 +615,7 @@ export async function runSharedAgentTurn(
     );
     if (realtimeActionResults) {
       const runtimeActionResults = (turn.actionResults ?? []).filter(
-        (result) => !isMatchingRealtimeSearchResult(result, realtimeRequirement?.query ?? ""),
+        (result) => !isWebSearchActionResult(result),
       );
       turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
     }
@@ -592,7 +633,6 @@ export async function runSharedAgentTurn(
     );
   }
   if (realtimeRequirement) {
-    const originalModelReply = turn.reply;
     const groundedReply = finalizeSharedRealtimeReply(turn.reply, realtimeGrounding);
     const history = [...turn.history];
     let replaced = false;
@@ -615,19 +655,20 @@ export async function runSharedAgentTurn(
         ...(realtimeGrounding ? { grounding: realtimeGrounding } : {}),
       });
     }
-    const actionResults = (turn.actionResults ?? []).map((result) =>
-      isMatchingRealtimeSearchResult(result, realtimeRequirement.query)
-        ? {
-            ...result,
-            data: {
-              ...result.data,
-              originalModelReply,
-              deliveredReply: groundedReply,
-            },
-          }
-        : result,
-    );
-    turn = { ...turn, reply: groundedReply, responded: true, history, actionResults };
+    const actionResults = [
+      ...(realtimeGrounding
+        ? [sharedRealtimeTransportReceipt(realtimeGrounding, groundedReply)]
+        : []),
+      ...(turn.actionResults ?? []).filter((result) => !isWebSearchActionResult(result)),
+    ];
+    turn = {
+      ...turn,
+      reply: groundedReply,
+      responded: true,
+      history,
+      ...(actionResults.length ? { actionResults } : {}),
+      ...(realtimeGrounding ? { internalGrounding: realtimeGrounding } : {}),
+    };
   }
   // The durable memory commit runs OUTSIDE the provider try/catch: its failure
   // is a storage fault on an already-landed reply and must not be re-labeled
@@ -646,7 +687,7 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnStreamInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
-  const publicSearchText = (input.capabilityText ?? message).trim();
+  const publicSearchText = input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -674,7 +715,11 @@ export async function runSharedAgentTurnStream(
 
   // Current-data answers are buffered until their complete grounded reply has
   // passed validation; streaming an unverified numeric claim cannot be undone.
-  if (actionsEnabled && resolveSharedRealtimeRequirement(publicSearchText, input.history)) {
+  if (
+    actionsEnabled &&
+    publicSearchText &&
+    resolveSharedRealtimeRequirement(publicSearchText, input.history)
+  ) {
     const turn = await runSharedAgentTurn(input);
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
       if (turn.reply) yield { type: "text-delta", text: turn.reply };
@@ -693,6 +738,7 @@ export async function runSharedAgentTurnStream(
       reply: turn.reply,
       history: turn.history,
       ...(turn.actionResults?.length ? { actionResults: turn.actionResults } : {}),
+      ...(turn.internalGrounding ? { internalGrounding: turn.internalGrounding } : {}),
       parts,
     };
   }

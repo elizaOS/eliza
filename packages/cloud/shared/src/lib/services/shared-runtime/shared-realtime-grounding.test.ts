@@ -99,22 +99,37 @@ describe("Shared realtime request classification", () => {
     });
   }
 
-  test("inherits a current-data requirement through correction and retry", () => {
+  test("never rebuilds a correction query from persisted or server-rendered history", () => {
     const history = [
-      { role: "user" as const, content: "what is btc price rn" },
+      {
+        role: "user" as const,
+        content: "[Public guild; speaker: Alice; channel: ops] what is btc price rn",
+      },
       {
         role: "assistant" as const,
         content: "Bitcoin is currently 63,800 USD according to TradingView",
       },
     ];
-    expect(resolveSharedRealtimeRequirement("that's wrong, check again", history)).toMatchObject({
+    expect(resolveSharedRealtimeRequirement("that's wrong, check again", history)).toBeUndefined();
+    expect(resolveSharedRealtimeRequirement("check the web", history)).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement("wrong — what is the current BTC price?", history),
+    ).toMatchObject({
       domain: "markets",
+      query: "wrong — what is the current BTC price?",
       correction: true,
     });
-    expect(resolveSharedRealtimeRequirement("check the web", history)?.query).toContain(
-      "what is btc price rn",
-    );
   });
+
+  for (const literal of [
+    "what is the weather at 123 Main Street?",
+    "what is the weather at (415) 555-1212?",
+    "what is the weather at 37.7749, -122.4194?",
+  ]) {
+    test(`rejects precise private literals from public lookup: ${literal}`, () => {
+      expect(resolveSharedRealtimeRequirement(literal, [])).toBeUndefined();
+    });
+  }
 
   test("does not revive an older public topic past a newer private turn", () => {
     const history = [
