@@ -1,8 +1,11 @@
+/**
+ * Direct unit coverage for CLI profile-name validation and normalization.
+ *
+ * The production helpers are deterministic, so this harness imports them
+ * without mocks and exercises both accepted and rejected user input.
+ */
 import { describe, expect, it } from "vitest";
-import {
-  isValidProfileName,
-  normalizeProfileName,
-} from "./profile-utils.ts";
+import { isValidProfileName, normalizeProfileName } from "../profile-utils.ts";
 
 describe("isValidProfileName", () => {
   it("accepts path-safe names", () => {
