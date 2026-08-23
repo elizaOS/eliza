@@ -70,28 +70,38 @@ function isUuidValue(value: unknown): value is UUID {
 	return typeof value === "string";
 }
 
+function isFiniteNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value);
+}
+
 function isTrustDimensions(value: unknown): value is TrustDimensions {
 	return (
 		isRecord(value) &&
-		typeof value.reliability === "number" &&
-		typeof value.competence === "number" &&
-		typeof value.integrity === "number" &&
-		typeof value.benevolence === "number" &&
-		typeof value.transparency === "number"
+		isFiniteNumber(value.reliability) &&
+		isFiniteNumber(value.competence) &&
+		isFiniteNumber(value.integrity) &&
+		isFiniteNumber(value.benevolence) &&
+		isFiniteNumber(value.transparency)
 	);
 }
 
 function isTrustContext(value: unknown): value is TrustContext {
-	return isRecord(value) && isUuidValue(value.evaluatorId);
+	if (!isRecord(value) || !isUuidValue(value.evaluatorId)) return false;
+	if (value.timeWindow === undefined) return true;
+	return (
+		isRecord(value.timeWindow) &&
+		isFiniteNumber(value.timeWindow.start) &&
+		isFiniteNumber(value.timeWindow.end)
+	);
 }
 
 function isTrustEvidence(value: unknown): value is TrustEvidence {
 	return (
 		isRecord(value) &&
 		isTrustEvidenceType(value.type) &&
-		typeof value.timestamp === "number" &&
-		typeof value.impact === "number" &&
-		typeof value.weight === "number" &&
+		isFiniteNumber(value.timestamp) &&
+		isFiniteNumber(value.impact) &&
+		isFiniteNumber(value.weight) &&
 		typeof value.description === "string" &&
 		isUuidValue(value.reportedBy) &&
 		typeof value.verified === "boolean" &&
@@ -107,19 +117,19 @@ function isTrustProfile(value: unknown): value is TrustProfile {
 	return (
 		isUuidValue(value.entityId) &&
 		isTrustDimensions(value.dimensions) &&
-		typeof value.overallTrust === "number" &&
-		typeof value.confidence === "number" &&
-		typeof value.interactionCount === "number" &&
+		isFiniteNumber(value.overallTrust) &&
+		isFiniteNumber(value.confidence) &&
+		isFiniteNumber(value.interactionCount) &&
 		Array.isArray(value.evidence) &&
 		value.evidence.every(isTrustEvidence) &&
-		typeof value.lastCalculated === "number" &&
+		isFiniteNumber(value.lastCalculated) &&
 		typeof value.calculationMethod === "string" &&
 		isRecord(trend) &&
 		(trend.direction === "increasing" ||
 			trend.direction === "decreasing" ||
 			trend.direction === "stable") &&
-		typeof trend.changeRate === "number" &&
-		typeof trend.lastChangeAt === "number" &&
+		isFiniteNumber(trend.changeRate) &&
+		isFiniteNumber(trend.lastChangeAt) &&
 		isUuidValue(value.evaluatorId)
 	);
 }
