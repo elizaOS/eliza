@@ -7,6 +7,7 @@
  * id becomes a clean handled result, never a raw SQL error in model context.
  */
 import type {
+  AccessContext,
   Action,
   ActionResult,
   HandlerOptions,
@@ -15,10 +16,15 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  buildAccessContext,
   MemoryType as CoreMemoryType,
   getRelatedEntityIds,
   logger,
   ModelType,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  recordOwnerExclusiveSuppression,
+  revalidateOwnerExclusiveDisclosure,
   toWellFormedUnicode,
   validateUuid,
 } from "@elizaos/core";
@@ -46,6 +52,8 @@ interface MemoryParams {
   limit?: number;
   memoryId?: string;
   confirm?: boolean;
+  /** search: 1-based caller-selected page of the cross-room history digest. */
+  page?: number;
 }
 
 interface MemoryListItem {
@@ -335,8 +343,447 @@ function describeScanWindow(scan: CandidateScan): string {
   return `${base} ${scan.saturatedTables.join(", ")} filled that window, so older rows were NOT scanned and this is a windowed match count, not a total — widen with type, entityId, roomId, or a higher limit (the window is max(limit*2, 200) rows per table).`;
 }
 
+/**
+ * Enumeration-style history questions ("what have we talked about lately",
+ * "look at the recent logs") are NOT keyword lookups: BM25/keyword scoring
+ * against phrases like "recent logs" matches rows that literally contain
+ * "recent" or "logs" and misses everything the user actually means (live
+ * 2026-08-22: days of history sat in the messages table while op:search
+ * returned only literal matches, so the reply enumerated a fraction of the
+ * week). These patterns request a TIME SLICE, so serve them a chronological
+ * cross-room digest of the last few days.
+ *
+ * The classifier requires a history/conversation context word: bare temporal
+ * adverbs ("lately") fire on unrelated sentences ("the tests have been flaky
+ * lately"), so "lately" only classifies when the query also names talking,
+ * chatting, messages, logs, or history.
+ */
+const RECENT_HISTORY_PATTERNS = [
+  /\b(?:recent|latest)\b.*\b(?:logs?|journals?|chats?|conversations?|messages?|days?|history)\b/i,
+  /\b(?:last|past)\s+(?:few|couple(?:\s+of)?|\d+)?\s*(?:days?|nights?|weeks?)\b/i,
+  /\bwhat\s+(?:have|did)\s+we\s+(?:talk|chat|discuss|cover)\b/i,
+  /\b(?:catch|fill)\s+me\s+up\b/i,
+  /\b(?:this|the)\s+week'?s?\b.*\b(?:conversations?|chats?|topics?|logs?)\b/i,
+];
+const HISTORY_CONTEXT_PATTERN =
+  /\b(?:talk(?:ed|ing)?|chat(?:s|ted|ting)?|discuss(?:ed|ion|ions)?|conversations?|messages?|logs?|history|said|covered|catch(?:ing)?\s+up)\b/i;
+
+function isRecentHistoryQuery(query: string): boolean {
+  if (RECENT_HISTORY_PATTERNS.some((p) => p.test(query))) return true;
+  return /\blately\b/i.test(query) && HISTORY_CONTEXT_PATTERN.test(query);
+}
+
+const HISTORY_DIGEST_DAYS = 7;
+/** Store page size for the internal complete traversal. */
+const HISTORY_TRAVERSAL_PAGE_ROWS = 500;
+/** Traversal budget. Hitting it returns typed-incomplete, never a partial. */
+const HISTORY_TRAVERSAL_MAX_ROWS = 20_000;
+/** Caller-visible digest page size (complete lines per op:search call). */
+const HISTORY_DIGEST_PAGE_LINES = 150;
+/**
+ * Double-persist twins are the same platform message written twice ~250ms
+ * apart. Identical text from the same speaker OUTSIDE this window is a real
+ * repeat (someone genuinely said it again) and must render.
+ */
+const HISTORY_TWIN_WINDOW_MS = 2_000;
+/** Ingestion wrapper: '[Discord #chan | guild] @user (date): text' */
+const CONNECTOR_PREFIX_PATTERN =
+  /^\[[^\]\n]{1,120}\]\s+@\S+\s+\([^)]{1,60}\):\s*/;
+
+type HistoryDigestOutcome =
+  | {
+      status: "rendered";
+      text: string;
+      totalLines: number;
+      renderedLines: number;
+      page: number;
+      pageCount: number;
+      traversedRows: number;
+      roomCount: number;
+    }
+  /** The digest lane does not apply (gate denied or wrong disclosure basis). */
+  | { status: "not_applicable" }
+  /**
+   * The digest applies but could not be produced completely. The caller must
+   * surface this as a typed failure — never fall back to a healthy-looking
+   * keyword result, and never emit a partial digest.
+   */
+  | {
+      status: "unavailable";
+      code:
+        | "MEMORY_HISTORY_DIGEST_INCOMPLETE"
+        | "MEMORY_HISTORY_DIGEST_UNAVAILABLE";
+      detail: string;
+    };
+
+interface HistoryTraversalOutcome {
+  rows?: Memory[];
+  traversedRows?: number;
+  failure?: HistoryDigestOutcome & { status: "unavailable" };
+}
+
+/**
+ * Complete traversal of the interval's authorized rows via advancing
+ * limit/offset pages over `getMemoriesByRoomIds` (store contract: createdAt
+ * DESC). Completeness is guaranteed by construction, not by a cap:
+ * - a short or empty page means the scoped set is exhausted;
+ * - a full page whose oldest row predates the cutoff means every remaining
+ *   row is older than the interval (ordering is verified, below), so the
+ *   interval is fully collected;
+ * - otherwise the offset advances and the next page is read.
+ * Instability is detected instead of silently tolerated: a page that repeats
+ * the previous page, contributes zero unseen rows, violates DESC ordering
+ * internally, or is newer than the previous page boundary means the
+ * underlying set shifted mid-traversal — the traversal returns
+ * typed-incomplete rather than emitting rows it cannot prove complete.
+ */
+async function traverseHistoryRows(
+  runtime: IAgentRuntime,
+  roomIds: UUID[],
+  accessContext: AccessContext,
+  cutoff: number,
+  message: Memory,
+): Promise<HistoryTraversalOutcome> {
+  const seenIds = new Set<string>();
+  const collected: Memory[] = [];
+  let offset = 0;
+  let prevBoundaryOldest = Number.POSITIVE_INFINITY;
+  let prevPageSignature = "";
+
+  while (true) {
+    if (offset >= HISTORY_TRAVERSAL_MAX_ROWS) {
+      return {
+        failure: {
+          status: "unavailable",
+          code: "MEMORY_HISTORY_DIGEST_INCOMPLETE",
+          detail: `the interval spans more than ${HISTORY_TRAVERSAL_MAX_ROWS} stored rows; narrow the time window or use a keyword query`,
+        },
+      };
+    }
+
+    let page: Memory[];
+    try {
+      page = await runtime.getMemoriesByRoomIds({
+        tableName: "messages",
+        roomIds,
+        limit: HISTORY_TRAVERSAL_PAGE_ROWS,
+        offset,
+        accessContext,
+      });
+    } catch (error) {
+      // error-policy: a storage failure must surface as a typed unavailable
+      // outcome, not degrade into a healthy keyword result.
+      runtime.reportError("MemoryAction.recentHistoryDigest.read", error, {
+        roomCount: roomIds.length,
+        offset,
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
+      return {
+        failure: {
+          status: "unavailable",
+          code: "MEMORY_HISTORY_DIGEST_UNAVAILABLE",
+          detail: "the message store read failed",
+        },
+      };
+    }
+
+    if (page.length === 0) break;
+
+    const signature = page
+      .map((m) => m.id ?? `${m.roomId}:${m.entityId}:${m.createdAt}`)
+      .join("|");
+    let orderedDesc = true;
+    for (let i = 1; i < page.length; i += 1) {
+      if ((page[i]?.createdAt ?? 0) > (page[i - 1]?.createdAt ?? 0)) {
+        orderedDesc = false;
+        break;
+      }
+    }
+    const newestInPage = page.reduce(
+      (max, m) => Math.max(max, m.createdAt ?? 0),
+      0,
+    );
+    let newRows = 0;
+    for (const m of page) {
+      const key = m.id ?? `${m.roomId}:${m.entityId}:${m.createdAt}`;
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        newRows += 1;
+      }
+    }
+
+    if (
+      signature === prevPageSignature ||
+      newRows === 0 ||
+      !orderedDesc ||
+      newestInPage > prevBoundaryOldest
+    ) {
+      const reason =
+        signature === prevPageSignature || newRows === 0
+          ? "pagination did not advance (stalled page)"
+          : "page ordering changed mid-traversal";
+      runtime.reportError(
+        "MemoryAction.recentHistoryDigest.traversal",
+        new Error(`history traversal instability: ${reason}`),
+        {
+          roomCount: roomIds.length,
+          offset,
+          roomId: message.roomId,
+          entityId: message.entityId,
+        },
+      );
+      return {
+        failure: {
+          status: "unavailable",
+          code: "MEMORY_HISTORY_DIGEST_INCOMPLETE",
+          detail: `the store returned unstable pages (${reason}); the interval could not be traversed completely`,
+        },
+      };
+    }
+
+    prevPageSignature = signature;
+    const oldestInPage = page.reduce(
+      (min, m) => Math.min(min, m.createdAt ?? 0),
+      Number.POSITIVE_INFINITY,
+    );
+    prevBoundaryOldest = oldestInPage;
+
+    for (const m of page) {
+      const text = (m.content as { text?: string } | undefined)?.text;
+      if (typeof text !== "string" || !text.trim()) continue;
+      if ((m.createdAt ?? 0) < cutoff) continue;
+      collected.push(m);
+    }
+
+    // Ordering is DESC and verified: a full page whose oldest row predates
+    // the cutoff proves every unread row is older than the interval.
+    if (oldestInPage < cutoff) break;
+    if (page.length < HISTORY_TRAVERSAL_PAGE_ROWS) break;
+    offset += page.length;
+  }
+
+  return { rows: collected, traversedRows: seenIds.size };
+}
+
+/**
+ * Chronological digest of the sender's rooms over the last week. Owner-private
+ * gated: this is deliberately cross-room recall, so it renders ONLY when the
+ * live delivery audience is a verified owner-only destination — an owner DM,
+ * private voice room, or authenticated owner api_private room whose entire
+ * 2-member census is exactly {owner, agent}. The gate DENIES every
+ * group/channel kind. On deny the search keeps its room-scoped keyword scan
+ * (with the suppression recorded), so other participants never see
+ * private-room content.
+ *
+ * Output contract (no silent partials):
+ * - Complete row text. No per-line truncation; only the ingestion connector
+ *   wrapper (which duplicates the stamp/speaker the line already carries) is
+ *   stripped.
+ * - Complete traversal of the interval before any rendering; if the interval
+ *   cannot be traversed completely and stably, the outcome is a typed
+ *   incomplete/unavailable result and NO digest text is produced.
+ * - When the digest exceeds one page of lines, paging is explicit and
+ *   caller-selected via the `page` parameter: lines are ordered ascending by
+ *   (createdAt, id) so earlier pages stay stable as new messages arrive, and
+ *   the footer names the exact remaining line count and the next page number.
+ * - Dedupe removes only the double-persist twin (same platform message row
+ *   written twice ~250ms apart): rows sharing a platformMessageId render
+ *   once, and text-keyed dedupe uses the FULL normalized text within a 2s
+ *   window — distinct messages that share a long prefix, and genuine repeats
+ *   minutes apart, all render.
+ */
+async function buildRecentHistoryDigest(
+  runtime: IAgentRuntime,
+  message: Memory,
+  requestedPage: number | undefined,
+): Promise<HistoryDigestOutcome> {
+  let disclosure: Awaited<
+    ReturnType<typeof revalidateOwnerExclusiveDisclosure>
+  >;
+  try {
+    disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
+  } catch (error) {
+    // error-policy: a gate evaluation failure is not a deny and not a healthy
+    // keyword search — it is a typed unavailable outcome.
+    runtime.reportError("MemoryAction.recentHistoryDigest.gate", error, {
+      roomId: message.roomId,
+      entityId: message.entityId,
+    });
+    return {
+      status: "unavailable",
+      code: "MEMORY_HISTORY_DIGEST_UNAVAILABLE",
+      detail: "the owner-private disclosure gate could not be evaluated",
+    };
+  }
+  if (
+    !disclosure.allowed ||
+    disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+  ) {
+    // Suppression is recorded only on a real deny. An allowed-but-wrong-basis
+    // decision (internal_agent_turn) is not a suppressed owner surface — the
+    // lane simply does not apply to that audience.
+    if (!disclosure.allowed) {
+      recordOwnerExclusiveSuppression(message, disclosure.reason);
+    }
+    return { status: "not_applicable" };
+  }
+
+  const cutoff = Date.now() - HISTORY_DIGEST_DAYS * 24 * 60 * 60 * 1000;
+  let accessContext: AccessContext;
+  let roomIds: UUID[];
+  try {
+    // The access context scopes the store read to what the requester may see;
+    // per the database contract, omitting it disables access-context filtering
+    // entirely, which would leak access-restricted rows into the digest.
+    accessContext = await buildAccessContext(runtime, message);
+    const clusterIds = await getRelatedEntityIds(runtime, message.entityId);
+    const roomIdSets = await Promise.all(
+      clusterIds.map((id) => runtime.getRoomsForParticipant(id)),
+    );
+    roomIds = [...new Set(roomIdSets.flat())];
+  } catch (error) {
+    runtime.reportError("MemoryAction.recentHistoryDigest.scope", error, {
+      roomId: message.roomId,
+      entityId: message.entityId,
+    });
+    return {
+      status: "unavailable",
+      code: "MEMORY_HISTORY_DIGEST_UNAVAILABLE",
+      detail: "the sender's room scope could not be resolved",
+    };
+  }
+
+  const header = (roomCount: number, totalLines: number): string =>
+    `Chronological conversation digest, last ${HISTORY_DIGEST_DAYS} days across ${roomCount} room(s), complete traversal of the interval (${totalLines} line(s) after twin dedupe; owner-private destination verified):`;
+
+  if (roomIds.length === 0) {
+    return {
+      status: "rendered",
+      text: [
+        header(0, 0),
+        `No conversation rooms are associated with this sender, so there are no messages in the last ${HISTORY_DIGEST_DAYS} days.`,
+      ].join("\n"),
+      totalLines: 0,
+      renderedLines: 0,
+      page: 1,
+      pageCount: 1,
+      traversedRows: 0,
+      roomCount: 0,
+    };
+  }
+
+  const traversal = await traverseHistoryRows(
+    runtime,
+    roomIds,
+    accessContext,
+    cutoff,
+    message,
+  );
+  if (traversal.failure) return traversal.failure;
+  const rows = traversal.rows ?? [];
+
+  rows.sort((a, b) => {
+    const at = a.createdAt ?? 0;
+    const bt = b.createdAt ?? 0;
+    if (at !== bt) return at - bt;
+    return (a.id ?? "").localeCompare(b.id ?? "");
+  });
+
+  const agentName = runtime.character.name ?? "Agent";
+  const lastSeenAt = new Map<string, number>();
+  const lines: string[] = [];
+  for (const m of rows) {
+    const raw = ((m.content as { text?: string }).text ?? "").trim();
+    const text = raw.replace(CONNECTOR_PREFIX_PATTERN, "").replace(/\s+/g, " ");
+    const createdAt = m.createdAt ?? 0;
+    const platformMessageId = (
+      m.metadata as { platformMessageId?: string } | undefined
+    )?.platformMessageId;
+    // Twin dedupe on a stable identity when one exists; otherwise on the FULL
+    // normalized text inside a tight window. Never on a sliced prefix —
+    // distinct messages sharing a long prefix must both render.
+    const key = platformMessageId
+      ? `pmid:${m.roomId}:${platformMessageId}`
+      : `txt:${m.roomId}:${m.entityId}:${text}`;
+    const prev = lastSeenAt.get(key);
+    if (
+      prev !== undefined &&
+      (platformMessageId || createdAt - prev <= HISTORY_TWIN_WINDOW_MS)
+    ) {
+      lastSeenAt.set(key, createdAt);
+      continue;
+    }
+    lastSeenAt.set(key, createdAt);
+    const when = new Date(createdAt);
+    const stamp = `${String(when.getUTCMonth() + 1).padStart(2, "0")}/${String(
+      when.getUTCDate(),
+    ).padStart(2, "0")} ${String(when.getUTCHours()).padStart(2, "0")}:${String(
+      when.getUTCMinutes(),
+    ).padStart(2, "0")}Z`;
+    const speaker = m.entityId === runtime.agentId ? agentName : "user";
+    lines.push(`[${stamp}] ${speaker}: ${text}`);
+  }
+
+  const totalLines = lines.length;
+  if (totalLines === 0) {
+    return {
+      status: "rendered",
+      text: [
+        header(roomIds.length, 0),
+        `No messages in the last ${HISTORY_DIGEST_DAYS} days.`,
+      ].join("\n"),
+      totalLines: 0,
+      renderedLines: 0,
+      page: 1,
+      pageCount: 1,
+      traversedRows: traversal.traversedRows ?? 0,
+      roomCount: roomIds.length,
+    };
+  }
+
+  const pageCount = Math.max(
+    1,
+    Math.ceil(totalLines / HISTORY_DIGEST_PAGE_LINES),
+  );
+  const requested = Math.max(1, Math.floor(requestedPage ?? 1));
+  const page = Math.min(requested, pageCount);
+  const start = (page - 1) * HISTORY_DIGEST_PAGE_LINES;
+  const shown = lines.slice(start, start + HISTORY_DIGEST_PAGE_LINES);
+  const end = start + shown.length;
+
+  const notes: string[] = [];
+  if (requested !== page) {
+    notes.push(
+      `Requested page ${requested} exceeds the ${pageCount} available page(s); showing page ${pageCount}.`,
+    );
+  }
+  let footer: string;
+  if (pageCount === 1) {
+    footer = `Digest complete: all ${totalLines} line(s) shown.`;
+  } else if (page < pageCount) {
+    footer = `Digest page ${page} of ${pageCount}: lines ${start + 1}-${end} of ${totalLines}. ${totalLines - end} later line(s) are NOT shown on this page; request op:search with the same query and page:${page + 1} to continue.`;
+  } else {
+    footer = `Digest page ${page} of ${pageCount}: lines ${start + 1}-${end} of ${totalLines}. Earlier lines are on pages 1-${pageCount - 1}.`;
+  }
+
+  return {
+    status: "rendered",
+    text: [header(roomIds.length, totalLines), ...notes, ...shown, footer].join(
+      "\n",
+    ),
+    totalLines,
+    renderedLines: shown.length,
+    page,
+    pageCount,
+    traversedRows: traversal.traversedRows ?? 0,
+    roomCount: roomIds.length,
+  };
+}
+
 async function doSearch(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const type =
@@ -371,6 +818,40 @@ async function doSearch(
   };
   const scan = await collectCandidates(runtime, { ...scope, limit });
 
+  // Enumeration lane: "what have we talked about lately" is a time-slice
+  // request, not a keyword lookup. When the pattern matches AND the delivery
+  // audience is verified owner-private, a complete chronological digest leads
+  // the result. A digest FAILURE is a typed unavailable outcome for the whole
+  // search — the keyword scan alone would silently answer a question it
+  // cannot answer, presenting a broken pipeline as a healthy-but-thin result.
+  let digest: (HistoryDigestOutcome & { status: "rendered" }) | null = null;
+  if (query && isRecentHistoryQuery(query)) {
+    const outcome = await buildRecentHistoryDigest(
+      runtime,
+      message,
+      params.page,
+    );
+    if (outcome.status === "unavailable") {
+      return {
+        success: false,
+        text: `The cross-room history digest for this time-slice query is unavailable: ${outcome.detail}. No partial digest was emitted. Retry, or scope the request to a room with a keyword query.`,
+        data: {
+          actionName: "MEMORY",
+          op: "search" as const,
+          error: outcome.code,
+          detail: outcome.detail,
+        },
+      };
+    }
+    if (outcome.status === "rendered") {
+      // The digest discloses cross-room owner-private content: arm the egress
+      // re-validation / stream-suppression seams keyed on
+      // ownerExclusiveDisclosureWasUsed.
+      markOwnerExclusiveDisclosureUsed(message);
+      digest = outcome;
+    }
+  }
+
   const matchedInWindow = scan.matches.length;
   const items = scan.matches
     .slice(0, limit)
@@ -400,6 +881,9 @@ async function doSearch(
   return {
     success: true,
     text: [
+      // The digest leads: for an enumeration question it IS the answer, and
+      // the keyword matches below it are supporting detail.
+      ...(digest ? [digest.text, ""] : []),
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
       ...(ignoredIdNotes.length > 0
         ? [`Note: ${ignoredIdNotes.join("; ")}.`]
@@ -420,6 +904,17 @@ async function doSearch(
       matchedInWindow,
       scanWindowPerTable: scan.perTable,
       scanWindowSaturated: scan.saturatedTables.length > 0,
+      historyDigestIncluded: digest !== null,
+      ...(digest
+        ? {
+            historyDigestTotalLines: digest.totalLines,
+            historyDigestRenderedLines: digest.renderedLines,
+            historyDigestPage: digest.page,
+            historyDigestPageCount: digest.pageCount,
+            historyDigestTraversedRows: digest.traversedRows,
+            historyDigestRoomCount: digest.roomCount,
+          }
+        : {}),
     },
     data: {
       actionName: "MEMORY",
@@ -691,7 +1186,7 @@ export const memoryAction: Action = {
         case "create":
           return await doCreate(runtime, message, params);
         case "search":
-          return await doSearch(runtime, params);
+          return await doSearch(runtime, message, params);
         case "update":
           return await doUpdate(runtime, params);
         case "delete":
@@ -771,6 +1266,13 @@ export const memoryAction: Action = {
     {
       name: "limit",
       description: "search: maximum results to return (1-200).",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "page",
+      description:
+        "search: 1-based page of the cross-room history digest for time-slice queries. Each page renders complete lines; when more remain, the digest footer names the next page to request.",
       required: false,
       schema: { type: "number" as const },
     },
