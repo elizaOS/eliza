@@ -4,6 +4,8 @@
  * the fields the widget reads and tolerates extra route fields.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 export interface TrajectoryListItem {
   id: string;
   status: "active" | "completed" | "error";
@@ -75,7 +77,7 @@ export class TrajectoryHttpError extends Error {
 
   constructor(status: number, statusText: string, body: string) {
     super(
-      `[trajectory-logger] ${status} ${statusText}${body ? `: ${body.slice(0, 200)}` : ""}`,
+      `[trajectory-logger] ${status} ${statusText}${body ? `: ${truncateWellFormed(toWellFormedUnicode(body), 200)}` : ""}`,
     );
     this.name = "TrajectoryHttpError";
     this.status = status;
