@@ -610,4 +610,35 @@ describe("Telegram message connector adapter", () => {
 
     expect(getTelegramPollerClaim("teardown-token")).toBeUndefined();
   });
+
+  it("sorts deduplicated connector targets safely when score contains NaN", () => {
+    const targets = [
+      {
+        id: "t-nan",
+        score: NaN,
+        target: { source: "telegram", channelId: "123" },
+      },
+      {
+        id: "t-valid",
+        score: 0.9,
+        target: { source: "telegram", channelId: "456" },
+      },
+    ];
+
+    targets.sort((a, b) => {
+      const bScore =
+        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+      const aScore =
+        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+      return (
+        bScore - aScore ||
+        (a.id ?? a.target.channelId ?? a.target.source).localeCompare(
+          b.id ?? b.target.channelId ?? b.target.source,
+        )
+      );
+    });
+
+    expect(targets[0]?.id).toBe("t-valid");
+    expect(targets[1]?.id).toBe("t-nan");
+  });
 });

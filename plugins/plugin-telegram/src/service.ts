@@ -2456,9 +2456,18 @@ export class TelegramService extends Service {
         byKey.set(key, target);
       }
     }
-    return Array.from(byKey.values()).sort(
-      (a, b) => (b.score ?? 0) - (a.score ?? 0),
-    );
+    return Array.from(byKey.values()).sort((a, b) => {
+      const bScore =
+        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+      const aScore =
+        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+      return (
+        bScore - aScore ||
+        (a.name ?? a.target.channelId ?? a.target.source).localeCompare(
+          b.name ?? b.target.channelId ?? b.target.source,
+        )
+      );
+    });
   }
 
   private async getTelegramChatForTarget(
@@ -2712,7 +2721,21 @@ export class TelegramService extends Service {
         const metadata = memory.metadata as Record<string, unknown> | undefined;
         return !metadata?.accountId || metadata.accountId === accountId;
       })
-      .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+      .sort((left, right) => {
+        const rightCreated =
+          typeof right.createdAt === "number" &&
+          Number.isFinite(right.createdAt)
+            ? right.createdAt
+            : 0;
+        const leftCreated =
+          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+            ? left.createdAt
+            : 0;
+        return (
+          rightCreated - leftCreated ||
+          (left.id ?? "").localeCompare(right.id ?? "")
+        );
+      })
       .slice(0, limit);
   }
 
