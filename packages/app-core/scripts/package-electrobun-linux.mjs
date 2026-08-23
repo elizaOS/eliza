@@ -24,6 +24,7 @@ import { cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolveLatestElectrobunLinuxBuild } from "./lib/electrobun-linux-build-dir.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import { normalizeAbsoluteStagedSymlinks } from "./lib/linux-artifact-symlinks.mjs";
 import {
@@ -239,22 +240,11 @@ export async function withStagingCleanup(targetPath, operation) {
 }
 
 function latestBuildDir() {
-  const explicit = args.get("build-dir");
-  if (explicit) return path.resolve(repoRoot, explicit);
-
-  const candidates = readdirSync(buildRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(buildRoot, entry.name))
-    .filter((dir) => /linux/i.test(path.basename(dir)))
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-
-  if (!candidates[0]) {
-    throw new Error(
-      `No Linux Electrobun build directory found under ${buildRoot}`,
-    );
-  }
-
-  return candidates[0];
+  return resolveLatestElectrobunLinuxBuild({
+    buildRoot,
+    explicitBuildDir: args.get("build-dir"),
+    repoRoot,
+  });
 }
 
 export function findElectrobunLauncher(root) {

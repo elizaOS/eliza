@@ -19,6 +19,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  resolveElectrobunLinuxAppDirectory,
+  resolveLatestElectrobunLinuxBuild,
+} from "../lib/electrobun-linux-build-dir.mjs";
+import {
   APPIMAGETOOL_ASSETS,
   buildSelectedLinuxPackages,
   DEBIAN_RUNTIME_DEPENDS,
@@ -146,6 +150,44 @@ describe("direct Linux package format selection", () => {
   it("rejects unknown formats before packaging", () => {
     expect(() => resolveLinuxPackageFormats("snap")).toThrow(
       /Unsupported Linux package format "snap"/,
+    );
+  });
+});
+
+describe("Electrobun Linux build discovery", () => {
+  function writePackagedApp(directory: string): void {
+    mkdirSync(path.join(directory, "bin"), { recursive: true });
+    writeFileSync(path.join(directory, "bin", "launcher"), "launcher");
+    writeFileSync(
+      path.join(directory, "bin", "libNativeWrapper.so"),
+      "wrapper",
+    );
+  }
+
+  it("selects Electrobun's nested app directory instead of its platform parent", () => {
+    const buildRoot = tempDir();
+    const platform = path.join(buildRoot, "dev-linux-x64");
+    const packagedApp = path.join(platform, "Eliza-dev");
+    writePackagedApp(packagedApp);
+
+    expect(
+      resolveLatestElectrobunLinuxBuild({
+        buildRoot,
+        repoRoot: buildRoot,
+      }),
+    ).toBe(packagedApp);
+  });
+
+  it("preserves the older direct-bin layout and rejects ambiguous children", () => {
+    const direct = tempDir();
+    writePackagedApp(direct);
+    expect(resolveElectrobunLinuxAppDirectory(direct)).toBe(direct);
+
+    const ambiguous = tempDir();
+    writePackagedApp(path.join(ambiguous, "first"));
+    writePackagedApp(path.join(ambiguous, "second"));
+    expect(() => resolveElectrobunLinuxAppDirectory(ambiguous)).toThrow(
+      /Ambiguous Electrobun Linux build/,
     );
   });
 });
