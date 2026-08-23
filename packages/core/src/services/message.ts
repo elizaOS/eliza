@@ -8220,6 +8220,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerProvider = args.codingMode
 			? undefined
 			: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
+		const resolvedStage1ModelName =
+			extractMessageHandlerModelName(rawMessageHandler);
+		// The Stage-1 response and the planner normally resolve to the same local
+		// model. Carry the provider-confirmed model id into the planner's input
+		// budget so a tight-context model is compacted against its real ceiling,
+		// not the generic 1M fallback. Explicit caller budgets remain authoritative.
+		const effectivePlannerLoopConfig =
+			args.plannerLoopConfig?.contextWindowModelName ||
+			args.plannerLoopConfig?.contextWindowTokens !== undefined ||
+			!resolvedStage1ModelName
+				? args.plannerLoopConfig
+				: {
+						...args.plannerLoopConfig,
+						contextWindowModelName: resolvedStage1ModelName,
+					};
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		// An explicit continuation turn ("finish my request", "that is good")
 		// carries no inferable intent of its own, so candidate inference runs on
@@ -9404,7 +9419,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							evaluatorEffects,
 							recorder,
 							trajectoryId,
-							plannerLoopConfig: args.plannerLoopConfig,
+							plannerLoopConfig: effectivePlannerLoopConfig,
 							activateActionContexts: false,
 						}),
 					);
@@ -9478,7 +9493,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					return runPlannerLoop({
 						runtime: plannerRuntime,
 						context: plannerContextAfterEarlyReply,
-						config: args.plannerLoopConfig,
+						config: effectivePlannerLoopConfig,
 						postToolReplySeed: { toolCall, result },
 						executeToolCall: () => {
 							throw new Error(
@@ -9520,7 +9535,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					return runPlannerLoop({
 						runtime: plannerRuntime,
 						context: plannerContextAfterEarlyReply,
-						config: args.plannerLoopConfig,
+						config: effectivePlannerLoopConfig,
 						postToolReplySeed: { toolCall, result },
 						executeToolCall: () => {
 							throw new Error(
@@ -9567,7 +9582,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					runtime: plannerRuntime,
 					context: loopContext,
 					codingMode: args.codingMode === true,
-					config: args.plannerLoopConfig,
+					config: effectivePlannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
 					// Fallback honesty for required-tool exhaustion: Stage 1's own
@@ -9675,7 +9690,7 @@ export async function runV5MessageRuntimeStage1(args: {
 										evaluatorEffects,
 										recorder,
 										trajectoryId,
-										plannerLoopConfig: args.plannerLoopConfig,
+										plannerLoopConfig: effectivePlannerLoopConfig,
 									}),
 								),
 							{ tool: toolCall.name },
