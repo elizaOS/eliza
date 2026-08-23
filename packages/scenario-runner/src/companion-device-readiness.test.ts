@@ -27,6 +27,8 @@ const READINESS_TURN_NAME =
 let companionScenario: ScenarioDefinition;
 
 beforeAll(async () => {
+  // Cold Vite transformation of the scenario's plugin graph can exceed the
+  // default 10-second hook budget on shared CI hosts.
   const specifier = new URL(
     "../test/scenarios/deterministic-companion-device.scenario.ts",
     import.meta.url,
@@ -35,7 +37,7 @@ beforeAll(async () => {
     default: ScenarioDefinition;
   };
   companionScenario = loaded.default;
-});
+}, 60_000);
 
 function readinessPredicate(): (
   ctx: ScenarioContext,

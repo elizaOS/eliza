@@ -323,6 +323,9 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "computeruse.get-cursor-position",
   "convo.echo-self-test",
   "convo.greeting-dynamic",
+  // Cross-world topology boundary coverage landed as pr-deterministic without
+  // the same-commit explicit corpus registration required by this guard.
+  "cross.world-continuity.topology-boundaries",
   // Owner-voice drafting persistence proof (#14871): deterministic compose +
   // revise round-trip with a custom predicate over the persisted draft artifact.
   "creative-owner-voice-draft-persistence",
