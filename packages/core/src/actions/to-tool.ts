@@ -3,8 +3,9 @@
  * Stage 1 `HANDLE_RESPONSE` tool (schema + description, with a direct-message
  * variant) through which the model declares turn intent, and the Stage 2 planner
  * tools where each Action becomes a native tool named by the action name with its
- * `parameters` JSON Schema. Tier-aware expansion promotes every selected parent's
- * sub-actions to first-class tools. Also emits the always-available REPLY / IGNORE /
+ * `parameters` JSON Schema. Expansion promotes every selected parent's authorized
+ * sub-actions to first-class tools; deferred catalog entries use the same converter
+ * only after the planner discovers them. Also emits the always-available REPLY / IGNORE /
  * STOP terminal sentinels so the planner can end a turn. Sits
  * between the action catalog and the model layer; parameter schemas come from
  * `normalizeActionJsonSchema` (`action-schema.ts`). Tool names must match
@@ -307,8 +308,9 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 }
 
 /**
- * Build a per-turn list of `ToolDefinition`s from the complete Stage 2
- * action surface. Each action becomes a native tool whose name is the
+ * Build a per-turn list of `ToolDefinition`s from a selected Stage 2
+ * action surface. The input may be the eager subset or newly discovered
+ * additions from the complete authorization-filtered catalog. Each action becomes a native tool whose name is the
  * action name and whose `parameters` is the action's parameter
  * JSONSchema, so the LLM calls each action directly by name.
  *
@@ -464,8 +466,9 @@ function resolveActionLookup(
 
 /**
  * Build a per-turn list of `ToolDefinition`s from a tier-aware Stage 2 action
- * surface. Every input parent's sub-actions are expanded into first-class tools
- * alongside the parent, so relevance metadata cannot hide a callable action.
+ * surface. Every input parent's authorized sub-actions are expanded into
+ * first-class tools alongside the parent. Deferred parents and children remain
+ * reachable through the explicit capability-discovery protocol.
  *
  * Sub-action resolution:
  *   - Inline `Action` sub-actions are resolved through an explicitly supplied

@@ -408,7 +408,10 @@ describe("v5 planner loop skeleton", () => {
 			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
 		);
 		expect(systemContent).toContain(
-			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
+			"candidateActions naming a tool that is not in this turn's exposed tools list is a discovery hint",
+		);
+		expect(systemContent).toContain(
+			"DISCOVER_CAPABILITIES searches the complete authorization-filtered catalog",
 		);
 		expect(systemContent).toContain(
 			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",

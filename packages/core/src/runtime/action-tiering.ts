@@ -1,6 +1,7 @@
 /**
- * Builds the planner's complete callable action surface while retaining
- * retrieval scores as deterministic relevance ordering and telemetry.
+ * Orders the planner's complete authorization-filtered action catalog while
+ * retaining historical tier fields for deterministic retrieval telemetry.
+ * Actual eager/deferred activation is owned by capability discovery.
  */
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import type { ActionRetrievalResult } from "./action-retrieval";
@@ -58,9 +59,10 @@ export type TieredActionSurface = {
 };
 
 /**
- * Keep every authorized catalog parent and child callable. The historical
- * tier fields remain source-compatible, but every parent now occupies tier A;
- * relevance changes order and prompt detail, never physical availability.
+ * Keep every authorized catalog parent and child represented. The historical
+ * tier fields remain source-compatible, but every parent occupies tier A for
+ * telemetry; capability discovery separately decides which schemas are eager
+ * and guarantees same-turn reachability for the rest.
  */
 export function tierActionResults(
 	input: TierActionResultsInput,

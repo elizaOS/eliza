@@ -96,6 +96,12 @@ import {
 	applyCodingActionProfile,
 	parseCodingActionProfile,
 } from "../runtime/coding-action-profile";
+import {
+	buildPlannerCapabilityCatalog,
+	DISCOVER_CAPABILITIES_TOOL,
+	DISCOVER_CAPABILITIES_TOOL_NAME,
+	PlannerCapabilityDiscoverySession,
+} from "../runtime/capability-discovery";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -1363,6 +1369,67 @@ export function selectV5PlannerStateProviderNames(args: {
 		providerNames.delete(excluded);
 	}
 	return [...providerNames];
+}
+
+/**
+ * Build the provider side of the deferred catalog without disclosing names or
+ * descriptions that this actor/audience can never load. Context terms are
+ * activated provisionally only to test the provider's own declared gate; an
+ * actual load still recomposes state through the runtime and revalidates the
+ * disclosure boundary.
+ */
+async function collectDiscoverablePlannerProviders(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	selectedContexts: readonly AgentContext[];
+	availableContexts: readonly ContextDefinition[];
+	userRoles: readonly RoleGateRole[];
+}): Promise<Provider[]> {
+	const allowedContextIds = new Set(
+		args.availableContexts.map((context) => String(context.id)),
+	);
+	let ownerDisclosureAllowed: boolean | undefined;
+	const providers = Array.isArray(args.runtime.providers)
+		? (args.runtime.providers as Provider[])
+		: [];
+	const discoverable: Provider[] = [];
+	for (const provider of providers) {
+		const name = provider.name?.trim();
+		if (
+			!name ||
+			provider.private ||
+			MODEL_CONTEXT_PROVIDER_EXCLUSION_SET.has(name.toUpperCase())
+		) {
+			continue;
+		}
+		const providerContexts = mergeAgentContexts(
+			provider.contexts,
+			provider.contextGate?.contexts,
+			provider.contextGate?.anyOf,
+			provider.contextGate?.allOf,
+		).filter((context) => allowedContextIds.has(String(context)));
+		const provisionalContexts = mergeAgentContexts(
+			args.selectedContexts,
+			providerContexts,
+		);
+		if (
+			filterProvidersByContextGate(
+				[provider],
+				provisionalContexts,
+				args.userRoles,
+			).length === 0
+		) {
+			continue;
+		}
+		if (provider.disclosureGate?.require === "owner_exclusive") {
+			ownerDisclosureAllowed ??= (
+				await revalidateOwnerExclusiveDisclosure(args.runtime, args.message)
+			).allowed;
+			if (!ownerDisclosureAllowed) continue;
+		}
+		discoverable.push(provider);
+	}
+	return discoverable;
 }
 
 function _ensureActionStateValues(
@@ -3167,6 +3234,9 @@ type V5PlannerActionSurfaceSummary = {
 	candidateActionCount: number;
 	catalogParentCount: number;
 	exposedActionCount: number;
+	/** Actions whose full schemas are present before any discovery call. */
+	initialActionCount: number;
+	initialActionNames: string[];
 	tierAParents: string[];
 	/** Every registered child exposed as a first-class planner tool per parent. */
 	tierAChildrenByParent?: Record<string, string[]>;
@@ -3186,7 +3256,10 @@ type V5PlannerActionSurfaceSummary = {
 };
 
 type V5PlannerActionSurface = {
+	/** Complete authorization-filtered catalog; discoverable does not mean loaded. */
 	exposedActionNames: Set<string>;
+	/** Initial context/retrieval-selected schema surface. */
+	initialActionNames: Set<string>;
 	summary: V5PlannerActionSurfaceSummary;
 };
 
@@ -3222,15 +3295,16 @@ async function collectV5PlannerCandidateActions(args: {
 		nonDisclosureRejectedExplicitCandidates: string[];
 	};
 }): Promise<Action[]> {
-	// The candidate surface starts from every runtime action and applies only the
-	// same execution gates the planner executor will enforce — it deliberately does
+	// The candidate surface starts from every runtime action and applies the
+	// authorization, account, and availability gates the executor will enforce. It deliberately does
 	// NOT pre-filter by `action.contexts` against the messageHandler-picked
 	// `selectedContexts`. Context pre-filtering excludes owner actions, CALENDAR,
 	// SCHEDULED_TASKS, etc. whenever the messageHandler routes to "general", even
 	// when the user clearly asked for a habit/event/etc. Starting from every action
 	// keeps role-policy overrides working for deployments that intentionally expose
-	// an action outside its declared context, while avoiding dead tools the planner
-	// could select but execution would immediately reject.
+	// an action outside its declared context. Declared contexts are provisionally
+	// active only while admitting the action to the deferred catalog; execution
+	// rechecks against the turn's selected or explicitly loaded contexts.
 	const allRuntimeActions = args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup(args.runtime);
 	const actionsByName = new Map(
@@ -3378,7 +3452,21 @@ async function collectV5PlannerCandidateActions(args: {
 	};
 
 	for (const action of allRuntimeActions) {
-		await appendIfAllowed(action);
+		// Context is a relevance/activation boundary, not an authorization secret.
+		// Test each action against the contexts it declares so an action outside
+		// Stage 1's initial guess can still enter the authorization-filtered deferred
+		// catalog. The planner must explicitly load that context before execution.
+		await appendIfAllowed(
+			action,
+			undefined,
+			mergeAgentContexts(
+				args.selectedContexts,
+				action.contexts,
+				action.contextGate?.contexts,
+				action.contextGate?.anyOf,
+				action.contextGate?.allOf,
+			),
+		);
 	}
 
 	const explicitCandidateActions = Array.isArray(args.candidateActions)
@@ -3593,11 +3681,14 @@ function buildFullV5PlannerActionSurface(params: {
 	);
 	return {
 		exposedActionNames,
+		initialActionNames: new Set(exposedActionNames),
 		summary: {
 			mode: "full",
 			candidateActionCount: params.actions.length,
 			catalogParentCount: params.actions.length,
 			exposedActionCount: exposedActionNames.size,
+			initialActionCount: exposedActionNames.size,
+			initialActionNames: params.actions.map((action) => action.name).sort(),
 			tierAParents: params.actions.map((action) => action.name).sort(),
 			tierBParents: [],
 			omittedParentCount: 0,
@@ -3709,11 +3800,14 @@ function buildV5PlannerActionSurface(params: {
 	if (isTaskCompleteRelayTurn(params.message)) {
 		return {
 			exposedActionNames: new Set<string>(),
+			initialActionNames: new Set<string>(),
 			summary: {
 				mode: "relay-delivery",
 				candidateActionCount: params.actions.length,
 				catalogParentCount: 0,
 				exposedActionCount: 0,
+				initialActionCount: 0,
+				initialActionNames: [],
 				tierAParents: [],
 				tierAChildrenByParent: {},
 				tierBParents: [],
@@ -3817,6 +3911,75 @@ function buildV5PlannerActionSurface(params: {
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
+	const selectedContextSet = new Set(
+		(params.selectedContexts ?? []).map((context) =>
+			String(context).trim().toLowerCase(),
+		),
+	);
+	const specificSelectedContexts = new Set(
+		[...selectedContextSet].filter(
+			(context) => context !== "general" && context !== "simple",
+		),
+	);
+	const initialParentNames = new Set<string>();
+	for (const result of retrieval.results) {
+		const hasStrongRetrievalEvidence =
+			result.score >= 0.72 ||
+			result.matchedBy.includes("exact") ||
+			result.matchedBy.includes("regex") ||
+			result.matchedBy.includes("contextMatch");
+		const belongsToSelectedSpecificContext = (
+			Array.isArray(result.parent.contexts) ? result.parent.contexts : []
+		).some((context) =>
+			specificSelectedContexts.has(String(context).trim().toLowerCase()),
+		);
+		if (hasStrongRetrievalEvidence || belongsToSelectedSpecificContext) {
+			initialParentNames.add(result.normalizedName);
+		}
+	}
+	if (initialParentNames.size === 0 && retrieval.results[0]?.score > 0) {
+		initialParentNames.add(retrieval.results[0].normalizedName);
+	}
+	const initialActionNames = new Set<string>();
+	for (const parent of tieredSurface.tierAParents) {
+		if (!initialParentNames.has(parent.normalizedName)) continue;
+		initialActionNames.add(normalizeActionIdentifier(parent.name));
+		for (const childName of parent.childNames) {
+			if (authorizedActionIdentities.has(childName.trim())) {
+				initialActionNames.add(normalizeActionIdentifier(childName));
+			}
+		}
+	}
+	const normalizedCandidates = new Set(
+		candidateActions.map(normalizeActionIdentifier),
+	);
+	for (const action of params.actions) {
+		const normalizedName = normalizeActionIdentifier(action.name);
+		const candidateAliasMatch = (action.similes ?? []).some((simile) =>
+			normalizedCandidates.has(normalizeActionIdentifier(simile)),
+		);
+		const actionMatchesSelectedSpecificContext = mergeAgentContexts(
+			action.contexts,
+			action.contextGate?.contexts,
+			action.contextGate?.anyOf,
+			action.contextGate?.allOf,
+		).some((context) =>
+			specificSelectedContexts.has(String(context).trim().toLowerCase()),
+		);
+		if (
+			normalizedCandidates.has(normalizedName) ||
+			candidateAliasMatch ||
+			actionMatchesSelectedSpecificContext ||
+			action.tags?.includes("planner:eager")
+		) {
+			initialActionNames.add(normalizedName);
+		}
+	}
+	const initialActionNameList = params.actions
+		.filter((action) =>
+			initialActionNames.has(normalizeActionIdentifier(action.name)),
+		)
+		.map((action) => action.name);
 
 	if (params.recorder && params.trajectoryId) {
 		const stageId = `stage-toolsearch-${toolSearchStartedAt}`;
@@ -3875,11 +4038,14 @@ function buildV5PlannerActionSurface(params: {
 
 	return {
 		exposedActionNames,
+		initialActionNames,
 		summary: {
 			mode: "tiered",
 			candidateActionCount: params.actions.length,
 			catalogParentCount: catalog.parents.length,
 			exposedActionCount,
+			initialActionCount: initialActionNameList.length,
+			initialActionNames: initialActionNameList,
 			tierAParents: tieredSurface.sortedTierAParentNames,
 			tierAChildrenByParent,
 			tierBParents: tieredSurface.sortedTierBParentNames,
@@ -7731,9 +7897,9 @@ export function subPlannerResultToPlannerToolResult(
 }
 
 /**
- * Planner-loop tool surface. Each authorized Action is exposed as its own native
+ * Planner-loop tool surface. Each selected Action is exposed as its own native
  * tool whose name is the action name and whose `parameters` is the action's
- * JSONSchema. We also always include the universal terminal-sentinel tools
+ * JSONSchema; deferred authorized actions are appended after discovery. We also always include the universal terminal-sentinel tools
  * (REPLY / IGNORE / STOP) so the planner has a stable way to end the turn.
  *
  * When no actions are gated for the current turn we fall back to an empty
@@ -7777,8 +7943,8 @@ function collectPlannerTools(
 }
 
 /**
- * Read the historical tier-A metadata for telemetry compatibility. Tool
- * construction ignores it and expands every authorized parent and child.
+ * Read the historical tier-A metadata for telemetry compatibility. The caller
+ * supplies the eager action subset; construction expands its authorized children.
  */
 function readTierAParentsFromContext(context: ContextObject): Set<string> {
 	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
@@ -9579,15 +9745,40 @@ export async function runV5MessageRuntimeStage1(args: {
 			reportError: args.runtime.reportError.bind(args.runtime),
 			localizedExamples: localizedExamples ?? undefined,
 		});
-		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
+		const authorizedPlannerActions = plannerCandidateActions.filter((action) =>
 			actionSurface.exposedActionNames.has(
 				normalizeActionIdentifier(action.name),
 			),
 		);
+		const initialPlannerActions = authorizedPlannerActions.filter((action) =>
+			actionSurface.initialActionNames.has(
+				normalizeActionIdentifier(action.name),
+			),
+		);
+		const discoverableProviders = await collectDiscoverablePlannerProviders({
+			runtime: args.runtime,
+			message: args.message,
+			selectedContexts,
+			availableContexts,
+			userRoles: [senderRole],
+		});
+		const capabilityCatalog = buildPlannerCapabilityCatalog({
+			actions: authorizedPlannerActions,
+			providers: discoverableProviders,
+			contexts: availableContexts,
+		});
+		const capabilitySession = new PlannerCapabilityDiscoverySession({
+			catalog: capabilityCatalog,
+			activeActionNames: initialPlannerActions.map((action) => action.name),
+			activeProviderNames: plannerProviderNames,
+			activeContextIds: selectedContexts,
+		});
 		args.runtime.logger.debug?.(
 			{
 				src: "service:message",
 				actionSurface: actionSurface.summary,
+				capabilityCatalogHash: capabilityCatalog.hash,
+				capabilityCatalogSize: capabilityCatalog.records.length,
 			},
 			"Built v5 planner action surface",
 		);
@@ -9598,7 +9789,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			includeTools: true,
 			userRoles: [senderRole],
 			availableContexts,
-			preselectedActions: exposedPlannerActions,
+			preselectedActions: initialPlannerActions,
 			actionSurface,
 			ambientTurn,
 			extraProviderExclusions: ambientTurnProviderExclusions(
@@ -9609,44 +9800,66 @@ export async function runV5MessageRuntimeStage1(args: {
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
-		const plannerContextWithDecision = appendContextEvent(plannerContext, {
-			id: `message-handler:${messageHandlerEndedAt}`,
-			type: "message_handler",
-			source: "message-service",
-			createdAt: messageHandlerEndedAt,
-			...(responseHandlerContextSlices.length > 0
-				? { content: responseHandlerContextSlices.join("\n\n") }
-				: {}),
-			metadata: {
-				processMessage: messageHandler.processMessage,
-				plan: {
-					contexts: messageHandler.plan.contexts,
-					...(messageHandler.plan.requiresTool !== undefined
-						? { requiresTool: messageHandler.plan.requiresTool }
-						: {}),
-					candidateActions: getMessageHandlerCandidateActions(messageHandler),
-					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
-					...(responseHandlerContextSlices.length > 0
-						? { contextSlices: responseHandlerContextSlices }
-						: {}),
-					...(messageHandler.plan.reply !== undefined
-						? { reply: messageHandler.plan.reply }
-						: {}),
-					...(responseHandlerEvaluation.appliedPatches.length > 0
-						? {
-								responseHandlerPatches:
-									responseHandlerEvaluation.appliedPatches.map((patch) => ({
-										evaluatorName: patch.evaluatorName,
-										changed: patch.changed,
-										debug: patch.debug,
-									})),
-							}
-						: {}),
-					actionSurface: actionSurface.summary,
-				} as JsonValue,
-				thought: messageHandler.thought,
+		const discoveryEnabled = actionSurface.summary.mode === "tiered";
+		const plannerContextWithDiscovery = discoveryEnabled
+			? appendContextEvent(plannerContext, {
+					id: `tool:${DISCOVER_CAPABILITIES_TOOL_NAME}`,
+					type: "tool",
+					source: "capability-discovery",
+					createdAt: messageHandlerEndedAt,
+					tool: {
+						name: DISCOVER_CAPABILITIES_TOOL.name,
+						description: DISCOVER_CAPABILITIES_TOOL.description,
+						parameters: DISCOVER_CAPABILITIES_TOOL.parameters,
+						metadata: {
+							catalogHash: capabilityCatalog.hash,
+							catalogSize: capabilityCatalog.records.length,
+						},
+					},
+				})
+			: plannerContext;
+		const plannerContextWithDecision = appendContextEvent(
+			plannerContextWithDiscovery,
+			{
+				id: `message-handler:${messageHandlerEndedAt}`,
+				type: "message_handler",
+				source: "message-service",
+				createdAt: messageHandlerEndedAt,
+				...(responseHandlerContextSlices.length > 0
+					? { content: responseHandlerContextSlices.join("\n\n") }
+					: {}),
+				metadata: {
+					processMessage: messageHandler.processMessage,
+					plan: {
+						contexts: messageHandler.plan.contexts,
+						...(messageHandler.plan.requiresTool !== undefined
+							? { requiresTool: messageHandler.plan.requiresTool }
+							: {}),
+						candidateActions: getMessageHandlerCandidateActions(messageHandler),
+						parentActionHints:
+							getMessageHandlerParentActionHints(messageHandler),
+						...(responseHandlerContextSlices.length > 0
+							? { contextSlices: responseHandlerContextSlices }
+							: {}),
+						...(messageHandler.plan.reply !== undefined
+							? { reply: messageHandler.plan.reply }
+							: {}),
+						...(responseHandlerEvaluation.appliedPatches.length > 0
+							? {
+									responseHandlerPatches:
+										responseHandlerEvaluation.appliedPatches.map((patch) => ({
+											evaluatorName: patch.evaluatorName,
+											changed: patch.changed,
+											debug: patch.debug,
+										})),
+								}
+							: {}),
+						actionSurface: actionSurface.summary,
+					} as JsonValue,
+					thought: messageHandler.thought,
+				},
 			},
-		});
+		);
 		const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
 			getService?: (service: string) => unknown;
 		};
@@ -9664,6 +9877,134 @@ export async function runV5MessageRuntimeStage1(args: {
 			logger: args.runtime.logger as PlannerRuntime["logger"],
 		};
 		const plannerTools = collectPlannerTools(plannerContextWithDecision);
+		const terminalToolNames = new Set(
+			CORE_PLANNER_TERMINALS.map((tool) => tool.name),
+		);
+		const firstTerminalIndex = plannerTools.findIndex((tool) =>
+			terminalToolNames.has(tool.name),
+		);
+		if (discoveryEnabled) {
+			plannerTools.splice(
+				firstTerminalIndex < 0 ? plannerTools.length : firstTerminalIndex,
+				0,
+				DISCOVER_CAPABILITIES_TOOL,
+			);
+		}
+		const activePlannerToolNames = new Set(
+			plannerTools.map((tool) => tool.name),
+		);
+		const authorizedActionsByName = new Map(
+			authorizedPlannerActions.map((action) => [action.name, action] as const),
+		);
+		let activeSelectedContexts = [...selectedContexts];
+
+		const activateDiscoveredCapabilities = async (
+			page: ReturnType<PlannerCapabilityDiscoverySession["execute"]>,
+			trajectory: PlannerTrajectory,
+		): Promise<void> => {
+			if (
+				page.activated.contexts.length === 0 &&
+				page.activated.providers.length === 0
+			) {
+				// No provider state needs recomposition before action tools are appended.
+			} else if (typeof args.runtime.composeState === "function") {
+				const nextSelectedContexts = mergeAgentContexts(
+					activeSelectedContexts,
+					page.activated.contexts as AgentContext[],
+				);
+				const expandedProviderNames = selectV5PlannerStateProviderNames({
+					runtime: args.runtime,
+					message: args.message,
+					selectedContexts: nextSelectedContexts,
+					userRoles: [senderRole],
+				});
+				const providerNames = uniqueActionNames(expandedProviderNames);
+				const expandedState = await args.runtime.composeState(
+					args.message,
+					providerNames,
+					true,
+					false,
+					[],
+				);
+				const routedExpandedState = withContextRoutingValues(
+					attachAvailableContexts(expandedState, args.runtime),
+					nextSelectedContexts.length > 0
+						? {
+								[CONTEXT_ROUTING_STATE_KEY]: {
+									primaryContext: nextSelectedContexts[0],
+									secondaryContexts: nextSelectedContexts.slice(1),
+								},
+							}
+						: undefined,
+				);
+				Object.assign(plannerState, routedExpandedState);
+				activeSelectedContexts = nextSelectedContexts;
+				const providerEvents: ContextEvent[] = [];
+				appendStateProviderEvents(
+					providerEvents,
+					plannerState,
+					[
+						...MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
+						...ambientTurnProviderExclusions(args.runtime, args.message),
+					],
+					args.runtime.providers,
+				);
+				const existingProviderNames = new Set(
+					trajectory.context.events.flatMap((event) =>
+						event.type === "provider" && "name" in event
+							? [String(event.name)]
+							: [],
+					),
+				);
+				for (const event of providerEvents) {
+					if (
+						event.type !== "provider" ||
+						!("name" in event) ||
+						existingProviderNames.has(String(event.name))
+					) {
+						continue;
+					}
+					existingProviderNames.add(String(event.name));
+					trajectory.context = appendContextEvent(trajectory.context, event);
+				}
+				trajectory.context = appendContextEvent(trajectory.context, {
+					id: `contexts:discovered:${page.activated.contexts.join(",")}`,
+					type: "instruction",
+					source: "capability-discovery",
+					createdAt: Date.now(),
+					content: `expanded_contexts: ${activeSelectedContexts.join(", ")}`,
+					stable: false,
+				});
+			}
+
+			for (const actionName of page.activated.actions) {
+				const tool = capabilitySession.toolForAction(actionName);
+				const action = authorizedActionsByName.get(actionName);
+				if (!tool || !action || activePlannerToolNames.has(tool.name)) continue;
+				const insertionIndex = plannerTools.findIndex((candidate) =>
+					terminalToolNames.has(candidate.name),
+				);
+				plannerTools.splice(
+					insertionIndex < 0 ? plannerTools.length : insertionIndex,
+					0,
+					tool,
+				);
+				activePlannerToolNames.add(tool.name);
+				trajectory.context = appendContextEvent(trajectory.context, {
+					id: `tool:discovered:${tool.name}`,
+					type: "tool",
+					source: "capability-discovery",
+					createdAt: Date.now(),
+					tool: {
+						name: tool.name,
+						description: tool.description,
+						parameters: tool.parameters,
+						action,
+						metadata: { discovered: true, catalogHash: capabilityCatalog.hash },
+					},
+				});
+			}
+		};
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
 		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
 		// tool-required AND named at least one candidate action. A bare
@@ -10076,8 +10417,36 @@ export async function runV5MessageRuntimeStage1(args: {
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
 							"actions:planner-tool",
-							async () =>
-								trackSettledPlannerToolResult(
+							async () => {
+								if (toolCall.name === DISCOVER_CAPABILITIES_TOOL_NAME) {
+									const discoverySnapshot = capabilitySession.snapshot();
+									try {
+										const page = capabilitySession.execute(
+											toolCall.params ?? {},
+										);
+										await activateDiscoveredCapabilities(page, ctx.trajectory);
+										return {
+											success: true,
+											text: JSON.stringify(page),
+											data: { capabilityDiscovery: page },
+											continueChain: true,
+										};
+									} catch (error) {
+										capabilitySession.restore(discoverySnapshot);
+										// error-policy:J1 The internal discovery tool translates invalid
+										// model arguments into a structured retryable tool result.
+										return {
+											success: false,
+											text:
+												error instanceof Error
+													? error.message
+													: "Capability discovery request failed",
+											error,
+											continueChain: true,
+										};
+									}
+								}
+								return trackSettledPlannerToolResult(
 									settledPlannerToolResults,
 									toolCall.name,
 									await executeV5PlannedToolCall({
@@ -10087,11 +10456,11 @@ export async function runV5MessageRuntimeStage1(args: {
 										executorCtx: buildV5ExecutorContext({
 											message: args.message,
 											state: plannerState,
-											selectedContexts,
+											selectedContexts: activeSelectedContexts,
 											senderRole,
 											previousResults: collectPreviousActionResults(
 												ctx.trajectory,
-												exposedPlannerActions,
+												authorizedPlannerActions,
 											),
 											// A pending batch has not earned transcript prose, but its
 											// media and interactive payloads still belong to the user.
@@ -10106,7 +10475,7 @@ export async function runV5MessageRuntimeStage1(args: {
 										}),
 										plannerRuntime,
 										executorOptions: {
-											actions: exposedPlannerActions,
+											actions: authorizedPlannerActions,
 											...(args.onSettledActionResult
 												? {
 														onSettledResult: args.onSettledActionResult,
@@ -10118,7 +10487,8 @@ export async function runV5MessageRuntimeStage1(args: {
 										trajectoryId,
 										plannerLoopConfig: args.plannerLoopConfig,
 									}),
-								),
+								);
+							},
 							{ tool: toolCall.name },
 						),
 					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
@@ -10250,7 +10620,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// that could discard results or replay a partial side effect.
 		const egressActionResults = collectPreviousActionResults(
 			plannerResult.trajectory,
-			exposedPlannerActions,
+			authorizedPlannerActions,
 		);
 		const plannedReplyEgressDecision =
 			args.codingMode === true
@@ -10298,14 +10668,14 @@ export async function runV5MessageRuntimeStage1(args: {
 					"CONTEXT_AFTER",
 					args.message,
 					plannerState,
-					{ selectedContexts },
+					{ selectedContexts: activeSelectedContexts },
 				),
 			{ mode: "CONTEXT_AFTER" },
 		);
 
 		const actionResults = collectPreviousActionResults(
 			plannerResult.trajectory,
-			exposedPlannerActions,
+			authorizedPlannerActions,
 		);
 		const finalPlannerState =
 			actionResults.length > 0

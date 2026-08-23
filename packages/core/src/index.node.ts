@@ -259,6 +259,7 @@ export {
 	getCandidateActionBackstopRules,
 	registerCandidateActionBackstopRule,
 } from "./runtime/candidate-action-backstop";
+export * from "./runtime/capability-discovery";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/content-access-manifest";
 export * from "./runtime/content-projection-policy";

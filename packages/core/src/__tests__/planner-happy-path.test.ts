@@ -526,6 +526,142 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		]);
 	});
 
+	it("keeps unrelated schemas deferred while preserving same-turn discovery", async () => {
+		const web = makeMockAction({
+			name: "WEB_SEARCH",
+			contexts: ["web"],
+			handler: async () => ({ success: true, text: "web" }),
+		});
+		const calendar = makeMockAction({
+			name: "CALENDAR_READ",
+			contexts: ["calendar"],
+			handler: async () => ({ success: true, text: "calendar" }),
+		});
+		const ownerSecret = makeMockAction({
+			name: "OWNER_SECRET_EXPORT",
+			contexts: ["secrets"],
+			roleGate: { minRole: "OWNER" },
+			handler: async () => ({ success: true, text: "secret" }),
+		});
+		const runtime = makeRuntime({
+			actions: [web, calendar, ownerSecret],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["web"],
+						candidateActionNames: ["WEB_SEARCH"],
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "web-1",
+								name: "WEB_SEARCH",
+								args: {},
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Search completed.",
+						messageToUser: "Ready.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("search the web"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const toolNames = (
+			(plannerCall?.params as { tools?: Array<{ name: string }> })?.tools ?? []
+		).map((tool) => tool.name);
+		expect(toolNames).toContain("WEB_SEARCH");
+		expect(toolNames).toContain("DISCOVER_CAPABILITIES");
+		expect(toolNames).not.toContain("CALENDAR_READ");
+		expect(toolNames).not.toContain("OWNER_SECRET_EXPORT");
+	});
+
+	it("keeps a 200-action catalog searchable without injecting 200 schemas", async () => {
+		const web = makeMockAction({
+			name: "WEB_SEARCH",
+			contexts: ["web"],
+			handler: async () => ({ success: true, text: "web" }),
+		});
+		const deferred = Array.from({ length: 199 }, (_, index) =>
+			makeMockAction({
+				name: `DOMAIN_OPERATION_${index}`,
+				contexts: [`domain-${index}`],
+				handler: async () => ({ success: true, text: String(index) }),
+			}),
+		);
+		const runtime = makeRuntime({
+			actions: [web, ...deferred],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["web"],
+						candidateActionNames: ["WEB_SEARCH"],
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "web-large-catalog", name: "WEB_SEARCH", args: {} },
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Search completed.",
+						messageToUser: "Ready.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("search the web"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const toolNames = (
+			(plannerCall?.params as { tools?: Array<{ name: string }> })?.tools ?? []
+		).map((tool) => tool.name);
+		expect(toolNames).toContain("WEB_SEARCH");
+		expect(toolNames).toContain("DISCOVER_CAPABILITIES");
+		expect(toolNames.some((name) => name.startsWith("DOMAIN_OPERATION_"))).toBe(
+			false,
+		);
+		expect(toolNames.length).toBeLessThan(10);
+	});
+
 	it("propagates a coding-loop failure instead of rescuing partial tool work", async () => {
 		const readAction = makeMockAction({
 			name: "READ",
@@ -2768,7 +2904,25 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "Got results, continue with save.",
 					}),
 				},
-				// Planner iter 2
+				// Planner iter 2: the save tool was not part of the web-context
+				// eager surface, so discover and load it in the same turn.
+				{
+					body: {
+						text: "Finding the save capability.",
+						toolCalls: [
+							{
+								id: "discover-save",
+								name: "DISCOVER_CAPABILITIES",
+								args: {
+									operation: "search",
+									query: "clipboard write",
+									kinds: ["action"],
+								},
+							},
+						],
+					},
+				},
+				// Planner iter 3
 				{
 					body: {
 						text: "Now saving.",
@@ -2803,8 +2957,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
 			metrics: { toolCallsExecuted: number; plannerIterations: number };
 		};
-		expect(trajectory.metrics.toolCallsExecuted).toBe(2);
-		expect(trajectory.metrics.plannerIterations).toBeGreaterThanOrEqual(2);
+		expect(trajectory.metrics.toolCallsExecuted).toBe(3);
+		expect(trajectory.metrics.plannerIterations).toBeGreaterThanOrEqual(3);
 	});
 
 	it("terminates immediately when planner emits only REPLY (terminal-only path)", async () => {
