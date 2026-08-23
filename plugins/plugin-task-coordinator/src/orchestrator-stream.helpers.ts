@@ -528,7 +528,15 @@ export function buildConversation(
     });
   }
 
-  atoms.sort((a, b) => a.at - b.at || a.order - b.order);
+  atoms.sort((a, b) => {
+    const aAt = Number.isFinite(a.at) ? a.at : 0;
+    const bAt = Number.isFinite(b.at) ? b.at : 0;
+    const atDiff = aAt - bAt;
+    if (atDiff !== 0) return atDiff;
+    const aOrder = Number.isFinite(a.order) ? a.order : 0;
+    const bOrder = Number.isFinite(b.order) ? b.order : 0;
+    return aOrder - bOrder;
+  });
 
   const blocks: ConversationBlock[] = [];
   let openLane: {

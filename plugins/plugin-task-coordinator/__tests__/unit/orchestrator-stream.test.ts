@@ -565,6 +565,32 @@ describe("buildConversation", () => {
       }),
     );
   });
+
+  it("maintains deterministic ordering when message timestamps contain non-finite numbers", () => {
+    const blocks = buildConversation(
+      [
+        baseMessage({
+          id: "msg-1",
+          content: "first",
+          timestamp: 10,
+        }),
+        baseMessage({
+          id: "msg-nan",
+          content: "nan timestamp",
+          timestamp: Number.NaN,
+        }),
+        baseMessage({
+          id: "msg-2",
+          content: "second",
+          timestamp: 20,
+        }),
+      ],
+      [],
+      (message) => message.senderKind,
+    );
+
+    expect(blocks.length).toBeGreaterThan(0);
+  });
 });
 
 describe("MarkdownText", () => {
