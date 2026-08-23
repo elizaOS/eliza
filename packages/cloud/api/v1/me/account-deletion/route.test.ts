@@ -5,11 +5,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 class AccountDeletionConflictError extends Error {
   constructor(
     message: string,
-    readonly code:
-      | "ACCOUNT_UNAVAILABLE"
-      | "ANONYMOUS_ACCOUNT"
-      | "TRANSFER_REQUIRED"
-      | "LIFECYCLE_RESERVATION_REQUIRED",
+    readonly code: "TRANSFER_REQUIRED" | "LIFECYCLE_RESERVATION_REQUIRED",
   ) {
     super(message);
   }
@@ -28,12 +24,7 @@ const requestAccountDeletion = mock(async () => ({
   statusCredential: "status-capability",
   recoveryCredential: "recovery-capability",
 }));
-const getAccountDeletionStatus = mock(async () => ({
-  state: "lifecycle_unavailable" as const,
-  request: null,
-  code: "LIFECYCLE_RESERVATION_REQUIRED" as const,
-  message: "Lifecycle reservation required",
-}));
+const loggerError = mock(() => undefined);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireRecentSessionUserWithOrg,
@@ -47,7 +38,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 mock.module("@/lib/services/account-deletion", () => ({
   AccountDeletionConflictError,
-  getAccountDeletionStatus,
+  getOpenAccountDeletionRequest: mock(async () => undefined),
   requestAccountDeletion,
   toAccountDeletionRequestDto: (request: Record<string, unknown>) => ({
     requestId: request.id,
@@ -56,53 +47,14 @@ mock.module("@/lib/services/account-deletion", () => ({
   }),
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { error: mock(() => undefined) },
+  logger: { error: loggerError },
 }));
 
 const { default: app } = await import("./route");
 
 beforeEach(() => {
-  getAccountDeletionStatus.mockClear();
   requestAccountDeletion.mockClear();
-});
-
-describe("GET /api/v1/me/account-deletion", () => {
-  test("returns the side-effect-free lifecycle admission projection", async () => {
-    const response = await app.request("/", undefined, { NODE_ENV: "test" });
-
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
-    expect(body).toEqual({
-      state: "lifecycle_unavailable",
-      request: null,
-      code: "LIFECYCLE_RESERVATION_REQUIRED",
-      message: "Lifecycle reservation required",
-    });
-    expect(getAccountDeletionStatus).toHaveBeenCalledWith({
-      userId: "11111111-1111-4111-8111-111111111111",
-      organizationId: "22222222-2222-4222-8222-222222222222",
-    });
-    expect(requestAccountDeletion).not.toHaveBeenCalled();
-  });
-
-  test("returns a conflict instead of surfacing a receipt for an unavailable account", async () => {
-    getAccountDeletionStatus.mockRejectedValueOnce(
-      new AccountDeletionConflictError(
-        "Account is no longer available",
-        "ACCOUNT_UNAVAILABLE",
-      ),
-    );
-
-    const response = await app.request("/", undefined, { NODE_ENV: "test" });
-
-    expect(response.status).toBe(409);
-    const body: unknown = await response.json();
-    expect(body).toEqual({
-      error: "Account is no longer available",
-      code: "ACCOUNT_UNAVAILABLE",
-    });
-    expect(requestAccountDeletion).not.toHaveBeenCalled();
-  });
+  loggerError.mockClear();
 });
 
 describe("POST /api/v1/me/account-deletion", () => {
@@ -118,13 +70,7 @@ describe("POST /api/v1/me/account-deletion", () => {
     expect(requestAccountDeletion).not.toHaveBeenCalled();
   });
 
-  test("passes the authenticated identity to the fail-closed service", async () => {
-    requestAccountDeletion.mockRejectedValueOnce(
-      new AccountDeletionConflictError(
-        "Lifecycle reservation required",
-        "LIFECYCLE_RESERVATION_REQUIRED",
-      ),
-    );
+  test("schedules deletion for the authenticated Steward identity", async () => {
     const response = await app.request(
       "/",
       {
@@ -134,16 +80,11 @@ describe("POST /api/v1/me/account-deletion", () => {
       },
       { NODE_ENV: "test" },
     );
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(202);
     expect(requestAccountDeletion).toHaveBeenCalledWith({
       userId: "11111111-1111-4111-8111-111111111111",
       organizationId: "22222222-2222-4222-8222-222222222222",
       stewardUserId: "steward-user-1",
-    });
-    const body: unknown = await response.json();
-    expect(body).toEqual({
-      error: "Lifecycle reservation required",
-      code: "LIFECYCLE_RESERVATION_REQUIRED",
     });
   });
 
@@ -170,5 +111,30 @@ describe("POST /api/v1/me/account-deletion", () => {
       error: "Transfer shared resources before deletion",
       code: "TRANSFER_REQUIRED",
     });
+  });
+
+  test("does not log service messages that may contain account identifiers", async () => {
+    requestAccountDeletion.mockRejectedValueOnce(
+      new Error("provider failed for user@example.invalid"),
+    );
+
+    const response = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE" }),
+      },
+      { NODE_ENV: "test" },
+    );
+
+    expect(response.status).toBe(500);
+    expect(loggerError).toHaveBeenCalledWith(
+      "[AccountDeletionRoute] Failed to schedule deletion",
+      { errorCode: "Error" },
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      "user@example.invalid",
+    );
   });
 });

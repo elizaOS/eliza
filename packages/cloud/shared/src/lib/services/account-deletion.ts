@@ -10,7 +10,6 @@ import type {
   AccountDeletionStatus,
   AccountDeletionStatusDto,
 } from "../../types/account-lifecycle";
-import type { AgentBackupObjectStoreRegistry } from "../storage/agent-backup-object-store";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { logger } from "../utils/logger";
 import {
@@ -18,6 +17,7 @@ import {
   reconcileAccountDeletionExportRevocations,
 } from "./account-deletion-export";
 import {
+  type AccountDeletionBackupAuthority,
   type AccountDeletionSpoolAuthority,
   createAccountDeletionProviderAdapters,
 } from "./account-deletion-provider-adapters";
@@ -539,7 +539,7 @@ export interface ProcessAccountDeletionResult {
 export interface ProcessAccountDeletionResources {
   blob: RuntimeR2Bucket;
   adapters?: AccountDeletionProviderAdapters;
-  backupRegistry?: AgentBackupObjectStoreRegistry;
+  backupAuthority?: AccountDeletionBackupAuthority;
   spoolAuthority?: AccountDeletionSpoolAuthority;
   purgeOrganizationResources?: typeof purgePersonalOrganizationResources;
 }
@@ -581,7 +581,7 @@ export async function processDueAccountDeletions(
   const adapters =
     resources.adapters ??
     createAccountDeletionProviderAdapters({
-      backupRegistry: resources.backupRegistry,
+      backupAuthority: resources.backupAuthority,
       spoolAuthority: resources.spoolAuthority,
     });
   const stewardDeactivations = await reconcileRecoveryStewardDeactivations({
