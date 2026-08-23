@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   findLocalPackHotspots,
   shouldSkipExactPackDryRun,
-} from "./release-check-pack-dry-run.ts";
+} from "../release-check-pack-dry-run.ts";
 
 describe("findLocalPackHotspots", () => {
   it("finds existing hotspots with injected checker", () => {
