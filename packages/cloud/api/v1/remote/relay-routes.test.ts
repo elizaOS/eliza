@@ -953,6 +953,7 @@ describe("secure remote relay routes", () => {
       {
         id: "9",
         name: "eliza-host-one-cnpx9uop",
+        user: { name: "tunnel" },
         createdAt: new Date("2026-08-22T06:15:01.000Z").toISOString(),
       },
     ]);
