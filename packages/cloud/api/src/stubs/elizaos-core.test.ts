@@ -84,6 +84,33 @@ describe("elizaos-core Worker stub", () => {
     expect(record.comparator).toBeUndefined();
   });
 
+  test("mirrors model output completion checks used by Worker routes", () => {
+    expect(stub.isModelOutputLimitFinishReason("max-output-tokens")).toBe(true);
+    expect(stub.isModelOutputLimitFinishReason("stop")).toBe(false);
+    expect(() =>
+      stub.assertModelOutputComplete({
+        finishReason: "stop",
+        provider: "test-provider",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      stub.assertModelOutputComplete({
+        finishReason: "length",
+        provider: "test-provider",
+        model: "test-model",
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "MODEL_OUTPUT_INCOMPLETE",
+        context: {
+          provider: "test-provider",
+          model: "test-model",
+          finishReason: "length",
+        },
+      }),
+    );
+  });
+
   test("default export shares identity with the named runtime constants", () => {
     expect(stubDefault.logger).toBe(stub.logger);
     expect(stubDefault.elizaLogger).toBe(stub.elizaLogger);
