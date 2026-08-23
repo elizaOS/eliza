@@ -149,8 +149,11 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
       />,
     );
     const bubble = screen.getByRole("button", {
-      name: "Show message actions",
+      name: "Your message: Here are your latest balances.",
     });
+    expect(bubble.getAttribute("aria-description")).toBe(
+      "Tap to show message actions",
+    );
     const rail = screen.getByTestId("thread-line-actions");
     const content = rail.parentElement;
 
@@ -163,6 +166,9 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     expect(content?.className).toContain("pb-0");
     expect(content?.className).not.toContain("pb-9");
     fireEvent.click(bubble);
+    expect(bubble.getAttribute("aria-description")).toBe(
+      "Tap to hide message actions",
+    );
     expect(rail.getAttribute("aria-hidden")).toBe("false");
     expect(rail.className).toContain("visible");
     expect(rail.className).not.toContain("invisible");
@@ -170,6 +176,9 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     expect(content?.className).not.toContain("pb-0");
 
     fireEvent.click(bubble);
+    expect(bubble.getAttribute("aria-description")).toBe(
+      "Tap to show message actions",
+    );
     expect(rail.getAttribute("aria-hidden")).toBe("true");
     expect(rail.className).toContain("invisible");
     expect(rail.className).toContain("opacity-0");
@@ -187,7 +196,7 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
       />,
     );
     const bubble = screen.getByRole("button", {
-      name: "Show message actions",
+      name: "Agent message: Here are your latest balances.",
     });
     const rail = screen.getByTestId("thread-line-actions");
     const content = rail.parentElement;

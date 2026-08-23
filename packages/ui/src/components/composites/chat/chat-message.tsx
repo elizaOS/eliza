@@ -994,6 +994,9 @@ export const ChatMessage = memo(function ChatMessage({
     const hasInteractiveWidget =
       isAssistant && messageHasInteractiveWidget(message.text);
     const bubbleInteractive = hasActions && !isEditing && !hasInteractiveWidget;
+    const accessibleMessageLabel = `${isUser ? "Your" : agentName} message${
+      trimmedText ? `: ${trimmedText}` : ""
+    }`;
     // A recoverable assistant failure gets a one-tap Retry that re-sends the
     // preceding user turn. Permanent gates stay on the shared non-retry
     // contract (`no_provider`, credits, missing capability).
@@ -1172,8 +1175,11 @@ export const ChatMessage = memo(function ChatMessage({
               {...(holdHandlers ?? {})}
               role="button"
               tabIndex={0}
-              aria-label={
-                actionsVisible ? "Hide message actions" : "Show message actions"
+              aria-label={accessibleMessageLabel}
+              aria-description={
+                actionsVisible
+                  ? "Tap to hide message actions"
+                  : "Tap to show message actions"
               }
               aria-expanded={actionsVisible}
               onClick={handleBubbleClick}
@@ -1195,7 +1201,7 @@ export const ChatMessage = memo(function ChatMessage({
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               tabIndex={-1}
-              aria-label={`${isUser ? "Your" : agentName} message`}
+              aria-label={accessibleMessageLabel}
               {...(holdHandlers ?? {})}
               className={bubbleExtraClassName}
               style={
