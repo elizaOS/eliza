@@ -6,6 +6,8 @@
 
 export const TELEGRAM_API_BASE = "https://api.telegram.org";
 
+export const TELEGRAM_API_TIMEOUT_MS = 15_000;
+
 interface TelegramApiResponse<T> {
   ok: boolean;
   result?: T;
@@ -20,13 +22,15 @@ export async function telegramBotApiRequest<T>(
   botToken: string,
   method: string,
   params?: Record<string, unknown>,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<T> {
   const url = `${TELEGRAM_API_BASE}/bot${botToken}/${method}`;
 
-  const response = await fetch(url, {
+  const response = await fetchImpl(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: params ? JSON.stringify(params) : undefined,
+    signal: AbortSignal.timeout(TELEGRAM_API_TIMEOUT_MS),
   });
 
   const data = (await response.json()) as TelegramApiResponse<T>;
@@ -47,6 +51,7 @@ export async function telegramBotApiGet<T>(
   botToken: string,
   method: string,
   params?: Record<string, string | number | boolean>,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<T> {
   const url = new URL(`${TELEGRAM_API_BASE}/bot${botToken}/${method}`);
 
@@ -56,7 +61,9 @@ export async function telegramBotApiGet<T>(
     });
   }
 
-  const response = await fetch(url.toString());
+  const response = await fetchImpl(url.toString(), {
+    signal: AbortSignal.timeout(TELEGRAM_API_TIMEOUT_MS),
+  });
   const data = (await response.json()) as TelegramApiResponse<T>;
 
   if (!data.ok) {
