@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { sendJson, sendJsonError } from "./response.ts";
+import { sendJson, sendJsonError } from "../response.ts";
 
 function mockRes() {
   return {
