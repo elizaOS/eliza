@@ -2,6 +2,7 @@
  * Verifies safe sorting in curated coding memory candidates harvesting when lastActivityAt or timestamp contains NaN.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { harvestCodingMemoryCandidates } from "../../src/services/curated-coding-memory.js";
 import type {
@@ -9,7 +10,6 @@ import type {
   OrchestratorTaskMessage,
   OrchestratorTaskSession,
 } from "../../src/services/orchestrator-task-types.js";
-import type { IAgentRuntime } from "@elizaos/core";
 
 const ISO = "2026-08-23T00:00:00.000Z";
 
