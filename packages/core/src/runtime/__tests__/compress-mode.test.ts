@@ -73,11 +73,11 @@ describe("retired ELIZA_PROMPT_COMPRESS mode", () => {
 			"message-handler",
 			baseline,
 		);
-		expect(compressed).toBe(before);
-		expect(compressed).toContain("Demonstrations:");
+		expect(resolved).toBe(before);
+		expect(resolved).toContain("Demonstrations:");
 		for (let i = 0; i < 4; i += 1) {
-			expect(compressed).toContain(`example user ${i}`);
-			expect(compressed).toContain(`example out ${i}`);
+			expect(resolved).toContain(`example user ${i}`);
+			expect(resolved).toContain(`example out ${i}`);
 		}
 	});
 
