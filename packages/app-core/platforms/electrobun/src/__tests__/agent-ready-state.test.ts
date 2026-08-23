@@ -1,3 +1,7 @@
+/**
+ * Agent-ready state tests exercise the real Electrobun singleton and verify
+ * state changes, listener ordering, unsubscription, and deterministic cleanup.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearAgentReadyListeners,
@@ -5,7 +9,7 @@ import {
   offAgentReadyChange,
   onAgentReadyChange,
   setAgentReady,
-} from "./agent-ready-state.ts";
+} from "../agent-ready-state.ts";
 
 describe("agent-ready-state", () => {
   beforeEach(() => {
