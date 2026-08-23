@@ -11,6 +11,188 @@ const STATUS_CREDENTIAL_KEY = "eliza.account-deletion.status.v1";
 const RECOVERY_CREDENTIAL_KEY = "eliza.account-deletion.recovery.v1";
 const volatileCredentials = new Map<string, string>();
 
+const ACCOUNT_DELETION_STATUSES = new Set<AccountDeletionStatusDto["status"]>([
+  "reserved",
+  "recovery",
+  "canceling",
+  "scheduled",
+  "processing",
+  "completed",
+  "canceled",
+  "action_required",
+]);
+const ACCOUNT_DELETION_ACCESS_STATES = new Set<
+  AccountDeletionStatusDto["accessState"]
+>(["fenced", "active", "erased"]);
+const ACCOUNT_DELETION_NEXT_ACTIONS = new Set<
+  AccountDeletionStatusDto["nextAction"]
+>([
+  "wait_for_export",
+  "download_export_or_cancel",
+  "wait_for_reconciliation",
+  "contact_support",
+  "none",
+]);
+const ACCOUNT_DELETION_EXPORT_STATUSES = new Set<
+  NonNullable<AccountDeletionStatusDto["export"]>["status"]
+>(["pending", "building", "ready", "expired", "deleted", "failed"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isServerTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function isNullableServerTimestamp(value: unknown): value is string | null {
+  return value === null || isServerTimestamp(value);
+}
+
+function expectedProjection(status: AccountDeletionStatusDto["status"]): {
+  accessState: AccountDeletionStatusDto["accessState"];
+  canCancel: boolean;
+  nextAction: AccountDeletionStatusDto["nextAction"];
+} {
+  switch (status) {
+    case "reserved":
+      return {
+        accessState: "fenced",
+        canCancel: true,
+        nextAction: "wait_for_export",
+      };
+    case "recovery":
+      return {
+        accessState: "fenced",
+        canCancel: true,
+        nextAction: "download_export_or_cancel",
+      };
+    case "canceling":
+    case "scheduled":
+    case "processing":
+      return {
+        accessState: "fenced",
+        canCancel: false,
+        nextAction: "wait_for_reconciliation",
+      };
+    case "action_required":
+      return {
+        accessState: "fenced",
+        canCancel: false,
+        nextAction: "contact_support",
+      };
+    case "completed":
+      return { accessState: "erased", canCancel: false, nextAction: "none" };
+    case "canceled":
+      return { accessState: "active", canCancel: false, nextAction: "none" };
+  }
+}
+
+function parseExport(value: unknown): AccountDeletionStatusDto["export"] {
+  if (value === null) return null;
+  if (
+    !isRecord(value) ||
+    !ACCOUNT_DELETION_EXPORT_STATUSES.has(
+      value.status as NonNullable<AccountDeletionStatusDto["export"]>["status"],
+    ) ||
+    !isNullableServerTimestamp(value.readyAt) ||
+    !isServerTimestamp(value.expiresAt) ||
+    (value.contentDigest !== null &&
+      (typeof value.contentDigest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(value.contentDigest)))
+  ) {
+    throw new Error("Account deletion receipt was malformed");
+  }
+  return {
+    status: value.status as NonNullable<
+      AccountDeletionStatusDto["export"]
+    >["status"],
+    readyAt: value.readyAt,
+    expiresAt: value.expiresAt,
+    contentDigest: value.contentDigest,
+  };
+}
+
+function parseStatus(value: unknown): AccountDeletionStatusDto {
+  if (
+    !isRecord(value) ||
+    typeof value.requestId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.requestId,
+    ) ||
+    !ACCOUNT_DELETION_STATUSES.has(
+      value.status as AccountDeletionStatusDto["status"],
+    ) ||
+    !isServerTimestamp(value.requestedAt) ||
+    !isNullableServerTimestamp(value.recoveryExpiresAt) ||
+    !isServerTimestamp(value.scheduledDeletionAt) ||
+    !isNullableServerTimestamp(value.irreversibleAt) ||
+    !isNullableServerTimestamp(value.completedAt) ||
+    typeof value.identityDeactivated !== "boolean" ||
+    !ACCOUNT_DELETION_ACCESS_STATES.has(
+      value.accessState as AccountDeletionStatusDto["accessState"],
+    ) ||
+    typeof value.canCancel !== "boolean" ||
+    !ACCOUNT_DELETION_NEXT_ACTIONS.has(
+      value.nextAction as AccountDeletionStatusDto["nextAction"],
+    )
+  ) {
+    throw new Error("Account deletion receipt was malformed");
+  }
+
+  const status = value.status as AccountDeletionStatusDto["status"];
+  const projection = expectedProjection(status);
+  if (
+    value.accessState !== projection.accessState ||
+    value.canCancel !== projection.canCancel ||
+    value.nextAction !== projection.nextAction
+  ) {
+    throw new Error("Account deletion receipt was malformed");
+  }
+
+  return {
+    requestId: value.requestId,
+    status,
+    requestedAt: value.requestedAt,
+    recoveryExpiresAt: value.recoveryExpiresAt,
+    scheduledDeletionAt: value.scheduledDeletionAt,
+    irreversibleAt: value.irreversibleAt,
+    completedAt: value.completedAt,
+    identityDeactivated: value.identityDeactivated,
+    accessState: value.accessState as AccountDeletionStatusDto["accessState"],
+    canCancel: value.canCancel,
+    nextAction: value.nextAction as AccountDeletionStatusDto["nextAction"],
+    export: parseExport(value.export),
+  };
+}
+
+function parseStatusEnvelope(value: unknown): AccountDeletionStatusDto {
+  if (!isRecord(value)) {
+    throw new Error("Account deletion receipt was malformed");
+  }
+  return parseStatus(value.request);
+}
+
+function parseAccepted(value: unknown): AccountDeletionAcceptedDto {
+  if (
+    !isRecord(value) ||
+    typeof value.statusCredential !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(value.statusCredential) ||
+    typeof value.recoveryCredential !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(value.recoveryCredential) ||
+    value.statusCredential === value.recoveryCredential
+  ) {
+    throw new Error("Account deletion receipt was malformed");
+  }
+  return {
+    request: parseStatus(value.request),
+    statusCredential: value.statusCredential,
+    recoveryCredential: value.recoveryCredential,
+  };
+}
+
 function readSessionCredential(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -54,9 +236,11 @@ export function rememberAccountDeletionCapabilities(
 }
 
 export async function submitAccountDeletion(): Promise<AccountDeletionAcceptedDto> {
-  const accepted = await api<AccountDeletionAcceptedDto>(
-    "/api/v1/me/account-deletion",
-    { method: "POST", json: { confirmation: "DELETE" } },
+  const accepted = parseAccepted(
+    await api<unknown>("/api/v1/me/account-deletion", {
+      method: "POST",
+      json: { confirmation: "DELETE" },
+    }),
   );
   rememberAccountDeletionCapabilities(accepted);
   return accepted;
@@ -65,14 +249,11 @@ export async function submitAccountDeletion(): Promise<AccountDeletionAcceptedDt
 export async function readAccountDeletionStatus(): Promise<AccountDeletionStatusDto | null> {
   const statusCredential = readSessionCredential(STATUS_CREDENTIAL_KEY);
   if (!statusCredential) return null;
-  const response = await api<{ request: AccountDeletionStatusDto }>(
-    "/api/public/account-deletion",
-    {
-      skipAuth: true,
-      headers: { "X-Account-Deletion-Status": statusCredential },
-    },
-  );
-  return response.request;
+  const response = await api<unknown>("/api/public/account-deletion", {
+    skipAuth: true,
+    headers: { "X-Account-Deletion-Status": statusCredential },
+  });
+  return parseStatusEnvelope(response);
 }
 
 export async function cancelAccountDeletion(): Promise<AccountDeletionStatusDto> {
@@ -82,17 +263,15 @@ export async function cancelAccountDeletion(): Promise<AccountDeletionStatusDto>
       "The recovery capability is unavailable in this browser session.",
     );
   }
-  const response = await api<{ request: AccountDeletionStatusDto }>(
-    "/api/public/account-deletion",
-    {
-      method: "DELETE",
-      skipAuth: true,
-      headers: { "X-Account-Deletion-Recovery": recoveryCredential },
-      json: { confirmation: "CANCEL DELETION" },
-    },
-  );
+  const response = await api<unknown>("/api/public/account-deletion", {
+    method: "DELETE",
+    skipAuth: true,
+    headers: { "X-Account-Deletion-Recovery": recoveryCredential },
+    json: { confirmation: "CANCEL DELETION" },
+  });
+  const status = parseStatusEnvelope(response);
   removeSessionCredential(RECOVERY_CREDENTIAL_KEY);
-  return response.request;
+  return status;
 }
 
 export interface AccountDeletionExportDownload {

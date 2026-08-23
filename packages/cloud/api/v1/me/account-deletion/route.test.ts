@@ -24,6 +24,9 @@ const requestAccountDeletion = mock(async () => ({
   statusCredential: "status-capability",
   recoveryCredential: "recovery-capability",
 }));
+const getOpenAccountDeletionRequest = mock(
+  async (): Promise<Record<string, unknown> | undefined> => undefined,
+);
 const loggerError = mock(() => undefined);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -38,7 +41,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 mock.module("@/lib/services/account-deletion", () => ({
   AccountDeletionConflictError,
-  getOpenAccountDeletionRequest: mock(async () => undefined),
+  getOpenAccountDeletionRequest,
   requestAccountDeletion,
   toAccountDeletionRequestDto: (request: Record<string, unknown>) => ({
     requestId: request.id,
@@ -53,8 +56,23 @@ mock.module("@/lib/utils/logger", () => ({
 const { default: app } = await import("./route");
 
 beforeEach(() => {
+  getOpenAccountDeletionRequest.mockClear();
   requestAccountDeletion.mockClear();
   loggerError.mockClear();
+});
+
+describe("GET /api/v1/me/account-deletion", () => {
+  test("scopes receipt lookup to the current primary tenant", async () => {
+    const response = await app.request("/", undefined, { NODE_ENV: "test" });
+
+    expect(response.status).toBe(200);
+    const body: unknown = await response.json();
+    expect(body).toEqual({ request: null });
+    expect(getOpenAccountDeletionRequest).toHaveBeenCalledWith({
+      userId: "11111111-1111-4111-8111-111111111111",
+      organizationId: "22222222-2222-4222-8222-222222222222",
+    });
+  });
 });
 
 describe("POST /api/v1/me/account-deletion", () => {

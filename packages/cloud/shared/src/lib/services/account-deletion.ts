@@ -156,8 +156,15 @@ export function toAccountDeletionRequestDto(
   };
 }
 
-export async function getOpenAccountDeletionRequest(userId: string) {
-  return await accountDeletionRequestsRepository.findOpenByUserId(userId);
+export async function getOpenAccountDeletionRequest(input: {
+  userId: string;
+  organizationId: string;
+}) {
+  return await accountDeletionRequestsRepository.findOpenByUserAndOrganizationId(
+    input.userId,
+    input.organizationId,
+    true,
+  );
 }
 
 export async function getAccountDeletionStatusByCredential(

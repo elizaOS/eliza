@@ -24,7 +24,10 @@ app.get("/", async (c) => {
   c.header("Cache-Control", "no-store, private");
   try {
     const user = await requireRecentSessionUserWithOrg(c);
-    const request = await getOpenAccountDeletionRequest(user.id);
+    const request = await getOpenAccountDeletionRequest({
+      userId: user.id,
+      organizationId: user.organization_id,
+    });
     return c.json({
       request: request ? toAccountDeletionRequestDto(request) : null,
     });

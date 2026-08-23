@@ -121,6 +121,41 @@ beforeEach(async () => {
 });
 
 describe("personal account deletion reservation", () => {
+  test("never returns an open receipt from a different organization", async () => {
+    const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
+    await dbWrite.insert(organizations).values({
+      id: otherOrganizationId,
+      name: "Other",
+      slug: "other-reservation",
+    });
+    await dbWrite.insert(accountDeletionRequests).values({
+      id: "50000000-0000-4000-8000-000000000099",
+      user_id: userId,
+      organization_id: otherOrganizationId,
+      steward_user_id: "steward-personal",
+      status: "reserved",
+      execute_after: recoveryExpiresAt,
+    });
+
+    await expect(
+      accountDeletionRequestsRepository.findOpenByUserAndOrganizationId(
+        userId,
+        organizationId,
+        true,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      accountDeletionRequestsRepository.findOpenByUserAndOrganizationId(
+        userId,
+        otherOrganizationId,
+        true,
+      ),
+    ).resolves.toMatchObject({
+      id: "50000000-0000-4000-8000-000000000099",
+      organization_id: otherOrganizationId,
+    });
+  });
+
   test("publishes receipt, authority revision, credential, key, and session fences atomically", async () => {
     const result = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000001", "one"),
