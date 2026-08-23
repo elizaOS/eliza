@@ -7,6 +7,7 @@
  * values are clamped to [MIN, MAX]_TRIGGER_INTERVAL_MS.
  */
 import type { TriggerConfig, TriggerType } from "../types/trigger";
+import { utcDateMs } from "../utils/utcDateMs.ts";
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000;
 export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
@@ -206,26 +207,7 @@ function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
 	}
 }
 
-/**
- * UTC timestamp from calendar parts — uses setUTCFullYear so years 0-99 keep
- * their literal meaning (0000, 0005 … 0099) instead of Date.UTC's 1900-1999
- * remapping. Exported for behavioral regression coverage; internal callers
- * should prefer this over raw Date.UTC(y,m,d) when the year is dynamic.
- */
-export function utcDateMs(
-	year: number,
-	monthIndex: number,
-	day: number,
-	hour = 0,
-	minute = 0,
-	second = 0,
-	ms = 0,
-): number {
-	const d = new Date(0);
-	d.setUTCFullYear(year, monthIndex, day);
-	d.setUTCHours(hour, minute, second, ms);
-	return d.getTime();
-}
+export { utcDateMs } from "../utils/utcDateMs.ts";
 
 function offsetMsFromFormatter(
 	formatter: Intl.DateTimeFormat,
