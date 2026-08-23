@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./services/permissions/probers/_bridge.js", () => ({
+vi.mock("../_bridge.js", () => ({
   IS_DARWIN: true,
   buildState: (
     id: string,
@@ -26,8 +26,8 @@ import {
   getNativeDylib,
   IS_DARWIN,
   queryTccStatus,
-} from "./services/permissions/probers/_bridge.js";
-import { accessibilityProber } from "./services/permissions/probers/accessibility.ts";
+} from "../_bridge.js";
+import { accessibilityProber } from "../accessibility.ts";
 
 const mockGetDylib = vi.mocked(getNativeDylib);
 const mockQueryTcc = vi.mocked(queryTccStatus);
