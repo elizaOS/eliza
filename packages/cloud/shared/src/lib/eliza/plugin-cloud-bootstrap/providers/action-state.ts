@@ -10,6 +10,21 @@ import {
 } from "@elizaos/core";
 import type { NativePlannerActionResult } from "../types";
 
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtAsc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 export function normalizeText(value: string): string {
   return toWellFormedUnicode(value);
 }
@@ -72,7 +87,7 @@ function formatActionMemories(memories: Memory[]): string {
 
   return Array.from(groupedByRun.entries())
     .map(([runId, mems]) => {
-      const sorted = mems.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const sorted = mems.sort(compareMemoryByCreatedAtAsc);
       const runText = sorted
         .map((mem) => {
           const actionName = mem.content?.actionName || "Unknown";
