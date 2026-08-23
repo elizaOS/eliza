@@ -4,6 +4,7 @@ import {
   and,
   desc,
   eq,
+  getTableColumns,
   gt,
   inArray,
   isNotNull,
@@ -955,7 +956,11 @@ export const personalSharedGroupsRepository = {
     });
   },
 
-  async listUncertainDeliveryAttempts(input: { bindingId?: string; limit: number }) {
+  async listUncertainDeliveryAttempts(input: {
+    bindingId: string;
+    ownerUserId: string;
+    limit: number;
+  }) {
     if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100) {
       throw new ElizaError("Uncertain delivery report limit must be between 1 and 100", {
         code: "PERSONAL_SHARED_GROUP_UNCERTAIN_REPORT_LIMIT_INVALID",
@@ -964,14 +969,17 @@ export const personalSharedGroupsRepository = {
       });
     }
     return dbWrite
-      .select()
+      .select({ ...getTableColumns(personalSharedGroupDeliveryAttempts) })
       .from(personalSharedGroupDeliveryAttempts)
+      .innerJoin(
+        personalSharedGroupBindings,
+        eq(personalSharedGroupBindings.id, personalSharedGroupDeliveryAttempts.binding_id),
+      )
       .where(
         and(
           eq(personalSharedGroupDeliveryAttempts.state, "uncertain"),
-          ...(input.bindingId
-            ? [eq(personalSharedGroupDeliveryAttempts.binding_id, input.bindingId)]
-            : []),
+          eq(personalSharedGroupDeliveryAttempts.binding_id, input.bindingId),
+          eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
         ),
       )
       .orderBy(

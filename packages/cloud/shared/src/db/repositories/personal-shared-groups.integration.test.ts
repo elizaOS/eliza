@@ -76,10 +76,16 @@ beforeAll(async () => {
     new URL("../migrations/0304_personal_shared_group_delivery_lease.sql", import.meta.url),
   ).text();
   await database.exec(leaseMigration);
-  const attemptsMigration = await Bun.file(
-    new URL("../migrations/0309_personal_shared_group_delivery_attempts.sql", import.meta.url),
-  ).text();
-  await database.exec(attemptsMigration);
+  for (const migrationName of [
+    "0309_personal_shared_group_delivery_attempts.sql",
+    "0310_personal_shared_group_delivery_attempt_fence.sql",
+    "0311_personal_shared_group_delivery_attempt_backfill.sql",
+  ]) {
+    const attemptsMigration = await Bun.file(
+      new URL(`../migrations/${migrationName}`, import.meta.url),
+    ).text();
+    await database.exec(attemptsMigration);
+  }
 });
 
 beforeEach(async () => {
@@ -853,7 +859,20 @@ describe("personalSharedGroupsRepository", () => {
       authorized: true,
       leaseToken: fresh.leaseToken,
     });
-    expect(await repository.listUncertainDeliveryAttempts({ limit: 10 })).toMatchObject([
+    expect(
+      await repository.listUncertainDeliveryAttempts({
+        bindingId: initial.binding.id,
+        ownerUserId: USER_B,
+        limit: 10,
+      }),
+    ).toEqual([]);
+    expect(
+      await repository.listUncertainDeliveryAttempts({
+        bindingId: initial.binding.id,
+        ownerUserId: USER_A,
+        limit: 10,
+      }),
+    ).toMatchObject([
       {
         binding_id: initial.binding.id,
         source_message_id: delivery.sourceMessageId,
@@ -879,7 +898,13 @@ describe("personalSharedGroupsRepository", () => {
         providerMessageIds: ["outgoing-late-orphan"],
       }),
     ).toEqual({ recorded: true, inserted: 1 });
-    expect(await repository.listUncertainDeliveryAttempts({ limit: 10 })).toEqual([]);
+    expect(
+      await repository.listUncertainDeliveryAttempts({
+        bindingId: initial.binding.id,
+        ownerUserId: USER_A,
+        limit: 10,
+      }),
+    ).toEqual([]);
     const settled = await repository.resolveBinding({
       platform: "blooio",
       project: "eliza-app",
@@ -924,7 +949,13 @@ describe("personalSharedGroupsRepository", () => {
       }),
     ).toMatchObject({ authorized: false, reason: "source_already_attempted" });
 
-    await expect(repository.listUncertainDeliveryAttempts({ limit: 0 })).rejects.toMatchObject({
+    await expect(
+      repository.listUncertainDeliveryAttempts({
+        bindingId: initial.binding.id,
+        ownerUserId: USER_A,
+        limit: 0,
+      }),
+    ).rejects.toMatchObject({
       code: "PERSONAL_SHARED_GROUP_UNCERTAIN_REPORT_LIMIT_INVALID",
     });
   }, 10_000);
