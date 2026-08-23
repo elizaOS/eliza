@@ -439,10 +439,11 @@ export function validateSharedRealtimeReply(reply: string, grounding: AvailableG
 function supportedRealtimeReply(
   reply: string,
   grounding: AvailableGrounding,
-): { reply: string; selectedUrls: string[] } | undefined {
+): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
+  let omittedUnsupported = false;
   const segments: string[] = [];
   const selectedUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
@@ -451,10 +452,15 @@ function supportedRealtimeReply(
     if (source && claimSupported(claim, source)) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
+    } else {
+      omittedUnsupported = true;
     }
     cursor = (marker.index ?? 0) + marker[0].length;
   }
-  return segments.length > 0 ? { reply: segments.join("\n"), selectedUrls } : undefined;
+  if (reply.slice(cursor).trim()) omittedUnsupported = true;
+  return segments.length > 0
+    ? { reply: segments.join("\n"), selectedUrls, omittedUnsupported }
+    : undefined;
 }
 
 /** Produces Telegram-safe attribution or an honest deterministic recovery. */
@@ -474,7 +480,10 @@ export function finalizeSharedRealtimeReply(
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
     return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}, checked ${new Date(grounding.observedAt).toISOString()})`;
   });
-  return `${supported.reply}\n\n${sources.join("\n")}`;
+  const omission = supported.omittedUnsupported
+    ? "\n\nI left out part of the draft because it was not supported by the live source."
+    : "";
+  return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */

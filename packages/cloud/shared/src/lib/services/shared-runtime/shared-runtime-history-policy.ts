@@ -13,7 +13,7 @@ import type {
 import { logger } from "../../utils/logger";
 
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
-export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 5 * 60 * 1_000;
+export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 60_000;
 
 const GROUNDING_STOP_WORDS = new Set([
   "and",
@@ -121,7 +121,7 @@ export function parseSharedPublicWebGrounding(
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
     candidate.observedAt < 0 ||
-    candidate.observedAt > Date.now() + 60_000 ||
+    candidate.observedAt > Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS ||
     candidate.truncated !== false
   ) {
     return undefined;

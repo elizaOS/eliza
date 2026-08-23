@@ -201,7 +201,7 @@ describe("shared runtime long-term transcript context", () => {
         query: "current value",
         provider: "parallel",
         text: receipt.text,
-        observedAt: Date.now() + 60_001,
+        observedAt: Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS + 60_000,
         ...TEST_SOURCE_EVIDENCE,
         truncated: false,
       }),

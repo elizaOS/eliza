@@ -235,6 +235,28 @@ describe("runSharedAgentTurn realtime grounding", () => {
     });
   }
 
+  test("uses only the authenticated utterance for public-search authorization and query", async () => {
+    await runSharedAgentTurn({
+      character,
+      history: [],
+      message: "Server context: private account metadata. User said: what is btc price rn",
+      capabilityText: "what is btc price rn",
+    });
+    expect(searchQueries).toEqual(["what is btc price rn"]);
+
+    searchQueries = [];
+    capturedRuntimeInput = undefined;
+    runtimeReply = "Your todos are available privately.";
+    await runSharedAgentTurn({
+      character,
+      history: [],
+      message: "what is btc price rn",
+      capabilityText: "check my todos",
+    });
+    expect(searchQueries).toEqual([]);
+    expect(capturedRuntimeInput?.preflightActionResults).toBeUndefined();
+  });
+
   test("turns model silence into useful correction recovery", async () => {
     runtimeReply = "";
     runtimeResponded = false;

@@ -51,7 +51,6 @@ import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
   isMatchingRealtimeSearchResult,
-  isSharedPublicSearchSafe,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
@@ -482,6 +481,7 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
+  const publicSearchText = (input.capabilityText ?? message).trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -508,7 +508,7 @@ export async function runSharedAgentTurn(
   }
 
   const realtimeRequirement = actionsEnabled
-    ? resolveSharedRealtimeRequirement(message, input.history)
+    ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
     : undefined;
   let realtimeActionResults: ActionResult[] | undefined;
   let realtimeGrounding: SharedRuntimePublicGrounding | undefined;
@@ -551,7 +551,7 @@ export async function runSharedAgentTurn(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: actionsEnabled && isSharedPublicSearchSafe(message),
+              webSearch: Boolean(realtimeRequirement),
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
@@ -646,6 +646,7 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnStreamInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
+  const publicSearchText = (input.capabilityText ?? message).trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -673,7 +674,7 @@ export async function runSharedAgentTurnStream(
 
   // Current-data answers are buffered until their complete grounded reply has
   // passed validation; streaming an unverified numeric claim cannot be undone.
-  if (actionsEnabled && resolveSharedRealtimeRequirement(message, input.history)) {
+  if (actionsEnabled && resolveSharedRealtimeRequirement(publicSearchText, input.history)) {
     const turn = await runSharedAgentTurn(input);
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
       if (turn.reply) yield { type: "text-delta", text: turn.reply };
@@ -707,7 +708,9 @@ export async function runSharedAgentTurnStream(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: actionsEnabled && isSharedPublicSearchSafe(message),
+              // A current-data request already took the buffered path above.
+              // Ordinary streamed turns must never expose a public-network tool.
+              webSearch: false,
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),

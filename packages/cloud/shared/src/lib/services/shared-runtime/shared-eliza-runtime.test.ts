@@ -16,6 +16,12 @@ import {
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
+function testPublicGroundingEvidence(url: string, text: string) {
+  return {
+    sourceUrls: [url],
+    sources: [{ url, text }],
+  };
+}
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
 const storedTodos: StoredTodo[] = [];
 const storedTodoMutations: TodoMutationRecord[] = [];
@@ -455,7 +461,7 @@ describe("Shared Eliza Workerd runtime", () => {
         model: "gemma-4-31b",
       },
       history: [],
-      message: "What is one small way to reset my focus?",
+      message: "What is one small way to reset focus?",
       messageIds: {
         user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
         assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
@@ -503,9 +509,10 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ stream: true });
-    expect(JSON.stringify(requests[0])).toContain("What is one small way to reset my focus?");
+    expect(JSON.stringify(requests[0])).toContain("What is one small way to reset focus?");
     expect(JSON.stringify(requests[0])).not.toContain("Opening Focus for you");
     expect(JSON.stringify(requests[0])).not.toContain('"name":"VIEWS"');
+    expect(JSON.stringify(requests[0])).not.toContain('"name":"WEB_SEARCH"');
     expect(reportSpy).toHaveBeenCalledWith("SharedElizaRuntime.timingObserver", expect.any(Error), {
       traceId: "trace-observer-nonfatal",
     });
@@ -1162,11 +1169,11 @@ describe("Shared Eliza Workerd runtime", () => {
       success: false,
       data: { query: "latest ElizaOS news" },
     });
-    expect(modelRequests).toHaveLength(4);
+    expect(modelRequests).toHaveLength(5);
     expect(result.usage).toMatchObject({
-      promptTokens: 170,
-      completionTokens: 50,
-      totalTokens: 220,
+      promptTokens: 220,
+      completionTokens: 64,
+      totalTokens: 284,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
@@ -1263,6 +1270,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
             observedAt: observedAt - 2,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             truncated: false,
           },
         },
@@ -1277,6 +1288,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "parallel",
             text: adversarialResult,
             observedAt: observedAt - 1,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              adversarialResult,
+            ),
             truncated: false,
           },
         },
@@ -1511,6 +1526,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
             observedAt: observedAt - 2,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             truncated: false,
           },
         },
@@ -1525,6 +1544,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "parallel",
             text: "Tessera validates ARC resources through an origin guard and credential relay.",
             observedAt: observedAt - 1,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              "Tessera validates ARC resources through an origin guard and credential relay.",
+            ),
             truncated: false,
           },
         },
