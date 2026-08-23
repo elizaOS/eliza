@@ -21,6 +21,7 @@ import { createUniqueUuid } from "./entities.ts";
 import {
 	CANONICAL_ROLE_RANK,
 	canModifyRole,
+	deterministicOwnerEntityId,
 	getEntityRole,
 	getLiveEntityMetadataFromMessage,
 	getUnresolvedSenderRoleFloor,
@@ -35,6 +36,7 @@ import {
 	recordRoleGrant,
 	resolveCanonicalOwnerId,
 	resolveEntityRole,
+	resolveOwnerEntityIdOrDefault,
 	resolveWorldForMessage,
 } from "./roles.ts";
 import {
@@ -42,6 +44,7 @@ import {
 	satisfiesRoleGate,
 } from "./runtime/context-gates.ts";
 import type { IAgentRuntime, Memory } from "./types";
+import { stringToUuid } from "./utils.ts";
 
 describe("normalizeRole", () => {
 	it("recognizes the three named roles, else GUEST", () => {
@@ -124,6 +127,73 @@ describe("resolveCanonicalOwnerId", () => {
 				ownership: { ownerId: "74324797-3dee-09e3-8c56-526a3caa1a69" },
 			}),
 		).toBe("74324797-3dee-09e3-8c56-526a3caa1a69");
+	});
+});
+
+describe("resolveOwnerEntityIdOrDefault — single owner-entity derivation", () => {
+	const agentId = "2d5a5ec6-7b4f-4e7a-9c1d-0f3b2a1c9e88";
+
+	it("seeds the unconfigured fallback from the agent ID, never the character name", () => {
+		const runtime = {
+			agentId,
+			character: { name: "Eliza" },
+			getSetting: () => null,
+		} as unknown as IAgentRuntime;
+		const resolved = resolveOwnerEntityIdOrDefault(runtime);
+		expect(resolved).toBe(deterministicOwnerEntityId(agentId));
+		expect(resolved).toBe(stringToUuid(`${agentId}-admin-entity`));
+		expect(resolved).not.toBe(stringToUuid("Eliza-admin-entity"));
+	});
+
+	it("is stable across character renames and differs across agents", () => {
+		const renamed = {
+			agentId,
+			character: { name: "Renamed" },
+			getSetting: () => null,
+		} as unknown as IAgentRuntime;
+		const otherAgent = {
+			agentId: "9f0c1b2a-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+			getSetting: () => null,
+		} as unknown as IAgentRuntime;
+		expect(resolveOwnerEntityIdOrDefault(renamed)).toBe(
+			deterministicOwnerEntityId(agentId),
+		);
+		expect(resolveOwnerEntityIdOrDefault(otherAgent)).not.toBe(
+			deterministicOwnerEntityId(agentId),
+		);
+	});
+
+	it("prefers a configured canonical owner UUID over the seed", () => {
+		const ownerId = "74324797-3dee-09e3-8c56-526a3caa1a69";
+		const runtime = {
+			agentId,
+			getSetting: (key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? ownerId : null,
+		} as unknown as IAgentRuntime;
+		expect(resolveOwnerEntityIdOrDefault(runtime)).toBe(ownerId);
+	});
+
+	it("falls back to the seed when the configured owner is not a UUID", () => {
+		const runtime = {
+			agentId,
+			getSetting: (key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? "owner-entity-1" : null,
+		} as unknown as IAgentRuntime;
+		expect(resolveOwnerEntityIdOrDefault(runtime)).toBe(
+			deterministicOwnerEntityId(agentId),
+		);
+	});
+
+	it("accepts the first owner-contact entity id when no admin entity is set", () => {
+		const contactId = "0c7b1d2e-3f4a-4b5c-9d6e-7f8a9b0c1d2e";
+		const runtime = {
+			agentId,
+			getSetting: (key: string) =>
+				key === "ELIZA_OWNER_CONTACTS_JSON"
+					? JSON.stringify({ telegram: { entityId: contactId } })
+					: null,
+		} as unknown as IAgentRuntime;
+		expect(resolveOwnerEntityIdOrDefault(runtime)).toBe(contactId);
 	});
 });
 

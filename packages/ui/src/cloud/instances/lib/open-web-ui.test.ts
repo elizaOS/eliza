@@ -44,11 +44,18 @@ function pairingResponse(body: unknown, status = 200): Response {
   });
 }
 
+function setCookie(pair: string): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom must seed the synchronous cookie reader used by the production CSRF helper.
+  document.cookie = pair;
+}
+
 beforeEach(() => {
   toastError.mockReset();
+  setCookie("eliza_csrf=csrf-pair-token; path=/");
 });
 
 afterEach(() => {
+  setCookie("eliza_csrf=; Max-Age=0; path=/");
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -57,17 +64,21 @@ describe("openWebUIWithPairing redirect guard", () => {
   it("redirects the popup to a valid https pairing URL", async () => {
     const popup = makePopup();
     vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
         pairingResponse({
           data: { redirectUrl: "https://agent.example.com/pair?token=abc" },
         }),
-      ),
     );
+    vi.stubGlobal("fetch", fetchMock);
 
     await openWebUIWithPairing("agent-1");
 
+    const requestInit = fetchMock.mock.calls[0]?.[1];
+    expect(new Headers(requestInit?.headers).get("x-eliza-csrf")).toBe(
+      "csrf-pair-token",
+    );
+    expect(requestInit?.credentials).toBe("include");
     expect(popup.location.href).toBe(
       "https://agent.example.com/pair?token=abc",
     );

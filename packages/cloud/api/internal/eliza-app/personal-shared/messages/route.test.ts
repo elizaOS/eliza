@@ -1104,7 +1104,20 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       validGroup.messageId,
       "platform",
-      undefined,
+      {
+        platform: "telegram",
+        kind: "group",
+        project: "eliza-app",
+        connectorAccountId: "telegram:test-bot",
+        chatId: "-100123456789",
+        ownerLabel: "Nubs",
+        authority: {
+          bindingId: canonicalGroupBinding.id,
+          ownerUserId: canonicalGroupBinding.owner_user_id,
+          personalAgentId: canonicalGroupBinding.personal_agent_id,
+          version: canonicalGroupBinding.authority_version,
+        },
+      },
       undefined,
       { type: "GROUP", source: "telegram" },
     );

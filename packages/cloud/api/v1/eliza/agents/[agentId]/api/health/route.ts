@@ -4,6 +4,7 @@ import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { sharedRestHealth } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
 /**
  * GET /api/v1/eliza/agents/[agentId]/api/health
@@ -18,6 +19,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const CORS_METHODS = "GET, OPTIONS";
 
 const app = new Hono<AppEnv>();
+app.use("*", proxyLocalDedicatedOrNext);
 
 app.options("/", () => handleCorsOptions(CORS_METHODS));
 

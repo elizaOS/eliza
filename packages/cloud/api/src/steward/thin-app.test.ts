@@ -384,6 +384,70 @@ describe("createStewardThinApp", () => {
   });
 
   test.each([
+    ["a wrong-typed boolean field", "passkey", "yes-actually-truthy"],
+    ["a wrong-typed array field", "oauth", "google,apple"],
+    ["a malformed captcha", "captcha", { enabled: "sure" }],
+  ])(
+    "drops %s smuggled beside a valid nested data object",
+    async (_case, key, value) => {
+      stubFetch(async () =>
+        Response.json({
+          ok: true,
+          requestVersion: 7,
+          [key]: value,
+          data: providersData(),
+        }),
+      );
+
+      const app = createStewardThinApp();
+      const response = await app.request(
+        "https://api.elizacloud.ai/steward/auth/providers",
+        { method: "GET" },
+        stewardEnv,
+      );
+      const body = (await response.json()) as Record<string, unknown> & {
+        data?: Record<string, unknown>;
+      };
+
+      // The nested branch validates `data` alone, so an unvalidated
+      // contract-named sibling must never be republished as healthy state.
+      expect(response.status).toBe(200);
+      expect(Object.hasOwn(body, key)).toBe(false);
+      expect(body.ok).toBe(true);
+      expect(body.requestVersion).toBe(7);
+      expect(body.data?.passkey).toBe(true);
+      expect(Array.isArray(body.data?.oauth)).toBe(true);
+    },
+  );
+
+  test("keeps unknown envelope fields while dropping contract-named siblings", async () => {
+    stubFetch(async () =>
+      Response.json({
+        ok: true,
+        requestVersion: 7,
+        futureEnvelopeField: { state: "preview" },
+        passkey: "yes-actually-truthy",
+        data: providersData({ sms: true }),
+      }),
+    );
+
+    const app = createStewardThinApp();
+    const response = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+    const body = (await response.json()) as Record<string, unknown> & {
+      data?: Record<string, unknown>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.futureEnvelopeField).toEqual({ state: "preview" });
+    expect(Object.hasOwn(body, "passkey")).toBe(false);
+    expect(body.data?.sms).toBe(true);
+  });
+
+  test.each([
     ["object", { requestVersion: 7 }],
     ["null", null],
   ])(

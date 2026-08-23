@@ -420,6 +420,11 @@ export interface Bindings {
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   /**
+   * Test-only Stripe-compatible loopback origin. The Stripe client accepts it
+   * only under the explicit CLOUD_E2E + NODE_ENV=test gates and never in prod.
+   */
+  STRIPE_CLOUD_E2E_API_ORIGIN?: string;
+  /**
    * Signing secret for the Stripe **Connect** webhook endpoint
    * (`/api/v1/earnings/payout/stripe-connect/webhook`). Connect endpoints have
    * their own secret, distinct from `STRIPE_WEBHOOK_SECRET` (the main billing
@@ -477,6 +482,13 @@ export interface Bindings {
   WEBHOOK_GATEWAY_URL?: string;
   GATEWAY_WEBHOOK_URL?: string;
   ELIZA_APP_WEBHOOK_PROJECT?: string;
+  /**
+   * Exactly `"true"` enables vision descriptions of inbound Blooio image media
+   * on Personal Shared turns; any other value keeps the raw media-URL text.
+   * The gateway-webhook service reads the same variable to decide whether to
+   * forward media URLs at all, so enable both deployments together.
+   */
+  ELIZA_APP_INBOUND_MEDIA_VISION?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */
@@ -504,6 +516,8 @@ export interface Bindings {
   CONTAINERS_BOOTSTRAP_SECRET?: string;
   CONTAINERS_HCLOUD_LOCATION?: string;
   NODE_ENV?: string;
+  /** Exact local full-stack test gate; never set on deployed Workers. */
+  CLOUD_E2E?: string;
   /**
    * Git commit stamped at deploy time so `/api/health` can prove which Worker
    * revision is currently served before CI allows another deploy to overwrite it.

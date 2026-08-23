@@ -4,7 +4,14 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BROWSER_BRIDGE_REQUEST_TIMEOUT_MS } from "./request-timeout";
-import { queryTabs, sendTabMessage } from "./webextension";
+import {
+  getManifestVersion,
+  hasWebsiteAccess,
+  queryTabs,
+  requestWebsiteAccess,
+  sendNativeMessage,
+  sendTabMessage,
+} from "./webextension";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -68,5 +75,81 @@ describe("browser extension operation deadlines", () => {
 
     await expect(queryTabs({})).resolves.toEqual([{ id: 7 }]);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("checks and requests only the exact active-site origin", async () => {
+    const contains = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(false),
+    );
+    const request = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(true),
+    );
+    vi.stubGlobal("chrome", {
+      runtime: {},
+      permissions: { contains, request },
+    });
+
+    const origin = "https://accounts.example.com/*";
+    await expect(hasWebsiteAccess(origin)).resolves.toBe(false);
+    await expect(requestWebsiteAccess(origin)).resolves.toBe(true);
+    expect(contains).toHaveBeenCalledWith(
+      { origins: [origin] },
+      expect.any(Function),
+    );
+    expect(request).toHaveBeenCalledWith(
+      { origins: [origin] },
+      expect.any(Function),
+    );
+  });
+
+  it("uses the typed native-messaging wrapper and surfaces runtime errors", async () => {
+    const sendNative = vi.fn(
+      (host: string, request: unknown, callback: (response: unknown) => void) =>
+        callback({ host, request }),
+    );
+    vi.stubGlobal("chrome", {
+      runtime: { sendNativeMessage: sendNative },
+    });
+    await expect(
+      sendNativeMessage<{ v: 1 }, { host: string; request: { v: 1 } }>(
+        "ai.elizaos.browserbridge",
+        { v: 1 },
+      ),
+    ).resolves.toEqual({
+      host: "ai.elizaos.browserbridge",
+      request: { v: 1 },
+    });
+    expect(sendNative).toHaveBeenCalledTimes(1);
+
+    vi.stubGlobal("chrome", { runtime: {} });
+    await expect(
+      sendNativeMessage("ai.elizaos.browserbridge", { v: 1 }),
+    ).rejects.toThrow("runtime.sendNativeMessage is unavailable");
+  });
+
+  it("uses release semver instead of the Chrome four-part manifest version", () => {
+    vi.stubGlobal("chrome", {
+      runtime: {
+        getManifest: () => ({
+          version: "2.0.3.40007",
+          version_name: "2.0.3-beta.7",
+        }),
+      },
+    });
+    expect(getManifestVersion()).toBe("2.0.3-beta.7");
+
+    vi.stubGlobal("chrome", {
+      runtime: {
+        getManifest: () => ({ version: "2.0.3", version_name: "invalid" }),
+      },
+    });
+    expect(getManifestVersion()).toBe("2.0.3");
+
+    vi.stubGlobal("chrome", {
+      runtime: { getManifest: () => ({ version: "2.0.3.40007" }) },
+    });
+    expect(getManifestVersion()).toBe("0.0.0");
   });
 });

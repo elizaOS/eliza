@@ -107,7 +107,6 @@ import { getFusedWakeManager } from "./native/fused-wake";
 import { getGatewayDiscovery } from "./native/gateway";
 import { getGpuWindowManager } from "./native/gpu-window";
 import { getLocationManager } from "./native/location";
-import { getMusicPlayerManager } from "./native/music-player";
 import { getPermissionManager } from "./native/permissions";
 import type { AllPermissionsState } from "./native/permissions-shared";
 import { getScreenCaptureManager } from "./native/screencapture";
@@ -418,7 +417,6 @@ export function buildBunRpcHandlers({
   const swabble = getSwabbleManager();
   const fusedWake = getFusedWakeManager();
   const talkmode = getTalkModeManager();
-  const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
   registerBuiltInDynamicViews();
   const dynamicViewRegistry = getDynamicViewRegistry();
@@ -1358,9 +1356,6 @@ export function buildBunRpcHandlers({
     talkmodeAudioChunk: async (
       params: Parameters<typeof talkmode.audioChunk>[0],
     ) => talkmode.audioChunk(params),
-
-    musicPlayerGetDesktopPlaybackUrls: async (params?: { guildId?: string }) =>
-      musicPlayer.getDesktopPlaybackUrls(params),
 
     // ---- Context Menu ----
     // These forward text selections from the renderer context menu to the agent.

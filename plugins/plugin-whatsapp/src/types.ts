@@ -51,6 +51,11 @@ export interface WhatsAppMessage {
     | WhatsAppReactionMessage
     | WhatsAppLocationMessage;
   replyToMessageId?: string;
+  /** Baileys-only context needed to reconstruct a native quoted message. */
+  replyToParticipant?: string;
+  replyToFromMe?: boolean;
+  replyToType?: "text" | "image" | "audio" | "video" | "document";
+  replyToText?: string;
 }
 
 export interface WhatsAppTemplate {

@@ -348,8 +348,20 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/browser-workspace"),
     body: { mode: "web", tabs: [] },
   },
-  { match: path_("/music-player/status"), body: { available: false } },
   // instances/ — canonical agent-list DTO plus detail.
+  {
+    match: path_("/api/v1/eliza/personal"),
+    body: {
+      success: true,
+      data: {
+        identity: {
+          id: "personal:00000000-0000-5000-8000-000000000001",
+          displayName: "Eliza",
+          runtime: "dedicated",
+        },
+      },
+    },
+  },
   {
     match: path_("/api/v1/eliza/agents"),
     body: {
@@ -371,7 +383,8 @@ const STUB_RULES: StubRule[] = [
           token_ticker: null,
           dockerImage: null,
           executionTier: "dedicated-lazy",
-          webUiUrl: null,
+          webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
+          activeJob: null,
         },
       ],
     },
@@ -386,7 +399,7 @@ const STUB_RULES: StubRule[] = [
         status: "running",
         executionTier: "dedicated-lazy",
         databaseStatus: "ready",
-        webUiUrl: null,
+        webUiUrl: "https://agent-smoke-1.cloud.eliza.app",
         bridgeUrl: null,
         errorMessage: null,
         createdAt: NOW_ISO,
@@ -960,6 +973,4 @@ export async function installCloudApiStubs(page: Page): Promise<void> {
   await page.route("**/api/**", handle);
   // The admin RPC-status probe has no /api prefix (worker route /admin/rpc-status).
   await page.route("**/admin/rpc-status*", handle);
-  // The managed-agent music availability probe also has no /api prefix.
-  await page.route("**/music-player/status*", handle);
 }

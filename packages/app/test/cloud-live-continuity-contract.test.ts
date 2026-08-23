@@ -212,6 +212,10 @@ describe("forbidden Cloud agent mutations", () => {
       failedHistoryGetRequestCount: 0,
       timedOutHistoryGetRequestCount: 0,
       pendingHistoryGetRequestCount: 0,
+      inspectedHistoryResponseCount: 0,
+      uninspectableHistoryResponseCount: 0,
+      historyResponseWithAnchorUserCount: 0,
+      historyResponseWithAnchoredAssistantCount: 0,
     });
     expect(JSON.stringify(snapshot)).not.toMatch(
       /api\.test|private|idempotency|prompt/,
@@ -261,6 +265,10 @@ describe("forbidden Cloud agent mutations", () => {
       failedHistoryGetRequestCount: 2,
       timedOutHistoryGetRequestCount: 1,
       pendingHistoryGetRequestCount: 1,
+      inspectedHistoryResponseCount: 0,
+      uninspectableHistoryResponseCount: 0,
+      historyResponseWithAnchorUserCount: 0,
+      historyResponseWithAnchoredAssistantCount: 0,
     });
     expect(JSON.stringify(diagnostics)).not.toMatch(
       /api\.test|private|token|ERR_|conversation/,
@@ -297,6 +305,110 @@ describe("forbidden Cloud agent mutations", () => {
       historyGetRequestCount: 1,
       successfulHistoryGetResponseCount: 1,
       pendingHistoryGetRequestCount: 1,
+    });
+  });
+
+  it("classifies an anchored history pair without retaining private body content", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const history =
+      "https://api.test/api/conversations/private-conversation/messages";
+    const anchor = "private-anchor-token";
+    audit.setHistoryAnchorToken(anchor);
+    const before = await audit.snapshot();
+    const body = boundedJsonBody({
+      messages: [
+        { role: "assistant", text: "old private answer" },
+        { role: "user", text: `private prompt ${anchor}` },
+        { role: "assistant", text: "new private answer" },
+      ],
+    });
+
+    audit.observeRequest("GET", history);
+    audit.observeResponse("GET", history, 200, body.responseBody);
+    const diagnostics = createCloudLiveHistoryNetworkDiagnostics(
+      "post-reload",
+      before,
+      await audit.snapshot(),
+    );
+
+    expect(diagnostics).toMatchObject({
+      successfulHistoryGetResponseCount: 1,
+      inspectedHistoryResponseCount: 1,
+      uninspectableHistoryResponseCount: 0,
+      historyResponseWithAnchorUserCount: 1,
+      historyResponseWithAnchoredAssistantCount: 1,
+    });
+    expect(body.budgets).toEqual([1024 * 1024]);
+    expect(JSON.stringify(diagnostics)).not.toMatch(
+      /private|anchor|prompt|answer|api\.test|conversation/,
+    );
+  });
+
+  it("does not pair an anchor with an assistant after a newer user turn", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const history = "/api/conversations/private/messages";
+    audit.setHistoryAnchorToken("private-anchor");
+    audit.observeRequest("GET", history);
+    audit.observeResponse(
+      "GET",
+      history,
+      200,
+      boundedJsonBody({
+        messages: [
+          { role: "user", text: "private-anchor" },
+          { role: "user", text: "newer private turn" },
+          { role: "assistant", text: "belongs to newer turn" },
+        ],
+      }).responseBody,
+    );
+
+    expect(await audit.snapshot()).toMatchObject({
+      inspectedHistoryResponseCount: 1,
+      historyResponseWithAnchorUserCount: 1,
+      historyResponseWithAnchoredAssistantCount: 0,
+    });
+  });
+
+  it("does not report an anchored assistant when the user anchor is absent", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const history = "/api/conversations/private/messages";
+    audit.setHistoryAnchorToken("missing-private-anchor");
+    audit.observeRequest("GET", history);
+    audit.observeResponse(
+      "GET",
+      history,
+      200,
+      boundedJsonBody({
+        messages: [{ role: "assistant", text: "unrelated older assistant" }],
+      }).responseBody,
+    );
+
+    expect(await audit.snapshot()).toMatchObject({
+      inspectedHistoryResponseCount: 1,
+      historyResponseWithAnchorUserCount: 0,
+      historyResponseWithAnchoredAssistantCount: 0,
+    });
+  });
+
+  it("reports unreadable or oversized history bodies as uninspectable", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const history = "/api/conversations/private/messages";
+    audit.setHistoryAnchorToken("private-anchor");
+    for (const body of [
+      boundedJsonBody({}, { contentType: "text/plain" }).responseBody,
+      boundedJsonBody({}, { reject: true }).responseBody,
+      boundedJsonBody({}, { raw: "{", ignoreBudget: true }).responseBody,
+    ]) {
+      audit.observeRequest("GET", history);
+      audit.observeResponse("GET", history, 200, body);
+    }
+
+    expect(await audit.snapshot()).toMatchObject({
+      successfulHistoryGetCount: 3,
+      inspectedHistoryResponseCount: 0,
+      uninspectableHistoryResponseCount: 3,
+      historyResponseWithAnchorUserCount: 0,
+      historyResponseWithAnchoredAssistantCount: 0,
     });
   });
 

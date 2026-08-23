@@ -6,6 +6,7 @@ import { agentIdentities } from "@/db/schemas/agent-identities";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";
 import {
   defaultRegistry,
   getCurrentIdentity,
@@ -159,6 +160,7 @@ export async function handleRegisterIdentity(
 }
 
 const app = new Hono<AppEnv>();
+app.use("*", proxyLocalDedicatedOrNext);
 app.options("/", () => __next_OPTIONS());
 app.post("/", (c) =>
   handleRegisterIdentity(

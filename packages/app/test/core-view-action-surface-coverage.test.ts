@@ -77,7 +77,12 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   orchestrator: {
     viewId: "orchestrator",
     provider: "dynamic",
-    files: ["plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx"],
+    files: [
+      "plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx",
+      "plugins/plugin-task-coordinator/src/orchestrator-task-inspector.tsx",
+      "plugins/plugin-task-coordinator/src/orchestrator-operator-detail.tsx",
+      "plugins/plugin-task-coordinator/src/orchestrator-workbench-list.tsx",
+    ],
     minAgentElements: 12,
   },
   transcripts: {

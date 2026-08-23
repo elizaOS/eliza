@@ -42,6 +42,8 @@ export function blooioFetch(
 }
 
 export class BlooioApiResponseError extends PlatformDeliveryError {
+  override readonly name: string = "BlooioApiResponseError";
+
   constructor(
     readonly status: number,
     message: string,
@@ -53,12 +55,11 @@ export class BlooioApiResponseError extends PlatformDeliveryError {
       status === 429,
       status,
     );
-    this.name = "BlooioApiResponseError";
   }
 }
 
 export class BlooioConfigurationError extends PlatformDeliveryError {
-  readonly context: Readonly<{ setting: string; chatId: string }>;
+  override readonly name: string = "BlooioConfigurationError";
 
   constructor(chatId: string) {
     super(
@@ -66,12 +67,9 @@ export class BlooioConfigurationError extends PlatformDeliveryError {
       "failed",
       "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING",
       false,
+      undefined,
+      { context: { setting: "fromNumber", chatId } },
     );
-    this.name = "BlooioConfigurationError";
-    this.context = {
-      setting: "fromNumber",
-      chatId,
-    };
   }
 }
 
@@ -187,14 +185,18 @@ function providerSentAtMs(event: BlooioWebhookEvent): number | undefined {
   return Number.isSafeInteger(milliseconds) ? milliseconds : undefined;
 }
 
-const ALLOWED_MEDIA_DOMAINS = [
+// Runtime-local copy of the canonical allowlist in
+// `@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist` (this
+// service must not depend on cloud-shared at runtime); the adapter parity test
+// pins the two to each other.
+export const ALLOWED_MEDIA_DOMAINS = [
   "blooio.com",
   "backend.blooio.com",
   "api.blooio.com",
   "media.blooio.com",
 ];
 
-function isValidMediaUrl(url: string): boolean {
+export function isValidMediaUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;

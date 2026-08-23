@@ -6,8 +6,8 @@
  * OAuth / API-key / local-bridge mode switch (projected from the shared
  * connector-mode registry), the "Sign in with <provider>" OAuth hand-off, the
  * visible fallback toggle away from OAuth, the one-click Discord desktop
- * pairing, and per-connector render coverage for the five chat-set-up
- * connectors (discord, telegram, signal, imessage, wechat). Runs against the
+ * pairing, and per-connector render coverage for the four chat-set-up
+ * connectors (discord, telegram, imessage, wechat). Runs against the
  * real ConfigRenderer + a mocked ElizaClient — the mode projection itself is
  * the real registry, so a mode the settings page shows is a mode this card
  * shows.

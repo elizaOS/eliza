@@ -66,6 +66,7 @@ export interface CancelBillableResourceOptions {
   resourceType?: BillableResourceType;
   mode?: "stop" | "delete";
   triggerEnv?: AppEnv["Bindings"];
+  authorizeInfrastructureMutation: () => Promise<void>;
 }
 
 function iso(date: Date | null | undefined): string | null {
@@ -291,6 +292,7 @@ class ActiveBillingService {
           container.total_billed,
           "container.total_billed",
         );
+        await options.authorizeInfrastructureMutation();
         const infrastructureAction = await cancelContainerInfrastructure(
           container.id,
           organizationId,
@@ -403,6 +405,7 @@ class ActiveBillingService {
           agent.total_billed,
           "agent_sandbox.total_billed",
         );
+        await options.authorizeInfrastructureMutation();
         const infrastructureAction = await cancelAgentInfrastructure(
           agent.id,
           organizationId,

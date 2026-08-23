@@ -987,6 +987,8 @@ function readEventInstant(
   return null;
 }
 
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
 function normalizePatchBounds(params: {
   start?: string;
   end?: string;
@@ -1002,6 +1004,28 @@ function normalizePatchBounds(params: {
   const existingEnd = eventDateValue(params.existing.end);
   const existingDurationMs =
     existingStart && existingEnd ? Date.parse(existingEnd) - Date.parse(existingStart) : Number.NaN;
+
+  // The single supplied bound decides how toEventDateTime will serialize it: a
+  // date-only "YYYY-MM-DD" value emits {date}, anything else emits {dateTime}.
+  // The derived counterpart must match that shape, otherwise the patch body
+  // mixes an all-day date with a timed dateTime and Google Calendar's
+  // events.patch rejects it with HTTP 400 ("Cannot combine date and dateTime").
+  const anchor = start ?? end;
+  if (isDateOnly(anchor)) {
+    // All-day reschedule: preserve the existing span as whole calendar days and
+    // derive the missing bound as a date-only string so both bounds stay {date}.
+    const spanDays =
+      Number.isFinite(existingDurationMs) && existingDurationMs > 0
+        ? Math.max(1, Math.round(existingDurationMs / MILLISECONDS_PER_DAY))
+        : 1;
+    if (start && !end) {
+      end = addCalendarDays(start, spanDays);
+    } else if (end && !start) {
+      start = addCalendarDays(end, -spanDays);
+    }
+    return { start, end };
+  }
+
   const fallbackDurationMs =
     Number.isFinite(existingDurationMs) && existingDurationMs > 0
       ? existingDurationMs
@@ -1016,11 +1040,21 @@ function normalizePatchBounds(params: {
   return { start, end };
 }
 
+function isDateOnly(value: string | undefined): value is string {
+  return value !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function addCalendarDays(dateOnly: string, days: number): string {
+  const base = new Date(`${dateOnly}T00:00:00.000Z`);
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
 function toEventDateTime(
   value: string,
   timeZone: string | undefined
 ): calendar_v3.Schema$EventDateTime {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (isDateOnly(value)) {
     return { date: value, timeZone };
   }
   return { dateTime: value, timeZone };

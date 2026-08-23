@@ -2477,7 +2477,11 @@ function appendPriorDialogueEvents(
 			if (looksLikePriorDialogueArtifact(text)) return false;
 			return text.length > 0;
 		})
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+		.sort((a, b) => {
+			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			return aTime - bTime;
+		});
 	// Bound how many of the agent's own turns render (newest win): the planner
 	// needs the immediate question/preview a continuation refers to, not the
 	// agent's whole side of a long conversation.
@@ -2806,7 +2810,11 @@ function getRecentConversationSearchText(
 			if (isSubAgentCompletionArtifact(memory)) return false;
 			return typeof memory.content?.text === "string";
 		})
-		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+		.sort((a, b) => {
+			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			return bTime - aTime;
+		})
 		.map((memory) => memory.content.text.trim())
 		.filter(Boolean);
 }

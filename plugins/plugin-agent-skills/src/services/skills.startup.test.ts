@@ -154,4 +154,20 @@ describe("Agent Skills startup catalog policy", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(102);
 		expect(service.getCatalogStats().total).toBe(101);
 	});
+
+	it("returns null when memory mode scan results file contains corrupted JSON without throwing", async () => {
+		const memoryStore = new MemorySkillStore();
+		await memoryStore.savePackage({
+			slug: "corrupted-scan-skill",
+			files: [{ name: ".scan-results.json", content: "{ invalid json format, unclosed \"" }],
+		});
+
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage: memoryStore,
+		});
+
+		const report = await service.getSkillScanReport("corrupted-scan-skill");
+		expect(report).toBeNull();
+	});
 });

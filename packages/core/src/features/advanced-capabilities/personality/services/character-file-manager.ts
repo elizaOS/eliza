@@ -259,7 +259,15 @@ export class CharacterFileManager extends Service {
 							};
 						}),
 				)
-			).sort((a, b) => b.stat.mtime.getTime() - a.stat.mtime.getTime());
+			).sort((a, b) => {
+				const aTime = Number.isFinite(a.stat.mtime.getTime())
+					? a.stat.mtime.getTime()
+					: 0;
+				const bTime = Number.isFinite(b.stat.mtime.getTime())
+					? b.stat.mtime.getTime()
+					: 0;
+				return bTime - aTime;
+			});
 
 			// Keep only the most recent backups
 			const filesToDelete = backupFiles.slice(this.maxBackups);

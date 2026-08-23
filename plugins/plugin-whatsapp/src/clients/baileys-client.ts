@@ -6,10 +6,12 @@
  * WhatsAppClient; selected by ClientFactory based on detected auth method.
  */
 import { EventEmitter } from "node:events";
+import { ElizaError } from "@elizaos/core";
 import { BaileysAuthManager } from "../baileys/auth";
 import { BaileysConnection } from "../baileys/connection";
 import { MessageAdapter } from "../baileys/message-adapter";
 import { QRCodeGenerator } from "../baileys/qr-code";
+import { normalizeBaileysSendTarget } from "../normalize";
 import type {
   BaileysConfig,
   ConnectionStatus,
@@ -90,16 +92,59 @@ export class BaileysClient extends EventEmitter implements IWhatsAppClient {
       throw new Error("Not connected to WhatsApp via Baileys");
     }
 
-    const payload = this.adapter.toBaileys(message);
+    const to = normalizeBaileysSendTarget(message.to);
+    const normalizedMessage = { ...message, to };
+    const payload = this.adapter.toBaileys(normalizedMessage);
+    const quotedMessage = (() => {
+      switch (normalizedMessage.replyToType) {
+        case "image":
+          return { imageMessage: { caption: normalizedMessage.replyToText ?? "" } };
+        case "video":
+          return { videoMessage: { caption: normalizedMessage.replyToText ?? "" } };
+        case "audio":
+          return { audioMessage: {} };
+        case "document":
+          return { documentMessage: { caption: normalizedMessage.replyToText ?? "" } };
+        default:
+          return { conversation: normalizedMessage.replyToText || " " };
+      }
+    })();
     const result = await socket.sendMessage(
-      message.to,
-      payload as Parameters<typeof socket.sendMessage>[1]
+      to,
+      payload as Parameters<typeof socket.sendMessage>[1],
+      normalizedMessage.replyToMessageId
+        ? {
+            quoted: {
+              key: {
+                remoteJid: to,
+                id: normalizedMessage.replyToMessageId,
+                fromMe: normalizedMessage.replyToFromMe ?? false,
+                ...(to.endsWith("@g.us") && normalizedMessage.replyToParticipant
+                  ? {
+                      participant: normalizeBaileysSendTarget(normalizedMessage.replyToParticipant),
+                    }
+                  : {}),
+              },
+              message: quotedMessage,
+            },
+          }
+        : undefined
     );
-    const id = result?.key?.id ?? "";
+    const id = result?.key?.id;
+    if (!id) {
+      throw new ElizaError("Baileys send completed without a WhatsApp message id", {
+        code: "WHATSAPP_PROVIDER_MESSAGE_ID_MISSING",
+        context: {
+          to,
+          messageType: normalizedMessage.type,
+          replyToMessageId: normalizedMessage.replyToMessageId,
+        },
+      });
+    }
 
     return {
       messaging_product: "whatsapp",
-      contacts: [{ input: message.to, wa_id: message.to }],
+      contacts: [{ input: to, wa_id: to }],
       messages: [{ id }],
     };
   }

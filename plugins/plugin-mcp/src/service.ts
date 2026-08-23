@@ -663,8 +663,18 @@ export class McpService extends Service {
     if (config) {
       connection.server.status = "connecting";
       connection.server.error = "";
+      let parsedConfig: McpServerConfig;
+      try {
+        parsedConfig = JSON.parse(config) as McpServerConfig;
+      } catch (error) {
+        // error-policy:J1 boundary translation: record error status on malformed config
+        const detail = error instanceof Error ? error.message : String(error);
+        connection.server.status = "error";
+        connection.server.error = `Invalid server configuration JSON: ${detail}`;
+        return;
+      }
       await this.deleteConnection(serverName);
-      await this.initializeConnection(serverName, JSON.parse(config));
+      await this.initializeConnection(serverName, parsedConfig);
     }
   }
 

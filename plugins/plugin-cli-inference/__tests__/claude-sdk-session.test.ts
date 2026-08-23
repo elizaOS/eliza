@@ -1,3 +1,4 @@
+import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { ClaudeSdkSession, type SdkModule } from "../src/claude-sdk-session";
 import { ProviderApiError } from "../src/provider-errors";
@@ -423,5 +424,84 @@ describe("start-path timeout (#16553)", () => {
     releaseStart?.();
     await new Promise((res) => setTimeout(res, 20));
     expect(inner.query).toBeNull();
+  });
+});
+
+describe("ClaudeSdkSession — surrogate-safe error envelopes", () => {
+  // The SDK's leaked UI strings are truncated (120 / 160 code units) before they
+  // become error messages. A raw `.slice()` that lands on the lead half of an
+  // astral character leaves a lone surrogate, and a lone surrogate already in
+  // the envelope is preserved verbatim; either makes the thrown message
+  // ill-formed. The fixtures place a lone high surrogate early in the text and
+  // an astral emoji exactly straddling the cut index.
+  const LONE_HIGH_SURROGATE = "\uD83D";
+  const EMOJI = "\u{1F600}"; // two UTF-16 code units
+
+  /** Pad `prefix` with `x` so the next code unit sits at `index`, then append `tail`. */
+  function buildEnvelope(prefix: string, index: number, tail: string): string {
+    const body = `${prefix}${LONE_HIGH_SURROGATE} `;
+    const padded = body + "x".repeat(index - body.length);
+    expect(padded.length).toBe(index);
+    return `${padded}${EMOJI}${tail}`;
+  }
+
+  function isWellFormed(value: string): boolean {
+    return toWellFormedUnicode(value) === value;
+  }
+
+  it("subscription-limit envelope: cut at 120 never splits a pair and lone surrogates are sanitized", async () => {
+    const envelope = buildEnvelope(
+      "You've hit your session limit · resets 9:30pm (UTC)",
+      119,
+      " tail"
+    );
+    // Keep the fixture inside the detector's length guard (<= 160).
+    expect(envelope.length).toBeLessThanOrEqual(160);
+    expect(isWellFormed(envelope)).toBe(false);
+    const { session } = makeSession([{ text: envelope, subtype: "success" }]);
+    let message = "";
+    await expect(
+      session.send("hi").catch((error: unknown) => {
+        message = (error as Error).message;
+        throw error;
+      })
+    ).rejects.toThrow(/subscription rate limit reached/);
+    await session.dispose();
+
+    const prefix = "[cli-inference:sdk] subscription rate limit reached: ";
+    expect(message.startsWith(prefix)).toBe(true);
+    const truncated = message.slice(prefix.length);
+    expect(isWellFormed(message)).toBe(true);
+    expect(truncated.length).toBeLessThanOrEqual(120);
+    // The emoji straddling index 119/120 is dropped whole rather than halved.
+    expect(truncated.length).toBe(119);
+    expect(truncated.endsWith("x")).toBe(true);
+    expect(truncated).toContain("\uFFFD");
+    expect(truncated).not.toContain(LONE_HIGH_SURROGATE);
+  });
+
+  it("upstream API error envelope: cut at 160 never splits a pair and lone surrogates are sanitized", async () => {
+    const envelope = buildEnvelope("API Error: 529 Overloaded.", 159, " more detail");
+    expect(isWellFormed(envelope)).toBe(false);
+    const { session } = makeSession([{ text: envelope, subtype: "success" }]);
+    let message = "";
+    await expect(
+      session.send("hi").catch((error: unknown) => {
+        message = (error as Error).message;
+        throw error;
+      })
+    ).rejects.toMatchObject({ name: "ProviderApiError", statusCode: 529 });
+    await session.dispose();
+
+    const prefix = "[cli-inference:sdk] upstream ";
+    expect(message.startsWith(prefix)).toBe(true);
+    const truncated = message.slice(prefix.length);
+    expect(isWellFormed(message)).toBe(true);
+    expect(truncated.length).toBeLessThanOrEqual(160);
+    // The emoji straddling index 159/160 is dropped whole rather than halved.
+    expect(truncated.length).toBe(159);
+    expect(truncated.endsWith("x")).toBe(true);
+    expect(truncated).toContain("\uFFFD");
+    expect(truncated).not.toContain(LONE_HIGH_SURROGATE);
   });
 });

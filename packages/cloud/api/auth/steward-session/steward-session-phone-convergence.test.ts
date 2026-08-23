@@ -152,6 +152,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       verifiedTelegramId: undefined,
       telegramContinuation: undefined,
       sharedRuntimeConversationNamespace: undefined,
+      executionCtx: undefined,
     });
   });
 
@@ -172,6 +173,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       verifiedTelegramId: undefined,
       telegramContinuation: "opaque-telegram-claim-token",
       sharedRuntimeConversationNamespace: undefined,
+      executionCtx: undefined,
     });
   });
 
@@ -200,6 +202,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       verifiedTelegramId: "424242",
       telegramContinuation: undefined,
       sharedRuntimeConversationNamespace: undefined,
+      executionCtx: undefined,
     });
   });
 

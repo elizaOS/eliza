@@ -114,7 +114,7 @@ describe("handleMobileOptionalRoutes", () => {
     });
   });
 
-  it("returns the explicit unsupported Signal status tombstone", async () => {
+  it("returns the explicit unsupported Signal status declaration", async () => {
     const req = makeReq();
     req.url = "/api/signal/status?accountId=legacy-account";
     const res = makeRes();

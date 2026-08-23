@@ -12,6 +12,7 @@
  * `ssh2` elsewhere, but this module itself has no Node-only imports.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
 import type {
@@ -503,7 +504,7 @@ export class HetznerCloudClient implements ComputeProvider {
     } catch {
       throw new HetznerCloudError(
         "server_error",
-        `Hetzner Cloud API ${method} ${path} returned non-JSON: ${text.slice(0, 200)}`,
+        `Hetzner Cloud API ${method} ${path} returned non-JSON: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         response.status,
       );
     }

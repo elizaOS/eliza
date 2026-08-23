@@ -22,6 +22,11 @@ import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state/persistence";
+import {
+  consumeStewardServerCookieSynced,
+  invalidateStewardServerCookieSyncMarker,
+  markStewardServerCookieSynced,
+} from "../lib/steward-session-cookie-sync-marker";
 
 import {
   clearStaleStewardSession,
@@ -132,6 +137,7 @@ function makeJwt(payload: Record<string, unknown>): string {
 describe("clearStaleStewardSession", () => {
   beforeEach(() => {
     localStorage.clear();
+    invalidateStewardServerCookieSyncMarker();
   });
 
   it("drops a shared Cloud agent selection so the next account resolves its own agent", async () => {
@@ -236,6 +242,10 @@ describe("clearStaleStewardSession", () => {
       accessToken: "still-durable-token",
     });
     const deletionFailure = new Error("native secure deletion denied");
+    markStewardServerCookieSynced(
+      "still-durable-token",
+      "/api/auth/steward-session",
+    );
     const unregister = registerStewardTokenRemoval(async () => {
       throw deletionFailure;
     });
@@ -254,6 +264,12 @@ describe("clearStaleStewardSession", () => {
     expect(loadPersistedActiveServer()?.accessToken).toBe(
       "still-durable-token",
     );
+    expect(
+      consumeStewardServerCookieSynced(
+        "still-durable-token",
+        "/api/auth/steward-session",
+      ),
+    ).toBe(false);
   });
 });
 

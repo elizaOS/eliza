@@ -110,6 +110,10 @@ import {
   type WebPasskeyCapability,
 } from "./passkey-capability";
 import {
+  hasPasskeyDeviceHint,
+  rememberPasskeyDeviceHint,
+} from "./passkey-device-hints";
+import {
   inferPhoneCountry,
   normalizePhoneForCountry,
   PHONE_COUNTRY_OPTIONS,
@@ -136,6 +140,26 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+/**
+ * Optional local-stack API key for the "Continue with local test account"
+ * shortcut. It is never bundled by default: the operator who arms
+ * `PLAYWRIGHT_TEST_AUTH` on the local Cloud Worker exports the key that the
+ * e2e preload (or their own seed) minted, and `/api/test/auth/session` trades
+ * it for a test session cookie. The button stays hidden when the key is absent.
+ */
+function readLocalDedicatedTestApiKey(): string | null {
+  const fromVite = import.meta.env.VITE_LOCAL_DEDICATED_TEST_API_KEY;
+  if (typeof fromVite === "string" && fromVite.trim()) return fromVite.trim();
+  const fromNext =
+    typeof process !== "undefined"
+      ? process.env?.NEXT_PUBLIC_LOCAL_DEDICATED_TEST_API_KEY
+      : undefined;
+  if (typeof fromNext === "string" && fromNext.trim()) return fromNext.trim();
+  return null;
+}
+const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
+const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
+  PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
 
 type AuthStep =
   | "idle"
@@ -158,6 +182,29 @@ async function persistStewardToken(token: string): Promise<void> {
     throw new Error(
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
+  }
+}
+
+/**
+ * Parse the `/api/test/auth/session` reply. Malformed bodies become an explicit
+ * empty result so the caller reports the HTTP failure instead of a fake token.
+ */
+function parseLocalTestSessionResponse(raw: string): {
+  error?: string;
+  token?: string;
+} {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const record = parsed as Record<string, unknown>;
+    return {
+      ...(typeof record.error === "string" ? { error: record.error } : {}),
+      ...(typeof record.token === "string" ? { token: record.token } : {}),
+    };
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a non-JSON body yields an
+    // explicit empty result; the caller surfaces the HTTP status as the error.
+    return {};
   }
 }
 
@@ -191,6 +238,7 @@ function stripLegacyTokenParamsFromAddressBar(): boolean {
 }
 
 type Provider =
+  | "local"
   | "passkey"
   | "email"
   | "sms"
@@ -1090,6 +1138,50 @@ export default function StewardLoginSection() {
     setStep("success");
   }
 
+  async function handleLocalDedicatedSignIn() {
+    if (!LOCAL_DEDICATED_TEST_API_KEY) return;
+    setLoading("local");
+    setError(null);
+    try {
+      const localSessionUrl = new URL(
+        "/api/test/auth/session",
+        import.meta.env.VITE_API_URL || window.location.origin,
+      );
+      const response = await fetch(localSessionUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${LOCAL_DEDICATED_TEST_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const result = parseLocalTestSessionResponse(await response.text());
+      if (!response.ok || !result.token) {
+        throw new Error(
+          result.error ?? "Could not start the local Cloud test session.",
+        );
+      }
+      // `useSessionAuth` recognises the Playwright marker cookie as the
+      // test-session signal; the API only sets the httpOnly session cookie,
+      // so this dev-only path must plant the readable marker itself.
+      // biome-ignore lint/suspicious/noDocumentCookie: the marker must be readable synchronously by the session hook; the Cookie Store API is async and not universally available.
+      document.cookie = "eliza-test-auth=1; Path=/; SameSite=Lax; Max-Age=3600";
+      await persistStewardToken(LOCAL_DEDICATED_TEST_API_KEY);
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+      setRedirectTo(resolveLoginReturnTo(searchParams));
+      setStep("success");
+    } catch (localSignInError) {
+      setError(
+        getErrorMessage(
+          localSignInError,
+          "Could not start the local Cloud test session.",
+        ),
+      );
+    } finally {
+      setLoading(null);
+    }
+  }
+
   function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
     return (
       (typeof DOMException !== "undefined" && e instanceof DOMException) ||
@@ -1127,21 +1219,25 @@ export default function StewardLoginSection() {
     );
   }
 
-  async function handlePasskey() {
+  function validatePasskeyIntent(): boolean {
     if (!showPasskey) {
       if (providers.email !== false) {
-        await handleEmail();
-        return;
+        void handleEmail();
+        return false;
       }
       setError(
         "Passkeys are not available in this browser. Use Google, Discord, or open this sign-in link on another device.",
       );
-      return;
+      return false;
     }
     if (!email.trim()) {
       setError("Enter your email first");
-      return;
+      return false;
     }
+    return true;
+  }
+
+  async function runScopedPasskeyLogin() {
     setLoading("passkey");
     setError(null);
     setShowPasskeyRecovery(false);
@@ -1151,6 +1247,7 @@ export default function StewardLoginSection() {
           fallbackToRegistration: false,
         }),
       );
+      await rememberPasskeyDeviceHint(email);
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       // error-policy:J4 authentication failures remain visibly distinct and
@@ -1160,11 +1257,6 @@ export default function StewardLoginSection() {
           "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
         );
         setLoading(null);
-      } else if (e instanceof StewardApiError && e.status === 404) {
-        // A typed email with no matching passkey never reached WebAuthn. Continue
-        // directly into the email-verified enrollment path instead of presenting
-        // browser-cancellation recovery for a prompt that never opened.
-        await startPasskeySignup();
       } else if (isUserCancelled(e)) {
         // A browser-owned cancellation is ambiguous, so keep recovery as an
         // explicit user choice rather than sending signup mail automatically.
@@ -1175,6 +1267,27 @@ export default function StewardLoginSection() {
         setLoading(null);
       }
     }
+  }
+
+  async function handlePasskey() {
+    if (!validatePasskeyIntent()) return;
+    setLoading("passkey");
+    setError(null);
+    setShowPasskeyRecovery(false);
+
+    const hinted = await hasPasskeyDeviceHint(email);
+    if (!hinted) {
+      // A new device-local email goes straight to verified enrollment. This
+      // decision never asks Steward whether an account or passkey exists.
+      await startPasskeySignup();
+      return;
+    }
+    await runScopedPasskeyLogin();
+  }
+
+  async function handleExistingPasskey() {
+    if (!validatePasskeyIntent()) return;
+    await runScopedPasskeyLogin();
   }
 
   async function startPasskeySignup() {
@@ -1205,6 +1318,7 @@ export default function StewardLoginSection() {
       const result = requireCompletedAuth(
         await auth.addPasskey(email.trim(), { emailGrant }),
       );
+      await rememberPasskeyDeviceHint(email);
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       if (isUserCancelled(e)) {
@@ -1935,6 +2049,26 @@ export default function StewardLoginSection() {
         </Alert>
       )}
 
+      {LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED && (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            onClick={handleLocalDedicatedSignIn}
+            disabled={isLoading}
+            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80"
+          >
+            {loading === "local" ? <Spinner /> : null}
+            {loading === "local"
+              ? "Starting local session…"
+              : "Continue with local test account"}
+          </Button>
+          <p className="text-center text-xs leading-relaxed text-muted">
+            Development only. Uses the real local Cloud account, balance, and
+            permissions paths.
+          </p>
+        </div>
+      )}
+
       {providers.sms && (
         <>
           <div className="space-y-2">
@@ -2087,6 +2221,20 @@ export default function StewardLoginSection() {
           </Button>
         )}
       </div>
+
+      {showPasskey && (
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={handleExistingPasskey}
+          disabled={isLoading}
+          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted transition-[color,background-color,transform] hover:bg-bg-hover hover:text-txt active:scale-[0.99] disabled:pointer-events-none disabled:text-muted"
+        >
+          {t("cloud.login.button.existingPasskey", {
+            defaultValue: "Use an existing passkey",
+          })}
+        </Button>
+      )}
 
       {!showPasskey &&
       providers.passkey !== false &&

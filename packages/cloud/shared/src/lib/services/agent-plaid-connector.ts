@@ -18,6 +18,7 @@
  */
 
 import { z } from "zod";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 const PLAID_DEFAULT_HOST = "https://sandbox.plaid.com";
 const PLAID_REQUEST_TIMEOUT_MS = 30_000;
@@ -135,7 +136,7 @@ function redactPlaidErrorMessage(
   config: PlaidConfig,
   body: Record<string, unknown>,
 ): string {
-  let sanitized = message.slice(0, 500);
+  let sanitized = truncateWellFormed(toWellFormedUnicode(message), 500);
   const secrets = [config.clientId, config.secret];
   for (const value of Object.values(body)) {
     if (typeof value === "string" && value.length > 0) {

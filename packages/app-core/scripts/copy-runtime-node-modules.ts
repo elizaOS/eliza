@@ -10,6 +10,18 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+/**
+ * Strict integer env parse: rejects trailing garbage (Number.parseInt("25junk")
+ * is 25) so a corrupted env value can never silently become a different
+ * budget than intended. Empty/unset uses the fallback; anything non-canonical
+ * fails closed to the fallback.
+ */
+function envInt(raw: string | undefined, fallback: number): number {
+  const trimmed = raw?.trim() ?? "";
+  if (trimmed === "") return fallback;
+  return /^\+?\d+$/.test(trimmed) ? Number(trimmed) : fallback;
+}
 import { fileURLToPath } from "node:url";
 
 import {
@@ -152,21 +164,21 @@ const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
   ".tsbuildinfo",
   ".txt",
 ]);
-const TAR_SAFE_RELATIVE_PATH_MAX = Number.parseInt(
-  process.env.ELIZA_RUNTIME_TAR_SAFE_RELATIVE_PATH_MAX ?? "202",
-  10,
+const TAR_SAFE_RELATIVE_PATH_MAX = envInt(
+  process.env.ELIZA_RUNTIME_TAR_SAFE_RELATIVE_PATH_MAX,
+  202,
 );
-const TAR_SAFE_BASENAME_MAX = Number.parseInt(
-  process.env.ELIZA_RUNTIME_TAR_SAFE_BASENAME_MAX ?? "100",
-  10,
+const TAR_SAFE_BASENAME_MAX = envInt(
+  process.env.ELIZA_RUNTIME_TAR_SAFE_BASENAME_MAX,
+  100,
 );
-const RUNTIME_COPY_LOCK_TIMEOUT_MS = Number.parseInt(
-  process.env.ELIZA_RUNTIME_COPY_LOCK_TIMEOUT_MS ?? "600000",
-  10,
+const RUNTIME_COPY_LOCK_TIMEOUT_MS = envInt(
+  process.env.ELIZA_RUNTIME_COPY_LOCK_TIMEOUT_MS,
+  600_000,
 );
-const RUNTIME_COPY_LOCK_STALE_MS = Number.parseInt(
-  process.env.ELIZA_RUNTIME_COPY_LOCK_STALE_MS ?? "1800000",
-  10,
+const RUNTIME_COPY_LOCK_STALE_MS = envInt(
+  process.env.ELIZA_RUNTIME_COPY_LOCK_STALE_MS,
+  1_800_000,
 );
 const PLATFORM_ALIASES = new Map<string, string>([
   ["android", "android"],

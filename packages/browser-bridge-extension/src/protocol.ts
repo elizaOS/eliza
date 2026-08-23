@@ -36,12 +36,18 @@ export type BackgroundState = {
   activeSessionId: string | null;
   rememberedTabCount: number;
   settingsSummary: string | null;
+  connectionIssue:
+    | "app_not_running"
+    | "app_not_authenticated"
+    | "owner_disconnected"
+    | "recovery_required"
+    | null;
 };
 
 export type PopupRequest =
   | { type: "browser-bridge:get-state" }
   | { type: "browser-bridge:sync-now" }
-  | { type: "browser-bridge:auto-pair" }
+  | { type: "browser-bridge:owner-reconnect" }
   | {
       type: "browser-bridge:save-config";
       config: Partial<CompanionConfig>;

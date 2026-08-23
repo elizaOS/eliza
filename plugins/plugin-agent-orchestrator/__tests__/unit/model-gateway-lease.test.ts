@@ -71,37 +71,44 @@ function getNativeMockState(): NativeMockState {
 
 const nativeClientMock = getNativeMockState();
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
-  const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient
-    implements MockNativeClient
-  {
-    opts: NativeOptions;
-    eventHandler?: NativeEventHandler;
-    start = vi.fn(async () => undefined);
-    createSession = vi.fn(async () => ({
-      sessionId: "protocol-session",
-      agentSessionId: "agent-session",
-    }));
-    prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
-    cancel = vi.fn(async () => undefined);
-    closeSession = vi.fn(async () => undefined);
-    close = vi.fn(async () => undefined);
-    constructor(opts: NativeOptions) {
-      this.opts = opts;
-      this.eventHandler = opts.onEvent;
-      getNativeMockState().instances.push(this);
-    }
-    setEventHandler(handler: NativeEventHandler | undefined) {
-      this.eventHandler = handler;
-      this.opts.onEvent = handler;
-    }
-    setTimeoutMs(timeoutMs: number | undefined) {
-      this.opts.timeoutMs = timeoutMs;
-    }
-  };
-  return { NativeAcpClient: state.NativeAcpClient };
-});
+vi.mock(
+  "../../src/services/acp-native-transport.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/acp-native-transport.js")
+      >();
+    const state = getNativeMockState();
+    state.NativeAcpClient = class MockNativeAcpClient
+      implements MockNativeClient
+    {
+      opts: NativeOptions;
+      eventHandler?: NativeEventHandler;
+      start = vi.fn(async () => undefined);
+      createSession = vi.fn(async () => ({
+        sessionId: "protocol-session",
+        agentSessionId: "agent-session",
+      }));
+      prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
+      cancel = vi.fn(async () => undefined);
+      closeSession = vi.fn(async () => undefined);
+      close = vi.fn(async () => undefined);
+      constructor(opts: NativeOptions) {
+        this.opts = opts;
+        this.eventHandler = opts.onEvent;
+        getNativeMockState().instances.push(this);
+      }
+      setEventHandler(handler: NativeEventHandler | undefined) {
+        this.eventHandler = handler;
+        this.opts.onEvent = handler;
+      }
+      setTimeoutMs(timeoutMs: number | undefined) {
+        this.opts.timeoutMs = timeoutMs;
+      }
+    };
+    return { ...actual, NativeAcpClient: state.NativeAcpClient };
+  },
+);
 
 // Baseline git capture uses execFile; make it a no-op so spawns don't hang.
 vi.mock("node:child_process", () => ({

@@ -2049,8 +2049,15 @@
     {
       "idx": 292,
       "version": "7",
-      "when": 1794168000005,
-      "tag": "0309_remote_host_managed_network",
+      "when": 1794254400000,
+      "tag": "0309_retire_legacy_bluebubbles_gateways",
+      "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1794254400001,
+      "tag": "0310_remote_host_managed_network",
       "breakpoints": true
     }
   ]

@@ -25,10 +25,16 @@ import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { CreditBalanceDisplay } from "./components/success-client";
 import { useVerifyCheckout } from "./data/billing-data";
+import { browserCardCheckoutIntentCoordinator } from "./lib/card-checkout-intent";
 
 type VerificationState =
   | { generation: number; key: string; status: "pending" }
-  | { generation: number; key: string; status: "verified" }
+  | {
+      cleanupFailed: boolean;
+      generation: number;
+      key: string;
+      status: "verified";
+    }
   | { generation: number; key: string; status: "rejected" }
   | { error: unknown; generation: number; key: string; status: "error" };
 
@@ -170,22 +176,50 @@ function BillingVerificationAttempt({
           onSuccess: (data) => {
             if (activeRequest.current?.generation !== request.generation)
               return;
-            setVerification((current) =>
-              current?.key === request.key &&
-              current.generation === request.generation
-                ? isVerifiedCheckoutOutcome(data)
+            if (!isVerifiedCheckoutOutcome(data)) {
+              setVerification((current) =>
+                current?.key === request.key &&
+                current.generation === request.generation
                   ? {
-                      generation: request.generation,
-                      key: request.key,
-                      status: "verified",
-                    }
-                  : {
                       generation: request.generation,
                       key: request.key,
                       status: "rejected",
                     }
+                  : current,
+              );
+              return;
+            }
+
+            // Verification is the payment authority. Show success immediately,
+            // then clear only the intent bound to this exact session. Local
+            // cleanup failure is non-fatal and must never rewrite a verified
+            // payment as rejected.
+            setVerification((current) =>
+              current?.key === request.key &&
+              current.generation === request.generation
+                ? {
+                    cleanupFailed: false,
+                    generation: request.generation,
+                    key: request.key,
+                    status: "verified",
+                  }
                 : current,
             );
+            void browserCardCheckoutIntentCoordinator
+              .clearVerifiedSession({ sessionId })
+              .catch(() => {
+                // error-policy:J4 Non-authoritative cleanup failure is visibly distinguished from verified payment.
+                if (activeRequest.current?.generation !== request.generation) {
+                  return;
+                }
+                setVerification((current) =>
+                  current?.status === "verified" &&
+                  current.key === request.key &&
+                  current.generation === request.generation
+                    ? { ...current, cleanupFailed: true }
+                    : current,
+                );
+              });
           },
         },
       );
@@ -249,6 +283,18 @@ function BillingVerificationAttempt({
                 "You can now use your credits for text generation, image creation, and video rendering.",
             })}
           </p>
+          {currentVerification.cleanupFailed ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className="border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300"
+            >
+              {t("cloud.billingSuccess.checkoutCleanupFailed", {
+                defaultValue:
+                  "Payment is verified, but this browser could not finish local checkout cleanup. Refresh before starting another purchase; if this continues, use another supported browser.",
+              })}
+            </p>
+          ) : null}
         </CardContent>
 
         <CardFooter className="flex flex-col gap-2">

@@ -122,8 +122,15 @@ function deliveryFailed(
 function deliveryUncertain(
   provider: SendMessageParams["provider"],
   code: string,
+  providerStatus?: number,
 ): MessageDeliveryOutcome {
-  return { status: "uncertain", provider, code, retryable: false };
+  return {
+    status: "uncertain",
+    provider,
+    code,
+    retryable: false,
+    ...(providerStatus === undefined ? {} : { providerStatus }),
+  };
 }
 
 function classifyProviderException(
@@ -134,7 +141,7 @@ function classifyProviderException(
     const providerStatus =
       typeof error.context?.status === "number" ? error.context.status : undefined;
     if (providerStatus !== undefined && providerStatus >= 500) {
-      return deliveryUncertain(provider, "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN");
+      return deliveryUncertain(provider, "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN", providerStatus);
     }
     const retryable = error.context?.retryable === true;
     return deliveryFailed(provider, "DELIVERY_PROVIDER_REJECTED", retryable, providerStatus);
@@ -606,7 +613,11 @@ class MessageRouterService {
       if (!response.ok) {
         logger.error("[MessageRouter] Twilio API error", { status: response.status });
         if (response.status >= 500) {
-          return deliveryUncertain("twilio", "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN");
+          return deliveryUncertain(
+            "twilio",
+            "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+            response.status,
+          );
         }
         return deliveryFailed(
           "twilio",

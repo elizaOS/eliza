@@ -29,6 +29,7 @@ export interface InboundClaimState {
   /** Document CAS revision owned by this generation. */
   revision: number;
   accountId: string;
+  chatId: string;
   externalMessageId: string;
   claimedAt: number;
   updatedAt: number;
@@ -91,11 +92,12 @@ async function ensureClaimNamespace(runtime: IAgentRuntime): Promise<void> {
 export function createInboundClaimId(
   runtime: IAgentRuntime,
   accountId: string,
+  chatId: string,
   externalMessageId: string
 ): UUID {
   return createUniqueUuid(
     runtime,
-    `whatsapp:inbound-claim:${accountId}:${externalMessageId}`
+    `whatsapp:inbound-claim:${accountId}:${chatId}:${externalMessageId}`
   ) as UUID;
 }
 
@@ -109,6 +111,7 @@ function parseClaim(memory: Memory | null): InboundClaimState | null {
     typeof state.generation !== "string" ||
     !Number.isSafeInteger(state.revision) ||
     typeof state.accountId !== "string" ||
+    typeof state.chatId !== "string" ||
     typeof state.externalMessageId !== "string" ||
     typeof state.claimedAt !== "number" ||
     typeof state.updatedAt !== "number"
@@ -191,6 +194,7 @@ export interface ClaimResult {
 
 function freshProcessingState(
   accountId: string,
+  chatId: string,
   externalMessageId: string,
   revision: number,
   now: number
@@ -200,6 +204,7 @@ function freshProcessingState(
     generation: randomUUID() as UUID,
     revision,
     accountId,
+    chatId,
     externalMessageId,
     claimedAt: now,
     updatedAt: now,
@@ -210,6 +215,7 @@ export async function tryClaim(
   runtime: IAgentRuntime,
   claimId: UUID,
   accountId: string,
+  chatId: string,
   externalMessageId: string
 ): Promise<ClaimResult> {
   assertClaimStorage(runtime);
@@ -218,7 +224,7 @@ export async function tryClaim(
   let document = await readClaimDocument(runtime, claimId);
 
   if (!document) {
-    const proposed = freshProcessingState(accountId, externalMessageId, 0, now);
+    const proposed = freshProcessingState(accountId, chatId, externalMessageId, 0, now);
     await runtime.createMemory(
       buildClaimMemory(claimId, proposed, runtime),
       WHATSAPP_INBOUND_CLAIM_TABLE,
@@ -229,7 +235,7 @@ export async function tryClaim(
     if (!persisted) {
       throw new ElizaError("WhatsApp claim insert produced no readable claim", {
         code: "WHATSAPP_INBOUND_CLAIM_INVALID",
-        context: { accountId, externalMessageId, claimId },
+        context: { accountId, chatId, externalMessageId, claimId },
       });
     }
     return {
@@ -242,7 +248,7 @@ export async function tryClaim(
   if (!existing) {
     throw new ElizaError("WhatsApp claim row has invalid metadata", {
       code: "WHATSAPP_INBOUND_CLAIM_INVALID",
-      context: { accountId, externalMessageId, claimId },
+      context: { accountId, chatId, externalMessageId, claimId },
     });
   }
   if (existing.stage === "processed") return { won: false, state: existing };
@@ -252,6 +258,7 @@ export async function tryClaim(
 
   const replacement = freshProcessingState(
     accountId,
+    chatId,
     externalMessageId,
     existing.revision + 1,
     now
