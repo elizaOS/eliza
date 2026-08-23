@@ -11,7 +11,10 @@ vi.mock("drizzle-orm", () => ({ sql: () => ({}) }));
 import { serializeForRuntimeDebug } from "../api/health-routes.ts";
 
 function isWellFormed(value: string): boolean {
-  if (typeof (value as unknown as { isWellFormed?: () => boolean }).isWellFormed === "function") {
+  if (
+    typeof (value as unknown as { isWellFormed?: () => boolean })
+      .isWellFormed === "function"
+  ) {
     return (value as unknown as { isWellFormed: () => boolean }).isWellFormed();
   }
   for (let i = 0; i < value.length; i++) {
@@ -25,10 +28,17 @@ function isWellFormed(value: string): boolean {
   return true;
 }
 
-const baseOpts = { maxDepth: 4, maxArrayLength: 20, maxObjectKeys: 20 } as const;
+const baseOpts = {
+  maxDepth: 4,
+  maxArrayLength: 20,
+  maxObjectEntries: 20,
+} as const;
 
 function previewFor(text: string, max: number): string {
-  const out = serializeForRuntimeDebug(text, { ...baseOpts, maxStringLength: max }) as {
+  const out = serializeForRuntimeDebug(text, {
+    ...baseOpts,
+    maxStringLength: max,
+  }) as {
     __type?: string;
     preview?: string;
     truncated?: boolean;
@@ -36,17 +46,24 @@ function previewFor(text: string, max: number): string {
   // When not truncated, serialize returns the string directly
   if (typeof out === "string") return out;
   if (out && typeof out.preview === "string") return out.preview;
-  throw new Error(`unexpected serialize shape for max=${max}: ${JSON.stringify(out)}`);
+  throw new Error(
+    `unexpected serialize shape for max=${max}: ${JSON.stringify(out)}`,
+  );
 }
 
 function stackFor(text: string, max: number): string {
   const err = new Error("oops");
   err.stack = text;
-  const out = serializeForRuntimeDebug(err, { ...baseOpts, maxStringLength: max }) as {
+  const out = serializeForRuntimeDebug(err, {
+    ...baseOpts,
+    maxStringLength: max,
+  }) as {
     stack?: string;
   };
   if (out && typeof out.stack === "string") return out.stack;
-  throw new Error(`unexpected stack shape for max=${max}: ${JSON.stringify(out)}`);
+  throw new Error(
+    `unexpected stack shape for max=${max}: ${JSON.stringify(out)}`,
+  );
 }
 
 describe("serializeForRuntimeDebug — regression-truncation (real function)", () => {
@@ -63,9 +80,13 @@ describe("serializeForRuntimeDebug — regression-truncation (real function)", (
 
   it("max 1 → preview length 1, well-formed, surrogate-safe, never exceeds", () => {
     const emoji = String.fromCharCode(0xd83d, 0xde00); // 😀
-    expect(previewFor(`${emoji}${"a".repeat(10)}`, 1).length).toBeLessThanOrEqual(1);
+    expect(
+      previewFor(`${emoji}${"a".repeat(10)}`, 1).length,
+    ).toBeLessThanOrEqual(1);
     expect(isWellFormed(previewFor(`${emoji}${"a".repeat(10)}`, 1))).toBe(true);
-    expect(previewFor(`${emoji}${"a".repeat(10)}`, 1).isWellFormed()).toBe(true);
+    expect(previewFor(`${emoji}${"a".repeat(10)}`, 1).isWellFormed()).toBe(
+      true,
+    );
     // large 6000 with max 1
     expect(previewFor("a".repeat(6000), 1).length).toBeLessThanOrEqual(1);
     expect(previewFor("a".repeat(6000), 1).length).toBe(1);
@@ -104,7 +125,11 @@ describe("serializeForRuntimeDebug — regression-truncation (real function)", (
     expect(pre.endsWith("...")).toBe(true);
     expect(pre.includes("😀")).toBe(false);
     expect(pre).toBe(pre.toWellFormed());
-    expect(/[\uD800-\uDFFF]/.test(pre.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""))).toBe(false);
+    expect(
+      /[\uD800-\uDFFF]/.test(
+        pre.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""),
+      ),
+    ).toBe(false);
     expect(pre.length).toBeLessThanOrEqual(20);
     // Also verify err.stack path is surrogate-safe at same boundary
     const stk = stackFor(longString, 20);
@@ -134,7 +159,10 @@ describe("serializeForRuntimeDebug — regression-truncation (real function)", (
 
   it("preserves well-formed when under cap (no truncation)", () => {
     const text = "short";
-    const pre = serializeForRuntimeDebug(text, { ...baseOpts, maxStringLength: 20 });
+    const pre = serializeForRuntimeDebug(text, {
+      ...baseOpts,
+      maxStringLength: 20,
+    });
     expect(pre).toBe(text);
   });
 

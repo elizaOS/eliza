@@ -426,11 +426,19 @@ describe("BUILTIN_VIEWS", () => {
       const capabilityIds = (view.capabilities ?? []).map(
         (capability) => capability.id,
       );
-      const actionNames = (view.scopedActions ?? []).map((action) => action.name);
+      const actionNames = (view.scopedActions ?? []).map(
+        (action) => action.name,
+      );
 
-      expect(capabilityIds.every((id) => id.length > 0), view.id).toBe(true);
+      expect(
+        capabilityIds.every((id) => id.length > 0),
+        view.id,
+      ).toBe(true);
       expect(new Set(capabilityIds).size, view.id).toBe(capabilityIds.length);
-      expect(actionNames.every((name) => name.length > 0), view.id).toBe(true);
+      expect(
+        actionNames.every((name) => name.length > 0),
+        view.id,
+      ).toBe(true);
       expect(new Set(actionNames).size, view.id).toBe(actionNames.length);
     }
   });
