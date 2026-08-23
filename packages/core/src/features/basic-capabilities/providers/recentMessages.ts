@@ -452,7 +452,19 @@ export const recentMessagesProvider: Provider = {
 						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
 						!isLeakedAssistantPathDump(msg, runtime.agentId),
 				)
-				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+				.sort((a, b) => {
+					// Chronological (oldest first) is the order the prompt renders. A
+					// non-finite `createdAt` from an adapter row made the raw subtraction
+					// return NaN, which the sort spec treats as "equal", leaving the row
+					// at an arbitrary position in model-facing history. Normalize it to 0
+					// (oldest) and break exact ties on id so the window is deterministic.
+					const aCreatedAt = a.createdAt ?? 0;
+					const bCreatedAt = b.createdAt ?? 0;
+					const aSafe = Number.isFinite(aCreatedAt) ? aCreatedAt : 0;
+					const bSafe = Number.isFinite(bCreatedAt) ? bCreatedAt : 0;
+					if (aSafe !== bSafe) return aSafe - bSafe;
+					return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+				});
 			const dialogueMessages = dedupeAssistantRunMessages(
 				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
 				runtime.agentId,
