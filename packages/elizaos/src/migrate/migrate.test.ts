@@ -247,6 +247,65 @@ describe("memory-tiering", () => {
       expect(all, needle).not.toContain(needle);
     }
   });
+
+  it("segments oversized memory bodies losslessly across Unicode boundaries", () => {
+    const original = `${"🙂".repeat(24)}世界${"A".repeat(31)}`;
+    const fixture = readOcAgentHome(FIXTURE, "tess");
+    const result = tierMemories(
+      {
+        ...fixture,
+        awareness: original,
+        curatedMemory: undefined,
+        dailyLogs: [],
+        namedMemory: [],
+      },
+      { memoryDays: 14, maxChunkLen: 7, ...ids },
+    );
+
+    expect(result.clipped).toBe(0);
+    expect(result.segmented).toBe(1);
+    expect(result.segmentsCreated).toBe(result.memories.length);
+    expect(result.counts.CURRENT).toBe(result.memories.length);
+    const ordered = [...result.memories].sort(
+      (left, right) =>
+        (left.metadata.segment?.ordinal ?? -1) -
+        (right.metadata.segment?.ordinal ?? -1),
+    );
+    const reassembled = ordered
+      .map((memory) => memory.content.text.slice("[CURRENT] ".length))
+      .join("");
+    expect(reassembled).toBe(original);
+    expect(JSON.parse(JSON.stringify(reassembled))).toBe(original);
+    for (const [ordinal, memory] of ordered.entries()) {
+      expect(memory.metadata.segment).toMatchObject({
+        ordinal,
+        count: ordered.length,
+      });
+      expect(memory.content.text).not.toMatch(/[\uD800-\uDBFF]$/u);
+      expect(memory.content.text.slice("[CURRENT] ".length)).not.toMatch(
+        /^[\uDC00-\uDFFF]/u,
+      );
+    }
+  });
+
+  it("keeps one astral character intact even below the configured segment size", () => {
+    const fixture = readOcAgentHome(FIXTURE, "tess");
+    const result = tierMemories(
+      {
+        ...fixture,
+        awareness: "🙂🙂🙂",
+        curatedMemory: undefined,
+        dailyLogs: [],
+        namedMemory: [],
+      },
+      { memoryDays: 14, maxChunkLen: 1, ...ids },
+    );
+    expect(
+      result.memories
+        .map((memory) => memory.content.text.slice("[CURRENT] ".length))
+        .join(""),
+    ).toBe("🙂🙂🙂");
+  });
 });
 
 describe("archive format", () => {
