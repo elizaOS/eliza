@@ -528,7 +528,7 @@ describe("EvaluatorService", () => {
 		expect(useModel.mock.calls[3]?.[1]).toHaveProperty("responseSchema");
 	});
 
-	it("renders action results bounded (text projection, not the raw data payload)", async () => {
+	it("renders the complete action result without silently dropping raw data", async () => {
 		const runtime = makeRuntime();
 		runtime.registerEvaluator({
 			name: "gamma",
@@ -563,12 +563,11 @@ describe("EvaluatorService", () => {
 
 		const useModel = vi.fn(async (_modelType, params) => {
 			const prompt = String(params.messages?.[0]?.content ?? "");
-			// The bounded text projection is present…
+			// The human projection and complete structured result are both present.
 			expect(prompt).toContain("MEMORY - succeeded");
 			expect(prompt).toContain("Showing all 7 match(es)");
 			expect(prompt).toContain('"matchedInWindow":7');
-			// …and the raw data payload is NOT serialized into the prompt.
-			expect(prompt).not.toContain(hugeDataMarker);
+			expect(prompt).toContain(hugeDataMarker);
 			return { gamma: { ok: true } };
 		});
 		runtime.useModel = useModel as AgentRuntime["useModel"];

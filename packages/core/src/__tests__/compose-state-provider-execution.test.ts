@@ -684,22 +684,28 @@ describe("composeState provider execution", () => {
 		const message = makeMessage("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
 		// Turn A owns the execution; turn B (a re-delivery of the same message
-		// while A is still streaming) coalesces onto it. The registry maps the
-		// room to B's controller, so the user's stop aborts B — and B must stop
-		// promptly instead of silently riding A's execution to completion.
+		// while A is still streaming) coalesces onto it. B's request-level signal
+		// cancels only B — and B must stop promptly instead of silently riding A's
+		// execution to completion. An out-of-band room abort intentionally cancels
+		// every active room turn and therefore is not the per-waiter seam tested here.
 		const first = runtime.turnControllers.runWith(ROOM_ID, () =>
 			runtime.composeState(message, ["SLOW"], true),
 		);
 		await started.promise;
+		const waiterController = new AbortController();
 		const second = runtime.turnControllers.runWith(ROOM_ID, () =>
-			runtime.composeState(message, ["SLOW"], true),
+			runWithStreamingContext(
+				{
+					onStreamChunk: async () => {},
+					abortSignal: waiterController.signal,
+				},
+				() => runtime.composeState(message, ["SLOW"], true),
+			),
 		);
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		expect(calls).toBe(1);
 
-		expect(runtime.turnControllers.abortTurn(ROOM_ID, "user stopped")).toBe(
-			true,
-		);
+		waiterController.abort(new TurnAbortedError("user stopped"));
 		const secondOutcome = await Promise.race([
 			second.then(
 				() => "completed",

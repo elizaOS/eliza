@@ -35,7 +35,18 @@ function loopComposedInstructionText(
 		.map((message) =>
 			typeof message.content === "string" ? message.content : "",
 		)
-		.filter((content) => content.includes(marker))
+		.map((content) => {
+			const markerIndex = content.indexOf(marker);
+			if (markerIndex === -1) return "";
+			const instructionStart =
+				marker === "Recorded failure cause"
+					? content.lastIndexOf("The ", markerIndex)
+					: markerIndex;
+			return content.slice(
+				instructionStart === -1 ? markerIndex : instructionStart,
+			);
+		})
+		.filter(Boolean)
 		.join("\n");
 }
 

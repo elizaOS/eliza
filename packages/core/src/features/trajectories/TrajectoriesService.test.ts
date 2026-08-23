@@ -207,9 +207,12 @@ describe("TrajectoriesService", () => {
 		// persisted whole (only the secret canaries are redacted).
 		expect(call.messages[0].content).not.toContain("[truncated]");
 		expect(call.messages[0].content).toContain("m".repeat(120_000));
-		expect(call.tools.circular.self).toBe("[REDACTED]");
-		expect(call.tools.circular.fn).toBe("[Function toolHandler]");
+		expect(call.tools[0]).toMatchObject({
+			name: "CANARY_TOOL",
+			description: "complete schema",
+		});
 		expect(call.providerMetadata.self).toBe("[REDACTED]");
+		expect(call.providerMetadata.fn).toBe("[Function toolHandler]");
 		expect(call.providerOrder).toEqual(["CHARACTER"]);
 		expect(call.runId).toBe("run-identity-1");
 		expect(call.roomId).toBe("room-identity-1");

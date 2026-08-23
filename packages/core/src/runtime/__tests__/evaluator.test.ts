@@ -1611,7 +1611,10 @@ describe("provider-owned evaluator output boundaries", () => {
 						},
 						request,
 					);
-					if (completedCalls === 1) {
+					const budget = request.providerOptions?.eliza as
+						| { modelInputBudget?: { shouldReject?: boolean } }
+						| undefined;
+					if (budget?.modelInputBudget?.shouldReject) {
 						throw new ElizaError("final request exceeds context", {
 							code: "MODEL_INPUT_OVER_BUDGET",
 						});
@@ -1654,9 +1657,7 @@ describe("provider-owned evaluator output boundaries", () => {
 			expect(useModel).toHaveBeenCalledTimes(1);
 			expect(completedCalls).toBe(0);
 			expect(stages).toHaveLength(1);
-			expect(stages[0]?.model?.response).toContain(
-				"MODEL_INPUT_OVER_BUDGET",
-			);
+			expect(stages[0]?.model?.response).toContain("MODEL_INPUT_OVER_BUDGET");
 			expect(reportError).not.toHaveBeenCalled();
 		} finally {
 			vi.unstubAllEnvs();

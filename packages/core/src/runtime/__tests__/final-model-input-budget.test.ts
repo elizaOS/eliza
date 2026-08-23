@@ -36,7 +36,7 @@ describe("AgentRuntime final model-input budget", () => {
 			await expect(
 				runtime.useModel(modelType, {
 					messages: [
-						{ role: "user", content: `HEAD${"x".repeat(15_000)}TAIL` },
+						{ role: "user", content: `HEAD${"x".repeat(40_000)}TAIL` },
 					],
 				}),
 			).rejects.toMatchObject({
@@ -45,7 +45,7 @@ describe("AgentRuntime final model-input budget", () => {
 					provider: "tiny",
 					modelName: "tiny-final-wire",
 					contextWindowTokens: 20_000,
-					estimationMode: "utf8-upper-bound",
+					estimationMode: "heuristic",
 					contextWindowSource: "registration-metadata",
 				}),
 			});
@@ -59,14 +59,15 @@ describe("AgentRuntime final model-input budget", () => {
 		runtime.registerModel(ModelType.TEXT_SMALL, handler, "tiny", 10, {
 			contextWindowTokens: 20_000,
 		});
-		const sentinel = `HEAD${"private-canary".repeat(1_500)}TAIL`;
+		const sentinel = `HEAD${"private-canary".repeat(3_000)}TAIL`;
 		let rejection: unknown;
 		try {
 			await runtime.useModel(ModelType.TEXT_SMALL, { prompt: sentinel });
 		} catch (error) {
 			rejection = error;
 		}
-		const context = (rejection as { context?: Record<string, unknown> }).context;
+		const context = (rejection as { context?: Record<string, unknown> })
+			.context;
 		const receipt = context?.rejectedRequest as
 			| { reference?: string; stored?: boolean }
 			| undefined;
@@ -83,7 +84,9 @@ describe("AgentRuntime final model-input budget", () => {
 				reference: receipt?.reference as string,
 				requesterAgentId: "different-agent",
 			}),
-		).toThrow(expect.objectContaining({ code: "REJECTED_MODEL_INPUT_FORBIDDEN" }));
+		).toThrow(
+			expect.objectContaining({ code: "REJECTED_MODEL_INPUT_FORBIDDEN" }),
+		);
 		expect(handler).not.toHaveBeenCalled();
 	});
 
@@ -103,7 +106,7 @@ describe("AgentRuntime final model-input budget", () => {
 					typeof context.params === "object" &&
 					"prompt" in context.params
 				) {
-					(context.params as { prompt: string }).prompt += "y".repeat(15_000);
+					(context.params as { prompt: string }).prompt += "y".repeat(40_000);
 				}
 			},
 		});
@@ -124,7 +127,7 @@ describe("AgentRuntime final model-input budget", () => {
 		await expect(
 			runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt: "small",
-				providerOptions: { custom: { blob: "x".repeat(15_000) } },
+				providerOptions: { custom: { blob: "x".repeat(40_000) } },
 			}),
 		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 		expect(handler).not.toHaveBeenCalled();
@@ -175,7 +178,7 @@ describe("AgentRuntime final model-input budget", () => {
 
 		await expect(
 			runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt: "x".repeat(5_000),
+				prompt: "x".repeat(20_000),
 				maxTokens: 16_000,
 			}),
 		).rejects.toMatchObject({
@@ -216,7 +219,7 @@ describe("AgentRuntime final model-input budget", () => {
 			contextWindowTokens: 100_000,
 			displayModel: "large-window",
 		});
-		const sentinel = `HEAD${"z".repeat(15_000)}TAIL`;
+		const sentinel = `HEAD${"z".repeat(40_000)}TAIL`;
 
 		await runtime.useModel(ModelType.TEXT_SMALL, {
 			messages: [{ role: "user", content: sentinel }],
@@ -229,7 +232,7 @@ describe("AgentRuntime final model-input budget", () => {
 			eliza: {
 				modelInputBudget: {
 					contextWindowTokens: 100_000,
-					estimationMode: "utf8-upper-bound",
+					estimationMode: "heuristic",
 					shouldReject: false,
 				},
 			},

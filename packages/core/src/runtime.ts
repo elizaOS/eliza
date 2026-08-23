@@ -97,11 +97,11 @@ import {
 	serializeCompleteModelInput,
 	withModelInputBudgetProviderOptions,
 } from "./runtime/model-input-budget";
-import {
-	rejectedModelInputStore,
-	type RejectedModelInputReceipt,
-} from "./runtime/rejected-model-input-store";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
+import {
+	type RejectedModelInputReceipt,
+	rejectedModelInputStore,
+} from "./runtime/rejected-model-input-store";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
@@ -6574,9 +6574,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	/**
 	 * Budget the exact text-generation request after runtime transforms and
-	 * pre-model hooks. UTF-8 bytes are a conservative token upper bound, so the
-	 * runtime can reject before a provider handler without silently rewriting
-	 * any model-facing field.
+	 * pre-model hooks. This provider-neutral pass uses the reserved heuristic;
+	 * each provider's prepared-request guard is the tokenizer-aware authority
+	 * immediately before transport. Neither layer rewrites model-facing fields.
 	 */
 	private buildFinalModelInputBudget(
 		params: unknown,
@@ -6633,7 +6633,7 @@ export class AgentRuntime implements IAgentRuntime {
 				DEFAULT_INPUT_RESERVE_TOKENS,
 				requestedOutputTokens,
 			),
-			estimationMode: "utf8-upper-bound",
+			estimationMode: "heuristic",
 		});
 	}
 
@@ -8473,9 +8473,10 @@ export class AgentRuntime implements IAgentRuntime {
 				// A zero-dispatch budget rejection is different: the complete request
 				// stays only behind its private owner-bound reference and the trajectory
 				// carries content-free integrity/size metadata.
-				messages: !protectedFailure && Array.isArray(paramsRecord.messages)
-					? (paramsRecord.messages as unknown[])
-					: undefined,
+				messages:
+					!protectedFailure && Array.isArray(paramsRecord.messages)
+						? (paramsRecord.messages as unknown[])
+						: undefined,
 				tools: protectedFailure ? undefined : paramsRecord.tools,
 				toolChoice: protectedFailure ? undefined : paramsRecord.toolChoice,
 				responseSchema: protectedFailure
