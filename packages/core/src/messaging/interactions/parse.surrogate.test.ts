@@ -1,4 +1,9 @@
-import { describe, expect, it } from "bun:test";
+/**
+ * Behavioral coverage for task-title truncation in findInteractionRegions:
+ * packages/core runs Vitest under Node, so this file must import vitest — not
+ * bun:test, which cannot resolve in that harness.
+ */
+import { describe, expect, it } from "vitest";
 
 import { findInteractionRegions, MAX_TASK_TITLE_LEN } from "./parse.ts";
 import { toWellFormedUnicode, truncateWellFormed } from "../../utils/well-formed.ts";
