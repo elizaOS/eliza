@@ -432,19 +432,10 @@ final class BootCaptureUITests: XCTestCase {
             try skipOrFail("keyboard never appeared for Notes request", env: env)
         }
 
-        let initialDraft = composerDraftValue(composer)
-        if !initialDraft.isEmpty {
-            composer.typeText(
-                String(
-                    repeating: XCUIKeyboardKey.delete.rawValue,
-                    count: min(initialDraft.count, 1_024)
-                )
-            )
-        }
-        let clearedDraft = composerDraftValue(composer)
+        let clearedDraft = clearComposerDraft(composer)
         XCTAssertTrue(
-            clearedDraft.isEmpty,
-            "could not clear the persisted composer draft before the Notes request; remaining value was '\(clearedDraft)'"
+            clearedDraft,
+            "could not clear the persisted composer draft before the Notes request; remaining value was '\(composerDraftValue(composer))'"
         )
 
         composer.typeText(prompt)
@@ -625,17 +616,8 @@ final class BootCaptureUITests: XCTestCase {
             attachAccessibilitySnapshot(of: app)
             try skipOrFail("keyboard never appeared for paired chat", env: env)
         }
-        let initialDraft = composerDraftValue(composer)
-        if !initialDraft.isEmpty {
-            composer.typeText(
-                String(
-                    repeating: XCUIKeyboardKey.delete.rawValue,
-                    count: min(initialDraft.count, 1_024)
-                )
-            )
-        }
         XCTAssertTrue(
-            composerDraftValue(composer).isEmpty,
+            clearComposerDraft(composer),
             "could not clear the composer before the paired chat request"
         )
 
@@ -1186,6 +1168,35 @@ final class BootCaptureUITests: XCTestCase {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.localizedCaseInsensitiveCompare("Message Eliza") == .orderedSame
             ? "" : value
+    }
+
+    /// Clears a controlled WebKit composer and waits for its accessibility
+    /// value to publish the update. React may reconcile the native delete
+    /// events asynchronously, so one immediate read is not authoritative.
+    private func clearComposerDraft(
+        _ composer: XCUIElement,
+        timeout: TimeInterval = 3
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let draft = composerDraftValue(composer)
+            if draft.isEmpty { return true }
+            composer.typeText(
+                String(
+                    repeating: XCUIKeyboardKey.delete.rawValue,
+                    count: min(draft.count, 1_024)
+                )
+            )
+            let publishDeadline = min(
+                Date().addingTimeInterval(0.75),
+                deadline
+            )
+            while Date() < publishDeadline {
+                if composerDraftValue(composer).isEmpty { return true }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+        }
+        return composerDraftValue(composer).isEmpty
     }
 
     /// Re-enters the real remote-agent first-run path after a fresh-container
