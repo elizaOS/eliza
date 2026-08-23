@@ -417,7 +417,11 @@ export class DeviceBridge {
       });
     }
     // Sort desc by score so the UI can just render in order.
-    summaries.sort((a, b) => b.score - a.score);
+    summaries.sort(
+      (a, b) =>
+        (Number.isFinite(b.score) ? b.score : 0) -
+        (Number.isFinite(a.score) ? a.score : 0),
+    );
     if (summaries[0]) summaries[0].isPrimary = true;
 
     const primary = summaries[0] ?? null;

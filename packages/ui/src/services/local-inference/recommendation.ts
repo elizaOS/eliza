@@ -238,9 +238,11 @@ function fallbackCandidates(
       const rightLong = isLongContextModel(right) ? 1 : 0;
       if (leftLong !== rightLong) return rightLong - leftLong;
     }
+    const rightGb = catalogDownloadSizeGb(right, catalog);
+    const leftGb = catalogDownloadSizeGb(left, catalog);
     const sizeDelta =
-      catalogDownloadSizeGb(right, catalog) -
-      catalogDownloadSizeGb(left, catalog);
+      (Number.isFinite(rightGb) ? rightGb : 0) -
+      (Number.isFinite(leftGb) ? leftGb : 0);
     return slot === "TEXT_LARGE" ? sizeDelta : -sizeDelta;
   });
 }

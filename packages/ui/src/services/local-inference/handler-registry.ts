@@ -87,7 +87,11 @@ class HandlerRegistry {
     // registration per (type, provider) pair — last write wins.
     const filtered = existing.filter((r) => r.provider !== reg.provider);
     filtered.push(reg);
-    filtered.sort((a, b) => b.priority - a.priority);
+    filtered.sort(
+      (a, b) =>
+        (Number.isFinite(b.priority) ? b.priority : 0) -
+        (Number.isFinite(a.priority) ? a.priority : 0),
+    );
     this.registrations.set(reg.modelType, filtered);
     this.emit();
   }
