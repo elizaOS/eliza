@@ -74,6 +74,19 @@ export default scenario({
   seed: [
     {
       type: "memory",
+      name: "Dee asks the group before Quill answers",
+      content: {
+        kind: "inbound-message",
+        platform: "discord",
+        platformUserId: "dee-42",
+        displayName: "Dee",
+        from: "Dee",
+        occurredAt: "2026-08-30T01:59:55.000Z",
+        text: "what time does the saguaro ridge trailhead parking open?",
+      },
+    },
+    {
+      type: "memory",
       name: "group-context",
       content: {
         text: "This is a group chat called The Porch with three humans (Marcus, Dee, Toph), the assistant, and two other bot assistants named Quill and Marble. All three assistants can see every message. The group has complained before about the bots talking over each other.",
@@ -93,7 +106,8 @@ export default scenario({
       kind: "message",
       name: "human-question-answered-by-other-agent",
       room: "porch",
-      text: "[Dee] what time does the saguaro ridge trailhead parking open?\n[Quill (bot)] Trailhead parking opens at 7am — and heads up, it usually fills by 8:30 on weekends.",
+      sender: { id: "quill-7", name: "Quill", kind: "bot" },
+      text: "Trailhead parking opens at 7am — and heads up, it usually fills by 8:30 on weekends.",
       // Quill already answered Dee correctly and completely. A second agent
       // reply here is pure pile-on, even though this agent knows the answer.
       responseExcludes: [PILE_ON_TELLS, /(7\s?am|seven)/i],
@@ -107,7 +121,8 @@ export default scenario({
       kind: "message",
       name: "agent-to-agent-no-human",
       room: "porch",
-      text: "[Marble (bot)] Good info Quill! I'd also suggest everyone bring at least 2L of water and check the weather forecast before heading out.",
+      sender: { id: "marble-9", name: "Marble", kind: "bot" },
+      text: "Good info Quill! I'd also suggest everyone bring at least 2L of water and check the weather forecast before heading out.",
       // Another bot piling on. Replying to a bot's message with no new human
       // instruction is exactly the reverb failure. Total silence is correct.
       responseExcludes: [
@@ -124,7 +139,8 @@ export default scenario({
       kind: "message",
       name: "human-banter-still-answered",
       room: "porch",
-      text: "[Toph] lol the bots are having a whole meeting in here",
+      sender: { id: "toph-11", name: "Toph", kind: "human" },
+      text: "lol the bots are having a whole meeting in here",
       // A human noting the pile-on is not a request for a third bot voice.
       responseExcludes: [PILE_ON_TELLS],
       assertResponse: (text: string) => {
@@ -137,7 +153,9 @@ export default scenario({
       kind: "message",
       name: "human-readdresses-this-agent",
       room: "porch",
-      text: "[Dee] @agent you're the one with our carpool notes — who's driving saturday?",
+      sender: { id: "dee-42", name: "Dee", kind: "human" },
+      content: { mentionContext: { isMention: true } },
+      text: "@Eliza you're the one with our carpool notes — who's driving saturday?",
       // Restraint is not muteness: a direct human re-address gets a real,
       // concise answer.
       assertResponse: (text: string) => {

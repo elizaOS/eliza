@@ -76,6 +76,7 @@ import {
 import { waitForScenarioRequiredServices } from "./required-services.ts";
 import { enterScenarioActionScope } from "./scenario-action-scope.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
+import { resolveScenarioTurnSender } from "./turn-sender.ts";
 import type {
   FinalCheckReport,
   RunnerContext,
@@ -1886,9 +1887,30 @@ async function executeMessageTurn(
       ? (turn.content as Record<string, unknown>)
       : {};
 
+  const authoredSender = turn.sender;
+  const resolvedSender = resolveScenarioTurnSender({
+    scenarioId,
+    source: room.source,
+    defaultEntityId: room.userId,
+    sender: authoredSender,
+  });
+  const senderEntityId = resolvedSender.entityId;
+  if (authoredSender) {
+    await runtime.ensureConnection({
+      entityId: senderEntityId,
+      roomId: room.roomId,
+      worldId: room.worldId,
+      worldName: room.logicalWorldId,
+      userName: authoredSender.name,
+      source: room.source,
+      channelId: room.roomId,
+      type: room.channelType,
+    });
+  }
+
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
-    entityId: room.userId,
+    entityId: senderEntityId,
     // Real transports stamp the receiving agent on every inbound turn, and the
     // owner-private disclosure gate REQUIRES it: an absent `agentId` is denied
     // as `agent_mismatch`, which silently drops every owner-private action from
@@ -1913,6 +1935,7 @@ async function executeMessageTurn(
       : {}),
     type: MemoryType.MESSAGE,
     scenarioId,
+    ...resolvedSender.metadata,
     ...(runId ? { batchId: runId } : {}),
   };
   // Connector simulations have already authenticated the authored account.

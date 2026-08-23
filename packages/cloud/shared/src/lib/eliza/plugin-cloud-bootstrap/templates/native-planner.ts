@@ -3,6 +3,8 @@
  * toolCalls for actions, messageToUser for terminal replies.
  */
 
+import { groupResponsePrecedencePolicy } from "@elizaos/core";
+
 export const nativePlannerTemplate = `# Role
 Select and execute actions to fulfill the user's request.
 
@@ -192,13 +194,12 @@ Decide whether {{agentName}} should respond, ignore, or stop.
 
 # Instructions
 RULES:
-- direct mention of {{agentName}} -> RESPOND
+${groupResponsePrecedencePolicy}
+
+CONVERSATION RULES:
 - different assistant name -> IGNORE
 - continuing an active thread with {{agentName}} -> RESPOND
-- request to stop or be quiet -> STOP
 - talking to someone else -> IGNORE
-- newest message is from another assistant/bot and no human re-addressed {{agentName}} -> IGNORE (never reply to another bot's reply)
-- a human's message was already answered by another assistant and {{agentName}} was not named -> IGNORE (one speaker per human message)
 - if unsure, prefer IGNORE over hallucinating relevance
 
 CONTEXT ROUTING:
