@@ -43,8 +43,9 @@ async function postAuthJson(
   body?: object,
   method: "POST" | "DELETE" = "POST",
   signal?: AbortSignal,
+  resolvedEndpoint = resolveStewardAuthEndpoint(path),
 ): Promise<Response> {
-  return fetch(resolveStewardAuthEndpoint(path), {
+  return fetch(resolvedEndpoint, {
     method,
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -86,7 +87,14 @@ export async function syncStewardSessionCookie(
     ...(refreshToken ? { refreshToken } : {}),
     ...(options?.verifiedPhone ? { verifiedPhone: options.verifiedPhone } : {}),
   };
-  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
+  const sessionEndpoint = resolveStewardAuthEndpoint(STEWARD_SESSION_ENDPOINT);
+  const response = await postAuthJson(
+    STEWARD_SESSION_ENDPOINT,
+    request,
+    "POST",
+    undefined,
+    sessionEndpoint,
+  );
 
   if (!response.ok) {
     const body = await readSessionError(response);
@@ -96,12 +104,12 @@ export async function syncStewardSessionCookie(
   }
 
   if (typeof window !== "undefined") {
-    // The server cookie is authoritative now. Record this exact token before
-    // publishing it to canonical storage: that write can rerender the mounted
-    // Steward runtime, whose passive mirror must not repeat the successful POST.
-    // The marker is module-private and one-shot; browser event detail cannot
-    // forge it.
-    markStewardServerCookieSynced(token);
+    // The server cookie is authoritative at this endpoint now. Record this
+    // exact token/endpoint pair before publishing canonical storage: that write
+    // can rerender the mounted Steward runtime, whose passive mirror may skip
+    // only an identical POST target. The module-private, one-shot marker cannot
+    // be forged through browser event detail.
+    markStewardServerCookieSynced(token, sessionEndpoint);
     // The cookie boundary may be entered directly by an SDK callback or after
     // the login page already persisted the same token. Canonical storage is
     // idempotent, so both paths publish one authority transition in total.

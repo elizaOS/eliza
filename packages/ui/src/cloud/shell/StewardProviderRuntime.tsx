@@ -114,11 +114,13 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
       }
 
       if (tokenIsExpired(token)) return;
-      if (consumeStewardServerCookieSynced(token)) {
-        // An explicit sync already established this exact token's server
-        // cookie. Seed the passive mirror's local authority without issuing a
-        // duplicate POST. The one-shot marker cannot be forged through DOM
-        // event detail and is invalidated by any token mismatch.
+      const sessionEndpoint = configuredSessionEndpoint();
+      if (consumeStewardServerCookieSynced(token, sessionEndpoint)) {
+        // An explicit sync already established this exact token at the exact
+        // endpoint this passive mirror would use. Seed local authority without
+        // repeating that POST. The module-private marker cannot be forged
+        // through DOM event detail and any token/endpoint mismatch invalidates
+        // it before the passive request proceeds.
         lastSyncedToken.current = token;
         wasAuthenticated.current = true;
         return;
@@ -133,7 +135,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
       // fire only when /get-started attaches the continuation after rendering
       // its identity preview and receiving explicit confirmation. Login,
       // nonce exchange, and SSO establish authentication only.
-      fetch(configuredSessionEndpoint(), {
+      fetch(sessionEndpoint, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -314,7 +316,6 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
 
     const handler = () => syncToken();
     window.addEventListener("storage", handler);
-    window.addEventListener("steward-token-sync", handler);
 
     const visibilityHandler = () => {
       if (document.visibilityState === "visible") {
@@ -340,7 +341,6 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     return () => {
       clearInterval(refreshInterval);
       window.removeEventListener("storage", handler);
-      window.removeEventListener("steward-token-sync", handler);
       document.removeEventListener("visibilitychange", visibilityHandler);
       window.removeEventListener("online", onlineHandler);
       window.removeEventListener("steward-unauthorized", unauthorizedHandler);

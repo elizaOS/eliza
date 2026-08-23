@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   consumeStewardServerCookieSynced,
@@ -7,20 +9,51 @@ import {
 describe("Steward server-cookie sync marker", () => {
   beforeEach(() => {
     // Consumption clears both matching and mismatched pending authority.
-    consumeStewardServerCookieSynced("");
+    consumeStewardServerCookieSynced("", "");
   });
 
-  it("is one-shot for the exact token", () => {
-    markStewardServerCookieSynced("token-a");
+  it("is one-shot for the exact token and endpoint URL", () => {
+    markStewardServerCookieSynced("token-a", "/api/auth/steward-session");
 
-    expect(consumeStewardServerCookieSynced("token-a")).toBe(true);
-    expect(consumeStewardServerCookieSynced("token-a")).toBe(false);
+    expect(
+      consumeStewardServerCookieSynced(
+        "token-a",
+        `${window.location.origin}/api/auth/steward-session`,
+      ),
+    ).toBe(true);
+    expect(
+      consumeStewardServerCookieSynced("token-a", "/api/auth/steward-session"),
+    ).toBe(false);
   });
 
   it("fails closed and invalidates authority on a token mismatch", () => {
-    markStewardServerCookieSynced("token-a");
+    markStewardServerCookieSynced("token-a", "/api/auth/steward-session");
 
-    expect(consumeStewardServerCookieSynced("token-b")).toBe(false);
-    expect(consumeStewardServerCookieSynced("token-a")).toBe(false);
+    expect(
+      consumeStewardServerCookieSynced("token-b", "/api/auth/steward-session"),
+    ).toBe(false);
+    expect(
+      consumeStewardServerCookieSynced("token-a", "/api/auth/steward-session"),
+    ).toBe(false);
+  });
+
+  it("fails closed and invalidates authority on an endpoint mismatch", () => {
+    markStewardServerCookieSynced(
+      "token-a",
+      "https://preview.example/api/auth/steward-session",
+    );
+
+    expect(
+      consumeStewardServerCookieSynced(
+        "token-a",
+        "https://api.example/api/auth/steward-session",
+      ),
+    ).toBe(false);
+    expect(
+      consumeStewardServerCookieSynced(
+        "token-a",
+        "https://preview.example/api/auth/steward-session",
+      ),
+    ).toBe(false);
   });
 });
