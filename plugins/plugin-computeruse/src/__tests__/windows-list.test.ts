@@ -112,7 +112,8 @@ describe("buildDarwinWindowScript", () => {
 
     expect(script).toContain('repeat with term in {"textedit"}');
     expect(script).toContain('repeat with term in {"untitled"}');
-    expect(script).toContain("set targetWindow to contents of w");
+    expect(script).toContain("set targetWindow to w");
+    expect(script).not.toContain("set targetWindow to contents of w");
     expect(script).toContain("set winPos to position of targetWindow");
     expect(script).toContain("set winSize to size of targetWindow");
     expect(script).not.toContain("set winPos to position of window 1 of proc");

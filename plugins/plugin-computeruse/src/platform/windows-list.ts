@@ -202,7 +202,11 @@ export function buildDarwinWindowScript(
               set winName to name of w
               repeat with term in ${windowTermList}
                 if winName contains term then
-                  set targetWindow to contents of w
+                  -- Keep the AXWindow reference itself. "contents of w" can
+                  -- resolve to the window's content/title element after a
+                  -- physical drag, which reports tiny label bounds instead of
+                  -- the actual top-level window frame.
+                  set targetWindow to w
                   exit repeat
                 end if
               end repeat
