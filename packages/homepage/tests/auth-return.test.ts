@@ -56,3 +56,32 @@ describe("Telegram onboarding continuation", () => {
     );
   });
 });
+
+describe("Telegram onboarding destination literals", () => {
+  test("bot return destination pins the from=telegram marker on /connected", () => {
+    expect(TELEGRAM_CONNECTED_PATH).toBe("/connected?from=telegram");
+  });
+
+  test("account linking pins the bare /connected path without the bot marker", () => {
+    expect(TELEGRAM_ACCOUNT_CONNECTED_PATH).toBe("/connected");
+  });
+
+  test("the destinations stay distinct so redemption state remains observable", () => {
+    expect(TELEGRAM_CONNECTED_PATH).not.toBe(TELEGRAM_ACCOUNT_CONNECTED_PATH);
+    expect(getTelegramLinkDestination(true)).not.toBe(
+      getTelegramLinkDestination(false),
+    );
+  });
+
+  test("both destinations stay on the /connected route with only the bot return carrying the marker", () => {
+    const botReturn = new URL(TELEGRAM_CONNECTED_PATH, "https://eliza.app");
+    const accountLink = new URL(
+      TELEGRAM_ACCOUNT_CONNECTED_PATH,
+      "https://eliza.app",
+    );
+    expect(botReturn.pathname).toBe("/connected");
+    expect(accountLink.pathname).toBe("/connected");
+    expect(botReturn.searchParams.get("from")).toBe("telegram");
+    expect(accountLink.searchParams.has("from")).toBe(false);
+  });
+});
