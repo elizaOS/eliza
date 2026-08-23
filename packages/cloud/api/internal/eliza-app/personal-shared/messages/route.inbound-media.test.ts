@@ -215,6 +215,11 @@ function deliveredMessage(): string {
   return sharedRestMessageSend.mock.calls[0]?.[2] as string;
 }
 
+function deliveredCapabilityText(): unknown {
+  expect(sharedRestMessageSend).toHaveBeenCalledTimes(1);
+  return sharedRestMessageSend.mock.calls[0]?.[9];
+}
+
 describe("blooio inbound media enrichment at the messaging route", () => {
   beforeEach(() => {
     activeTarget = null;
@@ -326,6 +331,7 @@ describe("blooio inbound media enrichment at the messaging route", () => {
       `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n` +
         "A tabby cat sitting on a mechanical keyboard.",
     );
+    expect(deliveredCapabilityText()).toBeUndefined();
     expect(ledgerAdmit).toHaveBeenCalledTimes(1);
     expect(ledgerAdmit.mock.calls[0]?.[0]).toMatchObject({
       platform: "blooio",
