@@ -642,7 +642,20 @@ function isAmbientStage1Turn(
 	message: Memory,
 	explicitlyAddressesAgent: boolean,
 ): boolean {
-	if (resolveStage1ReplyGateMode(runtime, message) === "always") return false;
+	let replyGateMode: ReplyGateMode | null;
+	try {
+		replyGateMode = resolveStage1ReplyGateMode(runtime, message);
+	} catch (error) {
+		// error-policy:J7 personality lookup is advisory routing context. A store
+		// failure must fail open to the ordinary addressed prompt, not convert a
+		// potentially explicit always-response turn into silence.
+		runtime.reportError("MessageService.resolveAmbientReplyGate", error, {
+			roomId: message.roomId,
+			entityId: message.entityId,
+		});
+		return false;
+	}
+	if (replyGateMode === "always") return false;
 	if (messageBypassesResponseEvaluation(runtime, message)) return false;
 	return isUnaddressedTextGroupTurn(message, explicitlyAddressesAgent);
 }

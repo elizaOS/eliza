@@ -7687,6 +7687,50 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		}
 	});
 
+	it("fails open without ambient silence when personality lookup throws", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Personality state is unavailable.",
+				contexts: ["simple"],
+				replyText: "Still delivered.",
+			}),
+		]);
+		(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+			(type: string) =>
+				type === "PERSONALITY_STORE"
+					? {
+							getSlot: () => {
+								throw new Error("personality store unavailable");
+							},
+						}
+					: null,
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ambient group message",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000be" as UUID,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const prompt = (params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+
+		expect(result.kind).toBe("direct_reply");
+		expect(prompt).not.toContain("ambient_turn_policy:");
+		expect(reportErrorCalls(runtime)).toContainEqual([
+			"MessageService.resolveAmbientReplyGate",
+			expect.any(Error),
+			expect.objectContaining({ roomId: expect.any(String) }),
+		]);
+	});
+
 	it("keeps the gate armed under reply_gate 'addressed_or_ambient' (only 'always' bypasses)", async () => {
 		const runtime = withReplyGateMode(
 			withRoomEntities(
