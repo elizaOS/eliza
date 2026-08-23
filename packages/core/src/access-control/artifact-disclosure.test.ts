@@ -194,7 +194,12 @@ describe("resolveArtifactDisclosure", () => {
 		).toBe("none");
 	});
 
-	it.each(["owner-private", "agent-private", "user-private", "private"] as const)(
+	it.each([
+		"owner-private",
+		"agent-private",
+		"user-private",
+		"private",
+	] as const)(
 		"GUEST and unresolved authority are denied %s artifacts, including self-scoped records",
 		(scope) => {
 			for (const accessContext of [ctx({ role: "GUEST" }), ctx()]) {
@@ -284,9 +289,7 @@ describe("selectArtifactVariant", () => {
 
 	it("does not read full or redacted references after a denied decision", () => {
 		const readFullFromProvider = vi.fn(() => "/api/media/full.wav");
-		const readRedactedFromStorage = vi.fn(
-			() => "/api/media/redacted.txt",
-		);
+		const readRedactedFromStorage = vi.fn(() => "/api/media/redacted.txt");
 		const references = {} as ArtifactVariantReferences<string>;
 		Object.defineProperties(references, {
 			full: { enumerable: true, get: readFullFromProvider },
