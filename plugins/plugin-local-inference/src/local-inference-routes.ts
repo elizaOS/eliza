@@ -1779,22 +1779,30 @@ export async function handleLocalInferenceRoutes(
 			sendJsonError(res, "slot is required");
 			return true;
 		}
-		const assignments = await readAssignments();
-		if (typeof body.modelId === "string" && body.modelId.trim()) {
-			const modelId = body.modelId.trim();
-			if (!isCuratedCatalogModelId(modelId)) {
-				sendJsonError(
-					res,
-					"Local inference assignments are limited to curated Eliza-1 tiers.",
-					400,
-				);
-				return true;
-			}
-			assignments[slot as keyof Assignments] = modelId;
-		} else {
-			delete assignments[slot as keyof Assignments];
+		const modelId =
+			typeof body.modelId === "string" && body.modelId.trim()
+				? body.modelId.trim()
+				: null;
+		if (modelId && !isCuratedCatalogModelId(modelId)) {
+			sendJsonError(
+				res,
+				"Local inference assignments are limited to curated Eliza-1 tiers.",
+				400,
+			);
+			return true;
 		}
-		sendJson(res, { assignments: await writeAssignments(assignments) });
+		// Read-modify-write must run inside the per-file lock: a bare
+		// readAssignments/writeAssignments pair here loses one of two
+		// concurrent POSTs to the stale pre-write snapshot (issue #25123's
+		// race, on the route that motivated it).
+		const assignments = await updateAssignments((current) => {
+			if (modelId) {
+				current[slot as keyof Assignments] = modelId;
+			} else {
+				delete current[slot as keyof Assignments];
+			}
+		});
+		sendJson(res, { assignments });
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/routing") {

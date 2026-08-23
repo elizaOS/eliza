@@ -18,10 +18,15 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyLocalInferenceManagementMutation } from "./local-inference-routes.js";
+import {
+	applyLocalInferenceManagementMutation,
+	handleLocalInferenceRoutes,
+} from "./local-inference-routes.js";
+import { writeAssignments as servicesWriteAssignments } from "./services/assignments.js";
 
 const originalStateDir = process.env.ELIZA_STATE_DIR;
 let tempStateDir: string;
@@ -171,5 +176,67 @@ describe("local-inference concurrent config mutations (#25123)", () => {
 		for (const slot of slots) {
 			expect(file.assignments[slot]).toBe("eliza-1-2b");
 		}
+	});
+
+	it("persists both slots when two POST /api/local-inference/assignments requests race", async () => {
+		// The HTTP route did its read-modify-write outside the per-file lock, so
+		// two concurrent POSTs both returned 200 while the second write clobbered
+		// the first on the stale pre-write snapshot (#25123's race on the route
+		// that motivated it).
+		const server = http.createServer((req, res) => {
+			void handleLocalInferenceRoutes(req, res).then((handled) => {
+				if (!handled && !res.writableEnded) {
+					res.statusCode = 404;
+					res.end();
+				}
+			});
+		});
+		await new Promise<void>((resolve) => server.listen(0, resolve));
+		const address = server.address() as { port: number };
+		const post = async (slot: string, modelId: string) => {
+			const response = await fetch(
+				`http://127.0.0.1:${address.port}/api/local-inference/assignments`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ slot, modelId }),
+				},
+			);
+			return response.status;
+		};
+		try {
+			const statuses = await Promise.all([
+				post("TEXT_SMALL", "eliza-1-2b"),
+				post("TEXT_LARGE", "eliza-1-4b"),
+			]);
+			expect(statuses).toEqual([200, 200]);
+			const file = readAssignmentsFile();
+			expect(file.assignments).toEqual({
+				TEXT_SMALL: "eliza-1-2b",
+				TEXT_LARGE: "eliza-1-4b",
+			});
+		} finally {
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
+	});
+
+	it("does not race the services module's staging file under concurrent writes", async () => {
+		// services/assignments.ts staged every write to one fixed
+		// `${path}.tmp`, so concurrent writers raced on fs.rename and rejected
+		// with ENOENT after the first rename consumed the shared temp file.
+		const writes = await Promise.allSettled(
+			Array.from({ length: 5 }, (_, index) =>
+				servicesWriteAssignments({
+					TEXT_SMALL: `eliza-1-2b`,
+					TEXT_LARGE: index % 2 === 0 ? "eliza-1-4b" : "eliza-1-9b",
+				}),
+			),
+		);
+		expect(writes.filter((entry) => entry.status === "rejected")).toEqual([]);
+		const file = readAssignmentsFile();
+		expect(file.version).toBe(1);
+		expect(file.assignments.TEXT_SMALL).toBe("eliza-1-2b");
 	});
 });
