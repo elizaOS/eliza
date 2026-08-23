@@ -5,7 +5,7 @@ import {
   offAgentReadyChange,
   onAgentReadyChange,
   setAgentReady,
-} from "./agent-ready-state.ts";
+} from "../agent-ready-state.ts";
 
 describe("agent-ready-state", () => {
   beforeEach(() => {
