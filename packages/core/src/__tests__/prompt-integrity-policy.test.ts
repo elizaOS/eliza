@@ -130,6 +130,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/truncateWellFormed/,
 		/text\s*=\s*text\.slice\(/,
 	],
+	"packages/core/src/features/autonomy/action.ts": [
+		/targetRoomId\.slice\(0,\s*8\)/,
+		/targetRoomId\.(?:slice|substring)\(/,
+	],
 	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
 	"packages/core/src/generated/action-docs.ts": [/"c0a8012e"/],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
