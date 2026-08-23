@@ -17,7 +17,11 @@ function safeSort(events: { startAt: string }[]): string[] {
 
 describe("calendar bulk reschedule safe sort", () => {
   it("places invalid date at start (0 epoch)", () => {
-    const out = safeSort([{ startAt: "invalid" }, { startAt: "2026-01-02T00:00:00.000Z" }, { startAt: "2026-01-01T00:00:00.000Z" }]);
+    const out = safeSort([
+      { startAt: "invalid" },
+      { startAt: "2026-01-02T00:00:00.000Z" },
+      { startAt: "2026-01-01T00:00:00.000Z" },
+    ]);
     expect(out[0]).toBe("invalid");
     expect(out[1]).toBe("2026-01-01T00:00:00.000Z");
   });

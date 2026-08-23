@@ -33,7 +33,10 @@ describe("gmail triage safe sort", () => {
     expect(out[0].triageScore).toBe(5);
   });
   it("never returns NaN", () => {
-    const r = triageSort([{ triageScore: 1, receivedAt: "bad" }, { triageScore: 1, receivedAt: "also-bad" }]);
+    const r = triageSort([
+      { triageScore: 1, receivedAt: "bad" },
+      { triageScore: 1, receivedAt: "also-bad" },
+    ]);
     expect(r.length).toBe(2);
   });
 });
