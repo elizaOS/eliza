@@ -241,6 +241,25 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     });
   });
 
+  test("fails closed when the canonical Steward row and identity authority resolve different users", async () => {
+    const canonical = await createCanonicalStewardSubject();
+    const projected = await createCanonicalStewardSubject();
+    await dbWrite
+      .update(userIdentities)
+      .set({ steward_user_id: `drifted-projection-${sequence}` })
+      .where(eq(userIdentities.user_id, canonical.user.id));
+    await dbWrite
+      .update(userIdentities)
+      .set({ steward_user_id: canonical.stewardUserId })
+      .where(eq(userIdentities.user_id, projected.user.id));
+
+    await expect(
+      usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        stewardUserId: canonical.stewardUserId,
+      }),
+    ).resolves.toEqual({ status: "identity_projection_conflict" });
+  });
+
   test("converges exactly two $0 provisional accounts and retains an idempotent alias receipt", async () => {
     const pair = await createPair();
     const proof = proofFor(pair);

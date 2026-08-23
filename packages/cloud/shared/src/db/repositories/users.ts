@@ -3,6 +3,7 @@
 import { ElizaError } from "@elizaos/core";
 import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos/edge";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
@@ -18,6 +19,9 @@ import {
 } from "../schemas/personal-account-convergences";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
+
+const stewardAuthorityIdentity = alias(userIdentities, "steward_authority_identity");
+const canonicalStewardIdentity = alias(userIdentities, "canonical_steward_identity");
 
 export type { NewUser, User, UserIdentity };
 
@@ -1529,30 +1533,59 @@ export class UsersRepository {
     phoneNumber?: string;
     stewardUserId: string;
   }): Promise<FindPendingPhoneTelegramConvergenceResult> {
+    const stewardSubject = dbWrite.$with("steward_subject").as((qb) =>
+      qb
+        .select({
+          stewardUserId: sql<string>`${input.stewardUserId}`.as("requested_steward_subject_id"),
+        })
+        .from(sql`(select 1)`),
+    );
     const [inspection] = await dbWrite
+      .with(stewardSubject)
       .select({
-        user: users,
+        canonicalUser: users,
         organization: organizations,
+        authorityUserId: stewardAuthorityIdentity.user_id,
+        canonicalIdentityStewardUserId: canonicalStewardIdentity.steward_user_id,
         pendingReceiptToken: personalAccountConvergences.token,
       })
-      .from(users)
+      .from(stewardSubject)
+      .leftJoin(users, eq(users.steward_user_id, stewardSubject.stewardUserId))
+      .leftJoin(
+        stewardAuthorityIdentity,
+        eq(stewardAuthorityIdentity.steward_user_id, stewardSubject.stewardUserId),
+      )
+      .leftJoin(canonicalStewardIdentity, eq(canonicalStewardIdentity.user_id, users.id))
       .leftJoin(organizations, eq(organizations.id, users.organization_id))
       .leftJoin(
         personalAccountConvergences,
         and(
           eq(personalAccountConvergences.target_user_id, users.id),
-          eq(personalAccountConvergences.steward_user_id, input.stewardUserId),
+          eq(personalAccountConvergences.steward_user_id, stewardSubject.stewardUserId),
           eq(personalAccountConvergences.status, "pending_alias"),
         ),
       )
-      .where(eq(users.steward_user_id, input.stewardUserId))
       .limit(1);
 
-    if (!inspection) return { status: "not_found" };
+    // The projection remains session authority while legacy canonical-only rows
+    // converge. Accept the repairable canonical-only case, but never choose one
+    // owner while the same Steward subject projects to another.
+    if (!inspection?.canonicalUser) {
+      return inspection?.authorityUserId
+        ? { status: "identity_projection_conflict" }
+        : { status: "not_found" };
+    }
+    if (
+      (inspection.authorityUserId && inspection.authorityUserId !== inspection.canonicalUser.id) ||
+      (inspection.canonicalIdentityStewardUserId &&
+        inspection.canonicalIdentityStewardUserId !== input.stewardUserId)
+    ) {
+      return { status: "identity_projection_conflict" };
+    }
     if (!inspection.pendingReceiptToken) {
       return {
         status: "canonical_user",
-        user: { ...inspection.user, organization: inspection.organization },
+        user: { ...inspection.canonicalUser, organization: inspection.organization },
       };
     }
 
