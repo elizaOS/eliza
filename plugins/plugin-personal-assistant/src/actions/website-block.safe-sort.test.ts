@@ -15,12 +15,20 @@ function mem(id: string, createdAt: number | undefined) {
 
 describe("website-block conversation turn ordering", () => {
   it("sorts oldest-first", () => {
-    expect([...[mem("c", 30), mem("a", 10), mem("b", 20)].sort(cmp).map((m) => m.id)]).toEqual(["a", "b", "c"]);
+    expect([
+      ...[mem("c", 30), mem("a", 10), mem("b", 20)].sort(cmp).map((m) => m.id),
+    ]).toEqual(["a", "b", "c"]);
   });
   it("treats NaN as 0 oldest", () => {
-    expect([...[mem("c", 30), mem("b", Number.NaN), mem("a", 10)].sort(cmp).map((m) => m.id)]).toEqual(["b", "a", "c"]);
+    expect([
+      ...[mem("c", 30), mem("b", Number.NaN), mem("a", 10)]
+        .sort(cmp)
+        .map((m) => m.id),
+    ]).toEqual(["b", "a", "c"]);
   });
   it("breaks ties by id", () => {
-    expect([...[mem("b", 10), mem("a", 10)].sort(cmp).map((m) => m.id)]).toEqual(["a", "b"]);
+    expect([
+      ...[mem("b", 10), mem("a", 10)].sort(cmp).map((m) => m.id),
+    ]).toEqual(["a", "b"]);
   });
 });

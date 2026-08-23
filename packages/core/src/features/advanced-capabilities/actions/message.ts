@@ -3361,9 +3361,7 @@ async function handleReadChannel(
 					params,
 					limit,
 				);
-				memories = memories
-					.sort(compareMemoryByCreatedAtDesc)
-					.slice(0, limit);
+				memories = memories.sort(compareMemoryByCreatedAtDesc).slice(0, limit);
 			}
 			return opSuccess(
 				"read_channel",
@@ -5536,7 +5534,10 @@ function createdAtSortKey(memory: { createdAt?: number }): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function compareMemoryByCreatedAtDesc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
+function compareMemoryByCreatedAtDesc(
+	a: { createdAt?: number; id?: string },
+	b: { createdAt?: number; id?: string },
+): number {
 	const aSafe = createdAtSortKey(a);
 	const bSafe = createdAtSortKey(b);
 	if (bSafe !== aSafe) return bSafe - aSafe;

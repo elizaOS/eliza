@@ -27,7 +27,6 @@ describe("mergeActivityWindows comparator", () => {
     expect(merged[0].startMs).toBeNaN();
     expect(merged[1].startMs).toBe(5 * 60 * MINUTE);
   });
-
 });
 
 describe("inferMealCandidates score comparator", () => {

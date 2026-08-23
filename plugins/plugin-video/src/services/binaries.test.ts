@@ -512,7 +512,7 @@ describe("resolveFfmpegStaticCandidatePath", () => {
   });
 
   it("formats install error reasons with surrogate-safe truncation", () => {
-    const longMessage = "a".repeat(159) + "😀" + "b".repeat(20);
+    const longMessage = `${"a".repeat(159)}😀${"b".repeat(20)}`;
     const err = new Error(longMessage);
     const formatted = formatInstallErrorReason(err);
     expect(formatted.startsWith("ffmpeg-static install failed: ")).toBe(true);

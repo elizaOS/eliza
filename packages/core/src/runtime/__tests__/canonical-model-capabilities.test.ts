@@ -20,9 +20,9 @@ function runtimeWith(setting: unknown) {
 describe("isCanonicalModelCapabilityDisabled", () => {
 	it("checks the text setting for generation model types", () => {
 		const { runtime, getSetting } = runtimeWith("false");
-		expect(isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_LARGE)).toBe(
-			true,
-		);
+		expect(
+			isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_LARGE),
+		).toBe(true);
 		expect(getSetting).toHaveBeenCalledWith(CANONICAL_TEXT_CAPABILITY_SETTING);
 	});
 

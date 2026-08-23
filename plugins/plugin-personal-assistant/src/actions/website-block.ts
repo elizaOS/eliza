@@ -305,18 +305,22 @@ function shouldTrustExplicitWebsites(
 }
 
 function createdAtSortKey(memory: { createdAt?: number }): number {
-	const value = memory.createdAt;
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const value = memory.createdAt;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function compareConversationTurnByCreatedAtAsc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
-	const aSafe = createdAtSortKey(a);
-	const bSafe = createdAtSortKey(b);
-	if (aSafe !== bSafe) return aSafe - bSafe;
-	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+function compareConversationTurnByCreatedAtAsc(
+  a: { createdAt?: number; id?: string },
+  b: { createdAt?: number; id?: string },
+): number {
+  const aSafe = createdAtSortKey(a);
+  const bSafe = createdAtSortKey(b);
+  if (aSafe !== bSafe) return aSafe - bSafe;
+  return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 }
 
-export const __testCompareConversationTurnByCreatedAtAsc = compareConversationTurnByCreatedAtAsc;
+export const __testCompareConversationTurnByCreatedAtAsc =
+  compareConversationTurnByCreatedAtAsc;
 export const __testCreatedAtSortKey = createdAtSortKey;
 
 async function collectWebsiteBlockConversationTurns(args: {

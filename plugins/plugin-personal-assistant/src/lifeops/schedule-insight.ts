@@ -897,7 +897,7 @@ function analyzeLifeOpsScheduleInsight(args: {
     const leftWeight = Number.isFinite(left.weight) ? left.weight : 0;
     const rightWeight = Number.isFinite(right.weight) ? right.weight : 0;
     if (leftWeight !== rightWeight) return rightWeight - leftWeight;
-    return left.rule.localeCompare(right.rule);
+    return left.name.localeCompare(right.name);
   });
   return {
     insight: {

@@ -40,6 +40,7 @@ function compareMemoryByCreatedAtAsc(a: Memory, b: Memory): number {
 	if (aSafe !== bSafe) return aSafe - bSafe;
 	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 }
+
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 
 const MEMORY_CATEGORIES = Object.values(LongTermMemoryCategory);

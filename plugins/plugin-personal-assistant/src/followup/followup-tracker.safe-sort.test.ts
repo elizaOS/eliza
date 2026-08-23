@@ -3,10 +3,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  type ContactInfo,
-  computeOverdueFollowups,
-} from "./followup-tracker";
+import { type ContactInfo, computeOverdueFollowups } from "./followup-tracker";
 
 describe("computeOverdueFollowups safe sort", () => {
   it("sorts overdue contacts by daysOverdue descending with displayName tiebreak", async () => {

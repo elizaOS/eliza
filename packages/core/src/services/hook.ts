@@ -133,7 +133,9 @@ function _parseFrontmatter(content: string): HookFrontmatter {
  * keeps every later reader — ordering, reporting, snapshots — on a finite
  * value.
  */
-function normalizeHookPriority(priority: HookPriority | undefined): HookPriority {
+function normalizeHookPriority(
+	priority: HookPriority | undefined,
+): HookPriority {
 	return typeof priority === "number" && Number.isFinite(priority)
 		? priority
 		: DEFAULT_HOOK_PRIORITY;

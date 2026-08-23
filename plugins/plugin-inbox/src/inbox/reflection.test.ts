@@ -27,8 +27,8 @@ describe("reflectOnAutoReply", () => {
     // The invariant the fix is actually about: the old raw.slice(0, 100) cut
     // between the two code units of the astral char and left an unpaired high
     // surrogate. Length and emoji-absence alone hold for the old code too, so
-    // assert well-formedness explicitly or this test cannot fail on develop.
-    expect(result.reasoning).toBe(result.reasoning.toWellFormed());
+    // assert the absence of unpaired surrogate code units explicitly or this
+    // test cannot fail on develop.
     expect(
       /[\uD800-\uDFFF]/.test(
         result.reasoning.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""),
