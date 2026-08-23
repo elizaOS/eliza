@@ -83,7 +83,12 @@ function pruneMainChatTail(
 ): Memory[] {
   const ordered = [...memories]
     .filter((entry) => (entry.content.text ?? "").trim().length > 0)
-    .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0));
+    .sort((left, right) => {
+    const leftSafe = Number.isFinite(left.createdAt ?? 0) ? (left.createdAt ?? 0) : 0;
+    const rightSafe = Number.isFinite(right.createdAt ?? 0) ? (right.createdAt ?? 0) : 0;
+    if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+  });
 
   // Trim trailing assistant-only run (an assistant message that the user never replied to).
   while (ordered.length > 0) {
