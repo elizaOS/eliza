@@ -45,17 +45,38 @@ function valuesEqual(actual: unknown, expected: unknown): boolean {
   return JSON.stringify(actual) === JSON.stringify(expected);
 }
 
+/**
+ * `responseText` is what a user would see; `internalReceiptText` is the
+ * machine receipt an internal-visibility action puts in `ActionResult.text`
+ * and the runtime never delivers. They are asserted through separate channels
+ * on purpose — reading the receipt out of `responseText` is what made these
+ * turns look like the agent was replying with raw JSON.
+ */
 function expectActionTurn(
   execution: ScenarioTurnExecution,
   expected: {
     actionName: string;
     parameters: Record<string, unknown>;
     responseText: string;
+    internalReceiptText?: string;
     resultFields: Record<string, unknown>;
   },
 ): string | undefined {
   if (execution.responseText !== expected.responseText) {
     return `expected responseText=${JSON.stringify(expected.responseText)}, saw ${JSON.stringify(execution.responseText)}`;
+  }
+
+  if (expected.internalReceiptText !== undefined) {
+    const result = execution.responseBody as
+      | { text?: unknown; transcriptVisibility?: unknown }
+      | null
+      | undefined;
+    if (result?.transcriptVisibility !== "internal") {
+      return `expected an internal-visibility action result, saw transcriptVisibility=${JSON.stringify(result?.transcriptVisibility)}`;
+    }
+    if (result.text !== expected.internalReceiptText) {
+      return `expected internal receipt text=${JSON.stringify(expected.internalReceiptText)}, saw ${JSON.stringify(result.text)}`;
+    }
   }
 
   const action = execution.actionsCalled.find(
@@ -597,12 +618,14 @@ export default scenario({
       text: "List the GUI views",
       actionName: "VIEWS",
       options: { action: "list", viewType: "gui" },
-      responseIncludesAny: ["available_views:", "remote-ledger"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
           parameters: { action: "list", viewType: "gui" },
-          responseText: `available_views:\n  type: gui\n  count: 3\nviews[3]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes\n${settingsSubviewsLine}\n  feed-board,Feed Board,gui,/feed-board,yes`,
+          // The table is model context, not prose: VIEWS/list marks it
+          // internal and offers no fallback, so the user sees nothing here.
+          responseText: "",
+          internalReceiptText: `available_views:\n  type: gui\n  count: 3\nviews[3]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes\n${settingsSubviewsLine}\n  feed-board,Feed Board,gui,/feed-board,yes`,
           resultFields: {
             "values.mode": "list",
             "values.viewCount": 3,
@@ -642,12 +665,14 @@ export default scenario({
       text: "Open the settings view",
       actionName: "VIEWS",
       options: { action: "show", view: "settings", viewType: "gui" },
-      responseIncludesAny: ['"effect":"view_navigation"'],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
           parameters: { action: "show", view: "settings", viewType: "gui" },
-          responseText: JSON.stringify({
+          // VIEWS/show declares no `modelReplyFallback`, so with no model in
+          // the loop this turn has no user-visible reply at all.
+          responseText: "",
+          internalReceiptText: JSON.stringify({
             effect: "view_navigation",
             status: "accepted",
             viewId: "settings",
@@ -668,7 +693,6 @@ export default scenario({
       text: "Open the remote ledger view",
       actionName: "VIEWS",
       options: { action: "open", view: "remote-ledger", viewType: "gui" },
-      responseIncludesAny: ['"effect":"view_navigation"'],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -677,7 +701,8 @@ export default scenario({
             view: "remote-ledger",
             viewType: "gui",
           },
-          responseText: JSON.stringify({
+          responseText: "",
+          internalReceiptText: JSON.stringify({
             effect: "view_navigation",
             status: "accepted",
             viewId: "remote-ledger",
@@ -890,12 +915,14 @@ export default scenario({
       text: "Launch the feed app",
       actionName: "APP",
       options: { action: "launch", app: "feed" },
-      responseIncludesAny: ['"effect":"app_launch"'],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "APP",
           parameters: { action: "launch", app: "feed" },
-          responseText: JSON.stringify({
+          // APP/launch declares a vetted `modelReplyFallback`; that prose is
+          // what the runtime delivers when no model reply is synthesized.
+          responseText: "The app launched successfully.",
+          internalReceiptText: JSON.stringify({
             effect: "app_launch",
             status: "completed",
           }),
