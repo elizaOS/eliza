@@ -443,7 +443,13 @@ export async function listApps(): Promise<RegistryAppInfo[]> {
     apps.push(toAppInfo(appEntry, sanitizeSandbox, LOCAL_APP_DEFAULT_SANDBOX));
   }
 
-  apps.sort((a, b) => b.stars - a.stars);
+  apps.sort((a, b) => {
+    const bStars =
+      typeof b.stars === "number" && Number.isFinite(b.stars) ? b.stars : 0;
+    const aStars =
+      typeof a.stars === "number" && Number.isFinite(a.stars) ? a.stars : 0;
+    return bStars - aStars;
+  });
   return apps;
 }
 
@@ -494,7 +500,13 @@ export async function listNonAppPlugins(): Promise<RegistryPluginListItem[]> {
     }
   }
 
-  plugins.sort((a, b) => b.stars - a.stars);
+  plugins.sort((a, b) => {
+    const bStars =
+      typeof b.stars === "number" && Number.isFinite(b.stars) ? b.stars : 0;
+    const aStars =
+      typeof a.stars === "number" && Number.isFinite(a.stars) ? a.stars : 0;
+    return bStars - aStars;
+  });
   return plugins;
 }
 
