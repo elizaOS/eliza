@@ -103,7 +103,7 @@ describe("composed planner state — the [FORM] vocabulary reaches the prompt", 
     expect(state.text).toContain("### [FORM]");
     expect(state.text).toContain('"type":"datetime"');
     expect(state.text).toContain("checkbox | date | time |");
-    expect(state.text).toContain("Prefer date/time/datetime for schedules");
+    expect(state.text).toContain("prefer temporal types for schedules");
   });
 
   it("does not leak the generative-UI catalog into a non-admin composition", async () => {
