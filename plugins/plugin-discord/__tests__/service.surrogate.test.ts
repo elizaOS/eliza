@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 describe("discord service surrogate-safe truncation (200)", () => {
 	it("does not split astral pair at 200", () => {
-		const text = "a".repeat(199) + "🦊" + "b".repeat(10);
+		const text = `${"a".repeat(199)}🦊${"b".repeat(10)}`;
 		const normalized = text.replace(/\s+/g, " ").trim();
 		const truncated = truncateWellFormed(toWellFormedUnicode(normalized), 200);
 		expect(truncated.length).toBe(199);
@@ -30,7 +30,7 @@ describe("discord service surrogate-safe truncation (200)", () => {
 	});
 
 	it("old slice splits but guard does not", () => {
-		const text = "a".repeat(199) + "🦊";
+		const text = `${"a".repeat(199)}🦊`;
 		const old = text.replace(/\s+/g, " ").trim().slice(0, 200);
 		expect(old.charCodeAt(199)).toBe(0xd83e);
 		const fixed = truncateWellFormed(toWellFormedUnicode(text), 200);
