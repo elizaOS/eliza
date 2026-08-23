@@ -12,7 +12,7 @@ import { useAppSelector } from "../../state";
 import { formatDateTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { DefinitionRow, StatusPill } from "./shared";
+import { DefinitionList, DefinitionRow, StatusPill } from "./shared";
 import { partitionDescription } from "./shared.helpers";
 import type {
   AppReleaseStatus,
@@ -95,7 +95,7 @@ export function ReleaseStatusSection({
         ) : null}
       </div>
 
-      <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="mb-4 flex flex-col items-start justify-between gap-4 sm:flex-row">
         <div>
           <h3 className="text-sm font-semibold text-txt">
             {tr(t, "releasecenter.ReleaseStatus", "Release Status")}
@@ -132,33 +132,35 @@ export function ReleaseStatusSection({
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="p-3">
+        <div className="bg-bg/40 p-3">
           <div className="text-xs font-semibold text-txt">
             {tr(t, "releasecenter.AppReleaseService", "App Release Service")}
           </div>
-          <DefinitionRow
-            label={tr(t, "releasecenter.CurrentVersion", "Current version")}
-            value={updateStatus?.currentVersion}
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.LatestVersion", "Latest version")}
-            value={updateStatus?.latestVersion ?? currentLabel}
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenterview.Channel", "Channel")}
-            value={updateStatus?.channel}
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.LastChecked", "Last checked")}
-            value={
-              updateStatus?.lastCheckAt
-                ? new Date(updateStatus.lastCheckAt).toLocaleString("en-US")
-                : tr(t, "releasecenter.NotYet", "Not yet")
-            }
-          />
+          <DefinitionList className="mt-1">
+            <DefinitionRow
+              label={tr(t, "releasecenter.CurrentVersion", "Current version")}
+              value={updateStatus?.currentVersion}
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.LatestVersion", "Latest version")}
+              value={updateStatus?.latestVersion ?? currentLabel}
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenterview.Channel", "Channel")}
+              value={updateStatus?.channel}
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.LastChecked", "Last checked")}
+              value={
+                updateStatus?.lastCheckAt
+                  ? new Date(updateStatus.lastCheckAt).toLocaleString("en-US")
+                  : tr(t, "releasecenter.NotYet", "Not yet")
+              }
+            />
+          </DefinitionList>
         </div>
 
-        <div className="p-3">
+        <div className="bg-bg/40 p-3">
           <div className="mb-3 text-xs font-semibold text-txt">
             {tr(
               t,
@@ -166,33 +168,36 @@ export function ReleaseStatusSection({
               "Native Electrobun Updater",
             )}
           </div>
-          <DefinitionRow
-            label={tr(t, "releasecenter.CurrentVersion", "Current version")}
-            value={nativeUpdater?.currentVersion}
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.LatestVersion", "Latest version")}
-            value={nativeUpdater?.latestVersion ?? currentLabel}
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.AppBundle", "App bundle")}
-            value={
-              nativeUpdater?.appBundlePath ?? tr(t, "common.unknown", "Unknown")
-            }
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.LastStatus", "Last status")}
-            value={
-              nativeUpdater?.lastStatus?.message ??
-              tr(t, "releasecenterview.Idle", "Idle")
-            }
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.StatusTime", "Status time")}
-            value={formatDateTime(nativeUpdater?.lastStatus?.timestamp, {
-              fallback: tr(t, "releasecenter.NotYet", "Not yet"),
-            })}
-          />
+          <DefinitionList>
+            <DefinitionRow
+              label={tr(t, "releasecenter.CurrentVersion", "Current version")}
+              value={nativeUpdater?.currentVersion}
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.LatestVersion", "Latest version")}
+              value={nativeUpdater?.latestVersion ?? currentLabel}
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.AppBundle", "App bundle")}
+              value={
+                nativeUpdater?.appBundlePath ??
+                tr(t, "common.unknown", "Unknown")
+              }
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.LastStatus", "Last status")}
+              value={
+                nativeUpdater?.lastStatus?.message ??
+                tr(t, "releasecenterview.Idle", "Idle")
+              }
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.StatusTime", "Status time")}
+              value={formatDateTime(nativeUpdater?.lastStatus?.timestamp, {
+                fallback: tr(t, "releasecenter.NotYet", "Not yet"),
+              })}
+            />
+          </DefinitionList>
           {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason ? (
             <div className="mt-3 border-l-2 border-warning/60 bg-warning/10 px-3 py-2 text-xs text-warning">
               {nativeUpdater.autoUpdateDisabledReason}
@@ -303,7 +308,7 @@ export function ReleaseNotesSection({
         </div>
 
         {releaseNotesWindow ? (
-          <div className="border-y border-border py-3 text-xs text-txt">
+          <DefinitionList className="text-xs text-txt">
             <DefinitionRow
               label={tr(t, "releasecenter.WindowId", "Window ID")}
               value={releaseNotesWindow.windowId}
@@ -316,9 +321,9 @@ export function ReleaseNotesSection({
               label={tr(t, "appsview.URL", "URL")}
               value={releaseNotesWindow.url}
             />
-          </div>
+          </DefinitionList>
         ) : (
-          <div className="border-y border-border py-3 text-xs text-muted">
+          <div className="border-b border-border/60 py-3 text-xs text-muted">
             {tr(t, "releasecenter.UsingUpdaterUrl", "Using updater URL:")}{" "}
             {nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl}
           </div>
@@ -364,47 +369,49 @@ export function BuildRuntimeSection({
         </p>
       </div>
 
-      <div className="border-y border-border py-3">
-        <DefinitionRow
-          label={tr(t, "releasecenter.Platform", "Platform")}
-          value={buildInfo?.platform}
-        />
-        <DefinitionRow
-          label={tr(t, "releasecenter.Architecture", "Architecture")}
-          value={buildInfo?.arch}
-        />
-        <DefinitionRow
-          label={tr(t, "releasecenter.DefaultRenderer", "Default renderer")}
-          value={buildInfo?.defaultRenderer}
-        />
-        <DefinitionRow
-          label={tr(
-            t,
-            "releasecenter.AvailableRenderers",
-            "Available renderers",
-          )}
-          value={buildInfo?.availableRenderers.join(", ")}
-        />
-        <DefinitionRow
-          label={tr(t, "releasecenter.BunVersion", "Bun version")}
-          value={buildInfo?.bunVersion}
-        />
-        <DefinitionRow
-          label={tr(t, "releasecenter.CefVersion", "CEF version")}
-          value={buildInfo?.cefVersion}
-        />
-        <DefinitionRow
-          label={tr(t, "releasecenter.UpdaterBaseUrl", "Updater base URL")}
-          value={nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl}
-        />
-        <DefinitionRow
-          label={tr(t, "releasecenter.DockIconVisible", "Dock icon visible")}
-          value={
-            buildInfo?.platform === "darwin"
-              ? String(dockVisible)
-              : tr(t, "releasecenter.MacOsOnly", "macOS only")
-          }
-        />
+      <div>
+        <DefinitionList>
+          <DefinitionRow
+            label={tr(t, "releasecenter.Platform", "Platform")}
+            value={buildInfo?.platform}
+          />
+          <DefinitionRow
+            label={tr(t, "releasecenter.Architecture", "Architecture")}
+            value={buildInfo?.arch}
+          />
+          <DefinitionRow
+            label={tr(t, "releasecenter.DefaultRenderer", "Default renderer")}
+            value={buildInfo?.defaultRenderer}
+          />
+          <DefinitionRow
+            label={tr(
+              t,
+              "releasecenter.AvailableRenderers",
+              "Available renderers",
+            )}
+            value={buildInfo?.availableRenderers.join(", ")}
+          />
+          <DefinitionRow
+            label={tr(t, "releasecenter.BunVersion", "Bun version")}
+            value={buildInfo?.bunVersion}
+          />
+          <DefinitionRow
+            label={tr(t, "releasecenter.CefVersion", "CEF version")}
+            value={buildInfo?.cefVersion}
+          />
+          <DefinitionRow
+            label={tr(t, "releasecenter.UpdaterBaseUrl", "Updater base URL")}
+            value={nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl}
+          />
+          <DefinitionRow
+            label={tr(t, "releasecenter.DockIconVisible", "Dock icon visible")}
+            value={
+              buildInfo?.platform === "darwin"
+                ? String(dockVisible)
+                : tr(t, "releasecenter.MacOsOnly", "macOS only")
+            }
+          />
+        </DefinitionList>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -455,14 +462,11 @@ export function SessionControlsSection({
         </p>
       </div>
 
-      <div className="space-y-3">
+      <div className="divide-y divide-border/60">
         {SESSION_PARTITIONS.map(({ label, partition }) => {
           const snapshot = sessionSnapshots[partition];
           return (
-            <div
-              key={partition}
-              className="border-b border-border py-3 last:border-b-0"
-            >
+            <div key={partition} className="py-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold text-txt">{label}</div>
@@ -490,7 +494,7 @@ export function SessionControlsSection({
                 </div>
               </div>
 
-              <div className="mt-3">
+              <DefinitionList className="mt-3">
                 <DefinitionRow
                   label={tr(t, "releasecenter.Partition", "Partition")}
                   value={snapshot?.partition ?? partition}
@@ -503,7 +507,7 @@ export function SessionControlsSection({
                   label={tr(t, "releasecenter.CookieCount", "Cookie count")}
                   value={snapshot?.cookieCount}
                 />
-              </div>
+              </DefinitionList>
 
               {snapshot?.cookies.length ? (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -632,7 +636,7 @@ export function WgpuSurfaceSection({
           </div>
         </div>
 
-        <div className="border-y border-border py-3">
+        <div className="bg-bg/40 p-3">
           <div className="mb-3 text-xs font-semibold text-txt">
             {tr(
               t,
@@ -647,33 +651,35 @@ export function WgpuSurfaceSection({
               "This reports whether the desktop webview is expected to expose WebGPU for the WGPU preview above. It is not overall app health: companion and avatar already fall back to WebGL when WebGPU is missing.",
             )}
           </p>
-          <DefinitionRow
-            label={tr(
-              t,
-              "releasecenter.InlineSurfaceReady",
-              "Inline surface ready",
-            )}
-            value={String(wgpuReady)}
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.RendererSupport", "Renderer support")}
-            value={
-              webGpuStatus?.available
-                ? tr(t, "releasecenter.Available", "Available")
-                : tr(t, "releasecenter.NotAvailable", "Not available")
-            }
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.RendererType", "Renderer type")}
-            value={webGpuStatus?.renderer}
-          />
-          <DefinitionRow
-            label={tr(t, "releasecenter.ChromeBeta", "Chrome Beta")}
-            value={
-              webGpuStatus?.chromeBetaPath ??
-              tr(t, "releasecenter.NotDetected", "Not detected")
-            }
-          />
+          <DefinitionList>
+            <DefinitionRow
+              label={tr(
+                t,
+                "releasecenter.InlineSurfaceReady",
+                "Inline surface ready",
+              )}
+              value={String(wgpuReady)}
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.RendererSupport", "Renderer support")}
+              value={
+                webGpuStatus?.available
+                  ? tr(t, "releasecenter.Available", "Available")
+                  : tr(t, "releasecenter.NotAvailable", "Not available")
+              }
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.RendererType", "Renderer type")}
+              value={webGpuStatus?.renderer}
+            />
+            <DefinitionRow
+              label={tr(t, "releasecenter.ChromeBeta", "Chrome Beta")}
+              value={
+                webGpuStatus?.chromeBetaPath ??
+                tr(t, "releasecenter.NotDetected", "Not detected")
+              }
+            />
+          </DefinitionList>
           <div className="mt-3 border-l-2 border-border bg-bg-accent px-3 py-2 text-xs text-muted">
             {webGpuStatus?.reason ??
               tr(

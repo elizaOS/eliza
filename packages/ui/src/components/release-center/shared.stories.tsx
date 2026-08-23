@@ -2,7 +2,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { MockAppProvider } from "../../storybook/mock-providers";
-import { DefinitionRow, StatusPill } from "./shared";
+import { DefinitionList, DefinitionRow, StatusPill } from "./shared";
 
 const meta = {
   title: "ReleaseCenter/Shared",
@@ -48,7 +48,9 @@ export const DefinitionRowDefault: DefinitionRowStory = {
   render: (args) => (
     <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
-        <DefinitionRow {...args} />
+        <DefinitionList>
+          <DefinitionRow {...args} />
+        </DefinitionList>
       </div>
     </MockAppProvider>
   ),
@@ -62,7 +64,9 @@ export const DefinitionRowNumeric: DefinitionRowStory = {
   render: (args) => (
     <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
-        <DefinitionRow {...args} />
+        <DefinitionList>
+          <DefinitionRow {...args} />
+        </DefinitionList>
       </div>
     </MockAppProvider>
   ),
@@ -76,7 +80,9 @@ export const DefinitionRowEmptyFallback: DefinitionRowStory = {
   render: (args) => (
     <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
-        <DefinitionRow {...args} />
+        <DefinitionList>
+          <DefinitionRow {...args} />
+        </DefinitionList>
       </div>
     </MockAppProvider>
   ),
@@ -91,7 +97,9 @@ export const DefinitionRowUnavailable: DefinitionRowStory = {
   render: (args) => (
     <MockAppProvider>
       <div className="w-80 rounded-md border border-border bg-surface p-3">
-        <DefinitionRow {...args} />
+        <DefinitionList>
+          <DefinitionRow {...args} />
+        </DefinitionList>
       </div>
     </MockAppProvider>
   ),
