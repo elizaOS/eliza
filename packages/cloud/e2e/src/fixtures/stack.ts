@@ -31,6 +31,10 @@ import {
   startStewardMock,
 } from "@elizaos/cloud-test-mocks/steward";
 import {
+  type RunningFakeStripe,
+  startFakeStripe,
+} from "@elizaos/cloud-test-mocks/stripe";
+import {
   type RunningBackendFaultProxy,
   startBackendFaultProxy,
 } from "./backend-fault-proxy";
@@ -75,6 +79,8 @@ export interface StackHandle {
     pglite: string;
     /** Mock LLM `/v1` base URL — present only when started with `mockLlm`. */
     mockLlm?: string;
+    /** Stripe-compatible loopback origin, present only with `fakeStripe`. */
+    stripe?: string;
   };
   /**
    * True when the frontend Vite dev was NOT booted (API-only stacks started
@@ -90,6 +96,8 @@ export interface StackHandle {
     controlPlane: RunningControlPlaneMock;
     steward: RunningStewardMock;
     mockLlm?: RunningMockLlm;
+    /** Present only when started with `fakeStripe: true`. */
+    stripe?: RunningFakeStripe;
     /** Present only when started with `backendFaults: true`. */
     backendFaults?: RunningBackendFaultProxy;
   };
@@ -246,6 +254,18 @@ async function closeCloudSharedDatabaseConnections(): Promise<void> {
   await closeDatabaseConnectionsForTests();
 }
 
+async function withFakeStripeBootstrapRollback<T>(
+  fakeStripe: RunningFakeStripe | undefined,
+  operation: () => T | Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    await fakeStripe?.stop().catch(() => undefined);
+    throw error;
+  }
+}
+
 export interface StartCloudStackOptions {
   /** Skip running cloud-shared migrations. Defaults to false. */
   skipMigrate?: boolean;
@@ -273,6 +293,11 @@ export interface StartCloudStackOptions {
    * the reply itself reflects retained history. Defaults to false (fixed reply).
    */
   mockLlmEchoContext?: boolean;
+  /**
+   * Boot a stateful Stripe-compatible loopback provider. The Worker receives
+   * the synthetic key and endpoint only under its explicit Cloud E2E gates.
+   */
+  fakeStripe?: boolean;
   /**
    * Put a test-only programmable fault proxy between the Vite frontend and the
    * real local cloud-api. Defaults to false, leaving frontend routing unchanged.
@@ -325,7 +350,6 @@ export async function startCloudStack(
         OPENAI_BASE_URL: mockLlm.url,
       }
     : {};
-
   const sharedEnv = buildSharedEnv(
     {
       hetzner: hetzner.url,
@@ -374,7 +398,7 @@ export async function startCloudStack(
   });
 
   const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
-  const stackEnv = {
+  const stackEnv: NodeJS.ProcessEnv = {
     ...sharedEnv,
     DATABASE_URL: databaseUrl,
     TEST_DATABASE_URL: databaseUrl,
@@ -401,6 +425,14 @@ export async function startCloudStack(
     );
   }
 
+  // Start Stripe only after database bootstrap. Its origin is needed by the
+  // dev wrapper, while the synthetic credentials stay out of sharedEnv so
+  // sync-api-dev-vars cannot persist them into the developer's .dev.vars.
+  const fakeStripe = opts.fakeStripe ? await startFakeStripe() : undefined;
+  if (fakeStripe) {
+    stackEnv.STRIPE_CLOUD_E2E_API_ORIGIN = fakeStripe.url;
+  }
+
   // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
   // cloud:mock stack uses (`bun run --cwd packages/cloud/api dev`). The earlier
   // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
@@ -410,26 +442,32 @@ export async function startCloudStack(
   // `stripBunAncestryEnv` in env.ts exists precisely so wrangler starts from a
   // bun-spawned context. wrangler pre-bundles, so requests are fast.
   procs.push(
-    spawnLogged(
-      "cloud-api",
-      BUN,
-      ["run", "--cwd", "packages/cloud/api", "dev"],
-      {
-        env: stackEnv,
-        cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "cloud-api.log"),
-      },
+    await withFakeStripeBootstrapRollback(fakeStripe, () =>
+      spawnLogged(
+        "cloud-api",
+        BUN,
+        ["run", "--cwd", "packages/cloud/api", "dev"],
+        {
+          env: stackEnv,
+          cwd: REPO_ROOT,
+          logFile: join(LOG_DIR, "cloud-api.log"),
+        },
+      ),
     ),
   );
 
   const apiUrl = `http://127.0.0.1:${apiPort}`;
-  await waitForHttpOk(`${apiUrl}/api/health`, {
-    timeoutMs: 180_000,
-    label: "cloud-api",
-  });
+  await withFakeStripeBootstrapRollback(fakeStripe, () =>
+    waitForHttpOk(`${apiUrl}/api/health`, {
+      timeoutMs: 180_000,
+      label: "cloud-api",
+    }),
+  );
 
   const backendFaults = opts.backendFaults
-    ? await startBackendFaultProxy({ targetUrl: apiUrl })
+    ? await withFakeStripeBootstrapRollback(fakeStripe, () =>
+        startBackendFaultProxy({ targetUrl: apiUrl }),
+      )
     : undefined;
   const frontendApiUrl = backendFaults?.url ?? apiUrl;
   const frontendApiPort = backendFaults?.port ?? apiPort;
@@ -445,11 +483,13 @@ export async function startCloudStack(
   const frontendDir = join(REPO_ROOT, "packages", "app");
   if (opts.frontend !== false) {
     if (!existsSync(frontendDir)) {
-      throw new Error(
-        `[stack] frontend boot requested but ${frontendDir} is missing — ` +
-          "the cloud-e2e harness expects packages/app (the apex web dev). " +
-          "Pass { frontend: false } for API-only stacks.",
-      );
+      await withFakeStripeBootstrapRollback(fakeStripe, () => {
+        throw new Error(
+          `[stack] frontend boot requested but ${frontendDir} is missing — ` +
+            "the cloud-e2e harness expects packages/app (the apex web dev). " +
+            "Pass { frontend: false } for API-only stacks.",
+        );
+      });
     }
     const frontendEnv = {
       ...stackEnv,
@@ -461,23 +501,27 @@ export async function startCloudStack(
       NEXT_PUBLIC_API_BASE_URL: frontendApiUrl,
     };
     procs.push(
-      spawnLogged(
-        "frontend",
-        BUN,
-        ["run", "dev", "--", "--host", "127.0.0.1"],
-        {
-          env: frontendEnv,
-          cwd: frontendDir,
-          logFile: join(LOG_DIR, "frontend.log"),
-        },
+      await withFakeStripeBootstrapRollback(fakeStripe, () =>
+        spawnLogged(
+          "frontend",
+          BUN,
+          ["run", "dev", "--", "--host", "127.0.0.1"],
+          {
+            env: frontendEnv,
+            cwd: frontendDir,
+            logFile: join(LOG_DIR, "frontend.log"),
+          },
+        ),
       ),
     );
 
     frontendUrl = `http://127.0.0.1:${frontendPort}`;
-    await waitForHttpOk(frontendUrl, {
-      timeoutMs: 120_000,
-      label: "frontend",
-    });
+    await withFakeStripeBootstrapRollback(fakeStripe, () =>
+      waitForHttpOk(frontendUrl, {
+        timeoutMs: 120_000,
+        label: "frontend",
+      }),
+    );
   } else {
     // API-only stack: no frontend booted. Record why so the handle's
     // frontendSkipped/frontendSkipReason stay coherent and frontend-dependent
@@ -515,6 +559,7 @@ export async function startCloudStack(
     await hetzner.stop().catch(() => undefined);
     await steward.stop().catch(() => undefined);
     await mockLlm?.stop().catch(() => undefined);
+    await fakeStripe?.stop().catch(() => undefined);
     await backendFaults?.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
     if (dbCloseError) {
@@ -538,6 +583,7 @@ export async function startCloudStack(
       controlPlane: controlPlane.url,
       pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
       ...(mockLlm ? { mockLlm: mockLlm.url } : {}),
+      ...(fakeStripe ? { stripe: fakeStripe.url } : {}),
     },
     frontendSkipped: frontendSkipReason !== undefined,
     frontendSkipReason,
@@ -546,6 +592,7 @@ export async function startCloudStack(
       controlPlane,
       steward,
       ...(mockLlm ? { mockLlm } : {}),
+      ...(fakeStripe ? { stripe: fakeStripe } : {}),
       ...(backendFaults ? { backendFaults } : {}),
     },
     dataDir,
