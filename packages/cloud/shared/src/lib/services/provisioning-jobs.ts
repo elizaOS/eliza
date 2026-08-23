@@ -116,6 +116,7 @@ import {
   requiresContainerBackedTarget,
 } from "./provisioning-job-types";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
+import { usesLocalDockerSandboxProvider } from "./sandbox-provider";
 import {
   isWaifuWebhookTargetUrl,
   resolveWaifuWebhookTarget,
@@ -4379,7 +4380,13 @@ export class ProvisioningJobService {
     await this.assertExecutionMutationLease(job);
     await dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
-      await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
+      // PGlite's TCP bridge does not release transaction-scoped advisory locks
+      // reliably at commit. Local Docker still has the exact job-generation,
+      // lease, conflict, and sandbox-row fences below; remote providers retain
+      // the cross-process PostgreSQL advisory lock.
+      if (!usesLocalDockerSandboxProvider()) {
+        await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
+      }
       const [currentJob] = await tx
         .select({ id: jobs.id })
         .from(jobs)

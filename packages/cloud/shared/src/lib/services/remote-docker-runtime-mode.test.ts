@@ -14,6 +14,7 @@ describe("applyRemoteDockerRuntimeMode", () => {
   test("preserves unrelated values while overriding a historical direct-relay opt-in", () => {
     const stored = {
       ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS: "0.0.0.0/0",
       ELIZA_API_TOKEN: "agent-token",
     };
 
@@ -22,6 +23,7 @@ describe("applyRemoteDockerRuntimeMode", () => {
       ELIZA_API_TOKEN: "agent-token",
     });
     expect(stored.ELIZA_CLOUD_PAIR_DIRECT_RELAY).toBe("1");
+    expect(stored.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS).toBe("0.0.0.0/0");
   });
 
   test("drops the terminal-run token under its eliza name and its brand partner", () => {
@@ -89,6 +91,7 @@ describe("DockerSandboxProvider remote runtime mode", () => {
     ).mockRejectedValue(new Error("captured remote create config"));
     const callerEnvironment = {
       ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS: "0.0.0.0/0",
       CUSTOM_SETTING: "preserved",
     };
 
@@ -107,6 +110,9 @@ describe("DockerSandboxProvider remote runtime mode", () => {
       ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
       CUSTOM_SETTING: "preserved",
     });
+    expect(createOnce.mock.calls[0]?.[0].environmentVars).not.toHaveProperty(
+      "ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS",
+    );
     expect(callerEnvironment.ELIZA_CLOUD_PAIR_DIRECT_RELAY).toBe("1");
   });
 
