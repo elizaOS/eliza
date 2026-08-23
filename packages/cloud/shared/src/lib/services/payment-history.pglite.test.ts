@@ -348,6 +348,72 @@ describe("listPaymentStates — base states", () => {
     expect(row.eventTimeKind).toBe("provider_settlement");
   });
 
+  test("reversal association follows the receipt provider tx ref, not the request row", async () => {
+    // When the mutable request row and the immutable receipt disagree on
+    // the provider transaction reference, reversals attach through the
+    // receipt's authority: a refund recorded under the receipt's intent
+    // must surface, and one recorded under the request's stale intent
+    // must NOT attach to this purchase.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_stale_request_ref",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_authoritative_receipt_ref",
+      amountCents: 10000,
+    });
+    // Refund ledger row keyed on the RECEIPT's intent id.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-100",
+      paymentIntentId: "pi_authoritative_receipt_ref",
+      source: "charge.refunded",
+      reversedUsd: 100,
+      reference: "charge ch_assoc",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    expect(rows.length).toBe(1);
+    const row = rows[0];
+    expect(row.paymentState).toBe("refunded");
+    expect(row.cumulativeRefundedUsd).toBe(100);
+
+    // Control: a reversal keyed on the stale request intent must NOT
+    // attach to the same purchase through the receipt path.
+    const request2 = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 5000,
+      status: "settled",
+      settlementTxRef: "pi_request2_ref",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request2.id,
+      providerTxRef: "pi_request2_receipt_ref",
+      amountCents: 5000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-50",
+      paymentIntentId: "pi_request2_ref",
+      source: "charge.refunded",
+      reversedUsd: 50,
+      reference: "charge ch_stale",
+    });
+    const rows2 = await paymentHistoryService.listPaymentStates(organizationId);
+    const row2 = rows2.find((r) => r.id === `payment_request:${request2.id}`);
+    expect(row2?.paymentState).toBe("succeeded");
+    expect(row2?.cumulativeRefundedUsd).toBe(0);
+  });
+
   test("pending and failed and expired payment requests project distinct states", async () => {
     await insertStripePaymentRequest({
       organizationId,

@@ -35,8 +35,17 @@ vi.mock("sonner", () => ({
 vi.mock("../../shell/CloudI18nProvider", () => ({
   useCloudT:
     () =>
-    (_key: string, opts?: { defaultValue?: string }): string =>
-      opts?.defaultValue ?? _key,
+    (
+      _key: string,
+      opts?: { defaultValue?: string } & Record<string, unknown>,
+    ): string => {
+      // Mirror the real t(): return the default (or key) with {{var}}
+      // placeholders interpolated from the remaining opts.
+      const template = opts?.defaultValue ?? _key;
+      return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
+        String(opts?.[name] ?? ""),
+      );
+    },
 }));
 
 import type { PaymentStateDisplay } from "./payment-activity-card";
@@ -198,8 +207,16 @@ describe("PaymentActivityCard fetch states", () => {
     // fireEvent: userEvent's pointer simulation swallows clicks on these
     // inline buttons (probe-proven: fireEvent reaches writeText, userEvent
     // does not).
-    fireEvent.click(screen.getByTestId("payment-receipt-link"));
-    fireEvent.click(screen.getByTestId("payment-authority-link"));
+    const receiptButton = screen.getByTestId("payment-receipt-link");
+    expect(receiptButton.getAttribute("aria-label")).toBe(
+      "Copy receipt ID receipt-uuid-9 to clipboard",
+    );
+    const authorityButton = screen.getByTestId("payment-authority-link");
+    expect(authorityButton.getAttribute("aria-label")).toBe(
+      "Copy payment request ID authority-uuid-9 to clipboard",
+    );
+    fireEvent.click(receiptButton);
+    fireEvent.click(authorityButton);
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
 
     expect(writeText).toHaveBeenNthCalledWith(1, "receipt-uuid-9");

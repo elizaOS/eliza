@@ -420,6 +420,41 @@ export class PaymentHistoryService {
       }
     }
 
+    // Receipts join by payment_request_id (provider-scoped), never by intent.
+    // Their provider tx refs must ALSO feed the reversal lookup set: the
+    // receipt is the immutable authority for which Stripe intent a settled
+    // purchase's reversals attach to (it may diverge from the request row).
+    const requestIds = requestRows.map((row) => row.id);
+    const receiptRows = requestIds.length
+      ? await dbRead
+          .select({
+            paymentRequestId: paymentRequestReceipts.payment_request_id,
+            id: paymentRequestReceipts.id,
+            provider: paymentRequestReceipts.provider,
+            providerTxRef: paymentRequestReceipts.provider_tx_ref,
+            amountCents: paymentRequestReceipts.amount_cents,
+            currency: paymentRequestReceipts.currency,
+            settledAt: paymentRequestReceipts.settled_at,
+          })
+          .from(paymentRequestReceipts)
+          .where(
+            and(
+              eq(paymentRequestReceipts.organization_id, organizationId),
+              inArray(paymentRequestReceipts.payment_request_id, requestIds),
+            ),
+          )
+      : [];
+    const receiptsByRequest = new Map(receiptRows.map((row) => [row.paymentRequestId, row]));
+
+    // Receipt provider tx refs are immutable reversal-association authority:
+    // they must be in the lookup set even when they diverge from the
+    // request row's settlement tx ref (stale/migrated request rows).
+    for (const receipt of receiptRows) {
+      if (receipt.provider === "stripe" && receipt.providerTxRef) {
+        stripeIntentIds.add(receipt.providerTxRef);
+      }
+    }
+
     // Reversals: batched by intent until every selected intent is covered.
     // No global row cap — an org with deep refund history on one purchase
     // must not lose older rows to a sibling purchase's volume.
@@ -458,32 +493,20 @@ export class PaymentHistoryService {
 
     const reversals = aggregateReversals(reversalRows);
 
-    // Receipts join by payment_request_id (provider-scoped), never by intent.
-    const requestIds = requestRows.map((row) => row.id);
-    const receiptRows = requestIds.length
-      ? await dbRead
-          .select({
-            paymentRequestId: paymentRequestReceipts.payment_request_id,
-            id: paymentRequestReceipts.id,
-            provider: paymentRequestReceipts.provider,
-            amountCents: paymentRequestReceipts.amount_cents,
-            currency: paymentRequestReceipts.currency,
-            settledAt: paymentRequestReceipts.settled_at,
-          })
-          .from(paymentRequestReceipts)
-          .where(
-            and(
-              eq(paymentRequestReceipts.organization_id, organizationId),
-              inArray(paymentRequestReceipts.payment_request_id, requestIds),
-            ),
-          )
-      : [];
-    const receiptsByRequest = new Map(receiptRows.map((row) => [row.paymentRequestId, row]));
-
     const rows: PaymentStateRow[] = [];
     for (const request of requestRows) {
       const receipt = receiptsByRequest.get(request.id) ?? null;
-      const reversalKey = request.provider === "stripe" ? request.settlementTxRef : null;
+      // Reversal association follows the same immutable authority: when the
+      // receipt exists, its provider and provider tx ref decide which Stripe
+      // intent the reversals attach to; the mutable request row is the
+      // legacy fallback only.
+      const reversalKey = receipt
+        ? receipt.provider === "stripe"
+          ? receipt.providerTxRef
+          : null
+        : request.provider === "stripe"
+          ? request.settlementTxRef
+          : null;
       const reversal = reversalKey ? reversals.get(reversalKey) : undefined;
       const reversed = Boolean(reversal?.lastReversalSource);
       // Settled requests project purchase facts from the immutable receipt:
