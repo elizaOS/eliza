@@ -26,6 +26,7 @@ import {
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -2320,7 +2321,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             source,
             room: roomId.slice(0, 8),
           },
-          `posting: "${text.slice(0, 80)}"`,
+          `posting: "${truncateWellFormed(text, 80)}"`,
         );
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch (err) {
