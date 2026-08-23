@@ -244,15 +244,6 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 ] as const satisfies readonly FirstPartyInteractionConnectorAuditEntry[];
 
-/** Deliberate non-registration that the audit must keep visible. */
-export const FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS = [
-	{
-		plugin: "plugin-signal",
-		reason:
-			"Signal is intentionally unsupported and throws SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE; it registers no message connector.",
-	},
-] as const;
-
 /** Deterministic handoff artifact for connector implementers and reviewers. */
 export function renderFirstPartyInteractionCapabilityMatrix(): string {
 	const profiles = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map((entry) =>
@@ -273,11 +264,5 @@ export function renderFirstPartyInteractionCapabilityMatrix(): string {
 		"This generated baseline is conservative. Each runtime registration materializes the family for its concrete account and target; #24288 may advertise stronger limits only with adapter tests.",
 		"",
 		renderInteractionCapabilityMatrix(profiles),
-		"",
-		"## Explicit exclusions",
-		"",
-		...FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS.map(
-			(entry) => `- ${entry.plugin}: ${entry.reason}`,
-		),
 	].join("\n");
 }

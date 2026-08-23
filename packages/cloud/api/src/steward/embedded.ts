@@ -375,6 +375,40 @@ function isValidCaptcha(value: unknown): boolean {
   return true;
 }
 
+/**
+ * Every key the provider contract validates. In a legacy-nested envelope only
+ * `data` is validated, so a copy of one of these at the envelope's top level is
+ * unvalidated input wearing a contract name.
+ */
+const PROVIDER_CONTRACT_KEYS: ReadonlySet<string> = new Set<string>([
+  ...REQUIRED_PROVIDER_BOOLEAN_FIELDS,
+  ...OPTIONAL_PROVIDER_BOOLEAN_FIELDS,
+  ...OPTIONAL_PROVIDER_STRING_ARRAY_FIELDS,
+  "oauth",
+  "captcha",
+]);
+
+/**
+ * Drops contract-named keys from a legacy-nested envelope's top level.
+ *
+ * The nested branch validates `data` alone, so echoing the envelope verbatim
+ * would republish a sibling `passkey: "yes"` — a wrong-typed known field that
+ * `isProvidersData` never inspected — as part of a healthy, cacheable 200.
+ * Unknown envelope fields are deliberately preserved: forward-compatibility for
+ * fields Steward may add is contract, and only contract-named keys can be
+ * mistaken for validated provider state by a consumer reading the envelope.
+ */
+function withoutProviderContractKeys(
+  envelope: Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(envelope)) {
+    if (key !== "data" && PROVIDER_CONTRACT_KEYS.has(key)) continue;
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
+
 function isProvidersData(value: unknown): value is ProvidersData {
   if (!isRecord(value)) return false;
   if (
@@ -643,7 +677,7 @@ async function patchProvidersResponse(
   patched.oauth = [...oauth];
 
   const body = hasNestedData
-    ? { ...parsed, data: patched }
+    ? { ...withoutProviderContractKeys(parsed), data: patched }
     : { ...parsed, ...patched };
   return Response.json(body, {
     status: upstream.status,

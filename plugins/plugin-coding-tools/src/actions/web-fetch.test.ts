@@ -513,4 +513,38 @@ describe("coding-tools WEB_FETCH extract bounds", () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain('"a":1');
   });
+
+  it("gracefully falls back to raw text on malformed JSON responses without throwing", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/malformed-json": new Response(
+        '{"error": unclosed json string',
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/malformed-json",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe('{"error": unclosed json string');
+  });
+
+  it("gracefully falls back to raw text on non-JSON text starting with brace", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/brace-text": new Response(
+        "{ plain text starting with curly brace",
+        {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/brace-text",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("{ plain text starting with curly brace");
+  });
 });

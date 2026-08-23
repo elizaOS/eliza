@@ -84,68 +84,69 @@ function getNativeMockState(): NativeMockState {
 
 const nativeClientMock = getNativeMockState();
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
-  const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient
-    implements MockNativeClient
-  {
-    opts: NativeOptions;
-    eventHandler?: NativeEventHandler;
-    start = vi.fn(async () => {
-      await getNativeMockState().startImplementation?.(this);
-    });
-    createSession = vi.fn(async (workdir: string, _claim?: unknown) =>
-      getNativeMockState().createSessionImplementation
-        ? await getNativeMockState().createSessionImplementation(this, workdir)
-        : {
-            sessionId: "protocol-session",
-            agentSessionId: "agent-session",
-          },
-    );
-    prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
-    cancel = vi.fn(async () => undefined);
-    closeSession = vi.fn(async () => undefined);
-    close = vi.fn(async () => undefined);
-    // Mirrors the real transport's auto-approve decision. Defaults to true to
-    // match the default `autonomous` preset (every op approved); individual
-    // tests override it to exercise the restrictive / cancel paths.
-    approvesPermissionRequest = vi.fn((_params: unknown) => true);
-
-    constructor(opts: NativeOptions) {
-      this.opts = opts;
-      this.eventHandler = opts.onEvent;
-      getNativeMockState().instances.push(this);
-    }
-
-    setEventHandler(handler: NativeEventHandler | undefined) {
-      this.eventHandler = handler;
-      this.opts.onEvent = handler;
-    }
-
-    setTimeoutMs(timeoutMs: number | undefined) {
-      this.opts.timeoutMs = timeoutMs;
-    }
-
-    configureClaimedSession(opts: NativeOptions) {
-      this.opts = { ...this.opts, ...opts };
-      this.eventHandler = opts.onEvent;
-    }
-
-    emit(event: AcpJsonRpcMessage, sessionId?: string) {
-      this.eventHandler?.(event, sessionId);
-    }
-  };
-  return {
-    NativeAcpClient: state.NativeAcpClient,
-    splitCommandLine(input: string) {
-      const parts = input.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
-      const [command = "", ...args] = parts.map((part) =>
-        part.replace(/^(['"])(.*)\1$/u, "$2"),
+vi.mock(
+  "../../src/services/acp-native-transport.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/acp-native-transport.js")
+      >();
+    const state = getNativeMockState();
+    state.NativeAcpClient = class MockNativeAcpClient
+      implements MockNativeClient
+    {
+      opts: NativeOptions;
+      eventHandler?: NativeEventHandler;
+      start = vi.fn(async () => {
+        await getNativeMockState().startImplementation?.(this);
+      });
+      createSession = vi.fn(async (workdir: string, _claim?: unknown) =>
+        getNativeMockState().createSessionImplementation
+          ? await getNativeMockState().createSessionImplementation(
+              this,
+              workdir,
+            )
+          : {
+              sessionId: "protocol-session",
+              agentSessionId: "agent-session",
+            },
       );
-      return { command, args };
-    },
-  };
-});
+      prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
+      cancel = vi.fn(async () => undefined);
+      closeSession = vi.fn(async () => undefined);
+      close = vi.fn(async () => undefined);
+      // Mirrors the real transport's auto-approve decision. Defaults to true to
+      // match the default `autonomous` preset (every op approved); individual
+      // tests override it to exercise the restrictive / cancel paths.
+      approvesPermissionRequest = vi.fn((_params: unknown) => true);
+
+      constructor(opts: NativeOptions) {
+        this.opts = opts;
+        this.eventHandler = opts.onEvent;
+        getNativeMockState().instances.push(this);
+      }
+
+      setEventHandler(handler: NativeEventHandler | undefined) {
+        this.eventHandler = handler;
+        this.opts.onEvent = handler;
+      }
+
+      setTimeoutMs(timeoutMs: number | undefined) {
+        this.opts.timeoutMs = timeoutMs;
+      }
+
+      configureClaimedSession(opts: NativeOptions) {
+        this.opts = { ...this.opts, ...opts };
+        this.eventHandler = opts.onEvent;
+      }
+
+      emit(event: AcpJsonRpcMessage, sessionId?: string) {
+        this.eventHandler?.(event, sessionId);
+      }
+    };
+    return { ...actual, NativeAcpClient: state.NativeAcpClient };
+  },
+);
 
 import { splitCommandLine } from "../../src/services/acp-native-transport.js";
 import {

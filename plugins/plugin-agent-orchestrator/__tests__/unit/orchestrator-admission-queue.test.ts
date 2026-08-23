@@ -66,43 +66,50 @@ function getNativeMockState(): NativeMockState {
 }
 
 // Stub only the subprocess leaf so each spawn deterministically reaches "ready".
-vi.mock("../../src/services/acp-native-transport.js", () => {
-  const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient
-    implements MockNativeClient
-  {
-    opts: NativeOptions;
-    eventHandler?: NativeEventHandler;
-    start = vi.fn(async () => {
-      await getNativeMockState().startImplementation?.(this);
-    });
-    createSession = vi.fn(async () => ({
-      sessionId: "protocol-session",
-      agentSessionId: "agent-session",
-    }));
-    prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
-    cancel = vi.fn(async () => undefined);
-    closeSession = vi.fn(async () => undefined);
-    close = vi.fn(async () => undefined);
-    approvesPermissionRequest = vi.fn((_params: unknown) => true);
-    constructor(opts: NativeOptions) {
-      this.opts = opts;
-      this.eventHandler = opts.onEvent;
-      getNativeMockState().instances.push(this);
-    }
-    setEventHandler(handler: NativeEventHandler | undefined) {
-      this.eventHandler = handler;
-      this.opts.onEvent = handler;
-    }
-    setTimeoutMs(timeoutMs: number | undefined) {
-      this.opts.timeoutMs = timeoutMs;
-    }
-    emit(event: AcpJsonRpcMessage, sessionId?: string) {
-      this.eventHandler?.(event, sessionId);
-    }
-  };
-  return { NativeAcpClient: state.NativeAcpClient };
-});
+vi.mock(
+  "../../src/services/acp-native-transport.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/acp-native-transport.js")
+      >();
+    const state = getNativeMockState();
+    state.NativeAcpClient = class MockNativeAcpClient
+      implements MockNativeClient
+    {
+      opts: NativeOptions;
+      eventHandler?: NativeEventHandler;
+      start = vi.fn(async () => {
+        await getNativeMockState().startImplementation?.(this);
+      });
+      createSession = vi.fn(async () => ({
+        sessionId: "protocol-session",
+        agentSessionId: "agent-session",
+      }));
+      prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
+      cancel = vi.fn(async () => undefined);
+      closeSession = vi.fn(async () => undefined);
+      close = vi.fn(async () => undefined);
+      approvesPermissionRequest = vi.fn((_params: unknown) => true);
+      constructor(opts: NativeOptions) {
+        this.opts = opts;
+        this.eventHandler = opts.onEvent;
+        getNativeMockState().instances.push(this);
+      }
+      setEventHandler(handler: NativeEventHandler | undefined) {
+        this.eventHandler = handler;
+        this.opts.onEvent = handler;
+      }
+      setTimeoutMs(timeoutMs: number | undefined) {
+        this.opts.timeoutMs = timeoutMs;
+      }
+      emit(event: AcpJsonRpcMessage, sessionId?: string) {
+        this.eventHandler?.(event, sessionId);
+      }
+    };
+    return { ...actual, NativeAcpClient: state.NativeAcpClient };
+  },
+);
 
 // git is unavailable in the test; make workspace-diff's promisified execFile
 // degrade instead of hanging every spawn.

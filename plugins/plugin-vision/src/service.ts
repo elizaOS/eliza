@@ -167,7 +167,15 @@ function normalizeDetectedObjectsForPrompt(
 ): DetectedObjectForPrompt[] {
   if (!objects || objects.length === 0) return [];
   return [...objects]
-    .sort((a, b) => b.confidence - a.confidence)
+    .sort((a, b) => {
+      const aConf = Number.isFinite(a.confidence)
+        ? a.confidence
+        : Number.NEGATIVE_INFINITY;
+      const bConf = Number.isFinite(b.confidence)
+        ? b.confidence
+        : Number.NEGATIVE_INFINITY;
+      return bConf - aConf;
+    })
     .map((obj) => ({
       type: obj.type,
       confidence: obj.confidence,

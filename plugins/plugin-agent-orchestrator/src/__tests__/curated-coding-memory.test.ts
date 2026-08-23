@@ -498,4 +498,33 @@ describe("curated coding memory", () => {
       await rm(workdir, { recursive: true, force: true });
     }
   });
+
+  it("ranks relevant notes deterministically by match score", async () => {
+    const workdir = await tempWorkspace();
+    try {
+      const service = new CuratedCodingMemoryService(memoryRuntime(workdir));
+      await service.harvestVerifiedTask(
+        doc({
+          taskId: "task-1",
+          workdir,
+          text: "Lesson: Always run verification gates before PR creation.",
+        }),
+      );
+      await service.harvestVerifiedTask(
+        doc({
+          taskId: "task-2",
+          workdir,
+          text: "Lesson: Run verification gates and check audit logs carefully.",
+        }),
+      );
+      const notes = await service.retrieveRelevant({
+        text: "verification gates PR creation",
+        repoKey: "elizaOS/eliza",
+      });
+      expect(notes.length).toBeGreaterThan(0);
+      expect(notes[0]?.text).toContain("verification gates before PR creation");
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
 });

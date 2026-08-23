@@ -13,6 +13,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { NlmsEchoCanceller } from "@elizaos/shared/voice/aec";
 import {
 	type OwnerObservation,
@@ -510,7 +511,7 @@ async function elevenLabsPcm(args: {
 	if (!response.ok) {
 		const body = await response.text().catch(() => "");
 		throw new Error(
-			`[voice:workbench --real] ElevenLabs ${response.status} for ${args.voiceId}: ${body.slice(0, 240)}`,
+			`[voice:workbench --real] ElevenLabs ${response.status} for ${args.voiceId}: ${truncateWellFormed(toWellFormedUnicode(body), 240)}`,
 		);
 	}
 	const pcm = pcm16ToFloat32(new Uint8Array(await response.arrayBuffer()));

@@ -30,6 +30,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -42,6 +43,13 @@ import {
   type BillingSnapshotV2View,
   useBillingSnapshotV2,
 } from "../data/billing-snapshot";
+import {
+  browserCardCheckoutIntentCoordinator,
+  type CardCheckoutBindResult,
+  CardCheckoutIntentCoordinationError,
+  type CardCheckoutIntentCoordinator,
+  type CardCheckoutIntentHandle,
+} from "../lib/card-checkout-intent";
 import { formatExactUsd } from "../lib/format-exact-usd";
 import type {
   BillingUser,
@@ -70,17 +78,7 @@ import { Button } from "../../../components/ui/button";
 
 interface BillingTabProps {
   user: BillingUser;
-  checkoutIntentStore?: CardCheckoutIntentStore;
-}
-
-export interface CardCheckoutIntent {
-  organizationId: string;
-  amount: number;
-  key: string;
-}
-
-export interface CardCheckoutIntentStore {
-  current: CardCheckoutIntent | null;
+  checkoutIntentCoordinator?: CardCheckoutIntentCoordinator;
 }
 
 const AMOUNT_LIMITS = {
@@ -92,6 +90,7 @@ type PaymentMethod = "card" | "crypto";
 
 const AMOUNT_HINT_ID = "purchase-amount-hint";
 const AMOUNT_ERROR_ID = "purchase-amount-error";
+const CARD_CHECKOUT_ERROR_ID = "card-checkout-error";
 
 function toSnapshotViewState(query: {
   data: BillingSnapshotV2View | undefined;
@@ -246,7 +245,10 @@ function getInvoiceStatusPresentation(status: string): {
   return { Icon: AlertCircle, className: "text-muted-strong" };
 }
 
-export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
+export function BillingTab({
+  user,
+  checkoutIntentCoordinator = browserCardCheckoutIntentCoordinator,
+}: BillingTabProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const billingSnapshot = useBillingSnapshotV2(user.organization_id);
@@ -256,26 +258,40 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
   const [purchaseAmount, setPurchaseAmount] = useState("");
 
-  // Idempotency intent for the card checkout (#24144): the server requires an
-  // Idempotency-Key (8-128 chars of [A-Za-z0-9._:-]) for non-hardware credit
-  // purchases and scopes durable checkout orders to (org, key). A UUID is
-  // generated only after validation, reused while the purchase intent (the
-  // amount) is unchanged so ambiguous/transient failures can replay safely,
-  // and cleared when the amount changes or a definitive client-side failure
-  // (plain 4xx) proves the server never accepted the intent. Deliberately a
-  // single-slot ref, NOT a per-amount map: editing A -> B -> A must not
-  // resurrect A's earlier key as a "same intent" replay.
-  const localCheckoutIntentStore = useRef<CardCheckoutIntent | null>(null);
-  const intentStore = checkoutIntentStore ?? localCheckoutIntentStore;
   // Tracks whether a submit has been attempted so an empty submission (which
   // never populates purchaseAmount) still marks the field invalid and renders
   // the adjacent inline error instead of only emitting a transient toast.
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+  const [cardCheckoutError, setCardCheckoutError] = useState<string | null>(
+    null,
+  );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [cryptoStatus, setCryptoStatus] = useState<CryptoStatusResponse | null>(
     null,
   );
+  const activeCheckoutPrincipalRef = useRef<{
+    organizationId: string;
+    initiatedByUserId: string;
+  } | null>(null);
+  const checkoutAttemptRef = useRef(0);
+
+  useLayoutEffect(() => {
+    const principal = {
+      organizationId: user.organization_id,
+      initiatedByUserId: user.id,
+    };
+    activeCheckoutPrincipalRef.current = principal;
+    setIsProcessingCheckout(false);
+    setCardCheckoutError(null);
+
+    return () => {
+      if (activeCheckoutPrincipalRef.current === principal) {
+        activeCheckoutPrincipalRef.current = null;
+      }
+      checkoutAttemptRef.current += 1;
+    };
+  }, [user.id, user.organization_id]);
 
   const fetchInvoices = useCallback(async () => {
     setLoadingInvoices(true);
@@ -286,6 +302,7 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
       );
       setInvoices(data.invoices ?? []);
     } catch (error) {
+      // error-policy:J4 Invoice transport failure becomes a visible error state.
       setInvoicesError(
         error instanceof Error
           ? error.message
@@ -301,6 +318,7 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
       const data = await api<CryptoStatusResponse>("/api/crypto/status");
       setCryptoStatus(data);
     } catch {
+      // error-policy:J4 Optional crypto discovery degrades to the card-only UI.
       // Crypto is optional; absence just hides the crypto payment path.
     }
   }, []);
@@ -311,6 +329,43 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
       void fetchCryptoStatus();
     });
   }, [fetchInvoices, fetchCryptoStatus]);
+
+  const describeCardCheckoutCoordinationFailure = (error: unknown) => {
+    if (
+      error instanceof CardCheckoutIntentCoordinationError &&
+      error.code === "CARD_CHECKOUT_COORDINATION_STALE_AMOUNT_CONFLICT"
+    ) {
+      return t("cloud.billingTab.checkoutIntentAmountConflict", {
+        defaultValue:
+          "A previous checkout for another amount still needs reconciliation. Retry that amount, or contact support before starting a different checkout.",
+      });
+    }
+
+    if (
+      error instanceof CardCheckoutIntentCoordinationError &&
+      error.code === "CARD_CHECKOUT_COORDINATION_SESSION_MISMATCH"
+    ) {
+      return t("cloud.billingTab.checkoutSessionConflict", {
+        defaultValue:
+          "Checkout returned conflicting sessions and was stopped. Do not retry payment; contact support.",
+      });
+    }
+
+    if (
+      error instanceof CardCheckoutIntentCoordinationError &&
+      error.code === "CARD_CHECKOUT_COORDINATION_INVALID_INPUT"
+    ) {
+      return t("cloud.billingTab.checkoutCoordinationInvalid", {
+        defaultValue:
+          "Checkout returned invalid coordination data and was stopped. Try again; if this continues, contact support.",
+      });
+    }
+
+    return t("cloud.billingTab.checkoutCoordinationUnavailable", {
+      defaultValue:
+        "Card checkout could not be coordinated safely. Try again; if this continues, update your browser or Android System WebView, or use another supported browser.",
+    });
+  };
 
   const handleBuyCredits = async () => {
     const amount = parseFloat(purchaseAmount);
@@ -376,6 +431,7 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
         );
         window.location.href = data.payLink;
       } catch (error) {
+        // error-policy:J4 Crypto checkout failure is surfaced through the UI toast boundary.
         toast.error(
           error instanceof ApiError
             ? error.message
@@ -388,33 +444,90 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
       return;
     }
 
-    // Card checkout only. The crypto branches above have returned by here, so
-    // the idempotency intent stays scoped to the route that requires it
-    // (/api/stripe/create-checkout-session) and never touches crypto payments.
-    const intent = intentStore.current;
-    const idempotencyKey =
-      intent &&
-      intent.organizationId === user.organization_id &&
-      intent.amount === amount
-        ? intent.key
-        : crypto.randomUUID();
-    const requestIntent: CardCheckoutIntent = {
+    // Card checkout only. The server uses exact whole cents in its request
+    // digest, so reject anything it would reject before reserving an intent.
+    const amountCents = amount * 100;
+    if (!Number.isSafeInteger(amountCents)) {
+      toast.error(
+        t("cloud.billingTab.exactCentAmount", {
+          defaultValue: "Amount must use exact whole cents",
+        }),
+      );
+      setIsProcessingCheckout(false);
+      return;
+    }
+
+    setCardCheckoutError(null);
+
+    const checkoutAttempt = checkoutAttemptRef.current + 1;
+    checkoutAttemptRef.current = checkoutAttempt;
+    const checkoutPrincipal = {
       organizationId: user.organization_id,
-      amount,
-      key: idempotencyKey,
+      initiatedByUserId: user.id,
     };
-    intentStore.current = requestIntent;
+    const isCurrentCheckoutAttempt = () => {
+      const activePrincipal = activeCheckoutPrincipalRef.current;
+      return (
+        checkoutAttemptRef.current === checkoutAttempt &&
+        activePrincipal?.organizationId === checkoutPrincipal.organizationId &&
+        activePrincipal.initiatedByUserId ===
+          checkoutPrincipal.initiatedByUserId
+      );
+    };
+
+    // Membership refreshes deliberately unmount this surface. Never let a
+    // response captured under an earlier user/org bind or navigate after that
+    // authority has disappeared, and never let an older submit win locally.
+    if (!isCurrentCheckoutAttempt()) {
+      setIsProcessingCheckout(false);
+      return;
+    }
+
+    // The durable coordinator owns one intent slot per organization and
+    // serializes every mutation across tabs. It fails closed before the POST
+    // if storage or Web Locks cannot provide that guarantee.
+    let requestIntent: CardCheckoutIntentHandle;
+    try {
+      requestIntent = await checkoutIntentCoordinator.reserve({
+        organizationId: checkoutPrincipal.organizationId,
+        initiatedByUserId: checkoutPrincipal.initiatedByUserId,
+        amountCents,
+      });
+    } catch (error) {
+      // error-policy:J4 Coordination failure becomes a persistent checkout alert.
+      if (!isCurrentCheckoutAttempt()) return;
+      setCardCheckoutError(describeCardCheckoutCoordinationFailure(error));
+      setIsProcessingCheckout(false);
+      return;
+    }
+
+    if (!isCurrentCheckoutAttempt()) return;
 
     try {
-      const data = await api<{ url?: string }>(
+      const data = await api<{ sessionId?: unknown; url?: unknown }>(
         "/api/stripe/create-checkout-session",
         {
           method: "POST",
-          json: { amount, returnUrl: "settings" },
-          headers: { "Idempotency-Key": idempotencyKey },
+          json: {
+            amount,
+            expectedOrganizationId: checkoutPrincipal.organizationId,
+            expectedUserId: checkoutPrincipal.initiatedByUserId,
+            returnUrl: "settings",
+          },
+          headers: { "Idempotency-Key": requestIntent.idempotencyKey },
         },
       );
-      if (!data.url) {
+      if (!isCurrentCheckoutAttempt()) return;
+      if (typeof data.sessionId !== "string" || data.sessionId.length === 0) {
+        toast.error(
+          t("cloud.billingTab.noCheckoutSession", {
+            defaultValue: "No checkout session returned",
+          }),
+        );
+        setIsProcessingCheckout(false);
+        return;
+      }
+      if (typeof data.url !== "string" || data.url.length === 0) {
         toast.error(
           t("cloud.billingTab.noCheckoutUrl", {
             defaultValue: "No checkout URL returned",
@@ -434,35 +547,73 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
         setIsProcessingCheckout(false);
         return;
       }
-      if (intentStore.current?.key === requestIntent.key) {
-        intentStore.current = null;
+
+      let binding: CardCheckoutBindResult;
+      try {
+        if (!isCurrentCheckoutAttempt()) return;
+        binding = await checkoutIntentCoordinator.bindSession({
+          organizationId: requestIntent.organizationId,
+          initiatedByUserId: requestIntent.initiatedByUserId,
+          amountCents: requestIntent.amountCents,
+          idempotencyKey: requestIntent.idempotencyKey,
+          sessionId: data.sessionId,
+        });
+      } catch (error) {
+        // error-policy:J4 Binding failure becomes a persistent checkout alert.
+        if (!isCurrentCheckoutAttempt()) return;
+        setCardCheckoutError(describeCardCheckoutCoordinationFailure(error));
+        setIsProcessingCheckout(false);
+        return;
       }
+
+      if (!isCurrentCheckoutAttempt()) return;
+
+      if (binding.status === "superseded") {
+        setCardCheckoutError(
+          t("cloud.billingTab.checkoutIntentSuperseded", {
+            defaultValue:
+              "This checkout was superseded or already completed. Check the other tab before trying again.",
+          }),
+        );
+        setIsProcessingCheckout(false);
+        return;
+      }
+
+      // Keep the bound intent until this exact session verifies with
+      // success:true. Redirects, cancellations, and back navigation are not
+      // authoritative payment outcomes.
+      if (!isCurrentCheckoutAttempt()) return;
       window.location.href = data.url;
     } catch (error) {
-      // Preserve the idempotency key across ambiguous/transient outcomes
-      // (network errors, 408/429, 5xx): the server may have created the
-      // durable checkout order before the response was lost, and replaying
-      // the same key reconciles to it instead of double-ordering. Clear it
-      // only on definitive client-side failures (plain 4xx except 408/429):
-      // those prove the server rejected the request before creating anything.
+      // error-policy:J4 Checkout transport failures become visible retry guidance.
+      if (!isCurrentCheckoutAttempt()) return;
+      // Preserve the idempotency key across ambiguous outcomes: the server may
+      // have created the durable order before the response was lost. Only an
+      // exact 400 is definitive for this route; auth, conflict, throttling,
+      // server, and transport failures all keep the key for safe replay.
       // Known edge: if the HTTP status was received but the response body
       // stream itself fails mid-read, the transport error escapes as a
       // non-ApiError — including after a 4xx. That case conservatively
       // PRESERVES the key: we cannot prove the server's 4xx semantics were
       // for this request, so treating it as ambiguous is the safe direction
       // (worst case, the retry hits the server's own key/digest conflict).
-      if (
-        error instanceof ApiError &&
-        error.status >= 400 &&
-        error.status < 500 &&
-        error.status !== 408 &&
-        error.status !== 429 &&
-        intentStore.current?.organizationId === requestIntent.organizationId &&
-        intentStore.current.amount === requestIntent.amount &&
-        intentStore.current.key === requestIntent.key
-      ) {
-        intentStore.current = null;
+      if (error instanceof ApiError && error.status === 400) {
+        try {
+          await checkoutIntentCoordinator.clearDefinitiveRejection({
+            organizationId: requestIntent.organizationId,
+            initiatedByUserId: requestIntent.initiatedByUserId,
+            amountCents: requestIntent.amountCents,
+            idempotencyKey: requestIntent.idempotencyKey,
+          });
+        } catch (coordinationError) {
+          // error-policy:J4 Failed exact cleanup becomes a persistent coordination alert.
+          if (!isCurrentCheckoutAttempt()) return;
+          setCardCheckoutError(
+            describeCardCheckoutCoordinationFailure(coordinationError),
+          );
+        }
       }
+      if (!isCurrentCheckoutAttempt()) return;
       toast.error(
         error instanceof ApiError
           ? error.message
@@ -492,10 +643,13 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
   const amountValue = Number.isNaN(parsedAmountValue)
     ? null
     : parsedAmountValue;
+  const amountUsesExactCents =
+    amountValue !== null && Number.isSafeInteger(amountValue * 100);
   const isValidAmount =
     amountValue !== null &&
     amountValue >= AMOUNT_LIMITS.MIN &&
-    amountValue <= AMOUNT_LIMITS.MAX;
+    amountValue <= AMOUNT_LIMITS.MAX &&
+    amountUsesExactCents;
   const showAmountError =
     (purchaseAmount.length > 0 || submitAttempted) && !isValidAmount;
   const amountDescribedBy = showAmountError
@@ -581,7 +735,11 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
                     <Button
                       variant="ghost"
                       type="button"
-                      onClick={() => setPaymentMethod("card")}
+                      disabled={isProcessingCheckout}
+                      onClick={() => {
+                        setPaymentMethod("card");
+                        setCardCheckoutError(null);
+                      }}
                       aria-pressed={paymentMethod === "card"}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "card"
@@ -595,7 +753,11 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
                     <Button
                       variant="ghost"
                       type="button"
-                      onClick={() => setPaymentMethod("crypto")}
+                      disabled={isProcessingCheckout}
+                      onClick={() => {
+                        setPaymentMethod("crypto");
+                        setCardCheckoutError(null);
+                      }}
                       aria-pressed={paymentMethod === "crypto"}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "crypto"
@@ -635,14 +797,11 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
                         value={purchaseAmount}
                         onChange={(e) => {
                           setPurchaseAmount(e.target.value);
+                          setCardCheckoutError(null);
                           if (submitAttempted) setSubmitAttempted(false);
-                          // Note: the idempotency intent is intentionally NOT
-                          // cleared on edit here. Intermediate keystrokes
-                          // ("2" while retyping "25") would clear a still-
-                          // valid intent prematurely; the authoritative
-                          // rotation check is at submit time, where the full
-                          // parsed amount is compared against the recorded
-                          // intent (#24144).
+                          // The durable intent is intentionally not cleared on
+                          // each keystroke. The coordinator rotates atomically
+                          // only when a complete different amount is submitted.
                         }}
                         className="pl-7 bg-surface border border-border text-txt h-11 font-mono tabular-nums"
                         placeholder="0.00"
@@ -668,10 +827,16 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
                                 min: AMOUNT_LIMITS.MIN,
                                 defaultValue: "Minimum amount is $" + "{{min}}",
                               })
-                            : t("cloud.billingTab.maxAmount", {
-                                max: AMOUNT_LIMITS.MAX,
-                                defaultValue: "Maximum amount is $" + "{{max}}",
-                              })}
+                            : amountValue > AMOUNT_LIMITS.MAX
+                              ? t("cloud.billingTab.maxAmount", {
+                                  max: AMOUNT_LIMITS.MAX,
+                                  defaultValue:
+                                    "Maximum amount is $" + "{{max}}",
+                                })
+                              : t("cloud.billingTab.exactCentAmount", {
+                                  defaultValue:
+                                    "Amount must use exact whole cents",
+                                })}
                         </span>
                       </div>
                     )}
@@ -707,6 +872,21 @@ export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
                     </BrandButton>
                   )}
                 </form>
+
+                {cardCheckoutError ? (
+                  <div
+                    id={CARD_CHECKOUT_ERROR_ID}
+                    role="alert"
+                    aria-live="assertive"
+                    className="flex max-w-2xl items-start gap-2 border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300"
+                  >
+                    <AlertCircle
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono">{cardCheckoutError}</span>
+                  </div>
+                ) : null}
 
                 {isValidAmount && purchaseAmount && amountValue !== null && (
                   <div className="flex items-center gap-2 text-sm text-green-400">

@@ -973,4 +973,41 @@ describe("routeAutonomyTextToUser", () => {
     expect(createMemory).toHaveBeenCalledTimes(1);
     expect(broadcastWs).toHaveBeenCalledTimes(2);
   });
+
+  it("selects the newest conversation even when a conversation has an invalid updatedAt date string", async () => {
+    const createMemory = vi.fn();
+    const broadcastWs = vi.fn();
+    const state = {
+      runtime: {
+        agentId: "00000000-0000-0000-0000-000000000001",
+        createMemory,
+      },
+      conversations: new Map([
+        [
+          "conv-invalid",
+          {
+            id: "conv-invalid",
+            roomId: "00000000-0000-0000-0000-000000000002",
+            updatedAt: "not-a-valid-date",
+          },
+        ],
+        [
+          "conv-valid",
+          {
+            id: "conv-valid",
+            roomId: "00000000-0000-0000-0000-000000000003",
+            updatedAt: "2026-05-07T00:00:00.000Z",
+          },
+        ],
+      ]),
+      broadcastWs,
+    } as never;
+
+    await routeAutonomyTextToUser(state, "autonomy update", "autonomy");
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-valid",
+      }),
+    );
+  });
 });

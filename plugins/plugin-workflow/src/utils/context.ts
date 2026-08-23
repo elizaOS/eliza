@@ -4,11 +4,11 @@
  * points at a shared workflow backend that is not the embedded store.
  */
 import {
+  deterministicOwnerEntityId,
   type IAgentRuntime,
   type Memory,
   resolveCanonicalOwnerId,
   type State,
-  stringToUuid,
   type UUID,
 } from '@elizaos/core';
 
@@ -24,8 +24,9 @@ export function getLocalOwnerEntityId(runtime: IAgentRuntime): string {
     return canonicalOwnerId.trim();
   }
 
-  const agentName = runtime.character?.name?.trim() || 'Eliza';
-  return stringToUuid(`${agentName}-admin-entity`);
+  // Unconfigured rigs: core's agent-id seed, the same fallback client chat
+  // resolves, so workflow ownership tags match the chat owner.
+  return deterministicOwnerEntityId(runtime.agentId);
 }
 
 export function buildConversationContext(message: Memory, state: State | undefined): string {
@@ -45,8 +46,8 @@ export async function getUserTagName(runtime: IAgentRuntime, userId: string): Pr
   const shortId = userId.replace(/-/g, '').slice(0, 8);
   const agentScopeId = runtime.agentId.replace(/-/g, '');
   const name = entity?.names?.[0];
-  // ElizaOS default name is "User " + UUID — not useful for a tag
-  const isRealName = name && !name.includes(userId);
+  const isDefaultName = name === `User ${userId}` || name === `User${userId}`;
+  const isRealName = name && !isDefaultName;
   const userTag = isRealName ? `${name}_${shortId}` : `user_${shortId}`;
   return `${userTag}_agent_${agentScopeId}`;
 }

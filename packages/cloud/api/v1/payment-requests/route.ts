@@ -21,6 +21,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { toPaymentRequestDto } from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -142,7 +143,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
 
     return c.json({
       success: true,
-      paymentRequest: result.paymentRequest,
+      paymentRequest: toPaymentRequestDto(result.paymentRequest),
       hostedUrl: result.hostedUrl,
     });
   } catch (error) {
@@ -185,7 +186,10 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       offset: parsed.data.offset,
     });
 
-    return c.json({ success: true, paymentRequests });
+    return c.json({
+      success: true,
+      paymentRequests: paymentRequests.map(toPaymentRequestDto),
+    });
   } catch (error) {
     logger.error("[PaymentRequests API] Failed to list payment requests", {
       error,

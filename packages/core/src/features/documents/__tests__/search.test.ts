@@ -133,8 +133,12 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 	const fragments = opts.fragments ?? [];
 	const agentId = "agent-1" as UUID;
 	const queryDocumentFragments = vi.fn(
-		async (params: { requesterEntityId: UUID }) =>
-			fragments.filter((fragment) => {
+		async (params: {
+			requesterEntityId: UUID;
+			limit: number;
+			offset?: number;
+		}) => {
+			const visible = fragments.filter((fragment) => {
 				const metadata = fragment.metadata as
 					| Record<string, unknown>
 					| undefined;
@@ -142,7 +146,10 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 					metadata?.scope !== "user-private" ||
 					metadata.scopedToEntityId === params.requesterEntityId
 				);
-			}),
+			});
+			const offset = params.offset ?? 0;
+			return visible.slice(offset, offset + params.limit);
+		},
 	);
 
 	return {
@@ -234,7 +241,7 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
 			expect(results).toHaveLength(1);
 			expect(results[0].id).toBe("frag-1");
 		});
@@ -251,6 +258,27 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 			expect(results).toHaveLength(0);
+		});
+
+		it("returns every vector match beyond the former top-20 window", async () => {
+			const fragments = Array.from({ length: 21 }, (_, index) =>
+				makeFragment(
+					`frag-${index}`,
+					`semantic result ${index}`,
+					1 - index / 100,
+				),
+			);
+			const rt = buildRuntime({ hasEmbedding: true, fragments });
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("semantic result"),
+				undefined,
+				"vector",
+			);
+
+			expect(results).toHaveLength(21);
+			expect(results.map((result) => result.id)).toContain("frag-20");
 		});
 	});
 
@@ -270,7 +298,7 @@ describe("DocumentService.searchDocuments", () => {
 				"keyword",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
 
 			// frag-a should score highest (both "quantum" and "computing" match)
 			expect(results[0].id).toBe("frag-a");
@@ -291,6 +319,72 @@ describe("DocumentService.searchDocuments", () => {
 				"keyword",
 			);
 			expect(results).toHaveLength(0);
+		});
+
+		it("scores every authorized fragment beyond the former 1000-row window", async () => {
+			const fragments = Array.from({ length: 1_001 }, (_, index) =>
+				makeFragment(`frag-${index}`, `needle document ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("needle"),
+				undefined,
+				"keyword",
+			);
+
+			expect(results).toHaveLength(1_001);
+			expect(results.map((result) => result.id)).toContain("frag-1000");
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(6);
+		});
+
+		it("rejects a stable adapter-imposed page cap", async () => {
+			const fragments = Array.from({ length: 11 }, (_, index) =>
+				makeFragment(`frag-${index}`, `needle document ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			rt.adapter.queryDocumentFragments.mockImplementation(
+				async (params: { offset?: number }) => {
+					const offset = params.offset ?? 0;
+					return fragments.slice(offset, offset + 10);
+				},
+			);
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
+			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_SOURCE_INCOMPLETE" });
+		});
+
+		it("rejects pagination that repeats the same full page", async () => {
+			const fragments = Array.from({ length: 1_000 }, (_, index) =>
+				makeFragment(`frag-${index}`, `needle ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			rt.adapter.queryDocumentFragments.mockImplementation(
+				async () => fragments,
+			);
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
+			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_PAGINATION_STALLED" });
+		});
+
+		it("rejects a fragment source that changes between traversals", async () => {
+			const rt = buildRuntime({ hasEmbedding: false });
+			let read = 0;
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				if ((params.offset ?? 0) > 0) return [];
+				read += 1;
+				return [makeFragment(`frag-${read}`, "needle")];
+			});
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(makeMessage("needle"), undefined, "keyword"),
+			).rejects.toMatchObject({ code: "DOCUMENT_SEARCH_SOURCE_UNSTABLE" });
 		});
 
 		it("filters user-private fragments to the scoped user", async () => {
@@ -344,7 +438,7 @@ describe("DocumentService.searchDocuments", () => {
 				"hybrid",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(8);
 			expect(results).toHaveLength(2);
 
 			// frag-b should be ranked higher because BM25 breaks the vector tie

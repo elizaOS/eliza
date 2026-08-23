@@ -73,4 +73,33 @@ describe("parseX402Response", () => {
     const requirements = await parseX402Response(response);
     expect(requirements).toBeNull();
   });
+
+  it("returns null on plaintext 402 error bodies without throwing SyntaxError", async () => {
+    const response = new Response("Payment Required", {
+      status: 402,
+      headers: { "Content-Type": "text/plain" },
+    });
+    const requirements = await parseX402Response(response);
+    expect(requirements).toBeNull();
+  });
+
+  it("returns null on HTML 402 gateway error pages without throwing SyntaxError", async () => {
+    const response = new Response("<html><body>402 Payment Required</body></html>", {
+      status: 402,
+      headers: { "Content-Type": "text/html" },
+    });
+    const requirements = await parseX402Response(response);
+    expect(requirements).toBeNull();
+  });
+
+  it("returns null on malformed www-authenticate x402 headers without throwing", async () => {
+    const response = new Response("Payment Required", {
+      status: 402,
+      headers: {
+        "WWW-Authenticate": "x402 { invalid json",
+      },
+    });
+    const requirements = await parseX402Response(response);
+    expect(requirements).toBeNull();
+  });
 });

@@ -201,7 +201,11 @@ export class AppAnalyticsService {
     requests: AppRequest[],
     requestedFunnelSteps?: string[],
   ): AppSessionAnalytics {
-    const ordered = requests
+    const validRequests = requests.filter(
+      (request) =>
+        request.created_at instanceof Date && Number.isFinite(request.created_at.getTime()),
+    );
+    const ordered = validRequests
       .slice()
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
     const sessions = new Map<

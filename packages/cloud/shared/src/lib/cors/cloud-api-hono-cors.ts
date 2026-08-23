@@ -54,6 +54,10 @@ const PUBLIC_TOKEN_API_PATH_PREFIXES = [
   "/api/v1/voice/",
   "/api/v1/models/",
 ];
+const READ_ONLY_PUBLIC_TOKEN_API_PATHS = new Set<string>([
+  "/api/v1/subscriptions/plans",
+  "/api/v1/subscriptions/plans/",
+]);
 const PUBLIC_TOKEN_API_PATHS = new Set<string>([
   "/api/auth/pair",
   "/api/v1/app-credits",
@@ -64,7 +68,7 @@ const PUBLIC_TOKEN_API_PATHS = new Set<string>([
   "/api/v1/generate-video",
   "/api/v1/models",
   "/api/v1/responses",
-  "/api/v1/subscriptions/plans",
+  ...READ_ONLY_PUBLIC_TOKEN_API_PATHS,
   "/api/v1/voice",
   "/api/v1/voice-models",
   "/api/v1/voice-models/catalog",
@@ -75,6 +79,21 @@ export function isPublicTokenApiPath(pathname: string): boolean {
     PUBLIC_TOKEN_API_PATHS.has(pathname) ||
     PUBLIC_TOKEN_API_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
   );
+}
+
+function isReadOnlyPublicTokenCorsRequest(
+  pathname: string,
+  method: string,
+  requestedMethod: string | undefined,
+): boolean {
+  if (!READ_ONLY_PUBLIC_TOKEN_API_PATHS.has(pathname)) return false;
+
+  const normalizedMethod = method.toUpperCase();
+  if (normalizedMethod === "GET" || normalizedMethod === "HEAD") return true;
+  if (normalizedMethod !== "OPTIONS") return false;
+
+  const normalizedRequestedMethod = requestedMethod?.trim().toUpperCase();
+  return normalizedRequestedMethod === "GET" || normalizedRequestedMethod === "HEAD";
 }
 
 // First-party: reflect the specific origin + allow credentials (cookie auth).
@@ -107,6 +126,17 @@ const publicCors = cors({
   maxAge: 86400,
 });
 
+// The subscription plan catalog is public but read-only. Keep its wildcard
+// policy narrower than the general token API so a successful catalog
+// preflight cannot advertise or prime mutable methods in the browser cache.
+const readOnlyPublicCors = cors({
+  origin: "*",
+  credentials: false,
+  allowMethods: ["GET", "HEAD", "OPTIONS"],
+  allowHeaders: [...CORS_ALLOW_HEADER_NAMES],
+  maxAge: 86400,
+});
+
 function appendExposedHeaders(headers: Headers): void {
   const exposed = new Map<string, string>();
   for (const name of (headers.get("Access-Control-Expose-Headers") ?? "").split(",")) {
@@ -124,10 +154,23 @@ export const corsMiddleware: MiddlewareHandler = (c, next) => {
   let selectedCors: MiddlewareHandler;
   if (origin && isFirstPartyOrigin(origin)) {
     selectedCors = firstPartyCors;
-  } else if (!origin || isPublicTokenApiPath(new URL(c.req.url).pathname)) {
+  } else if (!origin) {
     selectedCors = publicCors;
   } else {
-    selectedCors = firstPartyCors;
+    const pathname = new URL(c.req.url).pathname;
+    if (
+      isReadOnlyPublicTokenCorsRequest(
+        pathname,
+        c.req.method,
+        c.req.header("access-control-request-method"),
+      )
+    ) {
+      selectedCors = readOnlyPublicCors;
+    } else if (isPublicTokenApiPath(pathname) && !READ_ONLY_PUBLIC_TOKEN_API_PATHS.has(pathname)) {
+      selectedCors = publicCors;
+    } else {
+      selectedCors = firstPartyCors;
+    }
   }
   return selectedCors(c, async () => {
     await next();

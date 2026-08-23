@@ -885,9 +885,15 @@ function getTodayNonAllDayEvents(
         startParts.day === todayParts.day
       );
     })
-    .sort(
-      (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
-    );
+    .sort((a, b) => {
+      const aTime = Number.isFinite(new Date(a.startAt).getTime())
+        ? new Date(a.startAt).getTime()
+        : 0;
+      const bTime = Number.isFinite(new Date(b.startAt).getTime())
+        ? new Date(b.startAt).getTime()
+        : 0;
+      return aTime - bTime;
+    });
 }
 
 function getTodayActionableEvents(

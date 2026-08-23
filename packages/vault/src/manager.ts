@@ -365,7 +365,11 @@ class ManagerImpl implements SecretsManager {
         title: e.title,
         updatedAt: e.updatedAt,
       }))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .sort((a, b) => {
+        const aTime = Number.isFinite(a.updatedAt) ? a.updatedAt : 0;
+        const bTime = Number.isFinite(b.updatedAt) ? b.updatedAt : 0;
+        return bTime - aTime;
+      });
 
     // In-house first (sort by domain asc, username asc), then externals
     // by updatedAt desc — matches the spec.

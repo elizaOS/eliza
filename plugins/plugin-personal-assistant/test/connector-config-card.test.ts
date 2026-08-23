@@ -62,7 +62,6 @@ vi.mock("../src/lifeops/service.js", () => {
     LifeOpsService: class LifeOpsService {
       getDiscordConnectorStatus = vi.fn(async () => status());
       getTelegramConnectorStatus = vi.fn(async () => status());
-      getSignalConnectorStatus = vi.fn(async () => status());
       getIMessageConnectorStatus = vi.fn(async () => status());
       getWhatsAppConnectorStatus = vi.fn(async () => status());
       startGoogleConnector = mocks.startGoogleConnector;

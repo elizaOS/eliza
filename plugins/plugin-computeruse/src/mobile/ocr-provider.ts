@@ -77,7 +77,11 @@ export function unregisterOcrProvider(name: string): void {
 }
 
 export function listOcrProviders(): readonly OcrProvider[] {
-  return [...REGISTRY.values()].sort((a, b) => b.priority - a.priority);
+  return [...REGISTRY.values()].sort((a, b) => {
+    const aPriority = Number.isFinite(a.priority) ? a.priority : 0;
+    const bPriority = Number.isFinite(b.priority) ? b.priority : 0;
+    return bPriority - aPriority;
+  });
 }
 
 /**

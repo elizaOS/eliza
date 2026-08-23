@@ -162,3 +162,78 @@ describe("MemoryService extraction interval configuration", () => {
 		).resolves.toBe(true);
 	});
 });
+
+describe("MemoryService searchLongTermMemories similarity comparator", () => {
+	it("maintains strict total ordering when similarities evaluate to non-finite or zero values", async () => {
+		const candidates = [
+			{
+				id: "00000000-0000-0000-0000-000000000001" as UUID,
+				agentId: ENTITY_ID,
+				entityId: ENTITY_ID,
+				type: "fact" as const,
+				content: "first",
+				embedding: [0.8, 0.6],
+				createdAt: 1000,
+				updatedAt: 1000,
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000002" as UUID,
+				agentId: ENTITY_ID,
+				entityId: ENTITY_ID,
+				type: "fact" as const,
+				content: "second",
+				embedding: [0.6, 0.8],
+				createdAt: 2000,
+				updatedAt: 2000,
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000003" as UUID,
+				agentId: ENTITY_ID,
+				entityId: ENTITY_ID,
+				type: "fact" as const,
+				content: "third",
+				embedding: [0.0, 0.0], // zero-norm vector
+				createdAt: 3000,
+				updatedAt: 3000,
+			},
+		];
+
+		const mockStorage = {
+			storeLongTermMemory: vi.fn(),
+			storeSessionSummary: vi.fn(),
+			getLongTermMemories: vi.fn(async () => candidates),
+		};
+
+		const runtime = createMockRuntime({
+			getSetting: vi.fn((key: string) =>
+				key === "MEMORY_LONG_TERM_VECTOR_SEARCH_ENABLED" ||
+				key === "MEMORY_VECTOR_SEARCH_ENABLED"
+					? "true"
+					: undefined,
+			),
+			hasService: (name: string) => name === "memoryStorage",
+			getService: (name: string) =>
+				name === "memoryStorage" ? mockStorage : null,
+			getServiceLoadPromise: vi.fn(async () => mockStorage),
+		});
+		const service = new MemoryService(runtime);
+		await service.initialize(runtime);
+		(
+			service as unknown as {
+				memoryConfig: { longTermVectorSearchEnabled: boolean };
+			}
+		).memoryConfig.longTermVectorSearchEnabled = true;
+
+		const results = await service.searchLongTermMemories(
+			ENTITY_ID,
+			[0.8, 0.6],
+			10,
+			0,
+		);
+
+		expect(results).toHaveLength(3);
+		expect(results[0]?.id).toBe("00000000-0000-0000-0000-000000000001");
+		expect(results[1]?.id).toBe("00000000-0000-0000-0000-000000000002");
+		expect(results[2]?.id).toBe("00000000-0000-0000-0000-000000000003");
+	});
+});

@@ -65,7 +65,10 @@ export function effectiveBand(
 ): number {
   const base = priorityBand(entry.priorityAtEnqueue);
   if (agingMs <= 0) return base;
-  const waitMs = Math.max(0, now - Date.parse(entry.enqueuedAt));
+  const enqueuedMs = Date.parse(entry.enqueuedAt);
+  const waitMs = Number.isFinite(enqueuedMs)
+    ? Math.max(0, now - enqueuedMs)
+    : 0;
   return base + Math.floor(waitMs / agingMs);
 }
 
@@ -88,10 +91,21 @@ export function orderQueue(
   agingMs: number,
 ): QueueEntry[] {
   return [...entries].sort((a, b) => {
-    const bandDelta =
-      effectiveBand(b, now, agingMs) - effectiveBand(a, now, agingMs);
+    const aBand = Number.isFinite(effectiveBand(a, now, agingMs))
+      ? effectiveBand(a, now, agingMs)
+      : 0;
+    const bBand = Number.isFinite(effectiveBand(b, now, agingMs))
+      ? effectiveBand(b, now, agingMs)
+      : 0;
+    const bandDelta = bBand - aBand;
     if (bandDelta !== 0) return bandDelta;
-    const timeDelta = Date.parse(a.enqueuedAt) - Date.parse(b.enqueuedAt);
+    const aTime = Number.isFinite(Date.parse(a.enqueuedAt))
+      ? Date.parse(a.enqueuedAt)
+      : 0;
+    const bTime = Number.isFinite(Date.parse(b.enqueuedAt))
+      ? Date.parse(b.enqueuedAt)
+      : 0;
+    const timeDelta = aTime - bTime;
     if (timeDelta !== 0) return timeDelta;
     return a.taskId.localeCompare(b.taskId);
   });

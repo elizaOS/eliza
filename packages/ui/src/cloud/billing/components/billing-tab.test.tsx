@@ -23,6 +23,45 @@ const snapshotRefetchMock = vi.hoisted(() => vi.fn());
 const snapshotQuery = vi.hoisted(() => ({
   current: null as unknown,
 }));
+const checkoutCoordinatorMock = vi.hoisted(() => ({
+  bindSession: vi.fn(
+    async (input: {
+      amountCents: number;
+      idempotencyKey: string;
+      initiatedByUserId: string;
+      organizationId: string;
+      sessionId: string;
+    }) => ({
+      status: "bound" as const,
+      intent: {
+        ...input,
+        createdAt: 1,
+        staleAt: 2,
+      },
+    }),
+  ),
+  clearDefinitiveRejection: vi.fn(async () => ({ status: "cleared" as const })),
+  clearVerifiedSession: vi.fn(async () => ({ status: "not-found" as const })),
+  reserve: vi.fn(
+    async ({
+      amountCents,
+      initiatedByUserId,
+      organizationId,
+    }: {
+      amountCents: number;
+      initiatedByUserId: string;
+      organizationId: string;
+    }) => ({
+      amountCents,
+      initiatedByUserId,
+      organizationId,
+      idempotencyKey: "test-checkout-key-0001",
+      createdAt: 1,
+      staleAt: 2,
+      sessionId: null,
+    }),
+  ),
+}));
 
 vi.mock("../../lib/api-client", () => ({
   api: apiMock,
@@ -59,6 +98,15 @@ vi.mock("../data/billing-snapshot", () => ({
   useBillingSnapshotV2: () => snapshotQuery.current,
 }));
 
+vi.mock("../lib/card-checkout-intent", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../lib/card-checkout-intent")>();
+  return {
+    ...actual,
+    browserCardCheckoutIntentCoordinator: checkoutCoordinatorMock,
+  };
+});
+
 // The sibling auto-top-up card calls the billing settings API on mount; stub it
 // so the shared api mock only sees this tab's own requests.
 vi.mock("./auto-top-up-card", () => ({
@@ -81,6 +129,7 @@ import type { BillingUser, InvoiceDisplay } from "../types";
 import { BillingTab } from "./billing-tab";
 
 const user: BillingUser = {
+  id: "user-1",
   organization_id: "org-1",
   wallet_address: null,
 };
@@ -267,7 +316,12 @@ describe("BillingTab buy-credits accessibility", () => {
         headers?: Record<string, string>;
       };
       expect(init.method).toBe("POST");
-      expect(init.json).toEqual({ amount: 25, returnUrl: "settings" });
+      expect(init.json).toEqual({
+        amount: 25,
+        expectedOrganizationId: "org-1",
+        expectedUserId: "user-1",
+        returnUrl: "settings",
+      });
       // The idempotency key is present and satisfies the server contract
       // (#24144); Enter and click submissions share the same handler.
       expect(init.headers?.["Idempotency-Key"]).toMatch(
@@ -299,7 +353,10 @@ describe("BillingTab navigation guards", () => {
         return Promise.resolve({ enabled: false });
       }
       if (url.startsWith("/api/stripe/create-checkout-session")) {
-        return Promise.resolve({ url: "javascript:alert(1)" });
+        return Promise.resolve({
+          sessionId: "cs_test_invalid_url",
+          url: "javascript:alert(1)",
+        });
       }
       return Promise.resolve({});
     });
