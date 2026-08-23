@@ -20,6 +20,7 @@ import type {
   ChatTurnStatus,
   ConnectionTestResult,
   ContentBlock,
+  ContextInspectorResponse,
   Conversation,
   ConversationChannelType,
   ConversationGreeting,
@@ -771,6 +772,10 @@ declare module "./client-base" {
     ): Promise<TrajectoryListResult>;
     getTrajectoryDetail(trajectoryId: string): Promise<TrajectoryDetailResult>;
     getTrajectoryStats(): Promise<TrajectoryStats>;
+    getContextInspector(
+      conversationId: string,
+      options?: { offset?: number; limit?: number },
+    ): Promise<ContextInspectorResponse>;
     getTrajectoryConfig(): Promise<TrajectoryConfig>;
     updateTrajectoryConfig(
       config: Partial<TrajectoryConfig>,
@@ -2041,6 +2046,21 @@ ElizaClient.prototype.getTrajectoryDetail = async function (
 
 ElizaClient.prototype.getTrajectoryStats = async function (this: ElizaClient) {
   return this.fetch("/api/trajectories/stats");
+};
+
+ElizaClient.prototype.getContextInspector = async function (
+  this: ElizaClient,
+  conversationId,
+  options = {},
+) {
+  const params = new URLSearchParams({ conversationId });
+  if (options.offset !== undefined) {
+    params.set("offset", String(options.offset));
+  }
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  return this.fetch(`/api/context-inspector?${params.toString()}`);
 };
 
 ElizaClient.prototype.getTrajectoryConfig = async function (this: ElizaClient) {
