@@ -11,8 +11,6 @@
  * duplicate `pluginId/id`.
  */
 import { describe, expect, it } from "vitest";
-import { AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS } from "../../../../plugins/plugin-agent-orchestrator/src/widget-manifest";
-import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import {
   BUILTIN_WIDGET_DECLARATIONS,
   resolveWidgetsForSlot,
@@ -109,103 +107,16 @@ describe("home-widget resolution gate (#14349)", () => {
   });
 });
 
-type WidgetParityInput = {
-  pluginId: string;
-  manifest: ReadonlyArray<PluginWidgetDeclaration>;
-  components: ReadonlyArray<{
-    id: string;
-    pluginId: string;
-    order: number;
-    defaultEnabled: boolean;
-  }>;
-};
-
-function expectBundledWidgetParity({
-  pluginId,
-  manifest,
-  components,
-}: WidgetParityInput): void {
-  const declared = BUILTIN_WIDGET_DECLARATIONS.filter(
-    (entry) => entry.pluginId === pluginId,
-  );
-  const normalizedManifest = manifest.map((entry) => ({
-    id: entry.id,
-    pluginId: entry.pluginId,
-    slot: entry.slot,
-    label: entry.label,
-    icon: entry.icon,
-    order: entry.order,
-    defaultEnabled: entry.defaultEnabled,
-  }));
-  const normalizedDeclarations = declared.map((entry) => ({
-    id: entry.id,
-    pluginId: entry.pluginId,
-    slot: entry.slot,
-    label: entry.label,
-    icon: entry.icon,
-    order: entry.order,
-    defaultEnabled: entry.defaultEnabled,
-  }));
-  const manifestComponents = normalizedManifest.map((entry) => ({
-    id: entry.id,
-    pluginId: entry.pluginId,
-    order: entry.order,
-    defaultEnabled: entry.defaultEnabled,
-  }));
-
-  expect(normalizedDeclarations).toEqual(normalizedManifest);
-  expect(components).toEqual(manifestComponents);
-  expect(declared.every((entry) => entry.visibility === "fallback")).toBe(true);
-}
-
-// #9304 — chat-sidebar slot coverage and manifest parity gate.
-//
-// Host-bundled widget components cannot be loaded from the Node-only plugin.
-// This compares the plugin's authoritative manifest with both host mirrors, so
-// an added, removed, or renamed widget cannot silently disappear from the rail.
-describe("chat-sidebar slot coverage gate (#9304)", () => {
-  // The bundled plugins whose widgets target the chat-sidebar rail.
-  const SIDEBAR_PLUGINS: WidgetPluginState[] = [
-    enabled("agent-orchestrator"),
-    enabled("browser-workspace"),
-    enabled("music-player"),
-  ];
-  // Every chat-sidebar widget id that must remain wired.
-  const EXPECTED_SIDEBAR_WIDGET_IDS = [
-    ...AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS.map((entry) => entry.id),
-    "browser.status",
-    "music-player.stream",
-  ] as const;
-
-  it("resolves every expected chat-sidebar widget with a rendered component", () => {
-    const resolved = resolveWidgetsForSlot("chat-sidebar", SIDEBAR_PLUGINS);
-    const rendered = new Set(
-      resolved.filter((r) => r.Component !== null).map((r) => r.declaration.id),
-    );
-    const missing = EXPECTED_SIDEBAR_WIDGET_IDS.filter(
-      (id) => !rendered.has(id),
-    );
-    expect(missing).toEqual([]);
-  });
-
-  it("keeps the orchestrator manifest, fallback declarations, and bundled components in parity", () => {
-    expectBundledWidgetParity({
-      pluginId: "agent-orchestrator",
-      manifest: AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS,
-      components: AGENT_ORCHESTRATOR_PLUGIN_WIDGETS.map(
-        ({ id, pluginId, order, defaultEnabled }) => ({
-          id,
-          pluginId,
-          order,
-          defaultEnabled,
-        }),
-      ),
-    });
-  });
-});
-
 // #9448 — dead slot cleanup gate.
 describe("widget slot contract (#9448)", () => {
+  it("keeps the retired permanent rail free of bundled widgets", () => {
+    expect(
+      BUILTIN_WIDGET_DECLARATIONS.filter(
+        (declaration) => declaration.slot === "chat-sidebar",
+      ),
+    ).toEqual([]);
+  });
+
   it("keeps the active widget slot list limited to supported surfaces", () => {
     expect(WIDGET_SLOTS).toEqual([
       "chat-sidebar",
