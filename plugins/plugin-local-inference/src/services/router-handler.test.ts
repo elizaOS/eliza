@@ -1,5 +1,5 @@
 /** Unit tests for `installRouterHandler` wiring the routing-policy layer onto the runtime. Deterministic, fake runtime. */
-import { type AgentRuntime, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	filterUnavailableLocalInference,
@@ -26,7 +26,7 @@ describe("installRouterHandler", () => {
 					registrations.push({ modelType, provider, priority });
 				},
 			),
-		} as unknown as AgentRuntime;
+		} as unknown as IAgentRuntime;
 
 		installRouterHandler(runtime, { skipSlots: ["TEXT_EMBEDDING"] });
 
