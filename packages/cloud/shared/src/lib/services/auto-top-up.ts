@@ -26,6 +26,7 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
 import {
@@ -259,7 +260,7 @@ function stripeErrorCode(error: unknown): string | null {
 
 function safeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "Unknown provider error";
-  return message.replaceAll(/\s+/g, " ").slice(0, 500);
+  return truncateWellFormed(toWellFormedUnicode(message.replaceAll(/\s+/g, " ")), 500);
 }
 
 function curatedProviderResult(paymentIntent: Stripe.PaymentIntent): Record<string, unknown> {
