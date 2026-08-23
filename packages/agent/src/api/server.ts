@@ -1612,6 +1612,10 @@ async function handleRequest(
   // CORS trust set; arbitrary reflected origins remain bearer-only.
   const allowHostCookieAuth =
     requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
+  const requireBrowserCompanionOwnerSession = isBrowserCompanionOwnerMutation(
+    method,
+    pathname,
+  );
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1627,7 +1631,11 @@ async function handleRequest(
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
-          { allowCookieAuth: allowHostCookieAuth },
+          {
+            allowCookieAuth: allowHostCookieAuth,
+            allowTrustedLocalBypass: !requireBrowserCompanionOwnerSession,
+            allowBearerAuth: !requireBrowserCompanionOwnerSession,
+          },
         );
         return hostSessionAuthorization;
       }
@@ -1829,7 +1837,7 @@ async function handleRequest(
     return;
   }
 
-  if (isBrowserCompanionOwnerMutation(method, pathname)) {
+  if (requireBrowserCompanionOwnerSession) {
     if (!hasBrowserCompanionOwnerSessionCookie(req)) {
       json(res, { error: "Owner session required" }, 401);
       return;

@@ -28,7 +28,18 @@ describe("repository ruleset contract", () => {
     });
     expect(admission.on.merge_group).toEqual({ types: ["checks_requested"] });
     expect(admission.jobs["static-smoke"].name).toBe("All Tests Passed");
-    expect(Object.keys(admission.jobs)).toEqual(["static-smoke"]);
+    expect(Object.keys(admission.jobs)).toEqual([
+      "source-smoke",
+      "browser-bridge-windows-security",
+      "static-smoke",
+    ]);
+    expect(admission.jobs["static-smoke"].needs).toEqual([
+      "source-smoke",
+      "browser-bridge-windows-security",
+    ]);
+    expect(admission.jobs["browser-bridge-windows-security"].uses).toBe(
+      "./.github/workflows/browser-bridge-windows-security.yml",
+    );
     expect(admission.concurrency["cancel-in-progress"]).toBeTrue();
   });
 

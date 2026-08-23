@@ -444,6 +444,7 @@ export function resolveElectrobunCopyMap({
     "build/browser-bridge-release.json": "browser-bridge-release.json",
     "scripts/browser-bridge-pipe-host.ps1": "browser-bridge-pipe-host.ps1",
     "scripts/browser-bridge-secret.ps1": "browser-bridge-secret.ps1",
+    "scripts/browser-bridge-unregister.ps1": "browser-bridge-unregister.ps1",
   };
   if (process.platform === "darwin" && resolveAppleTeamId(process.env)) {
     copy["build/browser-bridge-signing.json"] = "browser-bridge-signing.json";

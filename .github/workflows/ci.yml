@@ -570,6 +570,7 @@ jobs:
         run: |
           set -euo pipefail
           for pair in $RESULTS; do
+            name="${pair%%=*}"
             result="${pair#*=}"
             if [ "$result" != "success" ]; then
               echo "::error title=CI aggregate::$name finished with $result"

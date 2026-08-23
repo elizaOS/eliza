@@ -98,10 +98,11 @@ function makeReq(options: {
 }
 
 function loopbackReq(
-  headers: http.IncomingHttpHeaders = {},
+  options: { method?: string; headers?: http.IncomingHttpHeaders } = {},
 ): http.IncomingMessage {
   return makeReq({
-    headers: { host: "localhost:2138", ...headers },
+    method: options.method,
+    headers: { host: "localhost:2138", ...(options.headers ?? {}) },
     remoteAddress: "127.0.0.1",
   });
 }
@@ -651,6 +652,67 @@ describe("resolveAuthorizedRouteRole", () => {
         store: memoryStore({}),
       }),
     ).resolves.toEqual({ ok: true, role: "OWNER" });
+  });
+
+  it("requires the real cookie and CSRF when trusted-loopback and bearer bypasses are disabled", async () => {
+    const session = sessionRow({
+      id: "sess-strict-owner",
+      identityId: "id-owner",
+    });
+    const store = memoryStore({
+      sessions: { "sess-strict-owner": session },
+      identities: { "id-owner": { id: "id-owner", kind: "owner" } },
+    });
+    const strictOptions = {
+      store,
+      now: EMBED_NOW,
+      allowTrustedLocalBypass: false,
+      allowBearerAuth: false,
+    } as const;
+
+    await expect(
+      resolveAuthorizedRouteRole(
+        loopbackReq({
+          method: "POST",
+          headers: {
+            cookie: "eliza_session=sess-strict-owner",
+            [CSRF_HEADER_NAME]: "wrong-csrf",
+          },
+        }),
+        strictOptions,
+      ),
+    ).resolves.toEqual({ ok: false, status: 403, reason: "csrf_required" });
+
+    await expect(
+      resolveAuthorizedRouteRole(
+        loopbackReq({
+          method: "POST",
+          headers: {
+            authorization: "Bearer sess-strict-owner",
+            cookie: "eliza_session=missing",
+            [CSRF_HEADER_NAME]: deriveCsrfToken(session),
+          },
+        }),
+        strictOptions,
+      ),
+    ).resolves.toEqual({ ok: false, status: 401, reason: "Unauthorized" });
+
+    await expect(
+      resolveAuthorizedRouteRole(
+        loopbackReq({
+          method: "POST",
+          headers: {
+            cookie: "eliza_session=sess-strict-owner",
+            [CSRF_HEADER_NAME]: deriveCsrfToken(session),
+          },
+        }),
+        strictOptions,
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      role: "OWNER",
+      identityId: "id-owner",
+    });
   });
 
   it("rate-limits a remote caller after 20 failed attempts", async () => {
