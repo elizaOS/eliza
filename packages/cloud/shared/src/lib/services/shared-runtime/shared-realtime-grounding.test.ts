@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import {
+  createMatchingRealtimeSearchRunner,
   finalizeSharedRealtimeReply,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
@@ -85,6 +86,16 @@ describe("Shared realtime request classification", () => {
     expect(resolveSharedRealtimeRequirement("check the web", history)?.query).toContain(
       "what is btc price rn",
     );
+  });
+
+  test("does not revive an older public topic past a newer private turn", () => {
+    const history = [
+      { role: "user" as const, content: "what is btc price rn" },
+      { role: "assistant" as const, content: "I could not verify it." },
+      { role: "user" as const, content: "what is on my schedule today" },
+      { role: "assistant" as const, content: "Your schedule is unavailable." },
+    ];
+    expect(resolveSharedRealtimeRequirement("that's wrong, check again", history)).toBeUndefined();
   });
 });
 
@@ -230,6 +241,46 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
         executiveGrounding,
       ),
     ).toBe(false);
+  });
+
+  test("does not borrow unrelated negation from another evidence clause", () => {
+    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    const mixedGrounding: SharedRuntimePublicGrounding = {
+      ...grounding,
+      sourceUrls: ["https://company.example/leadership"],
+      sources: [
+        {
+          url: "https://company.example/leadership",
+          text: JSON.stringify({
+            url: "https://company.example/leadership",
+            excerpt: "Alice Example is the current CEO of Example Corp. Bob is not the CFO.",
+          }),
+        },
+      ],
+    };
+    if (mixedGrounding.kind !== "web_search") {
+      throw new Error("fixture grounding must be available");
+    }
+    expect(
+      validateSharedRealtimeReply(
+        "Alice Example is not the current CEO of Example Corp. [[SOURCE_URL:https://company.example/leadership]]",
+        mixedGrounding,
+      ),
+    ).toBe(false);
+  });
+
+  test("reuses a preflight receipt only for its exact normalized query", async () => {
+    const result = {
+      success: true,
+      text: "bounded evidence",
+      data: { actionName: "WEB_SEARCH", query: "BTC price now" },
+    };
+    const runner = createMatchingRealtimeSearchRunner(result);
+    await expect(runner("  btc   PRICE now ")).resolves.toBe(result);
+    await expect(runner("private account balance")).resolves.toMatchObject({
+      success: false,
+      data: { actionName: "WEB_SEARCH", query: "private account balance" },
+    });
   });
 
   test("adds concise source, provider, and checked time for Telegram", () => {

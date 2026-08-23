@@ -54,6 +54,9 @@ export * from "./markdown";
 export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./name-tokens";
+// Literal-host SSRF policy helpers are pure and safe in Workers; DNS pinning
+// remains outside the edge barrel.
+export { isBlockedHostname, isPrivateIpAddress } from "./network/ssrf";
 export * from "./plugin";
 export * from "./prompts";
 export * from "./providers/recent-errors";

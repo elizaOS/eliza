@@ -4,7 +4,7 @@
  * mirror, retry, or direct writer converges instead of replacing newer turns.
  */
 
-import { stringToUuid } from "@elizaos/core/edge";
+import { isBlockedHostname, isPrivateIpAddress, stringToUuid } from "@elizaos/core/edge";
 import type { ModelMessage } from "ai";
 import type {
   SharedRuntimeHistoryMessage,
@@ -54,7 +54,9 @@ function publicSourceUrls(value: unknown): string[] | undefined {
       if (
         (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
         parsed.username ||
-        parsed.password
+        parsed.password ||
+        isBlockedHostname(parsed.hostname) ||
+        isPrivateIpAddress(parsed.hostname)
       ) {
         return undefined;
       }

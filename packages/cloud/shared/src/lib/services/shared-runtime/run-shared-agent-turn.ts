@@ -50,6 +50,7 @@ import {
 import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
+  isMatchingRealtimeSearchResult,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
@@ -187,23 +188,6 @@ function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeE
       roomKey: `shared:${input.character.name}`,
       channel: { type: "DM", source: "shared-runtime" },
     }
-  );
-}
-
-function normalizedWebSearchQuery(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
-  return normalized || undefined;
-}
-
-function isSameWebSearchQuery(result: ActionResult, query: string): boolean {
-  const resultQuery = normalizedWebSearchQuery(result.data?.query);
-  const expectedQuery = normalizedWebSearchQuery(query);
-  return (
-    result.data?.actionName === "WEB_SEARCH" &&
-    resultQuery !== undefined &&
-    expectedQuery !== undefined &&
-    resultQuery === expectedQuery
   );
 }
 
@@ -589,7 +573,7 @@ export async function runSharedAgentTurn(
     );
     if (realtimeActionResults) {
       const runtimeActionResults = (turn.actionResults ?? []).filter(
-        (result) => !isSameWebSearchQuery(result, realtimeRequirement?.query ?? ""),
+        (result) => !isMatchingRealtimeSearchResult(result, realtimeRequirement?.query ?? ""),
       );
       turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
     }
@@ -631,7 +615,7 @@ export async function runSharedAgentTurn(
       });
     }
     const actionResults = (turn.actionResults ?? []).map((result) =>
-      isSameWebSearchQuery(result, realtimeRequirement.query)
+      isMatchingRealtimeSearchResult(result, realtimeRequirement.query)
         ? {
             ...result,
             data: {
