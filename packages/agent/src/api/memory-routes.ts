@@ -13,8 +13,10 @@
  */
 import crypto from "node:crypto";
 import {
+  type AccessContext,
   type AgentRuntime,
   BM25,
+  buildAccessContext,
   ChannelType,
   compareMemoryIds,
   composePrompt,
@@ -442,12 +444,31 @@ async function buildMemorySearchCorpus(
   // interleaving with getMemories makes the counts disagree, so that mixed
   // snapshot is marked obsolete and retried instead of being returned or
   // published for later reuse.
+  // Tenant isolation: scope the scan via buildAccessContext so database.ts
+  // filtering applies (mirrors relevant-conversations.ts + held #24863).
+  // Synthetic hash-memory message keeps resolution in the scanned room/world;
+  // failure falls back to undefined to preserve single-tenant unfiltered reads.
+  let accessContext: AccessContext | undefined;
+  try {
+    const synthetic = {
+      entityId: runtime.agentId as unknown as UUID,
+      roomId,
+      agentId: runtime.agentId as unknown as UUID,
+      content: { source: HASH_MEMORY_SOURCE },
+      createdAt: Date.now(),
+    } as unknown as Memory;
+    const built = await buildAccessContext(runtime, synthetic);
+    if (built.worldId || built.role) accessContext = built;
+  } catch {
+    accessContext = undefined;
+  }
   const countBefore = await countRoomMessages(runtime, roomId);
   const memories = await runtime.getMemories({
     roomId,
     tableName: "messages",
     limit: MEMORY_SEARCH_SCAN_LIMIT,
     includeEmbedding: false, // only reads content.text
+    ...(accessContext ? { accessContext } : {}),
   });
   const countAfter =
     countBefore === null ? null : await countRoomMessages(runtime, roomId);
