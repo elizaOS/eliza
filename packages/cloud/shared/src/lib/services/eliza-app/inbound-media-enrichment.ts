@@ -98,9 +98,9 @@ export function resolveInboundMediaVisionCeilings(
   return { senderDailyImages, connectorDailyImages };
 }
 
-/** Canonical digest of the exact URL list so a reuse only matches the same media. */
+/** Canonical unambiguous digest of the ordered URL list. */
 export async function inboundMediaDigest(mediaUrls: readonly string[]): Promise<string> {
-  return sha256Hex(mediaUrls.join("\n"));
+  return sha256Hex(JSON.stringify(mediaUrls));
 }
 
 async function settleClaim(

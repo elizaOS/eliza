@@ -26,6 +26,8 @@ let closeDatabaseConnectionsForTests:
   | undefined;
 let getPgliteClientForTests: typeof import("../client").getPgliteClientForTests;
 let repository: typeof import("./personal-shared-inbound-media").personalSharedInboundMediaRepository;
+let PersonalSharedInboundMediaRepository: typeof import("./personal-shared-inbound-media").PersonalSharedInboundMediaRepository;
+let dbWrite: typeof import("../helpers").dbWrite;
 let INBOUND_MEDIA_DESCRIPTION_LEASE_MS: number;
 
 function admission(
@@ -88,8 +90,12 @@ async function quotaRows() {
 
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import("../client"));
-  ({ personalSharedInboundMediaRepository: repository, INBOUND_MEDIA_DESCRIPTION_LEASE_MS } =
-    await import("./personal-shared-inbound-media"));
+  ({
+    personalSharedInboundMediaRepository: repository,
+    PersonalSharedInboundMediaRepository,
+    INBOUND_MEDIA_DESCRIPTION_LEASE_MS,
+  } = await import("./personal-shared-inbound-media"));
+  ({ dbWrite } = await import("../helpers"));
   const database = getPgliteClientForTests();
   await database.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY);
@@ -347,6 +353,65 @@ describe("personalSharedInboundMediaRepository admission ledger", () => {
 
   test("the lease horizon outlives the gateway media-turn budget", () => {
     expect(INBOUND_MEDIA_DESCRIPTION_LEASE_MS).toBeGreaterThan(90_000);
+  });
+
+  test("renews the committed lease from the clock after quota contention", async () => {
+    const startedAt = new Date("2026-08-23T12:00:00.000Z");
+    const afterQuotaLocks = new Date(
+      startedAt.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS + 30_000,
+    );
+    const clocks = [startedAt, afterQuotaLocks];
+    const timedRepository = new PersonalSharedInboundMediaRepository(dbWrite, async () => {
+      const next = clocks.shift();
+      if (!next) throw new Error("unexpected database clock read");
+      return next;
+    });
+
+    const result = await timedRepository.admit({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      sourceMessageId: "msg-delayed-quota",
+      organizationId: ORG_A,
+      userId: USER_A,
+      mediaDigest: DIGEST_A,
+      imageCount: 1,
+      ceilings: CEILINGS,
+    });
+    expect(result.kind).toBe("claimed");
+    const { rows } = await getPgliteClientForTests().query<{ lease_expires_at: string }>(
+      `SELECT lease_expires_at FROM personal_shared_inbound_media_descriptions
+       WHERE source_message_id = $1`,
+      ["msg-delayed-quota"],
+    );
+    expect(new Date(rows[0]!.lease_expires_at).getTime()).toBe(
+      afterQuotaLocks.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS,
+    );
+  });
+
+  test("fails closed and rolls back when quota admission crosses a UTC day", async () => {
+    const clocks = [new Date("2026-08-23T23:59:59.999Z"), new Date("2026-08-24T00:00:00.001Z")];
+    const timedRepository = new PersonalSharedInboundMediaRepository(dbWrite, async () => {
+      const next = clocks.shift();
+      if (!next) throw new Error("unexpected database clock read");
+      return next;
+    });
+
+    await expect(
+      timedRepository.admit({
+        platform: "blooio",
+        project: "eliza-app",
+        connectorAccountId: CONNECTOR_ID,
+        sourceMessageId: "msg-utc-rollover",
+        organizationId: ORG_A,
+        userId: USER_A,
+        mediaDigest: DIGEST_A,
+        imageCount: 1,
+        ceilings: CEILINGS,
+      }),
+    ).rejects.toMatchObject({ code: "INBOUND_MEDIA_ADMISSION_STORAGE_FAILURE" });
+    expect(await ledgerRow("msg-utc-rollover")).toBeUndefined();
+    expect(await quotaRows()).toEqual([]);
   });
 
   test("an exhausted sender ceiling denies the claim and rolls the ledger back", async () => {

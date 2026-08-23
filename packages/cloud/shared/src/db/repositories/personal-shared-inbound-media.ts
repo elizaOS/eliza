@@ -120,7 +120,12 @@ export function inboundMediaConnectorQuotaKey(
 }
 
 export class PersonalSharedInboundMediaRepository {
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    private readonly readDatabaseNow: (
+      tx: DbTransaction,
+    ) => Promise<Date> = readPostLockDatabaseNow,
+  ) {}
 
   /**
    * Claims the connector message id and consumes both per-day ceilings in one
@@ -138,9 +143,11 @@ export class PersonalSharedInboundMediaRepository {
     }
     try {
       return await this.database.transaction(async (tx) => {
-        const now = await readPostLockDatabaseNow(tx);
+        const transactionStartedAt = await this.readDatabaseNow(tx);
         const claimToken = crypto.randomUUID();
-        const leaseExpiresAt = new Date(now.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS);
+        const preliminaryLeaseExpiresAt = new Date(
+          transactionStartedAt.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS,
+        );
         const [inserted] = await tx
           .insert(personalSharedInboundMediaDescriptions)
           .values({
@@ -154,9 +161,9 @@ export class PersonalSharedInboundMediaRepository {
             image_count: input.imageCount,
             state: "pending",
             claim_token: claimToken,
-            lease_expires_at: leaseExpiresAt,
-            created_at: now,
-            updated_at: now,
+            lease_expires_at: preliminaryLeaseExpiresAt,
+            created_at: transactionStartedAt,
+            updated_at: transactionStartedAt,
           })
           .onConflictDoNothing({
             target: [
@@ -171,6 +178,7 @@ export class PersonalSharedInboundMediaRepository {
             attempt_count: personalSharedInboundMediaDescriptions.attempt_count,
           });
         let claim: InboundMediaDescriptionClaim;
+        let admissionClock = transactionStartedAt;
         if (inserted) {
           claim = { id: inserted.id, claimToken, attempt: inserted.attempt_count };
         } else {
@@ -186,6 +194,10 @@ export class PersonalSharedInboundMediaRepository {
               sourceMessageId: input.sourceMessageId,
             });
           }
+          // The insert/conflict path and row lock may have waited behind
+          // another transaction. Lease and UTC-day decisions must use a fresh
+          // primary-database clock after that wait, not transaction entry time.
+          admissionClock = await this.readDatabaseNow(tx);
           // The connector message key identifies one immutable tenant, user,
           // and media payload. A later resolver result or replay must never
           // inherit stored OCR text or rewrite a claim that belongs to a
@@ -213,7 +225,7 @@ export class PersonalSharedInboundMediaRepository {
           if (existing.state === "failed") {
             return { kind: "previously_failed", reason: existing.failure_reason ?? "unknown" };
           }
-          if (existing.lease_expires_at.getTime() > now.getTime()) {
+          if (existing.lease_expires_at.getTime() > admissionClock.getTime()) {
             return { kind: "in_flight" };
           }
           // The previous claimant is dead (its lease lapsed without a terminal
@@ -222,9 +234,11 @@ export class PersonalSharedInboundMediaRepository {
             .update(personalSharedInboundMediaDescriptions)
             .set({
               claim_token: claimToken,
-              lease_expires_at: leaseExpiresAt,
+              lease_expires_at: new Date(
+                admissionClock.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS,
+              ),
               attempt_count: sql`${personalSharedInboundMediaDescriptions.attempt_count} + 1`,
-              updated_at: now,
+              updated_at: admissionClock,
             })
             .where(
               and(
@@ -241,12 +255,12 @@ export class PersonalSharedInboundMediaRepository {
           }
           claim = { id: existing.id, claimToken, attempt: reclaimed.attempt_count };
         }
-        const day = now.toISOString().slice(0, 10);
+        const day = admissionClock.toISOString().slice(0, 10);
         await consumeQuota(tx, {
           scope: "sender",
           scopeKey: input.organizationId,
           day,
-          now,
+          now: admissionClock,
           requested: input.imageCount,
           limit: input.ceilings.senderDailyImages,
         });
@@ -254,10 +268,40 @@ export class PersonalSharedInboundMediaRepository {
           scope: "connector",
           scopeKey: inboundMediaConnectorQuotaKey(input),
           day,
-          now,
+          now: admissionClock,
           requested: input.imageCount,
           limit: input.ceilings.connectorDailyImages,
         });
+        const finalClock = await this.readDatabaseNow(tx);
+        if (finalClock.toISOString().slice(0, 10) !== day) {
+          throw storageFailure("UTC quota day changed during inbound media admission", {
+            sourceMessageId: input.sourceMessageId,
+            admissionDay: day,
+            finalDay: finalClock.toISOString().slice(0, 10),
+          });
+        }
+        // Quota-row contention can outlive the preliminary lease. Renew from
+        // the post-lock clock before commit so a caller always receives a full
+        // lease and cannot be reclaimed while its provider call is still live.
+        const [renewed] = await tx
+          .update(personalSharedInboundMediaDescriptions)
+          .set({
+            lease_expires_at: new Date(finalClock.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS),
+            updated_at: finalClock,
+          })
+          .where(
+            and(
+              eq(personalSharedInboundMediaDescriptions.id, claim.id),
+              eq(personalSharedInboundMediaDescriptions.state, "pending"),
+              eq(personalSharedInboundMediaDescriptions.claim_token, claim.claimToken),
+            ),
+          )
+          .returning({ id: personalSharedInboundMediaDescriptions.id });
+        if (!renewed) {
+          throw storageFailure("Inbound media claim could not renew its committed lease", {
+            id: claim.id,
+          });
+        }
         return { kind: "claimed", claim };
       });
     } catch (error) {

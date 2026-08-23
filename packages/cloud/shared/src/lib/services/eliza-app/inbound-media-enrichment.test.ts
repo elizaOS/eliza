@@ -25,6 +25,7 @@ import {
   DEFAULT_INBOUND_MEDIA_SENDER_DAILY_IMAGES,
   enrichInboundImageMedia,
   type InboundMediaEnrichmentEnv,
+  inboundMediaDigest,
   resolveInboundMediaVisionCeilings,
 } from "./inbound-media-enrichment";
 
@@ -160,13 +161,19 @@ describe("enrichInboundImageMedia — gates before the ledger", () => {
       sourceMessageId: "blooio:eliza-app:message-42",
       organizationId: "00000000-0000-4000-8000-000000000001",
       userId: "00000000-0000-4000-8000-000000000002",
-      mediaDigest: await sha256Hex(`${URL_A}\n${URL_B}`),
+      mediaDigest: await sha256Hex(JSON.stringify([URL_A, URL_B])),
       imageCount: 2,
       ceilings: {
         senderDailyImages: 3,
         connectorDailyImages: DEFAULT_INBOUND_MEDIA_CONNECTOR_DAILY_IMAGES,
       },
     });
+  });
+
+  test("media-list framing cannot collide across URL boundaries", async () => {
+    expect(await inboundMediaDigest(["https://media.blooio.com/a\nb"])).not.toBe(
+      await inboundMediaDigest(["https://media.blooio.com/a", "b"]),
+    );
   });
 
   test("an unavailable ledger skips without spending and reports the fault", async () => {
