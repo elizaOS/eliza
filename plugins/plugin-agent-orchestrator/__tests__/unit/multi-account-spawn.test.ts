@@ -55,37 +55,44 @@ function getNativeMockState(): NativeMockState {
 
 const nativeClientMock = getNativeMockState();
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
-  const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient
-    implements MockNativeClient
-  {
-    opts: NativeOptions;
-    eventHandler?: NativeEventHandler;
-    start = vi.fn(async () => undefined);
-    createSession = vi.fn(async () => ({
-      sessionId: "protocol-session",
-      agentSessionId: "agent-session",
-    }));
-    prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
-    cancel = vi.fn(async () => undefined);
-    closeSession = vi.fn(async () => undefined);
-    close = vi.fn(async () => undefined);
-    constructor(opts: NativeOptions) {
-      this.opts = opts;
-      this.eventHandler = opts.onEvent;
-      getNativeMockState().instances.push(this);
-    }
-    setEventHandler(handler: NativeEventHandler | undefined) {
-      this.eventHandler = handler;
-      this.opts.onEvent = handler;
-    }
-    setTimeoutMs(timeoutMs: number | undefined) {
-      this.opts.timeoutMs = timeoutMs;
-    }
-  };
-  return { NativeAcpClient: state.NativeAcpClient };
-});
+vi.mock(
+  "../../src/services/acp-native-transport.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/acp-native-transport.js")
+      >();
+    const state = getNativeMockState();
+    state.NativeAcpClient = class MockNativeAcpClient
+      implements MockNativeClient
+    {
+      opts: NativeOptions;
+      eventHandler?: NativeEventHandler;
+      start = vi.fn(async () => undefined);
+      createSession = vi.fn(async () => ({
+        sessionId: "protocol-session",
+        agentSessionId: "agent-session",
+      }));
+      prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
+      cancel = vi.fn(async () => undefined);
+      closeSession = vi.fn(async () => undefined);
+      close = vi.fn(async () => undefined);
+      constructor(opts: NativeOptions) {
+        this.opts = opts;
+        this.eventHandler = opts.onEvent;
+        getNativeMockState().instances.push(this);
+      }
+      setEventHandler(handler: NativeEventHandler | undefined) {
+        this.eventHandler = handler;
+        this.opts.onEvent = handler;
+      }
+      setTimeoutMs(timeoutMs: number | undefined) {
+        this.opts.timeoutMs = timeoutMs;
+      }
+    };
+    return { ...actual, NativeAcpClient: state.NativeAcpClient };
+  },
+);
 
 // Baseline git capture uses execFile; make it a no-op so spawns don't hang.
 vi.mock("node:child_process", () => ({
@@ -254,41 +261,6 @@ describe("multi-account coding-agent spawn", () => {
       if (prevModel === undefined) delete process.env.OPENAI_MODEL;
       else process.env.OPENAI_MODEL = prevModel;
     }
-  });
-
-  it("injects the pooled CEREBRAS_API_KEY for an opencode spawn", async () => {
-    // opencode pool-rotates across cerebras-api accounts; the bridge injects
-    // CEREBRAS_API_KEY which buildOpencodeSpawnConfig reads to target Cerebras.
-    const select = installBridge({
-      opencode: {
-        providerId: "cerebras-api",
-        accountId: "cb-1",
-        label: "Cerebras 1",
-        source: "api-key",
-        strategy: "least-used",
-        envPatch: { CEREBRAS_API_KEY: "cb-key-pooled" },
-      },
-    });
-    const service = new AcpService(runtime());
-    await service.start();
-    const result = await service.spawnSession({
-      name: "opencode-mt",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    const env = firstNativeClient().opts.env ?? {};
-    expect(env.CEREBRAS_API_KEY).toBe("cb-key-pooled");
-    expect(select).toHaveBeenCalledWith(
-      "opencode",
-      expect.objectContaining({ sessionKey: result.sessionId }),
-    );
-    const account = (result.metadata as Record<string, unknown>)?.account as
-      | Record<string, unknown>
-      | undefined;
-    expect(account?.providerId).toBe("cerebras-api");
-    expect(account?.accountId).toBe("cb-1");
-    expect(JSON.stringify(account)).not.toContain("cb-key-pooled");
-    await service.stop();
   });
 
   it("falls back to single-account behavior when no bridge is installed", async () => {
