@@ -96,6 +96,21 @@ export function isOverdue(todo: TodayTodo, now: number): boolean {
  * most-overdue first so the item that has slipped longest leads. A due date past
  * the end of today is a backlog item, not a glance, and is excluded.
  */
+function dueDateSortKey(value: string): number {
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareTodoByDueDateAsc(a: { dueDate: string; id: string }, b: { dueDate: string; id: string }): number {
+	const aSafe = dueDateSortKey(a.dueDate);
+	const bSafe = dueDateSortKey(b.dueDate);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return a.id.localeCompare(b.id);
+}
+
+export const __testDueDateSortKey = dueDateSortKey;
+export const __testCompareTodoByDueDateAsc = compareTodoByDueDateAsc;
+
 export function dueOrOverdueToday(
   todos: TodayTodo[],
   now: number,
@@ -103,9 +118,7 @@ export function dueOrOverdueToday(
   const endOfToday = new Date(now).setHours(23, 59, 59, 999);
   return todos
     .filter((todo) => isOpen(todo) && Date.parse(todo.dueDate) <= endOfToday)
-    .sort(
-      (left, right) => Date.parse(left.dueDate) - Date.parse(right.dueDate),
-    );
+    .sort(compareTodoByDueDateAsc);
 }
 
 /** Count of the glance slice that is already overdue — drives the card's rank. */
