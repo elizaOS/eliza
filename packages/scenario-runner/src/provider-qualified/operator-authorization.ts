@@ -30,7 +30,7 @@ import {
   type ProviderQualificationManifestSignature,
   providerManifestSigningBytes,
   providerObserverKeyId,
-} from "./qualification.ts";
+} from "./provider-signing-primitives.ts";
 
 export const PROVIDER_CANARY_AUTHORIZATION_SCHEMA =
   "eliza.provider-canary-authorization.v1" as const;

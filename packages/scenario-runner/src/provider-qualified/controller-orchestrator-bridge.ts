@@ -43,6 +43,13 @@ import {
 import type { ProviderOperationKind } from "./operation-binding.ts";
 import { reverifyPortableRawControllerMaterial } from "./portable-raw-receipt-reverifier.ts";
 import {
+  DEPLOYED_COMPOSITE_RAW_MATERIAL_SCHEMA,
+  PROVIDER_CLEANUP_PROOF_SCHEMA,
+  type ProviderBridgeCorrelation,
+  type ProviderCleanupProofPayload,
+  type SignedProviderCleanupProof,
+} from "./provider-service-contracts.ts";
+import {
   PROVIDER_OBSERVER_EVIDENCE_SCHEMA,
   type ProviderObserverEvidencePayload,
   providerDeploymentAttestationSha256,
@@ -64,10 +71,15 @@ import {
   validateVerifiedScenarioTrajectorySet,
 } from "./trajectory-verifier.ts";
 
-export const PROVIDER_CLEANUP_PROOF_SCHEMA =
-  "eliza.provider-canary-cleanup-proof.v1" as const;
-export const DEPLOYED_COMPOSITE_RAW_MATERIAL_SCHEMA =
-  "eliza.provider-canary-deployed-composite-raw-material.v1" as const;
+export type {
+  ProviderBridgeCorrelation,
+  ProviderCleanupProofPayload,
+  SignedProviderCleanupProof,
+};
+export {
+  DEPLOYED_COMPOSITE_RAW_MATERIAL_SCHEMA,
+  PROVIDER_CLEANUP_PROOF_SCHEMA,
+};
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -148,19 +160,6 @@ export const PROVIDER_CONTROLLER_BRIDGE_CONTRACTS = Object.freeze(
   >,
 );
 
-export interface ProviderBridgeCorrelation {
-  scenarioId: ProviderCanaryScenarioId;
-  operationKind: ProviderOperationKind;
-  controllerFamily: ProviderControllerFamily;
-  runId: string;
-  runNonce: string;
-  manifestSha256: string;
-  repositorySha: string;
-  deploymentSha: string;
-  targetOperationSha256: string;
-  failureProbesSha256: string;
-}
-
 export interface ProviderControllerExecutionResult {
   rawControllerMaterial: BridgeableRawControllerMaterial;
   runnerReport: ScenarioReport;
@@ -229,25 +228,6 @@ export interface IndependentSemanticJudgeClient {
     observerEnvelopeSha256: string;
     observerDeploymentAttestationSha256: string;
   }): Promise<SemanticJudgeEvidencePayload["verdicts"]>;
-}
-
-export interface ProviderCleanupProofPayload {
-  schema: typeof PROVIDER_CLEANUP_PROOF_SCHEMA;
-  scenarioId: ProviderCanaryScenarioId;
-  runId: string;
-  runNonce: string;
-  manifestSha256: string;
-  cleanupScopeSha256: string;
-  rawControllerMaterialSha256: string;
-  qualificationArtifactSha256?: string;
-  disposition: "cleaned" | "no-resources-created";
-  completedAtIso: string;
-}
-
-export interface SignedProviderCleanupProof {
-  keyId: string;
-  payload: ProviderCleanupProofPayload;
-  signature: string;
 }
 
 export interface RemoteProviderCleanupClient {

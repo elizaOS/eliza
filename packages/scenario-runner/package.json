@@ -88,6 +88,7 @@
     "provider-operator": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/provider-qualified/operator-authoring-cli.ts",
     "provider-readiness": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/provider-qualified/provider-readiness-cli.ts",
     "provider-service": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/provider-qualified/provider-service-entrypoint.ts",
+    "provider-service:build": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json scripts/build-provider-service-deployment-bundle.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"

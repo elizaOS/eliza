@@ -9,12 +9,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import type { ScenarioReport } from "../types.ts";
-import {
-  DEPLOYED_COMPOSITE_RAW_MATERIAL_SCHEMA,
-  type ProviderBridgeCorrelation,
-  type ProviderCleanupProofPayload,
-  type ProviderControllerExecutionResult,
-} from "./controller-orchestrator-bridge.ts";
+import type { ProviderControllerExecutionResult } from "./controller-orchestrator-bridge.ts";
 import {
   type DeployedCanaryCapabilities,
   type DeployedCanaryCleanupReceipt,
@@ -37,6 +32,11 @@ import type {
   ProviderFailureProbeHashBinding,
   ProviderFailureProbeMaterial,
 } from "./operator-authorization.ts";
+import {
+  DEPLOYED_COMPOSITE_RAW_MATERIAL_SCHEMA,
+  type ProviderBridgeCorrelation,
+  type ProviderCleanupProofPayload,
+} from "./provider-service-contracts.ts";
 import type {
   ProviderCleanupExecutionResult,
   ProviderCleanupServiceAdapter,

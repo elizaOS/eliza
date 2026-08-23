@@ -5,11 +5,7 @@
  * reference, semantic verdict, and provider assurance is recomputed.
  */
 
-import {
-  createHash,
-  createPublicKey,
-  verify as verifySignature,
-} from "node:crypto";
+import { createPublicKey, verify as verifySignature } from "node:crypto";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import type {
   ScenarioEvidenceObservation,
@@ -36,9 +32,17 @@ import {
   validateProviderOperationBinding,
 } from "./operation-binding.ts";
 import {
+  type ProviderQualificationManifestSignature,
+  providerManifestSigningBytes,
+  providerObserverKeyId,
+} from "./provider-signing-primitives.ts";
+import {
   type VerifiedScenarioTrajectorySet,
   validateVerifiedScenarioTrajectorySet,
 } from "./trajectory-verifier.ts";
+
+export type { ProviderQualificationManifestSignature };
+export { providerManifestSigningBytes, providerObserverKeyId };
 
 export const PROVIDER_OBSERVER_EVIDENCE_SCHEMA =
   "eliza.provider-qualified-observer-evidence.v6" as const;
@@ -175,12 +179,6 @@ export interface SemanticJudgeEvidencePayload {
 export interface SignedSemanticJudgeEvidence {
   keyId: string;
   payload: SemanticJudgeEvidencePayload;
-  signature: string;
-}
-
-export interface ProviderQualificationManifestSignature {
-  keyId: string;
-  manifestSha256: string;
   signature: string;
 }
 
@@ -1031,20 +1029,6 @@ function isSha256(value: unknown): value is string {
   return typeof value === "string" && SHA256_PATTERN.test(value);
 }
 
-/** SPKI fingerprint used to pin the observer that signed an evidence payload. */
-export function providerObserverKeyId(publicKeyPem: string): string {
-  if (!publicKeyPem.includes("-----BEGIN PUBLIC KEY-----")) {
-    throw new Error("provider evidence pins must contain an SPKI public key");
-  }
-  const publicKey = createPublicKey(publicKeyPem);
-  if (publicKey.asymmetricKeyType !== "ed25519") {
-    throw new Error("provider evidence keys must be Ed25519 public keys");
-  }
-  return createHash("sha256")
-    .update(publicKey.export({ type: "spki", format: "der" }))
-    .digest("hex");
-}
-
 /** Exact bytes an observer signs with Ed25519. */
 export function providerEvidenceSigningBytes(
   payload: ProviderObserverEvidencePayload,
@@ -1097,18 +1081,6 @@ export function providerDeploymentWorkloadSha256(input: {
       deploymentSha: input.deploymentSha,
     },
     "providerDeploymentWorkload",
-  );
-}
-
-/** Exact manifest bytes authorized by the operator before a run can qualify. */
-export function providerManifestSigningBytes(
-  manifest: ProviderQualificationManifest,
-): Buffer {
-  return Buffer.from(
-    canonicalJson(
-      canonicalJsonValue(manifest, "providerQualificationManifest"),
-    ),
-    "utf8",
   );
 }
 

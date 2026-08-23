@@ -155,6 +155,22 @@ readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
 Action results, model prose, loopback fixtures, local PGlite, and unsigned
 same-process observations cannot satisfy these contracts.
 
+A deployment repository supplies a TypeScript entry that exports
+`createProviderCanaryServiceDeployment`, keeps TLS and HSM access behind its
+role-specific loaders, and builds the exact immutable module accepted by
+`provider-service`:
+
+```bash
+bun run --cwd packages/scenario-runner provider-service:build -- \
+  --entry /absolute/path/to/deployment-entry.ts \
+  --out /absolute/path/to/provider-service-adapter.mjs
+```
+
+The command refuses existing outputs, symlinked paths, embedded private keys,
+dynamic module loaders, unresolved non-platform imports, and modules without
+the required factory export. Its printed SHA-256 is the
+`adapterModuleSha256` value in the private deployment configuration.
+
 ## Key env vars
 
 | Variable | Effect |
