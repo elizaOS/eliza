@@ -44,8 +44,10 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarImportedDataPurgeReceipt,
   LifeOpsCalendarProvider,
   LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSeedReceipt,
   LifeOpsCalendarSourceError,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSourceKey,
@@ -57,6 +59,8 @@ import type {
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  PurgeLifeOpsCalendarImportedDataRequest,
+  SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
@@ -71,6 +75,7 @@ import {
   getNativeAppleCalendarPermissionStatus,
   isAppleCalendarGrant,
   listNativeAppleCalendars,
+  subscribeNativeAppleCalendarChanges,
   updateNativeAppleCalendarEvent,
 } from "../apple-calendar.js";
 import {
@@ -1167,6 +1172,8 @@ export class CalendarService extends Service {
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
   private readonly microsoftSyncLocks = new Map<string, Promise<void>>();
   private icsSecretCleanupDrain: Promise<void> | null = null;
+  private appleCalendarChangeListener: { remove: () => Promise<void> } | null =
+    null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -1188,10 +1195,51 @@ export class CalendarService extends Service {
     void service.restoreMeetingAutoJoinAnchorsOnBoot();
     void service.installGoogleWatchMaintenanceOnBoot();
     void service.drainIcsSecretCleanupOnBoot();
+    void service.installAppleCalendarChangeObserver();
     return service;
   }
 
-  override async stop(): Promise<void> {}
+  override async stop(): Promise<void> {
+    try {
+      await this.appleCalendarChangeListener?.remove();
+    } catch (error) {
+      // error-policy:J6 Listener teardown is best-effort during service stop.
+      logger.warn(
+        { src: "calendar:apple-change-observer", error },
+        "[CalendarService] Apple Calendar change observer teardown failed.",
+      );
+    }
+    this.appleCalendarChangeListener = null;
+  }
+
+  private async installAppleCalendarChangeObserver(): Promise<void> {
+    try {
+      this.appleCalendarChangeListener =
+        await subscribeNativeAppleCalendarChanges(() => {
+          void this.invalidateAppleCalendarCache();
+        });
+    } catch (error) {
+      // error-policy:J5 Service.start launches native observation in the
+      // background; this handler observes and reports its rejection.
+      this.runtime.reportError("calendar:apple-change-observer", error);
+    }
+  }
+
+  private async invalidateAppleCalendarCache(): Promise<void> {
+    try {
+      await this.repo.deleteCalendarSyncState(
+        this.agentId(),
+        APPLE_CALENDAR_PROVIDER,
+        undefined,
+        "owner",
+        APPLE_CALENDAR_GRANT_ID,
+      );
+    } catch (error) {
+      // error-policy:J7 Cache invalidation failure is diagnostic and must not
+      // terminate EventKit's change-notification delivery loop.
+      this.runtime.reportError("calendar:apple-change-invalidation", error);
+    }
+  }
 
   private async installGoogleWatchMaintenanceOnBoot(): Promise<void> {
     try {
@@ -4729,6 +4777,207 @@ export class CalendarService extends Service {
       "Apple Calendar create access has not been granted.",
       "APPLE_CALENDAR_PERMISSION_REQUIRED",
     );
+  }
+
+  /**
+   * Force-syncs the owner's calendars for the requested window and returns a
+   * receipt counted over the selected sources. The receipt is issued only when
+   * every source is fresh; a partial or unavailable feed fails the seed so the
+   * caller never shows a healthy count over a gap.
+   */
+  async seedImportedCalendarData(
+    requestUrl: URL,
+    request: SeedLifeOpsCalendarRequest,
+    now = new Date(),
+  ): Promise<LifeOpsCalendarSeedReceipt> {
+    if (!Array.isArray(request.calendars) || request.calendars.length === 0) {
+      throw new CalendarServiceError(
+        400,
+        "Calendar seeding requires at least one selected calendar.",
+        "CALENDAR_SEED_SELECTION_REQUIRED",
+      );
+    }
+    const feed = await this.getCalendarFeed(
+      requestUrl,
+      {
+        side: request.side,
+        timeMin: request.timeMin,
+        timeMax: request.timeMax,
+        timeZone: request.timeZone,
+        forceSync: true,
+        // The request already carries an explicit exact-source selection, so
+        // hidden feed preferences must not make a valid selected source look
+        // absent during authorization/receipt validation.
+        includeHiddenCalendars: true,
+      },
+      now,
+    );
+    if (feed.state !== "complete") {
+      const failed = feed.sources
+        .filter((source) => source.error !== null)
+        .map((source) => source.summary);
+      throw new CalendarServiceError(
+        409,
+        failed.length > 0
+          ? `Calendar seed did not complete: ${failed.join(", ")} could not be synchronized. No receipt was issued.`
+          : "Calendar seed did not complete because no authoritative calendar source could be read. No receipt was issued.",
+        "CALENDAR_SEED_INCOMPLETE",
+      );
+    }
+    const serializedSourceKey = (source: LifeOpsCalendarSourceKey) =>
+      JSON.stringify([
+        source.provider,
+        source.side,
+        source.grantId,
+        source.connectorAccountId,
+        source.calendarId,
+      ]);
+    const requestedSourceKeys = request.calendars.map(serializedSourceKey);
+    const selected = new Set(requestedSourceKeys);
+    if (selected.size !== requestedSourceKeys.length) {
+      throw new CalendarServiceError(
+        400,
+        "Calendar seed selection contains the same exact source more than once.",
+        "CALENDAR_SEED_SELECTION_DUPLICATE",
+      );
+    }
+    const authorizedFreshSources = new Set(
+      feed.sources
+        .filter((source) => source.status === "fresh")
+        .map((source) => serializedSourceKey(source.key)),
+    );
+    if (
+      requestedSourceKeys.some(
+        (sourceKey) => !authorizedFreshSources.has(sourceKey),
+      )
+    ) {
+      throw new CalendarServiceError(
+        409,
+        "Calendar seed selection does not match the exact fresh sources authorized in the forced feed.",
+        "CALENDAR_SEED_SOURCE_MISMATCH",
+      );
+    }
+    const serializedUnknownSourceKey = (value: unknown): string | null => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return null;
+      }
+      const source = value as Record<string, unknown>;
+      const fields = [
+        source.provider,
+        source.side,
+        source.grantId,
+        source.connectorAccountId,
+        source.calendarId,
+      ];
+      return fields.every((field) => typeof field === "string")
+        ? JSON.stringify(fields)
+        : null;
+    };
+    const selectedSourceMatches = (event: LifeOpsCalendarEvent): number => {
+      const sourceKeys = new Set<string>();
+      const directKey = serializedSourceKey({
+        provider: event.provider,
+        side: event.side,
+        grantId: event.grantId ?? "",
+        connectorAccountId: event.connectorAccountId ?? "",
+        calendarId: event.calendarId,
+      });
+      sourceKeys.add(directKey);
+      const deduplication = event.metadata?.deduplication;
+      if (
+        deduplication &&
+        typeof deduplication === "object" &&
+        !Array.isArray(deduplication)
+      ) {
+        const sources = (deduplication as Record<string, unknown>).sources;
+        if (Array.isArray(sources)) {
+          for (const source of sources) {
+            const sourceKey = serializedUnknownSourceKey(source);
+            if (sourceKey) sourceKeys.add(sourceKey);
+          }
+        }
+      }
+      return [...sourceKeys].filter((sourceKey) => selected.has(sourceKey))
+        .length;
+    };
+    const selectedEvents = feed.events
+      .map((event) => ({
+        event,
+        selectedSourceMatches: selectedSourceMatches(event),
+      }))
+      .filter(({ selectedSourceMatches }) => selectedSourceMatches > 0);
+    const identities = new Set(
+      selectedEvents.map(({ event }) =>
+        JSON.stringify([
+          event.provider,
+          event.side,
+          event.grantId ?? "",
+          event.connectorAccountId ?? "",
+          event.calendarId,
+          event.externalId,
+          event.recurringEventId ?? "",
+          event.startAt,
+        ]),
+      ),
+    );
+    return {
+      timeMin: feed.timeMin,
+      timeMax: feed.timeMax,
+      feedState: "complete",
+      selectedSourceCount: selected.size,
+      eventCount: identities.size,
+      duplicateEventCount:
+        selectedEvents.length -
+        identities.size +
+        selectedEvents.reduce(
+          (count, event) => count + event.selectedSourceMatches - 1,
+          0,
+        ),
+      seededAt: now.toISOString(),
+    };
+  }
+
+  async purgeImportedCalendarData(
+    request: PurgeLifeOpsCalendarImportedDataRequest,
+    now = new Date(),
+  ): Promise<LifeOpsCalendarImportedDataPurgeReceipt> {
+    if (request.confirmAction !== true) {
+      throw new CalendarServiceError(
+        409,
+        "Removing imported calendar data requires explicit confirmation immediately before deletion.",
+        "CALENDAR_IMPORTED_DATA_CONFIRMATION_REQUIRED",
+      );
+    }
+    const events = await this.repo.listCalendarEvents(
+      this.agentId(),
+      request.provider,
+      undefined,
+      undefined,
+      request.side,
+      request.grantId,
+    );
+    const exactEvents = events.filter(
+      (event) => event.connectorAccountId === request.connectorAccountId,
+    );
+    await this.deleteCalendarReminderPlansForEvents(
+      exactEvents.map((event) => event.id),
+    );
+    const deleted = await this.repo.purgeImportedCalendarProjection({
+      agentId: this.agentId(),
+      provider: request.provider,
+      side: request.side,
+      grantId: request.grantId,
+      connectorAccountId: request.connectorAccountId,
+    });
+    return {
+      provider: request.provider,
+      side: request.side,
+      grantId: request.grantId,
+      connectorAccountId: request.connectorAccountId,
+      ...deleted,
+      providerMutation: false,
+      purgedAt: now.toISOString(),
+    };
   }
 
   async getCalendarEventById(

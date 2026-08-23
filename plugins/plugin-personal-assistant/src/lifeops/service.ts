@@ -134,14 +134,17 @@ import type {
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
+  LifeOpsGmailImportedDataPurgeReceipt,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedReceipt,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSyncHealth,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   LifeOpsGoalExperienceLoop,
@@ -161,8 +164,10 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   ManageLifeOpsGmailMessagesRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
   RecordLifeOpsProgressRequest,
   RecordLifeOpsProgressResult,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -697,6 +702,33 @@ export class LifeOpsService extends LifeOpsServiceBase {
         grantId,
       ),
   });
+
+  seedGmailMessages(
+    requestUrl: URL,
+    request: SeedLifeOpsGmailRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailSeedReceipt> {
+    return this.gmailDomain.seedGmailMessages(requestUrl, request, now);
+  }
+
+  getGmailSyncHealth(
+    requestUrl: URL,
+    request: {
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId: string;
+    },
+  ): Promise<LifeOpsGmailSyncHealth> {
+    return this.gmailDomain.getGmailSyncHealth(requestUrl, request);
+  }
+
+  purgeGmailImportedData(
+    requestUrl: URL,
+    request: PurgeLifeOpsGmailImportedDataRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailImportedDataPurgeReceipt> {
+    return this.gmailDomain.purgeGmailImportedData(requestUrl, request, now);
+  }
 
   getGmailTriage(
     requestUrl: URL,

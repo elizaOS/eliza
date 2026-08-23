@@ -342,10 +342,14 @@ describe("CalendarService (real PGlite, Apple provider)", () => {
         expect.any(Error),
         {
           source: expect.objectContaining({
-            calendarId: "primary",
+            calendarId: "all",
+            connectorAccountId: APPLE_CALENDAR_GRANT_ID,
+            grantId: APPLE_CALENDAR_GRANT_ID,
             provider: "apple_calendar",
             side: "owner",
           }),
+          timeMin: "2037-05-12T00:00:00.000Z",
+          timeMax: "2037-05-13T00:00:00.000Z",
         },
       );
     } finally {
@@ -394,5 +398,50 @@ describe("CalendarService (real PGlite, Apple provider)", () => {
         eventId: "apple-evt-1",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("requires confirmation and purges only Eliza's exact Apple projection", async () => {
+    await calendar.createCalendarEvent(INTERNAL_URL, {
+      grantId: APPLE_CALENDAR_GRANT_ID,
+      calendarId: "primary",
+      title: "Disposable local projection",
+      startAt: "2026-05-14T17:00:00.000Z",
+      endAt: "2026-05-14T18:00:00.000Z",
+      timeZone: "UTC",
+    });
+    const deleteEvent = vi.fn(async () => ({ ok: true as const }));
+    __testing.setNativeCalendarBridgeForTest({
+      ...appleBridge(),
+      deleteEvent,
+    } as never);
+    try {
+      const request = {
+        provider: "apple_calendar" as const,
+        side: "owner" as const,
+        grantId: APPLE_CALENDAR_GRANT_ID,
+        connectorAccountId: APPLE_CALENDAR_GRANT_ID,
+        confirmAction: false,
+      };
+      await expect(calendar.purgeImportedCalendarData(request)).rejects.toThrow(
+        /explicit confirmation/i,
+      );
+
+      const receipt = await calendar.purgeImportedCalendarData(
+        { ...request, confirmAction: true },
+        new Date("2026-08-22T09:00:00.000Z"),
+      );
+
+      expect(receipt).toMatchObject({
+        provider: "apple_calendar",
+        grantId: APPLE_CALENDAR_GRANT_ID,
+        connectorAccountId: APPLE_CALENDAR_GRANT_ID,
+        deletedEventCount: 1,
+        providerMutation: false,
+        purgedAt: "2026-08-22T09:00:00.000Z",
+      });
+      expect(deleteEvent).not.toHaveBeenCalled();
+    } finally {
+      __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
+    }
   });
 });

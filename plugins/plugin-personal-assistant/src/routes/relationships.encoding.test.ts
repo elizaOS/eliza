@@ -1,29 +1,31 @@
 /** Exercises relationship identifier decoding through the shared LifeOps route context. */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
-const get = mock(async (id: string) => ({
-  relationshipId: id,
-  fromEntityId: "from-1",
-  toEntityId: "to-1",
-  type: "friend",
+const stores = vi.hoisted(() => ({
+  get: vi.fn(async (id: string) => ({
+    relationshipId: id,
+    fromEntityId: "from-1",
+    toEntityId: "to-1",
+    type: "friend",
+  })),
+  retire: vi.fn(async () => undefined),
+  upsert: vi.fn(async (row: unknown) => row),
+  list: vi.fn(async () => []),
+  observe: vi.fn(async (row: unknown) => row),
 }));
-const retire = mock(async () => undefined);
-const upsert = mock(async (row: unknown) => row);
-const list = mock(async () => []);
-const observe = mock(async (row: unknown) => row);
 
-mock.module("@elizaos/agent", () => ({
+vi.mock("@elizaos/agent", () => ({
   resolveKnowledgeGraphService: () => ({
-    getRelationshipStore: () => ({ get, retire, upsert, list, observe }),
+    getRelationshipStore: () => stores,
   }),
 }));
 
-const { handleRelationshipRoutes } = await import("./relationships.js");
+import { handleRelationshipRoutes } from "./relationships.js";
 
 interface CapturedResponse {
   statusCode?: number;
@@ -100,18 +102,18 @@ function buildCtx(
 
 describe("lifeops relationship id encoding", () => {
   beforeEach(() => {
-    get.mockClear();
-    retire.mockClear();
-    upsert.mockClear();
-    list.mockClear();
-    observe.mockClear();
+    stores.get.mockClear();
+    stores.retire.mockClear();
+    stores.upsert.mockClear();
+    stores.list.mockClear();
+    stores.observe.mockClear();
   });
 
   test("canonical GET still reaches the relationship store", async () => {
     const { ctx, res } = buildCtx("GET", "/api/lifeops/relationships/rel-1");
     await handleRelationshipRoutes(ctx);
     expect(res.statusCode).toBe(200);
-    expect(get).toHaveBeenCalledWith("rel-1");
+    expect(stores.get).toHaveBeenCalledWith("rel-1");
     expect(JSON.parse(res.body ?? "")).toEqual({
       relationship: {
         relationshipId: "rel-1",
@@ -126,7 +128,7 @@ describe("lifeops relationship id encoding", () => {
     const { ctx, res } = buildCtx("GET", "/api/lifeops/relationships/rel%2D1");
     await handleRelationshipRoutes(ctx);
     expect(res.statusCode).toBe(200);
-    expect(get).toHaveBeenCalledWith("rel-1");
+    expect(stores.get).toHaveBeenCalledWith("rel-1");
   });
 
   test.each(["%", "%2", "%ZZ", "%E0%A4"])(
@@ -141,7 +143,7 @@ describe("lifeops relationship id encoding", () => {
       expect(JSON.parse(res.body ?? "")).toEqual({
         error: "Invalid relationship id: malformed URL encoding",
       });
-      expect(get).not.toHaveBeenCalled();
+      expect(stores.get).not.toHaveBeenCalled();
     },
   );
 
@@ -157,8 +159,8 @@ describe("lifeops relationship id encoding", () => {
       expect(JSON.parse(res.body ?? "")).toEqual({
         error: "Invalid relationship id: malformed URL encoding",
       });
-      expect(get).not.toHaveBeenCalled();
-      expect(upsert).not.toHaveBeenCalled();
+      expect(stores.get).not.toHaveBeenCalled();
+      expect(stores.upsert).not.toHaveBeenCalled();
     },
   );
 
@@ -174,7 +176,7 @@ describe("lifeops relationship id encoding", () => {
       expect(JSON.parse(res.body ?? "")).toEqual({
         error: "Invalid relationship id: malformed URL encoding",
       });
-      expect(retire).not.toHaveBeenCalled();
+      expect(stores.retire).not.toHaveBeenCalled();
     },
   );
 });

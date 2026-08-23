@@ -88,6 +88,7 @@ describe("connector account catalog defaults", () => {
       ),
     ).toEqual([
       "gmail.read",
+      "gmail.compose",
       "gmail.send",
       "gmail.manage",
       "calendar.read",

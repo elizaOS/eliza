@@ -1,6 +1,6 @@
 /**
- * Exercises bounded preview output through the exported Gmail formatter and
- * audit redactor, including truthful omission diagnostics at small caps.
+ * Exercises complete model-facing Gmail output alongside bounded audit
+ * previews, including truthful omission diagnostics at small audit caps.
  */
 import type { LifeOpsGmailTriageFeed } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { formatEmailTriage } from "./google/format-helpers.ts";
 import { redactSensitiveData } from "./redact-sensitive-data.ts";
 
 describe("preview suffix reservation", () => {
-  it("bounds the real Gmail triage snippet including its ellipsis", () => {
+  it("preserves the complete model-facing Gmail triage snippet", () => {
     const now = "2026-08-18T12:00:00.000Z";
     const feed: LifeOpsGmailTriageFeed = {
       source: "cache",
@@ -53,8 +53,7 @@ describe("preview suffix reservation", () => {
       .find((line) => line.startsWith("  g"));
     const snippet = snippetLine?.slice(2);
 
-    expect(snippet).toBe(`${"g".repeat(99)}…`);
-    expect(snippet).toHaveLength(100);
+    expect(snippet).toBe("g".repeat(140));
 
     for (const grapheme of ["🙂", "e\u0301", "👨‍👩‍👧‍👦"]) {
       const message = feed.messages[0];
@@ -65,9 +64,8 @@ describe("preview suffix reservation", () => {
         .find((line) => line.startsWith("  g"))
         ?.slice(2);
 
-      expect(bounded).toBe(`${"g".repeat(98)}…`);
+      expect(bounded).toBe(`${"g".repeat(98)}${grapheme}tail`);
       expect(bounded?.isWellFormed()).toBe(true);
-      expect(bounded?.length).toBeLessThanOrEqual(100);
     }
   });
 
