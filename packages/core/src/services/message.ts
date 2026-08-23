@@ -9930,70 +9930,70 @@ export async function runV5MessageRuntimeStage1(args: {
 			page: ReturnType<PlannerCapabilityDiscoverySession["execute"]>,
 			trajectory: PlannerTrajectory,
 		): Promise<void> => {
-			if (
-				page.activated.contexts.length === 0 &&
-				page.activated.providers.length === 0
-			) {
-				// No provider state needs recomposition before action tools are appended.
-			} else if (typeof args.runtime.composeState === "function") {
+			const needsContextExpansion =
+				page.activated.contexts.length > 0 ||
+				page.activated.providers.length > 0;
+			if (needsContextExpansion) {
 				const nextSelectedContexts = mergeAgentContexts(
 					activeSelectedContexts,
 					page.activated.contexts as AgentContext[],
 				);
-				const expandedProviderNames = selectV5PlannerStateProviderNames({
-					runtime: args.runtime,
-					message: args.message,
-					selectedContexts: nextSelectedContexts,
-					userRoles: [senderRole],
-				});
-				const providerNames = uniqueActionNames(expandedProviderNames);
-				const expandedState = await args.runtime.composeState(
-					args.message,
-					providerNames,
-					true,
-					false,
-					[],
-				);
-				const routedExpandedState = withContextRoutingValues(
-					attachAvailableContexts(expandedState, args.runtime),
-					nextSelectedContexts.length > 0
-						? {
-								[CONTEXT_ROUTING_STATE_KEY]: {
-									primaryContext: nextSelectedContexts[0],
-									secondaryContexts: nextSelectedContexts.slice(1),
-								},
-							}
-						: undefined,
-				);
-				Object.assign(plannerState, routedExpandedState);
 				activeSelectedContexts = nextSelectedContexts;
-				const providerEvents: ContextEvent[] = [];
-				appendStateProviderEvents(
-					providerEvents,
-					plannerState,
-					[
-						...MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
-						...ambientTurnProviderExclusions(args.runtime, args.message),
-					],
-					args.runtime.providers,
-				);
-				const existingProviderNames = new Set(
-					trajectory.context.events.flatMap((event) =>
-						event.type === "provider" && "name" in event
-							? [String(event.name)]
-							: [],
-					),
-				);
-				for (const event of providerEvents) {
-					if (
-						event.type !== "provider" ||
-						!("name" in event) ||
-						existingProviderNames.has(String(event.name))
-					) {
-						continue;
+				if (typeof args.runtime.composeState === "function") {
+					const expandedProviderNames = selectV5PlannerStateProviderNames({
+						runtime: args.runtime,
+						message: args.message,
+						selectedContexts: nextSelectedContexts,
+						userRoles: [senderRole],
+					});
+					const providerNames = uniqueActionNames(expandedProviderNames);
+					const expandedState = await args.runtime.composeState(
+						args.message,
+						providerNames,
+						true,
+						false,
+						[],
+					);
+					const routedExpandedState = withContextRoutingValues(
+						attachAvailableContexts(expandedState, args.runtime),
+						nextSelectedContexts.length > 0
+							? {
+									[CONTEXT_ROUTING_STATE_KEY]: {
+										primaryContext: nextSelectedContexts[0],
+										secondaryContexts: nextSelectedContexts.slice(1),
+									},
+								}
+							: undefined,
+					);
+					Object.assign(plannerState, routedExpandedState);
+					const providerEvents: ContextEvent[] = [];
+					appendStateProviderEvents(
+						providerEvents,
+						plannerState,
+						[
+							...MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
+							...ambientTurnProviderExclusions(args.runtime, args.message),
+						],
+						args.runtime.providers,
+					);
+					const existingProviderNames = new Set(
+						trajectory.context.events.flatMap((event) =>
+							event.type === "provider" && "name" in event
+								? [String(event.name)]
+								: [],
+						),
+					);
+					for (const event of providerEvents) {
+						if (
+							event.type !== "provider" ||
+							!("name" in event) ||
+							existingProviderNames.has(String(event.name))
+						) {
+							continue;
+						}
+						existingProviderNames.add(String(event.name));
+						trajectory.context = appendContextEvent(trajectory.context, event);
 					}
-					existingProviderNames.add(String(event.name));
-					trajectory.context = appendContextEvent(trajectory.context, event);
 				}
 				trajectory.context = appendContextEvent(trajectory.context, {
 					id: `contexts:discovered:${page.activated.contexts.join(",")}`,

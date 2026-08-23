@@ -657,7 +657,9 @@ export class PlannerCapabilityDiscoverySession {
 		matchedCount: number,
 		activateActions: boolean,
 	): PlannerCapabilityDiscoveryPage {
-		const activatedActions: string[] = [];
+		const activatedActions = new Set<string>();
+		const activatedProviders = new Set<string>();
+		const activatedContexts = new Set<string>();
 		const items = page.items.map(({ record, score, matchedTokens }) => {
 			const alreadyLoaded = recordLoaded(
 				record,
@@ -670,8 +672,12 @@ export class PlannerCapabilityDiscoverySession {
 				record.kind === "action" &&
 				!this.activeActionNames.has(record.name)
 			) {
-				this.activeActionNames.add(record.name);
-				activatedActions.push(record.name);
+				this.activateActionRecord(
+					record,
+					activatedActions,
+					activatedProviders,
+					activatedContexts,
+				);
 			}
 			return this.projectItem(record, alreadyLoaded, score, matchedTokens);
 		});
@@ -683,9 +689,9 @@ export class PlannerCapabilityDiscoverySession {
 			nextCursor: page.nextCursor,
 			matchedCount,
 			activated: {
-				actions: activatedActions,
-				providers: [],
-				contexts: [],
+				actions: [...activatedActions],
+				providers: [...activatedProviders],
+				contexts: [...activatedContexts],
 			},
 		};
 	}
@@ -742,10 +748,7 @@ export class PlannerCapabilityDiscoverySession {
 		contexts: Set<string>,
 	): void {
 		if (record.kind === "action") {
-			if (!this.activeActionNames.has(record.name)) {
-				this.activeActionNames.add(record.name);
-				actions.add(record.name);
-			}
+			this.activateActionRecord(record, actions, providers, contexts);
 			return;
 		}
 		if (record.kind === "provider") {
@@ -759,6 +762,40 @@ export class PlannerCapabilityDiscoverySession {
 			return;
 		}
 		this.activateContext(record.name, actions, providers, contexts);
+	}
+
+	/**
+	 * Loading one action opens the contexts and providers required to execute it,
+	 * but keeps sibling action schemas deferred. An explicit context load remains
+	 * the operation that expands every capability in that context.
+	 */
+	private activateActionRecord(
+		record: PlannerCapabilityRecord,
+		actions: Set<string>,
+		providers: Set<string>,
+		contexts: Set<string>,
+	): void {
+		if (!this.activeActionNames.has(record.name)) {
+			this.activeActionNames.add(record.name);
+			actions.add(record.name);
+		}
+		for (const context of record.contexts) {
+			if (!this.activeContextIds.has(context)) {
+				this.activeContextIds.add(context);
+				contexts.add(context);
+			}
+			for (const candidate of this.catalog.records) {
+				if (
+					candidate.kind !== "provider" ||
+					!candidate.contexts.includes(context) ||
+					this.activeProviderNames.has(candidate.name)
+				) {
+					continue;
+				}
+				this.activeProviderNames.add(candidate.name);
+				providers.add(candidate.name);
+			}
+		}
 	}
 
 	private activateContext(

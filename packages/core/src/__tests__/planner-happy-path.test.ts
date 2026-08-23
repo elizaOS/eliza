@@ -597,6 +597,104 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(toolNames).not.toContain("OWNER_SECRET_EXPORT");
 	});
 
+	it("discovers and executes an action from a newly activated context in the same turn", async () => {
+		let calendarReads = 0;
+		const web = makeMockAction({
+			name: "WEB_SEARCH",
+			contexts: ["web"],
+			handler: async () => ({ success: true, text: "web" }),
+		});
+		const calendar = makeMockAction({
+			name: "CALENDAR_READ",
+			contexts: ["calendar"],
+			handler: async () => {
+				calendarReads++;
+				return { success: true, text: "calendar events" };
+			},
+		});
+		const contextRegistry = {
+			listAvailable: () => [
+				{ id: "general", description: "General conversation" },
+				{ id: "web", description: "Web search" },
+				{ id: "calendar", description: "Calendar events" },
+			],
+		} as ContextRegistry;
+		const runtime = makeRuntime({
+			actions: [web, calendar],
+			contextRegistry,
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["web"] }),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Finding calendar access.",
+						toolCalls: [
+							{
+								id: "discover-calendar",
+								name: "DISCOVER_CAPABILITIES",
+								args: {
+									operation: "search",
+									query: "read calendar events",
+									kinds: ["action"],
+									limit: 1,
+								},
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Reading the calendar.",
+						toolCalls: [
+							{ id: "calendar-read", name: "CALENDAR_READ", args: {} },
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Calendar read completed.",
+						messageToUser: "Here are your events.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("continue with the other system"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(calendarReads).toBe(1);
+		const plannerCalls = getCalls(runtime).filter(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const firstTools = (
+			(
+				plannerCalls[0]?.params as
+					| { tools?: Array<{ name: string }> }
+					| undefined
+			)?.tools ?? []
+		).map((tool) => tool.name);
+		const secondTools = (
+			(
+				plannerCalls[1]?.params as
+					| { tools?: Array<{ name: string }> }
+					| undefined
+			)?.tools ?? []
+		).map((tool) => tool.name);
+		expect(firstTools).not.toContain("CALENDAR_READ");
+		expect(secondTools).toContain("CALENDAR_READ");
+	});
+
 	it("keeps a 200-action global catalog searchable without injecting its names or schemas", async () => {
 		const web = makeMockAction({
 			name: "WEB_SEARCH",

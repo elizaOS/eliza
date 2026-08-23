@@ -136,6 +136,98 @@ describe("planner capability discovery", () => {
 		);
 	});
 
+	it("activates a discovered action's context and providers without loading sibling actions", () => {
+		const catalog = buildPlannerCapabilityCatalog({
+			actions: [
+				action({
+					name: "CALENDAR_READ",
+					description: "Read calendar events",
+					contexts: ["calendar"],
+				}),
+				action({
+					name: "CALENDAR_DELETE",
+					description: "Delete calendar events",
+					contexts: ["calendar"],
+				}),
+			],
+			providers: [
+				provider({
+					name: "CALENDAR_STATE",
+					description: "Current calendar state",
+					contexts: ["calendar"],
+				}),
+			],
+			contexts,
+		});
+		const session = new PlannerCapabilityDiscoverySession({ catalog });
+		const result = session.execute({
+			operation: "search",
+			query: "read calendar events",
+			kinds: ["action"],
+			limit: 1,
+		});
+
+		expect(result.activated.actions).toEqual(["CALENDAR_READ"]);
+		expect(result.activated.contexts).toEqual(["calendar"]);
+		expect(result.activated.providers).toEqual(["CALENDAR_STATE"]);
+		expect(session.activeActionNames.has("CALENDAR_DELETE")).toBe(false);
+		expect(session.toolForAction("CALENDAR_READ")).toBeDefined();
+	});
+
+	it("losslessly lists every catalog record and can load the final page's action", () => {
+		const actions = Array.from({ length: 137 }, (_, index) =>
+			action({
+				name: `GLOBAL_TOOL_${String(index).padStart(3, "0")}`,
+				description: `Global operation ${index}`,
+			}),
+		);
+		const catalog = buildPlannerCapabilityCatalog({
+			actions,
+			providers: [
+				provider({ name: "GLOBAL_STATE", description: "Global state" }),
+			],
+			contexts,
+		});
+		const session = new PlannerCapabilityDiscoverySession({ catalog });
+		const visited: string[] = [];
+		let cursor: string | undefined;
+		let finalPageRef: string | undefined;
+
+		do {
+			const page = session.execute({
+				operation: "list",
+				limit: 13,
+				...(cursor ? { cursor } : {}),
+			});
+			expect(page.catalogHash).toBe(catalog.hash);
+			expect(page.matchedCount).toBe(catalog.records.length);
+			visited.push(...page.items.map((item) => item.ref));
+			finalPageRef = page.items.at(-1)?.ref;
+			cursor = page.nextCursor ?? undefined;
+			expect(page.hasMore).toBe(Boolean(cursor));
+		} while (cursor);
+
+		expect(visited).toEqual(catalog.records.map((record) => record.ref));
+		expect(new Set(visited).size).toBe(catalog.records.length);
+		const actionRefs = visited.filter((ref) => ref.startsWith("action:"));
+		const finalActionRef = actionRefs.at(-1);
+		expect(finalPageRef).toBeDefined();
+		expect(finalActionRef).toBeDefined();
+		const loaded = session.execute({
+			operation: "load",
+			catalogHash: catalog.hash,
+			refs: actionRefs,
+		});
+		const actionName = (finalActionRef as string).slice("action:".length);
+		expect(loaded.activated.actions).toEqual(actions.map((item) => item.name));
+		expect(session.activeActionNames).toEqual(
+			new Set(actions.map((item) => item.name)),
+		);
+		expect(session.toolForAction(actionName)?.parameters).toEqual(
+			catalog.byRef.get(finalActionRef as string)?.tool?.parameters,
+		);
+	});
+
 	it("loads a context and expands its authorized actions and providers", () => {
 		const catalog = buildPlannerCapabilityCatalog({
 			actions: [
