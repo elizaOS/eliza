@@ -106,11 +106,7 @@ export function isMcpSettings(value: unknown): value is McpSettings {
   );
 }
 
-export type McpServerStatus =
-  | "connecting"
-  | "connected"
-  | "disconnected"
-  | "error";
+export type McpServerStatus = "connecting" | "connected" | "disconnected" | "error";
 
 export interface McpServer {
   readonly name: string;
