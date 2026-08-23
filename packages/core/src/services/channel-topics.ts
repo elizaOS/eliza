@@ -33,6 +33,22 @@ import type { Room, UUID } from "../types/index";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 
+function toTopicScore(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareTopicScore(
+  a: { score: number; roomId: string },
+  b: { score: number; roomId: string },
+): number {
+  const aScore = toTopicScore(a.score);
+  const bScore = toTopicScore(b.score);
+  if (bScore !== aScore) return bScore - aScore;
+  return a.roomId.localeCompare(b.roomId);
+}
+
+export const __testCompareTopicScore = compareTopicScore;
+
 /** Metadata key under which a room's topic LRU is persisted. */
 export const CHANNEL_TOPICS_METADATA_KEY = "currentTopics";
 
@@ -336,7 +352,7 @@ export function matchTopicRooms(
 			});
 		}
 	}
-	scored.sort((a, b) => b.score - a.score || a.roomId.localeCompare(b.roomId));
+	scored.sort(compareTopicScore);
 	const selected =
 		limit === undefined ? scored : scored.slice(0, Math.max(0, limit));
 	return selected.map(({ score, ...hit }) => hit);
