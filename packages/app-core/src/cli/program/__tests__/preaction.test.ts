@@ -32,6 +32,11 @@ vi.mock("../../services/update-notifier", () => ({
   scheduleUpdateNotification: (...a: unknown[]) =>
     mocks.scheduleUpdateNotification(...a),
 }));
+vi.mock("@elizaos/agent", () => ({
+  checkForUpdate: vi.fn(),
+  loadElizaConfig: vi.fn(),
+  resolveChannel: vi.fn(),
+}));
 
 describe("registerPreActionHooks", () => {
   let hookFn: (a: unknown, b: unknown) => Promise<void>;
