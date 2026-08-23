@@ -1023,7 +1023,17 @@ function walletTimelineEntries({
   });
 
   return [...swapEntries, ...agentEntries]
-    .sort((left, right) => right.timestamp - left.timestamp)
+    .sort((left, right) => {
+      const rightTime =
+        typeof right.timestamp === "number" && Number.isFinite(right.timestamp)
+          ? right.timestamp
+          : 0;
+      const leftTime =
+        typeof left.timestamp === "number" && Number.isFinite(left.timestamp)
+          ? left.timestamp
+          : 0;
+      return rightTime - leftTime || left.id.localeCompare(right.id);
+    })
     .slice(0, 18);
 }
 
