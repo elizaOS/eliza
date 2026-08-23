@@ -20,6 +20,10 @@ const DEFAULT_LEASE_MS = 30_000;
 const DEFAULT_WAIT_MS = 5_000;
 const WAIT_STEP_MS = 25;
 
+function boundedAmbiguousReason(reason: string): string {
+  return toWellFormedUnicode(truncateWellFormed(reason, 500));
+}
+
 export type StripeCustomerCallerIntent =
   | "payment_method"
   | "interactive_checkout"
@@ -373,7 +377,7 @@ export class StripeCustomerAuthorityService {
         .update(stripeCustomerAttempts)
         .set({
           status: "provider_ambiguous",
-          ambiguous_reason: truncateWellFormed(toWellFormedUnicode(reason), 500),
+          ambiguous_reason: boundedAmbiguousReason(reason),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
@@ -396,7 +400,7 @@ export class StripeCustomerAuthorityService {
       await tx
         .update(stripeCustomerAttempts)
         .set({
-          ambiguous_reason: truncateWellFormed(toWellFormedUnicode(reason), 500),
+          ambiguous_reason: boundedAmbiguousReason(reason),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
@@ -416,7 +420,7 @@ export class StripeCustomerAuthorityService {
         .update(stripeCustomerAttempts)
         .set({
           status: "quarantined",
-          ambiguous_reason: truncateWellFormed(toWellFormedUnicode(reason), 500),
+          ambiguous_reason: boundedAmbiguousReason(reason),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
