@@ -121,8 +121,29 @@ processes. The agent host's `FileMessageInteractionSessionStore` is durable and
 cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
 commit and a boot/process-generation-qualified stale-owner lock whose atomic,
 shared transition marker prevents retirement from detaching a fresh successor.
-Unpublished owners have an absolute recovery ceiling; unqualified live PIDs
-fail closed. Multi-host deployments must implement the
+Complete owner inodes publish through a no-replace hardlink; malformed owners
+have an absolute recovery ceiling and unqualified live PIDs fail closed. An
+abandoned transition marker reports `INTERACTION_STORE_RECOVERY_REQUIRED` and
+requires operator recovery after stopping every store user and verifying that
+no host process owns the store; it is never reclaimed through a racy pathname
+unlink and has no bounded automatic recovery. The typed error reports the exact
+marker in `context.markerPath`. Offline recovery is: stop every store user,
+verify no process owns the adjacent `.lock` file, remove exactly the reported
+`.transition` path, fsync its parent directory, then restart.
+Cleanup failures distinguish pre-operation recovery (`committed: false`) from
+post-commit release (`committed: true`) with separate error codes so a caller
+never retries an already committed mutation. All other post-write release
+errors also report `committed: true`; combined operation/release errors preserve
+the structured release code and recovery context. A publisher that finds a
+transition marker after linking its owner performs no mutation and reports both
+paths plus the owner token/inode: offline recovery must remove the verified
+marker and owner while all users are stopped, fsync the parent, then restart.
+Post-rename directory sync or close failures are non-retryable commit outcomes:
+the former reports `committed: "unknown"`, while a failure after successful
+sync reports `committed: true`; callers reconcile by reading the persisted
+session rather than repeating the transition. Dual lock-unlink/marker-cleanup
+failure preserves both errors and the exact owner/marker recovery authority.
+Multi-host deployments must implement the
 same store interface with a transactional database and idempotent effect/outbox
 boundary; the JSON store does not claim distributed exactly-once semantics.
 
