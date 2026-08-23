@@ -18,30 +18,39 @@ type AuditEmit = {
   ip?: string;
 };
 
-const { auditEmits, auditDispatcher } = vi.hoisted(() => {
+// This package's unit lane runs these files with `bun test`
+// (packages/cloud/api/test/run-unit-isolated.mjs), and bun's vitest compat
+// layer has no vi.hoisted -- verified against the pinned bun 1.3.14, where
+// `typeof vi.mock` is "function" but `typeof vi.hoisted` is "undefined".
+// Under vitest the file passed; under the lane that actually gates it, every
+// case died at collection. So build the collaborator inside the mock factory
+// and reach it afterwards through the mocked module, per #26087.
+vi.mock("../services/audit-dispatcher-singleton", () => {
   const auditEmits: AuditEmit[] = [];
-  return {
-    auditEmits,
-    auditDispatcher: {
-      emit: async (input: AuditEmit) => {
-        auditEmits.push(input);
-        return input;
-      },
+  const auditDispatcher = {
+    emit: async (input: AuditEmit) => {
+      auditEmits.push(input);
+      return input;
     },
+  };
+  return {
+    getAuditDispatcher: () => auditDispatcher,
+    initAuditDispatcher: () => auditDispatcher,
+    setAuditDispatcher: () => undefined,
+    __auditEmits: auditEmits,
   };
 });
 
-vi.mock("../services/audit-dispatcher-singleton", () => ({
-  getAuditDispatcher: () => auditDispatcher,
-  initAuditDispatcher: () => auditDispatcher,
-  setAuditDispatcher: () => undefined,
-}));
+const auditModule = (await import("../services/audit-dispatcher-singleton")) as unknown as {
+  __auditEmits: AuditEmit[];
+};
+const auditEmits = auditModule.__auditEmits;
 
-import {
+const {
   authMiddleware,
   isPublicPath,
   isRouteAuthenticatedInferencePath,
-} from "./auth";
+} = await import("./auth");
 
 const PUBLIC_PREFIXES = [
   "/api/health",
