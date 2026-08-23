@@ -22,7 +22,7 @@ vi.mock("@elizaos/shared", () => ({ theme: mocks.theme }));
 describe("scheduleUpdateNotification", () => {
   let originalIsTTY: boolean | undefined;
   let originalCI: string | undefined;
-  let mod: typeof import("./update-notifier.ts");
+  let mod: typeof import("../update-notifier.ts");
 
   beforeEach(async () => {
     vi.resetModules();
@@ -32,7 +32,7 @@ describe("scheduleUpdateNotification", () => {
     mocks.resolveChannel.mockReturnValue("stable");
     originalIsTTY = (process.stderr as { isTTY?: boolean }).isTTY;
     originalCI = process.env.CI;
-    mod = await import("./update-notifier.ts");
+    mod = await import("../update-notifier.ts");
   });
 
   afterEach(() => {
