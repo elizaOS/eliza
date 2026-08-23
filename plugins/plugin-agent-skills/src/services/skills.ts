@@ -2432,9 +2432,16 @@ export class AgentSkillsService extends Service {
 		const reportFile = pkg?.files.get(".scan-results.json");
 		if (!reportFile?.isText) return null;
 
-		const parsed = JSON.parse(reportFile.content as string) as SkillScanReport;
-		if (!parsed.scannedAt || !Array.isArray(parsed.findings)) return null;
-		return parsed;
+		try {
+			const parsed = JSON.parse(
+				reportFile.content as string,
+			) as SkillScanReport;
+			if (!parsed.scannedAt || !Array.isArray(parsed.findings)) return null;
+			return parsed;
+		} catch {
+			// error-policy:J4 Corrupted scan report yields null rather than throwing SyntaxError
+			return null;
+		}
 	}
 
 	/**
