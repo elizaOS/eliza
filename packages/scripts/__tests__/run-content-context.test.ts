@@ -71,38 +71,40 @@ function evidenceValues() {
       })),
     },
     "conformance.json": {
-      reports: [
-        {
-          status: "passed",
-          restartVerified: true,
-          concurrencyVerified: true,
-          repeatedPageVerified: true,
-          cleanupVerified: true,
-          postCleanupProbeVerified: true,
-          performance: {
-            maxPageLatencyMs: 1,
-            rssGrowthBytes: 1,
-            readAmplification: 1,
-            readCallsPerPageMax: 1,
-            rowsPerPageMax: 1,
-            ceilings: {
-              maxPageLatencyMs: 100,
-              maxRssGrowthBytes: 1024,
-              maxReadAmplification: 2,
-              maxReadCallsPerPage: 2,
-              maxRowsPerPage: 8,
-            },
+      reports: objects.map((object) => ({
+        objectId: object.id,
+        status: "passed",
+        restartVerified: true,
+        concurrencyVerified: true,
+        repeatedPageVerified: true,
+        cleanupVerified: true,
+        postCleanupProbeVerified: true,
+        performance: {
+          maxPageLatencyMs: 1,
+          rssGrowthBytes: 1,
+          readAmplification: 1,
+          readCallsPerPageMax: 1,
+          rowsPerPageMax: 1,
+          ceilings: {
+            maxPageLatencyMs: 100,
+            maxRssGrowthBytes: 1024,
+            maxReadAmplification: 2,
+            maxReadCallsPerPage: 2,
+            maxRowsPerPage: 8,
           },
         },
-      ],
+      })),
     },
     "mutant-kills.json": {
       status: "passed",
-      required: 1,
-      executed: 1,
-      killed: 1,
+      required: 9,
+      executed: 9,
+      killed: 9,
       killRate: 1,
-      results: [{ status: "killed", failureVectors: ["source-work"] }],
+      results: Array.from({ length: 9 }, () => ({
+        status: "killed",
+        failureVectors: ["source-work"],
+      })),
     },
     "source-work.json": {
       samples: [
@@ -162,7 +164,10 @@ function evidenceValues() {
     },
     "stress.json": {
       status: "passed",
-      cases: [1, 8, 32, 64].map((concurrency) => ({ concurrency })),
+      reports: objects.map((object) => ({
+        objectId: object.id,
+        cases: [1, 8, 32, 64].map((concurrency) => ({ concurrency })),
+      })),
     },
     "soak.json": {
       status: "passed",
@@ -203,6 +208,8 @@ function evidenceValues() {
         repetition,
         status: "passed",
         providerQualified: true,
+        provider: "fixture-provider",
+        model: "fixture-model",
         answerLeakageDetected: false,
       }),
     ).join("\n"),
