@@ -19,6 +19,8 @@ import {
   getRelatedEntityIds,
   logger,
   ModelType,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  revalidateOwnerExclusiveDisclosure,
   toWellFormedUnicode,
   validateUuid,
 } from "@elizaos/core";
@@ -335,8 +337,161 @@ function describeScanWindow(scan: CandidateScan): string {
   return `${base} ${scan.saturatedTables.join(", ")} filled that window, so older rows were NOT scanned and this is a windowed match count, not a total — widen with type, entityId, roomId, or a higher limit (the window is max(limit*2, 200) rows per table).`;
 }
 
+/**
+ * Enumeration-style history questions ("what have we talked about lately",
+ * "look at the recent logs") are NOT keyword lookups: BM25/keyword scoring
+ * against phrases like "recent logs" matches rows that literally contain
+ * "recent" or "logs" and misses everything the user actually means (live
+ * sol-dev 2026-08-22: days of covenant history about the dmarz
+ * entropy/simulation roof talks and the Alexis supplements sat in the
+ * messages table while op:search returned only literal matches, so the reply
+ * enumerated a fraction of the week). These patterns request a TIME SLICE,
+ * so serve them a chronological cross-room digest of the last few days.
+ */
+const RECENT_HISTORY_PATTERNS = [
+  /\b(?:recent|latest)\b.*\b(?:logs?|journals?|chats?|conversations?|messages?|days?|history)\b/i,
+  /\b(?:last|past)\s+(?:few|couple(?:\s+of)?|\d+)?\s*(?:days?|nights?|weeks?)\b/i,
+  /\bwhat\s+(?:have|did)\s+we\s+(?:talk|chat|discuss|cover)\b/i,
+  /\b(?:catch|fill)\s+me\s+up\b/i,
+  /\b(?:this|the)\s+week'?s?\b.*\b(?:conversations?|chats?|topics?|logs?)\b/i,
+  /\blately\b/i,
+];
+
+function isRecentHistoryQuery(query: string): boolean {
+  return RECENT_HISTORY_PATTERNS.some((p) => p.test(query));
+}
+
+const HISTORY_DIGEST_DAYS = 7;
+const HISTORY_DIGEST_MAX_ROOMS = 15;
+const HISTORY_DIGEST_FETCH_LIMIT = 800;
+const HISTORY_DIGEST_MAX_LINES = 80;
+const HISTORY_DIGEST_LINE_CHARS = 220;
+/** Ingestion wrapper: '[Discord #chan | guild] @user (date): text' */
+const CONNECTOR_PREFIX_PATTERN =
+  /^\[[^\]\n]{1,120}\]\s+@\S+\s+\([^)]{1,60}\):\s*/;
+
+/**
+ * Chronological digest of the sender's rooms over the last week. Owner-private
+ * gated: this is deliberately cross-room recall, so it renders ONLY when the
+ * live delivery audience is a verified owner-only destination (owner DM, or a
+ * guild whose entire census is {owner, agent}) — the same rule
+ * relevant-conversations enforces. In a mixed room the digest silently
+ * degrades to null and the caller keeps the room-scoped keyword scan, so
+ * other participants never see private-room content.
+ */
+async function buildRecentHistoryDigest(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<string | null> {
+  const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
+  if (
+    !disclosure.allowed ||
+    disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+  ) {
+    return null;
+  }
+
+  const cutoff = Date.now() - HISTORY_DIGEST_DAYS * 24 * 60 * 60 * 1000;
+  const clusterIds = await getRelatedEntityIds(runtime, message.entityId);
+  const roomIdSets = await Promise.all(
+    clusterIds.map((id) => runtime.getRoomsForParticipant(id)),
+  );
+  const roomIds = [...new Set(roomIdSets.flat())].slice(
+    0,
+    HISTORY_DIGEST_MAX_ROOMS,
+  );
+  if (roomIds.length === 0) return null;
+
+  const memories = await runtime.getMemoriesByRoomIds({
+    tableName: "messages",
+    roomIds,
+    limit: HISTORY_DIGEST_FETCH_LIMIT,
+  });
+
+  const agentName = runtime.character.name ?? "Agent";
+  const seenTexts = new Set<string>();
+  const rows = memories
+    .filter((m) => {
+      const text = (m.content as { text?: string } | undefined)?.text;
+      if (typeof text !== "string" || !text.trim()) return false;
+      if ((m.createdAt ?? 0) < cutoff) return false;
+      // Synced-corpus rows are book knowledge, not conversation.
+      if (text.startsWith("[SOLIZA_SYNC_V1]")) return false;
+      return true;
+    })
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+
+  const lines: string[] = [];
+  for (const m of rows) {
+    const raw = ((m.content as { text?: string }).text ?? "").trim();
+    const text = raw.replace(CONNECTOR_PREFIX_PATTERN, "");
+    const normalized = text.replace(/\s+/g, " ").slice(0, 120);
+    // Double-persisted rows (bare + platformMessageId twin) render once.
+    const dedupeKey = `${m.entityId}:${normalized}`;
+    if (seenTexts.has(dedupeKey)) continue;
+    seenTexts.add(dedupeKey);
+    const when = new Date(m.createdAt ?? 0);
+    const stamp = `${String(when.getUTCMonth() + 1).padStart(2, "0")}/${String(
+      when.getUTCDate(),
+    ).padStart(2, "0")} ${String(when.getUTCHours()).padStart(2, "0")}:${String(
+      when.getUTCMinutes(),
+    ).padStart(2, "0")}Z`;
+    const speaker = m.entityId === runtime.agentId ? agentName : "user";
+    lines.push(
+      `[${stamp}] ${speaker}: ${text.replace(/\s+/g, " ").slice(0, HISTORY_DIGEST_LINE_CHARS)}`,
+    );
+  }
+  if (lines.length === 0) return null;
+
+  // Budget per DAY, not head/tail. A head/tail split renders the oldest and
+  // newest edges and silently drops the middle days — observed on the first
+  // live probe: a 7-day window rendered 8/17-8/18 + today while 8/19-8/21
+  // (the days the user was asking about) fell in the omitted middle. Group
+  // lines by UTC day and give each day an equal share of the budget so every
+  // day in the window is represented; within a day, spread evenly across the
+  // day's messages instead of taking a contiguous run.
+  let rendered = lines;
+  if (lines.length > HISTORY_DIGEST_MAX_LINES) {
+    const byDay = new Map<string, string[]>();
+    for (const line of lines) {
+      const day = line.slice(1, 6); // "MM/DD" from "[MM/DD HH:MMZ] ..."
+      const bucket = byDay.get(day);
+      if (bucket) bucket.push(line);
+      else byDay.set(day, [line]);
+    }
+    const days = [...byDay.keys()];
+    const perDay = Math.max(
+      3,
+      Math.floor(HISTORY_DIGEST_MAX_LINES / days.length),
+    );
+    rendered = [];
+    for (const day of days) {
+      const dayLines = byDay.get(day) ?? [];
+      if (dayLines.length <= perDay) {
+        rendered.push(...dayLines);
+        continue;
+      }
+      const step = dayLines.length / perDay;
+      const picked: string[] = [];
+      for (let i = 0; i < perDay; i += 1) {
+        picked.push(dayLines[Math.floor(i * step)] as string);
+      }
+      rendered.push(...picked);
+      rendered.push(
+        `  ... (${dayLines.length - perDay} more messages on ${day}; ask about this day for detail) ...`,
+      );
+    }
+  }
+
+  return [
+    `Chronological conversation digest, last ${HISTORY_DIGEST_DAYS} days across ${roomIds.length} room(s) (owner-private destination verified):`,
+    ...rendered,
+  ].join("\n");
+}
+
 async function doSearch(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const type =
@@ -371,6 +526,22 @@ async function doSearch(
   };
   const scan = await collectCandidates(runtime, { ...scope, limit });
 
+  // Enumeration lane: "what have we talked about lately" is a time-slice
+  // request, not a keyword lookup. Build the chronological digest in
+  // parallel-with-nothing (it's one rooms read + one windowed message read)
+  // and prepend it when the pattern matches AND the destination is verified
+  // owner-private. Never replaces the keyword results — the model gets both.
+  let historyDigest: string | null = null;
+  if (query && isRecentHistoryQuery(query)) {
+    try {
+      historyDigest = await buildRecentHistoryDigest(runtime, message);
+    } catch (err) {
+      // Recall must degrade to the keyword scan, never fail the search.
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[memory:search] history digest failed: ${msg}`);
+    }
+  }
+
   const matchedInWindow = scan.matches.length;
   const items = scan.matches
     .slice(0, limit)
@@ -400,6 +571,9 @@ async function doSearch(
   return {
     success: true,
     text: [
+      // The digest leads: for an enumeration question it IS the answer, and
+      // the keyword matches below it are supporting detail.
+      ...(historyDigest ? [historyDigest, ""] : []),
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
       ...(ignoredIdNotes.length > 0
         ? [`Note: ${ignoredIdNotes.join("; ")}.`]
@@ -420,6 +594,7 @@ async function doSearch(
       matchedInWindow,
       scanWindowPerTable: scan.perTable,
       scanWindowSaturated: scan.saturatedTables.length > 0,
+      historyDigestIncluded: historyDigest !== null,
     },
     data: {
       actionName: "MEMORY",
@@ -691,7 +866,7 @@ export const memoryAction: Action = {
         case "create":
           return await doCreate(runtime, message, params);
         case "search":
-          return await doSearch(runtime, params);
+          return await doSearch(runtime, message, params);
         case "update":
           return await doUpdate(runtime, params);
         case "delete":
