@@ -236,6 +236,39 @@ describe("OpenAI REST handler request shapes", () => {
     expect(requestBody.max_tokens).toBe(123);
   });
 
+  it("routes Cerebras image descriptions to verified Gemma with a data URL", async () => {
+    const fetchMock = mockVisionResponse("Title: Fixture\nDescription: A safe fixture.");
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleImageDescription(
+        createRuntime({
+          ELIZA_PROVIDER: "cerebras",
+          CEREBRAS_API_KEY: "csk-cerebras-fake",
+        }),
+        { imageUrl: "data:image/png;base64,iVBORw0KGgo=", prompt: "Describe it" }
+      )
+    ).resolves.toMatchObject({ title: "Fixture", description: "A safe fixture." });
+
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as {
+      model: string;
+    };
+    expect(requestBody.model).toBe("gemma-4-31b");
+  });
+
+  it("rejects external Cerebras image URLs before provider dispatch", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleImageDescription(
+        createRuntime({ ELIZA_PROVIDER: "cerebras", CEREBRAS_API_KEY: "fake" }),
+        { imageUrl: "https://example.com/screenshot.png" }
+      )
+    ).rejects.toThrow("requires one base64 PNG or JPEG data URL");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects blank TTS text and invalid voices before calling the provider", async () => {
     const fetchMock = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);

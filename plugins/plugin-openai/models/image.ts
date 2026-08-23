@@ -27,6 +27,7 @@ import {
   getImageDescriptionMaxTokens,
   getImageDescriptionModel,
   getImageModel,
+  isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -41,6 +42,23 @@ const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
 const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
 
 const IMAGE_DESCRIPTION_TIMEOUT_MS = 45_000;
+const CEREBRAS_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const CEREBRAS_IMAGE_DATA_URL = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]*={0,2})$/;
+
+function validateCerebrasImageUrl(imageUrl: string): void {
+  const match = CEREBRAS_IMAGE_DATA_URL.exec(imageUrl);
+  if (!match) {
+    throw new Error(
+      "Cerebras IMAGE_DESCRIPTION requires one base64 PNG or JPEG data URL; external image URLs are unsupported"
+    );
+  }
+  const payload = match[2] ?? "";
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  const decodedBytes = Math.floor((payload.length * 3) / 4) - padding;
+  if (decodedBytes <= 0 || decodedBytes > CEREBRAS_MAX_IMAGE_BYTES) {
+    throw new Error("Cerebras IMAGE_DESCRIPTION image payload must be between 1 byte and 10 MB");
+  }
+}
 
 export async function handleImageGeneration(
   runtime: IAgentRuntime,
@@ -190,6 +208,7 @@ export async function handleImageDescription(
   if (!imageUrl || imageUrl.trim().length === 0) {
     throw new Error("IMAGE_DESCRIPTION requires a valid image URL");
   }
+  if (isCerebrasMode(runtime)) validateCerebrasImageUrl(imageUrl);
 
   const baseURL = getImageDescriptionBaseURL(runtime);
   const timeoutSignal = AbortSignal.timeout(IMAGE_DESCRIPTION_TIMEOUT_MS);
