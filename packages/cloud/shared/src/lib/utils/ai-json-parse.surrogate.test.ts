@@ -1,8 +1,9 @@
 /**
  * Surrogate-safe truncation for AI JSON parse error.
  */
-import { describe, expect, it } from "vitest";
+
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 describe("ai-json-parse surrogate-safe", () => {
   it("replaces lone surrogate", () => {
