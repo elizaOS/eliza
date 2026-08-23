@@ -10,10 +10,10 @@ import {
 
 describe("package-info", () => {
   it("getPackageRoot resolves to the package parent", () => {
-    // The test harness places this file under <root>/elizaos/package-info.ts
-    // with a package.json in <root>/, so the root is the parent directory.
+    // package-info.ts lives under <root>/src, so its parent is the elizaos
+    // package root containing package.json.
     const root = getPackageRoot();
-    expect(root.endsWith("elizaos")).toBe(false);
+    expect(root.endsWith("elizaos")).toBe(true);
   });
 
   it("readPackageJson reads the package metadata", () => {
