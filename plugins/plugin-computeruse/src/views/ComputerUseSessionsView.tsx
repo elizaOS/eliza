@@ -42,6 +42,9 @@ export interface SessionSnapshot {
   leaseExpiresAt?: string;
   cursor?: { x: number; y: number; displayId?: number; updatedAt: string };
   lastCommand?: string;
+  lastControlMode?: "accessibility" | "coordinate_fallback" | "keyboard";
+  lastPhysicalPointerBorrowed?: boolean;
+  lastFallbackDisclosure?: string;
   lastError?: string;
   lastObservation?: ObservationProvenance;
   lastOutcome?: {
@@ -487,9 +490,10 @@ export function ComputerUseSessionsView({
           <h1 className="text-base font-semibold">Computer sessions</h1>
           {!shortLandscape ? (
             <p className="text-xs text-muted-foreground">
-              One physical host cursor; independent targets use virtual cursors.
-              Frames update live—select a session to focus it, then close
-              isolated targets when finished.
+              macOS controls use app-scoped Accessibility first. Coordinate
+              fallback is disclosed with a virtual agent cursor and restores the
+              one physical pointer after bounded use when the operation permits
+              it.
             </p>
           ) : null}
         </div>
@@ -640,6 +644,23 @@ export function ComputerUseSessionsView({
                     ? ` · Cursor ${Math.round(selected.cursor.x)}, ${Math.round(selected.cursor.y)}`
                     : " · Cursor pending"}
                 </p>
+                {selected.lastControlMode ? (
+                  <p
+                    className={
+                      selected.lastControlMode === "coordinate_fallback"
+                        ? "truncate text-amber-500"
+                        : "truncate text-emerald-500"
+                    }
+                    title={selected.lastFallbackDisclosure}
+                  >
+                    {selected.lastControlMode === "coordinate_fallback"
+                      ? (selected.lastFallbackDisclosure ??
+                        "Coordinate fallback · physical pointer borrowed")
+                      : selected.lastControlMode === "accessibility"
+                        ? "Accessibility · physical pointer untouched"
+                        : "Keyboard input"}
+                  </p>
+                ) : null}
                 {frames[selected.id]?.provenance ? (
                   <p
                     className="truncate"
@@ -753,6 +774,23 @@ export function ComputerUseSessionsView({
                             ? `Last: ${session.lastCommand}`
                             : "Waiting for first action"}
                       </span>
+                      {session.lastControlMode ? (
+                        <span
+                          className={`col-span-2 truncate ${
+                            session.lastControlMode === "coordinate_fallback"
+                              ? "text-amber-500"
+                              : "text-emerald-500"
+                          }`}
+                          title={session.lastFallbackDisclosure}
+                        >
+                          {session.lastControlMode === "coordinate_fallback"
+                            ? (session.lastFallbackDisclosure ??
+                              "Coordinate fallback · physical pointer borrowed")
+                            : session.lastControlMode === "accessibility"
+                              ? "Accessibility · physical pointer untouched"
+                              : "Keyboard input"}
+                        </span>
+                      ) : null}
                       {frames[session.id]?.provenance ? (
                         <span
                           className="col-span-2 truncate"

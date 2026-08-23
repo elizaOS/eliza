@@ -78,6 +78,9 @@ export interface ComputerUseSessionSnapshot {
   activeActionId?: string;
   lastActionId?: string;
   lastCommand?: string;
+  lastControlMode?: "accessibility" | "coordinate_fallback" | "keyboard";
+  lastPhysicalPointerBorrowed?: boolean;
+  lastFallbackDisclosure?: string;
   lastError?: string;
   lastObservation?: ComputerUseObservationProvenance;
   lastOutcome?: ComputerUseSessionOutcome;
@@ -111,6 +114,9 @@ export interface ComputerUseSessionActionResult {
   permissionType?: string;
   cursorPosition?: { x: number; y: number };
   displayId?: number;
+  controlMode?: "accessibility" | "coordinate_fallback" | "keyboard";
+  physicalPointerBorrowed?: boolean;
+  fallbackDisclosure?: string;
 }
 
 export interface ComputerUseSessionFrame {

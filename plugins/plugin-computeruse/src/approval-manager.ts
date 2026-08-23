@@ -29,6 +29,7 @@ const SAFE_COMMANDS = new Set<string>([
   "get_cursor_position",
   "ocr",
   "detect_elements",
+  "accessibility_snapshot",
   "browser_screenshot",
   "browser_state",
   "browser_info",

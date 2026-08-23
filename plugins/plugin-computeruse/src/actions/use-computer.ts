@@ -62,6 +62,8 @@ const DESKTOP_ACTIONS = new Set<DesktopActionType>([
   "get_cursor_position",
   "detect_elements",
   "ocr",
+  "accessibility_snapshot",
+  "accessibility_action",
   "open",
   "launch",
   "kill_app",
@@ -234,7 +236,7 @@ export const useComputerAction: Action = {
     "DENY_COMPUTER_USE",
   ],
   description:
-    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr/open/launch. mouse_down/up + key_down/up are press-and-hold primitives (button held until released); drag accepts a multi-point `path`; open(target) opens a file/URL/folder; launch(app,appArgs) starts an app and returns its pid. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
+    "computer_use: real desktop control on macOS/Linux/Windows. On macOS, ordinary controls MUST use accessibility_snapshot(app) followed by accessibility_action(app,axSnapshotId,axElementId,axAction) so the user's physical cursor stays untouched; capture a fresh AX snapshot after every action. Screenshot coordinates are an explicit fallback only. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/accessibility_snapshot/accessibility_action/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr/open/launch. mouse_down/up + key_down/up are press-and-hold primitives; drag accepts a multi-point `path`; open(target) opens a file/URL/folder; launch(app,appArgs) starts an app and returns its pid. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
   descriptionCompressed:
     "Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|open|launch|approve",
   routingHint:
@@ -267,6 +269,8 @@ export const useComputerAction: Action = {
           "get_cursor_position",
           "detect_elements",
           "ocr",
+          "accessibility_snapshot",
+          "accessibility_action",
           "open",
           "launch",
           "kill_app",
@@ -384,9 +388,43 @@ export const useComputerAction: Action = {
     {
       name: "app",
       description:
-        "Application name or executable path to launch (action=launch).",
+        "Exact running application name for macOS Accessibility actions, or executable path/name for action=launch.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "axSnapshotId",
+      description:
+        "Opaque id from the most recent app-scoped accessibility_snapshot.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "axElementId",
+      description:
+        "Opaque element id from the referenced accessibility_snapshot.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "axAction",
+      description:
+        "macOS Accessibility operation. The snapshot is consumed after one action.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: [
+          "press",
+          "confirm",
+          "raise",
+          "focus",
+          "set_value",
+          "scroll_up",
+          "scroll_down",
+          "scroll_left",
+          "scroll_right",
+        ],
+      },
     },
     {
       name: "appArgs",

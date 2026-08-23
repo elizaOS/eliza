@@ -560,6 +560,14 @@ export class ComputerUseSessionManager {
       const stopRequested = abortController.signal.aborted;
       const cursor = cursorFromAction(action, result, occurredAt);
       if (cursor) session.cursor = cursor;
+      if (result.controlMode) session.lastControlMode = result.controlMode;
+      session.lastPhysicalPointerBorrowed =
+        result.physicalPointerBorrowed === true;
+      if (result.fallbackDisclosure) {
+        session.lastFallbackDisclosure = result.fallbackDisclosure;
+      } else {
+        delete session.lastFallbackDisclosure;
+      }
       session.status = stopRequested ? "closed" : "idle";
       session.canonicalState = stopRequested ? "stopped" : "ready";
       if (stopRequested) this.releaseSessionOwnership(session);

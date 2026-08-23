@@ -221,7 +221,11 @@ describe("ComputerUseSessionManager", () => {
     const manager = new ComputerUseSessionManager({
       idFactory: () => "session-one",
       maxEvents: 3,
-      executor: async () => ({ success: true }),
+      executor: async () => ({
+        success: true,
+        controlMode: "accessibility",
+        physicalPointerBorrowed: false,
+      }),
       frameProvider: async () => ({ mimeType: "image/png", data: "cG5n" }),
     });
     const session = manager.create({
@@ -253,6 +257,10 @@ describe("ComputerUseSessionManager", () => {
       x: 30,
       y: 40,
       displayId: 3,
+    });
+    expect(completed.session).toMatchObject({
+      lastControlMode: "accessibility",
+      lastPhysicalPointerBorrowed: false,
     });
     expect(completed.session.target.viewerUrl).toBe("https://example.test/vnc");
     const serialized = JSON.stringify(manager.getEvents());
