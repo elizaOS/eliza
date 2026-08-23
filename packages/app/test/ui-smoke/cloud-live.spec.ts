@@ -39,6 +39,7 @@ import {
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import {
   assertOnboardingLivenessWithTiming,
+  describeAnchoredLiveTurnState,
   findAnchoredLiveTurn,
   isLiveReply,
   readLivenessThreadLines,
@@ -742,7 +743,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       // to an allowlisted name plus counts/booleans only. Never emit the draft,
       // challenge, response text, request URL, or any account/runtime ID.
       const auditAfterLiveness = await primaryAudit.snapshot();
-      const [domSnapshotResult] = await Promise.allSettled([
+      const [domSnapshotResult, threadLinesResult] = await Promise.allSettled([
         page.evaluate((before) => {
           const userRows = Array.from(
             document.querySelectorAll(
@@ -787,6 +788,7 @@ test.describe("real cloud login + personal identity + chat", () => {
             }),
           };
         }, domBeforeLiveness),
+        readLivenessThreadLines(page),
       ]);
       const domSnapshot =
         domSnapshotResult?.status === "fulfilled"
@@ -799,26 +801,102 @@ test.describe("real cloud login + personal identity + chat", () => {
         )
           ? error.name
           : "UnknownError";
+      const anchoredState = describeAnchoredLiveTurnState(
+        threadLinesResult.status === "fulfilled" ? threadLinesResult.value : [],
+        { anchorToken: turnAnchorToken },
+      );
+      const diagnosticRecord = {
+        originalErrorName,
+        chatSendAttemptDelta: Math.max(
+          0,
+          auditAfterLiveness.chatSendAttemptCount -
+            auditBeforeLiveness.chatSendAttemptCount,
+        ),
+        logicalChatSendDelta: Math.max(
+          0,
+          auditAfterLiveness.logicalChatSendCount -
+            auditBeforeLiveness.logicalChatSendCount,
+        ),
+        unidentifiedChatSendDelta: Math.max(
+          0,
+          auditAfterLiveness.unidentifiedChatSendAttemptCount -
+            auditBeforeLiveness.unidentifiedChatSendAttemptCount,
+        ),
+        namedWarmingResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.namedWarmingResponseCount -
+            auditBeforeLiveness.namedWarmingResponseCount,
+        ),
+        successfulChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.successfulChatSendResponseCount -
+            auditBeforeLiveness.successfulChatSendResponseCount,
+        ),
+        clientErrorChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.clientErrorChatSendResponseCount -
+            auditBeforeLiveness.clientErrorChatSendResponseCount,
+        ),
+        serverErrorChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.serverErrorChatSendResponseCount -
+            auditBeforeLiveness.serverErrorChatSendResponseCount,
+        ),
+        otherChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.otherChatSendResponseCount -
+            auditBeforeLiveness.otherChatSendResponseCount,
+        ),
+        retryObservationAvailable: retryObservation.ok,
+        retryChipEverObserved: retryObservation.ok
+          ? retryObservation.retryChipEverObserved
+          : "unavailable",
+        domSnapshotAvailable: domSnapshot !== null,
+        draftCleared: domSnapshot?.draftCleared ?? "unavailable",
+        newUserRowCount: domSnapshot?.newUserRowCount ?? "unavailable",
+        newAssistantRowCount:
+          domSnapshot?.newAssistantRowCount ?? "unavailable",
+        failureRowPresent: domSnapshot?.failureRowPresent ?? "unavailable",
+        retryRowPresent: domSnapshot?.retryRowPresent ?? "unavailable",
+        interruptedRowPresent:
+          domSnapshot?.interruptedRowPresent ?? "unavailable",
+        widgetOnlyReplyRowPresent:
+          domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable",
+        threadLinesAvailable: threadLinesResult.status === "fulfilled",
+        ...anchoredState,
+      };
+      const diagnosticPath = test
+        .info()
+        .outputPath("privacy-safe-liveness-history-network-diagnostics.json");
+      // error-policy:J2 retain only allowlisted counts, booleans, and enums.
+      // Artifact write failure must not replace the original liveness verdict.
+      const diagnosticArtifactWritten = await mkdir(dirname(diagnosticPath), {
+        recursive: true,
+        mode: 0o700,
+      })
+        .then(() =>
+          writeFile(
+            diagnosticPath,
+            `${JSON.stringify(
+              {
+                schema: "elizaos.cloud.liveness-failure-diagnostics/v1",
+                ...diagnosticRecord,
+              },
+              null,
+              2,
+            )}\n`,
+            { encoding: "utf8", flag: "wx", mode: 0o600 },
+          ),
+        )
+        .then(
+          () => true,
+          () => false,
+        );
       const diagnostic = [
-        `originalErrorName=${originalErrorName}`,
-        `chatSendAttemptDelta=${Math.max(0, auditAfterLiveness.chatSendAttemptCount - auditBeforeLiveness.chatSendAttemptCount)}`,
-        `logicalChatSendDelta=${Math.max(0, auditAfterLiveness.logicalChatSendCount - auditBeforeLiveness.logicalChatSendCount)}`,
-        `unidentifiedChatSendDelta=${Math.max(0, auditAfterLiveness.unidentifiedChatSendAttemptCount - auditBeforeLiveness.unidentifiedChatSendAttemptCount)}`,
-        `namedWarmingResponseDelta=${Math.max(0, auditAfterLiveness.namedWarmingResponseCount - auditBeforeLiveness.namedWarmingResponseCount)}`,
-        `successfulChatResponseDelta=${Math.max(0, auditAfterLiveness.successfulChatSendResponseCount - auditBeforeLiveness.successfulChatSendResponseCount)}`,
-        `clientErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.clientErrorChatSendResponseCount - auditBeforeLiveness.clientErrorChatSendResponseCount)}`,
-        `serverErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.serverErrorChatSendResponseCount - auditBeforeLiveness.serverErrorChatSendResponseCount)}`,
-        `otherChatResponseDelta=${Math.max(0, auditAfterLiveness.otherChatSendResponseCount - auditBeforeLiveness.otherChatSendResponseCount)}`,
-        `retryObservationAvailable=${retryObservation.ok}`,
-        `retryChipEverObserved=${retryObservation.ok ? retryObservation.retryChipEverObserved : "unavailable"}`,
-        `domSnapshotAvailable=${domSnapshot !== null}`,
-        `draftCleared=${domSnapshot?.draftCleared ?? "unavailable"}`,
-        `newUserRowCount=${domSnapshot?.newUserRowCount ?? "unavailable"}`,
-        `newAssistantRowCount=${domSnapshot?.newAssistantRowCount ?? "unavailable"}`,
-        `failureRowPresent=${domSnapshot?.failureRowPresent ?? "unavailable"}`,
-        `retryRowPresent=${domSnapshot?.retryRowPresent ?? "unavailable"}`,
-        `interruptedRowPresent=${domSnapshot?.interruptedRowPresent ?? "unavailable"}`,
-        `widgetOnlyReplyRowPresent=${domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable"}`,
+        ...Object.entries(diagnosticRecord).map(
+          ([name, value]) => `${name}=${value}`,
+        ),
+        `diagnosticArtifactWritten=${diagnosticArtifactWritten}`,
       ].join("; ");
       throw new Error(
         `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,
