@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getAppDetailExtension,
   registerDetailExtension,
-} from "./detail-extension-registry.ts";
+} from "../detail-extension-registry.ts";
 
 describe("detail-extension-registry", () => {
   it("returns null when the app has no detail panel id", () => {
