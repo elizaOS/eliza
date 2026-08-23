@@ -264,17 +264,22 @@ describe("Brain.observeAndPlan", () => {
   });
 
   it("preserves every valid ROI", async () => {
-    const completeRois = Array.from({ length: 7 }, (_, i) => ({
+    const completeRois = Array.from({ length: 4_097 }, (_, i) => ({
       displayId: 0,
       bbox: [i, i, 1, 1] as [number, number, number, number],
-      reason: `r${i}`,
+      reason: `r${i}${i === 4_096 ? "-🧠-tail" : ""}`,
     }));
+    const modelRois = [
+      completeRois[0],
+      { displayId: 0, bbox: [1, 2, 3], reason: "malformed" },
+      ...completeRois.slice(1),
+    ];
     const brain = new Brain(null, {
       invokeModel: async () =>
         JSON.stringify({
           scene_summary: "S",
           target_display_id: 0,
-          roi: completeRois,
+          roi: modelRois,
           proposed_action: { kind: "wait", rationale: "" },
         }),
     });
@@ -284,6 +289,7 @@ describe("Brain.observeAndPlan", () => {
       captures: captures(),
     });
     expect(out.roi).toEqual(completeRois);
+    expect(out.roi.at(-1)?.reason).toBe("r4096-🧠-tail");
   });
 
   it("accepts an ImageDescriptionResult with `description` payload", async () => {

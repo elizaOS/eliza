@@ -321,15 +321,16 @@ describe("Cascade — click grounding paths", () => {
   });
 
   it("preserves all Brain ROIs in the cascade result", async () => {
+    const completeRois = Array.from({ length: 4_097 }, (_, i) => ({
+      displayId: 0,
+      bbox: [100, i, 80, 40] as [number, number, number, number],
+      reason: `r${i}${i === 4_096 ? "-🧠-tail" : ""}`,
+    }));
     const cascade = new Cascade({
       brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
-        roi: [
-          { displayId: 0, bbox: [100, 200, 80, 40], reason: "r1" },
-          { displayId: 0, bbox: [100, 300, 80, 40], reason: "r2" },
-          { displayId: 0, bbox: [100, 400, 80, 40], reason: "r3" },
-        ],
+        roi: completeRois,
         proposed_action: { kind: "click", rationale: "x" },
       }),
     });
@@ -338,8 +339,9 @@ describe("Cascade — click grounding paths", () => {
       goal: "g",
       captures: captures(),
     });
-    expect(res.rois).toHaveLength(3);
-    expect(res.rois.map((roi) => roi.reason)).toEqual(["r1", "r2", "r3"]);
+    expect(res.rois).toEqual(completeRois);
+    expect(res.rois).toHaveLength(4_097);
+    expect(res.rois.at(-1)?.reason).toBe("r4096-🧠-tail");
   });
 
   it("no ref and no roi → can't resolve a click", async () => {

@@ -6,7 +6,7 @@
  * The model is prompted to emit a JSON `BrainOutput` describing:
  *   - the scene in one paragraph,
  *   - which display to act on,
- *   - up to N ROIs the Actor should zoom into,
+ *   - every valid ROI the Actor may use for grounding,
  *   - a single proposed action with rationale.
  *
  * The Brain itself doesn't dispatch — it just produces `BrainOutput`. The

@@ -44,7 +44,7 @@ export interface BrainProposedAction {
 export interface BrainOutput {
   scene_summary: string;
   target_display_id: number;
-  /** Up to N (cap enforced by cascade) ROIs the Brain wants the Actor to ground. */
+  /** Complete ordered set of valid ROIs the Brain wants the Actor to ground. */
   roi: BrainRoi[];
   proposed_action: BrainProposedAction;
 }
