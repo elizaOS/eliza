@@ -456,6 +456,18 @@ export interface EntityEventData {
 }
 
 /**
+ * Sort key for comparators over numbers that may be corrupted upstream. `NaN`
+ * (an unparseable timestamp, a missing metric) collapses to 0 so a comparator
+ * never returns `NaN` and leaves the array in an arbitrary engine-defined
+ * order; `Infinity` is preserved because callers use it as a real "never
+ * contacted" extreme.
+ */
+export function safeSortNumber(value: unknown): number {
+	const numeric = typeof value === "number" ? value : Number(value);
+	return Number.isNaN(numeric) ? 0 : numeric;
+}
+
+/**
  * Calculate relationship strength based on interaction patterns
  */
 export function calculateRelationshipStrength({
@@ -1105,11 +1117,9 @@ export class RelationshipsService extends Service {
 					message.entityId === targetEntityId,
 			)
 			.sort((a, b) => {
-				const aVal = Number(a.createdAt ?? 0);
-				const bVal = Number(b.createdAt ?? 0);
-				const aSafe = Number.isFinite(aVal) ? aVal : 0;
-				const bSafe = Number.isFinite(bVal) ? bVal : 0;
-				if (aSafe !== bSafe) return aSafe - bSafe;
+				const aSafe = safeSortNumber(a.createdAt ?? 0);
+				const bSafe = safeSortNumber(b.createdAt ?? 0);
+				if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
 				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 			});
 
@@ -1290,24 +1300,22 @@ export class RelationshipsService extends Service {
 
 		// Sort by relevance
 		insights.strongestRelationships.sort((a, b) => {
-			const aSafe = Number.isFinite(a.analytics.strength) ? a.analytics.strength : 0;
-			const bSafe = Number.isFinite(b.analytics.strength) ? b.analytics.strength : 0;
-			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			const aSafe = safeSortNumber(a.analytics.strength);
+			const bSafe = safeSortNumber(b.analytics.strength);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
 		});
 		insights.needsAttention.sort((a, b) => {
-			const aSafe = Number.isFinite(a.daysSinceContact) ? a.daysSinceContact : 0;
-			const bSafe = Number.isFinite(b.daysSinceContact) ? b.daysSinceContact : 0;
-			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			const aSafe = safeSortNumber(a.daysSinceContact);
+			const bSafe = safeSortNumber(b.daysSinceContact);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
 		});
 		insights.recentInteractions.sort((a, b) => {
-			const aTime = new Date(a.lastInteraction).getTime();
-			const bTime = new Date(b.lastInteraction).getTime();
-			const aSafe = Number.isFinite(aTime) ? aTime : 0;
-			const bSafe = Number.isFinite(bTime) ? bTime : 0;
-			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			const aSafe = safeSortNumber(new Date(a.lastInteraction).getTime());
+			const bSafe = safeSortNumber(new Date(b.lastInteraction).getTime());
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
 		});
 
 		return insights;
@@ -1505,11 +1513,9 @@ export class RelationshipsService extends Service {
 		};
 
 		const appended = [...contact.interactions, interaction].sort((a, b) => {
-			const aTime = new Date(a.occurredAt).getTime();
-			const bTime = new Date(b.occurredAt).getTime();
-			const aSafe = Number.isFinite(aTime) ? aTime : 0;
-			const bSafe = Number.isFinite(bTime) ? bTime : 0;
-			if (aSafe !== bSafe) return aSafe - bSafe;
+			const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
+			const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
+			if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
 			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 		});
 		const latestAt = appended[appended.length - 1]?.occurredAt;
@@ -1591,11 +1597,9 @@ export class RelationshipsService extends Service {
 			interactionMap.set(i.id, i);
 		}
 		const mergedInteractions = Array.from(interactionMap.values()).sort((a, b) => {
-			const aTime = new Date(a.occurredAt).getTime();
-			const bTime = new Date(b.occurredAt).getTime();
-			const aSafe = Number.isFinite(aTime) ? aTime : 0;
-			const bSafe = Number.isFinite(bTime) ? bTime : 0;
-			if (aSafe !== bSafe) return aSafe - bSafe;
+			const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
+			const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
+			if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
 			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 		});
 		const mergedCategories = Array.from(
@@ -1755,10 +1759,10 @@ export class RelationshipsService extends Service {
 		}
 
 		results.sort((a, b) => {
-			const aSafe = Number.isFinite(a.daysSinceInteraction) ? a.daysSinceInteraction : 0;
-			const bSafe = Number.isFinite(b.daysSinceInteraction) ? b.daysSinceInteraction : 0;
-			if (bSafe !== aSafe) return bSafe - aSafe;
-			return String(a.contact.id ?? "").localeCompare(String(b.contact.id ?? ""));
+			const aSafe = safeSortNumber(a.daysSinceInteraction);
+			const bSafe = safeSortNumber(b.daysSinceInteraction);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.contact.entityId).localeCompare(String(b.contact.entityId));
 		});
 		return results;
 	}
