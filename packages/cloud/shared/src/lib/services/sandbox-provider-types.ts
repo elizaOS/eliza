@@ -66,6 +66,15 @@ export interface SandboxReplacementCleanupLocator {
   sandboxId: string;
   nodeId: string;
   containerName: string;
+  /** Immutable docker_nodes primary key for exact-placement recovery. */
+  nodeRecordId?: string | null;
+  /** SSH authority frozen with nodeRecordId before candidate effects. */
+  nodeHostname?: string | null;
+  nodeSshPort?: number | null;
+  nodeSshUser?: string | null;
+  nodeHostKeyFingerprint?: string | null;
+  /** Attempt-scoped remote secret cleanup protocol understood by this locator. */
+  replacementSecretCleanupVersion?: 1 | null;
   replacementAttemptId?: string | null;
   containerId?: string | null;
   vpnNodeId?: string | null;
@@ -75,15 +84,57 @@ export interface SandboxReplacementCleanupLocator {
   allocationCounted?: boolean | null;
 }
 
+/** Proven-success outcome of one exact-success replacement invocation. */
+export interface SandboxReplacementCreateSettlement {
+  readonly replacementAttemptId: string;
+  readonly outcome: "succeeded";
+}
+
+/** Durable pre-effect marker for one exact replacement-provider invocation. */
+export interface SandboxReplacementCreateAttemptStarted {
+  readonly replacementAttemptId: string;
+}
+
+const CANONICAL_REPLACEMENT_ATTEMPT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** Validates the caller-owned token before provider placement can have effects. */
+export function assertSandboxReplacementAttemptId(
+  replacementAttemptId: unknown,
+): asserts replacementAttemptId is string {
+  if (
+    typeof replacementAttemptId !== "string" ||
+    !CANONICAL_REPLACEMENT_ATTEMPT_ID.test(replacementAttemptId)
+  ) {
+    throw new ElizaError("Sandbox replacement attempt ID must be a canonical lowercase UUID", {
+      code: "SANDBOX_REPLACEMENT_ATTEMPT_ID_INVALID",
+      context: {
+        replacementAttemptId:
+          typeof replacementAttemptId === "string" ? replacementAttemptId : null,
+        replacementAttemptIdType:
+          replacementAttemptId === null ? "null" : typeof replacementAttemptId,
+      },
+      severity: "fatal",
+    });
+  }
+}
+
 /**
  * Carries the exact placement that must remain fenced when a replacement
  * candidate cannot be proven absent. Callers persist this locator before
  * retrying so an unreachable node can never produce two live agent runtimes.
  */
-export class SandboxReplacementCleanupUnresolvedError extends Error {
+export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
+  override readonly name: string = "SandboxReplacementCleanupUnresolvedError";
   readonly sandboxId: string;
   readonly nodeId: string;
   readonly containerName: string;
+  readonly nodeRecordId: string | null;
+  readonly nodeHostname: string | null;
+  readonly nodeSshPort: number | null;
+  readonly nodeSshUser: string | null;
+  readonly nodeHostKeyFingerprint: string | null;
+  readonly replacementSecretCleanupVersion: 1 | null;
   readonly replacementAttemptId: string | null;
   readonly containerId: string | null;
   readonly vpnNodeId: string | null;
@@ -92,16 +143,38 @@ export class SandboxReplacementCleanupUnresolvedError extends Error {
   readonly vpnRegistrationStartedAt: string | null;
   readonly allocationCounted: boolean | null;
 
-  constructor(locator: SandboxReplacementCleanupLocator, cause: unknown) {
+  constructor(
+    locator: SandboxReplacementCleanupLocator,
+    cause: unknown,
+    code = "SANDBOX_REPLACEMENT_CLEANUP_UNRESOLVED",
+  ) {
     const causeMessage = cause instanceof Error ? cause.message : String(cause);
     super(
       `Replacement cleanup is unresolved for ${locator.containerName} on ${locator.nodeId}: ${causeMessage}`,
-      { cause },
+      {
+        code,
+        context: {
+          sandboxId: locator.sandboxId,
+          nodeId: locator.nodeId,
+          containerName: locator.containerName,
+          nodeRecordId: locator.nodeRecordId ?? null,
+          replacementAttemptId: locator.replacementAttemptId ?? null,
+          containerId: locator.containerId ?? null,
+          vpnNodeId: locator.vpnNodeId ?? null,
+        },
+        cause,
+        severity: "fatal",
+      },
     );
-    this.name = "SandboxReplacementCleanupUnresolvedError";
     this.sandboxId = locator.sandboxId;
     this.nodeId = locator.nodeId;
     this.containerName = locator.containerName;
+    this.nodeRecordId = locator.nodeRecordId ?? null;
+    this.nodeHostname = locator.nodeHostname ?? null;
+    this.nodeSshPort = locator.nodeSshPort ?? null;
+    this.nodeSshUser = locator.nodeSshUser ?? null;
+    this.nodeHostKeyFingerprint = locator.nodeHostKeyFingerprint ?? null;
+    this.replacementSecretCleanupVersion = locator.replacementSecretCleanupVersion ?? null;
     this.replacementAttemptId = locator.replacementAttemptId ?? null;
     this.containerId = locator.containerId ?? null;
     this.vpnNodeId = locator.vpnNodeId ?? null;
@@ -112,7 +185,42 @@ export class SandboxReplacementCleanupUnresolvedError extends Error {
   }
 }
 
+/**
+ * A success-settlement persistence failure after the provider returned its
+ * exact handle. It deliberately remains an unresolved-cleanup error so callers
+ * retain the successful candidate and its durable locator for reconciliation.
+ */
+export class SandboxReplacementCreateSettlementCleanupUnresolvedError extends SandboxReplacementCleanupUnresolvedError {
+  override readonly name = "SandboxReplacementCreateSettlementCleanupUnresolvedError";
+  readonly settlement: SandboxReplacementCreateSettlement;
+  readonly providerHandle: SandboxHandle;
+  readonly persistenceError: unknown;
+
+  constructor(options: {
+    settlement: SandboxReplacementCreateSettlement;
+    locator: SandboxReplacementCleanupLocator;
+    providerHandle: SandboxHandle;
+    persistenceError: unknown;
+  }) {
+    super(
+      options.locator,
+      options.persistenceError,
+      "SANDBOX_REPLACEMENT_CREATE_SETTLEMENT_PERSIST_FAILED",
+    );
+    this.settlement = options.settlement;
+    this.providerHandle = options.providerHandle;
+    this.persistenceError = options.persistenceError;
+  }
+}
+
 export interface SandboxProvider {
+  /**
+   * Declares support for caller-owned replacement identity, a pre-effect start
+   * marker, and an exact success-only completion signal. Callers must check
+   * strictly for `"exact-success"` before effects; `undefined` means
+   * unsupported.
+   */
+  readonly replacementCreateSettlementCapability?: "exact-success";
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
   /**
    * Tears down a sandbox for deletion and reports whether the provider proved
@@ -131,6 +239,15 @@ export interface SandboxProvider {
    * Reclaims a replacement candidate from its durable placement record. This
    * bypasses sandbox-id lookup because the routed agent row may still point at
    * the old blue/green leg while the candidate cleanup fence points elsewhere.
+   * Exact-success consumers must persist and replay the complete nodeRecordId +
+   * SSH-authority tuple and secret-cleanup version from their callback handle.
+   * A logical nodeId alone is a legacy locator and cannot protect a future
+   * caller from node-record ABA or prove attempt-scoped secret artifacts absent.
+   * If Docker never returned a containerId, name absence alone stays unresolved
+   * because a submitted daemon create can materialize after its SSH client has
+   * disconnected. Exact cleanup may settle only when the remote producer is
+   * durably quiescent or after observing and recording the exact labeled
+   * candidate ID before removing it.
    */
   stopOnSpecificNodeForReplacement?(
     nodeId: string,
@@ -216,6 +333,25 @@ export interface SandboxCreateConfig {
    */
   reclaimStaleVpnNode?: boolean;
   /**
+   * Exact caller-owned identity for this provider invocation. It must be a
+   * canonical lowercase UUID. Exact-success mode requires the caller to supply
+   * it; providers generate one only for legacy non-exact callers that omit it.
+   * It is one-shot: cleanup durably tombstones the remote attempt so delayed
+   * commands cannot materialize afterward. A retry after proven cleanup must
+   * allocate a new UUID; replaying or overlapping the same id is forbidden.
+   */
+  replacementAttemptId?: string;
+  /**
+   * Persists the exact invocation identity before provider placement or remote
+   * effects begin. This callback is paired with
+   * `onReplacementCreateSettled`; neither may be supplied alone. The provider
+   * calls it once per invocation. Durable consumers must reject an already
+   * started or terminal id instead of replaying provider effects under it.
+   */
+  onReplacementCreateAttemptStarted?: (
+    attempt: SandboxReplacementCreateAttemptStarted,
+  ) => Promise<void>;
+  /**
    * Atomically reserves node capacity and persists the exact replacement
    * attempt before the remote Docker create can commit. The attempt token and
    * deterministic container name let recovery find the candidate even when the
@@ -230,4 +366,26 @@ export interface SandboxCreateConfig {
    * if this callback fails, and the provider returns its exact locator.
    */
   onReplacementVpnRegistered?: (handle: SandboxHandle) => Promise<void>;
+  /**
+   * Persists proven provider success exactly once, after the provider completed
+   * the exact candidate's create/activation path, produced its handle and
+   * cleanup locator, and observed no ambiguous mutating fallback that could
+   * still materialize or change that candidate. It is never called for
+   * rejection, crash, timeout, cleanup uncertainty, or an ambiguous start
+   * callback.
+   * Absence therefore leaves the durable attempt `in_flight_unresolved`; a
+   * caller must not expire that authority from a lease or one remote inspect.
+   * The consumer's final transaction must CAS that exact attempt from
+   * `in_flight` and revalidate or lock the primary node authority persisted at
+   * intent (`nodeRecordId` plus hostname, SSH port/user, and host-key pin), or
+   * enforce equivalent foreign-key authority. The provider's own primary read
+   * occurs before this callback and cannot close a node delete/route-drift
+   * TOCTOU window for the consumer.
+   * An external timeout only stops awaiting the invocation, so a later proven
+   * success still invokes this callback. Implementations guarantee once per
+   * invocation. Cleanup makes that attempt id terminal; any later provider
+   * retry uses a fresh caller-owned id. Concurrent or sequential replay of one
+   * attempt id is unsupported and unsafe.
+   */
+  onReplacementCreateSettled?: (settlement: SandboxReplacementCreateSettlement) => Promise<void>;
 }
