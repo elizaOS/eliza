@@ -961,6 +961,55 @@ describe("compute billing recovery", () => {
     }
   });
 
+  test("a rejected provider leaves a user-requested stop retryable and compute running", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "rejected-user-stop",
+      project_name: "rejected-user-stop",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 12,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 12,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockRejectedValue(new Error("provider rejected user stop"));
+    try {
+      await expect(dispatchContainerStopJob(job)).rejects.toThrow("provider rejected user stop");
+      expect(providerStop).toHaveBeenCalledWith(containerId, org.id, 12);
+      const [intent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(intent).toMatchObject({
+        authorization: "user_request",
+        status: "retry",
+        attempts: 1,
+        last_error: "provider rejected user stop",
+      });
+      const [container] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(container).toMatchObject({ status: "running", billing_status: "active" });
+    } finally {
+      providerStop.mockRestore();
+    }
+  });
+
   test("user authority rearms a terminal billing intent instead of reusing its failed job", async () => {
     const { org, user } = await seed("0.000000");
     const containerId = crypto.randomUUID();
