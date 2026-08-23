@@ -373,7 +373,13 @@ export class BrowserService extends Service {
     }
 
     return available
-      .sort((a, b) => b.score - a.score || a.order - b.order)
+      .sort((a, b) => {
+        const aScore = Number.isFinite(a.score) ? a.score : 0;
+        const bScore = Number.isFinite(b.score) ? b.score : 0;
+        const aOrder = Number.isFinite(a.order) ? a.order : 0;
+        const bOrder = Number.isFinite(b.order) ? b.order : 0;
+        return bScore - aScore || aOrder - bOrder;
+      })
       .map(({ target }) => target);
   }
 
