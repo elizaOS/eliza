@@ -576,6 +576,7 @@ describeIfPosix("shellAction", () => {
     expect(result.text).not.toContain("--- stdout ---\nlocal shell output");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.command).toBe("echo local shell output");
+    expect(result.data?.workspaceDeltaReceipt).toBeUndefined();
   });
 
   it("runs a simple foreground command (echo hello)", async () => {
@@ -2036,6 +2037,99 @@ describeIfPosix("shellAction", () => {
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.command).toBe("exit 7");
     expect(data?.exit_code).toBe(7);
+  });
+
+  it("retains an observed worktree mutation when the command later fails", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const { runtime, session } = await makeRuntime({
+        workspaceRoots: root,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          command: "printf 'generated\\n' > generated.txt; exit 7",
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: {
+          root: await fs.realpath(root),
+          coverage: "tracked_and_untracked_nonignored",
+        },
+      });
+      expect(JSON.stringify(result.data?.workspaceDeltaReceipt)).not.toContain(
+        "generated\\n",
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retains an observed worktree mutation when the command times out", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-timeout-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const { runtime, session } = await makeRuntime({ workspaceRoots: root });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          command: "printf 'generated\\n' > timed-out.txt; sleep 5",
+          timeout: 200,
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("timeout");
+      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: {
+          root: await fs.realpath(root),
+          coverage: "tracked_and_untracked_nonignored",
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("returns command_failed when an earlier pipeline command fails", async () => {
