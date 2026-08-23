@@ -186,7 +186,9 @@ describe("decryptAgentBackupStateData", () => {
     expect(await decryptAgentBackupStateData(BACKUP_ID, delta)).toBe(delta);
 
     const almost = asStored({ ...envelope(), algorithm: "plain" });
-    expect(await decryptAgentBackupStateData(BACKUP_ID, almost)).toBe(almost);
+    expect(await decryptAgentBackupStateData(BACKUP_ID, almost)).toBe(
+      almost as unknown as ReturnType<typeof sampleState>,
+    );
   });
 
   test("round-trips full-state and delta payloads", async () => {
