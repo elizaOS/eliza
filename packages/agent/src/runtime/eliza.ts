@@ -2142,6 +2142,37 @@ export async function resolveConfigEnvVaultRefsForBoot(
   }
 }
 
+export const DEFAULT_CLOUD_FETCH_TIMEOUT_MS = 10_000;
+export const DEFAULT_CLOUD_GITHUB_TOKEN_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * Generic JSON fetch with cloud timeout — deadline stays armed through
+ * response.json() so a stalled body still aborts. Caller signal is
+ * composed with the timeout via AbortSignal.any.
+ */
+export async function fetchJsonWithCloudTimeout(
+  url: string,
+  init: RequestInit = {},
+  options: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    fetchImpl?: typeof fetch;
+  } = {},
+): Promise<unknown> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_CLOUD_FETCH_TIMEOUT_MS;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+  const fetchFn = options.fetchImpl ?? globalThis.fetch;
+  const res = await fetchFn(url, { ...init, signal });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  // Signal remains armed through body consumption; a hanging json stalls aborts via TimeoutError
+  return await res.json();
+}
+
 /**
  * Auto-resolve Discord Application ID from the bot token via Discord API.
  * Called during async runtime init so that users only need a bot token.
@@ -2152,7 +2183,9 @@ export async function resolveConfigEnvVaultRefsForBoot(
 /** @internal Exported for testing. */
 export async function autoResolveDiscordAppId(
   tokenOverride?: string,
-  timeoutMs = 3_000,
+  timeoutMs = DEFAULT_CLOUD_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<void> {
   if (process.env.DISCORD_APPLICATION_ID) return;
 
@@ -2162,12 +2195,16 @@ export async function autoResolveDiscordAppId(
     process.env.DISCORD_BOT_TOKEN;
   if (!discordToken) return;
 
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
   try {
-    const res = await fetch(
+    const res = await fetchImpl(
       "https://discord.com/api/v10/oauth2/applications/@me",
       {
         headers: { Authorization: `Bot ${discordToken}` },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal,
       },
     );
 
@@ -2218,7 +2255,9 @@ export interface CloudGithubTokenResult {
 /** @internal Exported for testing. */
 export async function autoFetchCloudGithubToken(
   agentId?: string,
-  timeoutMs = 3_000,
+  timeoutMs = DEFAULT_CLOUD_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<CloudGithubTokenResult | null> {
   // Skip if a local token is already configured
   if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return null;
@@ -2232,14 +2271,18 @@ export async function autoFetchCloudGithubToken(
   const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
   if (!managedNs) return null;
 
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
   try {
     const url = `${cloudBaseUrl}/api/v1/${managedNs}/agents/${encodeURIComponent(agentId)}/github/token`;
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       headers: {
         Authorization: `Bearer ${cloudApiKey}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
 
     if (!res.ok) {
