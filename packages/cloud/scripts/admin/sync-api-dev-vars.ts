@@ -110,6 +110,7 @@ const sourceEnvFiles = [
 const env: Record<string, string> = {};
 const providerOverrideKeys = new Set([
   "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "ANTHROPIC_API_KEY",
