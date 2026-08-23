@@ -97,6 +97,17 @@ describe("buildSetOfMarks — fusion rules", () => {
     expect(marks[0]?.bbox).toEqual([10, 10, 20, 20]);
   });
 
+  it("handles NaN scores safely in NMS and reading-order sorts", () => {
+    const candidates = [
+      { bbox: [0, 0, 20, 20], source: "icon", score: NaN },
+      { bbox: [100, 0, 20, 20], source: "icon", score: 0.8 },
+      { bbox: [0, 80, 20, 20], source: "text", score: Infinity },
+    ];
+    const marks = buildSetOfMarks(candidates);
+    expect(marks).toHaveLength(3);
+    expect(marks[0]?.score).toBe(0.8);
+  });
+
   it("honors minScore filtering", () => {
     const candidates: SomCandidate[] = [
       { bbox: [0, 0, 20, 20], source: "icon", score: 0.2 },

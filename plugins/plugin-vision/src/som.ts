@@ -155,8 +155,14 @@ export function buildSetOfMarks(
   //    then by a stable positional key — the greedy keep is deterministic.
   const pool = [...icons, ...keptTexts].sort((a, b) => {
     if (a.source !== b.source) return a.source === "icon" ? -1 : 1;
-    if (b.score !== a.score) return b.score - a.score;
-    return a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0];
+    const aScore = typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+    const bScore = typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+    if (bScore !== aScore) return bScore - aScore;
+    const aY = Number.isFinite(a.bbox[1]) ? a.bbox[1] : 0;
+    const bY = Number.isFinite(b.bbox[1]) ? b.bbox[1] : 0;
+    const aX = Number.isFinite(a.bbox[0]) ? a.bbox[0] : 0;
+    const bX = Number.isFinite(b.bbox[0]) ? b.bbox[0] : 0;
+    return aY - bY || aX - bX;
   });
 
   const kept: NormCandidate[] = [];
@@ -168,9 +174,13 @@ export function buildSetOfMarks(
   // 3. Reading-order numbering: bucket into rows (within rowTolerance), then
   //    order rows top-to-bottom and members left-to-right.
   const ordered = [...kept].sort((a, b) => {
-    const sameRow = Math.abs(a.bbox[1] - b.bbox[1]) <= rowTolerance;
-    if (sameRow) return a.bbox[0] - b.bbox[0] || a.bbox[1] - b.bbox[1];
-    return a.bbox[1] - b.bbox[1];
+    const aY = Number.isFinite(a.bbox[1]) ? a.bbox[1] : 0;
+    const bY = Number.isFinite(b.bbox[1]) ? b.bbox[1] : 0;
+    const aX = Number.isFinite(a.bbox[0]) ? a.bbox[0] : 0;
+    const bX = Number.isFinite(b.bbox[0]) ? b.bbox[0] : 0;
+    const sameRow = Math.abs(aY - bY) <= rowTolerance;
+    if (sameRow) return aX - bX || aY - bY;
+    return aY - bY;
   });
 
   return ordered.map((c, i): SomMark => {

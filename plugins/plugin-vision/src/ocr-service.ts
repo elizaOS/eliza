@@ -109,7 +109,11 @@ export function extractStructuredDataFromOCR(
     );
 
   const rowsFromWords = Array.from(wordRows.values())
-    .map((row) => row.sort((a, b) => a.bbox.x - b.bbox.x))
+    .map((row) => row.sort((a, b) => {
+      const aX = Number.isFinite(a.bbox.x) ? a.bbox.x : 0;
+      const bX = Number.isFinite(b.bbox.x) ? b.bbox.x : 0;
+      return aX - bX;
+    }))
     .filter((row) => row.length >= 2);
   if (rowsFromWords.length >= 2) {
     tables.push({
