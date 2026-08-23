@@ -21,9 +21,6 @@ import {
   IMessageAccountSchema,
   IMessageAccountSchemaBase,
   IMessageConfigSchema,
-  MSTeamsChannelSchema,
-  MSTeamsConfigSchema,
-  MSTeamsTeamSchema,
   NamedRtmpSourceSchema,
   PumpfunStreamConfigSchema,
   SlackAccountSchema,
@@ -701,47 +698,6 @@ describe("NamedRtmpSourceSchema", () => {
       rtmpKey: "secret",
       extra: true,
     });
-  });
-});
-
-describe("MS Teams schemas", () => {
-  it("accepts empty channel and team objects and nested omitted channels", () => {
-    expectOk(MSTeamsChannelSchema, {});
-    expectOk(MSTeamsTeamSchema, {});
-    expectOk(MSTeamsTeamSchema, { channels: { general: undefined } });
-    expectFail(MSTeamsChannelSchema, { extra: true });
-    expectFail(MSTeamsTeamSchema, { extra: true });
-  });
-
-  it("defaults dmPolicy to pairing and groupPolicy to allowlist", () => {
-    const data = expectOk(MSTeamsConfigSchema, {}) as {
-      dmPolicy: string;
-      groupPolicy: string;
-    };
-    expect(data.dmPolicy).toBe("pairing");
-    expect(data.groupPolicy).toBe("allowlist");
-  });
-
-  it("rejects open DM policy without * and accepts allowFrom as strings only", () => {
-    expectIssue(
-      MSTeamsConfigSchema,
-      { dmPolicy: "open" },
-      'channels.msteams.dmPolicy="open" requires channels.msteams.allowFrom to include "*"',
-    );
-    expectOk(MSTeamsConfigSchema, {
-      dmPolicy: "open",
-      allowFrom: ["*"],
-    });
-    expectFail(MSTeamsConfigSchema, { allowFrom: [1] });
-  });
-
-  it("accepts replyStyle members and a positive webhook port, and rejects overflow", () => {
-    expectOk(MSTeamsConfigSchema, { replyStyle: "thread" });
-    expectOk(MSTeamsConfigSchema, { replyStyle: "top-level" });
-    expectFail(MSTeamsConfigSchema, { replyStyle: "inline" });
-    expectOk(MSTeamsConfigSchema, { webhook: { port: 1 } });
-    expectFail(MSTeamsConfigSchema, { webhook: { port: 0 } });
-    expectFail(MSTeamsConfigSchema, { webhook: { extra: true } });
   });
 });
 

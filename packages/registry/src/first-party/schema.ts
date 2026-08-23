@@ -281,8 +281,8 @@ const commonFields = {
   dependsOn: z.array(z.string()).default([]),
   // Channel keys this entry handles (drives CHANNEL_PLUGIN_MAP). Usually `[id]`,
   // but an entry can claim aliases (e.g. x -> ["x", "twitter"]). Most entries
-  // declare none. Connectors are the typical owners, but a plugin may also claim
-  // a channel (e.g. blooio).
+  // declare none. Cross-field enforcement lives on the entry schemas: a `store`
+  // entry may not claim channels (see rejectStoreChannelClaims).
   channels: z.array(z.string()).default([]),
   // Optional short-id aliases this entry claims (drives OPTIONAL_PLUGIN_MAP).
   // These are the bare ids that `plugins.allow`, `plugins.entries`, and
@@ -334,19 +334,43 @@ const connectorSubtype = z.enum([
   "other",
 ]);
 
-export const pluginEntrySchema = z.object({
-  ...commonFields,
-  kind: z.literal("plugin"),
-  subtype: pluginSubtype,
-  launch: appLaunchSchema.optional(),
-  // When true, this voice plugin is the runtime's default TEXT_TO_SPEECH
-  // provider — the one wired in when no other TTS plugin has self-registered a
-  // handler. Consumed by `resolveDefaultTextToSpeechProvider()` in
-  // @elizaos/app-core, which selects by this flag (data-driven) rather than by
-  // hard-coding a plugin id. Only meaningful on `subtype: "voice"`; exactly one
-  // voice entry should set it. Mirrors the `mainTab` pattern above.
-  defaultTextToSpeech: z.boolean().optional(),
-});
+// ---------------------------------------------------------------------------
+// Channel-claim truth ratchet (#24373): channel keys drive the generated
+// CHANNEL_PLUGIN_MAP, which the host uses to resolve connector config into
+// plugin packages. A `store` entry points at an external npm package the host
+// does not ship, so a store entry claiming channels silently re-registers an
+// external transport as if it were first-party. Bundled implementations only.
+// ---------------------------------------------------------------------------
+
+function rejectStoreChannelClaims(
+  entry: { source?: string; channels?: string[] },
+  ctx: zod.RefinementCtx,
+): void {
+  if (entry.source === "store" && (entry.channels?.length ?? 0) > 0) {
+    ctx.addIssue({
+      code: zod.ZodIssueCode.custom,
+      path: ["channels"],
+      message:
+        'store entries cannot claim "channels" — channel keys are reserved for bundled implementations (#24373)',
+    });
+  }
+}
+
+export const pluginEntrySchema = z
+  .object({
+    ...commonFields,
+    kind: z.literal("plugin"),
+    subtype: pluginSubtype,
+    launch: appLaunchSchema.optional(),
+    // When true, this voice plugin is the runtime's default TEXT_TO_SPEECH
+    // provider — the one wired in when no other TTS plugin has self-registered a
+    // handler. Consumed by `resolveDefaultTextToSpeechProvider()` in
+    // @elizaos/app-core, which selects by this flag (data-driven) rather than by
+    // hard-coding a plugin id. Only meaningful on `subtype: "voice"`; exactly one
+    // voice entry should set it. Mirrors the `mainTab` pattern above.
+    defaultTextToSpeech: z.boolean().optional(),
+  })
+  .superRefine(rejectStoreChannelClaims);
 
 // ---------------------------------------------------------------------------
 // Per-account auth config. Connectors can declare an OWNER side (the user's
@@ -381,27 +405,29 @@ export const accountConfigSchema = z.object({
 export type AccountConfig = zod.infer<typeof accountConfigSchema>;
 export type AccountAuthKind = zod.infer<typeof accountAuthKind>;
 
-export const connectorEntrySchema = z.object({
-  ...commonFields,
-  kind: z.literal("connector"),
-  subtype: connectorSubtype,
-  auth: z
-    .object({
-      kind: z.enum(["token", "oauth", "credentials", "none"]),
-      credentialKeys: z.array(z.string()).default([]),
-    })
-    .optional(),
-  accounts: z
-    .object({
-      owner: accountConfigSchema.optional(),
-      agent: accountConfigSchema.optional(),
-    })
-    .refine((val) => val.owner !== undefined || val.agent !== undefined, {
-      message:
-        "accounts must define at least one of owner or agent — an empty {} is meaningless and indicates an invalid manifest",
-    })
-    .optional(),
-});
+export const connectorEntrySchema = z
+  .object({
+    ...commonFields,
+    kind: z.literal("connector"),
+    subtype: connectorSubtype,
+    auth: z
+      .object({
+        kind: z.enum(["token", "oauth", "credentials", "none"]),
+        credentialKeys: z.array(z.string()).default([]),
+      })
+      .optional(),
+    accounts: z
+      .object({
+        owner: accountConfigSchema.optional(),
+        agent: accountConfigSchema.optional(),
+      })
+      .refine((val) => val.owner !== undefined || val.agent !== undefined, {
+        message:
+          "accounts must define at least one of owner or agent — an empty {} is meaningless and indicates an invalid manifest",
+      })
+      .optional(),
+  })
+  .superRefine(rejectStoreChannelClaims);
 
 export const appEntrySchema = z.object({
   ...commonFields,

@@ -71,23 +71,8 @@ export const CONNECTOR_ENV_MAP: Readonly<
     dmPolicy: "WHATSAPP_DM_POLICY",
     groupPolicy: "WHATSAPP_GROUP_POLICY",
   },
-  msteams: {
-    appId: "MSTEAMS_APP_ID",
-    appPassword: "MSTEAMS_APP_PASSWORD",
-  },
-  mattermost: {
-    botToken: "MATTERMOST_BOT_TOKEN",
-    baseUrl: "MATTERMOST_BASE_URL",
-  },
   googlechat: {
     serviceAccountKey: "GOOGLE_CHAT_SERVICE_ACCOUNT_KEY",
-  },
-  blooio: {
-    apiKey: "BLOOIO_API_KEY",
-    fromNumber: "BLOOIO_PHONE_NUMBER",
-    webhookSecret: "BLOOIO_WEBHOOK_SECRET",
-    webhookUrl: "BLOOIO_WEBHOOK_URL",
-    webhookPort: "BLOOIO_WEBHOOK_PORT",
   },
 };
 

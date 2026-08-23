@@ -80,13 +80,10 @@ export const CONNECTOR_PLUGIN_MAP: Record<string, string> = {
   lens: "lens",
   whatsapp: "whatsapp",
   imessage: "imessage",
-  msteams: "msteams",
   feishu: "feishu",
   matrix: "matrix",
   nostr: "nostr",
-  blooio: "blooio",
   twitch: "twitch",
-  mattermost: "mattermost",
   googlechat: "google-chat",
   wechat: "wechat",
 };

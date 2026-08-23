@@ -15,13 +15,10 @@ const ELIZA_CORE_CONNECTOR_IDS = [
   "imessage",
   "farcaster",
   "lens",
-  "msteams",
   "feishu",
   "matrix",
   "nostr",
-  "blooio",
   "twitch",
-  "mattermost",
   "googlechat",
 ] as const;
 
