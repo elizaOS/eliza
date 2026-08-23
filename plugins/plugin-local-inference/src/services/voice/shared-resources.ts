@@ -95,6 +95,22 @@ export interface EvictableModelRole extends RefCountedResource {
 	estimatedResidentMb(): number;
 }
 
+function toEvictionPriority(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
+function compareEvictableModelRole(
+  a: EvictableModelRole,
+  b: EvictableModelRole,
+): number {
+  const aScore = toEvictionPriority(a.evictionPriority);
+  const bScore = toEvictionPriority(b.evictionPriority);
+  if (aScore !== bScore) return aScore - bScore;
+  return a.role.localeCompare(b.role);
+}
+
+export const __testCompareEvictableModelRole = compareEvictableModelRole;
+
 function isEvictableModelRole(
 	value: RefCountedResource,
 ): value is EvictableModelRole {
@@ -324,7 +340,7 @@ export class SharedResourceRegistry {
 				out.push(entry.resource);
 			}
 		}
-		return out.sort((a, b) => a.evictionPriority - b.evictionPriority);
+		return out.sort(compareEvictableModelRole);
 	}
 
 	/**
