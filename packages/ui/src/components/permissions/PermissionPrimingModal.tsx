@@ -131,15 +131,17 @@ function PermissionPrimingModalView({
     ...appNameInterpolationVars(branding),
   });
   const headerSubtitle = t("permissionpriming.subtitle", {
-    defaultValue: "A couple of quick permissions so I'm ready to help.",
+    defaultValue:
+      "Choose what Eliza can use. You can change this later in Settings.",
   });
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        // Dismissing (X / Escape / outside tap) soft-skips the rest; the parent
-        // is then told via the done-effect.
+        // Explicit dismissal (X / Escape) soft-skips the rest; outside taps are
+        // blocked on the content below so an accidental background touch never
+        // discards the user's place.
         if (!next) skipAll();
       }}
     >
@@ -147,12 +149,13 @@ function PermissionPrimingModalView({
         showCloseButton
         data-testid="permission-priming-modal"
         aria-describedby="permission-priming-subtitle"
+        onPointerDownOutside={(event) => event.preventDefault()}
         // The completion edge leaves the chat sheet open at the HALF detent
         // (its container stacks at the shell-overlay level), so this modal
         // must sit above the ambient chat — content and dim both — or the
         // sheet paints over it and eats its taps (mobile bottom-sheet dialogs
         // and the half sheet are both bottom-anchored).
-        className="z-[9500]"
+        className="z-[9500] max-sm:top-1/2 max-sm:bottom-auto max-sm:-translate-y-1/2"
         overlayClassName="z-[9490]"
       >
         <DialogHeader>
@@ -256,7 +259,7 @@ function PrimingCard({
         {
           defaultValue:
             id === "microphone" && cloudOnly
-              ? "Turn on your microphone so you can speak instead of type. Audio is sent to Eliza Cloud only when you use voice."
+              ? "Use voice instead of typing. Audio is sent to Eliza Cloud only when you use voice."
               : copy.rationale,
         },
       )

@@ -35,6 +35,16 @@ describe("resolvePrimingSet", () => {
     ]);
   });
 
+  it("hides Apple Speech Recognition from cloud-only iOS settings", () => {
+    expect(
+      resolvePrimingSet({
+        platform: "ios",
+        purpose: "settings",
+        cloudOnly: true,
+      }),
+    ).toEqual(["microphone", "notifications", "location"]);
+  });
+
   it("returns mic/notifications/location on android and desktop", () => {
     expect(resolvePrimingSet({ platform: "android" })).toEqual([
       "microphone",

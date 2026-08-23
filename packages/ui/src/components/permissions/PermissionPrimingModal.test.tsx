@@ -92,9 +92,34 @@ describe("PermissionPrimingModal", () => {
 
     expect(screen.getByTestId("priming-card-microphone")).toBeTruthy();
     // MockAppProvider's t returns the defaultValue, so real copy renders.
-    expect(screen.getByText("Talk to me")).toBeTruthy();
+    expect(screen.getByText("Microphone")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Choose what Eliza can use. You can change this later in Settings.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByTestId("priming-enable-microphone")).toBeTruthy();
     expect(screen.getByTestId("priming-skip-microphone")).toBeTruthy();
+  });
+
+  it("centers the mobile review instead of presenting another bottom sheet", () => {
+    const controller = makeController({
+      items: [item("microphone", "not-determined", true)],
+      active: item("microphone", "not-determined", true),
+    });
+    renderModal(
+      <PermissionPrimingModal
+        ids={["microphone"]}
+        open
+        onComplete={vi.fn()}
+        controllerOverride={controller}
+      />,
+    );
+
+    expect(screen.getByRole("dialog").className).toContain("max-sm:top-1/2");
+    expect(screen.getByRole("dialog").className).toContain(
+      "max-sm:-translate-y-1/2",
+    );
   });
 
   it("Enable fires the OS request, Not now skips without it", () => {

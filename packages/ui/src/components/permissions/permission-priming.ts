@@ -47,42 +47,37 @@ export const PRIMING_COPY: Partial<
   microphone: {
     icon: "mic",
     titleKey: "permissionpriming.microphone.title",
-    title: "Talk to me",
+    title: "Microphone",
     rationaleKey: "permissionpriming.microphone.rationale",
-    rationale:
-      "Turn on your microphone so you can speak instead of type. Voice stays on your device unless you send it.",
+    rationale: "Use voice instead of typing.",
   },
   "speech-recognition": {
     icon: "audio-lines",
     titleKey: "permissionpriming.speechRecognition.title",
-    title: "Understand your voice",
+    title: "Speech recognition",
     rationaleKey: "permissionpriming.speechRecognition.rationale",
-    rationale:
-      "Allow speech recognition so I can turn what you say into text for hands-free chats.",
+    rationale: "Turn spoken words into text on this device.",
   },
   location: {
     icon: "map-pin",
     titleKey: "permissionpriming.location.title",
-    title: "Plan around where you are",
+    title: "Location",
     rationaleKey: "permissionpriming.location.rationale",
-    rationale:
-      "Share your location so I can factor in travel time, your time zone, and place-aware reminders.",
+    rationale: "Use your location for travel time and place-aware reminders.",
   },
   notifications: {
     icon: "bell",
     titleKey: "permissionpriming.notifications.title",
-    title: "Reach you when it matters",
+    title: "Notifications",
     rationaleKey: "permissionpriming.notifications.rationale",
-    rationale:
-      "Let me send notifications for reminders, follow-ups, and results from work I do in the background.",
+    rationale: "Get reminders and updates you asked for.",
   },
   camera: {
     icon: "camera",
     titleKey: "permissionpriming.camera.title",
-    title: "Show me things",
+    title: "Camera",
     rationaleKey: "permissionpriming.camera.rationale",
-    rationale:
-      "Enable the camera so you can capture photos and video for me to look at.",
+    rationale: "Take photos or video to share in a conversation.",
   },
 };
 
@@ -115,6 +110,8 @@ export interface ResolvePrimingOptions {
    * capability asks at the moment the user invokes it.
    */
   purpose?: "onboarding" | "settings";
+  /** Hide device speech recognition when cloud transcription owns voice. */
+  cloudOnly?: boolean;
   /**
    * Explicit id list, e.g. a Settings "re-request just these" flow. Still
    * filtered so only ids with priming copy survive.
@@ -137,9 +134,10 @@ export function resolvePrimingSet(
     (purpose === "onboarding" && platform === "ios"
       ? []
       : (PRIMING_SETS[platform] ?? []));
-  return base.filter(
-    (id): id is PermissionId => PRIMING_COPY[id] !== undefined,
-  );
+  return base.filter((id): id is PermissionId => {
+    if (opts.cloudOnly && id === "speech-recognition") return false;
+    return PRIMING_COPY[id] !== undefined;
+  });
 }
 
 /** localStorage key for the shown-once flag. */
