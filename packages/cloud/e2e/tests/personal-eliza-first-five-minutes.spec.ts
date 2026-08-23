@@ -1,17 +1,46 @@
 /**
  * Proves the launch-critical personal Eliza path against the real local Worker,
- * PGlite database, and Durable Objects. External model credentials are blanked:
- * the first turn is a deterministic Shared capability refusal, so any accidental
- * provider dispatch changes the response or fails instead of spending money.
+ * PGlite database, and Durable Objects. External model credentials are blanked,
+ * so no paid provider can be dialed; the OpenRouter backup (the route the
+ * shared default model takes once Cerebras is unconfigured) is pointed at an
+ * in-spec scripted model that answers the first turn with one fixed capability
+ * refusal. Since #22844 the Shared capability wall is no longer a canned reply
+ * but a constraint the runtime injects into the model prompt, so the refusal is
+ * model-voiced: this spec pins that injected constraint verbatim and counts the
+ * scripted model's calls, which also proves the racing first deliveries land
+ * exactly one model turn.
+ *
+ * Harness notes:
+ * - Env passthrough: the Worker only sees env keys sync-api-dev-vars knows
+ *   (.env.example keys, real values in cloud/shared/.env[.local], and the
+ *   provider-key allowlist). OPENROUTER_BASE_URL is not in .env.example, so
+ *   this spec requires an `OPENROUTER_BASE_URL=` line in cloud/shared/.env or
+ *   .env.local (any value; the spec's override wins). The worker fixture fails
+ *   fast with that instruction instead of letting the Worker dial the real
+ *   OpenRouter host with the scripted key.
+ * - Request shape: every Telegram delivery carries the connector account id the
+ *   gateway sends (required by the route since #24322), and the Steward claim
+ *   carries the explicit Telegram claim confirmation marker (#21925).
  */
 
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import type { AddressInfo } from "node:net";
+import { resolve } from "node:path";
 import { mintStewardTokenFromClaims } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 // The coverage classifier requires a direct Playwright marker for changed specs.
 import type {} from "@playwright/test";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
-import { expect, test } from "../src/helpers/test-fixtures";
+import { test as base, expect } from "../src/helpers/test-fixtures";
+
+const CLOUD_SHARED_DIR = resolve(import.meta.dirname, "../../shared");
 
 const STEWARD_JWT_SECRET = "personal-eliza-first-five-local-secret-32-bytes";
 const STEWARD_USER_ID = "steward-personal-eliza-first-five";
@@ -19,28 +48,17 @@ const RUN_ID = randomUUID();
 const TELEGRAM_USER_ID = BigInt(
   `0x${RUN_ID.replaceAll("-", "").slice(0, 15)}`,
 ).toString();
+const TELEGRAM_CONNECTOR_ACCOUNT = "telegram:first-five-bot";
 const CAPABILITY_REQUEST = "save this as a note";
+// Served by the in-spec scripted model for the capability request and asserted
+// exactly; the runtime voices the wall through the model since #22844.
 const CAPABILITY_REPLY =
-  "Persistent notes need Dedicated. I can remember this conversation, but Shared doesn't manage a separate notes store.";
-
-test.use({
-  stackOptions: {
-    frontend: false,
-    env: {
-      STEWARD_JWT_SECRET,
-      STEWARD_TENANT_ID: "elizacloud",
-      // The sync script normally preserves real provider keys from a developer's
-      // shell/.env. An explicit empty override keeps this proof offline and free.
-      PRESERVE_E2E_PROVIDER_ENV: "1",
-      CEREBRAS_API_KEY: "",
-      OPENROUTER_API_KEY: "",
-      OPENAI_API_KEY: "",
-      OPENAI_BASE_URL: "",
-      ANTHROPIC_API_KEY: "",
-      GROQ_API_KEY: "",
-    },
-  },
-});
+  "I can't save notes on this chat, so nothing was stored. I'll keep it in our conversation instead: save this as a note.";
+// The capability wall the runtime injects for a notes request, pinned verbatim
+// to shared-capability-wall.ts (constraint) and run-shared-agent-turn.ts
+// (prompt block).
+const NOTES_CAPABILITY_CONSTRAINT =
+  "Unavailable actions detected in this turn:\n- Notes: This runtime has no separate persistent notes store, so it cannot read or change notes.";
 
 interface SharedDeliveryResponse {
   success?: boolean;
@@ -48,10 +66,270 @@ interface SharedDeliveryResponse {
     identity?: { id?: string; runtime?: string };
     account?: { userId?: string; organizationId?: string };
     reply?: string;
+    /** Only group turns carry a send authority; a DM turn never does. */
+    groupDelivery?: unknown;
   };
   code?: string;
   retryable?: boolean;
 }
+
+type OpenAiMessage = { role: string; content?: unknown };
+interface ChatCompletionBody {
+  model?: string;
+  stream?: boolean;
+  messages?: OpenAiMessage[];
+  tools?: Array<{ type?: string; function?: { name?: string }; name?: string }>;
+}
+
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      part && typeof part === "object" && "text" in part
+        ? String((part as { text: unknown }).text)
+        : "",
+    )
+    .filter(Boolean)
+    .join(" ");
+}
+
+async function readBody(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function respondJson(
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+): void {
+  response.writeHead(status, { "Content-Type": "application/json" });
+  response.end(JSON.stringify(body));
+}
+
+interface ScriptedModel {
+  /** Scripted OpenAI-compatible `/v1` base the Worker's OpenRouter client dials. */
+  url: string;
+  /** Chat-completion requests served so far. */
+  calls: () => number;
+  /** Every prompt the scripted model received, one joined text per call. */
+  prompts: string[];
+}
+
+/**
+ * OpenAI-compatible scripted model (stream + non-stream). It answers the
+ * runtime's HANDLE_RESPONSE projection with the fixed capability refusal as
+ * `replyText`, which the shared runtime returns as the turn's reply, and
+ * records each prompt so the spec can pin the injected capability wall.
+ */
+function createScriptedModelServer(prompts: string[]): {
+  server: Server;
+  calls: () => number;
+} {
+  let sequence = 0;
+  const server = createServer((request, response) => {
+    void (async () => {
+      const url = request.url ?? "";
+      if (request.method === "GET" && url.endsWith("/models")) {
+        respondJson(response, 200, { object: "list", data: [] });
+        return;
+      }
+      if (request.method !== "POST" || !url.endsWith("/chat/completions")) {
+        respondJson(response, 404, { error: { message: "not found" } });
+        return;
+      }
+      let body: ChatCompletionBody;
+      try {
+        body = JSON.parse(await readBody(request)) as ChatCompletionBody;
+      } catch {
+        // error-policy:J3 malformed model input is explicitly invalid.
+        respondJson(response, 400, { error: { message: "bad json" } });
+        return;
+      }
+      sequence += 1;
+      prompts.push(
+        (body.messages ?? [])
+          .map((message) => `${message.role}: ${contentText(message.content)}`)
+          .join("\n"),
+      );
+      const toolNames = (body.tools ?? [])
+        .map((tool) => tool.function?.name ?? tool.name ?? "")
+        .filter(Boolean);
+      const toolCalls = toolNames.includes("HANDLE_RESPONSE")
+        ? [
+            {
+              id: `call_scripted_${sequence}`,
+              type: "function",
+              function: {
+                name: "HANDLE_RESPONSE",
+                arguments: JSON.stringify({
+                  shouldRespond: "RESPOND",
+                  contexts: ["simple"],
+                  intents: ["decline unavailable notes action"],
+                  replyText: CAPABILITY_REPLY,
+                  replyEffectStatus: "none",
+                  candidateActionNames: [],
+                  facts: [],
+                  relationships: [],
+                  topics: ["notes"],
+                  addressedTo: [],
+                  emotion: "none",
+                }),
+              },
+            },
+          ]
+        : undefined;
+      const id = `chatcmpl-scripted-${sequence}`;
+      const created = Math.floor(Date.now() / 1000);
+      const model = String(body.model ?? "scripted");
+      const usage = {
+        prompt_tokens: 42,
+        completion_tokens: 24,
+        total_tokens: 66,
+      };
+      const finish = toolCalls ? "tool_calls" : "stop";
+
+      if (body.stream === true) {
+        const chunkBase = {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+        };
+        const delta = toolCalls
+          ? {
+              role: "assistant",
+              tool_calls: toolCalls.map((call) => ({ index: 0, ...call })),
+            }
+          : { role: "assistant", content: CAPABILITY_REPLY };
+        const chunks = [
+          { ...chunkBase, choices: [{ index: 0, delta, finish_reason: null }] },
+          {
+            ...chunkBase,
+            choices: [{ index: 0, delta: {}, finish_reason: finish }],
+            usage,
+          },
+        ];
+        response.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        });
+        response.end(
+          `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`).join("\n\n")}\n\ndata: [DONE]\n\n`,
+        );
+        return;
+      }
+
+      const message = toolCalls
+        ? { role: "assistant", content: null, tool_calls: toolCalls }
+        : { role: "assistant", content: CAPABILITY_REPLY };
+      respondJson(response, 200, {
+        id,
+        object: "chat.completion",
+        created,
+        model,
+        choices: [{ index: 0, message, finish_reason: finish, logprobs: null }],
+        usage,
+      });
+    })().catch(() => {
+      // error-policy:J1 the scripted model boundary answers one HTTP failure.
+      if (!response.writableEnded) {
+        respondJson(response, 500, {
+          error: { message: "scripted model failure" },
+        });
+      }
+    });
+  });
+  return { server, calls: () => sequence };
+}
+
+/** Bind a loopback server on an ephemeral port and return its origin. */
+function listen(server: Server): Promise<string> {
+  return new Promise((resolveOrigin, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      resolveOrigin(`http://127.0.0.1:${port}`);
+    });
+  });
+}
+
+function close(server: Server): Promise<void> {
+  return new Promise((resolveClosed, reject) => {
+    server.closeAllConnections();
+    server.close((error) => (error ? reject(error) : resolveClosed()));
+  });
+}
+
+/**
+ * sync-api-dev-vars forwards a process-env override into the Worker's
+ * `.dev.vars` only for keys it already knows. Fail before the stack boots when
+ * OPENROUTER_BASE_URL cannot reach the Worker, naming the fix.
+ */
+function assertScriptedModelRouteIsForwardable(): void {
+  const known = [".env.example", ".env", ".env.local"].some((name) => {
+    const file = resolve(CLOUD_SHARED_DIR, name);
+    return (
+      existsSync(file) &&
+      /^\s*OPENROUTER_BASE_URL\s*=\s*\S/m.test(readFileSync(file, "utf8"))
+    );
+  });
+  if (!known) {
+    throw new Error(
+      "personal-eliza-first-five-minutes needs the Worker to honour OPENROUTER_BASE_URL, " +
+        "which sync-api-dev-vars only forwards for keys present in cloud/shared/.env[.local]. " +
+        "Add a line `OPENROUTER_BASE_URL=http://127.0.0.1:1/v1` to packages/cloud/shared/.env.local " +
+        "(any value; this spec overrides it with the scripted model URL).",
+    );
+  }
+}
+
+const test = base.extend<
+  Record<never, never>,
+  { scriptedModel: ScriptedModel }
+>({
+  // The scripted model binds an ephemeral loopback port before the stack
+  // boots, so the worker env can name it and nothing collides with other
+  // local stacks.
+  scriptedModel: [
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright derives fixture dependencies from this destructuring pattern; the model has none.
+    async ({}, use) => {
+      assertScriptedModelRouteIsForwardable();
+      const prompts: string[] = [];
+      const model = createScriptedModelServer(prompts);
+      const origin = await listen(model.server);
+      try {
+        await use({ url: `${origin}/v1`, calls: model.calls, prompts });
+      } finally {
+        await close(model.server);
+      }
+    },
+    { scope: "worker" },
+  ],
+  stackOptions: async ({ scriptedModel }, use) => {
+    await use({
+      frontend: false,
+      env: {
+        STEWARD_JWT_SECRET,
+        STEWARD_TENANT_ID: "elizacloud",
+        // The sync script normally preserves real provider keys from a
+        // developer's shell/.env. Explicit empty overrides keep this proof
+        // offline and free; the OpenRouter backup alone is pointed at the
+        // scripted model.
+        PRESERVE_E2E_PROVIDER_ENV: "1",
+        CEREBRAS_API_KEY: "",
+        OPENAI_API_KEY: "",
+        OPENAI_BASE_URL: "",
+        ANTHROPIC_API_KEY: "",
+        GROQ_API_KEY: "",
+        OPENROUTER_API_KEY: "local-scripted-model-key",
+        OPENROUTER_BASE_URL: scriptedModel.url,
+      },
+    });
+  },
+});
 
 interface SharedHistoryResponse {
   messages?: Array<{ id: string; role: "user" | "assistant"; text: string }>;
@@ -82,6 +360,7 @@ async function postTelegramDelivery(
       body: JSON.stringify({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT,
         chatId: TELEGRAM_USER_ID,
         telegramUserId: TELEGRAM_USER_ID,
         telegramUsername: "first_five_nubs",
@@ -152,6 +431,7 @@ async function waitForMirroredHistory(agentId: string): Promise<{
 test.describe("personal Eliza first five minutes", () => {
   test("keeps first contact rowless and free, replays it, then claims the same account and history", async ({
     stack,
+    scriptedModel,
   }) => {
     test.setTimeout(180_000);
 
@@ -174,7 +454,15 @@ test.describe("personal Eliza first five minutes", () => {
         `first delivery failed: ${JSON.stringify(delivery.json)}`,
       ).toBe(200);
       expect(delivery.json.data?.reply).toBe(CAPABILITY_REPLY);
+      expect(delivery.json.data?.identity?.runtime).toBe("shared");
+      expect(delivery.json.data?.groupDelivery).toBeUndefined();
     }
+    // One landed turn: the racing pair produced exactly one model call, and
+    // that call carried the capability wall for the notes request, so the
+    // refusal was governed by the runtime rather than improvised by the model.
+    expect(scriptedModel.calls()).toBe(1);
+    expect(scriptedModel.prompts[0]).toContain(NOTES_CAPABILITY_CONSTRAINT);
+    expect(scriptedModel.prompts[0]).toContain(CAPABILITY_REQUEST);
 
     const account = firstDeliveries[0]?.json.data?.account;
     const personalId = firstDeliveries[0]?.json.data?.identity?.id;
@@ -266,6 +554,9 @@ test.describe("personal Eliza first five minutes", () => {
     expect(connect.status, JSON.stringify(connect.json)).toBe(200);
     expect(connect.json.data?.account).toEqual(account);
     expect(connect.json.data?.identity?.id).toBe(personalId);
+    expect(connect.json.data?.groupDelivery).toBeUndefined();
+    // /connect is route-owned: no model turn.
+    expect(scriptedModel.calls()).toBe(1);
     const reply = connect.json.data?.reply;
     if (!reply) throw new Error("Telegram /connect did not return a reply");
     const continuationToken = continuationTokenFromReply(reply);
@@ -292,9 +583,13 @@ test.describe("personal Eliza first five minutes", () => {
           "Content-Type": "application/json",
           Origin: stack.urls.api,
         },
+        // The browser's explicit claim ceremony: since #21925 a continuation
+        // is only honoured with this marker, which ordinary login sync never
+        // sends.
         body: JSON.stringify({
           token: minted.token,
           telegramContinuation: continuationToken,
+          telegramClaimConfirmation: "explicit",
         }),
       },
     );
@@ -388,5 +683,7 @@ test.describe("personal Eliza first five minutes", () => {
         account.organizationId,
       ),
     ).toHaveLength(0);
+    // Nor did the claim or the authenticated reads dispatch any model work.
+    expect(scriptedModel.calls()).toBe(1);
   });
 });
