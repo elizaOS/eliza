@@ -220,7 +220,7 @@ app.post("/", async (c) => {
     let managedNetworkEnrollment: Awaited<
       ReturnType<typeof enrollManagedNetwork>
     > | null = null;
-    let responseHost = result.host;
+    const responseHost = result.host;
     if (result.kind === "created" && networkConfig) {
       try {
         managedNetworkEnrollment = await enrollManagedNetwork({
@@ -229,11 +229,6 @@ app.post("/", async (c) => {
           userId: user.id,
           config: networkConfig,
           repository: remoteHostsRepository,
-        });
-        responseHost = await remoteHostsRepository.activateManagedEnrollment({
-          hostId: result.host.id,
-          organizationId: user.organization_id,
-          userId: user.id,
         });
       } catch (cause) {
         // Managed hosts begin non-authoritative. Even if this compensation
@@ -264,7 +259,10 @@ app.post("/", async (c) => {
           hostId: result.host.id,
           hostToken: token,
           runtimeKeyId: responseHost.runtime_key_id,
-          status: responseHost.status,
+          // Managed enrollment remains non-authoritative until the native
+          // client joins Headscale and redeems the host-scoped activation
+          // endpoint. Non-managed relay enrollment is active immediately.
+          status: managedNetworkEnrollment ? "pending" : responseHost.status,
           createdAt: responseHost.created_at,
           recovered: result.kind === "recovered",
           managedNetworkEnrollment,

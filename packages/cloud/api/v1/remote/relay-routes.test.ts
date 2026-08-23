@@ -38,6 +38,7 @@ const recoverHostCredential = mock();
 const listOwned = mock();
 const revokeHost = mock();
 const revokeAuthenticatedHost = mock();
+const authenticateManagedEnrollment = mock();
 const recordManagedEnrollment = mock();
 const activateManagedEnrollment = mock();
 const recordManagedCleanupPending = mock();
@@ -70,6 +71,7 @@ mock.module("@/db/repositories/remote-hosts", () => ({
     listOwned,
     revoke: revokeHost,
     revokeAuthenticated: revokeAuthenticatedHost,
+    authenticateManagedEnrollment,
     recordManagedEnrollment,
     activateManagedEnrollment,
     recordManagedCleanupPending,
@@ -108,6 +110,9 @@ mock.module("@/db/repositories/remote-command-envelopes", () => ({
 
 const { default: hostsRoute } = await import("./hosts/route");
 const { default: hostRevokeRoute } = await import("./hosts/[id]/revoke/route");
+const { default: managedNetworkActivateRoute } = await import(
+  "./hosts/[id]/managed-network/activate/route"
+);
 const { default: pairRoute } = await import("./pair/route");
 const { default: sessionsRoute } = await import("./sessions/route");
 const { default: activateRoute } = await import(
@@ -129,6 +134,10 @@ const { default: completeRoute } = await import(
 const app = new Hono<AppEnv>();
 app.route("/api/v1/remote/hosts", hostsRoute);
 app.route("/api/v1/remote/hosts/:id/revoke", hostRevokeRoute);
+app.route(
+  "/api/v1/remote/hosts/:id/managed-network/activate",
+  managedNetworkActivateRoute,
+);
 app.route("/api/v1/remote/pair", pairRoute);
 app.route("/api/v1/remote/sessions", sessionsRoute);
 app.route("/api/v1/remote/sessions/:id/activate", activateRoute);
@@ -211,6 +220,7 @@ beforeEach(() => {
     listOwned,
     revokeHost,
     revokeAuthenticatedHost,
+    authenticateManagedEnrollment,
     recordManagedEnrollment,
     activateManagedEnrollment,
     recordManagedCleanupPending,
@@ -328,7 +338,7 @@ describe("secure remote relay routes", () => {
       };
     };
     expect(createOwned.mock.calls[0]?.[0]).toMatchObject({ status: "pending" });
-    expect(body.data.status).toBe("active");
+    expect(body.data.status).toBe("pending");
     expect(body.data.managedNetworkEnrollment.authKey).toBe(
       "hskey-auth-one-use-secret",
     );
@@ -348,16 +358,12 @@ describe("secure remote relay routes", () => {
     expect(JSON.stringify(createOwned.mock.calls)).not.toContain(
       body.data.managedNetworkEnrollment.authKey,
     );
-    expect(activateManagedEnrollment).toHaveBeenCalledWith({
-      hostId: body.data.hostId,
-      organizationId,
-      userId: ownerId,
-    });
+    expect(activateManagedEnrollment).not.toHaveBeenCalled();
     expect(body.data).toEqual(
       expect.objectContaining({
         hostId: body.data.hostId,
         runtimeKeyId: targetKeyId,
-        status: "active",
+        status: "pending",
       }),
     );
   });
@@ -440,29 +446,21 @@ describe("secure remote relay routes", () => {
     expect(revokeHost).toHaveBeenCalledTimes(1);
   });
 
-  test("remains pending when activation and compensating revocation both fail", async () => {
-    createOwned.mockImplementation(async (input) => ({
-      kind: "created",
-      host: { ...input, created_at: new Date("2026-08-22T06:15:00.000Z") },
-    }));
-    activateManagedEnrollment.mockRejectedValue(
-      new Error("database activation unavailable"),
-    );
-    revokeHost.mockRejectedValue(new Error("database revocation unavailable"));
-
+  test("keeps the host pending when the native node has not joined", async () => {
+    authenticateManagedEnrollment.mockResolvedValue({
+      id: hostId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      status: "pending",
+      created_at: new Date("2026-08-22T06:15:00.000Z"),
+      headscale_hostname: "eliza-host-one",
+      headscale_preauth_key_id: "123",
+      headscale_cleanup_pending: true,
+    });
     const response = await request(
-      "/api/v1/remote/hosts",
-      {
-        deviceId: "mac-one",
-        displayName: "Mac One",
-        platform: "macos",
-        connectionMode: "relay",
-        managedNetwork: true,
-        runtimeKeyId: targetKeyId,
-        signingPublicKeyJwk: publicJwk,
-        encryptionPublicKeyJwk: publicJwk,
-      },
+      `/api/v1/remote/hosts/${hostId}/managed-network/activate`,
       {},
+      hostHeaders(),
       {
         HEADSCALE_API_URL: "https://headscale-staging.example",
         HEADSCALE_PUBLIC_URL: "https://headscale-staging.example",
@@ -470,13 +468,47 @@ describe("secure remote relay routes", () => {
       },
     );
 
-    expect(response.status).toBeGreaterThanOrEqual(500);
-    expect(createOwned.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ status: "pending" }),
+    expect(response.status).toBe(409);
+    expect(activateManagedEnrollment).not.toHaveBeenCalled();
+    expect(revokeHost).not.toHaveBeenCalled();
+  });
+
+  test("activates only after Headscale returns the exact fresh collision identity", async () => {
+    authenticateManagedEnrollment.mockResolvedValue({
+      id: hostId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      status: "pending",
+      created_at: new Date("2026-08-22T06:15:00.000Z"),
+      headscale_hostname: "eliza-host-one",
+      headscale_preauth_key_id: "123",
+      headscale_cleanup_pending: true,
+    });
+    listNodesStrict.mockResolvedValue([
+      {
+        id: "9",
+        name: "eliza-host-one-cnpx9uop",
+        user: { name: "tunnel" },
+        createdAt: "2026-08-22T06:15:01.000Z",
+      },
+    ]);
+    const response = await request(
+      `/api/v1/remote/hosts/${hostId}/managed-network/activate`,
+      {},
+      hostHeaders(),
+      {
+        HEADSCALE_API_URL: "https://headscale-staging.example",
+        HEADSCALE_PUBLIC_URL: "https://headscale-staging.example",
+        HEADSCALE_API_KEY: "headscale-api-secret",
+      },
     );
-    expect(recordManagedEnrollment).toHaveBeenCalledTimes(1);
-    expect(activateManagedEnrollment).toHaveBeenCalledTimes(1);
-    expect(revokeHost).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    expect(activateManagedEnrollment).toHaveBeenCalledWith({
+      hostId,
+      organizationId,
+      userId: ownerId,
+      hostname: "eliza-host-one-cnpx9uop",
+    });
   });
 
   test("bootstraps the authenticated owner and target public keys without leaking host credentials", async () => {

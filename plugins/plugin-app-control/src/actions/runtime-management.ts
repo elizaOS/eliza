@@ -77,6 +77,18 @@ function readNumberOption(
 	return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
+function readBooleanOption(
+	options: Record<string, unknown>,
+	key: string,
+): boolean | undefined {
+	const value = options[key];
+	if (typeof value === "boolean") return value;
+	if (typeof value !== "string") return undefined;
+	if (/^true$/i.test(value.trim())) return true;
+	if (/^false$/i.test(value.trim())) return false;
+	return undefined;
+}
+
 function isConfirmed(options: Record<string, unknown>): boolean {
 	const value = options.confirm;
 	return (
@@ -110,6 +122,7 @@ export function parseRuntimeManagementRequest(
 		apiBase: readStringOption(options, "apiBase") ?? undefined,
 		sessionId: readStringOption(options, "sessionId") ?? undefined,
 		code: readStringOption(options, "code") ?? undefined,
+		managedNetwork: readBooleanOption(options, "managedNetwork"),
 	};
 }
 
@@ -309,6 +322,13 @@ export function createRuntimeManagementAction(
 				description: "One-use six-digit pairing code.",
 				required: false,
 				schema: { type: "string" },
+			},
+			{
+				name: "managedNetwork",
+				description:
+					"For enroll_host only: opt into the managed private network. Requires local Tailscale and explicit confirmation.",
+				required: false,
+				schema: { type: "boolean" },
 			},
 			{
 				name: "confirm",

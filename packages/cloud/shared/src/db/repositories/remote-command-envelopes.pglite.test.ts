@@ -294,17 +294,35 @@ describe("secure remote relay repositories", () => {
       status: "pending",
     });
     expect(JSON.stringify(host)).not.toContain("hskey-");
+    expect(
+      await hosts.listManagedCleanupCandidates({
+        pendingUpdatedBefore: new Date("2100-01-01T00:00:00.000Z"),
+        limit: 10,
+      }),
+    ).toHaveLength(1);
+    expect(await hosts.authenticateManagedEnrollment(hostId, hostToken)).toMatchObject({
+      id: hostId,
+      status: "pending",
+    });
 
     const active = await hosts.activateManagedEnrollment({
       hostId,
       organizationId,
       userId: ownerId,
+      hostname: "eliza-host-test-cnpx9uop",
     });
     expect(active.status).toBe("active");
+    expect(active.headscale_hostname).toBe("eliza-host-test-cnpx9uop");
     expect(await hosts.authenticate(hostId, hostToken)).toMatchObject({
       id: hostId,
       status: "active",
     });
+    expect(
+      await hosts.listManagedCleanupCandidates({
+        pendingUpdatedBefore: new Date("2100-01-01T00:00:00.000Z"),
+        limit: 10,
+      }),
+    ).toHaveLength(0);
 
     await hosts.completeManagedCleanup({
       hostId,

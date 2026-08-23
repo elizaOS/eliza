@@ -102,6 +102,10 @@ class FakeRelay implements RemoteTargetRelayTransport {
     throw new Error("unused");
   }
 
+  async activateManagedNetwork(): Promise<{ hostname: string }> {
+    throw new Error("unused");
+  }
+
   async activate(): Promise<RemoteTargetActivationResponse> {
     throw new Error("unused");
   }
@@ -192,6 +196,34 @@ class DeferredClaimRelay extends FakeRelay {
 
   resolveClaim(claim: RemoteTargetClaim | null): void {
     this.releaseClaim(claim);
+  }
+}
+
+class ManagedEnrollmentRelay extends FakeRelay {
+  activateManagedCalls = 0;
+
+  override async enroll(
+    input: RemoteTargetEnrollmentRequest,
+  ): Promise<RemoteTargetEnrollmentResponse> {
+    return {
+      hostId: HOST_ID,
+      hostToken: `rhost_v1_${"A".repeat(43)}`,
+      runtimeKeyId: input.runtimeKeyId,
+      status: "pending",
+      createdAt: NOW - 1_000,
+      recovered: false,
+      managedNetworkEnrollment: {
+        loginServer: "https://headscale.example.test",
+        authKey: "hskey-auth-one-use-secret",
+        hostname: "eliza-host-one",
+        expiresAt: NOW + 30_000,
+      },
+    };
+  }
+
+  override async activateManagedNetwork(): Promise<{ hostname: string }> {
+    this.activateManagedCalls += 1;
+    return { hostname: "eliza-host-one-cnpx9uop" };
   }
 }
 
@@ -851,5 +883,75 @@ describe("remote target durable runner", () => {
     await expect(harness.vault.load()).resolves.toMatchObject({
       status: "enrolled",
     });
+  });
+
+  it("activates managed authority only after the native join succeeds", async () => {
+    const vault = new RemoteTargetVault(
+      new MemorySecureStore(),
+      "managed-success-target",
+    );
+    const relay = new ManagedEnrollmentRelay();
+    let joined = false;
+    const service = new RemoteTargetDesktopService(
+      vault,
+      new MemoryRemoteTargetStateStore(),
+      relay,
+      () => NOW,
+      {
+        join: async () => {
+          joined = true;
+        },
+      },
+    );
+    await expect(
+      service.enroll({
+        apiBaseUrl: "https://api.example.test",
+        ownerId: "owner-1",
+        ownerAccessToken: "owner-token-123456789",
+        displayName: "Linux target",
+        platform: "linux",
+        managedNetwork: true,
+      }),
+    ).resolves.toMatchObject({ hostId: HOST_ID, status: "active" });
+    expect(joined).toBe(true);
+    expect(relay.activateManagedCalls).toBe(1);
+    await expect(vault.load()).resolves.toMatchObject({ status: "enrolled" });
+  });
+
+  it("revokes pending Cloud authority and deletes local credentials after a native join failure", async () => {
+    const vault = new RemoteTargetVault(
+      new MemorySecureStore(),
+      "managed-failure-target",
+    );
+    const relay = new ManagedEnrollmentRelay();
+    relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: false,
+      cleanup: { sessions: 0, commands: 0, more: false },
+    });
+    const service = new RemoteTargetDesktopService(
+      vault,
+      new MemoryRemoteTargetStateStore(),
+      relay,
+      () => NOW,
+      {
+        join: async () => {
+          throw new Error("Tailscale unavailable");
+        },
+      },
+    );
+    await expect(
+      service.enroll({
+        apiBaseUrl: "https://api.example.test",
+        ownerId: "owner-1",
+        ownerAccessToken: "owner-token-123456789",
+        displayName: "Linux target",
+        platform: "linux",
+        managedNetwork: true,
+      }),
+    ).rejects.toThrow("Tailscale unavailable");
+    expect(relay.activateManagedCalls).toBe(0);
+    await expect(vault.load()).resolves.toBeNull();
   });
 });

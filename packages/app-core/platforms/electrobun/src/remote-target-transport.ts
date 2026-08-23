@@ -12,6 +12,7 @@ import {
   isRemoteControllerPublicIdentity,
   type RemoteControllerPublicIdentity,
 } from "@elizaos/shared/contracts/remote-control";
+import type { RemoteTargetManagedNetworkEnrollment } from "./remote-target-managed-network";
 import type { EnrolledRemoteTargetVaultRecord } from "./remote-target-vault";
 
 const RESPONSE_LIMIT_BYTES = 1_048_576;
@@ -50,15 +51,17 @@ export interface RemoteTargetEnrollmentRequest {
   runtimeKeyId: string;
   signingPublicKeyJwk: JsonWebKey;
   encryptionPublicKeyJwk: JsonWebKey;
+  managedNetwork?: boolean;
 }
 
 export interface RemoteTargetEnrollmentResponse {
   hostId: string;
   hostToken: string;
   runtimeKeyId: string;
-  status: "active";
+  status: "pending" | "active";
   createdAt: number;
   recovered: boolean;
+  managedNetworkEnrollment?: RemoteTargetManagedNetworkEnrollment;
 }
 
 export interface RemoteTargetActivationResponse {
@@ -93,6 +96,10 @@ export interface RemoteTargetRelayTransport {
   enroll(
     input: RemoteTargetEnrollmentRequest,
   ): Promise<RemoteTargetEnrollmentResponse>;
+  activateManagedNetwork(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    expectedHostname: string;
+  }): Promise<{ hostname: string }>;
   activate(input: {
     enrollment: EnrolledRemoteTargetVaultRecord;
     sessionId: string;
@@ -297,12 +304,10 @@ export class HttpRemoteTargetRelayTransport
       signingPublicKeyJwk: input.signingPublicKeyJwk,
       encryptionPublicKeyJwk: input.encryptionPublicKeyJwk,
     };
-    const matchingHosts = listedBefore.hosts.filter(
+    const identityMatches = listedBefore.hosts.filter(
       (host) =>
         typeof host === "object" &&
         host !== null &&
-        Reflect.get(host, "status") === "active" &&
-        Reflect.get(host, "revokedAt") === null &&
         canonicalizeRemoteControlValue({
           deviceId: Reflect.get(host, "deviceId"),
           displayName: Reflect.get(host, "displayName"),
@@ -313,8 +318,23 @@ export class HttpRemoteTargetRelayTransport
           encryptionPublicKeyJwk: Reflect.get(host, "encryptionPublicKeyJwk"),
         }) === canonicalizeRemoteControlValue(expectedPublic),
     );
+    const matchingHosts = identityMatches.filter(
+      (host) =>
+        Reflect.get(host, "status") === "active" &&
+        Reflect.get(host, "revokedAt") === null,
+    );
     if (matchingHosts.length > 1) {
       throw new Error("Remote host recovery identity is ambiguous.");
+    }
+    if (
+      identityMatches.some((host) => Reflect.get(host, "status") === "pending")
+    ) {
+      throw new RemoteTargetTransportError("MANAGED_ENROLLMENT_PENDING", 409);
+    }
+    if (
+      identityMatches.some((host) => Reflect.get(host, "status") === "revoked")
+    ) {
+      throw new RemoteTargetTransportError("REMOTE_HOST_REVOKED", 409);
     }
     const recoveryHostId = matchingHosts[0]
       ? requireUuid(Reflect.get(matchingHosts[0], "id"))
@@ -334,6 +354,7 @@ export class HttpRemoteTargetRelayTransport
           runtimeKeyId: input.runtimeKeyId,
           signingPublicKeyJwk: input.signingPublicKeyJwk,
           encryptionPublicKeyJwk: input.encryptionPublicKeyJwk,
+          ...(input.managedNetwork ? { managedNetwork: true } : {}),
           ...(recoveryHostId ? { recoveryHostId } : {}),
         }),
       }),
@@ -345,7 +366,7 @@ export class HttpRemoteTargetRelayTransport
       !/^rhost_v1_[A-Za-z0-9_-]{43}$/.test(data.hostToken) ||
       typeof data.runtimeKeyId !== "string" ||
       data.runtimeKeyId !== input.runtimeKeyId ||
-      data.status !== "active" ||
+      (data.status !== "active" && data.status !== "pending") ||
       typeof data.recovered !== "boolean"
     ) {
       throw new Error("Remote host enrollment response is invalid.");
@@ -379,14 +400,71 @@ export class HttpRemoteTargetRelayTransport
     if (!confirmed) {
       throw new Error("Remote host enrollment could not be verified.");
     }
+    let managedNetworkEnrollment:
+      | RemoteTargetManagedNetworkEnrollment
+      | undefined;
+    if (input.managedNetwork) {
+      const managed = requireObject(data.managedNetworkEnrollment);
+      const expiresAt = requireTimestamp(managed.expiresAt);
+      if (
+        data.status !== "pending" ||
+        typeof managed.loginServer !== "string" ||
+        typeof managed.authKey !== "string" ||
+        typeof managed.hostname !== "string"
+      ) {
+        throw new Error("Managed network enrollment response is invalid.");
+      }
+      managedNetworkEnrollment = {
+        loginServer: managed.loginServer,
+        authKey: managed.authKey,
+        hostname: managed.hostname,
+        expiresAt,
+      };
+    } else if (
+      data.status !== "active" ||
+      data.managedNetworkEnrollment != null
+    ) {
+      throw new Error("Remote host enrollment response is invalid.");
+    }
     return {
       hostId,
       hostToken: data.hostToken,
       runtimeKeyId: data.runtimeKeyId,
-      status: "active",
+      status: data.status,
       createdAt,
       recovered: data.recovered,
+      ...(managedNetworkEnrollment ? { managedNetworkEnrollment } : {}),
     };
+  }
+
+  async activateManagedNetwork(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    expectedHostname: string;
+  }): Promise<{ hostname: string }> {
+    const hostId = requireUuid(input.enrollment.identity.runtimeId);
+    const data = requireObject(
+      await this.request(
+        input.enrollment.apiBaseUrl,
+        `/api/v1/remote/hosts/${encodeURIComponent(hostId)}/managed-network/activate`,
+        {
+          method: "POST",
+          headers: this.hostHeaders(input.enrollment),
+        },
+      ),
+    );
+    const escaped = input.expectedHostname.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+    if (
+      data.hostId !== hostId ||
+      data.status !== "active" ||
+      typeof data.hostname !== "string" ||
+      !new RegExp(`^${escaped}(?:-[a-z0-9]{8})?$`).test(data.hostname)
+    ) {
+      throw new Error("Managed network activation response is invalid.");
+    }
+    return { hostname: data.hostname };
   }
 
   async activate(input: {

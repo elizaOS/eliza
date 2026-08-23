@@ -1,5 +1,8 @@
 /** Optional, host-scoped Headscale enrollment with compensating cleanup. */
-import { HeadscaleClient } from "@/lib/services/headscale-client";
+import {
+  HeadscaleClient,
+  type HeadscaleNode,
+} from "@/lib/services/headscale-client";
 
 const REMOTE_HOST_TAG = "tag:eliza-remote-host";
 const ENROLLMENT_TTL_MS = 15 * 60 * 1_000;
@@ -13,6 +16,9 @@ export interface ManagedNetworkConfig {
 
 export interface ManagedNetworkHost {
   id: string;
+  status?: "pending" | "active" | "revoked";
+  organization_id?: string;
+  user_id?: string;
   created_at: Date;
   headscale_hostname?: string | null;
   headscale_preauth_key_id?: string | null;
@@ -46,6 +52,31 @@ export interface ManagedNetworkRepository {
     organizationId: string;
     userId: string;
   }): Promise<unknown>;
+  activateManagedEnrollment(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+    hostname: string;
+  }): Promise<unknown>;
+}
+
+export interface ManagedNetworkCleanupRepository
+  extends ManagedNetworkRepository {
+  listManagedCleanupCandidates(input: {
+    pendingUpdatedBefore: Date;
+    limit: number;
+  }): Promise<ManagedNetworkHost[]>;
+  revoke(
+    hostId: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<
+    | {
+        host: ManagedNetworkHost;
+        cleanup: { sessions: number; commands: number; more: boolean };
+      }
+    | undefined
+  >;
 }
 
 function readEnv(value: unknown): string | null {
@@ -96,6 +127,30 @@ export function managedNetworkConfig(
 
 function hostnameForHost(hostId: string): string {
   return `eliza-host-${hostId.replace(/-/g, "").slice(0, 20)}`;
+}
+
+function enrollmentNode(
+  nodes: readonly HeadscaleNode[],
+  host: ManagedNetworkHost,
+  user: string,
+): HeadscaleNode | null {
+  const hostname = host.headscale_hostname;
+  if (!hostname) return null;
+  const escapedHostname = hostname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const collisionName = new RegExp(`^${escapedHostname}-[a-z0-9]{8}$`);
+  const createdAtMs = host.created_at.getTime();
+  const candidates = nodes.filter(
+    (node) =>
+      node.user?.name === user &&
+      (node.name === hostname || collisionName.test(node.name)) &&
+      Date.parse(node.createdAt) >= createdAtMs,
+  );
+  if (candidates.length > 1) {
+    throw new Error(
+      "Managed-network enrollment matched more than one fresh Headscale node.",
+    );
+  }
+  return candidates[0] ?? null;
 }
 
 function clientFor(config: ManagedNetworkConfig): HeadscaleClient {
@@ -211,9 +266,10 @@ export async function cleanupManagedNetwork(input: {
       const nodes = await client.listNodesStrict();
       const cleanupNodes = nodes.filter(
         (node) =>
-          node.name === hostname ||
-          (collisionName.test(node.name) &&
-            Date.parse(node.createdAt) >= createdAtMs),
+          node.user?.name === input.config.user &&
+          (node.name === hostname ||
+            (collisionName.test(node.name) &&
+              Date.parse(node.createdAt) >= createdAtMs)),
       );
       for (const node of cleanupNodes) await client.deleteNode(node.id);
     } catch (cause) {
@@ -246,9 +302,113 @@ export async function cleanupManagedNetwork(input: {
   });
 }
 
+/**
+ * Promotes a managed host only after the native client has joined Headscale
+ * and the control plane can identify the exact fresh node. Persisting the
+ * collision-suffixed name in the same activation write makes later cleanup
+ * target the real external identity rather than the requested base name.
+ */
+export async function activateManagedNetwork(input: {
+  host: ManagedNetworkHost;
+  organizationId: string;
+  userId: string;
+  config: ManagedNetworkConfig;
+  repository: ManagedNetworkRepository;
+  client?: HeadscaleClient;
+}): Promise<{ hostname: string } | null> {
+  const client = input.client ?? clientFor(input.config);
+  const node = enrollmentNode(
+    await client.listNodesStrict(),
+    input.host,
+    input.config.user,
+  );
+  if (!node) return null;
+  if (input.host.status === "active") {
+    return { hostname: node.name };
+  }
+  await input.repository.activateManagedEnrollment({
+    hostId: input.host.id,
+    organizationId: input.organizationId,
+    userId: input.userId,
+    hostname: node.name,
+  });
+  return { hostname: node.name };
+}
+
+export interface ManagedNetworkCleanupReconciliation {
+  attempted: number;
+  completed: number;
+  failed: number;
+  remaining: boolean;
+}
+
+/**
+ * Bounded retry worker for revoked external resources and enrollment requests
+ * stranded beyond their one-use key lifetime. One failing tenant does not
+ * prevent independent rows from being attempted; failures remain durable and
+ * make the cron response non-green so operations can investigate.
+ */
+export async function reconcileManagedNetworkCleanup(input: {
+  config: ManagedNetworkConfig;
+  repository: ManagedNetworkCleanupRepository;
+  client?: HeadscaleClient;
+  now?: number;
+  limit?: number;
+}): Promise<ManagedNetworkCleanupReconciliation> {
+  const limit = input.limit ?? 25;
+  const candidates = await input.repository.listManagedCleanupCandidates({
+    pendingUpdatedBefore: new Date(
+      (input.now ?? Date.now()) - ENROLLMENT_TTL_MS,
+    ),
+    limit,
+  });
+  let completed = 0;
+  let failed = 0;
+  for (const candidate of candidates) {
+    try {
+      const organizationId = candidate.organization_id;
+      const userId = candidate.user_id;
+      if (!organizationId || !userId) {
+        throw new Error("Managed cleanup candidate has no owner binding.");
+      }
+      const revoked = await input.repository.revoke(
+        candidate.id,
+        organizationId,
+        userId,
+      );
+      if (!revoked || revoked.cleanup.more) {
+        throw new Error(
+          "Managed host authority cleanup did not finish in one bounded page.",
+        );
+      }
+      await cleanupManagedNetwork({
+        host: revoked.host,
+        organizationId,
+        userId,
+        config: input.config,
+        repository: input.repository,
+        client: input.client,
+      });
+      completed += 1;
+    } catch {
+      // cleanupManagedNetwork durably records external cleanup failures. A
+      // revoke/storage failure already leaves the candidate selected for the
+      // next bounded sweep; aggregate only counts at this orchestration layer.
+      failed += 1;
+    }
+  }
+  return {
+    attempted: candidates.length,
+    completed,
+    failed,
+    remaining: candidates.length === limit || failed > 0,
+  };
+}
+
 export const managedNetworkInternals = {
   ENROLLMENT_TTL_MS,
   REMOTE_HOST_TAG,
   hostnameForHost,
+  enrollmentNode,
   validatedHeadscaleUrl,
 };

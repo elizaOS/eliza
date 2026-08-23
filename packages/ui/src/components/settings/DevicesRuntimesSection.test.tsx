@@ -191,6 +191,35 @@ describe("DevicesRuntimesSection", () => {
     ).toBeNull();
   });
 
+  it("requires an explicit managed-network opt-in before native enrollment", async () => {
+    const user = userEvent.setup();
+    const onEnrollDesktopTarget = vi.fn();
+    render(
+      <DevicesRuntimesSection
+        {...props({
+          desktopTarget: {
+            hostId: null,
+            platform: "macos",
+            enrolled: false,
+            running: false,
+            activeSessions: 0,
+            lastErrorCode: null,
+          },
+          onEnrollDesktopTarget,
+        })}
+      />,
+    );
+    await user.click(
+      screen.getByRole("switch", {
+        name: "Use Eliza managed private network",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Enroll this computer" }),
+    );
+    expect(onEnrollDesktopTarget).toHaveBeenCalledWith(true);
+  });
+
   it("requires inspection before connect and blocks a changed host key", async () => {
     const user = userEvent.setup();
     const onInspectSsh = vi.fn();

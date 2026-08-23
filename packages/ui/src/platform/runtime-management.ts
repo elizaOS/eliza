@@ -151,6 +151,11 @@ async function revokeRuntime(targetId: string): Promise<void> {
     ownerId: directory.ownerId,
   });
   const hostId = targetId.replace(/^host:/, "");
+  const host = directory.hosts.find((candidate) => candidate.id === hostId);
+  if (host?.status === "pending") {
+    await cloud.revokeHost(hostId);
+    return;
+  }
   const sessions = await cloud.listSessions(hostId, directory.ownerId);
   const session = sessions.find(
     (candidate) =>
@@ -295,6 +300,7 @@ async function execute(
             ? "My Windows PC"
             : "My Linux computer",
       platform,
+      managedNetwork: request.managedNetwork === true,
     });
     return { hostId: enrollment.hostId };
   }
