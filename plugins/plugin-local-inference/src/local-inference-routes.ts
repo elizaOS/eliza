@@ -745,16 +745,27 @@ async function downloadModel(
 		if (statusCode < 200 || statusCode >= 300) {
 			throw new Error(`HTTP ${statusCode} ${response.statusMessage ?? ""}`);
 		}
+		// Resume is only valid when the origin honored our Range request with a 206
+		// Partial Content. CDN redirect targets, gated/proxy repos, and mirrors
+		// frequently ignore Range and answer 200 with the FULL body; appending that
+		// onto the stale `.part` bytes produces a corrupt GGUF that still passes the
+		// 4-byte magic check. Restart from byte 0 in that case, mirroring the
+		// canonical guard in services/downloader.ts (statusCode !== 206 -> restart).
+		let effectiveStart = existingPartial;
+		if (existingPartial > 0 && statusCode !== 206) {
+			effectiveStart = 0;
+			record.received = 0;
+		}
 		const contentLength = Number.parseInt(
 			String(response.headers["content-length"] ?? "0"),
 			10,
 		);
 		if (Number.isFinite(contentLength) && contentLength > 0) {
-			record.total = existingPartial + contentLength;
+			record.total = effectiveStart + contentLength;
 		}
 
 		const stream = fs.createWriteStream(partialPath, {
-			flags: existingPartial > 0 ? "a" : "w",
+			flags: effectiveStart > 0 ? "a" : "w",
 		});
 		let lastSampleAt = Date.now();
 		let lastSampleBytes = record.received;
