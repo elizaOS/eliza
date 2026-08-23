@@ -38,6 +38,7 @@ type DocRecord = {
   content: { text?: string };
   metadata: Record<string, unknown>;
   agentId?: UUID;
+  createdAt?: number;
 };
 
 function doc(
@@ -71,21 +72,34 @@ const CORPUS: DocRecord[] = [
 ];
 
 function makeService(records: DocRecord[] = CORPUS) {
+  const ordered = records.map((record, index) => ({
+    ...record,
+    createdAt: record.createdAt ?? records.length - index,
+  }));
   return {
-    searchDocuments: vi.fn(async () => records),
+    searchDocuments: vi.fn(async () => ordered),
     getMemories: vi.fn(
       async ({
-        offset = 0,
-        count = records.length,
+        cursor,
+        count = ordered.length,
       }: {
-        offset?: number;
+        cursor?: { createdAt: number; id: UUID };
         count?: number;
-      }) => records.slice(offset, offset + count),
+      }) => {
+        const start = cursor
+          ? ordered.findIndex(
+              (record) =>
+                record.createdAt === cursor.createdAt &&
+                record.id === cursor.id,
+            ) + 1
+          : 0;
+        return ordered.slice(start, start + count);
+      },
     ),
     getDocumentById: vi.fn(
-      async (id: UUID) => records.find((r) => r.id === id) ?? null,
+      async (id: UUID) => ordered.find((r) => r.id === id) ?? null,
     ),
-    countMemories: vi.fn(async () => records.length),
+    countMemories: vi.fn(async () => ordered.length),
   };
 }
 
@@ -228,12 +242,13 @@ describe("SEARCH_KNOWLEDGE", () => {
   });
 
   it("rejects a non-advancing facet adapter instead of returning a prefix", async () => {
-    const records = Array.from({ length: 200 }, (_, index) =>
-      doc(
+    const records = Array.from({ length: 200 }, (_, index) => ({
+      ...doc(
         `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}` as UUID,
         "global",
       ),
-    );
+      createdAt: 200 - index,
+    }));
     const service = makeService(records);
     service.getMemories.mockImplementation(async () => records);
     const runtime = makeRuntime({ service });

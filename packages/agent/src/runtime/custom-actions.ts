@@ -550,8 +550,8 @@ const GUARDED_GET_MAX_BYTES = 256 * 1024;
 // canonicalization hop, small enough that a redirect loop dies fast.
 const GUARDED_GET_MAX_REDIRECTS = 3;
 
-/** Hard cap on the response body we read from a legacy `http` custom action. */
-const CUSTOM_ACTION_HTTP_MAX_CHARS = 4_000;
+/** Resource guard for complete legacy `http` custom-action response bodies. */
+const CUSTOM_ACTION_HTTP_MAX_CHARS = GUARDED_GET_MAX_BYTES;
 
 /**
  * Read a fetch response body as text. Oversized hostile bodies fail explicitly

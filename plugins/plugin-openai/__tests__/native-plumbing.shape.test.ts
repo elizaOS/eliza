@@ -745,7 +745,7 @@ describe("OpenAI native text plumbing", () => {
     expect(call.model).toEqual({ modelName: "gpt-oss-120b" });
   });
 
-  it("omits maxOutputTokens only when omitMaxTokens is set", async () => {
+  it("omits maxOutputTokens unless the caller explicitly supplies one", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",
       usage: { inputTokens: 1, outputTokens: 1 },
@@ -757,13 +757,32 @@ describe("OpenAI native text plumbing", () => {
       omitMaxTokens: true,
     } as never);
     await handleTextSmall(createRuntime(), {
-      prompt: "use default cap",
+      prompt: "use provider max by default",
+    } as never);
+    await handleTextSmall(createRuntime(), {
+      prompt: "use explicit cap",
+      maxTokens: 321,
     } as never);
 
     const omittedCall = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
     const defaultCall = aiMocks.generateText.mock.calls[1][0] as Record<string, unknown>;
+    const explicitCall = aiMocks.generateText.mock.calls[2][0] as Record<string, unknown>;
     expect(omittedCall).not.toHaveProperty("maxOutputTokens");
-    expect(defaultCall.maxOutputTokens).toBe(8192);
+    expect(defaultCall).not.toHaveProperty("maxOutputTokens");
+    expect(explicitCall.maxOutputTokens).toBe(321);
+  });
+
+  it("rejects an output-limited completion instead of returning its text prefix", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "partial",
+      finishReason: "length",
+      usage: { inputTokens: 1, outputTokens: 8 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), { prompt: "complete this" })
+    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("keeps streaming native tool-call plumbing in parity with non-streaming", async () => {

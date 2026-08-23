@@ -300,7 +300,8 @@ describe("DocumentService.searchDocuments", () => {
 			expect(new Set(results.map((result) => result.id)).size).toBe(
 				fragments.length,
 			);
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
+			// Two stable scans: full page + short page + one continuation probe each.
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(6);
 		});
 
 		it("rejects a non-advancing fragment adapter instead of ranking a prefix", async () => {
@@ -320,7 +321,7 @@ describe("DocumentService.searchDocuments", () => {
 					"keyword",
 				),
 			).rejects.toMatchObject({
-				code: "DOCUMENT_FRAGMENT_TRAVERSAL_NON_ADVANCING",
+				code: "DOCUMENT_SEARCH_PAGINATION_STALLED",
 			});
 		});
 

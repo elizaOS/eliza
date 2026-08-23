@@ -595,7 +595,8 @@ interface CanonicalMemorySearchBaseInput {
 	query?: string;
 	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
 	agentId?: UUID;
-	count: number;
+	/** Explicit result count. Omit when the complete eligible result set is required. */
+	count?: number;
 	matchThreshold?: number;
 	entityId?: UUID;
 	/** Optional connector-source filter, normalized through the registry. */
@@ -751,22 +752,31 @@ export async function searchCanonicalConversationMemories(
 	// complete.
 	const roomConstrained = !crossRoomGate.allowed;
 
-	// Bounded advancing refill: instead of a single over-fetched query,
-	// request in windows and advance until enough valid items are collected
-	// or the adapter exhausts the eligible set. This prevents closer
-	// wrong-source/malformed/denied rows from starving valid rows.
-	const overfetchFactor = 3;
-	const maxRefillRounds = 3;
+	// Advancing refill: widen until an explicit count is satisfied or until the
+	// adapter proves exhaustion. Omitted count requests complete traversal.
+	const explicitCount = input.count;
+	if (
+		explicitCount !== undefined &&
+		(!Number.isSafeInteger(explicitCount) || explicitCount <= 0)
+	) {
+		throw new ElizaError(
+			"Canonical conversation recall count must be a positive safe integer.",
+			{
+				code: "CANONICAL_RECALL_COUNT_INVALID",
+				context: { count: explicitCount },
+			},
+		);
+	}
+	const initialCount = explicitCount ?? 200;
+	const normalizedSource = input.source
+		? normalizeConnectorSource(input.source)
+		: undefined;
 	const allCandidates: Memory[] = [];
 	let candidateWindowComplete = true;
-	let accumulatedValid = 0;
 	const seenIds = new Set<string>();
+	let roundCount = initialCount;
 
-	for (let round = 0; round < maxRefillRounds; round++) {
-		const roundCount = Math.max(
-			input.count,
-			input.count * overfetchFactor * (round + 1),
-		);
+	for (;;) {
 		let roundCandidates: Memory[];
 		try {
 			roundCandidates = await input.runtime.searchMemories({
@@ -820,10 +830,14 @@ export async function searchCanonicalConversationMemories(
 			destinationRoomId,
 			crossRoomGate,
 		});
-		accumulatedValid = evaluated.items.length;
+		const accumulatedEligible = normalizedSource
+			? evaluated.items.filter(
+					(item) => item.provenance.source === normalizedSource,
+				).length
+			: evaluated.items.length;
 
 		if (
-			accumulatedValid >= input.count ||
+			(explicitCount !== undefined && accumulatedEligible >= explicitCount) ||
 			roundCandidates.length < roundCount
 		) {
 			// Either we have enough valid items, or the adapter returned
@@ -833,6 +847,17 @@ export async function searchCanonicalConversationMemories(
 			}
 			break;
 		}
+		if (roundCount === Number.MAX_SAFE_INTEGER) {
+			throw new ElizaError(
+				"Canonical conversation recall exceeds the representable result count.",
+				{
+					code: "CANONICAL_RECALL_RESULT_TOO_LARGE",
+					context: { roomId: destinationRoomId, roundCount },
+					severity: "fatal",
+				},
+			);
+		}
+		roundCount = Math.min(Number.MAX_SAFE_INTEGER, roundCount * 2);
 	}
 
 	const candidates = allCandidates;
@@ -847,16 +872,15 @@ export async function searchCanonicalConversationMemories(
 
 	// A source filter narrows what the caller asked to see; it never narrows
 	// the honesty of the withheld list.
-	const normalizedSource = input.source
-		? normalizeConnectorSource(input.source)
-		: undefined;
-	const items = (
-		normalizedSource
-			? evaluated.items.filter(
-					(item) => item.provenance.source === normalizedSource,
-				)
-			: evaluated.items
-	).slice(0, input.count);
+	const eligibleItems = normalizedSource
+		? evaluated.items.filter(
+				(item) => item.provenance.source === normalizedSource,
+			)
+		: evaluated.items;
+	const items =
+		explicitCount === undefined
+			? eligibleItems
+			: eligibleItems.slice(0, explicitCount);
 
 	if (
 		deliveryMessage &&

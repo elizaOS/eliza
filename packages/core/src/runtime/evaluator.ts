@@ -413,7 +413,7 @@ export async function runEvaluator(
 		const resolvedBudget = buildModelInputBudget({ modelName });
 		const attemptWindow = resolvedBudget.contextWindowTokens;
 		const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
-		const attemptBaselineInput = renderEvaluatorModelInput({
+		const attemptInput = renderEvaluatorModelInput({
 			context: params.context,
 			trajectory: params.trajectory,
 			redactText: redactDiagnosticText,

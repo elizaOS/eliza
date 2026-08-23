@@ -96,6 +96,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/runtime/action-retrieval.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
 		/COMPRESS_MODE_TOP_K_CAP/,
+		/results\.slice\(0,\s*limit\)/,
 	],
 	"packages/core/src/runtime/planner-rendering.ts": [
 		/truncateToolResultText/,
@@ -172,10 +173,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/max_tokens:\s*options\.maxTokens\s*\?\?\s*1024/,
 		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
 		/num_predict:\s*this\.maxTokens/,
-	],
-	"packages/core/src/runtime/action-retrieval.ts": [
-		/results\.slice\(0,\s*limit\)/,
-		/COMPRESS_MODE_TOP_K_CAP/,
 	],
 	"packages/core/src/runtime/action-tiering.ts": [
 		/tierAParents\.splice\(/,

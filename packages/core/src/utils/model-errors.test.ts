@@ -1,14 +1,53 @@
 /**
  * Unit tests for the structural model-error classifiers: `isModelProviderError`
- * (gates the planner-loop post-tool relay) and `modelProviderErrorStatus`.
+ * (gates the planner-loop post-tool relay), provider status extraction, and
+ * typed rejection of incomplete model output.
  * Deterministic — plain constructed error shapes, no live model.
  */
 import { describe, expect, it } from "vitest";
 import {
+	assertModelOutputComplete,
+	isModelOutputLimitFinishReason,
 	isModelProviderError,
 	modelProviderErrorDetail,
 	modelProviderErrorStatus,
 } from "./model-errors";
+
+describe("model output completeness", () => {
+	it.each([
+		"length",
+		"max_tokens",
+		"MAX OUTPUT TOKENS",
+		"token-limit",
+		"content-filter",
+		"error",
+	])("classifies %s as an output boundary", (reason) => {
+		if (reason !== "content-filter" && reason !== "error") {
+			expect(isModelOutputLimitFinishReason(reason)).toBe(true);
+		}
+		expect(() =>
+			assertModelOutputComplete({
+				finishReason: reason,
+				provider: "test-provider",
+				model: "test-model",
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "MODEL_OUTPUT_INCOMPLETE" }),
+		);
+	});
+
+	it.each(["stop", "tool_calls", undefined])(
+		"accepts complete terminal reason %s",
+		(reason) => {
+			expect(() =>
+				assertModelOutputComplete({
+					finishReason: reason,
+					provider: "test-provider",
+				}),
+			).not.toThrow();
+		},
+	);
+});
 
 function withStatus(status: number, message = "err"): Error {
 	const err = new Error(message) as Error & { statusCode: number };

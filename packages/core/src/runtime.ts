@@ -346,6 +346,7 @@ import { createHash } from "./utils/crypto-compat";
 import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
+	assertModelOutputComplete,
 	getErrorMessage,
 	isTransientModelError,
 	modelProviderErrorDetail,
@@ -856,6 +857,21 @@ function isTextStreamResult(
 		"usage" in value &&
 		"finishReason" in value
 	);
+}
+
+async function assertRuntimeModelOutputComplete(args: {
+	result: unknown;
+	provider: string;
+	model: string;
+}): Promise<void> {
+	if (typeof args.result !== "object" || args.result === null) return;
+	const record = args.result as { finishReason?: unknown };
+	if (!("finishReason" in record)) return;
+	assertModelOutputComplete({
+		finishReason: await Promise.resolve(record.finishReason),
+		provider: args.provider,
+		model: args.model,
+	});
 }
 
 /**
@@ -7741,15 +7757,20 @@ export class AgentRuntime implements IAgentRuntime {
 					const resolvedToolCalls = hasToolCallsField
 						? await Promise.resolve(streamRaw.toolCalls)
 						: [];
+					const resolvedFinishReason =
+						"finishReason" in streamRaw
+							? await Promise.resolve(streamRaw.finishReason)
+							: undefined;
+					assertModelOutputComplete({
+						finishReason: resolvedFinishReason,
+						provider: resolvedModel.provider,
+						model: resolvedModelKey,
+					});
 					// The presence of `toolCalls` marks a native-result contract, even
 					// when the provider returns an empty list. Collapsing that result to a
 					// string discards usage, finish reason, and concrete model metadata,
 					// which makes successful hosted calls unpriceable.
 					if (hasToolCallsField) {
-						const resolvedFinishReason =
-							"finishReason" in streamRaw
-								? await Promise.resolve(streamRaw.finishReason)
-								: undefined;
 						const resolvedUsage =
 							"usage" in streamRaw
 								? await Promise.resolve(streamRaw.usage)
@@ -7871,6 +7892,14 @@ export class AgentRuntime implements IAgentRuntime {
 					if (ctxEnd) ctxEnd();
 				}
 
+				if (!isTextStreamResult(resultRef.current as JsonValue | object)) {
+					await assertRuntimeModelOutputComplete({
+						result: resultRef.current,
+						provider: resolvedModel.provider,
+						model: resolvedModelKey,
+					});
+				}
+
 				const elapsedTime =
 					(typeof performance !== "undefined" &&
 					typeof performance.now === "function"
@@ -7965,6 +7994,16 @@ export class AgentRuntime implements IAgentRuntime {
 					isTextStreamResult(resultRef.current as object)
 				) {
 					const streamResult = resultRef.current as TextStreamResult;
+					const checkedFinishReason = Promise.resolve(
+						streamResult.finishReason,
+					).then((finishReason) => {
+						assertModelOutputComplete({
+							finishReason,
+							provider: resolvedModel.provider,
+							model: resolvedModelKey,
+						});
+						return finishReason;
+					});
 					const trajArgs = {
 						modelType: String(modelType),
 						resolvedModelKey: String(resolvedModelKey),
@@ -7992,8 +8031,8 @@ export class AgentRuntime implements IAgentRuntime {
 					// backstop so at least one trajectory entry fires regardless
 					// of how the consumer treats the stream result (#17532 review,
 					// Finding 2).
-					streamResult.text.then(
-						(resolvedText) => {
+					Promise.all([streamResult.text, checkedFinishReason]).then(
+						([resolvedText]) => {
 							if (accumulatedChunks.length === 0 && resolvedText) {
 								accumulatedChunks.push(resolvedText);
 							}
@@ -8003,6 +8042,7 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					resultRef.current = {
 						...streamResult,
+						finishReason: checkedFinishReason,
 						textStream: (async function* () {
 							// Each .next() call re-enters the recording scope so
 							// the provider generator body (and its finally block
@@ -8015,7 +8055,10 @@ export class AgentRuntime implements IAgentRuntime {
 										recordingState,
 										() => innerIter.next(),
 									);
-									if (done) break;
+									if (done) {
+										await checkedFinishReason;
+										break;
+									}
 									accumulatedChunks.push(value);
 									yield value;
 								}
@@ -8046,6 +8089,7 @@ export class AgentRuntime implements IAgentRuntime {
 							return Promise.resolve(
 								runInModelCallRecordingScope(recordingState, async () => {
 									const t = await streamResult.text;
+									await checkedFinishReason;
 									accumulatedChunks.length = 0;
 									accumulatedChunks.push(t);
 									await recordOnce();

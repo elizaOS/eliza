@@ -15,6 +15,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  assertModelOutputComplete: ({ finishReason }: { finishReason?: string }) => {
+    if (finishReason === "MAX_TOKENS") {
+      throw Object.assign(new Error("incomplete"), {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+      });
+    }
+  },
   ElizaError: class ElizaError extends Error {
     code?: string;
     context?: Record<string, unknown>;
@@ -124,6 +131,24 @@ describe("Google GenAI text native plumbing", () => {
     await expect(
       handleTextSmall(runtime() as never, { prompt: "hello" } as never),
     ).resolves.toBe('{"ok":true}');
+  });
+
+  it("does not inject a hidden output-token ceiling", async () => {
+    await handleTextSmall(runtime() as never, { prompt: "hello" } as never);
+    const call = mocks.generateContent.mock.calls[0]?.[0] as {
+      config?: Record<string, unknown>;
+    };
+    expect(call.config).not.toHaveProperty("maxOutputTokens");
+  });
+
+  it("rejects an output-limited Gemini response instead of returning its prefix", async () => {
+    mocks.generateContent.mockResolvedValue({
+      text: "partial",
+      candidates: [{ finishReason: "MAX_TOKENS" }],
+    });
+    await expect(
+      handleTextSmall(runtime() as never, { prompt: "hello" } as never),
+    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("maps generic tools, toolChoice, response schema, and attachments into generateContent", async () => {

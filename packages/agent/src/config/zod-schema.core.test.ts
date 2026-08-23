@@ -7,10 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import * as zod from "zod";
-import {
-  DEFAULT_MODEL_CONTEXT_WINDOW,
-  DEFAULT_MODEL_MAX_TOKENS,
-} from "./model-metadata.ts";
+import { DEFAULT_MODEL_CONTEXT_WINDOW } from "./model-metadata.ts";
 import {
   AudioElevenlabsConfigSchema,
   AudioElevenlabsSfxConfigSchema,
@@ -179,7 +176,7 @@ describe("ModelDefinitionSchema", () => {
     expectOk(ModelDefinitionSchema, { id: "gpt", name: "GPT" });
   });
 
-  it("fills reasoning, input, cost, contextWindow, and maxTokens defaults", () => {
+  it("fills structural defaults without inventing an output-token ceiling", () => {
     expect(
       expectOk(ModelDefinitionSchema, {
         id: "gpt",
@@ -197,7 +194,6 @@ describe("ModelDefinitionSchema", () => {
         cacheWrite: 0,
       },
       contextWindow: DEFAULT_MODEL_CONTEXT_WINDOW,
-      maxTokens: DEFAULT_MODEL_MAX_TOKENS,
     });
   });
 

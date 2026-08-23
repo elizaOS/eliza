@@ -33,6 +33,7 @@ import {
   type Memory,
   toWellFormedUnicode,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import {
   asRecord,
@@ -281,34 +282,83 @@ async function scanAllDocumentRows(
 ): Promise<Memory[]> {
   const rows: Memory[] = [];
   const seen = new Set<string>();
-  let offset = 0;
+  let cursor: { createdAt: number; id: UUID } | undefined;
+  let previous: Memory | undefined;
   while (true) {
     const batch = await service.getMemories({
       tableName: "documents",
       count: DOCUMENT_SCAN_BATCH,
-      offset,
+      ...(cursor ? { cursor } : {}),
+      orderBy: "createdAt",
+      orderDirection: "desc",
+      includeEmbedding: false,
     });
     if (batch.length > DOCUMENT_SCAN_BATCH) {
       throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_PAGE_INVALID", {
-        offset,
         pageLength: batch.length,
       });
     }
     if (batch.length === 0) break;
     for (const memory of batch) {
-      if (!memory.id || seen.has(memory.id)) {
-        throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_NON_ADVANCING", {
-          offset,
+      const id = validateUuid(memory.id);
+      if (!id || !Number.isSafeInteger(memory.createdAt)) {
+        throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_CURSOR_INVALID", {
           memoryId: memory.id,
+          createdAt: memory.createdAt,
         });
       }
-      seen.add(memory.id);
+      if (seen.has(id)) {
+        throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_NON_ADVANCING", {
+          memoryId: id,
+        });
+      }
+      if (previous && compareDocumentTuple(previous, memory) >= 0) {
+        throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_ORDER_INVALID", {
+          previousId: previous.id,
+          memoryId: id,
+        });
+      }
+      seen.add(id);
       rows.push(memory);
+      previous = memory;
     }
     if (batch.length < DOCUMENT_SCAN_BATCH) break;
-    offset += batch.length;
+    const last = batch.at(-1);
+    const lastId = validateUuid(last?.id);
+    if (!last || !lastId || !Number.isSafeInteger(last.createdAt)) {
+      throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_CURSOR_INVALID", {});
+    }
+    const nextCursor = { createdAt: last.createdAt as number, id: lastId };
+    if (
+      cursor &&
+      cursor.createdAt === nextCursor.createdAt &&
+      cursor.id === nextCursor.id
+    ) {
+      throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_NON_ADVANCING", {
+        cursor,
+      });
+    }
+    cursor = nextCursor;
   }
   return rows;
+}
+
+function compareDocumentTuple(left: Memory, right: Memory): number {
+  if (
+    !Number.isSafeInteger(left.createdAt) ||
+    !Number.isSafeInteger(right.createdAt)
+  ) {
+    throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_CURSOR_INVALID", {
+      leftId: left.id,
+      rightId: right.id,
+    });
+  }
+  if (left.createdAt !== right.createdAt) {
+    return (right.createdAt as number) - (left.createdAt as number);
+  }
+  return String(right.id)
+    .toLowerCase()
+    .localeCompare(String(left.id).toLowerCase());
 }
 
 async function readStableCompleteDocumentRows(

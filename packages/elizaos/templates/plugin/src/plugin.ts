@@ -165,7 +165,7 @@ export const starterPlugin: Plugin = {
       {
         prompt: _prompt,
         stopSequences: _stopSequences = [],
-        maxTokens: _maxTokens = 8192,
+				maxTokens: _maxTokens,
         temperature: _temperature = 0.7,
         frequencyPenalty: _frequencyPenalty = 0.7,
         presencePenalty: _presencePenalty = 0.7,

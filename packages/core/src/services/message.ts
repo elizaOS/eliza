@@ -401,8 +401,6 @@ export {
 	inferWebSearchQueryFromMessageText,
 };
 
-const DEFAULT_STAGE1_MAX_TOKENS = 2048;
-
 /**
  * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
  * ceiling applied to the Stage-1/synthesis call so operators can pin terse
@@ -8306,9 +8304,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				.eliza ?? {}),
 			thinking: "off",
 		};
-		// Per-agent reply-length budget (#16395): when set it caps every channel
-		// (including DMs) with a real max_tokens; otherwise the existing per-channel
-		// default applies unchanged.
+		// An operator may explicitly cap every channel with a real max_tokens.
+		// Without that setting the selected provider/model owns the output boundary.
 		const maxReplyTokens = resolveMaxReplyTokens(
 			args.runtime.character.settings,
 		);
@@ -8317,15 +8314,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			// Direct/DM/API Stage 1 packs the whole answer into `replyText`. We don't
-			// cap it: a hardcoded ceiling 400s on any model whose real limit differs
-			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
-			// to use provider/model-max output instead of the runtime default; group
-			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
-			maxTokens:
-				maxReplyTokens ??
-				(directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS),
-			omitMaxTokens: maxReplyTokens == null && directMessageChannel,
+			// Stage 1 packs the whole answer into `replyText`; a hidden channel default
+			// can cut the structured envelope off mid-generation.
+			maxTokens: maxReplyTokens,
+			omitMaxTokens: maxReplyTokens == null,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known. User-visible `replyText`

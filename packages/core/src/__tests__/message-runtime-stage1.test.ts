@@ -353,7 +353,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
-		expect(params.maxTokens).toBe(2048);
+		expect(params.maxTokens).toBeUndefined();
+		expect(
+			(params as typeof params & { omitMaxTokens?: boolean }).omitMaxTokens,
+		).toBe(true);
 		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
@@ -1100,7 +1103,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect.objectContaining({
 				src: "service:message",
 				finishReason: "length",
-				maxTokens: 2048,
+				maxTokens: undefined,
 			}),
 			"[message] Stage 1 hit the completion-token limit",
 		);
