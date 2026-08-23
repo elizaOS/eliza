@@ -262,6 +262,7 @@ describe("PermissionPrimingModal", () => {
   });
 
   it("calls onComplete exactly once when the sequence is done", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const onComplete = vi.fn();
     const controller = makeController({
       ready: true,
@@ -287,6 +288,16 @@ describe("PermissionPrimingModal", () => {
       </MockAppProvider>,
     );
     expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(
+      errorSpy.mock.calls.some((args) => {
+        const message = args.map(String).join(" ");
+        return (
+          message.includes("Cannot update a component") &&
+          message.includes("while rendering")
+        );
+      }),
+    ).toBe(false);
+    errorSpy.mockRestore();
   });
 
   it("Skip for now skips the whole flow", () => {
