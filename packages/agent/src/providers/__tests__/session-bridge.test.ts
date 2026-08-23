@@ -33,7 +33,7 @@ import { ChannelType } from "@elizaos/core";
 import {
   createSessionKeyProvider,
   resolveSessionKeyFromRoom,
-} from "./session-bridge.ts";
+} from "../session-bridge.ts";
 
 function makeRoom(overrides: Partial<Record<string, unknown>> = {}) {
   return {
