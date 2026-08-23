@@ -295,6 +295,20 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	FIX_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
 	REMINDER_UPDATE: ["OWNER_REMINDERS", "TRIGGER"],
 	RESCHEDULE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	// Channel-recap-shaped candidates: Stage 1 invents these for "recap of
+	// everything today" / "summarize the chat" asks (live 2026-08-23: candidate
+	// TASKS_RECAP_DAY resolved to nothing, the planner fell back to a
+	// PAGE_DELEGATE guess on the owner page, and the turn degraded to an
+	// apology). Hinting CHANNEL_RECAP keeps the real room-transcript reader on
+	// the surface whichever context Stage 1 routed; the TASKS umbrella stays
+	// hinted for tracked-work day recaps.
+	TASKS_RECAP_DAY: ["CHANNEL_RECAP", "TASKS"],
+	GENERAL_SUMMARY: ["CHANNEL_RECAP"],
+	CHAT_SUMMARY: ["CHANNEL_RECAP"],
+	CHANNEL_SUMMARY: ["CHANNEL_RECAP"],
+	DAILY_RECAP: ["CHANNEL_RECAP", "TASKS"],
+	RECAP: ["CHANNEL_RECAP", "TASKS"],
+	SUMMARIZE: ["CHANNEL_RECAP"],
 	FINANCE: ["OWNER_FINANCES"],
 	SPENDING: ["OWNER_FINANCES"],
 	SPENDING_SUMMARY: ["OWNER_FINANCES"],
@@ -1171,7 +1185,18 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 
 function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	return [...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? [])];
+	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
+	if (explicit) return [...explicit];
+	// Recap/summary-shaped inventions are open-ended — Stage 1 produces a fresh
+	// spelling per turn (live 2026-08-23: TASKS_RECAP_DAY, then RECAP_DAY, then
+	// GET_TASKS_SUMMARY for the same ask), so exact-name aliases cannot keep
+	// up. Any candidate whose name carries the recap/summary stem hints the
+	// room-transcript reader plus the TASKS umbrella (tracked-work day recaps);
+	// admission still passes through appendIfAllowed's role/context gates.
+	if (/RECAP|SUMMAR/.test(normalized)) {
+		return ["CHANNEL_RECAP", "TASKS"];
+	}
+	return [];
 }
 
 const APP_SURFACE_TOKENS = new Set([
