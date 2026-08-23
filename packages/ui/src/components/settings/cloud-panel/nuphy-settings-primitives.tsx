@@ -587,7 +587,7 @@ export function NuphyModal({
     >
       <DialogContent
         showCloseButton={false}
-        overlayClassName="bg-black/40 backdrop-blur-[2px]"
+        overlayClassName="bg-black/40"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           returnFocusRef.current?.focus();
