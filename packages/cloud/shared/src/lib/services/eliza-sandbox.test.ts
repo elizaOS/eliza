@@ -3080,9 +3080,9 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
     }
   }, 20_000);
 
-  test("(d) heartbeat: docker-healthy + IP unresolvable ratchets error_count and escalates to disconnected on the 3rd cycle", async () => {
+  test("(d) heartbeat: docker-healthy + IP unresolvable guards error_count and escalates to disconnected on the 3rd cycle", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    // error_count evolves across cycles the way the ratchet writes it.
+    // error_count evolves across cycles the way the guard writes it.
     let errorCount = 0;
     const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
       async () => staleIpSandbox({ error_count: errorCount }),
@@ -3099,7 +3099,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
 
     try {
       const svc = new ElizaSandboxService();
-      // Cycles 1 and 2: still running, error_count ratchets, NO disconnect.
+      // Cycles 1 and 2: still running, error_count guards, NO disconnect.
       for (const expected of [1, 2]) {
         updateSpy.mockClear();
         const ok = await svc.heartbeat(

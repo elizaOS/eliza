@@ -17,6 +17,14 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk/wallet-provision-challenge";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 // --- cache double: in-memory nonce store so replay is deterministic ----------
 const nonceStore = new Map<string, string>();
 mock.module("../cache/client", () => ({
@@ -35,16 +43,31 @@ const createWallet = mock(async () => ({
   id: "steward-agent-1",
   walletAddress: "0x000000000000000000000000000000000000beef",
 }));
-mock.module("./steward-client", () => ({
-  createStewardClient: mock(async () => ({
-    createWallet,
-    getAgent: mock(async () => ({
-      id: "steward-agent-1",
-      walletAddress: "0x000000000000000000000000000000000000beef",
-    })),
+const createStewardClient = mock(async () => ({
+  createWallet,
+  getAgent: mock(async () => ({
+    id: "steward-agent-1",
+    walletAddress: "0x000000000000000000000000000000000000beef",
   })),
 }));
+mock.module("./steward-client", () => ({
+  createStewardClient,
+}));
+type EnsuredTenant = {
+  tenantId: string;
+  apiKey: string;
+  isNew: boolean;
+};
+let ensureStewardTenantImpl: (organizationId: string) => Promise<EnsuredTenant> = async () => ({
+  tenantId: "tenant-1",
+  apiKey: "tenant-key-1",
+  isNew: false,
+});
+const ensureStewardTenant = mock((organizationId: string) =>
+  ensureStewardTenantImpl(organizationId),
+);
 mock.module("./steward-tenant-config", () => ({
+  ensureStewardTenant,
   resolveStewardTenantCredentials: mock(async () => ({ tenantId: "tenant-1" })),
 }));
 
@@ -109,6 +132,13 @@ beforeEach(() => {
   nonceStore.clear();
   insertedRows.length = 0;
   createWallet.mockClear();
+  createStewardClient.mockClear();
+  ensureStewardTenant.mockClear();
+  ensureStewardTenantImpl = async () => ({
+    tenantId: "tenant-1",
+    apiKey: "tenant-key-1",
+    isNew: false,
+  });
 });
 
 afterEach(() => {
@@ -125,6 +155,38 @@ describe("provisionServerWallet — proof-of-control gate", () => {
     expect(createWallet).toHaveBeenCalledTimes(1);
     expect(insertedRows.length).toBe(1);
     expect(insertedRows[0]?.client_address).toBe(CLIENT_ADDRESS.toLowerCase());
+  });
+
+  test("waits for a deferred signup tenant before binding a persistent wallet", async () => {
+    const tenantReady = deferred<EnsuredTenant>();
+    const tenantRequested = deferred<void>();
+    ensureStewardTenantImpl = async () => {
+      tenantRequested.resolve();
+      return tenantReady.promise;
+    };
+    const proof = await signProof(signer, CLIENT_ADDRESS, "evm");
+
+    const provisionPromise = provision(CLIENT_ADDRESS, proof);
+    await tenantRequested.promise;
+
+    expect(ensureStewardTenant).toHaveBeenCalledTimes(1);
+    expect(createStewardClient).not.toHaveBeenCalled();
+    expect(createWallet).not.toHaveBeenCalled();
+    expect(insertedRows).toHaveLength(0);
+
+    tenantReady.resolve({
+      tenantId: "elizacloud-org-tenant",
+      apiKey: "org-tenant-key",
+      isNew: true,
+    });
+    await expect(provisionPromise).resolves.toBeTruthy();
+
+    expect(createStewardClient).toHaveBeenCalledWith({
+      organizationId: ORG,
+      tenantId: "elizacloud-org-tenant",
+      apiKey: "org-tenant-key",
+    });
+    expect(insertedRows[0]?.steward_tenant_id).toBe("elizacloud-org-tenant");
   });
 
   test("rejects a proof signed by a DIFFERENT key (the squatting case)", async () => {

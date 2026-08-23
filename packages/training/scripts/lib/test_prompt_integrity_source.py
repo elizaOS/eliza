@@ -1,0 +1,65 @@
+"""Guards model-facing training paths against silent context or output loss."""
+
+from pathlib import Path
+
+
+SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
+
+
+def python_sources() -> list[Path]:
+    return sorted(SCRIPTS_ROOT.rglob("*.py"))
+
+
+def test_local_text_generation_paths_admit_only_complete_output() -> None:
+    missing = []
+    for path in python_sources():
+        relative = path.relative_to(SCRIPTS_ROOT)
+        if relative.parts[0] == "quantization":
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "model.generate(" in source and "require_complete_generated_tokens" not in source:
+            missing.append(str(relative))
+
+    assert missing == []
+
+
+def test_provider_choice_consumers_use_generation_admission() -> None:
+    missing = []
+    for path in python_sources():
+        source = path.read_text(encoding="utf-8")
+        consumes_choice = any(
+            marker in source
+            for marker in ("choices[0]", '["choices"]', 'get("choices"')
+        )
+        if consumes_choice and "require_complete_generation" not in source:
+            missing.append(str(path.relative_to(SCRIPTS_ROOT)))
+
+    assert missing == []
+
+
+def test_known_training_context_slices_do_not_return() -> None:
+    forbidden = {
+        "rl/tinker/tinker_client.py": (
+            "completion_tokens = completion_tokens[:max_sequence_length]",
+            "tokens = tokens[-max_sequence_length:]",
+        ),
+        "rl/feed_env.py": ("messages = [messages[0], *messages[2:]]",),
+        "synth/together_synth.py": ("memory[-6:]", 'get("content") or "")[:300]'),
+        "build_eliza1_sft_2b.py": ("msgs[: last_nonempty + 1]",),
+        "rewrites/regularizer_reasoning_tool.py": (
+            "sentences[-2:]",
+            "tail[-400:]",
+            "tail[-600:]",
+        ),
+        "eliza_reward_fn.py": (
+            '(prompt or "")[:2000]',
+            "json.dumps(expected, ensure_ascii=False, default=str)[:1500]",
+            '(response or "")[:2000]',
+        ),
+    }
+    found = []
+    for relative, markers in forbidden.items():
+        source = (SCRIPTS_ROOT / relative).read_text(encoding="utf-8")
+        found.extend(f"{relative}: {marker}" for marker in markers if marker in source)
+
+    assert found == []

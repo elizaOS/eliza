@@ -999,13 +999,68 @@ export async function resolveCanonicalOwnerIdForMessage(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<string | null> {
-	const configuredOwnerId = resolveCanonicalOwnerId(runtime);
-	if (configuredOwnerId) {
-		return configuredOwnerId;
+	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+	if (configuredOwnerIds.length > 0) {
+		// A connector-specific owner principal is the canonical owner for its
+		// current destination when it was configured directly or the principal
+		// authority verifies its owner binding. Keeping the live principal here
+		// lets the delivery-audience census prove the actual two-party DM rather
+		// than comparing a Discord principal to a Telegram-shaped owner UUID.
+		if (configuredOwnerIds.includes(message.entityId)) {
+			return message.entityId;
+		}
+		const verifiedBinding = await resolveIdentityOwnerBinding(
+			runtime,
+			message.entityId,
+			configuredOwnerIds as UUID[],
+		);
+		if (verifiedBinding === true) {
+			return message.entityId;
+		}
+		return configuredOwnerIds[0] ?? null;
 	}
 
 	const resolved = await resolveWorldForMessage(runtime, message);
-	return resolveCanonicalOwnerId(runtime, resolved?.metadata);
+	const recordedOwnerId = resolveCanonicalOwnerId(runtime, resolved?.metadata);
+
+	// The owner-exclusive disclosure gate compares this id to the message actor
+	// with strict equality. A connector can persist the owner under a DIFFERENT
+	// canonical UUID than the one it stamps on the owner's own messages: e.g.
+	// plugin-discord records `ownership.ownerId` as the synthetic
+	// `stringToUuid("<name>-admin-entity")` fallback while the owner's inbound
+	// message carries `createUniqueUuid(runtime, <snowflake>)`. Both denote the
+	// same human, but a naive equality check reads them as different principals
+	// and denies every owner-private surface with `owner_mismatch`, even in a
+	// 2-person owner DM/guild whose census is exactly {owner, agent}.
+	//
+	// The role system already reconciles these via connector-stable-identity and
+	// confirmed identity links (resolveOwnershipRole). Reuse that verdict: when
+	// the message actor IS the owner but under a different entity UUID than the
+	// world recorded, return the ACTOR's id so the strict-equality gate matches
+	// the genuine owner. Non-owners never satisfy resolveOwnershipRole, so they
+	// stay denied. Idempotent and connector-agnostic — no Discord-only branch.
+	const actorEntityId = message.entityId;
+	if (
+		actorEntityId &&
+		recordedOwnerId &&
+		recordedOwnerId !== actorEntityId &&
+		resolved?.world
+	) {
+		const actorOwnershipRole = await resolveOwnershipRole(
+			runtime,
+			resolved.metadata,
+			actorEntityId,
+			{
+				liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+				liveEntityId: actorEntityId,
+			},
+		);
+		if (actorOwnershipRole === "OWNER") {
+			return actorEntityId;
+		}
+	}
+
+	return recordedOwnerId;
 }
 
 export async function checkSenderRole(

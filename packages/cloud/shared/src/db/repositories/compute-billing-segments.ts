@@ -13,6 +13,12 @@ export interface SettledComputeRateSegment {
   amount: string;
 }
 
+// The INSERT trigger timestamps the first immutable rate segment with
+// clock_timestamp(), while the sandbox row's created_at default is evaluated
+// slightly earlier in the same statement. Allow only that small, expected
+// trigger gap; a materially incomplete history must still fail closed.
+const INITIAL_RATE_SEGMENT_TRIGGER_GAP_MS = 5_000;
+
 export async function settleComputeRateSegments(
   tx: DbTransaction,
   input: {
@@ -45,6 +51,16 @@ export async function settleComputeRateSegments(
     if (history[index]!.effective_at <= input.periodStart) {
       baseIndex = index;
       break;
+    }
+  }
+  if (baseIndex < 0) {
+    const firstEntry = history[0];
+    if (
+      firstEntry &&
+      firstEntry.effective_at.getTime() - input.periodStart.getTime() <=
+        INITIAL_RATE_SEGMENT_TRIGGER_GAP_MS
+    ) {
+      baseIndex = 0;
     }
   }
   if (baseIndex < 0) {

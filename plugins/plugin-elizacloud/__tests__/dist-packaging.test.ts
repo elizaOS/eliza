@@ -115,4 +115,22 @@ describe("dist packaging (#15779)", () => {
     expect(path.normalize(resolved)).toBe(path.normalize(distFile("node/index.node.js")));
     expect(existsSync(resolved)).toBe(true);
   });
+
+  it("the built host-routes subpath exposes executable handlers", () => {
+    const result = spawnSync(
+      "node",
+      [
+        "--input-type=module",
+        "-e",
+        [
+          "const routes = await import('@elizaos/plugin-elizacloud/host-routes');",
+          "const names = ['handleCloudBillingRoute', 'handleCloudCompatRoute', 'handleCloudRelayRoute', 'handleCloudRoute'];",
+          "process.stdout.write(JSON.stringify(names.map((name) => typeof routes[name])));",
+        ].join(" "),
+      ],
+      { cwd: packageRoot, encoding: "utf8", timeout: 60_000 }
+    );
+    expect(result.status, `host-routes import failed: ${result.stderr}`).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(["function", "function", "function", "function"]);
+  });
 });

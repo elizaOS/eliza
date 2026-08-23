@@ -797,6 +797,12 @@ export interface ViewCapability {
 	id: string;
 	/** Human-readable description surfaced to the planner. */
 	description: string;
+	/**
+	 * Who may invoke this typed capability through the agent-view interaction
+	 * path. Human-only controls remain available through their direct UI event
+	 * handlers but are never dispatched from a planner or agent bridge.
+	 */
+	authority?: "agent" | "human";
 	/** JSON Schema for any parameters this capability accepts. */
 	params?: Record<string, ViewCapabilityParameter>;
 }

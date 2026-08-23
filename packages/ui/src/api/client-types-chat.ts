@@ -7,6 +7,7 @@
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import type {
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatToolCallEvent,
   ChatTurnStatus,
 } from "@elizaos/shared/contracts";
@@ -20,7 +21,12 @@ import type {
 // here so existing `@elizaos/ui` `api` consumers keep their import path. Imported
 // (not export-from) because `failureKind` fields below reference the type in this
 // module's scope.
-export type { ChatFailureKind, ChatToolCallEvent, ChatTurnStatus };
+export type {
+  ChatFailureKind,
+  ChatTerminalFailure,
+  ChatToolCallEvent,
+  ChatTurnStatus,
+};
 
 // Conversations
 export interface Conversation {
@@ -323,11 +329,7 @@ export interface ConversationMessage {
   attachments?: MessageAttachment[];
   /** Source channel when forwarded from another channel (e.g. "autonomy"). */
   source?: string;
-  /**
-   * Short topic labels extracted for this turn (Stage-1 `topics`). Drives the
-   * transcript topic grouping + chips bar (#8928). Absent when the turn had no
-   * salient topic.
-   */
+  /** Short topic labels retained for search and memory semantics. */
   topics?: string[];
   /** Concrete action name that produced this assistant turn, when applicable. */
   actionName?: string;
@@ -387,6 +389,8 @@ export interface ConversationMessage {
    * the fallback `text` as a normal reply bubble.
    */
   failureKind?: ChatFailureKind;
+  /** Authoritative terminal failure details retained for retry and diagnostics. */
+  terminalFailure?: ChatTerminalFailure;
   /** Structured local-inference status returned with local model command/error replies. */
   localInference?: LocalInferenceChatMetadata;
   /** Structured sensitive/private information request metadata. */

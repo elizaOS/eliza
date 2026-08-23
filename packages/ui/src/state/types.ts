@@ -283,6 +283,7 @@ export interface ApiLikeError {
   status?: number;
   path?: string;
   message?: string;
+  data?: unknown;
 }
 
 export interface ChatTurnUsage extends ChatTokenUsage {

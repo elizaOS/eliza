@@ -16,6 +16,7 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "./adapters/types";
+import { PlatformDeliveryError } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
 import { tryConfirmIdentityLink } from "./identity-link";
@@ -29,7 +30,6 @@ import {
 } from "./server-router";
 import { resolveWebhookConfig } from "./webhook-config";
 
-const DEDUP_TTL_SECONDS = 300;
 const PERSONAL_SHARED_DELIVERY_LEASE_MS = 90_000;
 // Must outlive the 75s non-idempotent message-forward budget plus Telegram
 // egress. Otherwise a provider retry can reclaim the update while the first
@@ -38,10 +38,27 @@ const PERSONAL_SHARED_ATTEMPTS = 3;
 const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
 const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
+const CONNECTOR_PROCESSING = "processing";
+const CONNECTOR_DELIVERED = "delivered";
+const CONNECTOR_UNCERTAIN = "uncertain";
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
+// Inbound Blooio image turns may spend the cloud stage fetching media and
+// running a vision description before the model turn; the plain 30s ceiling
+// would abort those turns mid-flight and re-run them.
+const PERSONAL_SHARED_MEDIA_TIMEOUT_MS = 90_000;
+// Mirrors the Worker binding of the same name. Both sides must be enabled
+// together: the gateway only forwards Blooio media URLs (and adopts the
+// long-turn timeout/retry posture they require) when this is exactly "true",
+// so a dark Worker never receives media it would not describe and a dark
+// gateway never trades retries for a vision stage that does not run.
+const INBOUND_MEDIA_VISION_ENV = "ELIZA_APP_INBOUND_MEDIA_VISION";
+
+function inboundMediaVisionEnabled(): boolean {
+  return process.env[INBOUND_MEDIA_VISION_ENV]?.trim() === "true";
+}
 const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
@@ -115,6 +132,40 @@ function parseGroupDeliveryDirective(
 interface MessageTraceContext {
   traceId: string;
   gatewayReceivedAtMs: number;
+}
+
+async function sendReplyWithRequiredReceipt(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+  deliveryHooks?: TelegramDeliveryHooks,
+): Promise<void> {
+  if (!adapter.sendReplyWithReceipt) {
+    throw new PlatformDeliveryError(
+      `${adapter.platform} adapter does not expose provider receipts`,
+      "failed",
+      "DELIVERY_RECEIPT_UNSUPPORTED",
+      false,
+    );
+  }
+  const receipt = await adapter.sendReplyWithReceipt(
+    config,
+    event,
+    text,
+    deliveryHooks,
+  );
+  const providerMessageIds = receipt.providerMessageIds
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (providerMessageIds.length === 0) {
+    throw new PlatformDeliveryError(
+      `${adapter.platform} accepted delivery without a message receipt`,
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
+  }
 }
 
 async function reconcileLegacyTelegramDelivery(
@@ -510,6 +561,29 @@ export async function handleWebhook(
 
   const priorDeliveryState = await redis.get<string>(dedupKey);
   if (priorDeliveryState) {
+    if (
+      priorDeliveryState === CONNECTOR_UNCERTAIN ||
+      priorDeliveryState === "1"
+    ) {
+      logger.error("Webhook delivery outcome is uncertain; refusing replay", {
+        platform: adapter.platform,
+        messageId: event.messageId,
+        dedupKey,
+      });
+      return new Response(
+        JSON.stringify({ error: "delivery outcome uncertain" }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (priorDeliveryState === CONNECTOR_PROCESSING) {
+      return new Response(JSON.stringify({ error: "delivery in progress" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     logger.debug("Duplicate webhook skipped", {
       platform: adapter.platform,
       messageId: event.messageId,
@@ -518,9 +592,13 @@ export async function handleWebhook(
     return ackResponse(adapter.platform);
   }
 
-  const isNew = await redis.set(dedupKey, "1", {
+  const isNew = await redis.set(dedupKey, CONNECTOR_PROCESSING, {
     nx: true,
-    ex: DEDUP_TTL_SECONDS,
+    // A worker can disappear after provider acceptance but before recording a
+    // receipt. Keep that orphaned claim for the terminal ledger lifetime; a
+    // short lease would eventually replay an outcome that is necessarily
+    // uncertain. Explicit idempotent pre-egress failures delete the claim.
+    ex: TELEGRAM_DELIVERY_TTL_SECONDS,
   });
   if (!isNew) {
     logger.debug("Duplicate webhook skipped", {
@@ -533,8 +611,13 @@ export async function handleWebhook(
 
   // ── Async phase: identity → forward → reply (runs in background) ──
 
-  processMessage(adapter, config, event, deps, project, trace, agentId).catch(
-    async (err) => {
+  processMessage(adapter, config, event, deps, project, trace, agentId)
+    .then(async () => {
+      await redis.set(dedupKey, CONNECTOR_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+    })
+    .catch(async (err) => {
       logger.error("Background message processing failed", {
         error: err instanceof Error ? err.message : String(err),
         project,
@@ -544,7 +627,9 @@ export async function handleWebhook(
       });
       if (
         err instanceof PersonalSharedPreEgressError ||
-        err instanceof PersonalSharedRecoverablePostEgressError
+        err instanceof PersonalSharedRecoverablePostEgressError ||
+        (err instanceof PlatformDeliveryError &&
+          err.deliveryStatus === "failed")
       ) {
         try {
           // The Shared endpoint is idempotent. Blooio also keys provider
@@ -564,9 +649,29 @@ export async function handleWebhook(
             messageId: event.messageId,
           });
         }
+        return;
       }
-    },
-  );
+      try {
+        // A generic failure can occur after the provider accepted the reply.
+        // Persist ambiguity and refuse replay rather than converting a lost
+        // receipt into a duplicate user-visible message.
+        await redis.set(dedupKey, CONNECTOR_UNCERTAIN, {
+          ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+        });
+      } catch (ledgerError) {
+        // error-policy:J7 The provider result is already ambiguous; retain the
+        // original processing claim and surface the ledger failure separately.
+        logger.error("Failed to persist uncertain webhook delivery", {
+          error:
+            ledgerError instanceof Error
+              ? ledgerError.message
+              : String(ledgerError),
+          project,
+          platform: adapter.platform,
+          messageId: event.messageId,
+        });
+      }
+    });
 
   return ackResponse(adapter.platform);
 }
@@ -612,7 +717,13 @@ async function processMessage(
     event.text,
   );
   if (linkAttempt.handled && linkAttempt.reply) {
-    await adapter.sendReply(config, event, linkAttempt.reply, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      linkAttempt.reply,
+      deliveryHooks,
+    );
     return;
   }
 
@@ -804,7 +915,13 @@ async function processMessage(
 
   try {
     stageStartedAt = Date.now();
-    await adapter.sendReply(config, event, responseText, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      responseText,
+      deliveryHooks,
+    );
     logger.info("Connector message completed", {
       project,
       platform: adapter.platform,
@@ -969,10 +1086,23 @@ async function sendPersonalSharedReply(
       "connector cannot resolve the supplied voice note",
     );
   }
-  // Voice turns can spend most of the 120-second processing lease in STT + the
-  // model. Only a stale-auth retry is safe inline; provider/transport failures
-  // reopen the webhook for Telegram's durable retry instead of overlapping it.
-  const maxAttempts = voiceNote ? 2 : PERSONAL_SHARED_ATTEMPTS;
+  // Media turns mirror voice: the cloud route may spend fetch + vision + the
+  // model turn, so a re-POST can overlap a still-running route execution and
+  // re-run the unbilled vision call. Group Blooio events carry mediaUrls too
+  // but are never forwarded as media (no vision runs), and with the vision
+  // flag off no media is forwarded at all, so both keep the plain text-turn
+  // retry/timeout posture.
+  const isMediaTurn =
+    inboundMediaVisionEnabled() &&
+    adapter.platform === "blooio" &&
+    !isGroup &&
+    !!event.mediaUrls?.length;
+  // Voice and media turns can spend most of the 120-second processing lease in
+  // STT/vision + the model. Only a stale-auth retry is safe inline; provider/
+  // transport failures reopen the webhook for the platform's durable retry
+  // instead of overlapping it.
+  const isLongTurn = Boolean(voiceNote) || isMediaTurn;
+  const maxAttempts = isLongTurn ? 2 : PERSONAL_SHARED_ATTEMPTS;
   const postMessage = (authHeader: Record<string, string>) =>
     fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
       method: "POST",
@@ -1036,10 +1166,19 @@ async function sendPersonalSharedReply(
                   phoneNumber: event.senderId,
                   messageId: `${adapter.platform}:${project}:${event.messageId}`,
                   message: event.text,
+                  // Only Blooio media URLs are provider-hosted and fetchable
+                  // by the cloud vision path; other platforms keep text-only.
+                  ...(isMediaTurn && event.mediaUrls?.length
+                    ? { mediaUrls: event.mediaUrls }
+                    : {}),
                 },
       ),
       signal: AbortSignal.timeout(
-        voiceNote ? PERSONAL_SHARED_VOICE_TIMEOUT_MS : 30_000,
+        voiceNote
+          ? PERSONAL_SHARED_VOICE_TIMEOUT_MS
+          : isMediaTurn
+            ? PERSONAL_SHARED_MEDIA_TIMEOUT_MS
+            : 30_000,
       ),
     });
 
@@ -1053,8 +1192,8 @@ async function sendPersonalSharedReply(
       refreshAuth: async () => {
         authHeader = await reauth();
       },
-      retryStatuses: !voiceNote,
-      retryTransport: !voiceNote,
+      retryStatuses: !isLongTurn,
+      retryTransport: !isLongTurn,
       retryDelayCapMs: PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
       observe: (observation) => {
         const response = observation.response;
@@ -1399,7 +1538,13 @@ async function sendPersonalSharedReply(
       );
     }
   } else {
-    await adapter.sendReply(config, event, reply, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      reply,
+      deliveryHooks,
+    );
   }
   return {
     cloudMs,
@@ -1478,7 +1623,13 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await adapter.sendReply(config, event, reply, deliveryHooks);
+  await sendReplyWithRequiredReceipt(
+    adapter,
+    config,
+    event,
+    reply,
+    deliveryHooks,
+  );
 }
 
 function ackResponse(platform: Platform): Response {

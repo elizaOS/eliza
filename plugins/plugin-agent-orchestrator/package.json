@@ -247,7 +247,7 @@
         "type": "string",
         "description": "Official Grok Build subscription ACP stdio command. Authentication comes from grok login state under GROK_HOME, never XAI_API_KEY.",
         "required": false,
-        "default": "grok agent stdio",
+        "default": "grok --no-auto-update agent stdio",
         "sensitive": false
       },
       "ELIZA_ACP_FORMAT": {

@@ -5,12 +5,23 @@ import { api } from "../../lib/api-client";
 
 export interface AccountDeletionRequestDto {
   requestId: string;
-  status: string;
+  status: AccountDeletionRequestStatus;
   requestedAt: string;
   scheduledDeletionAt: string;
   identityDeactivated: boolean;
   completedAt: string | null;
 }
+
+export type AccountDeletionRequestStatus =
+  | "requested"
+  | "scheduled"
+  | "processing"
+  | "completed"
+  | "action_required";
+
+const ACCOUNT_DELETION_REQUEST_STATUSES = new Set<AccountDeletionRequestStatus>(
+  ["requested", "scheduled", "processing", "completed", "action_required"],
+);
 
 export type AccountDeletionStatusDto =
   | { state: "available"; request: null }
@@ -32,17 +43,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isAccountDeletionRequestStatus(
+  value: unknown,
+): value is AccountDeletionRequestStatus {
+  return (
+    typeof value === "string" &&
+    ACCOUNT_DELETION_REQUEST_STATUSES.has(value as AccountDeletionRequestStatus)
+  );
+}
+
+function isServerTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
 function parseRequest(value: unknown): AccountDeletionRequestDto {
   if (!isRecord(value))
     throw new Error("Account deletion receipt was malformed");
   const completedAt = value.completedAt;
   if (
     typeof value.requestId !== "string" ||
-    typeof value.status !== "string" ||
-    typeof value.requestedAt !== "string" ||
-    typeof value.scheduledDeletionAt !== "string" ||
+    !isAccountDeletionRequestStatus(value.status) ||
+    !isServerTimestamp(value.requestedAt) ||
+    !isServerTimestamp(value.scheduledDeletionAt) ||
     typeof value.identityDeactivated !== "boolean" ||
-    (completedAt !== null && typeof completedAt !== "string")
+    (completedAt !== null && !isServerTimestamp(completedAt))
   ) {
     throw new Error("Account deletion receipt was malformed");
   }

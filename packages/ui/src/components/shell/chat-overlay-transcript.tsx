@@ -207,6 +207,7 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.source ? { source: m.source } : {}),
     ...(m.interrupted ? { interrupted: true } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
+    ...(m.terminalFailure ? { terminalFailure: m.terminalFailure } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
   };

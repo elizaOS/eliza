@@ -1,0 +1,30 @@
+/**
+ * Browser-stub contract tests exercise the real Vercel OIDC shim and preserve
+ * its deliberately empty token/context behavior plus exported error classes.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  AccessTokenMissingError,
+  getContext,
+  getVercelOidcToken,
+  getVercelOidcTokenSync,
+  getVercelToken,
+  RefreshAccessTokenFailedError,
+} from "../vercel-oidc.ts";
+
+describe("vercel-oidc browser stub", () => {
+  it("returns an empty context", () => {
+    expect(getContext()).toEqual({});
+  });
+
+  it("returns empty tokens from every getter", async () => {
+    expect(await getVercelOidcToken()).toBe("");
+    expect(getVercelOidcTokenSync()).toBe("");
+    expect(await getVercelToken()).toBe("");
+  });
+
+  it("exposes error classes", () => {
+    expect(new AccessTokenMissingError()).toBeInstanceOf(Error);
+    expect(new RefreshAccessTokenFailedError()).toBeInstanceOf(Error);
+  });
+});

@@ -8,6 +8,7 @@ import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
 import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { invalidateStewardServerCookieSyncMarker } from "../../../cloud/lib/steward-session-cookie-sync-marker";
 import {
   buildStewardOAuthRedirectUri,
   resolveStewardOAuthTenantId,
@@ -281,7 +282,10 @@ function AuthorizeFlow({
     const token = getToken();
     if (!token) {
       // Edge case: useAuth says authenticated but token isn't readable.
-      // Force re-sign-in rather than silently failing.
+      // Force re-sign-in rather than silently failing. This component consumes
+      // the raw SDK context (not LocalStewardAuthContext), so retire any
+      // explicit-sync proof here before the SDK begins fallible sign-out work.
+      invalidateStewardServerCookieSyncMarker();
       signOut();
       setError("Your session expired. Please sign in again.");
       setStatus("ready");

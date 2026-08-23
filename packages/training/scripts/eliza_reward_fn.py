@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from lib.generation_integrity import require_complete_generation
+
 log = logging.getLogger("eliza-reward")
 
 
@@ -333,9 +335,9 @@ def _ai_judge_score(
 
     expected = ground_truth.get("expected") or ground_truth.get("expectedResponse") or ground_truth
     body = AI_JUDGE_PROMPT.format(
-        prompt=(prompt or "")[:2000],
-        expected=json.dumps(expected, ensure_ascii=False, default=str)[:1500],
-        response=(response or "")[:2000],
+        prompt=prompt or "",
+        expected=json.dumps(expected, ensure_ascii=False, default=str),
+        response=response or "",
     )
     client = anthropic.Anthropic(api_key=api_key)
     model = os.environ.get(AI_JUDGE_MODEL_ENV, AI_JUDGE_DEFAULT_MODEL)
@@ -344,6 +346,7 @@ def _ai_judge_score(
         max_tokens=4,
         messages=[{"role": "user", "content": body}],
     )
+    require_complete_generation(resp, source="eliza_reward.ai_judge")
     text = ""
     for block in resp.content:
         if getattr(block, "type", "") == "text":

@@ -101,6 +101,10 @@ const browserStep = requireStep(
   deployedJob,
   "Run deployed Personal identity, chat, and continuity trajectory",
 );
+const failureDiagnosticsUpload = requireStep(
+  deployedJob,
+  "Upload privacy-safe deployed renderer failure diagnostics",
+);
 const postflightStep = requireStep(
   deployedJob,
   "Verify public deployment after browser auth",
@@ -179,8 +183,11 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(deployedJob.if).toContain(
       "needs.verify-routing.result == 'success'",
     );
-    expect(authorityDownload.with?.name).toBe(
+    expect(deployJob.outputs?.pages_authority_artifact).toBe(
       `pages-deployment-authority-${githubExpression("github.run_id")}-${githubExpression("github.run_attempt")}`,
+    );
+    expect(authorityDownload.with?.name).toBe(
+      githubExpression("needs.deploy-app.outputs.pages_authority_artifact"),
     );
   });
 
@@ -309,12 +316,35 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(deployedUploads).not.toContain("DEPLOYED_PROOF_PATH");
   });
 
-  test("hard-pins a no-retention, service-worker-free remote Chromium run", () => {
+  test("uploads only closed history counters after a browser failure", () => {
+    expect(failureDiagnosticsUpload.if).toBe(
+      githubExpression(
+        "failure() && steps.deployed-browser.outcome == 'failure'",
+      ),
+    );
+    expect(failureDiagnosticsUpload.uses).toBe(
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    );
+    expect(failureDiagnosticsUpload.with?.name).toBe(
+      `deployed-renderer-failure-diagnostics-${githubExpression("github.run_id")}-${githubExpression("github.run_attempt")}`,
+    );
+    expect(failureDiagnosticsUpload.with?.path).toBe(
+      "packages/app/test-results/**/privacy-safe-*-history-network-diagnostics.json",
+    );
+    expect(failureDiagnosticsUpload.with?.["if-no-files-found"]).toBe("warn");
+    expect(failureDiagnosticsUpload.with?.["retention-days"]).toBe(7);
+    expect(failureDiagnosticsUpload.with?.path).not.toMatch(
+      /error-context|playwright-report|screenshot|trace|video/,
+    );
+  });
+
+  test("retains only privacy-safe failed output from remote Chromium", () => {
     expect(deployedConfig).toContain(
       'const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev"',
     );
     expect(deployedConfig).toContain("workers: 1");
     expect(deployedConfig).toContain("retries: 0");
+    expect(deployedConfig).toContain('preserveOutput: "failures-only"');
     expect(deployedConfig).toContain('serviceWorkers: "block"');
     expect(deployedConfig).toContain('trace: "off"');
     expect(deployedConfig).toContain('screenshot: "off"');
@@ -326,6 +356,10 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(smokeSpec).toContain("cloudflare-pages-alias");
     expect(smokeSpec).toContain("elizaos.renderer.build/v1");
     expect(smokeSpec).toContain("https://develop.eliza-app.pages.dev");
+    expect(smokeSpec).toContain('context.on("requestfailed"');
+    expect(smokeSpec).toContain(
+      `privacy-safe-${shellExpansion("phase")}-history-network-diagnostics.json`,
+    );
   });
 
   test("verifies the top-level Pages document before handing it the bearer", () => {

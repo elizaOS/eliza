@@ -42,7 +42,7 @@ vi.mock("./components/agent-actions", () => ({
   ElizaAgentActions: () => <div>Lifecycle actions</div>,
 }));
 vi.mock("./components/eliza-connect-button", () => ({
-  ElizaConnectButton: () => null,
+  ElizaConnectButton: () => <button type="button">Open Web UI</button>,
 }));
 
 import { PageHeaderProvider } from "../../cloud-ui/components/layout";
@@ -66,6 +66,7 @@ const baseAgent: AgentDetailDto = {
   dockerImage: null,
   executionTier: "shared",
   webUiUrl: null,
+  activeJob: null,
   bridgeUrl: null,
   errorCount: 0,
   walletAddress: null,
@@ -141,6 +142,7 @@ describe("AgentDetailPage product detail", () => {
     expect(screen.getAllByText("running")).toHaveLength(1);
     expect(screen.getByText("Free")).toBeTruthy();
     expect(screen.getByText("Lifecycle actions")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open Web UI" })).toBeNull();
     for (const rejected of [
       "Sandbox",
       "Managed runtime",
@@ -172,6 +174,7 @@ describe("AgentDetailPage product detail", () => {
 
     expect(screen.getByText("Dedicated Agent")).toBeTruthy();
     expect(screen.getByText("$0.01/hr")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Web UI" })).toBeTruthy();
     expect(screen.queryByText("Shared Agent")).toBeNull();
     expect(screen.queryByText("Free")).toBeNull();
   });

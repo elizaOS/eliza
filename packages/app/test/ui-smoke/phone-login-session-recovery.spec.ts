@@ -5,6 +5,7 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
+import { seedStewardSession } from "./helpers/test-auth";
 import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
 
 test.use({ video: "on" });
@@ -43,12 +44,7 @@ for (const viewport of VIEWPORTS) {
     page,
   }, testInfo) => {
     await page.setViewportSize(viewport);
-    await page.addInitScript(() => {
-      window.localStorage.setItem(
-        "steward_session_token",
-        "older-session-token",
-      );
-    });
+    await seedStewardSession(page, { token: "older-session-token" });
 
     const frontendEvents: string[] = [];
     page.on("console", (message) =>
@@ -114,13 +110,15 @@ for (const viewport of VIEWPORTS) {
       });
     });
 
-    await page.goto("/login");
+    await page.goto("/login?error=oauth_failed&reason=server_error");
+    await expect(page).toHaveURL(/\/login$/, { timeout: 45_000 });
     await expect(
       page.getByRole("status", { name: "Loading sign-in options" }),
     ).toBeVisible();
     await expect(
       page.getByRole("textbox", { name: "Phone number" }),
     ).toHaveCount(0);
+    await page.waitForTimeout(250);
     await screenshot(page, testInfo, `${viewport.name}-1-recovery-pending`);
 
     releaseRecovery?.();

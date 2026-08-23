@@ -446,25 +446,11 @@ function withRegistryTimeout<T>(
 
 app.get("/", async (c) => {
   try {
-    const user = await withRegistryTimeout(
-      getCurrentUser(c),
-      "optional auth lookup",
-      // error-policy:J4 optional auth on a public catalog — a lookup failure
-      // degrades to the anonymous view, surfaced via isAuthenticated:false below.
-    ).catch((error) => {
-      logger.warn("[MCP Registry] Optional auth lookup failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    });
-    const isAuthenticated = user !== null;
-
-    const baseUrl =
-      c.env.NEXT_PUBLIC_APP_URL ||
-      (c.req.header("host")
-        ? `${c.req.header("x-forwarded-proto") || "https"}://${c.req.header("host")}`
-        : "http://localhost:3000");
-
+    // Validate the public query surface before spending any lookup effort.
+    // An invalid request such as ?limit=0 has an already-determined 400, so
+    // starting the optional auth lookup first only makes that response wait on
+    // the optional-auth timeout; the auth catch degrades a failed lookup to
+    // anonymous but cannot un-spend the work (#24791).
     const limitRaw = c.req.query("limit");
     const parsedLimit =
       limitRaw === undefined || limitRaw === ""
@@ -496,6 +482,25 @@ app.get("/", async (c) => {
     }
 
     const { category, status, limit, search } = validationResult.data;
+
+    const user = await withRegistryTimeout(
+      getCurrentUser(c),
+      "optional auth lookup",
+      // error-policy:J4 optional auth on a public catalog — a lookup failure
+      // degrades to the anonymous view, surfaced via isAuthenticated:false below.
+    ).catch((error) => {
+      logger.warn("[MCP Registry] Optional auth lookup failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+    const isAuthenticated = user !== null;
+
+    const baseUrl =
+      c.env.NEXT_PUBLIC_APP_URL ||
+      (c.req.header("host")
+        ? `${c.req.header("x-forwarded-proto") || "https"}://${c.req.header("host")}`
+        : "http://localhost:3000");
 
     // Process built-in registry entries. Availability gates advertising:
     // unconfigured integrations (their transport would answer 501) are never

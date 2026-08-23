@@ -329,7 +329,7 @@ import type {
 	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
-import { parseJSONObjectFromText, stringToUuid } from "./utils";
+import { parseJSONObjectFromText, stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
 import { resolveProviderContexts } from "./utils/context-catalog";
@@ -3316,11 +3316,96 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
+		// LOUD GUARD (owner-private disclosure regression class): a world whose
+		// canonical owner is a bare platform id (snowflake) instead of a valid
+		// entity UUID makes resolveCanonicalOwnerId return null (validateUuid
+		// rejects it), which denies every owner-private provider with
+		// `owner_mismatch`. This has recurred whenever a connector persisted a raw
+		// snowflake into `ownership.ownerId`. Assert it loudly at boot so the
+		// regression is caught in CI/health instead of silently degrading recall.
+		try {
+			await this.assertResolvableWorldOwners();
+		} catch (guardError) {
+			// error-policy:J6 the guard is diagnostic; a scan failure must not brick
+			// startup. Report and continue.
+			this.reportError("AgentRuntime.assertResolvableWorldOwners", guardError);
+		}
+
 		// Resolve init promise to allow services to start
 		if (this.initResolver) {
 			this.initResolver();
 			this.initResolver = undefined;
 		}
+	}
+
+	/**
+	 * Fail-loud scan for the owner-private disclosure regression class: any world
+	 * whose `ownership.ownerId` (or an OWNER-role grant) is a non-UUID value — the
+	 * bare-snowflake shape that makes resolveCanonicalOwnerId return null and
+	 * denies owner-private recall with `owner_mismatch`. Logs each offender
+	 * loudly and reports one aggregated error; it is diagnostic, not fatal.
+	 */
+	async assertResolvableWorldOwners(): Promise<void> {
+		if (typeof this.adapter?.getAllWorlds !== "function") {
+			return;
+		}
+		const worlds = await this.getAllWorlds();
+		const offenders: Array<{
+			worldId: string;
+			field: string;
+			value: string;
+		}> = [];
+		for (const world of worlds) {
+			const metadata = (world?.metadata ?? {}) as {
+				ownership?: { ownerId?: unknown };
+				roles?: Record<string, unknown>;
+			};
+			const ownerId = metadata.ownership?.ownerId;
+			if (
+				typeof ownerId === "string" &&
+				ownerId.length > 0 &&
+				validateUuid(ownerId) === null
+			) {
+				offenders.push({
+					worldId: String(world?.id ?? "unknown"),
+					field: "ownership.ownerId",
+					value: ownerId,
+				});
+			}
+			const roles = metadata.roles;
+			if (roles && typeof roles === "object") {
+				for (const [entityId, role] of Object.entries(roles)) {
+					if (role === "OWNER" && validateUuid(entityId) === null) {
+						offenders.push({
+							worldId: String(world?.id ?? "unknown"),
+							field: "roles[OWNER]",
+							value: entityId,
+						});
+					}
+				}
+			}
+		}
+		if (offenders.length === 0) {
+			return;
+		}
+		for (const offender of offenders) {
+			this.logger.error(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					worldId: offender.worldId,
+					field: offender.field,
+				},
+				"OWNER-PRIVATE DISCLOSURE GUARD: world owner is a non-resolvable, non-UUID value (bare platform id/snowflake). resolveCanonicalOwnerId will return null and owner-private providers will be denied with owner_mismatch. Fix the connector so it records a canonical entity UUID.",
+			);
+		}
+		this.reportError(
+			"AgentRuntime.assertResolvableWorldOwners",
+			new Error(
+				`${offenders.length} world(s) record a non-resolvable owner (bare snowflake / non-UUID). Owner-private recall is degraded until fixed.`,
+			),
+			{ offenderCount: offenders.length },
+		);
 	}
 
 	private getBasicCapabilitiesSettings(): Record<string, string> {

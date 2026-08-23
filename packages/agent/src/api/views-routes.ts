@@ -258,6 +258,23 @@ function viewManifestAllowsCapability(
   return entry.surface?.capabilities?.includes("agent-surface") === true;
 }
 
+function viewManifestAllowsAgentAuthority(
+  entry: ViewRegistryEntry,
+  capability: string,
+): boolean {
+  return (
+    entry.capabilities?.find((declared) => declared.id === capability)
+      ?.authority !== "human"
+  );
+}
+
+function capabilityAuthorityDeniedMessage(
+  viewId: string,
+  capability: string,
+): string {
+  return `Capability "${capability}" on view "${viewId}" requires direct human interaction`;
+}
+
 function capabilityDeniedMessage(viewId: string, capability: string): string {
   return (
     `View "${viewId}" is not granted capability "${capability}" ` +
@@ -1568,6 +1585,10 @@ export async function handleViewsRoutes(
       error(res, capabilityDeniedMessage(id, capability), 403);
       return true;
     }
+    if (!viewManifestAllowsAgentAuthority(entry, capability)) {
+      error(res, capabilityAuthorityDeniedMessage(id, capability), 403);
+      return true;
+    }
 
     const targetClientId = resolveTargetViewClientId(id, req, body);
     const dispatch = await dispatchViewInteract(
@@ -1656,6 +1677,14 @@ export async function dispatchViewInteract(
       requestId,
       success: false,
       error: capabilityDeniedMessage(viewId, capability),
+    };
+  }
+
+  if (!viewManifestAllowsAgentAuthority(entry, capability)) {
+    return {
+      requestId,
+      success: false,
+      error: capabilityAuthorityDeniedMessage(viewId, capability),
     };
   }
 

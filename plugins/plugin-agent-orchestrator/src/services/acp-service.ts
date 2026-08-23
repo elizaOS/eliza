@@ -391,8 +391,30 @@ function findExecutableOnPath(name: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Serialize one command part so `splitCommandLine` recovers it byte-for-byte.
+ *
+ * That parser strips a surrounding quote pair WITHOUT unescaping the contents,
+ * so its exact inverse is "wrap in a quote pair" — not `JSON.stringify`, which
+ * escapes backslashes and made a Windows path containing spaces re-parse with
+ * doubled separators (an executable the native transport cannot spawn).
+ */
 function quoteCommandPart(value: string): string {
-  return /\s/u.test(value) ? JSON.stringify(value) : value;
+  if (value.length === 0) return '""';
+  if (!/[\s"']/u.test(value)) return value;
+  if (!value.includes('"')) return `"${value}"`;
+  // A value containing a double quote cannot live inside a double-quoted span
+  // under this grammar; single quotes round-trip identically.
+  if (!value.includes("'")) return `'${value}'`;
+  // Containing both quote kinds is unrepresentable here. Fail loudly rather
+  // than emit an argv the child would silently mis-parse.
+  throw new ElizaError(
+    "Command part contains both quote characters and cannot be represented",
+    {
+      code: "ACP_COMMAND_UNQUOTABLE",
+      context: { valueLength: value.length },
+    },
+  );
 }
 
 /**
@@ -2785,7 +2807,7 @@ export class AcpService extends Service {
         }
       }
       this.log("info", "resuming orphaned sub-agent after restart", {
-        sessionId: session.id.slice(0, 8),
+        sessionId: session.id,
         status: session.status,
         transportMode,
         label:
@@ -2798,7 +2820,7 @@ export class AcpService extends Service {
       void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT).catch(
         (err: unknown) =>
           this.log("warn", "orphan resume sendPrompt failed", {
-            sessionId: session.id.slice(0, 8),
+            sessionId: session.id,
             err: err instanceof Error ? err.message : String(err),
           }),
       );
@@ -3177,7 +3199,16 @@ export class AcpService extends Service {
     // Operator commands are opaque adapter boundaries. Mutating them with
     // flags from a different codex-acp generation can silently change their
     // argv contract, so only the declared legacy default is upgraded above.
-    return command;
+    //
+    // Anchoring is not such a mutation and must still apply here: a native
+    // session spawns with `cwd: session.workdir`, while availability resolves
+    // against the service cwd, so an unanchored relative command makes the two
+    // disagree about which file they mean (#24683). The managed default's
+    // executable is the bare `npx`, which `anchorRelativeCommandLine` leaves
+    // untouched, so the identity comparisons against
+    // DEFAULT_CODEX_ACP_COMMAND above and in the landlock-retry and
+    // INITIAL_AGENT_MODE gates keep matching.
+    return anchorRelativeCommandLine(command);
   }
 
   private shouldRetryManagedCodexLandlock(
@@ -5071,6 +5102,13 @@ export class AcpService extends Service {
         // disables env, auth.json, and per-model API-key precedence so an OAuth
         // preflight cannot silently execute as pay-as-you-go API billing.
         env.GROK_DISABLE_API_KEY_AUTH = "1";
+      } else {
+        // Kimi checks for and installs updates by default. An orchestrated ACP
+        // child must not mutate its own runtime version mid-task, and its
+        // built-in CronCreate surface must not establish a scheduler beside
+        // core TaskService and plugin-scheduling.
+        env.KIMI_CODE_NO_AUTO_UPDATE = "1";
+        env.KIMI_DISABLE_CRON = "1";
       }
       const removed = stripSubscriptionApiEnvironment(normalizedAgentType, env);
       if (removed.length > 0) {

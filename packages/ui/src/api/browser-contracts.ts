@@ -170,6 +170,7 @@ export interface BrowserBridgeCompanionReleaseTarget {
   installKind:
     | "chrome_web_store"
     | "firefox_addons"
+    | "firefox_unsigned_submission"
     | "apple_app_store"
     | "github_release"
     | "local_download";

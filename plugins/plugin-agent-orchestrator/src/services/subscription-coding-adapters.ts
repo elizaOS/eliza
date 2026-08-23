@@ -21,6 +21,8 @@ export type { SubscriptionExecutionMode } from "./types.js";
 export interface SubscriptionBillingSource {
   kind: "included-plan";
   label: string;
+  mayUsePaidOverage: boolean;
+  disclosure?: string;
 }
 
 export interface SubscriptionLoginCommand {
@@ -66,6 +68,9 @@ export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<
     billingSource: {
       kind: "included-plan",
       label: "Kimi Code included plan",
+      mayUsePaidOverage: true,
+      disclosure:
+        "Kimi uses membership quota first and may charge the account's Extra Usage balance when that provider-managed fallback is enabled.",
     },
     loginCommands: [{ mode: "device", command: "kimi login" }],
     logoutInstructions:
@@ -101,11 +106,12 @@ export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<
     binary: "grok",
     commandSetting: "ELIZA_GROK_ACP_COMMAND",
     homeEnvironmentKey: "GROK_HOME",
-    defaultAcpCommand: "grok agent stdio",
+    defaultAcpCommand: "grok --no-auto-update agent stdio",
     supportedPlatforms: SUPPORTED_DESKTOP_PLATFORMS,
     billingSource: {
       kind: "included-plan",
       label: "Grok included plan",
+      mayUsePaidOverage: false,
     },
     loginCommands: [
       { mode: "browser", command: "grok login" },

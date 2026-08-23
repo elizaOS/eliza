@@ -505,7 +505,7 @@ describe("v5 planner loop skeleton", () => {
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
-		expect(plannerParams.maxTokens).toBe(4096);
+		expect(plannerParams.maxTokens).toBeUndefined();
 		expect(plannerParams.providerOptions.eliza.thinking).toBe("off");
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
@@ -517,11 +517,9 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Done.");
 	});
 
-	// #10132: in chat mode the planner's 1024-token output cap is fine, but a
-	// coding sub-agent (selected through per-turn codingMode) must emit a whole
-	// file as a single FILE/WRITE tool-call argument — a real single-file app is
-	// ~4.6k+ tokens once JSON-escaped, so 1024 truncates it mid-stream and the
-	// build silently fails. Coding mode lifts the cap.
+	// A coding sub-agent may need to emit a whole file as one FILE/WRITE call.
+	// Core therefore leaves output uncapped unless an operator explicitly sets a
+	// ceiling that the selected provider validates before dispatch.
 	const buildCodingPlannerRuntime = () => ({
 		useModel: vi.fn(async () => ({
 			text: "",
@@ -578,7 +576,7 @@ describe("v5 planner loop skeleton", () => {
 		}
 	};
 
-	it("raises the planner output-token cap in coding/full-surface mode (#10132)", async () => {
+	it("does not impose a coding planner output-token cap", async () => {
 		const prevMax = process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
 		delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
 		try {
@@ -596,7 +594,7 @@ describe("v5 planner loop skeleton", () => {
 				})),
 			});
 			const plannerParams = runtime.useModel.mock.calls[0][1];
-			expect(plannerParams.maxTokens).toBe(16384);
+			expect(plannerParams.maxTokens).toBeUndefined();
 		} finally {
 			if (prevMax === undefined)
 				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;

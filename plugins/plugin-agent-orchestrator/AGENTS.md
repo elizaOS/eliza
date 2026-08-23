@@ -288,7 +288,7 @@ README → "GitHub credentials".
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Interactive message, HTTP, and task-control boundaries mint attendance authorization and persist it for recovery; scheduled, agent-authored, and unspecified spawns fail before workspace creation. The adapter validates that the effective default model selects the managed OAuth provider. Login is `kimi login`; logout is the interactive `/logout` because there is no top-level logout/status command. |
-| `ELIZA_GROK_ACP_COMMAND` | `grok agent stdio` | Official Grok Build subscription ACP command. Login is `grok login` or `grok login --device-auth`; status/models is `grok models`; logout is `grok logout`. |
+| `ELIZA_GROK_ACP_COMMAND` | `grok --no-auto-update agent stdio` | Official Grok Build subscription ACP command with provider-recommended update suppression. Login is `grok login` or `grok login --device-auth`; status/models is `grok models`; logout is `grok logout`. |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
 | `ELIZA_ACP_SYSTEM_SESSION_HEADROOM` | `2` | Reserved concurrent slots for short-lived `system` spawns (the #8898 read-only verifier), counted separately from `ELIZA_ACP_MAX_SESSIONS` so validation never deadlocks behind the worker cap |
 | `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |
@@ -331,6 +331,13 @@ README → "GitHub credentials".
 | `ELIZA_MODEL_GATEWAY_TOKEN` | unset | Gateway credential injected into the sub-agent (as `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`) in place of raw provider keys. In lease mode this is the parent-only, mint-capable token — never forwarded to the child. |
 | `ELIZA_MODEL_GATEWAY_LEASE_URL` | unset | Broker lease endpoint (#11536 E2 residual). When set (with gateway mode on), each spawn mints a per-spawn, TTL-bound, revocable lease (`POST` → `{ token, expiresAt, leaseId }`; revoke `POST <url>/<leaseId>/revoke`) and the child gets the leased token, not the static one. Unset ⇒ static-token fallback. |
 | `ELIZA_MODEL_GATEWAY_STRICT` | unset | `1`/`true` fails a spawn closed rather than hand a sub-agent a static long-lived gateway token when a lease broker is expected but absent or the mint fails. |
+
+Kimi children receive `KIMI_CODE_NO_AUTO_UPDATE=1` so the executable cannot
+change during an orchestrated task, and `KIMI_DISABLE_CRON=1` so the provider
+CLI cannot create a scheduler outside core `TaskService` and plugin-scheduling.
+Kimi's primary billing source is membership quota, but provider-managed Extra
+Usage can charge a prepaid balance when the account owner enabled that fallback;
+inventory consumers must preserve the billing disclosure.
 
 ## How to extend
 

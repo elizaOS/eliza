@@ -36,7 +36,6 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
-import { resolveAnthropicBaseURL } from "@elizaos/plugin-anthropic/endpoint-config";
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import { resolveOpenAIBaseURL } from "@elizaos/plugin-openai/endpoint-config";
 import {
@@ -99,6 +98,25 @@ const CHAT_PROVIDER_KEY_FAMILY: Record<string, ChatKeyFamily> = {
   elizacloud: "ELIZAOS_CLOUD",
   "claude-chat": "ANTHROPIC",
 };
+
+const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1";
+
+/**
+ * Keep model-status diagnostics loadable in provider-minimal runtime images.
+ * Dedicated Cerebras images intentionally omit plugin-anthropic, so this API
+ * route cannot statically depend on that optional provider package merely to
+ * resolve its base URL. This mirrors plugin-anthropic's pure endpoint policy.
+ */
+function resolveAnthropicBaseURL(
+  readSetting: (key: string) => string | undefined,
+  options: { mockBaseURL?: string } = {},
+): string {
+  const mockBaseURL = options.mockBaseURL?.trim();
+  if (mockBaseURL) return mockBaseURL;
+  return (
+    readSetting("ANTHROPIC_BASE_URL")?.trim() || DEFAULT_ANTHROPIC_BASE_URL
+  );
+}
 
 // serviceRouting.llmText backend ids → the catalog chat provider that serves
 // them. "anthropic" is the provider-switch id; the catalog names that brain
