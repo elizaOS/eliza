@@ -336,7 +336,11 @@ export function matchTopicRooms(
 			});
 		}
 	}
-	scored.sort((a, b) => b.score - a.score || a.roomId.localeCompare(b.roomId));
+	scored.sort((a, b) => {
+		const aScore = Number.isFinite(a.score) ? a.score : 0;
+		const bScore = Number.isFinite(b.score) ? b.score : 0;
+		return bScore - aScore || a.roomId.localeCompare(b.roomId);
+	});
 	const selected =
 		limit === undefined ? scored : scored.slice(0, Math.max(0, limit));
 	return selected.map(({ score, ...hit }) => hit);
