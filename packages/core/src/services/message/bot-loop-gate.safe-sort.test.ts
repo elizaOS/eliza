@@ -144,4 +144,82 @@ describe("bot-loop-gate safe NaN handling and chronological ordering", () => {
 		expect(result.ignored).toBe(true);
 		expect(result.agentTurnsSinceLastHuman).toBe(2);
 	});
+	it("treats a non-finite human timestamp as oldest instead of newest", async () => {
+		const { runtime, adapter } = await makeRuntime();
+
+		// The human turn carries a non-finite createdAt. A raw
+		// `(a.createdAt ?? 0) - (b.createdAt ?? 0)` comparator sorts Infinity to
+		// the END of the window, which makes the human look like the newest turn
+		// and resets agentTurnsSinceLastHuman to 0 — the gate then fails open on a
+		// genuine bot loop. The safe comparator maps every non-finite value to 0,
+		// so the human stays the oldest turn and the two agent turns after it are
+		// still counted.
+		const rows: Memory[] = [
+			{
+				id: "00000000-0000-0000-0000-0000000000a1" as UUID,
+				entityId: HUMAN,
+				roomId: GROUP_ROOM,
+				worldId: WORLD_ID,
+				createdAt: Number.POSITIVE_INFINITY,
+				content: { text: "human kickoff", source: "test" },
+			} as Memory,
+			{
+				id: "00000000-0000-0000-0000-0000000000a2" as UUID,
+				entityId: OTHER_BOT,
+				roomId: GROUP_ROOM,
+				worldId: WORLD_ID,
+				createdAt: 2000,
+				content: { text: "bot 1", source: "test" },
+				metadata: { fromBot: true },
+			} as Memory,
+			{
+				id: "00000000-0000-0000-0000-0000000000a3" as UUID,
+				entityId: runtime.agentId,
+				roomId: GROUP_ROOM,
+				worldId: WORLD_ID,
+				createdAt: 3000,
+				content: { text: "agent 1", source: "test" },
+			} as Memory,
+			{
+				id: "00000000-0000-0000-0000-0000000000a4" as UUID,
+				entityId: OTHER_BOT,
+				roomId: GROUP_ROOM,
+				worldId: WORLD_ID,
+				createdAt: 4000,
+				content: { text: "bot 2", source: "test" },
+				metadata: { fromBot: true },
+			} as Memory,
+			{
+				id: "00000000-0000-0000-0000-0000000000a5" as UUID,
+				entityId: runtime.agentId,
+				roomId: GROUP_ROOM,
+				worldId: WORLD_ID,
+				createdAt: 5000,
+				content: { text: "agent 2", source: "test" },
+			} as Memory,
+		];
+
+		await adapter.createMemories(
+			rows.map((memory) => ({ memory, tableName: "messages" })),
+		);
+
+		const inbound = {
+			id: "00000000-0000-0000-0000-0000000000a6" as UUID,
+			entityId: OTHER_BOT,
+			roomId: GROUP_ROOM,
+			worldId: WORLD_ID,
+			createdAt: 6000,
+			content: {
+				text: "bot 3 incoming",
+				source: "test",
+				channelType: ChannelType.GROUP,
+			},
+			metadata: { fromBot: true },
+		} as Memory;
+
+		const result = await runBotLoopGate({ runtime, message: inbound });
+
+		expect(result.agentTurnsSinceLastHuman).toBe(2);
+		expect(result.ignored).toBe(true);
+	});
 });
