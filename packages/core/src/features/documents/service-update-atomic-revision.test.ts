@@ -180,36 +180,29 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		).toHaveLength(0);
 	}, 120_000);
 
-	it("preserves the old revision when the Nth fragment insert fails", async () => {
+	it("preserves the old revision when atomic replacement fails", async () => {
 		const documentId = await seedDocument();
-		// Long enough to split into multiple fragments so the injected outage
-		// hits the Nth insert, leaving a genuinely partial staged generation.
+		// Long enough to prove the complete replacement set reaches the one atomic
+		// adapter boundary; no fragment is inserted individually beforehand.
 		const longV2 = Array.from(
 			{ length: 200 },
 			(_, i) => `Version two long paragraph ${i}: ${V2_TEXT}`,
 		).join("\n\n");
-		const realCreateMemory = runtime.createMemory.bind(runtime);
-		let fragmentWrites = 0;
-		runtime.createMemory = async (memory, tableName, unique) => {
-			if (
-				tableName === DOCUMENT_FRAGMENTS_TABLE &&
-				memory.content.text?.includes("Version two")
-			) {
-				fragmentWrites += 1;
-				if (fragmentWrites >= 2) {
-					throw new Error("injected Nth fragment insert outage");
-				}
-			}
-			return realCreateMemory(memory, tableName, unique);
+		const adapter = runtime.adapter;
+		const realReplace = adapter.replaceDocumentRevision.bind(adapter);
+		let replacementFragmentCount = 0;
+		adapter.replaceDocumentRevision = async (params) => {
+			replacementFragmentCount = params.fragments.length;
+			throw new Error("injected atomic replacement outage");
 		};
 		try {
 			await expect(
 				service.updateDocument({ documentId, content: longV2 }),
-			).rejects.toThrow(/stage replacement fragments/);
+			).rejects.toThrow(/atomically replace document revision/);
 		} finally {
-			runtime.createMemory = realCreateMemory;
+			adapter.replaceDocumentRevision = realReplace;
 		}
-		expect(fragmentWrites).toBeGreaterThanOrEqual(2);
+		expect(replacementFragmentCount).toBeGreaterThan(2);
 		await expectCommittedV1(documentId);
 		const raw = await rawFragmentsFor(documentId);
 		expect(
@@ -220,14 +213,14 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 	it("keeps the old revision committed when a concurrent writer wins the CAS", async () => {
 		const documentId = await seedDocument();
 		const adapter = runtime.adapter;
-		const realCompareAndSwap = adapter.compareAndSwapDocument.bind(adapter);
-		adapter.compareAndSwapDocument = async () => ({ status: "conflict" });
+		const realReplace = adapter.replaceDocumentRevision.bind(adapter);
+		adapter.replaceDocumentRevision = async () => ({ status: "conflict" });
 		try {
 			await expect(
 				service.updateDocument({ documentId, content: V2_TEXT }),
 			).rejects.toThrow(/authorization changed before update/);
 		} finally {
-			adapter.compareAndSwapDocument = realCompareAndSwap;
+			adapter.replaceDocumentRevision = realReplace;
 		}
 		await expectCommittedV1(documentId);
 		const raw = await rawFragmentsFor(documentId);
@@ -271,36 +264,30 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		expect(after.join(" ")).not.toContain("Version one");
 	}, 120_000);
 
-	it("leaves discard leftovers invisible when staged cleanup is unavailable", async () => {
+	it("leaves no replacement rows when the atomic adapter throws", async () => {
 		const documentId = await seedDocument();
-		const realDeleteMemory = runtime.deleteMemory.bind(runtime);
-		const realCompareAndSwap = runtime.adapter.compareAndSwapDocument.bind(
+		const realReplace = runtime.adapter.replaceDocumentRevision.bind(
 			runtime.adapter,
 		);
-		runtime.adapter.compareAndSwapDocument = async () => ({
-			status: "conflict",
-		});
-		runtime.deleteMemory = async () => {
-			throw new Error("injected discard outage");
+		runtime.adapter.replaceDocumentRevision = async () => {
+			throw new Error("injected transaction outage");
 		};
 		try {
 			await expect(
 				service.updateDocument({ documentId, content: V2_TEXT }),
-			).rejects.toThrow(/authorization changed before update/);
+			).rejects.toThrow(/atomically replace document revision/);
 		} finally {
-			runtime.deleteMemory = realDeleteMemory;
-			runtime.adapter.compareAndSwapDocument = realCompareAndSwap;
+			runtime.adapter.replaceDocumentRevision = realReplace;
 		}
-		// Leftover staged rows exist in storage but never reach readers: the
-		// committed parent still declares revision 0 with no attempt token.
+		// The adapter transaction never committed, so neither canonical source
+		// segments nor embedding fragments from the replacement can be visible.
 		const raw = await rawFragmentsFor(documentId);
 		expect(
-			raw.filter((memory) => memory.content.text?.includes("Version two"))
-				.length,
-		).toBeGreaterThan(0);
+			raw.filter((memory) => memory.content.text?.includes("Version two")),
+		).toHaveLength(0);
 		await expectCommittedV1(documentId);
 
-		// The next successful update sweeps the stale staged generation.
+		// A later successful transaction publishes exactly one replacement set.
 		const recovered = await service.updateDocument({
 			documentId,
 			content: V2_TEXT,

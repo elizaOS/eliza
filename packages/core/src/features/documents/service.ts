@@ -2768,14 +2768,37 @@ export class DocumentService extends Service {
 				entityId: existingDocument.entityId,
 			},
 		);
-		await this.prepareDocumentFragmentEmbeddings(fragments);
-		const mutation = await this.runtime.adapter.replaceDocumentRevision({
-			...requestContext,
-			documentId: options.documentId,
-			expected: snapshot,
-			replacement,
-			fragments: [...sourceProjection.segments, ...fragments],
-		});
+		try {
+			await this.prepareDocumentFragmentEmbeddings(fragments);
+		} catch (cause) {
+			// error-policy:J2 Preparation is still pre-transactional, but callers
+			// need a document-specific failure while the provider cause is retained.
+			throw new ElizaError("Failed to stage replacement fragments", {
+				code: "DOCUMENT_REVISION_PREPARATION_FAILED",
+				context: { documentId: options.documentId },
+				cause,
+			});
+		}
+		let mutation: Awaited<
+			ReturnType<typeof this.runtime.adapter.replaceDocumentRevision>
+		>;
+		try {
+			mutation = await this.runtime.adapter.replaceDocumentRevision({
+				...requestContext,
+				documentId: options.documentId,
+				expected: snapshot,
+				replacement,
+				fragments: [...sourceProjection.segments, ...fragments],
+			});
+		} catch (cause) {
+			// error-policy:J2 The adapter owns one atomic replacement transaction;
+			// preserve its failure without fabricating a partial publication status.
+			throw new ElizaError("Failed to atomically replace document revision", {
+				code: "DOCUMENT_REVISION_PUBLICATION_FAILED",
+				context: { documentId: options.documentId },
+				cause,
+			});
+		}
 		if (mutation.status !== "updated") {
 			throw new ElizaError("Document authorization changed before update", {
 				code:
