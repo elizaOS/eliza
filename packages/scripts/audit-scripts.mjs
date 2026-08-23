@@ -109,6 +109,7 @@ const ALLOWED_EXACT = new Set([
   "reset",
   "knip",
   "pre-commit",
+  "desktop:clean-install-state",
   "audit:scripts",
   "audit:scripts:self-test",
   "audit:tee-secret-leak",
