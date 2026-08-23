@@ -152,6 +152,31 @@ export type WarmPoolRuntimeGeneration = Pick<
   | "pool_ready_at"
 >;
 
+/**
+ * Exact row authority captured before a stopped restore prepares its backup.
+ * Provisioning may begin only if every captured lifecycle discriminator still
+ * matches the tenant row when the admission UPDATE executes.
+ */
+export type ProvisioningAdmissionCapture = Pick<
+  AgentSandbox,
+  | "id"
+  | "organization_id"
+  | "status"
+  | "execution_tier"
+  | "pool_status"
+  | "deleted_at"
+  | "deletion_attempt_id"
+  | "lifecycle_revision"
+>;
+
+const RESTORE_PROVISIONING_ADMISSIBLE_STATUSES = [
+  "pending",
+  "stopped",
+  "sleeping",
+  "disconnected",
+  "error",
+] as const satisfies readonly AgentSandboxStatus[];
+
 export interface WarmPoolReconciliationCandidate {
   sandbox: AgentSandbox;
   canPromote: boolean;
@@ -300,6 +325,24 @@ function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[
     sql`${agentSandboxes.image_digest} IS NOT DISTINCT FROM ${expected.image_digest}`,
     sql`${agentSandboxes.pool_ready_at} IS NOT DISTINCT FROM ${expected.pool_ready_at}`,
   ];
+}
+
+/** Keep generic and restore-fenced provisioning transitions byte-equivalent. */
+function provisioningAdmissionUpdatePayload() {
+  const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
+  return {
+    status: "provisioning" as const,
+    updated_at: new Date(),
+    error_message: null,
+    sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
+    bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
+    health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
+    node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
+    container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
+    bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
+    web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
+    headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
+  };
 }
 
 export interface ReconciliationBatchResult<T> {
@@ -1325,22 +1368,9 @@ export class AgentSandboxesRepository {
    */
   async trySetProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
-    const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
     const [r] = await dbWrite
       .update(agentSandboxes)
-      .set({
-        status: "provisioning",
-        updated_at: new Date(),
-        error_message: null,
-        sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
-        bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
-        health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
-        node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
-        container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
-        bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
-        web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
-        headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
-      })
+      .set(provisioningAdmissionUpdatePayload())
       .where(
         and(
           eq(agentSandboxes.id, id),
@@ -1354,6 +1384,69 @@ export class AgentSandboxesRepository {
               AND ${agentSandboxes.sandbox_id} IS NULL
             )
           )`,
+        ),
+      )
+      .returning();
+    return r;
+  }
+
+  /**
+   * Atomically admit a non-running restore into provisioning only while the
+   * exact tenant lifecycle authority captured by restore selection is current.
+   *
+   * Unlike `trySetProvisioning`, this path never admits a retry already in
+   * `provisioning`, a never-containerized `running` row, or a row that needs
+   * cleanup before another container generation can start. A lost CAS is a
+   * hard admission failure: the caller must not report the selected backup as
+   * restored by another provisioning winner.
+   */
+  async trySetProvisioningFromRestoreCapture(
+    capture: ProvisioningAdmissionCapture,
+  ): Promise<AgentSandbox | undefined> {
+    const isAdmissibleStatus = (
+      RESTORE_PROVISIONING_ADMISSIBLE_STATUSES as readonly AgentSandboxStatus[]
+    ).includes(capture.status);
+    const isCanonicalContainerTier = (
+      CONTAINER_BACKED_EXECUTION_TIERS as readonly string[]
+    ).includes(capture.execution_tier);
+    if (
+      !isAdmissibleStatus ||
+      !isCanonicalContainerTier ||
+      capture.pool_status !== null ||
+      capture.deleted_at !== null ||
+      capture.deletion_attempt_id !== null
+    ) {
+      return undefined;
+    }
+
+    await ensureAgentSandboxSchema();
+    const [r] = await dbWrite
+      .update(agentSandboxes)
+      .set(provisioningAdmissionUpdatePayload())
+      .where(
+        and(
+          eq(agentSandboxes.id, capture.id),
+          eq(agentSandboxes.organization_id, capture.organization_id),
+          eq(agentSandboxes.status, capture.status),
+          inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
+          eq(agentSandboxes.execution_tier, capture.execution_tier),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
+          isNull(agentSandboxes.pool_status),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+          isNull(agentSandboxes.replacement_cleanup_node_id),
+          isNull(agentSandboxes.replacement_cleanup_container_name),
+          isNull(agentSandboxes.replacement_cleanup_attempt_id),
+          isNull(agentSandboxes.replacement_cleanup_container_id),
+          isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
+          isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
+          isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
+          isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
+          isNull(agentSandboxes.replacement_cleanup_allocation_counted),
+          isNull(agentSandboxes.replacement_cleanup_created_at),
+          sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
         ),
       )
       .returning();
