@@ -41,6 +41,7 @@ import {
   elizaTryProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
 import {
+  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   PROVISIONING_RECONCILIATION_BATCH_SIZE,
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
@@ -162,6 +163,8 @@ export type ProvisioningAdmissionCapture = Pick<
   | "id"
   | "organization_id"
   | "status"
+  | "lifecycle_job_id"
+  | "lifecycle_execution_generation"
   | "execution_tier"
   | "pool_status"
   | "deleted_at"
@@ -170,7 +173,6 @@ export type ProvisioningAdmissionCapture = Pick<
 >;
 
 const RESTORE_PROVISIONING_ADMISSIBLE_STATUSES = [
-  "pending",
   "stopped",
   "sleeping",
   "disconnected",
@@ -1395,10 +1397,16 @@ export class AgentSandboxesRepository {
    * exact tenant lifecycle authority captured by restore selection is current.
    *
    * Unlike `trySetProvisioning`, this path never admits a retry already in
-   * `provisioning`, a never-containerized `running` row, or a row that needs
-   * cleanup before another container generation can start. A lost CAS is a
-   * hard admission failure: the caller must not report the selected backup as
-   * restored by another provisioning winner.
+   * `provisioning`, a create-path `pending` row, a never-containerized
+   * `running` row, or a row that needs cleanup before another container
+   * generation can start. `pending` is deliberately excluded because failed
+   * create-to-enqueue compensation may remove that generation. A lost CAS is
+   * a hard admission failure: the caller must not report the selected backup
+   * as restored by another provisioning winner.
+   *
+   * The advisory lock orders this admission after any concurrent lifecycle
+   * enqueue. The UPDATE then takes a fresh READ COMMITTED snapshot and rejects
+   * a committed exclusive job before changing the row.
    */
   async trySetProvisioningFromRestoreCapture(
     capture: ProvisioningAdmissionCapture,
@@ -1412,6 +1420,8 @@ export class AgentSandboxesRepository {
     if (
       !isAdmissibleStatus ||
       !isCanonicalContainerTier ||
+      capture.lifecycle_job_id !== null ||
+      capture.lifecycle_execution_generation !== null ||
       capture.pool_status !== null ||
       capture.deleted_at !== null ||
       capture.deletion_attempt_id !== null
@@ -1420,37 +1430,44 @@ export class AgentSandboxesRepository {
     }
 
     await ensureAgentSandboxSchema();
-    const [r] = await dbWrite
-      .update(agentSandboxes)
-      .set(provisioningAdmissionUpdatePayload())
-      .where(
-        and(
-          eq(agentSandboxes.id, capture.id),
-          eq(agentSandboxes.organization_id, capture.organization_id),
-          eq(agentSandboxes.status, capture.status),
-          inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
-          eq(agentSandboxes.execution_tier, capture.execution_tier),
-          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
-          eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
-          isNull(agentSandboxes.pool_status),
-          isNull(agentSandboxes.deleted_at),
-          isNull(agentSandboxes.deletion_attempt_id),
-          isNull(agentSandboxes.replacement_cleanup_sandbox_id),
-          isNull(agentSandboxes.replacement_cleanup_node_id),
-          isNull(agentSandboxes.replacement_cleanup_container_name),
-          isNull(agentSandboxes.replacement_cleanup_attempt_id),
-          isNull(agentSandboxes.replacement_cleanup_container_id),
-          isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
-          isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
-          isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
-          isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
-          isNull(agentSandboxes.replacement_cleanup_allocation_counted),
-          isNull(agentSandboxes.replacement_cleanup_created_at),
-          sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
-        ),
-      )
-      .returning();
-    return r;
+    return dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      await tx.execute(elizaProvisionAdvisoryLockSql(capture.organization_id, capture.id));
+      const [r] = await tx
+        .update(agentSandboxes)
+        .set(provisioningAdmissionUpdatePayload())
+        .where(
+          and(
+            eq(agentSandboxes.id, capture.id),
+            eq(agentSandboxes.organization_id, capture.organization_id),
+            eq(agentSandboxes.status, capture.status),
+            inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
+            eq(agentSandboxes.execution_tier, capture.execution_tier),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
+            isNull(agentSandboxes.lifecycle_job_id),
+            isNull(agentSandboxes.lifecycle_execution_generation),
+            hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
+            isNull(agentSandboxes.deletion_attempt_id),
+            isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+            isNull(agentSandboxes.replacement_cleanup_node_id),
+            isNull(agentSandboxes.replacement_cleanup_container_name),
+            isNull(agentSandboxes.replacement_cleanup_attempt_id),
+            isNull(agentSandboxes.replacement_cleanup_container_id),
+            isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
+            isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
+            isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
+            isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
+            isNull(agentSandboxes.replacement_cleanup_allocation_counted),
+            isNull(agentSandboxes.replacement_cleanup_created_at),
+            sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
+          ),
+        )
+        .returning();
+      return r;
+    });
   }
 
   /**

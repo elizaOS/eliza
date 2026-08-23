@@ -7730,6 +7730,8 @@ export class ElizaSandboxService {
           id: rec.id,
           organization_id: rec.organization_id,
           status: rec.status,
+          lifecycle_job_id: rec.lifecycle_job_id,
+          lifecycle_execution_generation: rec.lifecycle_execution_generation,
           execution_tier: rec.execution_tier,
           pool_status: rec.pool_status,
           deleted_at: rec.deleted_at,

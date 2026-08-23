@@ -93,6 +93,8 @@ function provisioningAdmissionCapture(sandbox: AgentSandbox): ProvisioningAdmiss
     id: sandbox.id,
     organization_id: sandbox.organization_id,
     status: sandbox.status,
+    lifecycle_job_id: sandbox.lifecycle_job_id,
+    lifecycle_execution_generation: sandbox.lifecycle_execution_generation,
     execution_tier: sandbox.execution_tier,
     pool_status: sandbox.pool_status,
     deleted_at: sandbox.deleted_at,
@@ -808,6 +810,13 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
           deletion_started_at: new Date("2026-08-23T00:20:00.000Z"),
         },
       },
+      {
+        name: "lifecycle execution ownership",
+        mutation: {
+          lifecycle_job_id: "a75a32be-2058-4faa-86e5-c0716ae4c6ef",
+          lifecycle_execution_generation: "16b85cea-37d7-4e4c-8a8a-e2d176dce41a",
+        },
+      },
       { name: "lifecycle revision", mutation: { agent_name: unique("renamed-before-cas") } },
       {
         name: "replacement cleanup ownership",
@@ -857,6 +866,66 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
     expect(genericAdmission).not.toHaveBeenCalled();
     expect(createKey).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  test("rejects a committed exclusive lifecycle job acquired before stopped admission", async () => {
+    const sandbox = await seedSandbox({
+      status: "stopped",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+      database_status: "ready",
+      database_uri: "postgres://restore-authority.example/committed-job",
+    });
+    await seedBackup(sandbox.id, "committed-job");
+    const originalLatest =
+      agentSandboxesRepository.getLatestStoredBackup.bind(agentSandboxesRepository);
+    let inserted = false;
+    spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockImplementation(async (agentId) => {
+      const latest = await originalLatest(agentId);
+      if (!inserted) {
+        inserted = true;
+        await dbWrite.insert(jobs).values({
+          type: JOB_TYPES.AGENT_RESTART,
+          status: "pending",
+          data: {
+            agentId: sandbox.id,
+            organizationId: sandbox.organization_id,
+            userId: sandbox.user_id,
+          },
+          agent_id: sandbox.id,
+          organization_id: sandbox.organization_id,
+          user_id: sandbox.user_id,
+        });
+      }
+      return latest;
+    });
+    const create = mock(async () => {
+      throw new Error("provider create must not run while a lifecycle job owns admission");
+    });
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+
+    await expect(service.restore(sandbox.id, sandbox.organization_id)).resolves.toEqual({
+      success: false,
+      error: AUTHORITY_CHANGED,
+    });
+    expect(create).not.toHaveBeenCalled();
+
+    const [current] = await dbWrite
+      .select({ status: agentSandboxes.status })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(current?.status).toBe("stopped");
   });
 
   test("allows exactly one exact-CAS winner from one stopped generation", async () => {

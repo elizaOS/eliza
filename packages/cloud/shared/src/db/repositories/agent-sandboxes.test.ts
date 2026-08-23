@@ -130,6 +130,8 @@ function restoreProvisioningCapture(
     id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
     organization_id: "c21ed7f4-4d97-4b69-a09a-71a6af758591",
     status: "stopped",
+    lifecycle_job_id: null,
+    lifecycle_execution_generation: null,
     execution_tier: "dedicated-lazy",
     pool_status: null,
     deleted_at: null,
@@ -312,6 +314,8 @@ describe("AgentSandboxesRepository", () => {
   test("restore provisioning admission is tenant-scoped to the exact captured generation", async () => {
     capturedWhere = undefined;
     set.mockClear();
+    useTransactionMock = true;
+    useRepositoryTransactionUpdate = true;
 
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
     const capture = restoreProvisioningCapture();
@@ -330,9 +334,12 @@ describe("AgentSandboxesRepository", () => {
     expect(query.params).toContain(capture.execution_tier);
     expect(query.params).toContain(capture.lifecycle_revision);
 
-    for (const status of ["pending", "stopped", "sleeping", "disconnected", "error"]) {
+    for (const status of ["stopped", "sleeping", "disconnected", "error"]) {
       expect(query.params).toContain(status);
     }
+    // "pending" belongs only to the active-job exclusion, never to the
+    // restore-admissible sandbox statuses above.
+    expect(query.params.filter((param) => param === "pending")).toHaveLength(1);
     expect(query.params).not.toContain("provisioning");
     expect(query.params).not.toContain("running");
     expect(query.params).not.toContain("deletion_pending");
@@ -341,6 +348,8 @@ describe("AgentSandboxesRepository", () => {
     for (const column of [
       "organization_id",
       "status",
+      "lifecycle_job_id",
+      "lifecycle_execution_generation",
       "execution_tier",
       "lifecycle_revision",
       "pool_status",
@@ -353,6 +362,10 @@ describe("AgentSandboxesRepository", () => {
       expect(query.params).toContain(tier);
     }
     expect(query.params).not.toContain("shared");
+    expect(sql).toContain("jobs");
+    expect(sql).toContain("not exists");
+    expect(query.params).toContain("pending");
+    expect(query.params).toContain("in_progress");
 
     const updatePayload = set.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
     expect(updatePayload?.status).toBe("provisioning");
@@ -361,6 +374,8 @@ describe("AgentSandboxesRepository", () => {
 
   test("restore provisioning admission refuses every replacement and failed-warm cleanup owner", async () => {
     capturedWhere = undefined;
+    useTransactionMock = true;
+    useRepositoryTransactionUpdate = true;
 
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
     await new AgentSandboxesRepository().trySetProvisioningFromRestoreCapture(
@@ -398,10 +413,15 @@ describe("AgentSandboxesRepository", () => {
     const repository = new AgentSandboxesRepository();
 
     const forbidden: ProvisioningAdmissionCapture[] = [
+      restoreProvisioningCapture({ status: "pending" }),
       restoreProvisioningCapture({ status: "provisioning" }),
       restoreProvisioningCapture({ status: "running" }),
       restoreProvisioningCapture({ status: "deletion_pending" }),
       restoreProvisioningCapture({ status: "deletion_failed" }),
+      restoreProvisioningCapture({
+        lifecycle_job_id: "d9f62174-4c24-421e-bb93-192dc0a5882c",
+        lifecycle_execution_generation: "f35b93df-ad0d-480c-bf72-1e8fcb55de42",
+      }),
       restoreProvisioningCapture({ execution_tier: "shared" }),
       restoreProvisioningCapture({ pool_status: "unclaimed" }),
       restoreProvisioningCapture({ deleted_at: new Date("2026-08-23T00:00:00.000Z") }),
