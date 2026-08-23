@@ -11,6 +11,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Current `origin/develop` merged without conflict: `beeaa92f7f50759ffec1dc2a6014c3d7ec1f28e3`
 - Review-fix commit: `fce5adfebe4151dc4949de9b9927c6949d658730`
 - Reconciled code head before this ledger update: `640841cbb0bdff015d70ec0c5c6ba0feeacb2707`
+- Recoverable publication ref: local annotated tag `lifeops-pr24809-reconciled-20260823`; the original remote branch is updated only by normal fast-forward push and must resolve to the same tagged ledger checkpoint.
 - Git author: `nubs <nubs@nubs.site>`
 - The macOS native owner file `packages/app-core/platforms/electrobun/native/macos/window-effects.mm` was not edited.
 
@@ -19,6 +20,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - `git range-diff` proves the 21 LifeOps implementation/test/ledger commits through the published recovery checkpoint are exact `=` patch matches between the preserved local line and PR #24809. The three later local-only commits are protected-provider ledger updates; their current truth is consolidated here.
 - The reviewed PR history remains an ancestor of the candidate. Current `develop` also remains an ancestor. No rebase, reset, force-push, or review-history rewrite was used.
 - PR #24809 is closed/draft with `CHANGES_REQUESTED`; reviewer `lalalune` closed it after the prior cancelled static-smoke run. The branch can be updated normally, but the PR must not be reopened without reviewer direction.
+- GitHub retains the closed PR's displayed head at its closure commit even after the underlying same-repository branch advances. The updated branch preserves every reviewed commit; no replacement PR was opened.
 - Closed the four actionable review gaps: authoritative calendar source validation, byte-preserving opaque Gmail continuation tokens, all-or-nothing Gmail seed promotion with its History cursor, and fail-closed Google revocation plus protected credential cleanup with resumable partial-failure handling.
 - Added the canonical database/runtime credential-ref deletion contract, in-memory and SQL implementations, and a real PGlite atomic rollback proof.
 
