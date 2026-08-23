@@ -89,6 +89,7 @@ describe("account deletion reservation lifecycle", () => {
       userId: PERSONAL_USER_ID,
       organizationId: PERSONAL_ORGANIZATION_ID,
       stewardUserId: "steward-personal",
+      admissionCredential: "p".repeat(43),
       now: new Date("2026-08-22T12:00:00Z"),
     });
     expect(accepted.request).toMatchObject({
@@ -152,6 +153,7 @@ describe("account deletion reservation lifecycle", () => {
         userId: SHARED_USER_ID,
         organizationId: SHARED_ORGANIZATION_ID,
         stewardUserId: "steward-shared-member",
+        admissionCredential: "s".repeat(43),
       }),
     ).rejects.toMatchObject({
       code: "TRANSFER_REQUIRED",

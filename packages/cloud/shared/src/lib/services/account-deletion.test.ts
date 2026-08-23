@@ -1,10 +1,18 @@
 /** Verifies reserved deletion admission, opaque credentials, and fenced legacy claims. */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 const CLAIM_GENERATION = new Date("2026-09-18T00:00:01Z");
 const REQUESTED_AT = new Date("2026-08-19T00:00:00Z");
 const RECOVERY_AT = new Date("2026-09-18T00:00:00Z");
+const ADMISSION_CREDENTIAL = "a".repeat(43);
+
+function derivedCredential(kind: "status" | "recovery"): string {
+  return createHash("sha256")
+    .update(`account-deletion-${kind}:v1:${ADMISSION_CREDENTIAL}`)
+    .digest("base64url");
+}
 
 function reservedRequest(overrides: Record<string, unknown> = {}) {
   return {
@@ -21,6 +29,8 @@ function reservedRequest(overrides: Record<string, unknown> = {}) {
     status_token_expires_at: new Date("2026-12-17T00:00:00Z"),
     recovery_token_hash: "recovery-hash",
     recovery_token_expires_at: RECOVERY_AT,
+    admission_token_hash: createHash("sha256").update(ADMISSION_CREDENTIAL).digest("hex"),
+    admission_token_expires_at: RECOVERY_AT,
     request_digest: "request-digest",
     restore_auto_top_up_enabled: false,
     restore_pay_as_you_go_from_earnings: true,
@@ -91,6 +101,7 @@ const requestRepo = {
     }),
   ),
   findByStatusTokenHash: mock(async () => undefined),
+  findByAdmissionTokenHash: mock(async () => undefined),
   findCancelingRequestIds: mock(async () => []),
   finalizeCancellationIfComplete: mock(async () => false),
   findRecoveryPhaseCandidates: mock(async () => []),
@@ -142,9 +153,12 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
-const { cancelAccountDeletion, processDueAccountDeletions, requestAccountDeletion } = await import(
-  "./account-deletion"
-);
+const {
+  cancelAccountDeletion,
+  processDueAccountDeletions,
+  recoverAccountDeletionAdmission,
+  requestAccountDeletion,
+} = await import("./account-deletion");
 
 beforeEach(() => {
   reservePersonalAccountDeletion.mockReset();
@@ -227,6 +241,7 @@ describe("account deletion lifecycle", () => {
       userId: "11111111-1111-4111-8111-111111111111",
       organizationId: "22222222-2222-4222-8222-222222222222",
       stewardUserId: "steward-1",
+      admissionCredential: ADMISSION_CREDENTIAL,
       now: REQUESTED_AT,
     });
 
@@ -260,24 +275,55 @@ describe("account deletion lifecycle", () => {
         userId: "user-1",
         organizationId: "org-1",
         stewardUserId: "steward-1",
+        admissionCredential: ADMISSION_CREDENTIAL,
       }),
     ).rejects.toMatchObject({ code });
     expect(deactivateSteward).not.toHaveBeenCalled();
   });
 
-  test("rejects a replay without rotating capabilities or crossing a provider boundary", async () => {
+  test("re-delivers the first capabilities after a lost response without a second provider call", async () => {
+    const request = reservedRequest({
+      status_token_hash: createHash("sha256").update(derivedCredential("status")).digest("hex"),
+      recovery_token_hash: createHash("sha256").update(derivedCredential("recovery")).digest("hex"),
+    });
     reservePersonalAccountDeletion.mockResolvedValueOnce({
-      outcome: "existing",
-      request: reservedRequest(),
+      outcome: "replayed",
+      request,
+    });
+    const replay = await requestAccountDeletion({
+      userId: "user-1",
+      organizationId: "org-1",
+      stewardUserId: "steward-1",
+      admissionCredential: ADMISSION_CREDENTIAL,
+    });
+    expect(replay.statusCredential).toBe(derivedCredential("status"));
+    expect(replay.recoveryCredential).toBe(derivedCredential("recovery"));
+    expect(deactivateSteward).not.toHaveBeenCalled();
+  });
+
+  test("recovers a committed receipt without session identity and rejects hash drift", async () => {
+    const request = reservedRequest({
+      status_token_hash: createHash("sha256").update(derivedCredential("status")).digest("hex"),
+      recovery_token_hash: createHash("sha256").update(derivedCredential("recovery")).digest("hex"),
+    });
+    requestRepo.findByAdmissionTokenHash.mockResolvedValueOnce({
+      request,
+      exportReceipt: null,
     });
     await expect(
-      requestAccountDeletion({
-        userId: "user-1",
-        organizationId: "org-1",
-        stewardUserId: "steward-1",
-      }),
-    ).rejects.toMatchObject({ code: "REQUEST_REPLAYED" });
-    expect(deactivateSteward).not.toHaveBeenCalled();
+      recoverAccountDeletionAdmission(ADMISSION_CREDENTIAL, REQUESTED_AT),
+    ).resolves.toMatchObject({
+      statusCredential: derivedCredential("status"),
+      recoveryCredential: derivedCredential("recovery"),
+    });
+
+    requestRepo.findByAdmissionTokenHash.mockResolvedValueOnce({
+      request: reservedRequest({ status_token_hash: "corrupt" }),
+      exportReceipt: null,
+    });
+    await expect(
+      recoverAccountDeletionAdmission(ADMISSION_CREDENTIAL, REQUESTED_AT),
+    ).resolves.toBeNull();
   });
 
   test("returns actionable shared-owner state without mutating Steward", async () => {
@@ -290,6 +336,7 @@ describe("account deletion lifecycle", () => {
         userId: "user-1",
         organizationId: "org-1",
         stewardUserId: "steward-1",
+        admissionCredential: ADMISSION_CREDENTIAL,
       }),
     ).rejects.toMatchObject({
       code: "TRANSFER_REQUIRED",
@@ -304,6 +351,7 @@ describe("account deletion lifecycle", () => {
       userId: "user-1",
       organizationId: "org-1",
       stewardUserId: "steward-1",
+      admissionCredential: ADMISSION_CREDENTIAL,
     });
     expect(markPhaseForReconciliation).toHaveBeenCalledWith(
       expect.objectContaining({

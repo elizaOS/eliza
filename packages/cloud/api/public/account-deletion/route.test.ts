@@ -25,6 +25,10 @@ const requestAccountDeletion = mock(async () => ({
   statusCredential: "status-capability",
   recoveryCredential: "recovery-capability",
 }));
+const recoverAccountDeletionAdmission = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const admissionCredential = "a".repeat(43);
 const cancelAccountDeletion = mock(async (credential: string) => ({
   requestId: "33333333-3333-4333-8333-333333333333",
   status: "canceled",
@@ -55,6 +59,7 @@ mock.module("@/lib/services/account-deletion", () => ({
   AccountDeletionRecoveryError,
   cancelAccountDeletion,
   getAccountDeletionStatusByCredential,
+  recoverAccountDeletionAdmission,
   requestAccountDeletion,
 }));
 mock.module("@/lib/utils/logger", () => ({
@@ -69,6 +74,8 @@ beforeEach(() => {
   checkElizaMutatingRequestOrigin.mockReturnValue({ ok: true });
   getAccountDeletionStatusByCredential.mockClear();
   requestAccountDeletion.mockClear();
+  recoverAccountDeletionAdmission.mockReset();
+  recoverAccountDeletionAdmission.mockResolvedValue(null);
   cancelAccountDeletion.mockClear();
 });
 
@@ -108,7 +115,7 @@ describe("/api/public/account-deletion", () => {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirmation: "DELETE" }),
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
       },
       { NODE_ENV: "production" },
     );
@@ -134,7 +141,7 @@ describe("/api/public/account-deletion", () => {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirmation: "DELETE" }),
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
       },
       { NODE_ENV: "test" },
     );
@@ -143,7 +150,29 @@ describe("/api/public/account-deletion", () => {
       userId: "11111111-1111-4111-8111-111111111111",
       organizationId: "22222222-2222-4222-8222-222222222222",
       stewardUserId: "steward-1",
+      admissionCredential,
     });
+  });
+
+  test("replays a committed admission after session revocation without new provider work", async () => {
+    recoverAccountDeletionAdmission.mockResolvedValueOnce({
+      request: { requestId: "33333333-3333-4333-8333-333333333333", status: "reserved" },
+      statusCredential: "s".repeat(43),
+      recoveryCredential: "r".repeat(43),
+    });
+    const response = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
+      },
+      { NODE_ENV: "test" },
+    );
+    expect(response.status).toBe(202);
+    expect(recoverAccountDeletionAdmission).toHaveBeenCalledWith(admissionCredential);
+    expect(requireRecentSessionUserWithOrg).not.toHaveBeenCalled();
+    expect(requestAccountDeletion).not.toHaveBeenCalled();
   });
 
   test("undo requires the separate recovery capability and exact confirmation", async () => {

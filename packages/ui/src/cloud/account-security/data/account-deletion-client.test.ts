@@ -66,7 +66,10 @@ describe("account deletion capability client", () => {
 
     expect(apiMock).toHaveBeenCalledWith("/api/v1/me/account-deletion", {
       method: "POST",
-      json: { confirmation: "DELETE" },
+      json: {
+        confirmation: "DELETE",
+        admissionCredential: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      },
     });
     expect(
       window.sessionStorage.getItem("eliza.account-deletion.status.v1"),
@@ -74,6 +77,36 @@ describe("account deletion capability client", () => {
     expect(
       window.sessionStorage.getItem("eliza.account-deletion.recovery.v1"),
     ).toBe(recoveryCredential);
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.admission.v1"),
+    ).toBeNull();
+  });
+
+  it("reuses the precommitted admission credential when the accepted response is lost", async () => {
+    apiMock.mockRejectedValueOnce(new TypeError("network response lost"));
+    await expect(submitAccountDeletion()).rejects.toThrow(
+      "network response lost",
+    );
+    const retained = window.sessionStorage.getItem(
+      "eliza.account-deletion.admission.v1",
+    );
+    expect(retained).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    apiMock.mockResolvedValueOnce({
+      request,
+      statusCredential,
+      recoveryCredential,
+    });
+    await expect(submitAccountDeletion()).resolves.toMatchObject({ request });
+    expect(apiMock.mock.calls[0]?.[1]).toMatchObject({
+      json: { admissionCredential: retained },
+    });
+    expect(apiMock.mock.calls[1]?.[1]).toMatchObject({
+      json: { admissionCredential: retained },
+    });
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.admission.v1"),
+    ).toBeNull();
   });
 
   it("reads post-session status only through the header capability", async () => {
@@ -194,6 +227,9 @@ describe("account deletion capability client", () => {
     expect(
       window.sessionStorage.getItem("eliza.account-deletion.recovery.v1"),
     ).toBeNull();
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.admission.v1"),
+    ).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 
   it("rejects incompatible terminal cancellation projections", async () => {

@@ -42,6 +42,9 @@ describe("Android Play account-deletion contract", () => {
     const publicRoute = read("cloud/api/public/account-deletion/route.ts");
     const lifecycle = read("cloud/shared/src/lib/services/account-deletion.ts");
     const lifecycleTypes = read("cloud/shared/src/types/account-lifecycle.ts");
+    const deletionClient = read(
+      "ui/src/cloud/account-security/data/account-deletion-client.ts",
+    );
     const repository = read(
       "cloud/shared/src/db/repositories/account-deletion-requests.ts",
     );
@@ -55,6 +58,7 @@ describe("Android Play account-deletion contract", () => {
     );
     expect(route).toContain('body.confirmation !== "DELETE"');
     expect(route).toContain("requireRecentSessionUserWithOrg");
+    expect(route).toContain("recoverAccountDeletionAdmission");
     expect(route).toContain("checkElizaMutatingRequestOrigin");
     expect(publicRoute).toContain('header("X-Account-Deletion-Status")');
     expect(publicRoute).toContain('header("X-Account-Deletion-Recovery")');
@@ -66,6 +70,9 @@ describe("Android Play account-deletion contract", () => {
     expect(lifecycleTypes).toContain(
       'accessState: "fenced" | "active" | "erased"',
     );
+    expect(lifecycleTypes).toContain("AccountDeletionRequestBodyDto");
+    expect(deletionClient).toContain("getOrCreateAdmissionCredential");
+    expect(deletionClient).toContain("admissionCredential");
     expect(lifecycle).toContain('"TRANSFER_REQUIRED"');
     expect(lifecycle).toContain('"LIFECYCLE_RESERVATION_REQUIRED"');
     expect(lifecycle).toContain("reservePersonalAccountDeletion");

@@ -25,14 +25,27 @@ request after the exact `DELETE` confirmation. Under locked user, organization,
 and membership rows it creates one durable lifecycle reservation and phase
 receipts, issues separate opaque status and recovery capabilities, and fences
 sessions, paid work, auto-top-up, renewal, and provisioning before provider
-work. Replayed requests never create a second reservation.
+work. Before POST, clients generate and session-retain a 32-byte opaque
+`admissionCredential`; only its hash is stored. If the committed response is
+lost after sessions are fenced, retrying the same exact request re-delivers the
+first deterministic status and recovery capabilities before session auth and
+never creates a second reservation or provider call.
+
+The stable request body for both `POST /api/v1/me/account-deletion` and
+`POST /api/public/account-deletion` is
+`{ confirmation: "DELETE", admissionCredential: <43-character base64url> }`.
+Clients must create and persist that credential before the first POST, reuse it
+after transport failure, and remove it only after validating and persisting the
+accepted status and recovery capabilities. The exported
+`AccountDeletionRequestBodyDto` is the typed Android/shared-renderer contract.
 
 - Shared membership or ownership that cannot be removed safely returns the
   actionable `TRANSFER_REQUIRED` state. It never deletes shared assets, cancels
   shared billing, or leaves an organization with no active owner.
 - Cancellation is nonterminal `canceling` while export revocation and Steward
   reactivation reconcile. Access remains fenced until both receipts complete;
-  only terminal `canceled` restores active access.
+  the recovery credential remains retryable while cleanup is nonterminal, and
+  only terminal `canceled` restores active access and retires recovery authority.
 - After the recovery boundary, a leased and generation-fenced saga inspects
   before every provider mutation and reconciles ambiguous responses rather than
   repeating them. Database erasure and identifier nulling commit atomically
@@ -109,9 +122,10 @@ logging, and bundled SDK behavior.
 ## Pre-publication gates
 
 - Apply the foundational `0276_account_deletion_requests` migration followed by
-  lifecycle migrations `0305` through `0308` to disposable staging, never
-  directly to production first. Verify the migration ledger is linear after
-  upstream `0304` before promotion.
+  lifecycle migrations `0312` through `0316` to disposable staging, never
+  directly to production first. Verify the migration ledger preserves upstream
+  `0311_personal_shared_group_participants` and is linear through
+  `0316_account_deletion_admission_recovery` before promotion.
 - Review the durable lifecycle reservation, cancellation reconciliation,
   export, provider saga, and atomic erasure authority tracked by #23098.
 - Configure `STEWARD_PLATFORM_KEYS` with both

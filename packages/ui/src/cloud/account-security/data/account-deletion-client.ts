@@ -9,6 +9,7 @@ import { signOutFromSsoBridgedHost } from "../../sso-bridge/sso-bridge";
 
 const STATUS_CREDENTIAL_KEY = "eliza.account-deletion.status.v1";
 const RECOVERY_CREDENTIAL_KEY = "eliza.account-deletion.recovery.v1";
+const ADMISSION_CREDENTIAL_KEY = "eliza.account-deletion.admission.v1";
 const volatileCredentials = new Map<string, string>();
 
 const ACCOUNT_DELETION_STATUSES = new Set<AccountDeletionStatusDto["status"]>([
@@ -196,9 +197,7 @@ function parseAccepted(value: unknown): AccountDeletionAcceptedDto {
 function readSessionCredential(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return (
-      window.sessionStorage.getItem(key) ?? volatileCredentials.get(key) ?? null
-    );
+    return window.sessionStorage.getItem(key);
   } catch {
     // error-policy:J4 a storage-denied browser retains capabilities only for
     // the current renderer lifetime and never substitutes a public identifier.
@@ -228,6 +227,25 @@ function removeSessionCredential(key: string): void {
   }
 }
 
+function createAdmissionCredential(): string {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("This browser cannot create secure deletion authority.");
+  }
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function getOrCreateAdmissionCredential(): string {
+  const current = readSessionCredential(ADMISSION_CREDENTIAL_KEY);
+  if (current && /^[A-Za-z0-9_-]{43}$/.test(current)) return current;
+  const created = createAdmissionCredential();
+  writeSessionCredential(ADMISSION_CREDENTIAL_KEY, created);
+  return created;
+}
+
 export function rememberAccountDeletionCapabilities(
   accepted: AccountDeletionAcceptedDto,
 ): void {
@@ -236,13 +254,17 @@ export function rememberAccountDeletionCapabilities(
 }
 
 export async function submitAccountDeletion(): Promise<AccountDeletionAcceptedDto> {
+  // Persist before the destructive request. A network failure leaves this
+  // one-time authority available to recover the already-committed receipt.
+  const admissionCredential = getOrCreateAdmissionCredential();
   const accepted = parseAccepted(
     await api<unknown>("/api/v1/me/account-deletion", {
       method: "POST",
-      json: { confirmation: "DELETE" },
+      json: { confirmation: "DELETE", admissionCredential },
     }),
   );
   rememberAccountDeletionCapabilities(accepted);
+  removeSessionCredential(ADMISSION_CREDENTIAL_KEY);
   return accepted;
 }
 

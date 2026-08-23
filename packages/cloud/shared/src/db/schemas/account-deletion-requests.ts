@@ -45,6 +45,8 @@ export const accountDeletionRequests = pgTable(
     status_token_expires_at: timestamp("status_token_expires_at"),
     recovery_token_hash: text("recovery_token_hash"),
     recovery_token_expires_at: timestamp("recovery_token_expires_at"),
+    admission_token_hash: text("admission_token_hash"),
+    admission_token_expires_at: timestamp("admission_token_expires_at"),
     request_digest: text("request_digest"),
     restore_auto_top_up_enabled: boolean("restore_auto_top_up_enabled"),
     restore_pay_as_you_go_from_earnings: boolean("restore_pay_as_you_go_from_earnings"),
@@ -73,6 +75,9 @@ export const accountDeletionRequests = pgTable(
     recovery_token_idx: uniqueIndex("account_deletion_requests_recovery_token_idx")
       .on(table.recovery_token_hash)
       .where(sql`${table.recovery_token_hash} IS NOT NULL`),
+    admission_token_idx: uniqueIndex("account_deletion_requests_admission_token_idx")
+      .on(table.admission_token_hash)
+      .where(sql`${table.admission_token_hash} IS NOT NULL`),
     one_open_request_per_user: uniqueIndex("account_deletion_requests_one_open_user_idx")
       .on(table.user_id)
       .where(sql`${table.completed_at} IS NULL AND ${table.user_id} IS NOT NULL`),
@@ -83,6 +88,10 @@ export const accountDeletionRequests = pgTable(
     operation_kind_check: check(
       "account_deletion_requests_operation_kind_check",
       sql`${table.operation_kind} = 'personal_account_deletion'`,
+    ),
+    admission_pair_check: check(
+      "account_deletion_requests_admission_pair_check",
+      sql`(${table.admission_token_hash} IS NULL) = (${table.admission_token_expires_at} IS NULL)`,
     ),
     attempts_check: check(
       "account_deletion_requests_attempts_check",

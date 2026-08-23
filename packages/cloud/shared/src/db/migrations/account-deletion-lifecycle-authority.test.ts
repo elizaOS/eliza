@@ -10,6 +10,7 @@ const migrationNames = [
   "0313_account_deletion_phase_receipts.sql",
   "0314_account_deletion_exports.sql",
   "0315_account_deletion_canceling_state.sql",
+  "0316_account_deletion_admission_recovery.sql",
 ] as const;
 const migrations = await Promise.all(
   migrationNames.map(async (name) => await readFile(new URL(`./${name}`, import.meta.url), "utf8")),
@@ -144,5 +145,25 @@ describe("account deletion lifecycle authority migrations", () => {
            '10000000-0000-4000-8000-000000000001', 'steward-test', now());
       `),
     ).rejects.toThrow(/account_deletion_requests_one_open_user_idx/);
+  });
+
+  test("binds response-loss admission authority as an all-or-nothing hash pair", async () => {
+    const database = await createDatabase();
+    await expect(
+      database.exec("UPDATE account_deletion_requests SET admission_token_hash = 'digest-only'"),
+    ).rejects.toThrow(/account_deletion_requests_admission_pair_check/);
+    await database.exec(`
+      UPDATE account_deletion_requests
+      SET admission_token_hash = 'digest', admission_token_expires_at = now() + interval '1 day'
+    `);
+    await expect(
+      database.exec(`
+        INSERT INTO account_deletion_requests
+          (user_id, organization_id, steward_user_id, execute_after,
+           admission_token_hash, admission_token_expires_at)
+        VALUES
+          (NULL, NULL, NULL, now(), 'digest', now() + interval '1 day')
+      `),
+    ).rejects.toThrow(/account_deletion_requests_admission_token_idx/);
   });
 });
