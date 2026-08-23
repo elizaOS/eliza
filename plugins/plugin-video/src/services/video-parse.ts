@@ -14,7 +14,9 @@ export function parseYtDlpUploadDate(
     const day = Number(compact[3]);
     // Date.UTC overflows invalid calendar days (e.g. 20240231 → March 2).
     // Round-trip Y/M/D so impossible compact dates reject as undefined.
-    const parsed = new Date(Date.UTC(year, month - 1, day));
+    const d = new Date(0);
+    d.setUTCFullYear(year, month - 1, day);
+    const parsed = d;
     if (
       Number.isNaN(parsed.getTime()) ||
       parsed.getUTCFullYear() !== year ||

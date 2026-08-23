@@ -376,16 +376,10 @@ function validateDateParts(parts: {
   minute?: number;
   second?: number;
 }): void {
-  const candidate = new Date(
-    Date.UTC(
-      parts.year,
-      parts.month - 1,
-      parts.day,
-      parts.hour ?? 0,
-      parts.minute ?? 0,
-      parts.second ?? 0,
-    ),
-  );
+  const d = new Date(0);
+  d.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  d.setUTCHours(parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0, 0);
+  const candidate = d;
   if (
     candidate.getUTCFullYear() !== parts.year ||
     candidate.getUTCMonth() + 1 !== parts.month ||
@@ -467,17 +461,10 @@ function parseDateProperty(
     );
   }
   const timezone = resolveEventTimeZone(rawTimezone, field);
-  const instant = isUtc
-    ? new Date(
-        Date.UTC(
-          parts.year,
-          parts.month - 1,
-          parts.day,
-          parts.hour,
-          parts.minute,
-          parts.second,
-        ),
-      ).toISOString()
+  const dUtc = new Date(0);
+  dUtc.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  dUtc.setUTCHours(parts.hour, parts.minute, parts.second, 0);
+  const instant = isUtc ? dUtc.toISOString()
     : normalizeCalendarDateTimeInTimeZone(
         `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]}T${dateTimeMatch[4]}:${dateTimeMatch[5]}:${dateTimeMatch[6] ?? "00"}`,
         field,
