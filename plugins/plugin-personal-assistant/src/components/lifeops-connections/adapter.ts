@@ -8,7 +8,7 @@ import type {
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/shared";
 import { client } from "@elizaos/ui/api";
-import { navigateBrowserPath } from "@elizaos/ui/app-navigate-view";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 import type { LifeOpsElizaClientMethods } from "../../api/client-lifeops.js";
 import type {
   LifeOpsConnectionsAdapter,
@@ -233,7 +233,11 @@ export const defaultLifeOpsConnectionsAdapter: LifeOpsConnectionsAdapter = {
   openApplePermissionSettings: () =>
     lifeOpsClient.openPermissionSettings("calendar"),
   navigate(path) {
-    navigateBrowserPath(path);
+    dispatchNavigateViewEvent({
+      viewId: path === "/inbox" ? "inbox" : "calendar",
+      viewPath: path,
+      source: "user",
+    });
   },
 };
 
