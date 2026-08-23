@@ -22,6 +22,7 @@
  * We don't take a hard dependency on the trajectory-logger plugin from here.
  */
 
+import { createHash } from "node:crypto";
 import {
   type Action,
   type ActionResult,
@@ -93,6 +94,8 @@ export interface ComputerUseAgentParams {
    * screenshots in the bounded history. Off (unbounded) when unset.
    */
   imageRetentionLast?: number;
+  /** Host-owned cancellation signal; never accepted from serialized model input. */
+  signal?: AbortSignal;
 }
 
 /** One per-step progress event, surfaced when `streamProgress` is set. */
@@ -142,12 +145,34 @@ export interface ComputerUseAgentReport {
     result: { success: boolean; error?: string };
   }>;
   finished: boolean;
-  reason: "finish" | "max_steps" | "error" | "budget";
+  reason:
+    | "finish"
+    | "max_steps"
+    | "error"
+    | "budget"
+    | "cancelled"
+    | "repeated_action";
   error?: string;
   /** Per-step transcript recorded by the trajectory middleware (#9170 M11). */
   trajectory?: TrajectoryEntry[];
   /** Per-run model-call accounting, when the loop reports it (#9105). */
   modelStats?: AgentLoopStats;
+}
+
+function captureDigest(captures: Map<number, DisplayCapture>): string {
+  const hash = createHash("sha256");
+  for (const [displayId, capture] of [...captures.entries()].sort(
+    ([left], [right]) => left - right,
+  )) {
+    hash.update(String(displayId));
+    hash.update("\0");
+    hash.update(capture.frame);
+  }
+  return hash.digest("hex");
+}
+
+function proposedActionDigest(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 export function formatComputerUseAgentProgress(
@@ -210,6 +235,8 @@ export async function runComputerUseAgentLoop(
   const captureAll = deps.captureAll ?? captureAllDisplays;
   const now = deps.now ?? Date.now;
   const runStart = now();
+  let previousActionDigest: string | null = null;
+  let previousCaptureDigest: string | null = null;
 
   // Callback middleware pipeline (#9170 M11). Default = operator-normalizer
   // (clean the planned action) + trajectory (in-memory transcript), plus
@@ -273,6 +300,11 @@ export async function runComputerUseAgentLoop(
   await runOnRunStart(middlewares, { goal, maxSteps });
 
   for (let step = 1; step <= maxSteps; step += 1) {
+    if (params.signal?.aborted) {
+      report.reason = "cancelled";
+      report.error = "computer-use run cancelled by its owner";
+      return finalize();
+    }
     const stepCtx = { step, maxSteps, goal, elapsedMs: now() - runStart };
     const decision = await runBeforeStep(middlewares, stepCtx);
     if (decision.abort) {
@@ -298,6 +330,11 @@ export async function runComputerUseAgentLoop(
       return finalize();
     }
     await runOnCaptures(middlewares, captures, stepCtx);
+    if (params.signal?.aborted) {
+      report.reason = "cancelled";
+      report.error = "computer-use run cancelled by its owner";
+      return finalize();
+    }
     let proposed: Awaited<ReturnType<typeof loop.predictStep>>;
     try {
       proposed = await loop.predictStep({ scene, goal, captures });
@@ -315,6 +352,24 @@ export async function runComputerUseAgentLoop(
     // Persist the Brain's understanding onto the scene (#9105 M3) so the next
     // turn's `scene` provider carries `vlm_scene` instead of re-describing.
     service.setSceneVlmAnnotations(proposed.scene_summary, null);
+    if (params.signal?.aborted) {
+      report.reason = "cancelled";
+      report.error = "computer-use run cancelled by its owner";
+      return finalize();
+    }
+    const currentActionDigest = proposedActionDigest(proposed.proposed);
+    const currentCaptureDigest = captureDigest(captures);
+    if (
+      proposed.proposed.kind !== "wait" &&
+      proposed.proposed.kind !== "finish" &&
+      currentActionDigest === previousActionDigest &&
+      currentCaptureDigest === previousCaptureDigest
+    ) {
+      report.reason = "repeated_action";
+      report.error =
+        "repeated action on an unchanged screen was blocked; fresh owner intent is required";
+      return finalize();
+    }
     const dispatchResult = await dispatch(proposed.proposed, {
       interface: computer,
       listDisplays: () => service.getDisplays(),
@@ -370,6 +425,8 @@ export async function runComputerUseAgentLoop(
       report.error = dispatchResult.error?.message;
       return finalize();
     }
+    previousActionDigest = currentActionDigest;
+    previousCaptureDigest = currentCaptureDigest;
     if (proposed.proposed.kind === "finish") {
       report.finished = true;
       report.reason = "finish";

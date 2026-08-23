@@ -1388,7 +1388,13 @@ async function forceRemoteBundleAuditRoute(
         body: JSON.stringify({
           sessions: [
             {
+              contractVersion: 2,
               id: "audit-browser",
+              ownerId: "audit-owner",
+              adapterId: "browser:chrome-profile",
+              canonicalState: "ready",
+              isolationMode: "exclusive_target",
+              generation: 1,
               label: "Research browser",
               target: { kind: "browser", targetId: "chrome-profile" },
               status: "idle",
@@ -1401,9 +1407,26 @@ async function forceRemoteBundleAuditRoute(
                 updatedAt: "2026-08-19T00:00:12.000Z",
               },
               lastCommand: "browser_click",
+              lastObservation: {
+                observationId: "audit-browser:observation:12",
+                sequence: 12,
+                observedAt: "2026-08-19T00:00:12.000Z",
+                sha256:
+                  "edee29f882543b956620b57ce980341d7304d4a09a5c4860f616185c9fc0f584",
+                mimeType: "image/png",
+                source: "browser",
+                width: 1280,
+                height: 720,
+              },
             },
             {
+              contractVersion: 2,
               id: "audit-sandbox",
+              ownerId: "audit-owner",
+              adapterId: "sandbox:qemu-linux",
+              canonicalState: "running",
+              isolationMode: "exclusive_target",
+              generation: 1,
               label: "Linux sandbox",
               target: { kind: "sandbox", targetId: "qemu-linux" },
               status: "running",
@@ -1413,6 +1436,23 @@ async function forceRemoteBundleAuditRoute(
               lastCommand: "mouse_move",
             },
           ],
+          events: [
+            {
+              eventId: 1,
+              type: "action_completed",
+              sessionId: "audit-browser",
+              occurredAt: "2026-08-19T00:00:12.000Z",
+              command: "browser_click",
+              outcomeStatus: "succeeded",
+            },
+          ],
+          readiness: {
+            capture: { available: true, tool: "screencapture" },
+            input: { available: true, tool: "cliclick" },
+            browser: { available: true, tool: "browser-bridge" },
+            vision: { available: true, modelType: "IMAGE_DESCRIPTION" },
+            approvalMode: "ask",
+          },
         }),
       });
     });
@@ -1429,6 +1469,17 @@ async function forceRemoteBundleAuditRoute(
               capturedAt: "2026-08-19T00:00:13.000Z",
               width: 1280,
               height: 720,
+              provenance: {
+                observationId: "audit-browser:observation:13",
+                sequence: 13,
+                observedAt: "2026-08-19T00:00:13.000Z",
+                sha256:
+                  "9a1f7b9f13c8fc64b5f60f5034ef77e60e9c45ef0d8c109c56f6c38a9eb966af",
+                mimeType: "image/png",
+                source: "browser",
+                width: 1280,
+                height: 720,
+              },
             },
           }),
         });

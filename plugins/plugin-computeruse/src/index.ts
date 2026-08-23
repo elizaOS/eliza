@@ -77,6 +77,14 @@ const computerUseRoutes: Route[] = [
     rawPath: true,
     handler: computerUseRouteHandler(),
   },
+  ...(["pause", "resume", "stop"] as const).map(
+    (operation): Route => ({
+      type: "POST",
+      path: `/api/computer-use/sessions/:id/${operation}`,
+      rawPath: true,
+      handler: computerUseRouteHandler(),
+    }),
+  ),
   {
     type: "GET",
     path: "/api/computer-use/sessions/:id/frame",
