@@ -16,6 +16,12 @@ import {
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
+function testPublicGroundingEvidence(url: string, text: string) {
+  return {
+    sourceUrls: [url],
+    sources: [{ url, text }],
+  };
+}
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
 const storedTodos: StoredTodo[] = [];
 const storedTodoMutations: TodoMutationRecord[] = [];
@@ -455,7 +461,7 @@ describe("Shared Eliza Workerd runtime", () => {
         model: "gemma-4-31b",
       },
       history: [],
-      message: "What is one small way to reset my focus?",
+      message: "What is one small way to reset focus?",
       messageIds: {
         user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
         assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
@@ -503,9 +509,10 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ stream: true });
-    expect(JSON.stringify(requests[0])).toContain("What is one small way to reset my focus?");
+    expect(JSON.stringify(requests[0])).toContain("What is one small way to reset focus?");
     expect(JSON.stringify(requests[0])).not.toContain("Opening Focus for you");
     expect(JSON.stringify(requests[0])).not.toContain('"name":"VIEWS"');
+    expect(JSON.stringify(requests[0])).not.toContain('"name":"WEB_SEARCH"');
     expect(reportSpy).toHaveBeenCalledWith("SharedElizaRuntime.timingObserver", expect.any(Error), {
       traceId: "trace-observer-nonfatal",
     });
@@ -1003,7 +1010,15 @@ describe("Shared Eliza Workerd runtime", () => {
             content: [
               {
                 type: "text",
-                text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
+                text: JSON.stringify({
+                  results: [
+                    {
+                      url: "https://elizaos.ai/news",
+                      title: "ElizaOS public release",
+                      text: "A new ElizaOS public release was announced today.",
+                    },
+                  ],
+                }),
               },
             ],
           },
@@ -1095,13 +1110,13 @@ describe("Shared Eliza Workerd runtime", () => {
               role: "assistant",
               content:
                 call === 5
-                  ? "A new ElizaOS public release was announced today, according to the project news page."
+                  ? "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]"
                   : JSON.stringify({
                       success: true,
                       decision: "FINISH",
                       thought: "Answer from the public result.",
                       messageToUser:
-                        "A new ElizaOS public release was announced today, according to the project news page.",
+                        "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]",
                     }),
             },
             finish_reason: "stop",
@@ -1120,6 +1135,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       history: [],
       message: "What is the latest ElizaOS news?",
+      capabilityText: "What is the latest ElizaOS news?",
       messageIds: {
         user: "6328e4cb-4a1f-4d9c-a2fd-769e5fd33aa1",
         assistant: "059e33bc-8215-49f4-841f-7642e7505bc7",
@@ -1136,24 +1152,53 @@ describe("Shared Eliza Workerd runtime", () => {
       method: "tools/call",
       params: {
         name: "web_search",
-        arguments: { objective: "latest ElizaOS news" },
+        arguments: { objective: "What is the latest ElizaOS news?" },
       },
     });
-    expect(result.reply).toBe(
-      "A new ElizaOS public release was announced today, according to the project news page.",
+    expect(result.reply).toStartWith("A new ElizaOS public release was announced today.");
+    expect(result.reply).toContain("Source: elizaos.ai — https://elizaos.ai/news");
+    expect(result.reply).toContain("parallel, checked ");
+    const searchResults = result.actionResults?.filter(
+      (action) => action.data?.actionName === "WEB_SEARCH",
     );
-    expect(modelRequests).toHaveLength(3);
+    expect(searchResults).toHaveLength(1);
+    expect(searchResults?.[0]).toMatchObject({
+      success: true,
+      data: { query: "What is the latest ElizaOS news?" },
+    });
+    expect(JSON.stringify(searchResults)).not.toContain('"sources"');
+    expect(JSON.stringify(searchResults)).not.toContain("search_id");
+    expect(modelRequests).toHaveLength(5);
     expect(result.usage).toMatchObject({
-      promptTokens: 120,
-      completionTokens: 36,
-      totalTokens: 156,
+      promptTokens: 220,
+      completionTokens: 64,
+      totalTokens: 284,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
-      query: "latest ElizaOS news",
+      query: "What is the latest ElizaOS news?",
       provider: "parallel",
-      text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
+      text: JSON.stringify({
+        results: [
+          {
+            url: "https://elizaos.ai/news",
+            title: "ElizaOS public release",
+            text: "A new ElizaOS public release was announced today.",
+          },
+        ],
+      }),
       observedAt: expect.any(Number),
+      sourceUrls: ["https://elizaos.ai/news"],
+      sources: [
+        {
+          url: "https://elizaos.ai/news",
+          text: JSON.stringify({
+            url: "https://elizaos.ai/news",
+            title: "ElizaOS public release",
+            text: "A new ElizaOS public release was announced today.",
+          }),
+        },
+      ],
       truncated: false,
     });
   });
@@ -1224,6 +1269,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
             observedAt: observedAt - 2,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             truncated: false,
           },
         },
@@ -1238,6 +1287,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "parallel",
             text: adversarialResult,
             observedAt: observedAt - 1,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              adversarialResult,
+            ),
             truncated: false,
           },
         },
@@ -1472,6 +1525,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
             observedAt: observedAt - 2,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             truncated: false,
           },
         },
@@ -1486,6 +1543,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "parallel",
             text: "Tessera validates ARC resources through an origin guard and credential relay.",
             observedAt: observedAt - 1,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              "Tessera validates ARC resources through an origin guard and credential relay.",
+            ),
             truncated: false,
           },
         },
@@ -2277,6 +2338,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
     expect(modelRequests).toHaveLength(2);
+    expect(JSON.stringify(modelRequests)).not.toContain('"name":"WEB_SEARCH"');
     expect(result.actionResults?.[0]).toMatchObject({
       verifiedUserFacing: true,
       effectReceipts: [
