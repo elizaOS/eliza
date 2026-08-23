@@ -44,6 +44,7 @@ import {
 	type UUID,
 	type World,
 } from "./types";
+import { buildAccessContext } from "./access-context.ts";
 import * as utils from "./utils";
 import { stableStringify } from "./utils/deterministic";
 
@@ -505,10 +506,12 @@ export async function findEntityByName(
 
 	// Complete room transcript: this is model-facing resolution context, so a
 	// single unbounded read (no LIMIT clause) — not a page or window — feeds it.
+	const accessContext = await buildAccessContext(runtime, message);
 	const recentMessages = await runtime.getMemories({
 		tableName: "messages",
 		roomId: room.id,
 		includeEmbedding: false,
+		accessContext,
 	});
 	const interactionData = await getRecentInteractions(
 		message.entityId,
