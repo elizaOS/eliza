@@ -4619,6 +4619,25 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
     expect(document.getElementById("continuous-thread")).not.toBeNull();
     expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
   });
+
+  it("reads as loading, not designed-empty, when opened during boot-time hydration", () => {
+    // A programmatic open (boot-recovery, deep link) can expand the sheet
+    // before the server transcript has hydrated. An empty sheet there is a
+    // loading state, never a broken empty box.
+    const { rerender } = render(<ChatOverlay controller={makeController()} />);
+    openSheetToHalf();
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "booting",
+          messages: [],
+          conversationLoading: false,
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
+  });
 });
 
 describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
