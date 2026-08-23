@@ -175,6 +175,29 @@ export interface HeadscaleUser {
   name: string;
 }
 
+function nodeByNameOrSuffixed(
+  nodes: readonly HeadscaleNode[],
+  name: string,
+  options?: { excludeNodeId?: string; createdAfter?: Date },
+): HeadscaleNode | null {
+  const exact = nodes.find((node) => node.name === name && node.id !== options?.excludeNodeId);
+  if (exact) return exact;
+
+  // Anchored on Headscale's exact collision-rename shape. The creation gate
+  // prevents cleanup or routing from adopting an older sibling or orphan.
+  const suffixPattern = new RegExp(`^${escapeRegExp(name)}-[a-z0-9]{8}$`);
+  const createdAfterMs = options?.createdAfter?.getTime();
+  const candidates = nodes.filter(
+    (node) =>
+      node.id !== options?.excludeNodeId &&
+      suffixPattern.test(node.name) &&
+      (createdAfterMs === undefined || Date.parse(node.createdAt) >= createdAfterMs),
+  );
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => Number(b.id) - Number(a.id));
+  return candidates[0];
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -268,25 +291,20 @@ export class HeadscaleClient {
     options?: { excludeNodeId?: string; createdAfter?: Date },
   ): Promise<HeadscaleNode | null> {
     const nodes = await this.listNodes();
-    const exact = nodes.find((n) => n.name === name && n.id !== options?.excludeNodeId);
-    if (exact) return exact;
+    return nodeByNameOrSuffixed(nodes, name, options);
+  }
 
-    // Anchored on Headscale's exact rename shape: a sibling agent's hostname
-    // (`<name>-<12-char uuid prefix>`, hyphen at index 8) shares the `<name>-`
-    // prefix but must never be adopted as a rename of `name`.
-    const suffixPattern = new RegExp(`^${escapeRegExp(name)}-[a-z0-9]{8}$`);
-    const createdAfterMs = options?.createdAfter?.getTime();
-    const candidates = nodes.filter(
-      (n) =>
-        n.id !== options?.excludeNodeId &&
-        suffixPattern.test(n.name) &&
-        (createdAfterMs === undefined || Date.parse(n.createdAt) >= createdAfterMs),
-    );
-    if (candidates.length === 0) return null;
-    // Headscale ids are numeric strings; lexicographic order would rank "9"
-    // above "10", so compare numerically to get the newest registration.
-    candidates.sort((a, b) => Number(b.id) - Number(a.id));
-    return candidates[0];
+  /**
+   * Strict collision-aware lookup for security-sensitive cleanup. Unlike the
+   * best-effort discovery helper, this propagates a failed Headscale listing
+   * and therefore never clears durable compensation state on uncertainty.
+   */
+  async getNodeByNameOrSuffixedStrict(
+    name: string,
+    options?: { excludeNodeId?: string; createdAfter?: Date },
+  ): Promise<HeadscaleNode | null> {
+    const nodes = await this.listNodesStrict();
+    return nodeByNameOrSuffixed(nodes, name, options);
   }
 
   /** Rename a node's givenName (POST /api/v1/node/{nodeId}/rename/{newName}). */

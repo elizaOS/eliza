@@ -101,17 +101,19 @@ realPostgresTest(
         SELECT conname AS name, pg_get_constraintdef(oid) AS definition
         FROM pg_constraint
         WHERE conname IN (
+          'remote_hosts_status_check',
           'remote_sessions_exactly_one_target_check',
           'remote_sessions_host_authority_shape_check',
           'remote_command_envelopes_lifecycle_shape_check'
         )
         ORDER BY conname
       `);
-      expect(constraints.rows).toHaveLength(3);
+      expect(constraints.rows).toHaveLength(4);
       const definitions = constraints.rows
         .map((row) => `${row.name}: ${row.definition}`)
         .join("\n");
       expect(definitions).toContain("execution_ambiguous");
+      expect(definitions).toContain("pending");
       expect(definitions).toContain("controller_device_id");
       expect(definitions).toContain("host_id");
     } finally {

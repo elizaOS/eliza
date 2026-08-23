@@ -13,6 +13,7 @@ export interface ManagedNetworkConfig {
 
 export interface ManagedNetworkHost {
   id: string;
+  created_at?: Date;
   headscale_hostname?: string | null;
   headscale_preauth_key_id?: string | null;
   headscale_cleanup_pending?: boolean;
@@ -201,7 +202,9 @@ export async function cleanupManagedNetwork(input: {
   const hostname = input.host.headscale_hostname;
   if (hostname) {
     try {
-      const node = await client.getNodeByNameStrict(hostname);
+      const node = await client.getNodeByNameOrSuffixedStrict(hostname, {
+        createdAfter: input.host.created_at,
+      });
       if (node) await client.deleteNode(node.id);
     } catch (cause) {
       failures.push(cause);

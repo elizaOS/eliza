@@ -6,7 +6,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { canonicalizeRemoteControlValue } from "@elizaos/shared/contracts/remote-control";
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, type SQL } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import { dbWrite } from "../helpers";
@@ -66,7 +66,7 @@ export class RemoteHostsRepository {
       !input.device_id ||
       !input.runtime_key_id ||
       !input.host_token_hash ||
-      input.status === "revoked"
+      (input.status !== undefined && !["pending", "active"].includes(input.status))
     ) {
       throw new ElizaError("Remote host enrollment input is incomplete", {
         code: "REMOTE_HOST_INVALID_INPUT",
@@ -151,12 +151,46 @@ export class RemoteHostsRepository {
           eq(remoteHosts.id, input.hostId),
           eq(remoteHosts.organization_id, input.organizationId),
           eq(remoteHosts.user_id, input.userId),
-          eq(remoteHosts.status, "active"),
+          eq(remoteHosts.status, "pending"),
         ),
       )
       .returning();
     if (!host) {
       throw storageFailure("Managed remote-host enrollment could not be recorded", {
+        hostId: input.hostId,
+      });
+    }
+    return host;
+  }
+
+  /**
+   * Promotes a managed host only after its external enrollment material is
+   * durably recorded. Until this compare-and-set succeeds, host bearer
+   * authentication and every relay authority path remain unavailable.
+   */
+  async activateManagedEnrollment(input: {
+    hostId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<RemoteHost> {
+    const now = new Date();
+    const [host] = await this.database
+      .update(remoteHosts)
+      .set({ status: "active", updated_at: now })
+      .where(
+        and(
+          eq(remoteHosts.id, input.hostId),
+          eq(remoteHosts.organization_id, input.organizationId),
+          eq(remoteHosts.user_id, input.userId),
+          eq(remoteHosts.status, "pending"),
+          eq(remoteHosts.headscale_cleanup_pending, true),
+          isNotNull(remoteHosts.headscale_hostname),
+          isNotNull(remoteHosts.headscale_preauth_key_id),
+        ),
+      )
+      .returning();
+    if (!host) {
+      throw storageFailure("Managed remote-host enrollment could not be activated", {
         hostId: input.hostId,
       });
     }
@@ -340,7 +374,9 @@ export class RemoteHostsRepository {
         const [revoked] = await tx
           .update(remoteHosts)
           .set({ status: "revoked", revoked_at: now, updated_at: now })
-          .where(and(eq(remoteHosts.id, hostId), eq(remoteHosts.status, "active")))
+          .where(
+            and(eq(remoteHosts.id, hostId), inArray(remoteHosts.status, ["pending", "active"])),
+          )
           .returning();
         if (!revoked) {
           throw storageFailure("Locked remote host could not be revoked", { hostId });

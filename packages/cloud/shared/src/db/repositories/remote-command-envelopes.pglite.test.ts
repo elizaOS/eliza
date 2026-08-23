@@ -232,8 +232,26 @@ afterAll(async () => {
 });
 
 describe("secure remote relay repositories", () => {
-  it("persists and clears managed-network compensation without storing an auth key", async () => {
-    await enrollAndPair(false);
+  it("keeps managed enrollment non-authoritative until durable activation", async () => {
+    hostToken = generateRemoteHostToken();
+    expect(
+      await hosts.createOwned({
+        id: hostId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        device_id: "linux-one",
+        display_name: "Linux One",
+        platform: "linux",
+        connection_mode: "relay",
+        runtime_key_id: targetKeyId,
+        signing_public_jwk: ecPublicJwk,
+        encryption_public_jwk: ecPublicJwk,
+        host_token_hash: await hashRemoteHostToken(hostToken),
+        status: "pending",
+      }),
+    ).toMatchObject({ kind: "created", host: { status: "pending" } });
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+
     await hosts.recordManagedEnrollment({
       hostId,
       organizationId,
@@ -246,8 +264,20 @@ describe("secure remote relay repositories", () => {
       headscale_hostname: "eliza-host-test",
       headscale_preauth_key_id: "123",
       headscale_cleanup_pending: true,
+      status: "pending",
     });
     expect(JSON.stringify(host)).not.toContain("hskey-");
+
+    const active = await hosts.activateManagedEnrollment({
+      hostId,
+      organizationId,
+      userId: ownerId,
+    });
+    expect(active.status).toBe("active");
+    expect(await hosts.authenticate(hostId, hostToken)).toMatchObject({
+      id: hostId,
+      status: "active",
+    });
 
     await hosts.completeManagedCleanup({
       hostId,
@@ -261,6 +291,31 @@ describe("secure remote relay repositories", () => {
       headscale_cleanup_pending: false,
       headscale_cleanup_error: null,
     });
+  });
+
+  it("revokes a pending managed host without ever granting bearer authority", async () => {
+    hostToken = generateRemoteHostToken();
+    await hosts.createOwned({
+      id: hostId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      device_id: "linux-one",
+      display_name: "Linux One",
+      platform: "linux",
+      connection_mode: "relay",
+      runtime_key_id: targetKeyId,
+      signing_public_jwk: ecPublicJwk,
+      encryption_public_jwk: ecPublicJwk,
+      host_token_hash: await hashRemoteHostToken(hostToken),
+      status: "pending",
+    });
+
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+    expect(await hosts.revoke(hostId, organizationId, ownerId)).toMatchObject({
+      host: { status: "revoked" },
+      alreadyRevoked: false,
+    });
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
   });
 
   it("records a host heartbeat even when its active session has no command", async () => {

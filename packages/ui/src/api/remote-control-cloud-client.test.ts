@@ -60,7 +60,7 @@ describe("RemoteControlCloudClient", () => {
             runtimeKeyId: "target-key-1",
             signingPublicKeyJwk: PUBLIC_JWK,
             encryptionPublicKeyJwk: PUBLIC_JWK,
-            status: "active",
+            status: "pending",
             lastSeenAt: null,
             createdAt: "2026-08-22T00:00:00.000Z",
             revokedAt: null,
@@ -76,7 +76,7 @@ describe("RemoteControlCloudClient", () => {
 
     await expect(client.listHosts()).resolves.toMatchObject({
       ownerId: OWNER_ID,
-      hosts: [{ id: HOST_ID, runtimeKeyId: "target-key-1" }],
+      hosts: [{ id: HOST_ID, runtimeKeyId: "target-key-1", status: "pending" }],
     });
     expect(request).toHaveBeenCalledWith(
       "https://cloud.example/api/v1/remote/hosts",

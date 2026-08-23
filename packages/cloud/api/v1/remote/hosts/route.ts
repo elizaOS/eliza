@@ -43,11 +43,13 @@ app.get("/", async (c) => {
           status:
             host.status === "revoked"
               ? "revoked"
-              : host.last_seen_at &&
-                  Date.now() - host.last_seen_at.getTime() <=
-                    REMOTE_HOST_ONLINE_WINDOW_MS
-                ? "active"
-                : "offline",
+              : host.status === "pending"
+                ? "pending"
+                : host.last_seen_at &&
+                    Date.now() - host.last_seen_at.getTime() <=
+                      REMOTE_HOST_ONLINE_WINDOW_MS
+                  ? "active"
+                  : "offline",
           lastSeenAt: host.last_seen_at,
           createdAt: host.created_at,
           revokedAt: host.revoked_at,
@@ -189,7 +191,7 @@ app.post("/", async (c) => {
           signing_public_jwk: identity.signingPublicKeyJwk,
           encryption_public_jwk: identity.encryptionPublicKeyJwk,
           host_token_hash: hostTokenHash,
-          status: "active",
+          status: managedNetworkRequested ? "pending" : "active",
         });
     if (result.kind === "conflict") {
       return c.json(
@@ -218,6 +220,7 @@ app.post("/", async (c) => {
     let managedNetworkEnrollment: Awaited<
       ReturnType<typeof enrollManagedNetwork>
     > | null = null;
+    let responseHost = result.host;
     if (result.kind === "created" && networkConfig) {
       try {
         managedNetworkEnrollment = await enrollManagedNetwork({
@@ -227,15 +230,29 @@ app.post("/", async (c) => {
           config: networkConfig,
           repository: remoteHostsRepository,
         });
+        responseHost = await remoteHostsRepository.activateManagedEnrollment({
+          hostId: result.host.id,
+          organizationId: user.organization_id,
+          userId: user.id,
+        });
       } catch (cause) {
-        // The host must never remain authoritative when its requested network
-        // enrollment failed. Any incomplete Headscale compensation remains on
-        // the revoked row for the retry-safe revoke endpoint.
-        await remoteHostsRepository.revoke(
-          result.host.id,
-          user.organization_id,
-          user.id,
-        );
+        // Managed hosts begin non-authoritative. Even if this compensation
+        // write fails, the pending bearer cannot authenticate or reach relay
+        // authority. A successful revoke retains Headscale metadata for the
+        // retry-safe cleanup endpoint.
+        try {
+          await remoteHostsRepository.revoke(
+            result.host.id,
+            user.organization_id,
+            user.id,
+          );
+        } catch (revokeCause) {
+          throw new AggregateError(
+            [cause, revokeCause],
+            "Managed-network enrollment failed; host revocation is pending retry.",
+            { cause },
+          );
+        }
         throw cause;
       }
     }
@@ -246,9 +263,9 @@ app.post("/", async (c) => {
         data: {
           hostId: result.host.id,
           hostToken: token,
-          runtimeKeyId: result.host.runtime_key_id,
-          status: result.host.status,
-          createdAt: result.host.created_at,
+          runtimeKeyId: responseHost.runtime_key_id,
+          status: responseHost.status,
+          createdAt: responseHost.created_at,
           recovered: result.kind === "recovered",
           managedNetworkEnrollment,
         },
