@@ -48,7 +48,3 @@ describe("parseRecurrenceRule UNTIL years 0-99", () => {
     expect(until.toISOString()).toBe("2024-05-31T00:00:00.000Z");
   });
 });
-
-
-
-

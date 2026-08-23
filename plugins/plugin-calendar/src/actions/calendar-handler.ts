@@ -1761,7 +1761,11 @@ export function parseExplicitLocalDate(
     const targetWeekday = WEEKDAY_MAP[weekdayKey];
     if (targetWeekday !== undefined) {
       const dCur = new Date(0);
-      dCur.setUTCFullYear(localToday.year, Math.max(0, localToday.month - 1), localToday.day);
+      dCur.setUTCFullYear(
+        localToday.year,
+        Math.max(0, localToday.month - 1),
+        localToday.day,
+      );
       dCur.setUTCHours(12, 0, 0, 0);
       const currentWeekday = dCur.getUTCDay();
       let delta = (targetWeekday - currentWeekday + 7) % 7;
