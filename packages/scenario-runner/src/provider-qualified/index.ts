@@ -37,3 +37,4 @@ export * from "./slack-operator-controller.ts";
 export * from "./trajectory-verifier.ts";
 export * from "./twilio-operator-controller.ts";
 export * from "./twilio-provider-service-adapters.ts";
+export * from "./twilio-provider-service-deployment.ts";
