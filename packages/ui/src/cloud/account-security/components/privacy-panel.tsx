@@ -3,8 +3,9 @@
  *   - vision / screen-capture consent toggle (local consent store)
  *   - trajectory logging toggle (local consent store)
  *
- * Account deletion renders the Worker's read-only lifecycle admission state.
- * Data export remains visible but unavailable until its export job ships.
+ * Account deletion opens the exact-confirmation flow; the Worker remains the
+ * authority for admission, transfer requirements, and lifecycle reservation.
+ * General-purpose export remains distinct from the encrypted recovery export.
  */
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
@@ -122,7 +123,7 @@ export function PrivacyPanel() {
           })}
           description={t("cloud.privacyPanel.deleteAvailabilityDescription", {
             defaultValue:
-              "Checks whether the verified account-deletion lifecycle is available. Shared resources may need transfer first; unavailable requests are routed to support without changing your account.",
+              "Requests the verified account-deletion lifecycle. The server requires recent authentication and may require shared-resource transfer before it accepts the request.",
           })}
           control={<AccountDeletionDialog />}
         />

@@ -26,7 +26,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       .update(descriptors.map(serializeDescriptor).join("\n"))
       .digest("hex");
 
-    expect(descriptors).toHaveLength(219);
+    expect(descriptors).toHaveLength(221);
     expect(digest).toBe(ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256);
   });
 
@@ -36,7 +36,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       action: classifyAccountDeletionForeignKey(descriptor),
     }));
 
-    expect(classified).toHaveLength(219);
+    expect(classified).toHaveLength(221);
     expect(classified.every(({ action }) => Boolean(action))).toBe(true);
     expect(classified.filter(({ action }) => action === "reconcile_external_resource").length).toBe(
       69,
