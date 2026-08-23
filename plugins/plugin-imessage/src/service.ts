@@ -36,6 +36,7 @@ import {
   Service,
   ServiceType,
   type TargetInfo,
+  truncateWellFormed,
   trustedLocalMediaUrl,
   type UUID,
 } from "@elizaos/core";
@@ -1630,7 +1631,7 @@ export class IMessageService extends Service implements IIMessageService {
       }
 
       logger.debug(
-        `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${row.text.slice(0, 40)}"`
+        `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${truncateWellFormed(row.text, 40)}"`
       );
       try {
         await this.dispatchInboundMessage(row);
