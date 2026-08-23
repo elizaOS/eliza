@@ -567,8 +567,16 @@ final class BootCaptureUITests: XCTestCase {
         sendButton.tap()
         attachScreenshot(named: "paired-chat-010-submitted")
 
-        let reply = app.staticTexts.matching(
-            NSPredicate(format: "label == %@", replyMarker)
+        // Glass transcript rows intentionally expose the complete message as
+        // one atomic accessibility element so VoiceOver hears the content
+        // instead of a generic action label. Match any AX role, but exclude
+        // the user's prompt (which contains the same requested marker).
+        let reply = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format:
+                    "label ENDSWITH[c] %@ AND NOT label BEGINSWITH[c] 'Your message:' AND NOT label CONTAINS[c] 'Reply with exactly:'",
+                replyMarker
+            )
         ).firstMatch
         let replyArrived = reply.waitForExistence(timeout: replyTimeout)
         attachScreenshot(named: replyArrived ? "paired-chat-020-reply" : "paired-chat-020-timeout")
