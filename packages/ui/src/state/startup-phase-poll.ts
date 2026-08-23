@@ -1050,7 +1050,10 @@ export async function runPollingBackend(
         );
         appendIosBootTrace("agent-error-terminal", {
           baseUrl: client.getBaseUrl(),
-          message: truncateWellFormed(toWellFormedUnicode(terminalMessage), 300),
+          message: truncateWellFormed(
+            toWellFormedUnicode(terminalMessage),
+            300,
+          ),
           path: ae?.path ?? null,
         });
         deps.setStartupError({
