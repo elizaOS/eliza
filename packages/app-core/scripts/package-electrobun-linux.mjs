@@ -196,7 +196,30 @@ export function resolveLinuxPackageFormats(requestedFormat) {
 // App identity is env-driven (mirroring the Electrobun shell's brand-config
 // resolution) and defaults to the existing elizaOS values when unset, so the
 // produced packages stay byte-identical unless the brand env is provided.
-const displayName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
+export function validateLinuxDisplayName(value) {
+  const displayName = value.trim();
+  const hasControlCharacter = Array.from(displayName).some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 0x1f || code === 0x7f;
+  });
+  if (
+    displayName.length === 0 ||
+    Buffer.byteLength(displayName, "utf8") > 128 ||
+    displayName === "." ||
+    displayName === ".." ||
+    /[\\/%]/u.test(displayName) ||
+    hasControlCharacter
+  ) {
+    throw new Error(
+      "ELIZA_APP_NAME must be a 1-128 byte display label without path separators, control characters, or RPM macro markers.",
+    );
+  }
+  return displayName;
+}
+
+const displayName = validateLinuxDisplayName(
+  (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza",
+);
 // Lowercase slug used for install paths, the launcher wrapper, the .desktop
 // file, the icon, and (suffixed with `-app`) the deb/rpm package name.
 // Defaults to "eliza". It must satisfy Debian package-name policy — start with

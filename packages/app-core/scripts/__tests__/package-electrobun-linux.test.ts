@@ -39,6 +39,7 @@ import {
   sha256File,
   stageAppImageMetadata,
   stagePackageRoot,
+  validateLinuxDisplayName,
   withStagingCleanup,
 } from "../package-electrobun-linux.mjs";
 
@@ -76,6 +77,20 @@ afterEach(() => {
 });
 
 describe("direct Linux package format selection", () => {
+  it("accepts a human display label and rejects path or metadata injection", () => {
+    expect(validateLinuxDisplayName("  Eliza Desktop  ")).toBe("Eliza Desktop");
+    for (const value of [
+      "../Eliza",
+      "Eliza/Desktop",
+      "Eliza\\Desktop",
+      "Eliza\nExec=unexpected",
+      "Eliza\r%post",
+      "%{lua:unexpected}",
+    ]) {
+      expect(() => validateLinuxDisplayName(value)).toThrow(/ELIZA_APP_NAME/);
+    }
+  });
+
   it("preserves the historical all-format default and explicit all alias", () => {
     expect(resolveLinuxPackageFormats(undefined)).toEqual([
       "deb",

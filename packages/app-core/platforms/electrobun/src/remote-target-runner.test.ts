@@ -9,7 +9,7 @@ import {
   type RemoteControllerPublicIdentity,
   type RemoteTargetPublicIdentity,
 } from "@elizaos/shared/contracts/remote-control";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   PlatformSecureStore,
   SecureStoreDeleteResult,
@@ -243,6 +243,43 @@ class DeferredClaimRelay extends FakeRelay {
   }
 }
 
+class BackgroundFailureRelay extends FakeRelay {
+  override async claimNext(
+    input: Parameters<RemoteTargetRelayTransport["claimNext"]>[0],
+  ): Promise<RemoteTargetClaim | null> {
+    if (this.claimRequests > 0) throw new Error("journal-integrity-failed");
+    return super.claimNext(input);
+  }
+}
+
+class DeferredActivationRelay extends FakeRelay {
+  readonly activationRequested: Promise<void>;
+  private markActivationRequested: () => void = () => undefined;
+  private releaseActivation: (
+    activation: RemoteTargetActivationResponse,
+  ) => void = () => undefined;
+  private readonly deferredActivation: Promise<RemoteTargetActivationResponse>;
+
+  constructor() {
+    super();
+    this.activationRequested = new Promise((resolve) => {
+      this.markActivationRequested = resolve;
+    });
+    this.deferredActivation = new Promise((resolve) => {
+      this.releaseActivation = resolve;
+    });
+  }
+
+  override async activate(): Promise<RemoteTargetActivationResponse> {
+    this.markActivationRequested();
+    return this.deferredActivation;
+  }
+
+  resolveActivation(activation: RemoteTargetActivationResponse): void {
+    this.releaseActivation(activation);
+  }
+}
+
 function privateKey(): JsonWebKey {
   return generateKeyPairSync("ec", {
     namedCurve: "prime256v1",
@@ -363,6 +400,7 @@ async function createRunner(
   harness: Harness,
   execute: () => Promise<void> | void,
   hooks: RemoteTargetRunnerHooks = {},
+  pollIntervalMs?: number,
 ): Promise<RemoteTargetRunner> {
   const runner = new RemoteTargetRunner(
     harness.vault,
@@ -381,7 +419,7 @@ async function createRunner(
         };
       },
     },
-    { now: () => NOW, hooks },
+    { now: () => NOW, hooks, pollIntervalMs },
   );
   await runner.installActivation(harness.activation);
   return runner;
@@ -780,6 +818,30 @@ describe("remote target durable runner", () => {
     expect((await runner.status()).running).toBe(false);
   });
 
+  it("observes a rejected background poll and stops reporting the loop as running", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = await createHarness();
+      harness.relay = new BackgroundFailureRelay();
+      const runner = await createRunner(harness, () => undefined, {}, 250);
+
+      await runner.start();
+      expect(await runner.status()).toMatchObject({
+        running: true,
+        lastErrorCode: null,
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(await runner.status()).toMatchObject({
+        running: false,
+        lastErrorCode: "REMOTE_TARGET_LOOP_FAILED",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("auto-resumes one runner from durable enrollment and active authority", async () => {
     const harness = await createHarness();
     await createRunner(harness, () => undefined);
@@ -1050,6 +1112,48 @@ describe("remote target durable runner", () => {
     await service.configureLoopback(secondConfiguration);
     expect((await service.status()).running).toBe(true);
     await service.stop();
+  });
+
+  it("serializes activation before authoritative host finalization", async () => {
+    const harness = await createHarness();
+    const relay = new DeferredActivationRelay();
+    relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: false,
+      cleanup: { sessions: 1, commands: 0, more: false },
+    });
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      relay,
+      () => NOW,
+    );
+
+    const activating = service.activate({ code: "123456" });
+    await relay.activationRequested;
+    let finalized = false;
+    const finalizing = service
+      .finalizeHostRevoke({ hostId: HOST_ID })
+      .then((result) => {
+        finalized = true;
+        return result;
+      });
+    await Promise.resolve();
+    expect(finalized).toBe(false);
+
+    relay.resolveActivation(harness.activation);
+    await expect(activating).resolves.toMatchObject({
+      sessionId: SESSION_ID,
+      status: "active",
+    });
+    await expect(finalizing).resolves.toEqual({ cleaned: true });
+    await expect(harness.vault.load()).resolves.toBeNull();
+    await expect(harness.state.read()).resolves.toEqual({
+      version: 1,
+      sessions: {},
+      commands: {},
+    });
   });
 
   it("requires authoritative host revocation before deleting native credentials", async () => {

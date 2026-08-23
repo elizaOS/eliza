@@ -492,6 +492,72 @@ function sshExecutable(): string {
   return "/usr/bin/ssh";
 }
 
+type SshPreparationFileSystem = Pick<
+  typeof fs,
+  "mkdtemp" | "chmod" | "writeFile" | "rm"
+>;
+
+async function createSshTunnelChild(
+  knownHostLine: string,
+  start: (knownHostsPath: string) => ChildProcess,
+  fileSystem: SshPreparationFileSystem = fs,
+): Promise<{ child: ChildProcess; tempDir: string }> {
+  const tempDir = await fileSystem.mkdtemp(
+    path.join(os.tmpdir(), "eliza-ssh-"),
+  );
+  try {
+    await fileSystem.chmod(tempDir, 0o700);
+    const knownHostsPath = path.join(tempDir, `known-hosts-${randomUUID()}`);
+    await fileSystem.writeFile(knownHostsPath, `${knownHostLine}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    return { child: start(knownHostsPath), tempDir };
+  } catch (error) {
+    // error-policy:J2 remove private preparation state before preserving the
+    // process-start failure for the native RPC boundary.
+    try {
+      await fileSystem.rm(tempDir, { recursive: true, force: true });
+    } catch (cleanupError) {
+      // error-policy:J2 preserve both the startup and cleanup failures.
+      throw new Error(
+        "SSH tunnel preparation failed and its private directory could not be removed.",
+        { cause: new AggregateError([error, cleanupError]) },
+      );
+    }
+    throw error;
+  }
+}
+
+interface TunnelExitObserverDependencies {
+  dispose: (tunnel: SshTunnel) => Promise<void>;
+  recordCleanupFailure: (runtimeId: string) => void;
+}
+
+function observeTunnelExit(
+  runtimeId: string,
+  tunnel: SshTunnel,
+  dependencies: TunnelExitObserverDependencies = {
+    dispose: disposeTunnel,
+    recordCleanupFailure: (failedRuntimeId) => {
+      reconnectErrors.set(
+        failedRuntimeId,
+        "The previous SSH tunnel exited, but its private temporary directory could not be removed.",
+      );
+    },
+  },
+): void {
+  tunnel.child.once("exit", () => {
+    if (tunnels.get(runtimeId) === tunnel) tunnels.delete(runtimeId);
+    void dependencies.dispose(tunnel).catch(() => {
+      // error-policy:J6 spontaneous process teardown has no awaiting caller;
+      // retain a visible blocked diagnostic instead of rejecting globally.
+      dependencies.recordCleanupFailure(runtimeId);
+    });
+  });
+}
+
 function toConnectionIntent(
   input: ParsedSshRuntimeParams,
 ): SshRuntimeConnectionIntent {
@@ -568,46 +634,43 @@ async function startParsedSshRuntime(
   }
 
   const localPort = await reserveLoopbackPort();
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-ssh-"));
-  await fs.chmod(tempDir, 0o700);
-  const knownHostsPath = path.join(tempDir, `known-hosts-${randomUUID()}`);
-  await fs.writeFile(knownHostsPath, `${selected.knownHostLine}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-    flag: "wx",
-  });
-  const args = [
-    "-N",
-    "-T",
-    "-p",
-    String(input.sshPort),
-    "-L",
-    `127.0.0.1:${localPort}:127.0.0.1:${input.remoteApiPort}`,
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "ExitOnForwardFailure=yes",
-    "-o",
-    "StrictHostKeyChecking=yes",
-    "-o",
-    `UserKnownHostsFile=${knownHostsPath}`,
-    "-o",
-    `HostKeyAlgorithms=${selected.algorithm}`,
-    "-o",
-    "ConnectTimeout=8",
-    ...(process.platform === "win32"
-      ? []
-      : ["-o", "GlobalKnownHostsFile=/dev/null"]),
-    ...(input.identityFile
-      ? ["-o", "IdentitiesOnly=yes", "-i", input.identityFile]
-      : []),
-    "--",
-    input.target,
-  ];
-  const child = spawn(sshExecutable(), args, {
-    shell: false,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const { child, tempDir } = await createSshTunnelChild(
+    selected.knownHostLine,
+    (knownHostsPath) => {
+      const args = [
+        "-N",
+        "-T",
+        "-p",
+        String(input.sshPort),
+        "-L",
+        `127.0.0.1:${localPort}:127.0.0.1:${input.remoteApiPort}`,
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        `UserKnownHostsFile=${knownHostsPath}`,
+        "-o",
+        `HostKeyAlgorithms=${selected.algorithm}`,
+        "-o",
+        "ConnectTimeout=8",
+        ...(process.platform === "win32"
+          ? []
+          : ["-o", "GlobalKnownHostsFile=/dev/null"]),
+        ...(input.identityFile
+          ? ["-o", "IdentitiesOnly=yes", "-i", input.identityFile]
+          : []),
+        "--",
+        input.target,
+      ];
+      return spawn(sshExecutable(), args, {
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    },
+  );
   let spawnError: Error | null = null;
   let diagnosticStderrTail = "";
   child.once("error", (error) => {
@@ -643,12 +706,7 @@ async function startParsedSshRuntime(
     startedAt: Date.now(),
   };
   tunnels.set(input.runtimeId, tunnel);
-  child.once("exit", () => {
-    if (tunnels.get(input.runtimeId) === tunnel) {
-      tunnels.delete(input.runtimeId);
-    }
-    void disposeTunnel(tunnel);
-  });
+  observeTunnelExit(input.runtimeId, tunnel);
   if (options.persistIntent) {
     try {
       await connectionIntents.upsert(toConnectionIntent(input));
@@ -1051,7 +1109,9 @@ export async function desktopSshRuntimeRequest(params: unknown): Promise<{
 }
 
 export const sshRuntimeInternals = {
+  createSshTunnelChild,
   disposeTunnel,
+  observeTunnelExit,
   rehydrateSshRuntimeIntent,
   waitForChildExit,
   parseStartParams,

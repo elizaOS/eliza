@@ -276,36 +276,38 @@ export class RemoteTargetDesktopService {
     if (!/^\d{6}$/.test(code)) {
       throw new Error("Pairing code must contain exactly six digits.");
     }
-    const enrollment = await this.vault.load();
-    if (enrollment?.status !== "enrolled") {
-      throw new Error("Remote target is not enrolled.");
-    }
-    const activation = await this.transport.activate({
-      enrollment,
-      ...(sessionId ? { sessionId } : {}),
-      code,
+    return this.enqueueConfiguration(async () => {
+      const enrollment = await this.vault.load();
+      if (enrollment?.status !== "enrolled") {
+        throw new Error("Remote target is not enrolled.");
+      }
+      const activation = await this.transport.activate({
+        enrollment,
+        ...(sessionId ? { sessionId } : {}),
+        code,
+      });
+      const installer =
+        this.runner ??
+        new RemoteTargetRunner(
+          this.vault,
+          this.stateStore,
+          this.transport,
+          {
+            execute: async () => ({
+              status: "rejected",
+              errorCode: "REMOTE_TARGET_NOT_STARTED",
+            }),
+          },
+          { now: this.now },
+        );
+      await installer.installActivation(activation);
+      return {
+        sessionId: activation.sessionId,
+        status: "active" as const,
+        controllerDisplayName: activation.controller.displayName,
+        grantExpiresAt: activation.grantExpiresAt,
+      };
     });
-    const installer =
-      this.runner ??
-      new RemoteTargetRunner(
-        this.vault,
-        this.stateStore,
-        this.transport,
-        {
-          execute: async () => ({
-            status: "rejected",
-            errorCode: "REMOTE_TARGET_NOT_STARTED",
-          }),
-        },
-        { now: this.now },
-      );
-    await installer.installActivation(activation);
-    return {
-      sessionId: activation.sessionId,
-      status: "active",
-      controllerDisplayName: activation.controller.displayName,
-      grantExpiresAt: activation.grantExpiresAt,
-    };
   }
 
   async start(): Promise<{ running: true }> {
