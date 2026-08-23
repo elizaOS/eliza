@@ -140,9 +140,7 @@ describe("stream-cors-preflight-harness", () => {
 
   it("sends the Capacitor stream preflight the parent test asserts", () => {
     expect(HARNESS_SRC).toContain('method: "OPTIONS"');
-    expect(HARNESS_SRC).toContain(
-      "/api/conversations/conv-1/messages/stream",
-    );
+    expect(HARNESS_SRC).toContain("/api/conversations/conv-1/messages/stream");
     expect(HARNESS_SRC).toContain('origin: "https://localhost"');
     expect(HARNESS_SRC).toContain(
       "authorization,content-type,x-elizaos-client-id",
