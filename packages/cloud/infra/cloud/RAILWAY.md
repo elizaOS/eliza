@@ -20,7 +20,7 @@ config wins — fix this file.
 | `eliza-app` Pages project (homepage, auth, cloud management, and managed agent app) | Cloudflare Pages | `packages/app/` (`build:web`, embedding `packages/homepage`) | `.github/workflows/cloud-cf-deploy.yml` `deploy-app` job | Public: `eliza.app` + `cloud.eliza.app` (staging: `staging.eliza.app` + `cloud-staging.eliza.app`) |
 | `eliza-cloud-api` — REST API, auth, billing, **model gateway**, dedicated-agent proxy, batch voice routes, cron | Cloudflare Worker (`eliza-cloud-api-prod` / `eliza-cloud-api-staging`) | `packages/cloud/api/` | [`wrangler.toml`](../../api/wrangler.toml) via `cloud-cf-deploy.yml` `deploy-api` job (schema-gated on `migrate-db`) | Public: `api.eliza.app`, `x402.eliza.app`, and `*.cloud.eliza.app` (staging uses `*-staging.eliza.app`); legacy elizacloud.ai routes issue 308 redirects |
 | PostgreSQL | **Railway managed Postgres**. Environment-scoped bindings exist, but the repository and current public receipts do not prove an independently isolated staging service, volume, or Hyperdrive origin; follow the identity/recovery gates below | n/a (managed service) | env-scoped `DATABASE_URL` secret in the `staging`/`production` GitHub Environments; the Worker reaches it through the `HYPERDRIVE` binding (`wrangler.toml` `[[env.*.hyperdrive]]`) | Private |
-| Redis | **Railway managed Redis** (TCP, `REDIS_URL`) | n/a (managed service) | `REDIS_URL` Worker secret; in-Worker SocketRedis speaks RESP2 over `cloudflare:sockets` (`wrangler.toml` cache/queue notes). Upstash REST (`KV_REST_API_*`) is a **legacy fallback only** | Private |
+| Redis | **Railway managed Redis** plus environment-local `redis-rest` HTTP adapter | `packages/cloud/services/redis-rest/` (adapter only) | Non-Worker services use `REDIS_URL`. Worker direct consumers use `DIRECT_REDIS_BACKEND=redis-rest` with `KV_REST_API_URL`/`KV_REST_API_TOKEN`; the general Worker cache continues to prefer `CACHE_KV` | Redis private; authenticated adapter public only for Worker reachability |
 | Database migrations | GitHub Actions → Railway Postgres | `packages/cloud/shared/src/db/migrations/` | `cloud-cf-deploy.yml` `migrate-db` job (`bun run db:cloud:migrate`); every deploy job `needs: migrate-db` | n/a |
 | `gateway-discord` (multi-tenant Discord WS gateway) | Railway (Docker) | `packages/cloud/services/gateway-discord/` | Authorized operator upload through `scripts/deploy-railway.sh`; `cloud-gateway-discord.yml` runs tests only and does not deploy | Discord-facing; `/internal/*` shared-secret routes |
 | `gateway-webhook` (Telegram / Blooio / Twilio / WhatsApp) | Railway (Docker) | `packages/cloud/services/gateway-webhook/` | protected `.github/workflows/deploy-gateway-webhook.yml` using `railway.toml` + `Dockerfile` | Public webhook ingress |
@@ -282,9 +282,10 @@ before `/health` goes green.
   `wrangler.toml` marks `NEON_API_KEY` as retired; the migration workflows
   keep `NEON_DATABASE_URL` only as the last fallback name for the env-scoped
   secret.
-- **Upstash Redis as primary** — Railway TCP Redis (`REDIS_URL`) is primary;
-  the Upstash REST path (`KV_REST_API_*`) survives only as a legacy fallback
-  in the Worker cache client.
+- **Upstash-hosted Redis as primary** — Railway remains the authoritative Redis.
+  The Worker-facing `KV_REST_API_*` bindings address an Upstash-compatible HTTP
+  adapter for that same environment-local Railway Redis; they do not select an
+  independently hosted Upstash database.
 - **`packages/cloud-frontend`** — deleted. Both Pages projects build
   `packages/app` (see the `cloud-cf-deploy.yml` header).
 - **AWS EKS gateway deployments** — deleted (terraform + Helm chart + CI
