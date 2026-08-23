@@ -21,7 +21,7 @@ vi.mock("@elizaos/shared", () => {
   return { parseClampedInteger };
 });
 
-import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
+import { resolveTerminalRunLimits } from "../terminal-run-limits.ts";
 
 describe("resolveTerminalRunLimits", () => {
   beforeEach(() => {
