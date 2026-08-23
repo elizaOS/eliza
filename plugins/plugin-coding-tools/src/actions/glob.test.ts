@@ -182,25 +182,41 @@ describe("globHandler — read-only query stays silent", () => {
     expect(result.success).toBe(true);
     expect(callback).not.toHaveBeenCalled();
   });
+});
 
-  it("sorts file candidates safely when mtimeMs contains NaN", () => {
-    const filtered = [
-      { filePath: "file-nan.ts", mtimeMs: NaN },
-      { filePath: "file-recent.ts", mtimeMs: 2000 },
-    ];
-    filtered.sort((a, b) => {
-      const bMtime =
-        typeof b.mtimeMs === "number" && Number.isFinite(b.mtimeMs)
-          ? b.mtimeMs
-          : 0;
-      const aMtime =
-        typeof a.mtimeMs === "number" && Number.isFinite(a.mtimeMs)
-          ? a.mtimeMs
-          : 0;
-      return bMtime - aMtime || a.filePath.localeCompare(b.filePath);
+describe("globHandler — result ordering", () => {
+  it("returns newest first and breaks equal-mtime ties by path", async () => {
+    const { runtime, message } = await buildRuntime();
+    const orderDir = path.join(tmpRoot, "order");
+    await fs.mkdir(orderDir, { recursive: true });
+
+    await fs.mkdir(path.join(orderDir, "sub"), { recursive: true });
+
+    // Two files share an mtime, so only the tie-break separates them; a third
+    // is newer and must lead regardless of its path. The tied pair is arranged
+    // so that candidate discovery order (this directory's entries before the
+    // subdirectory's) is the reverse of path order.
+    const tied = new Date(1_700_000_000_000);
+    const newer = new Date(1_800_000_000_000);
+    const relativePaths = ["m-newest.ts", "z-tied.ts", "sub/a-tied.ts"];
+    for (const relativePath of relativePaths) {
+      const filePath = path.join(orderDir, relativePath);
+      await fs.writeFile(filePath, "export const X = 1;\n");
+      const mtime = relativePath === "m-newest.ts" ? newer : tied;
+      await fs.utimes(filePath, mtime, mtime);
+    }
+
+    const result = await globHandler(runtime, message, state, {
+      parameters: { pattern: "order/**/*.ts" },
     });
 
-    expect(filtered[0]?.filePath).toBe("file-recent.ts");
-    expect(filtered[1]?.filePath).toBe("file-nan.ts");
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown> | undefined;
+    const files = (data?.files as string[] | undefined) ?? [];
+    expect(files.map((filePath) => path.relative(orderDir, filePath))).toEqual([
+      "m-newest.ts",
+      path.join("sub", "a-tied.ts"),
+      "z-tied.ts",
+    ]);
   });
 });
