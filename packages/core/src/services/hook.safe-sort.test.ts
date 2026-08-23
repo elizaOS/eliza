@@ -1,53 +1,49 @@
 /**
- * Regression for hook priority sort handling of NaN/Infinity.
- * Previously raw subtraction on priority/registeredAt would return NaN and corrupt ordering.
+ * Regression for hook priority sort handling of NaN/Infinity — imports production comparator.
  */
 import { describe, expect, it } from "vitest";
+import { __testCompareHookRegistrations } from "./hook.ts";
+import type { HookRegistration } from "../types/hook.ts";
 
-type HookReg = { id: string; metadata: { priority: number }; registeredAt: number };
-
-function compareHookRegs(a: HookReg, b: HookReg): number {
-  const bP =
-    typeof b.metadata.priority === "number" && Number.isFinite(b.metadata.priority)
-      ? b.metadata.priority
-      : 0;
-  const aP =
-    typeof a.metadata.priority === "number" && Number.isFinite(a.metadata.priority)
-      ? a.metadata.priority
-      : 0;
-  if (bP !== aP) return bP - aP;
-  const bT =
-    typeof b.registeredAt === "number" && Number.isFinite(b.registeredAt)
-      ? b.registeredAt
-      : 0;
-  const aT =
-    typeof a.registeredAt === "number" && Number.isFinite(a.registeredAt) ? a.registeredAt : 0;
-  if (bT !== aT) return aT - bT;
-  return String(a.id).localeCompare(String(b.id));
+function reg(id: string, priority: number, registeredAt: number): HookRegistration {
+  return {
+    id,
+    metadata: {
+      name: id,
+      description: "",
+      source: "runtime",
+      events: [],
+      priority,
+      enabled: true,
+    },
+    handler: async () => {},
+    registeredAt,
+  } as HookRegistration;
 }
 
 describe("hook priority safe-sort", () => {
-  it("treats NaN priority as 0", () => {
-    const regs: HookReg[] = [
-      { id: "b", metadata: { priority: Number.NaN }, registeredAt: 1 },
-      { id: "a", metadata: { priority: 10 }, registeredAt: 1 },
-      { id: "c", metadata: { priority: Number.POSITIVE_INFINITY }, registeredAt: 1 },
+  it("treats NaN/Infinity priority as 0 (sorted after finite)", () => {
+    const regs = [
+      reg("b", Number.NaN, 1),
+      reg("a", 10, 1),
+      reg("c", Number.POSITIVE_INFINITY, 1),
     ];
-    expect([...regs].sort(compareHookRegs).map((r) => r.id)).toEqual(["a", "b", "c"]);
+    expect([...regs].sort(__testCompareHookRegistrations).map((r) => r.id)).toEqual(["a", "b", "c"]);
   });
-
-  it("breaks ties by registeredAt ascending then id", () => {
-    const regs: HookReg[] = [
-      { id: "b", metadata: { priority: 5 }, registeredAt: 20 },
-      { id: "a", metadata: { priority: 5 }, registeredAt: 10 },
-      { id: "c", metadata: { priority: 5 }, registeredAt: Number.NaN },
+  it("sorts by priority desc, then registeredAt asc, then numeric id", () => {
+    const regs = [
+      reg("hook_10_test", 5, 10),
+      reg("hook_9_test", 5, 10),
+      reg("hook_2_test", 5, 10),
     ];
-    expect([...regs].sort(compareHookRegs).map((r) => r.id)).toEqual(["c", "a", "b"]);
+    expect([...regs].sort(__testCompareHookRegistrations).map((r) => r.id)).toEqual([
+      "hook_2_test",
+      "hook_9_test",
+      "hook_10_test",
+    ]);
   });
-
-  it("old comparator would return NaN", () => {
-    const a = { metadata: { priority: Number.NaN }, registeredAt: 1 } as HookReg;
-    const b = { metadata: { priority: 5 }, registeredAt: 1 } as HookReg;
-    expect(Number.isNaN(b.metadata.priority - a.metadata.priority)).toBe(true);
+  it("handles NaN registeredAt as 0", () => {
+    const regs = [reg("a", 5, Number.NaN), reg("b", 5, 10)];
+    expect([...regs].sort(__testCompareHookRegistrations).map((r) => r.id)).toEqual(["a", "b"]);
   });
 });

@@ -119,6 +119,35 @@ function _parseFrontmatter(content: string): HookFrontmatter {
 /**
  * HookService implementation
  */
+export function compareHookRegistrations(
+	a: HookRegistration,
+	b: HookRegistration,
+): number {
+	const bP =
+		typeof b.metadata.priority === "number" &&
+		Number.isFinite(b.metadata.priority)
+			? b.metadata.priority
+			: 0;
+	const aP =
+		typeof a.metadata.priority === "number" &&
+		Number.isFinite(a.metadata.priority)
+			? a.metadata.priority
+			: 0;
+	if (bP !== aP) return bP - aP;
+	const bT =
+		typeof b.registeredAt === "number" && Number.isFinite(b.registeredAt)
+			? b.registeredAt
+			: 0;
+	const aT =
+		typeof a.registeredAt === "number" && Number.isFinite(a.registeredAt)
+			? a.registeredAt
+			: 0;
+	if (bT !== aT) return aT - bT;
+	return String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+}
+
+export const __testCompareHookRegistrations = compareHookRegistrations;
+
 export class HookService extends Service implements IHookService {
 	static serviceType = ServiceType.HOOKS;
 	capabilityDescription = "Hook registration and execution";
@@ -196,23 +225,7 @@ export class HookService extends Service implements IHookService {
 				const eligibility = this.checkEligibilityInternal(reg);
 				return eligibility.eligible;
 			})
-			.sort((a, b) => {
-				const bP =
-					typeof b.metadata.priority === "number" && Number.isFinite(b.metadata.priority)
-						? b.metadata.priority
-						: 0;
-				const aP =
-					typeof a.metadata.priority === "number" && Number.isFinite(a.metadata.priority)
-						? a.metadata.priority
-						: 0;
-				if (bP !== aP) return bP - aP;
-				const bT =
-					typeof b.registeredAt === "number" && Number.isFinite(b.registeredAt) ? b.registeredAt : 0;
-				const aT =
-					typeof a.registeredAt === "number" && Number.isFinite(a.registeredAt) ? a.registeredAt : 0;
-				if (bT !== aT) return aT - bT;
-				return String(a.id).localeCompare(String(b.id));
-			});
+			.sort(compareHookRegistrations);
 
 		// Execute hooks sequentially (allows payload modification, maintains order)
 		for (const registration of registrations) {
