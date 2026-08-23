@@ -47,6 +47,10 @@ import type {
 	LogBody,
 	Memory,
 	MemoryMetadata,
+	MessageContentPublicationParams,
+	MessageContentPublicationResult,
+	MessageContentRangeReadParams,
+	MessageContentRangeReadResult,
 	MessageSearchHit,
 	Metadata,
 	OAuthFlowRecord,
@@ -149,6 +153,16 @@ export function compareTasksForQuery(left: Task, right: Task): number {
 export abstract class DatabaseAdapter<DB extends object = object>
 	implements IDatabaseAdapter<DB>
 {
+	abstract readonly messageContentSegmentCapability: 1;
+
+	abstract publishMessageContentSegments(
+		params: MessageContentPublicationParams,
+	): Promise<MessageContentPublicationResult>;
+
+	abstract readMessageContentRange(
+		params: MessageContentRangeReadParams,
+	): Promise<MessageContentRangeReadResult>;
+
 	async compareAndSwapMemoryPublication(
 		_params: AtomicMemoryPublicationParams,
 	): Promise<AtomicMemoryPublicationResult> {
