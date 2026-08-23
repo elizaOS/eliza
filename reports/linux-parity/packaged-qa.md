@@ -1,32 +1,46 @@
-# Linux packaged/runtime QA — native demo candidate
+# Linux packaged/runtime QA — CEF demo candidate
 
-Captured: 2026-08-22 UTC
+Captured: 2026-08-23 UTC
 
-Host: Debian forky/sid, x86-64, glibc 2.43, GNOME/Wayland. Automated packaged pixels used an isolated Xvfb X11 display.
+Host: Debian forky/sid, x86-64, glibc 2.43, GNOME/Wayland. Automated packaged
+pixels used an isolated Xvfb X11 display.
 
-Verdict: **green native demo candidate on this host; not yet a distributable Linux release.** The macOS-style bottom pill, shared chat, onboarding, pairing persistence, native bridges, and relaunch state all pass the broad packaged suite. The release gate remains closed because locally built inference libraries exceed the supported glibc ceiling and no installer lifecycle or physical-device matrix has been exercised.
+Verdict: **green local CEF demo/review candidate on this host; not a production
+release claim.** The shared macOS-style pill and chat surface, onboarding,
+pairing, native bridges, CEF profile persistence, shutdown flushing, and
+real-process relaunch all pass. The direct payload also passes its GLIBC and
+distribution contract. Physical desktop/hardware, second-device, live-service,
+installer lifecycle, signing, and publication evidence remain separate gates.
+
+The final Linux doctor reports 35 passes, five optional warnings, and one
+required host-capacity failure: 4.3 GiB free versus the 8 GiB fresh desktop
+build floor. Existing artifacts are unaffected; another rebuild needs explicit
+cleanup approval or another build filesystem.
 
 ## Identity and package inspection
 
-- Branch: `codex/linux-devices-runtimes-20260822`
-- Draft PR: [#24414](https://github.com/elizaOS/eliza/pull/24414)
-- Exact product source commit: `27749d47995d96b16c9a095f03c8d819fe7af084`
-- Artifact: `packages/app-core/platforms/electrobun/build/dev-linux-x64/Eliza-dev`
-- Renderer build ID: `8724935f56b63c77f6158cd588fa16a6f6763bc9f7ab0a556479f7cf48e09e58`
-- Build time: `2026-08-22T10:57:23.530Z`; variant `direct`; 1,058 renderer assets.
-- Manifest: native renderer only; no packaged `libcef.so`; embedded Bun 1.3.13.
-- Inventory: 2.3 GiB, 127,628 files, zero symlinks.
-- Permission scan: zero group/world-writable or setuid/setgid entries.
-- Process cleanup: no matching packaged app, Playwright, Xvfb, or listener remained after the suite.
+- Branch at build time: `codex/linux-devices-runtimes-20260822`
+- Product source commit: `be05b667e76b7c8f5266667bfc33f35125b75faf`
+- Packaging/tooling checkpoint: `02c00a3902a35732d7cb134f98570b9d349bdbfc`
+- Artifact tree: `packages/app-core/platforms/electrobun/build/dev-linux-x64/Eliza-dev`
+- Renderer build ID: `246bdd070f40c9f3db17f22a40f032cb787f1d444b277b4ffac043a7b0de51db`
+- Build time: `2026-08-23T02:50:53.651Z`; variant `direct`; 1,079 renderer assets.
+- Manifest: default CEF renderer, native renderer also available, CEF 147.0.10,
+  embedded Bun 1.3.13.
+- Inventory: 3,230,715,904 allocated bytes; 151,736 entries; five intentional
+  relative CEF-library symlinks.
+- Permission scan: zero group/world-writable or setuid/setgid regular files.
+- ABI: 78 ELF files; maximum `GLIBC_2.38`, at the supported ceiling.
 
 Selected SHA-256 identities:
 
 ```text
 9cce6bcdc1bc550b6533454a8470870cc321773890c0d1bd03d10d5f441bd9cd  bin/launcher
+40ba72d0cc6e38d04cd2ea29a650f5b3976673b2facb09fedae003b26bfdc971  bin/libNativeWrapper.so
 dc7c0cd922fce45f39e8f9e0eb40eb25f1df0b806cc9890b208292c3398ae9e9  Resources/main.js
-c2f460fc6c0de108af6b46566dc5562e00050e4b77bc078852988b594794ea45  Resources/app/bun/index.js
-dee764195b4ee18b646730a842640156b8064886071939d1574dcc79ca8a4a5e  Resources/app/renderer/index.html
-40704c6f0fad4ac8215f9ce8dbcbafd4918533d0b3d39f68cdc0a92a4f858988  Resources/build.json
+2bde89501be609ff6bbcd67fb366300ca1641cc53cc4ac724c46d422995fb83d  Resources/app/bun/index.js
+c262b0eadb3e4c31527ab0420bdfa1e199505fb837c8a1ef0113b1143c37eb4b  Resources/app/renderer/index.html
+b40e35df512ed9570fbdb47c3c9a45745528b85b8bc135d51dff5adb81135359  Resources/build.json
 ```
 
 ## Broad packaged suite
@@ -40,59 +54,77 @@ export ELIZA_TEST_PACKAGED_LAUNCHER_PATH="$PWD/packages/app-core/platforms/elect
 bun run --cwd packages/app test:desktop:packaged
 ```
 
-Result: **10 passed, 4 skipped, 0 failed in 4.3 minutes.**
+Result: **10 passed, 4 skipped, 0 failed in 3.8 minutes.**
 
 Passed behavior:
 
-- The packaged app rendered substantial UI and passed a non-blank accessibility probe.
-- The launcher and home surfaces opened through the native shell.
-- The compact bottom pill was placed, toggled by keyboard, opened from the tray, and expanded into the shared `ChatOverlay` rather than a Linux-only imitation.
-- The real-time walkthrough captured 186 frames over 24.62 seconds at 7.55 captured frames/second, with zero frame failures.
-- First-run onboarding persisted.
-- A pairing code was redeemed, written through secure storage, restored after process reload, and used for authenticated `/api/auth/me` access.
-- Native notifications worked, and notification-store events reached the OS bridge.
-- Media/provider/plugin state persisted across relaunch.
+- Substantial non-blank UI rendered through the packaged CEF shell.
+- The launcher/home surfaces opened and the compact bottom pill toggled through
+  keyboard and tray paths, expanding the shared `ChatOverlay`.
+- The real-time walkthrough recorded 148 frames over 24.47 seconds with zero
+  capture failures.
+- First-run onboarding and pairing authentication completed.
+- Native OS notifications passed both direct bridge and notification-store
+  paths.
+- Media, provider, and plugin state survived a zero-delay real-process
+  relaunch.
 - The packaged shortcut bridge summoned the main window.
 
 Intentional skips:
 
-- Live voice self-test requires `ELIZA_VOICE_DESKTOP_SELFTEST=1`, real provider/API configuration, and distinct real capture/playback devices.
-- Application-menu reset is a macOS/Windows behavior.
-- Tray-vibrancy assertions are macOS-specific.
-- One generic relaunch helper currently recognizes only macOS/Windows launcher forms.
+- Live voice requires explicit real provider/API, capture, and playback device
+  configuration.
+- Application-menu reset and tray-vibrancy checks are macOS/Windows-specific.
+- The generic relaunch menu helper currently recognizes macOS/Windows launchers;
+  Linux relaunch persistence is covered by the dedicated regression path.
 
-## Durable visual evidence
+These are Xvfb-rendered package pixels. They do not substitute for owner-visible
+GNOME/Wayland placement, animation, tray, scaling, or monitor inspection.
 
-- Chat walkthrough video: `packages/app/test-results/desktop-chat-walkthrough.e-0ac5b-ugh-records-a-real-time-MP4/desktop-chat-walkthrough.mp4`
-- Walkthrough frames: the same directory under `walkthrough-frames/frame-000000.png` through `frame-000185.png`.
-- Substantial native render: `packages/app/test-results/desktop-launch-render.e2e--6aa25-ers-substantial-UI-headless/desktop-launch-render.png`
-- Launcher: `packages/app/test-results/desktop-launcher-smoke.e2e-1e992-ata-page-AX-probe-non-blank/desktop-launcher-launcher.png`
-- Home: `packages/app/test-results/desktop-launcher-smoke.e2e-1e992-ata-page-AX-probe-non-blank/desktop-launcher-home.png`
-- Bottom pill: `packages/app/test-results/electrobun-bottom-bar.e2e--ab6fc-ey-toggle-and-tray-launcher/bottom-launcher-pill.png`
-- Expanded shared chat: `packages/app/test-results/electrobun-bottom-bar.e2e--ab6fc-ey-toggle-and-tray-launcher/expanded-shared-chat.png`
-- Relaunch persistence: `packages/app/test-results/electrobun-packaged-regres-56127-lugin-state-across-relaunch/persistence-before-relaunch.png`, `persistence-settings-after-relaunch.png`, and `persistence-plugins-after-relaunch.png`.
+## CEF persistence closure
 
-These are Xvfb-rendered package pixels. They are valid automated native-shell evidence, but they do not substitute for owner-visible GNOME/Wayland placement, tray, animation, and monitor-scale inspection.
+The original Linux persistence failure had two native causes:
 
-## Closure of the original failures
+1. CEF's Chrome runtime rejected nested request-context cache paths. The pinned
+   wrapper now uses a non-empty global `CEF/Default` root and direct
+   `CEF/Partition-<sha256>` named profiles.
+2. Electrobun stopped the CEF loop while browsers were still live and then
+   called `CefShutdown`, allowing queued storage writes to disappear. Shutdown
+   now closes all browsers, continues pumping CEF until `OnBeforeClose`, then
+   exits GTK and calls `CefShutdown`.
 
-| Earlier failure | Current resolution |
-| --- | --- |
-| Walkthrough could not find the home pill | The launcher now uses the shared chat surface; the full 186-frame walkthrough passes. |
-| Onboarding flow was displaced by permission priming | The harness and product sequencing now complete and persist first-run onboarding. |
-| Pairing did not reach authenticated state | Pairing status setters, durable target persistence, secure-store environment preservation, and IPv4 `127/8` trust restoration now pass through reload. |
-| Headless bottom bar reported unusable geometry | The native placement contract and packaged geometry assertion now pass; physical Wayland placement remains a separate gate. |
-| Shortcut expected a late test seed instead of the registered production value | The bridge test now follows the real startup lifecycle and successfully summons the window. |
+Electrobun 1.18.1's `BrowserWindow` entrypoint also dropped its `partition`
+option. The fail-closed patch script now forwards that option and verifies exact
+upstream/patched hashes. The Linux shell uses one explicit partitioned window,
+avoiding a race with an implicit unpartitioned bootstrap view.
 
-## Pairing and security observations
+Evidence:
 
-The pairing flow now treats `/api/auth/status` as the authoritative unauthenticated/pairing signal, redeems the code, persists the secret through the desktop keyring path, reloads the package, and verifies authenticated access. The packaged harness preserves only `DBUS_SESSION_BUS_ADDRESS` and `XDG_RUNTIME_DIR` from the user session so Linux secure storage can be reached without broadly inheriting the environment.
+- Focused packaged regression suite: three Linux cases passed, two platform
+  cases skipped, zero failures.
+- The persistence case passed three consecutive `--repeat-each=3` launches.
+- The broad fresh-build run above independently passed the same real-process
+  relaunch case.
+- Profile inspection found the persisted keys in the requested partition while
+  the default profile remained empty.
+- Native review patch applies cleanly to pristine Electrobun v1.18.1.
 
-The runtime URL trust gate recognizes the complete IPv4 loopback range (`127.0.0.0/8`), not only `127.0.0.1`, so valid paired loopback targets survive startup restoration without weakening non-loopback trust checks.
+## Devices & Runtimes closure
 
-The artifact uses no CEF runtime. Historical CEF-related strings remain in source/native-wrapper payloads, so this report claims native-only execution and absence of packaged `libcef.so`, not absence of every CEF word or sandbox-flag string.
+The same-host integration suite instantiates the real
+`DesktopRemoteTargetService` and `RemoteTargetVault` with faithful injected
+secret-store and relay boundaries. It uses the atomic journal, real P-256
+signatures and ECDH/HKDF/AES-GCM envelopes, and authenticated loopback. It
+recreates the service mid-session, resumes the command, proves one acknowledged
+command dispatch, revokes the host, then proves a later restart cannot restore
+authority.
 
-## Distribution contract
+Together with the remote runner and main-window session suites, the focused
+result is **33 passed, 0 failed**. This remains same-host process/runtime proof,
+not live Linux Secret Service, deployed Cloud/PGlite, WAN, or a physical second
+machine.
+
+## Distribution boundary
 
 Command:
 
@@ -102,24 +134,48 @@ node packages/app-core/scripts/linux-distribution-contract.mjs \
   --claim=production-direct
 ```
 
-Expected current result: **failure**. Eleven fused local-inference libraries require `GLIBC_2.43` while the production-direct ceiling is `GLIBC_2.38`:
+Result: **pass** at 78 ELF files and maximum `GLIBC_2.38`.
 
-- `libelizainference.so`
-- `libggml-base.so` and `.so.0`
-- `libggml-cpu.so` and `.so.0`
-- `libggml-vulkan.so` and `.so.0`
-- `libllama.so` and `.so.0`
-- `libmtmd.so` and `.so.0`
+The result is deliberately narrower than a sandboxed production claim. The
+pinned Electrobun wrapper contains the audited `no-sandbox` and
+`disable-gpu-sandbox` switches, and the bundled `chrome-sandbox` lacks setuid
+root capability. Direct `.deb` and AppImage candidates therefore do not claim
+Chromium renderer-process sandboxing. The side-load Flatpak contract supplies
+an outer application sandbox; it does not change the inner Chromium fact.
 
-This is a correct fail-closed release gate. The current package is suitable for a controlled demo on the verified Debian forky/sid host, not for a broad Linux release claim.
+## Packaging
+
+- Direct and Flatpak packaging tests: **31 passed, 0 failed** after adding
+  nested Electrobun app discovery and ambiguity rejection.
+- Debian artifact: 474,119,096 bytes, SHA-256
+  `78dfe3cf76faab4660fa6ae010830791e20e258416ad6d9e7f771623abcbe04d`;
+  all 151,736 archive entries are root-owned, and extracted hashes/contract
+  match the frozen payload.
+- AppImage: 596,452,544 bytes, SHA-256
+  `fe5d211740317f048afe110be82b70a7997bd47ca95b58f6b336b2b5dd8ef27d`;
+  AppStream validation passed with one optional pedantic release-history note;
+  extracted hashes/contract passed and exact `AppRun` rendered UI (1/1).
+- Flatpak: 454,183,528 bytes, SHA-256
+  `6e70dcaf7f4d33ed1d3250ae84c1ccb35e5327a28c8a5e8af49c724ce653e78d`.
+  An isolated no-deploy import passed at OSTree commit `4e92aac93f1a0ecd34925c5db56b7d5d53bf0534a30332a3ae55e27bda4d5838`
+  with GNOME Platform 50, Freedesktop SDK 25.08, and only IPC/network,
+  fallback-X11/Wayland/PulseAudio, and DRI permissions.
+- RPM is not built because `rpmbuild` is absent and installing system tooling
+  was not authorized.
 
 ## Evidence boundary
 
 Still required for release-level confidence:
 
-- Build the fused inference stack against the supported glibc floor, then repeat the complete package and dependency audit.
-- Produce and test supported installable formats through clean install, upgrade, uninstall, and reinstall.
-- Inspect the physical GNOME/Wayland pill, tray, shortcuts, animation, multiple scales/monitors, suspend/resume, and reboot persistence.
-- Exercise physical microphone/speaker and camera devices plus a live voice provider chain.
-- Exercise a second Linux/Mac/VPS target, WAN disconnect/reconnect, and changed SSH-host-key confirmation with user-controlled identities.
-- Obtain green hosted CI and review; merge, signing, release publication, deployment, and production remain separate approvals.
+- Inspect and exercise the physical GNOME/Wayland pill, tray, shortcut,
+  notifications, scales/monitors, suspend/resume, and reboot persistence.
+- Exercise microphone, speaker, camera, and a live provider chain.
+- Exercise a second Mac/VPS target, WAN reconnect, changed SSH host keys,
+  restart recovery, and revocation with user-controlled identities.
+- Exercise real Linux Secret Service and deployed Cloud/PGlite relay state.
+- Perform owner-approved clean install, upgrade, uninstall, and reinstall.
+- Build and inspect RPM in an approved build environment.
+- Restore at least 8 GiB of root-filesystem build capacity through approved,
+  target-specific cleanup or another build filesystem.
+- Obtain review and hosted CI; push, PR creation, signing, publication, merge,
+  deployment, and production mutation remain explicit approval actions.
