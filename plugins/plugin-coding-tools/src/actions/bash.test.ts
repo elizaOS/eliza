@@ -582,6 +582,32 @@ describeIfPosix("shellAction", () => {
     });
   });
 
+  it("binds a routed receipt to an attested execution domain and opaque root", async () => {
+    const workspaceExecution = {
+      root: "/remote/workspace",
+      rootId: "a".repeat(64),
+      executionDomainId: "b".repeat(64),
+    };
+    const router = makeShellRouter(async () => ({
+      output: "remote\n",
+      exitCode: 0,
+      timedOut: false,
+      workspaceExecution,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "node generate.js",
+      }),
+    );
+
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+      scope: workspaceExecution,
+    });
+  });
+
   it.each([
     {
       name: "dispatch exception",
@@ -969,6 +995,145 @@ describeIfPosix("shellAction", () => {
       expect(settled.data?.workspaceDeltaReceipt).toMatchObject({
         outcome: "changed",
         scope: { root: await fs.realpath(root) },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves background ownership and final receipts across callback failures", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-callback-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session, backgroundShell } = await makeRuntime({
+        workspaceRoots: root,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const callbackFailure = async () => {
+        throw new Error("callback unavailable");
+      };
+      const started = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "start_background", command: "sleep 0.05" },
+          callbackFailure,
+        ),
+      );
+      expect(started.success).toBe(false);
+      expect(started.data).toMatchObject({
+        action: "start_background",
+        handle: expect.stringMatching(/^bgsh_/),
+        workspaceDeltaReceipt: {
+          reasonCode: "BACKGROUND_RECEIPT_PENDING",
+        },
+      });
+      const handle = (started.data as Record<string, unknown>).handle as string;
+      await waitForBackgroundToSettle(
+        backgroundShell,
+        String(message.roomId),
+        handle,
+      );
+      const polled = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "poll_background", handle },
+          callbackFailure,
+        ),
+      );
+      expect(polled.success).toBe(false);
+      expect(polled.data).toMatchObject({
+        action: "poll_background",
+        handle,
+        status: "exited",
+        workspaceDeltaReceipt: {
+          outcome: expect.stringMatching(/^(?:unchanged|indeterminate)$/),
+          operation: { handle },
+        },
+      });
+      expect(
+        (
+          (polled.data as Record<string, unknown>)
+            .workspaceDeltaReceipt as Record<string, unknown>
+        ).reasonCode,
+      ).not.toBe("BACKGROUND_RECEIPT_PENDING");
+
+      const second = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command: "sleep 5",
+        }),
+      );
+      const secondHandle = (second.data as Record<string, unknown>)
+        .handle as string;
+      const killed = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "kill_background", handle: secondHandle },
+          callbackFailure,
+        ),
+      );
+      expect(killed.success).toBe(false);
+      expect(killed.data).toMatchObject({
+        action: "kill_background",
+        handle: secondHandle,
+        status: "killed",
+        workspaceDeltaReceipt: {
+          operation: { handle: secondHandle },
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("finalizes a mutation receipt before rejecting background output overflow", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-overflow-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session, backgroundShell } = await makeRuntime({
+        workspaceRoots: root,
+        backgroundBufferChars: 5,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const started = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command: "printf changed > generated.txt; printf 123456",
+        }),
+      );
+      const handle = (started.data as Record<string, unknown>).handle as string;
+      await waitForBackgroundToSettle(
+        backgroundShell,
+        String(message.roomId),
+        handle,
+      );
+      const poll = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "poll_background",
+          handle,
+        }),
+      );
+
+      expect(poll.success).toBe(false);
+      expect(poll.data).toMatchObject({
+        action: "poll_background",
+        handle,
+        workspaceDeltaReceipt: {
+          outcome: "changed",
+          operation: { handle },
+        },
       });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
@@ -2634,7 +2799,13 @@ describeIfPosix("shellAction", () => {
     expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain("mari");
     expect(JSON.stringify(poll)).not.toContain("gold9");
-    expect(poll.data).toBeUndefined();
+    expect(poll.data).toMatchObject({
+      action: "poll_background",
+      handle,
+      workspaceDeltaReceipt: {
+        operation: { kind: "background_shell", handle },
+      },
+    });
   });
 
   it("preserves same-stream event boundaries around harmless bytes", async () => {

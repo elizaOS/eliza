@@ -47,9 +47,14 @@ import {
   beginLocalWorkspaceDeltaObservation,
   finishLocalWorkspaceDeltaObservation,
   indeterminateWorkspaceDeltaReceipt,
+  unattestedRemoteWorkspaceScope,
   workspaceDeltaResultData,
 } from "../lib/workspace-delta.js";
-import type { BackgroundShellService } from "../services/background-shell-service.js";
+import {
+  type BackgroundShellService,
+  type BackgroundShellSessionSnapshot,
+  BackgroundShellStartError,
+} from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import { redactShellText } from "../shell/redaction.js";
@@ -87,6 +92,22 @@ function redactedWorkspaceDeltaResultData(
         }
       : undefined,
   );
+}
+
+function redactedBackgroundSession(
+  runtime: IAgentRuntime,
+  session: BackgroundShellSessionSnapshot,
+): BackgroundShellSessionSnapshot {
+  const redactedReceipt = session.workspaceDeltaReceipt
+    ? (redactedWorkspaceDeltaResultData(runtime, session.workspaceDeltaReceipt)
+        .workspaceDeltaReceipt as WorkspaceDeltaReceipt)
+    : undefined;
+  return {
+    ...session,
+    command: redactShellText(runtime, session.command),
+    cwd: redactShellText(runtime, session.cwd),
+    ...(redactedReceipt ? { workspaceDeltaReceipt: redactedReceipt } : {}),
+  };
 }
 
 type ShellActionSubaction =
@@ -1477,7 +1498,9 @@ export const shellAction: Action = {
       }
       try {
         if (subaction === "list_background") {
-          const sessions = backgroundShell.list(conversationId);
+          const sessions = backgroundShell
+            .list(conversationId)
+            .map((session) => redactedBackgroundSession(runtime, session));
           const lines = sessions.length
             ? sessions
                 .map((session) =>
@@ -1531,7 +1554,7 @@ export const shellAction: Action = {
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "write_background",
-            session,
+            session: redactedBackgroundSession(runtime, session),
             ...redactedWorkspaceDeltaResultData(
               runtime,
               session.workspaceDeltaReceipt,
@@ -1552,7 +1575,7 @@ export const shellAction: Action = {
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "kill_background",
-            session,
+            session: redactedBackgroundSession(runtime, session),
             ...redactedWorkspaceDeltaResultData(
               runtime,
               session.workspaceDeltaReceipt,
@@ -1597,6 +1620,8 @@ export const shellAction: Action = {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "poll_background",
           ...poll,
+          command: redactShellText(runtime, poll.command),
+          cwd: redactShellText(runtime, poll.cwd),
           ...redactedWorkspaceDeltaResultData(
             runtime,
             poll.workspaceDeltaReceipt,
@@ -1606,10 +1631,43 @@ export const shellAction: Action = {
         // error-policy:J1 SHELL action boundary; background session lookup and
         // process-control failures are returned to the planner as structured
         // tool failures.
-        return failureToActionResult({
-          reason: "internal",
-          message: redactShellText(runtime, (err as Error).message),
-        });
+        const failedHandle = readStringParam(options, "handle");
+        let latest: BackgroundShellSessionSnapshot | undefined;
+        if (failedHandle) {
+          try {
+            latest = await backgroundShell.inspect({
+              conversationId,
+              handle: failedHandle,
+            });
+          } catch (inspectionError) {
+            // error-policy:J1 Secondary inspection enriches the original
+            // boundary failure; inability to inspect cannot replace it.
+            coreLogger.warn(
+              `${CODING_TOOLS_LOG_PREFIX} failed to inspect background SHELL ${failedHandle}: ${redactShellText(runtime, inspectionError instanceof Error ? inspectionError.message : String(inspectionError))}`,
+            );
+          }
+        }
+        return failureToActionResult(
+          {
+            reason: "internal",
+            message: redactShellText(runtime, (err as Error).message),
+          },
+          {
+            actionName: "SHELL",
+            [CANONICAL_SUBACTION_KEY]: subaction,
+            ...(failedHandle ? { handle: failedHandle } : {}),
+            ...(latest
+              ? {
+                  status: latest.status,
+                  session: redactedBackgroundSession(runtime, latest),
+                }
+              : {}),
+            ...redactedWorkspaceDeltaResultData(
+              runtime,
+              latest?.workspaceDeltaReceipt,
+            ),
+          },
+        );
       }
     }
 
@@ -1928,7 +1986,7 @@ export const shellAction: Action = {
           command: redactedCommand,
           cwd: redactedCwd,
           handle: session.handle,
-          session,
+          session: redactedBackgroundSession(runtime, session),
           execution_route: session.sandbox === "host" ? "host" : "sandbox",
           sandbox_backend: session.sandbox,
           ...redactedWorkspaceDeltaResultData(
@@ -1940,8 +1998,26 @@ export const shellAction: Action = {
         // error-policy:J1 SHELL action boundary; unsupported execution backends
         // and spawn failures must be visible to the planner instead of falling
         // back to a host-spawned process.
+        const failedHandle =
+          startedSession?.handle ??
+          (err instanceof BackgroundShellStartError ? err.handle : undefined);
+        let latest = startedSession;
+        if (failedHandle) {
+          try {
+            latest = await backgroundShell.inspect({
+              conversationId,
+              handle: failedHandle,
+            });
+          } catch (inspectionError) {
+            // error-policy:J1 Secondary inspection enriches the original
+            // boundary failure; the retained start snapshot remains authority.
+            coreLogger.warn(
+              `${CODING_TOOLS_LOG_PREFIX} failed to inspect background SHELL ${failedHandle}: ${redactShellText(runtime, inspectionError instanceof Error ? inspectionError.message : String(inspectionError))}`,
+            );
+          }
+        }
         const workspaceDelta =
-          startedSession?.workspaceDeltaReceipt ??
+          latest?.workspaceDeltaReceipt ??
           (await finishLocalWorkspaceDeltaObservation(backgroundObservation));
         return failureToActionResult(
           {
@@ -1949,8 +2025,17 @@ export const shellAction: Action = {
             message: redactShellText(runtime, (err as Error).message),
           },
           {
+            actionName: "SHELL",
+            [CANONICAL_SUBACTION_KEY]: "start_background",
             command: redactShellText(runtime, command),
             cwd: redactedCwd,
+            ...(latest
+              ? {
+                  handle: latest.handle,
+                  status: latest.status,
+                  session: redactedBackgroundSession(runtime, latest),
+                }
+              : {}),
             ...redactedWorkspaceDeltaResultData(runtime, workspaceDelta),
           },
         );
@@ -1994,7 +2079,7 @@ export const shellAction: Action = {
       );
       const workspaceDelta = capabilityRouterPresent
         ? indeterminateWorkspaceDeltaReceipt(
-            workspaceObservation?.root ?? cwd,
+            unattestedRemoteWorkspaceScope(cwd),
             "REMOTE_EXECUTION_UNOBSERVED",
           )
         : await finishLocalWorkspaceDeltaObservation(workspaceObservation);
@@ -2010,7 +2095,7 @@ export const shellAction: Action = {
     const workspaceDelta =
       result.sandbox === "capability-router"
         ? indeterminateWorkspaceDeltaReceipt(
-            workspaceObservation?.root ?? cwd,
+            result.workspaceExecution ?? unattestedRemoteWorkspaceScope(cwd),
             "REMOTE_EXECUTION_UNOBSERVED",
           )
         : await finishLocalWorkspaceDeltaObservation(workspaceObservation);

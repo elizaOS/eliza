@@ -166,6 +166,42 @@ describe("capability router", () => {
 		]);
 	});
 
+	it("strictly decodes opaque workspace execution attestations", async () => {
+		const workspaceExecution = {
+			root: "/remote/repo",
+			rootId: "a".repeat(64),
+			executionDomainId: "b".repeat(64),
+		};
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				output: "ok",
+				exitCode: 0,
+				timedOut: false,
+				workspaceExecution,
+			}),
+		});
+		await expect(
+			router.pty.runCommand({ command: "npm test" }),
+		).resolves.toMatchObject({ workspaceExecution });
+
+		for (const malformed of [
+			{ ...workspaceExecution, rootId: "short" },
+			{ ...workspaceExecution, extra: true },
+		]) {
+			const invalid = new RuntimeBrokerCapabilityRouter({
+				invokeRuntime: async () => ({
+					output: "ok",
+					exitCode: 0,
+					timedOut: false,
+					workspaceExecution: malformed,
+				}),
+			});
+			await expect(
+				invalid.pty.runCommand({ command: "npm test" }),
+			).rejects.toMatchObject({ code: "CAPABILITY_DECODE_FAILED" });
+		}
+	});
+
 	it("wraps broker failures as capability request failures", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => {

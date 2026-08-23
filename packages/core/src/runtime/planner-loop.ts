@@ -3727,7 +3727,7 @@ function codingMutationRequiresVerification(
 ): boolean {
 	type PendingMutation =
 		| { kind: "typed" }
-		| { kind: "background_pending" }
+		| { kind: "background_pending"; scopeKey: string }
 		| { kind: "legacy" }
 		| { kind: "malformed" };
 	const pending = new Map<string, PendingMutation>();
@@ -3737,6 +3737,14 @@ function codingMutationRequiresVerification(
 	for (const step of steps) {
 		const workspaceDelta = workspaceDeltaReceipt(step);
 		const name = step?.toolCall?.name.toUpperCase();
+		const subaction = String(
+			(step.toolCall?.params as Record<string, unknown> | undefined)?.action ??
+				(step.toolCall?.params as Record<string, unknown> | undefined)
+					?.operation ??
+				"run",
+		)
+			.trim()
+			.toLowerCase();
 		const fileMutation =
 			name === "FILE" &&
 			[
@@ -3763,20 +3771,45 @@ function codingMutationRequiresVerification(
 			pending.set(malformedKey, { kind: "malformed" });
 		} else if (workspaceDelta.receipt) {
 			const receipt = workspaceDelta.receipt;
-			const key = workspaceDeltaScopeKey(receipt);
-			if (receipt.outcome === "changed") {
-				pending.set(key, { kind: "typed" });
-			} else if (receipt.outcome === "indeterminate") {
-				const existing = pending.get(key);
-				if (receipt.reasonCode === "BACKGROUND_RECEIPT_PENDING") {
-					if (!existing) pending.set(key, { kind: "background_pending" });
+			const scopeKey = workspaceDeltaScopeKey(receipt);
+			const operationKey = receipt.operation
+				? workspaceDeltaOperationKey(receipt)
+				: undefined;
+			if (receipt.reasonCode === "BACKGROUND_RECEIPT_PENDING") {
+				const generatedHandle = String(step.result?.data?.handle ?? "");
+				if (
+					subaction !== "start_background" ||
+					!operationKey ||
+					generatedHandle !== receipt.operation?.handle
+				) {
+					pending.set(malformedKey, { kind: "malformed" });
 				} else {
-					pending.set(key, { kind: "typed" });
+					pending.set(operationKey, {
+						kind: "background_pending",
+						scopeKey,
+					});
 				}
-			} else if (pending.get(key)?.kind === "background_pending") {
-				// A terminal background observation resolves only its own provisional
-				// start receipt. It is not semantic test evidence for older mutations.
-				pending.delete(key);
+			} else if (operationKey) {
+				const requestedHandle = String(
+					(step.toolCall?.params as Record<string, unknown> | undefined)
+						?.handle ?? "",
+				);
+				const returnedHandle = String(step.result?.data?.handle ?? "");
+				if (
+					(subaction !== "poll_background" &&
+						subaction !== "kill_background") ||
+					requestedHandle !== receipt.operation?.handle ||
+					returnedHandle !== receipt.operation?.handle
+				) {
+					pending.set(malformedKey, { kind: "malformed" });
+				} else {
+					pending.delete(operationKey);
+					if (receipt.outcome !== "unchanged") {
+						pending.set(scopeKey, { kind: "typed" });
+					}
+				}
+			} else if (receipt.outcome !== "unchanged") {
+				pending.set(scopeKey, { kind: "typed" });
 			}
 		}
 		if (
@@ -3816,9 +3849,21 @@ function workspaceDeltaReceipt(step: PlannerStep): {
 }
 
 function workspaceDeltaScopeKey(receipt: WorkspaceDeltaReceipt): string {
-	return [receipt.scope.kind, receipt.scope.coverage, receipt.scope.root].join(
-		"\0",
-	);
+	return [
+		receipt.scope.kind,
+		receipt.scope.coverage,
+		receipt.scope.executionDomainId,
+		receipt.scope.rootId,
+	].join("\0");
+}
+
+function workspaceDeltaOperationKey(receipt: WorkspaceDeltaReceipt): string {
+	return [
+		"background",
+		receipt.scope.executionDomainId,
+		receipt.scope.rootId,
+		receipt.operation?.handle ?? "",
+	].join("\0");
 }
 
 /**

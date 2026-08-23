@@ -552,18 +552,42 @@ describe("v5 planner loop skeleton", () => {
 	const workspaceDelta = (
 		outcome: "changed" | "unchanged" | "indeterminate",
 		root = "/workspace",
+		options: {
+			rootId?: string;
+			executionDomainId?: string;
+			backgroundHandle?: string;
+			reasonCode?: "WORKTREE_PROBE_FAILED" | "BACKGROUND_RECEIPT_PENDING";
+		} = {},
 	) => ({
+		...(options.backgroundHandle ? { handle: options.backgroundHandle } : {}),
 		workspaceDeltaReceipt: {
 			version: 1,
 			kind: "workspace_delta",
 			scope: {
 				kind: "git_worktree",
 				root,
+				rootId:
+					options.rootId ??
+					(root === "/workspace-a"
+						? "a"
+						: root === "/workspace-b"
+							? "b"
+							: "c"
+					).repeat(64),
+				executionDomainId: options.executionDomainId ?? "d".repeat(64),
 				coverage: "tracked_and_untracked_nonignored",
 			},
+			...(options.backgroundHandle
+				? {
+						operation: {
+							kind: "background_shell",
+							handle: options.backgroundHandle,
+						},
+					}
+				: {}),
 			outcome,
 			...(outcome === "indeterminate"
-				? { reasonCode: "WORKTREE_PROBE_FAILED" }
+				? { reasonCode: options.reasonCode ?? "WORKTREE_PROBE_FAILED" }
 				: {
 						beforeFingerprint: "a".repeat(64),
 						afterFingerprint: (outcome === "changed" ? "b" : "a").repeat(64),
@@ -1007,7 +1031,7 @@ describe("v5 planner loop skeleton", () => {
 		},
 	);
 
-	it("requires verification from the exact mutation receipt scope", async () => {
+	it("matches opaque root and execution-domain identities instead of redacted display roots", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const runtime = {
 				useModel: vi
@@ -1053,17 +1077,23 @@ describe("v5 planner loop skeleton", () => {
 				.mockResolvedValueOnce({
 					success: true,
 					text: "generated",
-					data: workspaceDelta("changed", "/workspace-a"),
+					data: workspaceDelta("changed", "[private]", {
+						rootId: "a".repeat(64),
+					}),
 				})
 				.mockResolvedValueOnce({
 					success: true,
 					text: "wrong workspace passed",
-					data: workspaceDelta("unchanged", "/workspace-b"),
+					data: workspaceDelta("unchanged", "[private]", {
+						rootId: "b".repeat(64),
+					}),
 				})
 				.mockResolvedValueOnce({
 					success: true,
 					text: "right workspace passed",
-					data: workspaceDelta("unchanged", "/workspace-a"),
+					data: workspaceDelta("unchanged", "[private]", {
+						rootId: "a".repeat(64),
+					}),
 				});
 
 			const result = await runPlannerLoop({
@@ -1080,6 +1110,62 @@ describe("v5 planner loop skeleton", () => {
 
 			expect(result.finalMessage).toBe("Verified in the changed workspace.");
 			expect(executeToolCall).toHaveBeenCalledTimes(3);
+		});
+	});
+
+	it("does not let a local-domain receipt clear a remote-domain mutation", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const shell = (id: string, command = "npm test") => ({
+				text: "",
+				toolCalls: [{ id, name: "SHELL", arguments: { command } }],
+			});
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(shell("mutate-remote", "node generate.js"))
+					.mockResolvedValueOnce(shell("verify-local"))
+					.mockResolvedValueOnce(codingReply("early", "Verified."))
+					.mockResolvedValueOnce(shell("verify-remote", "npm run typecheck"))
+					.mockResolvedValueOnce(codingReply("done", "Remote scope verified."))
+					.mockResolvedValue(codingReply("fallback", "Still pending.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "remote mutation",
+					data: workspaceDelta("changed", "[private]", {
+						executionDomainId: "e".repeat(64),
+					}),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "local pass",
+					data: workspaceDelta("unchanged", "[private]"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "remote pass",
+					data: workspaceDelta("unchanged", "[private]", {
+						executionDomainId: "e".repeat(64),
+					}),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+			expect(runtime.useModel).toHaveBeenCalledTimes(5);
+			expect(result.finalMessage).toBe("Remote scope verified.");
 		});
 	});
 
@@ -1143,6 +1229,137 @@ describe("v5 planner loop skeleton", () => {
 
 			expect(result.finalMessage).toBe("Verified in foreground.");
 			expect(executeToolCall).toHaveBeenCalledTimes(3);
+		});
+	});
+
+	it("keeps same-root background handles independent until each exact terminal action resolves", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const call = (id: string, action: string, handle?: string) => ({
+				text: "",
+				toolCalls: [
+					{
+						id,
+						name: "SHELL",
+						arguments: {
+							action,
+							...(handle ? { handle } : { command: "npm test" }),
+						},
+					},
+				],
+			});
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							...call("start-one", "start_background").toolCalls,
+							...call("start-two", "start_background").toolCalls,
+						],
+					})
+					.mockResolvedValueOnce(call("poll-one", "poll_background", "bg-one"))
+					.mockResolvedValueOnce(call("foreground", "run"))
+					.mockResolvedValueOnce(codingReply("launder", "Both done."))
+					.mockResolvedValueOnce(call("kill-two", "kill_background", "bg-two"))
+					.mockResolvedValueOnce(codingReply("done", "Both handles settled.")),
+				logger: { warn: vi.fn() },
+			};
+			const pending = (handle: string) =>
+				workspaceDelta("indeterminate", "/workspace", {
+					backgroundHandle: handle,
+					reasonCode: "BACKGROUND_RECEIPT_PENDING",
+				});
+			const terminal = (handle: string, outcome: "changed" | "unchanged") =>
+				workspaceDelta(outcome, "/workspace", {
+					backgroundHandle: handle,
+				});
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "one",
+					data: pending("bg-one"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "two",
+					data: pending("bg-two"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "one done",
+					data: terminal("bg-one", "changed"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "tests pass",
+					data: workspaceDelta("unchanged"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "two killed",
+					data: terminal("bg-two", "unchanged"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Both handles settled.");
+			expect(executeToolCall).toHaveBeenCalledTimes(5);
+		});
+	});
+
+	it("fails closed when a pending receipt does not bind the generated handle", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "start",
+								name: "SHELL",
+								arguments: {
+									action: "start_background",
+									command: "npm test",
+								},
+							},
+						],
+					})
+					.mockResolvedValue(codingReply("claim", "Finished.")),
+				logger: { warn: vi.fn() },
+			};
+			const data = workspaceDelta("indeterminate", "/workspace", {
+				backgroundHandle: "claimed-handle",
+				reasonCode: "BACKGROUND_RECEIPT_PENDING",
+			});
+			data.handle = "actual-handle";
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					text: "started",
+					data,
+				})),
+				evaluate: vi.fn(),
+			});
+			expect(result.finalMessage).toContain("coding task is incomplete");
 		});
 	});
 

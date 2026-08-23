@@ -29,8 +29,15 @@ export interface WorkspaceDeltaReceipt {
 	kind: "workspace_delta";
 	scope: {
 		kind: "git_worktree";
+		/** Display-only root; machine matching uses the opaque identities. */
 		root: string;
+		rootId: string;
+		executionDomainId: string;
 		coverage: "tracked_and_untracked_nonignored";
+	};
+	operation?: {
+		kind: "background_shell";
+		handle: string;
 	};
 	outcome: WorkspaceDeltaOutcome;
 	/** SHA-256 of the complete observed baseline state, when available. */
@@ -82,14 +89,20 @@ export function normalizeWorkspaceDeltaReceipt(
 	if (raw) {
 		assertExactKeys(
 			raw,
-			[...BASE_KEYS, "beforeFingerprint", "afterFingerprint", "reasonCode"],
+			[
+				...BASE_KEYS,
+				"operation",
+				"beforeFingerprint",
+				"afterFingerprint",
+				"reasonCode",
+			],
 			"WorkspaceDeltaReceipt",
 		);
 	}
 	if (scope) {
 		assertExactKeys(
 			scope,
-			["kind", "root", "coverage"],
+			["kind", "root", "rootId", "executionDomainId", "coverage"],
 			"WorkspaceDeltaReceipt.scope",
 		);
 	}
@@ -106,6 +119,31 @@ export function normalizeWorkspaceDeltaReceipt(
 		throw new TypeError(
 			"WorkspaceDeltaReceipt has an invalid envelope or scope.",
 		);
+	}
+	const rootId = fingerprint(scope.rootId, "scope.rootId");
+	const executionDomainId = fingerprint(
+		scope.executionDomainId,
+		"scope.executionDomainId",
+	);
+	const operation = record(raw.operation);
+	if (operation) {
+		assertExactKeys(
+			operation,
+			["kind", "handle"],
+			"WorkspaceDeltaReceipt.operation",
+		);
+		if (
+			operation.kind !== "background_shell" ||
+			typeof operation.handle !== "string" ||
+			operation.handle.length === 0 ||
+			operation.handle.length > 200 ||
+			operation.handle.trim() !== operation.handle ||
+			/[\0\r\n]/.test(operation.handle)
+		) {
+			throw new TypeError("WorkspaceDeltaReceipt has an invalid operation.");
+		}
+	} else if (raw.operation !== undefined) {
+		throw new TypeError("WorkspaceDeltaReceipt has an invalid operation.");
 	}
 	if (
 		raw.outcome !== "changed" &&
@@ -140,14 +178,32 @@ export function normalizeWorkspaceDeltaReceipt(
 				"Indeterminate WorkspaceDeltaReceipt values cannot include afterFingerprint.",
 			);
 		}
+		if (
+			raw.reasonCode === "BACKGROUND_RECEIPT_PENDING" &&
+			operation === undefined
+		) {
+			throw new TypeError(
+				"A pending background WorkspaceDeltaReceipt requires its operation handle.",
+			);
+		}
 		return {
 			version: 1,
 			kind: "workspace_delta",
 			scope: {
 				kind: "git_worktree",
 				root: scope.root,
+				rootId,
+				executionDomainId,
 				coverage: "tracked_and_untracked_nonignored",
 			},
+			...(operation
+				? {
+						operation: {
+							kind: "background_shell" as const,
+							handle: operation.handle as string,
+						},
+					}
+				: {}),
 			outcome: "indeterminate",
 			...(raw.beforeFingerprint === undefined
 				? {}
@@ -189,8 +245,18 @@ export function normalizeWorkspaceDeltaReceipt(
 		scope: {
 			kind: "git_worktree",
 			root: scope.root,
+			rootId,
+			executionDomainId,
 			coverage: "tracked_and_untracked_nonignored",
 		},
+		...(operation
+			? {
+					operation: {
+						kind: "background_shell" as const,
+						handle: operation.handle as string,
+					},
+				}
+			: {}),
 		outcome: raw.outcome,
 		beforeFingerprint,
 		afterFingerprint,
