@@ -120,6 +120,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
 		/CODING_DIRECT_ACTIONS/,
 		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
+		/PLANNER_MAX_OWN_REPLY_TURNS/,
+		/maxOwnReplies/,
 	],
 	"packages/core/src/services/evaluator.ts": [
 		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,

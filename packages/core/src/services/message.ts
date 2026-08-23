@@ -2468,13 +2468,6 @@ function verifiedCrossRoomContent(memory: Memory): string {
 }
 
 /**
- * How many of the agent's own prior turns the tool-planner context renders.
- * Enough to cover the pending question/preview plus a short back-and-forth,
- * small enough to keep the stale-answer surface and token cost bounded.
- */
-const PLANNER_MAX_OWN_REPLY_TURNS = 4;
-
-/**
  * Structural marker for an assistant memory whose text is a tool-derived
  * answer rather than plain dialogue: it carries merged action-callback
  * history, or its recorded actions include a real tool (anything beyond the
@@ -2491,11 +2484,9 @@ function appendPriorDialogueEvents(
 		/**
 		 * Planner mode: keep ordinary own replies (questions, previews, acks —
 		 * what "yes"/"finish it" refers to) while excluding tool-derived own
-		 * answers structurally (stale-answer hazard) and bounding how many own
-		 * turns render.
+		 * answers structurally (stale-answer hazard).
 		 */
 		excludeToolDerivedOwnReplies?: boolean;
-		maxOwnReplies?: number;
 	},
 ): void {
 	const includeOwnReplies = options?.includeOwnReplies ?? false;
@@ -2571,20 +2562,6 @@ function appendPriorDialogueEvents(
 				: 0;
 			return aTime - bTime;
 		});
-	// Bound how many of the agent's own turns render (newest win): the planner
-	// needs the immediate question/preview a continuation refers to, not the
-	// agent's whole side of a long conversation.
-	const maxOwnReplies = options?.maxOwnReplies;
-	if (maxOwnReplies !== undefined) {
-		let ownRepliesKept = 0;
-		for (let index = dialogue.length - 1; index >= 0; index--) {
-			if (dialogue[index]?.entityId !== runtime.agentId) continue;
-			ownRepliesKept++;
-			if (ownRepliesKept > maxOwnReplies) {
-				dialogue.splice(index, 1);
-			}
-		}
-	}
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;
@@ -3760,13 +3737,12 @@ async function createV5MessageContextObject(args: {
 		// chat recall ("did you tell me X?"). The tool planner needs the
 		// ordinary ones too — the question/preview a continuation turn ("finish
 		// it", "that is good") refers to — but role-wide inclusion resurrects
-		// the stale-answer hazard, so the planner's window is bounded and
-		// excludes tool-derived own answers structurally.
+		// the stale-answer hazard, so the planner excludes tool-derived own
+		// answers structurally while preserving every ordinary reply in order.
 		includeOwnReplies: true,
 		...(args.includeTools
 			? {
 					excludeToolDerivedOwnReplies: true,
-					maxOwnReplies: PLANNER_MAX_OWN_REPLY_TURNS,
 				}
 			: {}),
 	});

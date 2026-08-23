@@ -7910,6 +7910,55 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 		expect(plannerUserContent).toContain("treat every fact in them as stale");
 	});
 
+	it("preserves every ordinary own reply in planner order", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "Continuing.",
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "No tool needed in this fixture.",
+				toolCalls: [],
+				messageToUser: "Done.",
+			}),
+		]);
+		const agentId = runtime.agentId;
+		const recentMessages = Array.from({ length: 7 }, (_, index) => ({
+			id: `00000000-0000-0000-0000-00000000de0${index}` as UUID,
+			entityId: agentId,
+			agentId,
+			roomId,
+			createdAt: index + 1,
+			content: {
+				text: `ordinary own reply ${index}`,
+				source: "discord",
+			},
+		}));
+		const state = recentState(recentMessages);
+		runtime.composeState = vi.fn(async () => state);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "continue" }),
+			state,
+			responseId: "00000000-0000-0000-0000-0000000000c2" as UUID,
+		});
+
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerParams.messages?.[1]?.content ?? "";
+		let priorIndex = -1;
+		for (let index = 0; index < recentMessages.length; index += 1) {
+			const nextIndex = plannerUserContent.indexOf(
+				`ordinary own reply ${index}`,
+			);
+			expect(nextIndex).toBeGreaterThan(priorIndex);
+			priorIndex = nextIndex;
+		}
+	});
+
 	it("resolves an explicit continuation turn to the prior user request for candidate inference", async () => {
 		const shellHandler = vi.fn(async () => ({
 			success: true,
