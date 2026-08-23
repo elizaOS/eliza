@@ -55,6 +55,7 @@ const MAX_PROVIDER_JSON_NODES = 512;
 const MAX_WEB_SEARCH_QUERY_CODE_POINTS = 2048;
 const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"]);
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
+const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"]);
 
 function publicHttpUrl(value: unknown): string | undefined {
     if (typeof value !== "string") return undefined;
@@ -125,7 +126,17 @@ export function webSearchSourceEvidence(text: string): {
                     }
                     continue;
                 }
-                if (item && typeof item === "object") {
+                if (
+                    SOURCE_TEXT_ARRAY_KEYS.has(key) &&
+                    Array.isArray(item) &&
+                    item.length > 0 &&
+                    item.every((value) => typeof value === "string")
+                ) {
+                    scalarRecord[key] = item;
+                    if (item.some((value) => containsUnsafeHttpUrl(value))) {
+                        recordContainsUnsafeUrl = true;
+                    }
+                } else if (item && typeof item === "object") {
                     pending.push(item);
                 } else {
                     scalarRecord[key] = item;

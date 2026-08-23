@@ -110,6 +110,10 @@ describe("webSearchEdgePlugin", () => {
                         text: "See http://127.0.0.1/admin for the real status",
                     },
                     {
+                        url: "https://excerpt.example/result",
+                        excerpts: ["See https://user:pass@example.com/private for details"],
+                    },
+                    {
                         url: "https://safe.example/result",
                         text: "Public status is healthy",
                     },
@@ -118,6 +122,7 @@ describe("webSearchEdgePlugin", () => {
         );
         expect(evidence.sourceUrls).toEqual([
             "https://safe.example/result",
+            "https://excerpt.example/result",
             "https://public.example/result",
         ]);
         expect(evidence.sources).toEqual([
@@ -179,6 +184,24 @@ describe("webSearchEdgePlugin", () => {
         expect(evidence.sources).toContainEqual({
             url: "https://example.com/a",
             text: expect.stringContaining("value A 10 USD"),
+        });
+    });
+
+    it("binds Parallel excerpts that are direct fields of their result URL", () => {
+        const [source] = webSearchSourceEvidence(
+            JSON.stringify({
+                results: [
+                    {
+                        url: "https://example.com/current",
+                        title: "Current result",
+                        excerpts: ["BTC is 77,730.07 USD."],
+                    },
+                ],
+            })
+        ).sources;
+        expect(source).toEqual({
+            url: "https://example.com/current",
+            text: expect.stringContaining("BTC is 77,730.07 USD."),
         });
     });
 
