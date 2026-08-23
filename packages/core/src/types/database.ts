@@ -23,7 +23,7 @@ import type {
 	PairingRequest,
 	PairingRequestQuery,
 } from "./pairing";
-import type { JsonValue, Metadata, UUID } from "./primitives";
+import type { Content, JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
 /**
@@ -39,6 +39,67 @@ export interface MessageSearchHit {
 	ftsRank: number;
 	trigramSimilarity: number;
 }
+
+/** Selects one immutable source stored under a message parent. */
+export interface MessageContentSourceSelector {
+	kind: "message-text" | "attachment-text";
+	attachmentIdHash?: string;
+}
+
+/** Storage-enforced bounded read that reauthorizes its parent on every call. */
+export interface MessageContentRangeReadParams {
+	agentId: UUID;
+	messageId: UUID;
+	authorizedRoomId: UUID;
+	accessContext: AccessContext;
+	source: MessageContentSourceSelector;
+	offset: number;
+	limit: number;
+	expectedRevision?: string;
+}
+
+export interface MessageContentRangePage {
+	text: string;
+	start: number;
+	end: number;
+	total: number;
+	revision: string;
+	sourceSha256: string;
+	sliceSha256: string;
+	returnedSegments: number;
+	returnedBytes: number;
+}
+
+export type MessageContentRangeReadResult =
+	| { status: "ok"; parent: Memory; page: MessageContentRangePage }
+	| { status: "inline"; parent: Memory; text: string }
+	| { status: "not_found" }
+	| { status: "forbidden" };
+
+/** Atomic manifest-last create or compare-and-swap parent-content replacement. */
+export type MessageContentPublicationParams =
+	| {
+			mode: "create";
+			parent: Memory & { id: UUID };
+			segments: Memory[];
+	  }
+	| {
+			mode: "replace";
+			agentId: UUID;
+			messageId: UUID;
+			expectedContent: Content;
+			replacementContent: Content;
+			segments: Memory[];
+			removeSegmentIds: UUID[];
+	  };
+
+export type MessageContentPublicationResult =
+	| {
+			status: "created" | "updated";
+			parent: Memory;
+			removedSegmentIds: UUID[];
+	  }
+	| { status: "not_found" | "conflict" };
 
 /** One immutable row that must exist before an atomic head becomes visible. */
 export interface AtomicMemoryDependency {
@@ -1215,6 +1276,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<DocumentMutationResult>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
+
+	/** Native immutable MESSAGE/ATTACHMENT source storage and bounded reads. */
+	readonly messageContentSegmentCapability?: 1;
+	publishMessageContentSegments?(
+		params: MessageContentPublicationParams,
+	): Promise<MessageContentPublicationResult>;
+	readMessageContentRange?(
+		params: MessageContentRangeReadParams,
+	): Promise<MessageContentRangeReadResult>;
 
 	/**
 	 * Full-text + trigram message search across a set of rooms, ranked

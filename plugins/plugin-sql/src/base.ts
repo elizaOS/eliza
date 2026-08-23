@@ -61,6 +61,10 @@ import {
   logger,
   type Memory,
   type MemoryMetadata,
+  type MessageContentPublicationParams,
+  type MessageContentPublicationResult,
+  type MessageContentRangeReadParams,
+  type MessageContentRangeReadResult,
   type MessageSearchHit,
   type Metadata,
   normalizePairingPageOptions,
@@ -83,6 +87,13 @@ import {
   type RunStatus,
   readDocumentSourceProjection,
   requireDocumentSourceReadMetadata,
+  authorizeMessageContentRead,
+  canonicalAttachmentText,
+  hashAttachmentIdForLocator,
+  MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+  MESSAGE_CONTENT_READ_MAX_SEGMENTS,
+  readMessageContentProjection,
+  resolveMessageContentSourceDescriptor,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
@@ -566,6 +577,7 @@ import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
+  readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   readonly documentRangeReadCapability = 2 as const;
   protected readonly maxRetries: number = 3;
@@ -1830,6 +1842,293 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteComponent(componentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.delete(componentTable).where(eq(componentTable.id, componentId));
+    });
+  }
+
+  async publishMessageContentSegments(
+    params: MessageContentPublicationParams
+  ): Promise<MessageContentPublicationResult> {
+    const agentId = params.mode === "create" ? params.parent.agentId : params.agentId;
+    if (!agentId) {
+      throw new ElizaError("Message content publication requires an agent ID", {
+        code: "MESSAGE_CONTENT_INVALID_PUBLICATION",
+      });
+    }
+    const messageId = params.mode === "create" ? params.parent.id : params.messageId;
+    for (const segment of params.segments) {
+      const metadata = segment.metadata as Record<string, unknown> | undefined;
+      if (
+        !segment.id ||
+        segment.agentId !== agentId ||
+        metadata?.type !== "message-content-segment" ||
+        metadata.messageId !== messageId
+      ) {
+        throw new ElizaError("Message content segment identity is invalid", {
+          code: "MESSAGE_CONTENT_INVALID_PUBLICATION",
+          context: { messageId, segmentId: segment.id },
+        });
+      }
+    }
+    const entityContext = params.mode === "create" ? params.parent.entityId : agentId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      if (params.mode === "create") {
+        const ids = [params.parent.id, ...params.segments.map(({ id }) => id as UUID)];
+        const collision = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(inArray(memoryTable.id, ids))
+          .limit(1);
+        if (collision[0]) return { status: "conflict" };
+        for (let offset = 0; offset < params.segments.length; offset += 250) {
+          for (const segment of params.segments.slice(offset, offset + 250)) {
+            await this.insertMemoryInTransaction(
+              tx,
+              segment,
+              "message_content_segments",
+              segment.id as UUID,
+              true
+            );
+          }
+        }
+        // Manifest-last: no reader can resolve staged rows until this parent exists.
+        await this.insertMemoryInTransaction(tx, params.parent, "messages", params.parent.id, true);
+        return { status: "created", parent: params.parent, removedSegmentIds: [] };
+      }
+
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.id, params.messageId),
+            eq(memoryTable.agentId, params.agentId),
+            eq(memoryTable.type, "messages")
+          )
+        )
+        .for("update")
+        .limit(1);
+      if (!rows[0]) return { status: "not_found" };
+      const existing = memoryFromRow(rows[0]);
+      if (JSON.stringify(existing.content) !== JSON.stringify(params.expectedContent)) {
+        return { status: "conflict" };
+      }
+      const removed = new Set(params.removeSegmentIds.map(String));
+      for (let offset = 0; offset < params.segments.length; offset += 250) {
+        const ids = params.segments
+          .slice(offset, offset + 250)
+          .map(({ id }) => id as UUID)
+          .filter((id) => !removed.has(String(id)));
+        if (ids.length === 0) continue;
+        const collision = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(inArray(memoryTable.id, ids))
+          .limit(1);
+        if (collision[0]) {
+          throw new ElizaError("Message content segment id already exists", {
+            code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+            context: { messageId: params.messageId, segmentId: collision[0].id },
+          });
+        }
+      }
+      if (params.removeSegmentIds.length > 0) {
+        const removable = await tx
+          .select({ id: memoryTable.id, metadata: memoryTable.metadata })
+          .from(memoryTable)
+          .where(
+            and(
+              inArray(memoryTable.id, params.removeSegmentIds),
+              eq(memoryTable.agentId, params.agentId),
+              eq(memoryTable.type, "message_content_segments")
+            )
+          )
+          .for("update");
+        if (
+          removable.length !== params.removeSegmentIds.length ||
+          removable.some(
+            (row) =>
+              (row.metadata as Record<string, unknown> | null)?.messageId !== params.messageId
+          )
+        ) {
+          throw new ElizaError(
+            "Message content replacement cannot remove unrelated or missing segments",
+            {
+              code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+              context: { messageId: params.messageId },
+            }
+          );
+        }
+        const deleted = await tx
+          .delete(memoryTable)
+          .where(
+            and(
+              inArray(memoryTable.id, params.removeSegmentIds),
+              eq(memoryTable.agentId, params.agentId),
+              eq(memoryTable.type, "message_content_segments")
+            )
+          )
+          .returning();
+        if (deleted.length !== params.removeSegmentIds.length) {
+          throw new ElizaError("Message content replacement did not remove every old segment", {
+            code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+            context: {
+              messageId: params.messageId,
+              expected: params.removeSegmentIds.length,
+              deleted: deleted.length,
+            },
+          });
+        }
+      }
+      for (let offset = 0; offset < params.segments.length; offset += 250) {
+        for (const segment of params.segments.slice(offset, offset + 250)) {
+          await this.insertMemoryInTransaction(
+            tx,
+            segment,
+            "message_content_segments",
+            segment.id as UUID,
+            true
+          );
+        }
+      }
+      const updated = await tx
+        .update(memoryTable)
+        .set({ content: params.replacementContent })
+        .where(eq(memoryTable.id, params.messageId))
+        .returning();
+      if (updated.length !== 1) {
+        throw new ElizaError("Message content parent commit was incomplete", {
+          code: "MESSAGE_CONTENT_PARENT_UPDATE_INCOMPLETE",
+          context: { messageId: params.messageId },
+        });
+      }
+      return {
+        status: "updated",
+        parent: memoryFromRow(updated[0]),
+        removedSegmentIds: params.removeSegmentIds,
+      };
+    });
+  }
+
+  async readMessageContentRange(
+    params: MessageContentRangeReadParams
+  ): Promise<MessageContentRangeReadResult> {
+    if (
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.limit > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+    ) {
+      throw new ElizaError("Message content range is invalid", {
+        code: "MESSAGE_CONTENT_INVALID_RANGE",
+      });
+    }
+    return this.withEntityContext(params.accessContext.requesterEntityId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.id, params.messageId),
+            eq(memoryTable.agentId, params.agentId),
+            eq(memoryTable.roomId, params.authorizedRoomId),
+            eq(memoryTable.type, "messages")
+          )
+        )
+        .limit(1);
+      if (!rows[0]) return { status: "not_found" };
+      const parent = memoryFromRow(rows[0]);
+      const participant = await tx
+        .select({ id: participantTable.id })
+        .from(participantTable)
+        .where(
+          and(
+            eq(participantTable.roomId, params.authorizedRoomId),
+            eq(participantTable.entityId, params.accessContext.requesterEntityId)
+          )
+        )
+        .limit(1);
+      if (
+        !authorizeMessageContentRead({
+          parent,
+          authorizedRoomId: params.authorizedRoomId,
+          requester: params.accessContext,
+          agentId: params.agentId,
+          participantCurrent: participant.length === 1,
+          selector: params.source,
+        })
+      ) {
+        return { status: "forbidden" };
+      }
+      const descriptor = resolveMessageContentSourceDescriptor(parent.content, params.source);
+      if (!descriptor) {
+        let inline = "";
+        if (params.source.kind === "message-text") inline = parent.content.text ?? "";
+        else {
+          const attachment = (parent.content.attachments ?? []).find(
+            (item) => hashAttachmentIdForLocator(item.id) === params.source.attachmentIdHash
+          );
+          inline = attachment ? canonicalAttachmentText(attachment) : "";
+        }
+        if (new TextEncoder().encode(inline).length > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES) {
+          throw new ElizaError("Legacy content requires explicit segmented reindexing", {
+            code:
+              params.source.kind === "message-text"
+                ? "MESSAGE_REINDEX_REQUIRED"
+                : "ATTACHMENT_REINDEX_REQUIRED",
+            context: { messageId: params.messageId },
+          });
+        }
+        return { status: "inline", parent, text: inline };
+      }
+      if (params.offset > 0 && !params.expectedRevision) {
+        throw new ElizaError("Message content continuation requires a revision", {
+          code: "MESSAGE_CONTENT_EXPECTED_REVISION_REQUIRED",
+        });
+      }
+      if (params.expectedRevision && params.expectedRevision !== descriptor.revision) {
+        throw new ElizaError("Message content changed before continuation", {
+          code: "MESSAGE_CONTENT_STALE_REVISION",
+          context: { messageId: params.messageId },
+        });
+      }
+      const requestedEnd = Math.min(params.offset + params.limit, descriptor.byteLength);
+      const startExpression = sql<number>`(${memoryTable.metadata}->>'byteStart')::bigint`;
+      const endExpression = sql<number>`(${memoryTable.metadata}->>'byteEnd')::bigint`;
+      const segmentRows =
+        params.offset === descriptor.byteLength
+          ? []
+          : await tx
+              .select()
+              .from(memoryTable)
+              .where(
+                and(
+                  eq(memoryTable.type, "message_content_segments"),
+                  eq(memoryTable.agentId, params.agentId),
+                  sql`${memoryTable.metadata}->>'type' = 'message-content-segment'`,
+                  sql`${memoryTable.metadata}->>'messageId' = ${params.messageId}`,
+                  sql`${memoryTable.metadata}->>'sourceKind' = ${params.source.kind}`,
+                  params.source.attachmentIdHash
+                    ? sql`${memoryTable.metadata}->>'attachmentIdHash' = ${params.source.attachmentIdHash}`
+                    : sql`NOT (${memoryTable.metadata} ? 'attachmentIdHash')`,
+                  sql`${memoryTable.metadata}->>'sourceRevision' = ${descriptor.revision}`,
+                  sql`${endExpression} > ${params.offset}`,
+                  sql`${startExpression} < ${requestedEnd}`
+                )
+              )
+              .orderBy(asc(startExpression))
+              .limit(MESSAGE_CONTENT_READ_MAX_SEGMENTS);
+      return {
+        status: "ok",
+        parent,
+        page: readMessageContentProjection({
+          descriptor,
+          segments: segmentRows.map((row) => memoryFromRow(row)),
+          messageId: params.messageId,
+          offset: params.offset,
+          limit: params.limit,
+        }),
+      };
     });
   }
 
