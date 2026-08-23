@@ -248,7 +248,7 @@ async function createHarness(opts: HarnessOptions = {}) {
 describe("simple-path deliver-then-persist ordering", () => {
 	it("fires the delivery callback before the reply persist completes, then still persists it", async () => {
 		const h = await createHarness();
-		let repliesVisibleAtDelivery = -1;
+		let orderAtDelivery: string[] | undefined;
 		let deliveryActionName: string | undefined;
 
 		const result = await h.service.handleMessage(
@@ -257,9 +257,14 @@ describe("simple-path deliver-then-persist ordering", () => {
 			async (_content, actionName) => {
 				h.order.push("callback");
 				deliveryActionName = actionName;
-				// Direct proof delivery precedes persistence: at delivery time the
-				// reply row is not yet readable from the real adapter.
-				repliesVisibleAtDelivery = (await h.storedReplies()).length;
+				// Direct proof delivery precedes persistence: the reply-row write
+				// is started only after the delivery callback has been entered, so
+				// no persist marker exists yet at this synchronous point. Read it
+				// synchronously — the two tasks then run CONCURRENTLY (see the
+				// Promise.allSettled in the simple-path branch), so awaiting an
+				// adapter read here would hand the in-memory persist a scheduling
+				// window and prove nothing about the ordering contract.
+				orderAtDelivery = [...h.order];
 				return [];
 			},
 		);
@@ -268,7 +273,7 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(result.mode).toBe("simple");
 		expect(result.responseContent?.text).toBe(h.replyText);
 		expect(deliveryActionName).toBeUndefined();
-		expect(repliesVisibleAtDelivery).toBe(0);
+		expect(orderAtDelivery).toEqual(["stage1:1", "callback"]);
 		expect(h.order).toEqual(["stage1:1", "callback", "persist:reply"]);
 		expect(result.persistedResponseMessageIds).toHaveLength(1);
 
