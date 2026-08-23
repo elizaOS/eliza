@@ -1,7 +1,9 @@
-name: Repository Maintenance
+name: Weekly Maintenance
 
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0" # Every Sunday at midnight UTC
+  workflow_dispatch: # Manual trigger option
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -45,7 +47,7 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Run Repository Maintenance
+      - name: Run Weekly Maintenance
         # Don't fail the cron when the Anthropic API is unavailable (low
         # credit balance, rate limit, transient outage). Skipping a weekly
         # maintenance run is preferable to a perma-red scheduled workflow.
