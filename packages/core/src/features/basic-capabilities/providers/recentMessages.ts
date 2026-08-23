@@ -24,6 +24,7 @@
  * after the live destination is revalidated as an owner-exclusive DM.
  */
 
+import { buildAccessContext } from "../../../access-context.ts";
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
@@ -367,10 +368,12 @@ const getRecentInteractions = async (
 		return [];
 	}
 
-	// Check the existing memories in the database
+	// Check the existing memories in the database (tenant-scoped)
+	const accessContext = await buildAccessContext(runtime, message);
 	const interactions = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: otherRooms,
+		accessContext,
 	});
 	if (interactions.length > 0) {
 		markOwnerExclusiveDisclosureUsed(message);
@@ -430,6 +433,7 @@ export const recentMessagesProvider: Provider = {
 						tableName: "messages",
 						roomId,
 						unique: false,
+						accessContext: await buildAccessContext(runtime, message),
 					}),
 					message.entityId !== runtime.agentId
 						? getRecentInteractions(runtime, message, runtime.agentId, roomId)
