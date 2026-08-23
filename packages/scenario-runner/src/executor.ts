@@ -877,7 +877,18 @@ function resolveTurnRoom(
   if (!requestedRoom) {
     return defaultRoom;
   }
-  return rooms.find((room) => room.id === requestedRoom) ?? defaultRoom;
+  const resolved = rooms.find((room) => room.id === requestedRoom);
+  if (!resolved) {
+    throw new ElizaError("Scenario turn references an unknown room", {
+      code: "SCENARIO_TURN_ROOM_NOT_FOUND",
+      context: {
+        turn: turn.name,
+        requestedRoom,
+        availableRooms: rooms.map((room) => room.id),
+      },
+    });
+  }
+  return resolved;
 }
 
 /**

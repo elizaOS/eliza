@@ -1298,7 +1298,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		});
 
 		const offset = typeof params.offset === "number" ? params.offset : 0;
-		const limit = params.limit ?? 20;
+		// Match plugin-sql: omitting `limit` means the complete authorized result,
+		// not an implicit preview page. Model-facing continuity providers rely on
+		// that parity so ALLOW_NO_DATABASE cannot silently lose older history.
+		const limit = params.limit ?? Infinity;
 		return all.slice(offset, offset + limit);
 	}
 

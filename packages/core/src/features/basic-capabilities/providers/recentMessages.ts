@@ -321,6 +321,21 @@ const getRecentInteractions = async (
 	targetEntityId: UUID,
 	excludeRoomId: UUID,
 ): Promise<Memory[]> => {
+	// The standalone agent installs a richer, always-on provider for this exact
+	// cross-room surface. Let it own those rows so Stage 1 does not render the
+	// same private transcript once as structured RECENT_MESSAGES events and a
+	// second time as a recent-conversations text block. Hosts without that
+	// provider continue to use core's portable fallback below.
+	const hasDedicatedCrossRoomProvider = runtime.providers?.some((provider) => {
+		const name = provider.name?.trim().toLowerCase();
+		return (
+			name === "recent-conversations" &&
+			provider.alwaysInResponseState === true &&
+			provider.private !== true
+		);
+	});
+	if (hasDedicatedCrossRoomProvider) return [];
+
 	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
 	if (
 		!disclosure.allowed ||

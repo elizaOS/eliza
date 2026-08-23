@@ -168,6 +168,37 @@ describe("recentConversationsProvider", () => {
     for (const text of completeTexts) expect(result.text).toContain(text);
   });
 
+  it("leaves the current-room transcript to RECENT_MESSAGES in the full agent runtime", async () => {
+    const getMemoriesByRoomIds = vi.fn(async () => [
+      {
+        ...message(),
+        roomId: ALIAS_ROOM_ID,
+        content: { text: "remote-only context" },
+      } as Memory,
+    ]);
+    const runtime = makeRuntime({
+      providers: [{ name: "RECENT_MESSAGES" }],
+      getRoomsForParticipants: vi.fn(async () => [ROOM_ID, ALIAS_ROOM_ID]),
+      getRoomsForParticipant: vi.fn(async () => [ROOM_ID, ALIAS_ROOM_ID]),
+      getMemoriesByRoomIds,
+      getRoomsByIds: vi.fn(async () => [
+        { id: ALIAS_ROOM_ID, source: "telegram", name: "remote" },
+      ]),
+    });
+
+    const result = await recentConversationsProvider.get(
+      runtime,
+      message(),
+      EMPTY_STATE,
+    );
+
+    expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
+      tableName: "messages",
+      roomIds: [ALIAS_ROOM_ID],
+    });
+    expect(result.text).toContain("remote-only context");
+  });
+
   it("keeps attachment-only cross-platform turns as multimodal context without capability URLs", async () => {
     const runtime = makeRuntime({
       getMemoriesByRoomIds: vi.fn(async () => [

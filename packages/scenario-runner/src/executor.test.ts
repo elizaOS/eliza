@@ -188,6 +188,51 @@ describe("scenario executor multi-world topology", () => {
     expect(report.status).toBe("failed");
     expect(report.error).toBe("Failed to create scenario identity link");
   });
+
+  it("fails instead of running an explicitly targeted turn in the default room", async () => {
+    const handler = vi.fn(async () => ({ success: true, text: "ran" }));
+    const runtime = createRuntime([
+      {
+        name: "ROOM_PROBE",
+        description: "Records whether a mistargeted scenario action ran.",
+        validate: async () => true,
+        handler,
+      },
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "unknown-turn-room",
+        title: "Unknown turn room",
+        domain: "executor",
+        rooms: [
+          {
+            id: "owner-dm",
+            account: "discord:owner-123",
+            source: "discord",
+          },
+        ],
+        turns: [
+          {
+            kind: "action",
+            name: "mistyped destination",
+            room: "owner-dm-typo",
+            actionName: "ROOM_PROBE",
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toBe("Scenario turn references an unknown room");
+    expect(handler).not.toHaveBeenCalled();
+  });
 });
 
 describe("scenario executor wait turns", () => {

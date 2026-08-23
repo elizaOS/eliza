@@ -680,6 +680,38 @@ describe("recentMessagesProvider", () => {
 		expect(result.data?.recentInteractions).toEqual([]);
 	});
 
+	it("does not duplicate cross-room history owned by an always-on dedicated provider", async () => {
+		const getRoomsForParticipants = vi.fn(async () => [ROOM_ID]);
+		const getRoomsForParticipant = vi.fn(async () => [ROOM_ID]);
+		const getMemoriesByRoomIds = vi.fn(async () => []);
+		const runtime = makeRuntime(
+			[],
+			{},
+			{
+				providers: [
+					{
+						name: "recent-conversations",
+						alwaysInResponseState: true,
+					},
+				],
+				getRoomsForParticipants,
+				getRoomsForParticipant,
+				getMemoriesByRoomIds,
+			},
+		);
+
+		const result = await recentMessagesProvider.get(
+			runtime,
+			makeMemory("current", USER_ID, "recall that", "discord", 2000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(getRoomsForParticipants).not.toHaveBeenCalled();
+		expect(getRoomsForParticipant).not.toHaveBeenCalled();
+		expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
+		expect(result.data?.recentInteractions).toEqual([]);
+	});
+
 	it("renders attachment-only cross-world context without capability URLs", async () => {
 		const otherRoomId = "00000000-0000-0000-0000-00000000000a";
 		const runtime = makeRuntime(

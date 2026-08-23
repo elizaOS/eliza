@@ -1,8 +1,9 @@
 /**
  * Provider that surfaces the user's recent messages and attachment descriptions
- * across every connected platform. It expands verified linked identities,
+ * across connected platforms. It expands verified linked identities,
  * intersects their rooms with the agent's durable rooms, and renders the full
- * eligible history newest-first with source, time, and speaker provenance.
+ * eligible cross-room history newest-first with source, time, and speaker
+ * provenance; RECENT_MESSAGES owns the current-room transcript when present.
  * Suppressed inside automation and page-scoped rooms, which carry their own
  * context. Gated to ADMIN (enforced by applyPluginRoleGating).
  */
@@ -124,8 +125,13 @@ export const recentConversationsProvider: Provider = {
         runtime.getRoomsForParticipant(runtime.agentId),
       ]);
       const agentRooms = new Set(agentRoomIds);
-      const roomIds = Array.from(new Set(requesterRoomIds)).filter((roomId) =>
-        agentRooms.has(roomId),
+      const recentMessagesOwnsCurrentRoom = runtime.providers?.some(
+        (provider) => provider.name?.trim().toUpperCase() === "RECENT_MESSAGES",
+      );
+      const roomIds = Array.from(new Set(requesterRoomIds)).filter(
+        (roomId) =>
+          agentRooms.has(roomId) &&
+          (!recentMessagesOwnsCurrentRoom || roomId !== message.roomId),
       );
       if (!roomIds || roomIds.length === 0) {
         return { text: "", values: {}, data: {} };
