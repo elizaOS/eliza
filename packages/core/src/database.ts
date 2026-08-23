@@ -15,6 +15,8 @@ import type {
 	AccessContext,
 	Agent,
 	AppendConnectorAccountAuditEventParams,
+	AtomicMemoryPublicationParams,
+	AtomicMemoryPublicationResult,
 	Component,
 	ConnectorAccountAuditEventRecord,
 	ConnectorAccountCredentialRefRecord,
@@ -147,6 +149,16 @@ export function compareTasksForQuery(left: Task, right: Task): number {
 export abstract class DatabaseAdapter<DB extends object = object>
 	implements IDatabaseAdapter<DB>
 {
+	async compareAndSwapMemoryPublication(
+		_params: AtomicMemoryPublicationParams,
+	): Promise<AtomicMemoryPublicationResult> {
+		throw new ElizaError(
+			"Atomic memory publication is unsupported by this adapter",
+			{
+				code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
+			},
+		);
+	}
 	/**
 	 * Exact document-store contract implemented by every first-class adapter.
 	 * Version 4 adds storage-enforced direct-grant replacement.
