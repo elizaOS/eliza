@@ -2,7 +2,7 @@
  * Behavioral regression for Date.UTC 0-99 — must use setUTCFullYear
  * Calls real calendar primitives that previously used Date.UTC(y,m,d) directly.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { addDaysToLocalDate, getWeekdayForLocalDate } from "../internal/time";
 
 function createUTCDateViaSet(y: number, m: number, d: number): Date {
@@ -44,7 +44,7 @@ describe("calendar Date.UTC 0-99 regression - real functions", () => {
     const w = getWeekdayForLocalDate({ year: 5, month: 6, day: 15 });
     const expected = createUTCDateViaSet(5, 5, 15).getUTCDay();
     expect(w).toBe(expected);
-    const buggy = new Date(Date.UTC(5, 5, 15, 12, 0, 0)).getUTCDay();
+    const _buggy = new Date(Date.UTC(5, 5, 15, 12, 0, 0)).getUTCDay();
     // For year 5 vs 1905, weekdays differ (1905-06-15 Thursday vs 0005-06-15 ...)
     // At least year is different, so we assert year fix, not just weekday coincidence
     expect(createUTCDateViaSet(5, 5, 15).getUTCFullYear()).toBe(5);
