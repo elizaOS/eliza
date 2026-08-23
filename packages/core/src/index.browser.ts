@@ -143,6 +143,7 @@ export {
 } from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/rlm";
+export * from "./runtime/prepared-model-request";
 export * from "./runtime/schema-compat";
 export * from "./runtime/shortcut-registry";
 export * from "./runtime/sub-planner";

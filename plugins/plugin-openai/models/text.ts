@@ -17,6 +17,7 @@ import {
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
   cloneSchemaForBoundedTransport,
+  createPreparedModelRequestGuard,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
@@ -67,6 +68,7 @@ import {
   isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
+import { countTokensForModel } from "../utils/tokenization";
 
 // ============================================================================
 // Types
@@ -171,6 +173,7 @@ interface ResponseSchemaTransform {
 interface PreparedStructuredOutput {
   output: NativeOutput;
   transform?: ResponseSchemaTransform;
+  requestDescriptor?: unknown;
 }
 
 interface NormalizedNativeToolsResult {
@@ -521,6 +524,12 @@ function buildStructuredOutput(
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }) as NativeOutput,
+    requestDescriptor: {
+      type: "json_schema",
+      schema: sanitizeJsonSchema(preparedSchema.schema, true),
+      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+    },
     ...(preparedSchema.transform ? { transform: preparedSchema.transform } : {}),
   };
 }
@@ -1922,6 +1931,172 @@ function toTrajectoryJsonSafe(value: unknown): unknown {
   }
 }
 
+/** Base64 is the JSON wire representation the AI SDK uses for byte content. */
+function bytesToBase64(bytes: Uint8Array): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let output = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0;
+    const second = bytes[index + 1] ?? 0;
+    const third = bytes[index + 2] ?? 0;
+    const triple = (first << 16) | (second << 8) | third;
+    output += alphabet[(triple >>> 18) & 63];
+    output += alphabet[(triple >>> 12) & 63];
+    output += index + 1 < bytes.length ? alphabet[(triple >>> 6) & 63] : "=";
+    output += index + 2 < bytes.length ? alphabet[triple & 63] : "=";
+  }
+  return output;
+}
+
+/**
+ * Clone only provider-body values. Transport callbacks are intentionally
+ * absent, URLs and bytes use their JSON wire representation, and any cycle or
+ * unsupported value fails before the shared final-wire guard is constructed.
+ */
+function cloneOpenAIWireValue(value: unknown): unknown {
+  const active = new WeakSet<object>();
+  const visit = (candidate: unknown, inArray = false): unknown => {
+    if (
+      candidate === null ||
+      typeof candidate === "string" ||
+      typeof candidate === "boolean" ||
+      typeof candidate === "number"
+    ) {
+      return candidate;
+    }
+    if (candidate === undefined || typeof candidate === "function") {
+      return inArray ? null : undefined;
+    }
+    if (typeof candidate !== "object") {
+      throw new ElizaError("[OpenAI] Prepared request contains a non-JSON wire value", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+      });
+    }
+    if (candidate instanceof URL) return candidate.toString();
+    if (candidate instanceof Uint8Array) return bytesToBase64(candidate);
+    if (active.has(candidate)) {
+      throw new ElizaError("[OpenAI] Prepared request contains a cycle", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+      });
+    }
+    active.add(candidate);
+    try {
+      if (Array.isArray(candidate)) {
+        return candidate.map((item) => visit(item, true));
+      }
+      const result: Record<string, unknown> = {};
+      for (const key of Object.keys(candidate)) {
+        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+        if (!descriptor) continue;
+        // Generated AI SDK schema wrappers deliberately expose jsonSchema as
+        // a lazy getter; resolve that one model-visible value exactly once.
+        const nested =
+          descriptor.get && key === "jsonSchema"
+            ? descriptor.get.call(candidate)
+            : "value" in descriptor
+              ? descriptor.value
+              : undefined;
+        if ((descriptor.get || descriptor.set) && key !== "jsonSchema") {
+          throw new ElizaError("[OpenAI] Prepared request contains an unexpected accessor", {
+            code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+            context: { key },
+          });
+        }
+        const cloned = visit(nested, false);
+        if (cloned !== undefined) result[key] = cloned;
+      }
+      return result;
+    } finally {
+      active.delete(candidate);
+    }
+  };
+  return visit(value);
+}
+
+function projectOpenAITools(tools: ToolSet | undefined): unknown[] | undefined {
+  if (!tools) return undefined;
+  const projected = Object.entries(tools).map(([name, rawTool]) => {
+    const tool = rawTool as Record<string, unknown>;
+    const rawSchema = tool.inputSchema ?? tool.parameters ?? { type: "object" };
+    const schema = cloneOpenAIWireValue(rawSchema) as Record<string, unknown>;
+    const parameters =
+      schema && typeof schema === "object" && "jsonSchema" in schema ? schema.jsonSchema : schema;
+    return {
+      type: "function",
+      function: {
+        name,
+        ...(typeof tool.description === "string" ? { description: tool.description } : {}),
+        parameters,
+        ...(typeof tool.strict === "boolean" ? { strict: tool.strict } : {}),
+      },
+    };
+  });
+  return projected.length > 0 ? projected : undefined;
+}
+
+function runtimePreparedBudget(providerOptions: Record<string, unknown> | undefined): {
+  contextWindowTokens?: number;
+} {
+  const eliza = providerOptions?.eliza;
+  const budget =
+    eliza && typeof eliza === "object" && !Array.isArray(eliza)
+      ? (eliza as Record<string, unknown>).modelInputBudget
+      : undefined;
+  if (!budget || typeof budget !== "object" || Array.isArray(budget)) return {};
+  const contextWindowTokens = (budget as Record<string, unknown>).contextWindowTokens;
+  return typeof contextWindowTokens === "number" && Number.isFinite(contextWindowTokens)
+    ? { contextWindowTokens }
+    : {};
+}
+
+function createOpenAIPreparedRequestGuard(args: {
+  modelName: string;
+  generateParams: NativeTextParams;
+  responseDescriptor: unknown;
+  providerOptions: Record<string, unknown> | undefined;
+}) {
+  const projectRequest = () => {
+    const native = args.generateParams as NativeTextParams & Record<string, unknown>;
+    const openaiOptions = args.providerOptions?.openai;
+    const projected: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(native)) {
+      if (
+        key === "model" ||
+        key === "tools" ||
+        key === "toolChoice" ||
+        key === "output" ||
+        key === "providerOptions" ||
+        key === "experimental_telemetry" ||
+        key.startsWith("on")
+      ) {
+        continue;
+      }
+      if (value !== undefined) projected[key] = value;
+    }
+    return cloneOpenAIWireValue({
+      ...projected,
+      model: args.modelName,
+      ...(native.tools ? { tools: projectOpenAITools(native.tools) } : {}),
+      ...(native.toolChoice ? { tool_choice: native.toolChoice } : {}),
+      ...(args.responseDescriptor !== undefined
+        ? { response_format: args.responseDescriptor }
+        : {}),
+      ...(openaiOptions && typeof openaiOptions === "object"
+        ? { provider_options: { openai: openaiOptions } }
+        : {}),
+    });
+  };
+  const maxOutputTokens = (args.generateParams as { maxOutputTokens?: unknown }).maxOutputTokens;
+  return createPreparedModelRequestGuard({
+    provider: "openai-compatible",
+    model: args.modelName,
+    projectRequest,
+    ...runtimePreparedBudget(args.providerOptions),
+    ...(typeof maxOutputTokens === "number" ? { outputReserveTokens: maxOutputTokens } : {}),
+    countInputTokens: (body) => countTokensForModel(args.modelName, body),
+  });
+}
+
 function applyUsageToDetails(
   details: RecordLlmCallDetails,
   usage: LanguageModelUsage | undefined
@@ -2498,6 +2673,18 @@ async function generateTextByModelType(
     ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
     ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
   };
+  const preparedRequestGuard = createOpenAIPreparedRequestGuard({
+    modelName,
+    generateParams,
+    responseDescriptor:
+      preparedOutput?.requestDescriptor ??
+      (responseFormatType === "json_object" ? { type: "json_object" } : undefined),
+    providerOptions,
+  });
+  const assertPreparedAttempt = (details: RecordLlmCallDetails): void => {
+    attestLlmInputSubstring(details);
+    preparedRequestGuard.assertBeforeAttempt();
+  };
 
   // Handle streaming mode
   if (params.stream) {
@@ -2533,7 +2720,7 @@ async function generateTextByModelType(
             model: modelName,
             retryState,
             maxRetries: 5,
-            beforeAttempt: () => attestLlmInputSubstring(details),
+            beforeAttempt: () => assertPreparedAttempt(details),
           }
         );
         const text = restoreResponseText(result.text);
@@ -2618,7 +2805,7 @@ async function generateTextByModelType(
     let firstItem: IteratorResult<unknown> | undefined;
     for (let attempt = 0; ; attempt++) {
       capturedStreamError = undefined;
-      attestLlmInputSubstring(details);
+      assertPreparedAttempt(details);
       result = await streamText({
         ...generateParams,
         onError: ({ error }: { error: unknown }) => {
@@ -2839,7 +3026,7 @@ async function generateTextByModelType(
       model: modelName,
       retryState,
       maxRetries: 3,
-      beforeAttempt: () => attestLlmInputSubstring(details),
+      beforeAttempt: () => assertPreparedAttempt(details),
     });
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(

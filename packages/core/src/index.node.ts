@@ -261,6 +261,7 @@ export {
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/content-access-manifest";
 export * from "./runtime/content-projection-policy";
+export * from "./runtime/prepared-model-request";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export {
