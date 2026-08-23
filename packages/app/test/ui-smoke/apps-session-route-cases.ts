@@ -184,6 +184,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "computer sessions app shell page",
+    path: "/computer-use-sessions",
+    readyChecks: [{ text: "Computer sessions" }],
+    timeoutMs: 90_000,
+  },
+  {
     // Pinned home tile → Settings.
     name: "settings view",
     path: "/settings",
