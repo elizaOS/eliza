@@ -21,7 +21,7 @@ function makeOverlayApp(overrides: Partial<OverlayApp> = {}): OverlayApp {
     description: "Overlay app for testing",
     category: "tools",
     icon: "tools-icon",
-    component: (() => null) as unknown as OverlayApp["component"],
+    Component: (() => null) as unknown as OverlayApp["Component"],
     ...overrides,
   };
 }
