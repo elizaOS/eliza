@@ -13,6 +13,8 @@
  * containment all mirror the SQL adapters. Persistence is process-local and
  * lost on restart.
  */
+
+import { filterMemoryReadByAccessContext } from "../access-control/filter";
 import {
 	compareMemoryIds,
 	compareTasksForQuery,
@@ -303,6 +305,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
 	readonly documentRangeReadCapability = 1 as const;
 	db: Record<string, never> = {};
+	private readonly adapterAgentId: UUID;
+
+	constructor(agentId: UUID = DEFAULT_UUID) {
+		super();
+		this.adapterAgentId = agentId;
+	}
 
 	private ready = false;
 
@@ -1201,6 +1209,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			all = all.filter((memory) => memoryMatchesMetadata(memory, filterMeta));
 		}
 
+		if (params.accessContext) {
+			all = filterMemoryReadByAccessContext(
+				all,
+				params.accessContext,
+				this.adapterAgentId,
+			);
+		}
+
 		// Keyword filter — same case-insensitive `includes` semantics the SQL
 		// adapter pushes down as ILIKE.
 		const textContains = params.textContains?.trim().toLowerCase();
@@ -1289,12 +1305,23 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		if (params.accessContext) {
+			all = filterMemoryReadByAccessContext(
+				all,
+				params.accessContext,
+				this.adapterAgentId,
+			);
+		}
+
 		// Match plugin-sql ordering: newest first so LIMIT/OFFSET window the
 		// freshest matches.
 		all = all.slice().sort((a, b) => {
 			const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
 			const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
-			return tb - ta;
+			if (ta !== tb) return tb - ta;
+			const aId = typeof a.id === "string" ? a.id : "";
+			const bId = typeof b.id === "string" ? b.id : "";
+			return compareMemoryIds(bId, aId);
 		});
 
 		const offset = typeof params.offset === "number" ? params.offset : 0;
@@ -1324,13 +1351,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		// The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
 		// adapters' created_at range conditions.
-		const windowed = candidates.filter((memory) =>
+		let windowed = candidates.filter((memory) =>
 			withinCreatedAtWindow(
 				typeof memory.createdAt === "number" ? memory.createdAt : undefined,
 				params.since,
 				params.until,
 			),
 		);
+		if (params.accessContext) {
+			windowed = filterMemoryReadByAccessContext(
+				windowed,
+				params.accessContext,
+				this.adapterAgentId,
+			);
+		}
 		const ranked = rankMessageSearch(windowed, params.query);
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		const limit = params.limit ?? 20;
