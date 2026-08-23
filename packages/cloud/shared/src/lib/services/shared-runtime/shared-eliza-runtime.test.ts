@@ -8,6 +8,7 @@ import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
 import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
+import { GROUP_TURN_NAMING_RULE } from "./group-participant-labels";
 import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import {
   sharedRuntimeConversationRoomId,
@@ -792,6 +793,50 @@ describe("Shared Eliza Workerd runtime", () => {
         shouldRespondAndContextDurationMs: expect.any(Number),
       },
     });
+  });
+
+  test("gives only a group turn the participant naming rule", async () => {
+    const requestBodies: string[] = [];
+    globalThis.fetch = (async (_input: unknown, init?: { body?: unknown }) => {
+      requestBodies.push(String(init?.body ?? ""));
+      return successfulRuntimeResponse("noted");
+    }) as unknown as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const turn = (channel: { type: ChannelType; source: string }, message: string) =>
+      runSharedAgentTurn({
+        character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
+        history: [],
+        message,
+        traceId: `trace-naming-${channel.type}`,
+        execution: {
+          channel,
+          agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+          roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        },
+      });
+
+    await turn(
+      { type: ChannelType.GROUP, source: "blooio" },
+      "Participant 2: where are we eating?",
+    );
+    expect(requestBodies).not.toBeEmpty();
+    // The rule reaches the model, and it reaches it alongside the character's
+    // own system prompt rather than replacing it.
+    for (const body of requestBodies) {
+      expect(body).toContain(GROUP_TURN_NAMING_RULE);
+      expect(body).toContain("You are Eliza.");
+    }
+
+    requestBodies.length = 0;
+    await turn({ type: ChannelType.DM, source: "blooio" }, "where are we eating?");
+    expect(requestBodies).not.toBeEmpty();
+    // A direct turn has no participants to name, so its prompt is untouched.
+    for (const body of requestBodies) {
+      expect(body).not.toContain(GROUP_TURN_NAMING_RULE);
+      expect(body).not.toContain("Several people are talking");
+      expect(body).toContain("You are Eliza.");
+    }
   });
 
   test("awaits notification hydration before inference and dispatches through the genuine runtime", async () => {
