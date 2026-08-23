@@ -397,7 +397,13 @@ function normalizePersistedTokens(stored: unknown): {
   let unique = [...newestByToken.values()];
   if (unique.length > MAX_PUSH_TOKENS_PER_AGENT) {
     unique = unique
-      .sort((left, right) => right.createdAt - left.createdAt)
+      .sort((left, right) => {
+        const leftTime = Number.isFinite(left.createdAt) ? left.createdAt : 0;
+        const rightTime = Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+        return rightTime - leftTime;
+      })
       .slice(0, MAX_PUSH_TOKENS_PER_AGENT);
   }
 
