@@ -18,7 +18,10 @@ export interface RemoteTargetManagedNetworkEnrollment {
 export interface RemoteTargetManagedNetworkJoiner {
   join(input: RemoteTargetManagedNetworkEnrollment): Promise<void>;
   leave(
-    input: Pick<RemoteTargetManagedNetworkEnrollment, "hostname">,
+    input: Pick<
+      RemoteTargetManagedNetworkEnrollment,
+      "hostname" | "loginServer"
+    >,
   ): Promise<void>;
 }
 
@@ -34,6 +37,27 @@ type SpawnProcess = (
 type InspectDaemon = (executable: string) => Promise<void>;
 
 type ReadDaemonStatus = (executable: string) => Promise<string>;
+
+type ReadDaemonPreferences = (executable: string) => Promise<string>;
+
+function canonicalLoginServer(value: string): string {
+  const loginServer = new URL(value);
+  const loopback = ["127.0.0.1", "localhost", "[::1]", "::1"].includes(
+    loginServer.hostname.toLowerCase(),
+  );
+  if (
+    (loginServer.protocol !== "https:" &&
+      !(loginServer.protocol === "http:" && loopback)) ||
+    loginServer.username ||
+    loginServer.password ||
+    loginServer.search ||
+    loginServer.hash ||
+    loginServer.pathname.replace(/\/+$/, "")
+  ) {
+    throw new Error("Managed network login server is invalid.");
+  }
+  return loginServer.origin;
+}
 
 function assertVacantTailscaleStatus(rawStatus: string): void {
   let status: unknown;
@@ -132,6 +156,33 @@ const readSystemDaemonStatus: ReadDaemonStatus = (executable) =>
     );
   });
 
+const readSystemDaemonPreferences: ReadDaemonPreferences = (executable) =>
+  new Promise((resolve, reject) => {
+    execFile(
+      executable,
+      ["debug", "prefs"],
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024,
+        timeout: 5_000,
+        windowsHide: true,
+      },
+      (error, stdout) => {
+        if (error) {
+          // error-policy:J2 preferences failure is wrapped because logout
+          // must never target a profile whose control server is unknown.
+          reject(
+            new Error("Managed Tailscale control server could not be verified.", {
+              cause: error,
+            }),
+          );
+          return;
+        }
+        resolve(stdout);
+      },
+    );
+  });
+
 function assertManagedTailscaleStatus(
   rawStatus: string,
   hostname: string,
@@ -167,25 +218,51 @@ function assertManagedTailscaleStatus(
   }
 }
 
+function assertManagedTailscalePreferences(
+  rawPreferences: string,
+  loginServer: string,
+): void {
+  let preferences: unknown;
+  try {
+    preferences = JSON.parse(rawPreferences);
+  } catch (cause) {
+    // error-policy:J3 unreadable daemon preferences cannot authorize logout.
+    throw new Error("Managed Tailscale control server could not be verified.", {
+      cause,
+    });
+  }
+  if (
+    typeof preferences !== "object" ||
+    preferences === null ||
+    Array.isArray(preferences) ||
+    typeof Reflect.get(preferences, "ControlURL") !== "string"
+  ) {
+    throw new Error("Managed Tailscale control server could not be verified.");
+  }
+  let observedControlUrl: string;
+  try {
+    observedControlUrl = canonicalLoginServer(
+      Reflect.get(preferences, "ControlURL") as string,
+    );
+  } catch (cause) {
+    // error-policy:J2 malformed control-server preferences are preserved as
+    // a fail-closed ownership mismatch at the native command boundary.
+    throw new Error("Managed Tailscale control server could not be verified.", {
+      cause,
+    });
+  }
+  if (observedControlUrl !== canonicalLoginServer(loginServer)) {
+    throw new Error(
+      "The active Tailscale profile does not use the managed Eliza control server; it was left unchanged.",
+    );
+  }
+}
+
 function validateEnrollment(
   input: RemoteTargetManagedNetworkEnrollment,
   now = Date.now(),
 ): void {
-  const loginServer = new URL(input.loginServer);
-  const loopback = ["127.0.0.1", "localhost", "[::1]", "::1"].includes(
-    loginServer.hostname.toLowerCase(),
-  );
-  if (
-    (loginServer.protocol !== "https:" &&
-      !(loginServer.protocol === "http:" && loopback)) ||
-    loginServer.username ||
-    loginServer.password ||
-    loginServer.search ||
-    loginServer.hash ||
-    loginServer.pathname.replace(/\/+$/, "")
-  ) {
-    throw new Error("Managed network login server is invalid.");
-  }
+  canonicalLoginServer(input.loginServer);
   if (!HOSTNAME_PATTERN.test(input.hostname)) {
     throw new Error("Managed network hostname is invalid.");
   }
@@ -248,6 +325,8 @@ export class TailscaleCliManagedNetworkJoiner
     private readonly now: () => number = Date.now,
     private readonly inspectDaemon: InspectDaemon = inspectVacantSystemDaemon,
     private readonly readDaemonStatus: ReadDaemonStatus = readSystemDaemonStatus,
+    private readonly readDaemonPreferences: ReadDaemonPreferences =
+      readSystemDaemonPreferences,
   ) {}
 
   private async run(
@@ -328,7 +407,10 @@ export class TailscaleCliManagedNetworkJoiner
     }
     if (joined && teardownFailure !== undefined) {
       try {
-        await this.leave({ hostname: input.hostname });
+        await this.leave({
+          hostname: input.hostname,
+          loginServer: input.loginServer,
+        });
       } catch (membershipCleanupFailure) {
         throw new AggregateError(
           [teardownFailure, membershipCleanupFailure],
@@ -349,11 +431,15 @@ export class TailscaleCliManagedNetworkJoiner
   }
 
   async leave(
-    input: Pick<RemoteTargetManagedNetworkEnrollment, "hostname">,
+    input: Pick<
+      RemoteTargetManagedNetworkEnrollment,
+      "hostname" | "loginServer"
+    >,
   ): Promise<void> {
     if (!HOSTNAME_PATTERN.test(input.hostname)) {
       throw new Error("Managed network hostname is invalid.");
     }
+    canonicalLoginServer(input.loginServer);
     const executable = await this.resolveExecutable();
     const rawStatus = await this.readDaemonStatus(executable);
     try {
@@ -364,6 +450,8 @@ export class TailscaleCliManagedNetworkJoiner
       // proceed to logout; a vacant daemon makes teardown idempotent.
     }
     assertManagedTailscaleStatus(rawStatus, input.hostname);
+    const rawPreferences = await this.readDaemonPreferences(executable);
+    assertManagedTailscalePreferences(rawPreferences, input.loginServer);
     await this.run(
       executable,
       ["logout"],
@@ -378,5 +466,7 @@ export const remoteTargetManagedNetworkInternals = {
   executableCandidates,
   assertVacantTailscaleStatus,
   assertManagedTailscaleStatus,
+  assertManagedTailscalePreferences,
+  canonicalLoginServer,
   validateEnrollment,
 };

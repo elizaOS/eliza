@@ -353,6 +353,7 @@ export class RemoteTargetDesktopService {
         await this.vault.recordManagedNetwork({
           hostId: enrolled.identity.runtimeId,
           hostname: managedEnrollment.hostname,
+          loginServer: managedEnrollment.loginServer,
         });
         await this.transport.activateManagedNetwork({
           enrollment: enrolled,
@@ -364,6 +365,7 @@ export class RemoteTargetDesktopService {
           try {
             await this.managedNetworkJoiner.leave({
               hostname: managedEnrollment.hostname,
+              loginServer: managedEnrollment.loginServer,
             });
           } catch (cleanupCause) {
             // error-policy:J6 Cloud cleanup must still run if native
@@ -662,6 +664,7 @@ export class RemoteTargetDesktopService {
       if (enrollment.managedNetwork) {
         await this.managedNetworkJoiner.leave({
           hostname: enrollment.managedNetwork.hostname,
+          loginServer: enrollment.managedNetwork.loginServer,
         });
       }
       await this.runner?.stop();

@@ -159,10 +159,44 @@ describe("native managed-network enrollment", () => {
           BackendState: "Running",
           Self: { HostName: "eliza-host-one-cafebabe" },
         }),
+      async () =>
+        JSON.stringify({ ControlURL: "https://headscale.example.test/" }),
     );
 
-    await joiner.leave({ hostname: "eliza-host-one" });
+    await joiner.leave({
+      hostname: "eliza-host-one",
+      loginServer: "https://headscale.example.test",
+    });
     expect(observedArgs).toEqual(["logout"]);
+  });
+
+  it("does not log out a same-hostname profile from another control server", async () => {
+    let spawned = false;
+    const joiner = new TailscaleCliManagedNetworkJoiner(
+      async () => "/test/tailscale",
+      () => {
+        spawned = true;
+        return new FakeChild() as unknown as ChildProcess;
+      },
+      os.tmpdir(),
+      () => 2_000_000_000_000,
+      async () => undefined,
+      async () =>
+        JSON.stringify({
+          BackendState: "Running",
+          Self: { HostName: "eliza-host-one" },
+        }),
+      async () =>
+        JSON.stringify({ ControlURL: "https://controlplane.tailscale.com" }),
+    );
+
+    await expect(
+      joiner.leave({
+        hostname: "eliza-host-one",
+        loginServer: "https://headscale.example.test",
+      }),
+    ).rejects.toThrow("does not use the managed Eliza control server");
+    expect(spawned).toBe(false);
   });
 
   it("does not log out a profile that no longer matches the managed host", async () => {
@@ -183,9 +217,12 @@ describe("native managed-network enrollment", () => {
         }),
     );
 
-    await expect(joiner.leave({ hostname: "eliza-host-one" })).rejects.toThrow(
-      "not the managed Eliza membership",
-    );
+    await expect(
+      joiner.leave({
+        hostname: "eliza-host-one",
+        loginServer: "https://headscale.example.test",
+      }),
+    ).rejects.toThrow("not the managed Eliza membership");
     expect(spawned).toBe(false);
   });
 
@@ -204,7 +241,10 @@ describe("native managed-network enrollment", () => {
         JSON.stringify({ BackendState: "NeedsLogin", TailscaleIPs: [] }),
     );
 
-    await joiner.leave({ hostname: "eliza-host-one" });
+    await joiner.leave({
+      hostname: "eliza-host-one",
+      loginServer: "https://headscale.example.test",
+    });
     expect(spawned).toBe(false);
   });
 });

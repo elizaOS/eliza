@@ -1676,7 +1676,10 @@ describe("remote target durable runner", () => {
     expect(relay.activateManagedCalls).toBe(1);
     await expect(vault.load()).resolves.toMatchObject({
       status: "enrolled",
-      managedNetwork: { hostname: "eliza-host-one" },
+      managedNetwork: {
+        hostname: "eliza-host-one",
+        loginServer: "https://headscale.example.test",
+      },
     });
     relay.revocations.push({
       hostId: HOST_ID,
@@ -1749,8 +1752,9 @@ describe("remote target durable runner", () => {
       () => NOW,
       {
         join: async () => undefined,
-        leave: async ({ hostname }) => {
+        leave: async ({ hostname, loginServer }) => {
           expect(hostname).toBe("eliza-host-one");
+          expect(loginServer).toBe("https://headscale.example.test");
           leaveCalls += 1;
         },
       },

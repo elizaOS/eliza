@@ -40,6 +40,7 @@ export interface EnrolledRemoteTargetVaultRecord {
   encryptionPrivateKeyJwk: JsonWebKey;
   managedNetwork?: {
     hostname: string;
+    loginServer: string;
   };
 }
 
@@ -102,17 +103,36 @@ function canonicalApiBase(value: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+function canonicalManagedNetworkLoginServer(value: string): string {
+  const canonical = canonicalApiBase(value);
+  const url = new URL(canonical);
+  if (url.pathname !== "/") {
+    throw new Error("Stored managed network login server is invalid.");
+  }
+  return url.origin;
+}
+
 function isManagedNetworkRecord(value: unknown): boolean {
   if (value === undefined) return true;
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    typeof Reflect.get(value, "hostname") === "string" &&
-    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
-      Reflect.get(value, "hostname") as string,
-    )
-  );
+  try {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value) &&
+      typeof Reflect.get(value, "hostname") === "string" &&
+      typeof Reflect.get(value, "loginServer") === "string" &&
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
+        Reflect.get(value, "hostname") as string,
+      ) &&
+      canonicalManagedNetworkLoginServer(
+        Reflect.get(value, "loginServer") as string,
+      ) === Reflect.get(value, "loginServer")
+    );
+  } catch {
+    // error-policy:J3 malformed secure-store authority is an explicit invalid
+    // record and is never normalized into a usable managed profile.
+    return false;
+  }
 }
 
 export function remoteTargetVaultId(
@@ -350,10 +370,12 @@ export class RemoteTargetVault {
   async recordManagedNetwork(input: {
     hostId: string;
     hostname: string;
+    loginServer: string;
   }): Promise<EnrolledRemoteTargetVaultRecord> {
+    const loginServer = canonicalManagedNetworkLoginServer(input.loginServer);
     if (
       !isIdentifier(input.hostId) ||
-      !isManagedNetworkRecord({ hostname: input.hostname })
+      !isManagedNetworkRecord({ hostname: input.hostname, loginServer })
     ) {
       throw new Error("Managed network identity is invalid.");
     }
@@ -369,7 +391,7 @@ export class RemoteTargetVault {
       }
       const updated: EnrolledRemoteTargetVaultRecord = {
         ...existing,
-        managedNetwork: { hostname: input.hostname },
+        managedNetwork: { hostname: input.hostname, loginServer },
       };
       const stored = await this.secureStore.set(
         this.vaultId,
@@ -403,4 +425,5 @@ export const remoteTargetVaultInternals = {
   parseRecord,
   publicJwk,
   canonicalApiBase,
+  canonicalManagedNetworkLoginServer,
 };
