@@ -1,9 +1,11 @@
 /** Verifies useVoiceChat cloud ASR through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { Capacitor } from "@capacitor/core";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWithCsrf } from "../api/csrf-client";
+import { getTalkModePlugin } from "../bridge/native-plugins";
 import {
   isLocalAsrCaptureSupported,
   startLocalAsrRecorder,
@@ -20,9 +22,16 @@ vi.mock("../voice/local-asr-capture", async (importOriginal) => ({
   startLocalAsrRecorder: vi.fn(),
 }));
 
+vi.mock("../bridge/native-plugins", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/native-plugins")>()),
+  getTalkModePlugin: vi.fn(() => ({})),
+}));
+
 const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);
 const isLocalAsrCaptureSupportedMock = vi.mocked(isLocalAsrCaptureSupported);
 const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
+const getTalkModePluginMock = vi.mocked(getTalkModePlugin);
+const isNativePlatformMock = vi.spyOn(Capacitor, "isNativePlatform");
 
 /**
  * Regression guard for the cloud STT wiring gap: an `eliza-cloud` / `openai`
@@ -36,6 +45,8 @@ const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
 describe("useVoiceChat cloud ASR", () => {
   beforeEach(() => {
     isLocalAsrCaptureSupportedMock.mockReturnValue(true);
+    isNativePlatformMock.mockReturnValue(false);
+    getTalkModePluginMock.mockReturnValue({} as never);
     // The cloud path never probes /api/asr/local-inference/status; the only
     // request it makes is the WAV POST to /api/asr/cloud, which returns { text }.
     fetchWithCsrfMock.mockImplementation(async (input) => {
@@ -158,6 +169,74 @@ describe("useVoiceChat cloud ASR", () => {
         turn: expect.objectContaining({ source: "cloud" }),
       }),
     );
+  });
+
+  it("does not provider-swap to Apple Speech when native cloud WAV capture fails", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = {
+      checkPermissions: vi.fn(),
+      requestPermissions: vi.fn(),
+      addListener: vi.fn(),
+      start: vi.fn(),
+    };
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    startLocalAsrRecorderMock.mockRejectedValue(
+      new Error("microphone recorder unavailable"),
+    );
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: {
+          provider: "eliza-cloud",
+          asr: { provider: "eliza-cloud" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+    expect(talkMode.checkPermissions).not.toHaveBeenCalled();
+    expect(talkMode.requestPermissions).not.toHaveBeenCalled();
+    expect(talkMode.addListener).not.toHaveBeenCalled();
+    expect(talkMode.start).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.supported).toBe(false));
+  });
+
+  it("does not probe Apple Speech when native cloud WAV primitives are unavailable", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    isLocalAsrCaptureSupportedMock.mockReturnValue(false);
+    const talkMode = {
+      checkPermissions: vi.fn(),
+      requestPermissions: vi.fn(),
+      addListener: vi.fn(),
+      start: vi.fn(),
+    };
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: {
+          provider: "eliza-cloud",
+          asr: { provider: "eliza-cloud" },
+        },
+      }),
+    );
+
+    await waitFor(() => expect(result.current.supported).toBe(false));
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+    expect(talkMode.checkPermissions).not.toHaveBeenCalled();
+    expect(talkMode.requestPermissions).not.toHaveBeenCalled();
+    expect(talkMode.addListener).not.toHaveBeenCalled();
+    expect(talkMode.start).not.toHaveBeenCalled();
   });
 
   it("unready persisted local-inference degrades to the cloud WAV route when cloudConnected (#16524)", async () => {
