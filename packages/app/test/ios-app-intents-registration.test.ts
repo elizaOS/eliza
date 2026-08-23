@@ -579,6 +579,9 @@ describe("native assistant entry contracts", () => {
     expect(dictationLiveActivitySwift).toContain("ActivityConfiguration");
     expect(dictationLiveActivitySwift).toContain("DynamicIsland");
     expect(dictationLiveActivitySwift).toContain("StopElizaVoiceIntent");
+    expect(dictationLiveActivitySwift).toContain(
+      "static var isDiscoverable = false",
+    );
     expect(dictationLiveActivitySwift).not.toContain(
       "SaveElizaDictationIntent",
     );

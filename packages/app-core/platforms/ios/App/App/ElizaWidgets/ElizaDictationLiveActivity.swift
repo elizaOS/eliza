@@ -26,6 +26,7 @@ import WidgetKit
 struct StopElizaVoiceIntent: AppIntent {
     static var title: LocalizedStringResource = "Stop"
     static var description = IntentDescription("Stop the current Eliza voice session.")
+    static var isDiscoverable = false
     static var openAppWhenRun = true
 
     @MainActor
