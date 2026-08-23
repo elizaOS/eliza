@@ -9,7 +9,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { printDiscordBanner } from "../banner.ts";
+import { fmtVal, printDiscordBanner } from "../banner.ts";
 import { DISCORD_DEFAULTS } from "../environment.ts";
 
 function renderBanner(): string {
@@ -63,5 +63,20 @@ describe("printDiscordBanner conversational defaults", () => {
 		expect(
 			settingRow(rendered, "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS"),
 		).toContain("false");
+	});
+
+	it("formats values safely without splitting surrogate pairs", () => {
+		expect(fmtVal(undefined, false, 20)).toBe("(not set)");
+		expect(fmtVal("secret-token", true, 20)).toBe("secr••••oken");
+
+		// "𝄞" is U+1D11E (2 UTF-16 code units).
+		// With maxLen=10, budget for text is 7 code units (10 - 3 for "...").
+		// If string has 6 'a's followed by "𝄞" (at units 6 and 7), slicing at 7 would split the pair.
+		const astralStr = `${"a".repeat(6)}\uD834\uDD1Eextra`;
+		const formatted = fmtVal(astralStr, false, 10);
+		expect(formatted.endsWith("...")).toBe(true);
+		const prefix = formatted.slice(0, -3);
+		expect(prefix.isWellFormed()).toBe(true);
+		expect(prefix.length).toBe(6); // backed off by 1 unit to avoid splitting U+1D11E
 	});
 });
