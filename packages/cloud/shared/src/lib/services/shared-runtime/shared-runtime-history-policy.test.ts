@@ -6,11 +6,11 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { logger } from "../../utils/logger";
 import {
+  compareSharedRuntimeHistoryMessages,
   encodeSharedPublicWebGrounding,
   insertSharedRuntimeGroundingMessages,
   MAX_PUBLIC_WEB_GROUNDING_AGE_MS,
   MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS,
-  compareSharedRuntimeHistoryMessages,
   mergeSharedRuntimeHistoryMessages,
   parseSharedPublicWebGrounding,
   type SharedRuntimeHistoryMessageLike,
@@ -1047,4 +1047,3 @@ describe("headscale safe sort", () => {
     expect(arr[1].id).toBe("5");
   });
 });
-

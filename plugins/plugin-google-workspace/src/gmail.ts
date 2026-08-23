@@ -1198,7 +1198,7 @@ async function mapWithConcurrency<T, TResult>(
 
 export function compareUnrespondedThreads(
   a: GoogleGmailUnrespondedThread,
-  b: GoogleGmailUnrespondedThread,
+  b: GoogleGmailUnrespondedThread
 ): number {
   const rightWaiting =
     typeof b.daysWaiting === "number" && Number.isFinite(b.daysWaiting) ? b.daysWaiting : 0;
@@ -1207,7 +1207,9 @@ export function compareUnrespondedThreads(
   return rightWaiting - leftWaiting || a.threadId.localeCompare(b.threadId);
 }
 
-export function sortGmailMessages(messages: GoogleGmailMessageSummary[]): GoogleGmailMessageSummary[] {
+export function sortGmailMessages(
+  messages: GoogleGmailMessageSummary[]
+): GoogleGmailMessageSummary[] {
   return [...messages].sort((left, right) => {
     if (left.isImportant !== right.isImportant) {
       return right.isImportant ? 1 : -1;
