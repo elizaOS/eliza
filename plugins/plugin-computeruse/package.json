@@ -33,6 +33,7 @@
   "files": [
     "registry-entry.json",
     "dist",
+    "auto-enable.ts",
     "README.md",
     "package.json"
   ],
@@ -91,6 +92,19 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "license": "Apache-2.0",
+  "elizaos": {
+    "appRegister": "register",
+    "app": {
+      "displayName": "Computer Use",
+      "category": "system"
+    },
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "computer-use"
+      ]
+    }
+  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {

@@ -33,6 +33,7 @@ const SCAN_ROOTS = [
 // registration: `<canonical package name>#<appRegister mode>`.
 const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-calendar#register",
+  "@elizaos/plugin-computeruse#register",
   "@elizaos/plugin-contacts#register",
   "@elizaos/plugin-maps#register",
   "@elizaos/plugin-native-settings#register",
